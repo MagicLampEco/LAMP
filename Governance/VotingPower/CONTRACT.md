@@ -49,6 +49,17 @@ VP_i = ∏_k  min( C_{k,i}, cap_k )^( w_k )
    1 DID, không nhân bản) + buộc có lịch sử (C1) + uy tín (C3) + đốt LAMP. Bốn lớp khóa lẫn nhau,
    không soi rời từng cái.
 
+5. **Sàn phi tập trung Byzantine — không thực thể nào chiếm đa số.** Cap mỗi DID chỉ chặn một
+   cá nhân; nguyên lý 5 chặn **mọi nhóm nhỏ**. Khi kiểm phiếu, VP hiệu dụng mỗi DID bị clamp:
+   `VP_eff_i = min( VP_i , ΣVP / BFT_FLOOR )` với `BFT_FLOOR = 21` (tham số DAO chỉnh, mặc định 21).
+   Hệ quả: không DID nào vượt `1/21 ≈ 4,76%` tổng → cần **≥ 8 DID độc lập** mới chạm ngưỡng
+   Byzantine 1/3, **≥ 14** đạt siêu đa số 2/3, **≥ 21** đạt 100%. Cộng **sàn cứng**: quyết định
+   trọng yếu chỉ hợp lệ khi số DID thuận `≥ BFT_FLOOR` (chưa đủ → khóa, về chế độ hội đồng bảo
+   trợ — xem EXEC bootstrap). Đây là chuẩn an-toàn BFT (chịu < 1/3 độc hại); `BFT_FLOOR` là
+   **SÀN tối thiểu**, KHÔNG phải số ghế cố định (tránh bẫy oligarchy kiểu 21 block-producer) —
+   hệ trưởng thành phải có [Nakamoto coefficient](https://news.earn.com/quantifying-decentralization-e39db233c28e)
+   ≫ 21, lúc đó trần `1/21` tự nới và không còn ràng buộc.
+
 ## 3. Phụ thuộc liên hệ thống
 
 - **PhoenixKey DID sinh trắc** + zk-proof "1 DID = 1 người thật" mà KHÔNG lộ dữ liệu sinh trắc.

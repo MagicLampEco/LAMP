@@ -1,7 +1,7 @@
 # Voting Power — EXEC: Đặc tả triển khai & lộ trình
 
 **Doctype:** MagicLamp Protocol — Governance Spec (EXEC)
-**Trạng thái:** 🔜 outline triển khai. Bám `CONTRACT.md` (đã duyệt 2026-06-05) — KHÔNG mâu thuẫn. Đã đồng bộ vòng audit TECH/MATH/FEAT (§11).
+**Trạng thái:** 🔜 outline triển khai. Bám `CONTRACT.md` (đã duyệt 2026-06-05, gồm nguyên lý 5 — sàn BFT clamp) — KHÔNG mâu thuẫn. Đã đồng bộ vòng audit TECH/MATH/FEAT (§11) + tích hợp nguyên lý 5 (§12) + vòng audit riêng nguyên lý 5 — clamp BFT (§13).
 **Cập nhật:** 2026-06-05
 
 Nguồn chuẩn bắt buộc đọc trước: [`CONTRACT.md`](./CONTRACT.md) (mô hình VP đã duyệt).
@@ -20,9 +20,9 @@ Mục tiêu cuối của cả dự án (theo định hướng dài hạn): làm 
 ### 0.2 Cái gì THUỘC EXEC
 
 - Lộ trình build theo mốc (M0…M6) + thứ tự phụ thuộc.
-- Chiến lược test: unit Aiken, property-based cho MATH, e2e Preview.
+- Chiến lược test: unit Aiken, property-based cho MATH, **test clamp BFT + sàn cứng (nguyên lý 5)**, e2e Preview.
 - Kế hoạch deploy Preview (bám mẫu script tuần tự của Distribution).
-- Bootstrap DAO: cử tri đầu, tham số khởi tạo, đường chuyển tập trung → DAO.
+- Bootstrap DAO: cử tri đầu, tham số khởi tạo, đường chuyển tập trung → DAO, **chế độ hội đồng bảo trợ khi chưa đủ sàn BFT**, **mốc đo Nakamoto coefficient**.
 - Rủi ro + giảm thiểu (vận hành/triển khai, không phải rủi ro toán — MATH lo).
 - Tiêu chí "xong" (Definition of Done) cho từng spec FEAT/MATH/TECH/EXEC.
 
@@ -137,11 +137,29 @@ Mỗi mốc có: đầu vào, việc, **đầu ra kiểm chứng được** (tes
 - **Test:** property-based (xem §4.2) cho các tính chất MATH chứng minh: bounded (cap chặn trên), monotonic theo từng C, geometric (một C=0 → VP=0). Đối chiếu `vp_claimed` off-chain với kết quả Tally tra bảng on-chain trên cùng bộ vector.
 - **Xong khi:** ≥ N property pass (N do MATH định) + bộ vector `vp_claimed` off-chain khớp Tally-tra-bảng on-chain **trong dải sai số MATH định**.
 
-### M2 — TECH: datum/redeemer + đọc C1–C4
+### M2 — TECH: datum/redeemer + đọc C1–C4 + clamp BFT (nguyên lý 5)
 
 - **Việc:** validators `VotingPower` đọc C1–C4 qua reference input (C1 từ UTxO MAGIC + authenticity token; C2 từ ScheduleGen; C3 từ Reputation registry LAMP-side; C4 trực tiếp UTxO ví theo snapshot — TECH §5). Schema UTxO mock + token xác thực cho C1/C2/C3 (cơ chế test khi nguồn thật chưa expose, §2.2), format `did_proof` opaque + `Stub` verifier (committee multisig, tái dùng mẫu Distribution).
-- **Test:** Aiken unit test mỗi nhánh validator (đủ beacon hợp lệ → pass; thiếu chữ ký committee → fail; C4 vượt cap → bị kẹp về cap).
-- **Xong khi:** test Aiken phủ mọi nhánh redeemer + mọi nhánh fail (negative test bắt buộc).
+- **Việc (clamp BFT — nguyên lý 5 CONTRACT §2):** Tally KHÔNG cộng thẳng `VP_i`. Mỗi DID bị **kẹp về sàn phi tập trung** trước khi cộng:
+  ```
+  VP_eff_i = min( VP_i , ΣVP / BFT_FLOOR )      với BFT_FLOOR = 21 (tham số DAO chỉnh, mặc định 21)
+  ```
+  Hệ quả số học (bám CONTRACT §2 nguyên lý 5) — **chốt mẫu số đếm phiếu**: ngưỡng tỷ lệ `t` xét trên **ΣVP THÔ** (tổng trước clamp), KHÔNG phải tổng-sau-clamp `Σ VP_eff`. Lý do (first-principles + tối ưu): `cap_eff = ΣVP_thô / 21` là hằng số trong một lần tally; một DID đã max-clamp đóng góp **đúng `1/21` của ΣVP THÔ**. Nếu lấy mẫu số = `Σ VP_eff` (tổng sau clamp), trần `1/21` BỊ PHÁ — vì clamp cắt bớt các DID lớn nên `Σ VP_eff < ΣVP_thô`, tỷ lệ một DID lớn trên tổng-sau-clamp có thể vọt lên (xem phản chứng dưới). Nên mọi ngưỡng `t·ΣVP_thô` đều tính trên ΣVP THÔ; con số DID dưới đây cũng theo mẫu số đó.
+
+  > **Phản chứng (vì sao mẫu số phải là ΣVP THÔ):** 1 DID khổng lồ `VP=1000` + 20 DID nhỏ `VP=1` → `ΣVP_thô = 1020`, `cap_eff = 1020/21 ≈ 48,57`. DID lớn clamp về 48,57. `Σ VP_eff = 48,57 + 20 = 68,57`. Tỷ lệ DID lớn trên **tổng-sau-clamp** = `48,57/68,57 ≈ 70,8%` (PHÁ trần). Nhưng trên **ΣVP THÔ** = `48,57/1020 ≈ 4,76%` (= đúng `1/21`, trần GIỮ). Do đó chốt mẫu số = ΣVP THÔ. TC1 (§4.5) kiểm trần theo đúng mẫu số này + có test phản chứng.
+
+  **Số DID cần cho từng ngưỡng (mẫu số = ΣVP THÔ):** đạt tỷ lệ `t` cần `≥ ⌈t·21⌉` DID độc lập **với giả định MỌI DID thuận đều đã max-clamp** (mỗi DID đóng đúng `1/21` của ΣVP thô) — chỉ khi đó công thức `⌈t·21⌉` mới khớp. Quy ước ngưỡng (cố ý KHÁC nhau, theo dữ kiện đã chốt):
+    - **1/3 — ngưỡng PHỦ QUYẾT Byzantine, luật là VƯỢT (`> 1/3`):** 7 DID = đúng `7/21 = 1/3` (chưa vượt) → cần **≥ 8** DID để VƯỢT ngưỡng phủ quyết.
+    - **2/3 — ngưỡng SIÊU ĐA SỐ, luật là ĐẠT (`≥ 2/3`):** **14** DID = đúng `14/21 = 2/3` → 14 ĐỦ (đạt). (13 = `13/21 < 2/3` chưa đạt.)
+    - **1 — toàn bộ:** **21** DID.
+  > Vì sao 1/3 dùng VƯỢT còn 2/3 dùng ĐẠT: 1/3 là ngưỡng an-toàn-BFT cần phe lành **vượt qua** mới chặn được phủ quyết của thiểu số độc hại; 2/3 là mốc siêu-đa-số mà luật DAO công nhận ngay khi **chạm tới**. Đồng bộ CONTRACT §2 ("≥ 14 đạt siêu đa số 2/3") + §4.5 TC2 + §12.
+  >
+  > **8/14/21 là CẬN DƯỚI (min-attack-set), KHÔNG phải số DID luôn-cần.** Các con số này đạt được khi **mỗi DID thuận đã max-clamp về `cap_eff`**; nếu một số DID thuận có `VP_i` nhỏ hơn trần (chưa chạm `cap_eff`) thì cần **NHIỀU HƠN** ngần đó DID mới gom đủ ngưỡng. Đây là **biên an toàn**: kẻ tấn công cần **TỐI THIỂU** 8 DID độc lập (đã max-clamp) để vượt 1/3 — không có đường tắt dưới 8.
+
+  Cài đặt: vì `ΣVP` phụ thuộc chính các `VP_i` (có thể vòng), tally tính `ΣVP` thô trước, suy `cap_eff = ΣVP / BFT_FLOOR`, rồi clamp từng DID — biểu diễn fixed-point của phép chia này do **MATH/TECH** chốt (xác định, không float on-chain). EXEC chỉ yêu cầu kết quả clamp **xác định** + khớp off-chain trong dải sai số MATH định.
+- **Việc (sàn cứng — nguyên lý 5):** quyết định **trọng yếu** (đổi cap/weight, nâng cấp validator, rút quỹ lớn — danh mục do FEAT chốt) chỉ hợp lệ khi **số DID thuận `≥ BFT_FLOOR`**. Chưa đủ → tx tally **fail**, proposal **khóa**, hệ về **chế độ hội đồng bảo trợ** (§5.4). Quyết định thường (không trọng yếu) KHÔNG chịu sàn cứng — tránh tê liệt giai đoạn đầu.
+- **Test:** Aiken unit test mỗi nhánh validator (đủ beacon hợp lệ → pass; thiếu chữ ký committee → fail; C4 vượt cap → bị kẹp về cap). **Test clamp bắt buộc (§4.5):** vài DID VP rất lớn → sau clamp KHÔNG ai > `ΣVP_thô/21` (mẫu số = ΣVP THÔ); **test sàn cứng:** số DID thuận < 21 trên quyết định trọng yếu → tally fail (khóa).
+- **Xong khi:** test Aiken phủ mọi nhánh redeemer + mọi nhánh fail (negative test bắt buộc) + 2 test clamp/sàn-cứng (§4.5) xanh.
 
 ### M3 — FEAT: luồng proposal / vote / recall + vòng đời tập sự
 
@@ -160,18 +178,20 @@ Mỗi mốc có: đầu vào, việc, **đầu ra kiểm chứng được** (tes
 
 - **Việc:** script tuần tự bám mẫu Distribution: `00_preflight` (kiểm tra ví/quỹ Preview) → `01_deploy` (script address + beacon NFT one-shot) → `02_seed` (post UTxO mock C1/C2/C3 gắn token xác thực + nạp LAMP test cho C4, ghi nhận **snapshot số dư tại proposal-open epoch** theo TECH §5.4) → `03_genesis` (mở proposal mẫu) → `04_e2e` (3 cử tri Stub vote, tally on-chain, recall thử). Ghi nhật ký như [`LIVE_DEPLOY_PREVIEW.md`](../../Distribution/scripts/LIVE_DEPLOY_PREVIEW.md).
 - **Negative test snapshot C4 (bắt buộc):** thêm kịch bản cử tri Stub **đổi số dư LAMP SAU khi vote** (tiêu hoặc nạp thêm), kiểm tally vẫn dùng **giá trị snapshot tại proposal-open epoch** (TECH §5.4), KHÔNG dùng số dư mới. Đây là negative-case "mua LAMP trước tally rồi tiêu sau" — e2e phải phủ.
+- **Negative test clamp + sàn cứng (bắt buộc — nguyên lý 5, §4.5):** (1) **clamp e2e:** dựng 1 DID Stub có VP rất lớn → tally on-chain Preview ghi `VP_eff` kẹp về `ΣVP_thô/21` (mẫu số = ΣVP THÔ, đã chốt M2), đọc lại datum khớp. (2) **sàn cứng e2e:** chạy một quyết định **trọng yếu** với **< 21 DID** thuận → tx tally **fail thật trên Preview** (proposal khóa, về chế độ hội đồng bảo trợ §5.4); ghi tx hash của lần fail như bằng chứng. M5 chạy với committee bootstrap đóng vai hội đồng bảo trợ (chưa đủ 21 DID độc lập thật là điều BÌNH THƯỜNG ở giai đoạn này — đúng §5.4).
 - **Lưu ý collateral/datum decode:** Distribution từng vấp datum decode + collateral ở e2e live (commit `1fbd78a4`) → kế thừa bài học: test decode datum thật trên Preview, đặt collateral đúng.
 - **Bất biến chống-thâu-tóm cho M5 (BẮT BUỘC — vì M5 là điểm tập trung quyền lực tối đa):** trong M5 một committee đơn lẻ đang kiểm soát CẢ danh tính (DID Stub) LẪN UTxO mock C1/C2/C3 → về nguyên tắc có thể bịa cử tri + VP tùy ý. Phải chặn bằng các bất biến sau:
   - (a) **Danh sách DID Stub công khai + cố định TRƯỚC khi mở proposal**, commit on-chain (vd hash danh sách trong datum genesis). Committee **KHÔNG được thêm DID giữa kỳ** bỏ phiếu.
   - (b) **Mỗi giá trị mock C1/C2/C3 kèm bằng chứng đối chiếu nguồn** (link Cardano/MAGIC thật) ngay cả ở MVP. Nếu chưa đối chiếu được nguồn thật, **đánh dấu rõ: "M5 là test TIN-CẬY-COMMITTEE, KHÔNG phải bằng chứng chống-sybil — chống-sybil chỉ có hiệu lực từ M6"** (xem §2.1).
   - (c) **Kết quả tally M5 KHÔNG được dùng làm tiền lệ quản trị thật** — chỉ là bằng chứng cơ chế chạy đúng.
-- **Xong khi:** có tx hash Preview thật cho mỗi bước + tally on-chain đọc lại khớp tính toán off-chain (trong dải sai số MATH định) + negative test snapshot C4 pass + ba bất biến (a)(b)(c) được khẳng định trong nhật ký deploy.
+- **Xong khi:** có tx hash Preview thật cho mỗi bước + tally on-chain đọc lại khớp tính toán off-chain (trong dải sai số MATH định) + negative test snapshot C4 pass + **negative test clamp + sàn cứng pass (có tx hash lần tally fail khi < 21 DID)** + Nakamoto coefficient đo được ghi vào nhật ký (§5.5) + ba bất biến (a)(b)(c) được khẳng định trong nhật ký deploy.
 
 ### M6 — Mở blocker DID + chuyển sang DAO (chạy thật)
 
 - **Việc (phụ thuộc PhoenixKey sẵn sàng):** thay `Stub` verifier bằng **zk-verifier DID** PhoenixKey (1 DID = 1 người, không lộ sinh trắc — CONTRACT §3/§4). Datum/redeemer lõi **không đổi**.
+- **Việc (sàn cứng có hiệu lực THẬT — nguyên lý 5):** từ M6, sàn cứng `≥ BFT_FLOOR` DID độc lập đếm trên **DID PhoenixKey thật** (không phải Stub). Hệ chỉ **thoát chế độ hội đồng bảo trợ** (§5.4) khi đạt **≥ 21 DID độc lập có VP > 0** (đo theo Nakamoto coefficient §5.5). Trước mốc đó, quyết định trọng yếu vẫn về hội đồng bảo trợ — đây là hành vi đúng, không phải lỗi.
 - **Việc (bootstrap → DAO):** xem §5.
-- **Xong khi:** một proposal thật chạy với cử tri có DID PhoenixKey thật trên Preview; quyền chỉnh cap/weight đã chuyển vào validator DAO (committee không còn đơn phương sửa được).
+- **Xong khi:** một proposal thật chạy với cử tri có DID PhoenixKey thật trên Preview; quyền chỉnh cap/weight đã chuyển vào validator DAO (committee không còn đơn phương sửa được); **sàn cứng kiểm trên DID thật (quyết định trọng yếu khóa khi < 21 DID độc lập, mở khi đủ — verify được trên Preview)** + Nakamoto coefficient của hệ ghi nhận theo §5.5.
 
 ---
 
@@ -209,6 +229,22 @@ giả sử 4 tham số, weight đều `1`, cap C4 = 100 triệu. Cử tri A gi�
 - Chạy thật trên Cardano Preview testnet, ghi tx hash từng bước. Đây là mức bằng chứng cao nhất trước mainnet.
 - Bài học kế thừa: 1 lệnh kiểm tra trên testnet tránh hàng giờ debug; decode datum + collateral phải test thật (commit `1fbd78a4`).
 
+### 4.5 Test clamp BFT + sàn cứng (nguyên lý 5 — BẮT BUỘC)
+
+Nguyên lý 5 (CONTRACT §2) là lớp chống-thâu-tóm theo **nhóm nhỏ** (cap mỗi DID chỉ chặn cá nhân). Phải có test riêng, không gộp vào happy-path tally:
+
+- **TC1 — clamp chặn trần `1/21` (mẫu số = ΣVP THÔ):** dựng vài DID có `VP_i` rất lớn (vd 1 DID chiếm 90% tổng thô). Sau clamp `VP_eff_i = min(VP_i, ΣVP_thô/21)`: **kiểm không DID nào có `VP_eff_i > ΣVP_thô/21`** (≈ 4,76% của **ΣVP THÔ** — mẫu số đã chốt ở M2). Test cả biên: DID đúng bằng `ΣVP_thô/21` không bị kẹp thêm.
+  - **TC1b — phản chứng mẫu số (BẮT BUỘC):** dựng đúng kịch bản M2 — 1 DID `VP=1000` + 20 DID `VP=1` (`ΣVP_thô=1020`, `cap_eff≈48,57`). Kiểm: (a) tỷ lệ DID lớn trên **ΣVP THÔ** = `cap_eff/1020 ≈ 4,76%` (trần GIỮ — đây là mẫu số đã chốt); (b) khẳng định KHÔNG dùng mẫu số tổng-sau-clamp `Σ VP_eff ≈ 68,57` (nếu dùng nhầm sẽ ra `≈ 70,8%`, phá trần). Test này chốt chết quy ước mẫu số để code tally không lệch.
+- **TC2 — ngưỡng đạt được cần đủ DID độc lập (mẫu số = ΣVP THÔ, mọi DID đã max-clamp):** dựng `n` DID đã max-clamp (mỗi DID đóng đúng `1/21` của ΣVP thô), kiểm theo **đúng quy ước M2**:
+  - **1/3 (VƯỢT):** tỷ lệ thuận VƯỢT `1/3` khi `n ≥ 8`; `n=7` đúng `1/3` (chưa vượt).
+  - **2/3 (ĐẠT):** tỷ lệ thuận ĐẠT `≥ 2/3` khi `n = 14`; `n=13` (`13/21 < 2/3`) chưa đạt.
+  - **1:** đạt `1` khi `n = 21`.
+  Bám đúng số liệu CONTRACT §2 / M2. **Lưu ý:** 8/14/21 là CẬN DƯỚI (mọi DID đã max-clamp); nếu DID thuận có VP nhỏ hơn trần thì cần nhiều DID hơn — TC2 cố ý dựng kịch bản max-clamp để kiểm đúng cận dưới.
+- **TC3 — sàn cứng khóa quyết định trọng yếu:** với một quyết định **trọng yếu**, số DID thuận **< 21** → tally **fail**, proposal **khóa** (về chế độ hội đồng bảo trợ §5.4). Cùng quyết định với **≥ 21** DID thuận → tally **pass**. Đây là negative test bắt buộc — chống "happy path bỏ qua sàn".
+- **TC4 — BFT_FLOOR là tham số DAO:** đổi `BFT_FLOOR` (vd 19 và 22) → ngưỡng `⌈t·BFT_FLOOR⌉` và sàn cứng dịch theo đúng tham số, xác nhận con số 21 KHÔNG hard-code chết. Lưu ý chuẩn BFT (n ≥ 3f+1): 21 chịu `f=6` (3·6+1=19 ≤ 21 < 22=3·7+1); 21 là **SÀN tối thiểu**, không phải ghế cố định.
+
+Các test này chạy ở M2 (Aiken unit), lặp lại ở M4 (integration off-chain so khớp clamp), và phủ ở M5 (e2e Preview: kịch bản < 21 DID → quyết định trọng yếu bị khóa thật).
+
 ---
 
 ## 5. Bootstrap DAO: tập trung → phi tập trung
@@ -239,8 +275,28 @@ khai; cộng đồng giám sát           không đơn phương đổi cap/weigh
 ```
 
 - **GĐ A → B:** mở khi DID thật (M6) + cộng đồng đủ cử tri có VP>0 để một vote có ý nghĩa (ngưỡng số cử tri tối thiểu là **tham số mở (DAO định)**).
-- **GĐ B → C:** committee tự nguyện (hoặc theo proposal) gỡ quyền đặt tham số khỏi multisig, chuyển hẳn vào validator DAO. Quyền post beacon (C1/C2/C3) có thể giữ ở committee lâu hơn vì là vai vận hành dữ liệu, không phải vai quyền lực — nhưng cần lộ trình phi tập trung beacon (vd nhiều committee độc lập, hoặc oracle) **[câu hỏi treo §8]**.
+- **GĐ B → C:** committee tự nguyện (hoặc theo proposal) gỡ quyền đặt tham số khỏi multisig, chuyển hẳn vào validator DAO. Quyền post beacon (C1/C2/C3) có thể giữ ở committee lâu hơn vì là vai vận hành dữ liệu, không phải vai quyền lực — nhưng cần lộ trình phi tập trung beacon (vd nhiều committee độc lập, hoặc oracle) **[câu hỏi treo §10]**.
 - **Bất biến cần giữ:** ở mọi giai đoạn, committee KHÔNG được tự cấp VP cho mình ngoài công thức; mọi thay đổi cap/weight để lại dấu vết on-chain (truy vết được).
+- **Mốc Nakamoto coefficient (điều kiện trưởng thành — nguyên lý 5):** GĐ B→C chỉ nên mở khi hệ đã **đủ phi tập trung thật**, đo bằng [Nakamoto coefficient](https://news.earn.com/quantifying-decentralization-e39db233c28e) = số DID độc lập **tối thiểu** cần cấu kết để kiểm soát > 1/3 (hoặc > 1/2) VP-tham-gia sau clamp. Mục tiêu hệ trưởng thành: **Nakamoto coefficient ≫ 21**. Khi đó trần `1/21` tự nới và không còn ràng buộc (clamp trở nên vô hại vì không DID nào chạm trần) — đây là tín hiệu lượng hóa rằng sàn BFT đã hoàn thành vai trò. Mốc đo cụ thể ghi ở §5.5.
+
+### 5.4 Chế độ hội đồng bảo trợ (khi chưa đủ BFT_FLOOR DID độc lập)
+
+Hệ quả trực tiếp của **sàn cứng** (nguyên lý 5): nếu số DID độc lập đủ tư cách **< BFT_FLOOR (21)**, mọi quyết định **trọng yếu** bị **khóa** (tally fail — M2/§4.5 TC3). Nhưng hệ vẫn phải vận hành (post beacon, mở proposal thường, sửa lỗi khẩn). Cơ chế khóa cần một **đường lùi an toàn**, không để hệ tê liệt hoàn toàn:
+
+- **Định nghĩa:** khi hệ chưa đạt sàn 21 DID độc lập đủ tư cách, quyền quyết định trọng yếu **tạm về committee multisig bootstrap** (hội đồng bảo trợ) — đúng vai GĐ A. Committee chỉ là **người giữ tạm**, KHÔNG phải chủ sở hữu quyền lực; mọi hành động phải on-chain, công khai, recall được.
+- **Phạm vi bị khóa cho cộng đồng (chỉ committee quyết được):** đổi cap/weight, nâng cấp validator, rút quỹ lớn. Phạm vi mở (cộng đồng vote thường, không cần đủ 21): proposal không trọng yếu, tín hiệu, thảo luận.
+- **Điều kiện THOÁT chế độ này (one-way, ghi on-chain):** khi đủ **≥ 21 DID độc lập có VP > 0** (đo theo Nakamoto coefficient §5.5, không phải chỉ đếm đầu DID đăng ký — phải là DID độc lập, không cùng phục vụ một thực thể), sàn cứng tự cho phép quyết định trọng yếu chạy qua VP, committee mất quyền đơn phương. Việc thoát phải để lại dấu vết on-chain (epoch đạt sàn, danh sách DID đủ tư cách hash trong datum).
+- **Bất biến chống lạm dụng (đồng bộ bất biến M5 §3 + §5.1 GĐ A):** trong chế độ bảo trợ committee KHÔNG được (a) tự thêm DID Stub giữa kỳ để giả đạt 21; (b) tự cấp VP cho mình ngoài công thức; (c) dùng quyết định ở chế độ bảo trợ làm tiền lệ quản trị thật sau khi hệ trưởng thành. Danh sách DID đủ tư cách + mỗi quyết định bảo trợ phải public + recall được.
+- **Vì sao về committee, không tê liệt cứng:** first-principles — sàn cứng bảo vệ chống thiểu số chiếm quyền KHI hệ đã phi tập trung; ở giai đoạn bootstrap (chưa đủ 21 DID) thì "thiểu số" chính là toàn bộ hệ, nên đòi 21 phiếu là bất khả thi → phải có người giữ tạm minh bạch thay vì khóa chết. Đây là sự đánh đổi có chủ đích, ghi rõ để truy vết (4 trục: an toàn vốn user + hệ vận hành bền + chống gaming bằng công khai/recall + đường phi tập trung tường minh).
+
+### 5.5 Mốc đo Nakamoto coefficient của hệ qua thời gian
+
+Để biết hệ đã trưởng thành (thoát chế độ bảo trợ §5.4, mở GĐ B→C §5.3), cần **đo định kỳ**, không đoán:
+
+- **Định nghĩa đo:** Nakamoto coefficient của Governance = số **DID độc lập tối thiểu** cần cấu kết để kiểm soát > 1/3 tổng VP-tham-gia **sau clamp** (ngưỡng phủ quyết Byzantine). Có thể đo thêm bản > 1/2 (đa số thường). Tính off-chain từ snapshot VP mỗi proposal-open epoch; công khai để cộng đồng đối chiếu (trust-but-verify, mẫu Distribution).
+- **Vì sao đo sau clamp:** clamp ép trần `1/21` nên Nakamoto coefficient luôn **≥ 8** (cần ≥ 8 DID đã max-clamp để vượt 1/3 — M2). Con số đo có ý nghĩa khi vượt xa 8: nó cho biết quyền lực đã **phân tán tự nhiên** tới đâu (nhiều DID có VP gần trần) hay vẫn dồn vào nhóm nhỏ vừa-đủ-8.
+- **Mục tiêu theo thời gian:** Nakamoto coefficient **tăng dần qua các epoch** (mô hình tập sự CONTRACT §2.1 khiến cộng đồng tích VP dần) và đạt **≫ 21** ở hệ trưởng thành. Khi đó không DID nào còn chạm trần `1/21` → clamp vô hại → sàn BFT hoàn thành vai trò.
+- **Ghi nhận:** mỗi proposal-open epoch ghi Nakamoto coefficient đo được vào nhật ký quản trị (mẫu `LIVE_DEPLOY_PREVIEW.md`). Đây là chỉ số sức khỏe phi tập trung chính của hệ — theo dõi đường cong của nó để quyết định mở GĐ B→C.
 
 ---
 
@@ -258,6 +314,8 @@ khai; cộng đồng giám sát           không đơn phương đổi cap/weigh
 | R6 | **Genesis voters thành tầng lớp đặc quyền** (không chịu rút) | Trung | Không cấp VP đặc quyền vĩnh viễn (§5.1); lộ trình GĐ A→B→C ghi sẵn; danh sách công khai; recall được. |
 | R7 | **Collateral/datum decode lỗi ở e2e Preview** | Trung | Kế thừa bài học commit `1fbd78a4`: test decode datum thật + collateral đúng trước khi tuyên bố live. |
 | R8 | **Đa account gh / post nhầm identity** khi báo cáo | Thấp | Tuân quy ước CLAUDE.md: chọn identity qua `GH_TOKEN=$PAT`, verify bằng `gh api user`, nội dung GitHub duyệt trước. |
+| R9 | **Hệ chưa đủ 21 DID độc lập** → quyết định trọng yếu khóa, dễ bị hiểu nhầm là "hỏng" hoặc bị committee lạm quyền trong lúc khóa | Trung | Chế độ **hội đồng bảo trợ** minh bạch (§5.4): committee giữ tạm, mọi hành động on-chain + công khai + recall được; điều kiện thoát one-way ghi on-chain (≥ 21 DID độc lập, đo §5.5); bất biến chống committee tự thêm DID/tự cấp VP. Tài liệu nói rõ "khóa" là TÍNH NĂNG (sàn BFT), không phải bug. |
+| R10 | **Đếm "21 DID" theo đầu DID đăng ký, không phải DID ĐỘC LẬP** → committee/kẻ tấn công nhồi DID cùng phục vụ một thực thể để giả đạt sàn | Cao | Sàn cứng + thoát chế độ bảo trợ đo theo **Nakamoto coefficient** (DID độc lập, §5.5), KHÔNG chỉ đếm đầu DID; M6 dùng DID PhoenixKey sinh trắc (1 người = 1 DID); hành vi cùng phục vụ một thực thể lộ thiên on-chain → recall (CONTRACT §2 nguyên lý 2/4). |
 
 ---
 
@@ -268,7 +326,7 @@ khai; cộng đồng giám sát           không đơn phương đổi cap/weigh
 | **MATH** | Công thức VP biểu diễn xác định (fixed-point + bảng tra); ≥ property test cho bounded/monotonic/geometric-collapse pass (Aiken fuzzer); chứng minh "token không mua được quyền lực" viết rõ; **`vp_claimed` off-chain khớp Tally-tra-bảng on-chain trong dải sai số MATH định (có test so khớp)** — KHÔNG kỳ vọng bit-khớp tuyệt đối với fixed-point exp/ln (MATH §11.5). |
 | **TECH** | Datum/redeemer định nghĩa đủ; validators đọc C1–C4 (C4 trực tiếp, C1/C2/C3 qua beacon+reference input); `Stub` DID verifier cắm được, thay bằng zk-verifier không phá datum; Aiken unit test phủ mọi nhánh + negative test. |
 | **FEAT** | Vòng đời cử tri (gồm tập sự VP≈0) + 3 loại quyết định + luồng proposal/vote/recall mô tả đủ; double-vote chặn; ngưỡng recall (co-sign + %) khớp Governance SPEC; integration test chạy 1 vòng quản trị. |
-| **EXEC** (file này) | M0–M5 có đầu ra kiểm chứng (test xanh + tx hash Preview); kế hoạch M6 + bootstrap DAO ghi rõ; rủi ro + giảm thiểu liệt kê; tài liệu deploy ghi như `LIVE_DEPLOY_PREVIEW.md`. |
+| **EXEC** (file này) | M0–M5 có đầu ra kiểm chứng (test xanh + tx hash Preview); kế hoạch M6 + bootstrap DAO ghi rõ; rủi ro + giảm thiểu liệt kê; **clamp BFT + sàn cứng (nguyên lý 5) có test bắt buộc (§4.5) + chế độ hội đồng bảo trợ (§5.4) + mốc đo Nakamoto coefficient (§5.5) ghi rõ**; tài liệu deploy ghi như `LIVE_DEPLOY_PREVIEW.md`. |
 
 ---
 
@@ -325,3 +383,39 @@ Các tham số EXEC **cố ý KHÔNG bịa con số cuối**:
 9. **[nit] §5.2 thiếu bất biến VP=0 toàn cục** → đã thêm bất biến bootstrap: đặt `w_3=0` lúc bootstrap rồi bật dần, hoặc dùng `floor_k` tạm; ghi rõ lý do; liên kết MATH §9.2 / §14 Q1.
 
 **Lưu ý tham chiếu:** các mục TECH §5.x, MATH §9/§11/§13/§14 được trích từ finding audit (spec anh em build song song, chưa nằm cùng thư mục VotingPower lúc sửa). Khi TECH/MATH chốt bản chính, cần đối chiếu lại số hiệu mục để link không lệch `[cần verify số mục cuối]`.
+
+---
+
+## 12. Tích hợp nguyên lý 5 (sàn phi tập trung Byzantine — clamp BFT)
+
+CONTRACT §2 thêm **nguyên lý 5**: VP hiệu dụng mỗi DID bị clamp `VP_eff_i = min(VP_i, ΣVP/BFT_FLOOR)`, `BFT_FLOOR = 21` (tham số DAO chỉnh). EXEC tích hợp **chỉ vào các mục liên quan**, giữ nguyên cấu trúc + đánh số cũ. Tóm tắt đã thêm gì + lý do (4 trục để truy vết):
+
+1. **M2** — thêm việc cài **clamp** (kẹp trần `1/21`) + **sàn cứng** (quyết định trọng yếu chỉ hợp lệ khi số DID thuận `≥ 21`) vào Tally; biểu diễn fixed-point phép chia do MATH/TECH chốt (xác định, không float). **Mẫu số đếm phiếu chốt = ΣVP THÔ** (không phải tổng-sau-clamp — nếu nhầm sẽ phá trần `1/21`, xem phản chứng M2/TC1b). Quy ước ngưỡng: **1/3 là VƯỢT (`>1/3` → cần ≥ 8 DID)**, **2/3 là ĐẠT (`≥2/3` → 14 DID đủ)**, 21 đạt 100%. Các số 8/14/21 là **CẬN DƯỚI** (mọi DID đã max-clamp); DID nhỏ hơn trần thì cần nhiều hơn.
+2. **§4.5 (mới)** — test bắt buộc: TC1 clamp không ai > `ΣVP_thô/21` + **TC1b phản chứng mẫu số** (1 DID 1000 + 20 DID 1, trần giữ trên ΣVP thô); TC2 ngưỡng cần đủ DID độc lập (1/3 VƯỢT khi n≥8, 2/3 ĐẠT khi n=14, 1 khi n=21); TC3 sàn cứng khóa quyết định trọng yếu khi < 21 DID; TC4 `BFT_FLOOR` là tham số DAO (21 chịu f=6, là SÀN tối thiểu — không phải ghế cố định, tránh bẫy oligarchy 21 block-producer).
+3. **§5.4 (mới)** — **chế độ hội đồng bảo trợ**: khi hệ < 21 DID độc lập đủ tư cách, quyết định trọng yếu khóa, quyền tạm về committee multisig minh bạch (giữ tạm, không sở hữu quyền lực); điều kiện thoát one-way ghi on-chain.
+4. **§5.5 (mới)** — **mốc đo Nakamoto coefficient** của hệ qua thời gian, đo sau clamp, mục tiêu `≫ 21`; ghi mỗi proposal-open epoch.
+5. **§5.3** — gắn mốc Nakamoto coefficient vào điều kiện mở GĐ B→C.
+6. **M5 / M6** — M5 chạy committee bootstrap đóng vai hội đồng bảo trợ + negative test clamp/sàn-cứng có tx hash; M6 sàn cứng có hiệu lực THẬT trên DID PhoenixKey, thoát chế độ bảo trợ khi đủ 21 DID độc lập.
+7. **R9, R10** — rủi ro "khóa bị hiểu nhầm là hỏng/lạm quyền" (giảm bằng §5.4 minh bạch) + "đếm đầu DID thay vì DID độc lập" (giảm bằng đo Nakamoto coefficient + DID sinh trắc).
+
+**Lý do (4 trục):**
+- *Định hướng dài hạn:* clamp + sàn BFT bảo đảm không thực thể nào (kể cả Foundation) chiếm quyền → tăng tin cậy của hệ open-SDK, phục vụ mục tiêu LAMP có giá trị.
+- *Nguyên bản:* bám chuẩn an-toàn BFT (n ≥ 3f+1, chịu < 1/3 độc hại) thay vì copy mô hình "N validator cố định" kiểu EOS — 21 là sàn, không phải ghế.
+- *Tối ưu eUTXO:* clamp chỉ là một phép `min` + một phép chia `cap_eff = ΣVP_thô/21` trong Tally (rẻ, xác định; mẫu số ΣVP THÔ tính một lần, dùng chung), không thêm UTxO/ExUnit đáng kể; tái dùng đúng khuôn tally đã có.
+- *Lợi ích user + bền vững:* chế độ hội đồng bảo trợ tránh tê liệt giai đoạn bootstrap nhưng minh bạch + recall được; Nakamoto coefficient cho chỉ số sức khỏe phi tập trung đo được, decentralize có lộ trình.
+
+**Cần verify khi MATH/TECH chốt bản chính:** biểu diễn fixed-point của `ΣVP/BFT_FLOOR` + thứ tự tính `ΣVP` thô → clamp (tránh vòng phụ thuộc) thuộc MATH/TECH; số hiệu mục liên kết `[cần verify số mục cuối]`.
+
+---
+
+## 13. Phản hồi audit (vòng riêng nguyên lý 5 — clamp BFT)
+
+Audit phản biện sau khi tích hợp nguyên lý 5 (§12). Áp 5 finding:
+
+1. **[major] Mẫu số clamp dùng ΣVP THÔ, nhưng trần `1/21` chỉ đúng nếu mẫu số đếm phiếu cũng là ΣVP thô** — ĐÚNG, đã sửa. Vì clamp cắt bớt DID lớn nên `Σ VP_eff < ΣVP_thô`; nếu xét ngưỡng `t` trên tổng-sau-clamp thì trần `1/21` bị phá (phản chứng: 1 DID `VP=1000` + 20 DID `VP=1` → DID lớn chiếm `≈70,8%` tổng-sau-clamp nhưng đúng `4,76%` trên ΣVP thô). **Chốt: mẫu số đếm phiếu = ΣVP THÔ** (M2 ghi rõ + phản chứng + nêu giả định "8/14/21 chỉ đúng khi mọi DID thuận đã max-clamp"). §4.5 thêm **TC1b** test phản chứng để code không lệch mẫu số. Vì sao chọn ΣVP thô (không phải Σ VP_eff): `cap_eff = ΣVP_thô/21` là hằng số trong một tally, một DID max-clamp đóng đúng `1/21` ΣVP thô — số học sạch, không vòng lặp, khớp dữ kiện đã chốt (8/14/21).
+2. **[major] Bất đối xứng quy ước `≥/>` giữa 1/3 và 2/3, M2 và TC2 đọc như mâu thuẫn** — ĐÚNG, đã thống nhất. Chốt rõ ngay M2 + đầu TC2: **1/3 là ngưỡng PHỦ QUYẾT Byzantine → luật VƯỢT (`>1/3`) → cần ≥ 8**; **2/3 là ngưỡng SIÊU ĐA SỐ → luật ĐẠT (`≥2/3`) → 14 đủ**. Hai quy ước cố ý khác nhau, đã ghi lý do (1/3: phe lành phải vượt mới chặn phủ quyết thiểu số; 2/3: DAO công nhận khi chạm). Theo đúng dữ kiện anh chốt ("1/3 cần ≥8 để VƯỢT; 2/3 ĐÚNG 14") + CONTRACT §2 ("≥14 đạt siêu đa số 2/3").
+3. **[minor] TC2 ghi "n≥15 mới vượt 2/3" lệch M2/CONTRACT "14 đạt 2/3"** — ĐÚNG, đã sửa. Chọn 2/3 = ngưỡng ĐẠT → TC2 nay ghi "**ĐẠT 2/3 khi n=14; n=13 chưa đạt**", khớp M2 + CONTRACT §2 + §12. Bỏ con số 15 (đó là quy ước VƯỢT, không dùng cho 2/3).
+4. **[minor] "DID độc lập đã max-clamp" trộn 2 khái niệm; 8/14/21 là cận dưới không phải số cứng** — ĐÚNG, đã làm rõ. M2 + TC2 thêm câu: **8/14/21 là CẬN DƯỚI (min-attack-set), đạt khi mỗi DID đã max-clamp về `cap_eff`; DID thuận nhỏ hơn trần thì cần nhiều DID hơn**. Đây là biên an toàn — kẻ tấn công cần TỐI THIỂU ngần đó DID độc lập, không có đường tắt.
+5. **[nit] §12 dòng tóm tắt lặp "2/3 → đúng 14" theo cách bất đối xứng cũ** — đã đồng bộ §12 mục 1+2: nêu rõ mẫu số = ΣVP THÔ, quy ước 1/3 VƯỢT / 2/3 ĐẠT, 8/14/21 là cận dưới. Ba chỗ (M2, §4.5, §12) nay khớp nhau.
+
+**Không có finding nào bị bỏ** — cả 5 đúng và đã áp. Mọi sửa nằm trong M2 + §4.5 (TC1/TC1b/TC2) + §5.4 (clamp e2e mẫu số) + §12; KHÔNG đụng phần khác, giữ nguyên cấu trúc + đánh số.

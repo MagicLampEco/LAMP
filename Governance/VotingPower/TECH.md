@@ -200,7 +200,8 @@ pub type ProposalRedeemer {
   Tally script hash, hoặc Tally NFT có mặt); ghi `yes_power/no_power/abstain_power/voter_count`;
   `Closed → Tallied`.
 - `ExecuteProposal`: `status = Tallied` và **điều kiện thông qua đạt** (biểu thức quorum + ngưỡng —
-  xem §9.4; các ngưỡng là **tham số mở**, FEAT/MATH định). Nếu đề xuất chi tiêu kho bạc → tx này
+  xem §9.4, **kèm sàn cứng số DID thuận ≥ `bft_floor` của nguyên lý 5 — §9.5.2**; power dùng là
+  **đã clamp**, §9.5.1). Các ngưỡng là **tham số mở**, FEAT/MATH định. Nếu đề xuất chi tiêu kho bạc → tx này
   đồng thời chi `treasury.ak` (Distribution), Proposal validator chỉ chuyển trạng thái, **không** tự
   kiểm logic kho bạc (treasury tự kiểm).
 
@@ -421,6 +422,14 @@ chỉ đọc, không tiêu.)
 > chỉnh runtime" như CONTRACT §1 ngụ ý ("hệ DAO, không người canh tập trung"). Bỏ hẳn vế "redeploy"
 > khỏi §5.2/§5.5. Ngoại lệ: `cap4 = 100_000_000` có thể tham số hóa cứng vì CONTRACT đã chốt cố định.
 
+> **`BFT_FLOOR` cũng nằm trong UTxO tham số này (nguyên lý 5 — CONTRACT §2.5).** Thêm một trường
+> `bft_floor : Int` (mặc định 21) vào datum của DAO-param UTxO, đọc **cùng cách** với cap1..cap3 (qua
+> `weight_param_ref` của Proposal). Lý do đặt cùng chỗ với cap, không tham số hóa cứng: CONTRACT §2.5
+> nói rõ `BFT_FLOOR` là **tham số DAO chỉnh**, và là **SÀN tối thiểu** — hệ trưởng thành (Nakamoto
+> coefficient ≫ 21) sẽ nâng F để nới trần `1/F`. Vì Proposal khóa `weight_param_ref` lúc Open (§5.6),
+> mỗi proposal dùng **đúng** giá trị F lúc mở → DAO đổi F không hồi tố proposal đang chạy. Clamp dùng F
+> này nằm ở Tally (§9.5), KHÔNG ở Vote.
+
 ---
 
 ## 6. Chống double-vote — Nullifier minting policy
@@ -591,25 +600,46 @@ Không thể duyệt 10_000 Vote UTxO trong 1 tx. Plutus có `maxTxExUnits` gi�
 Một **Tally accumulator** UTxO (mang Tally NFT) cho mỗi proposal:
 
 ```aiken
+pub type TallyPhase {
+  Summing     // pha 1: cộng power THÔ từng phiếu (chưa clamp) + lưu per-DID để pha 2 clamp
+  Clamped     // pha 2 đã chốt: power hiệu dụng sau clamp BFT_FLOOR, sẵn sàng RecordTally
+}
+
 pub type TallyDatum {
   proposal_id   : ByteArray,
-  yes_power_acc : Int,
-  no_power_acc  : Int,
-  abstain_power_acc : Int,
+  phase         : TallyPhase,
+  // --- pha 1 (Summing): tổng power THÔ (chưa clamp) để biết ΣVP cho mẫu số clamp ---
+  yes_power_raw : Int,
+  no_power_raw  : Int,
+  abstain_power_raw : Int,
   voters_acc    : Int,        // số DID đã cộng (quorum theo người — §9.4)
+  // số DID THUẬN (choice == Yes) đã cộng — dùng cho SÀN CỨNG ≥ BFT_FLOOR (§9.5):
+  yes_voters_acc : Int,
+  // --- pha 2 (Clamped): power hiệu dụng sau khi áp VP_eff = min(VP_i, ΣVP/F) ---
+  yes_power_eff : Int,
+  no_power_eff  : Int,
+  abstain_power_eff : Int,
   // KHÔNG còn consumed_root: chống đếm-trùng bằng SPEND Vote UTxO (đã tiêu = không cộng lại).
 }
 ```
 
+> **Vì sao HAI PHA (first-principles).** Clamp nguyên lý 5 là `VP_eff_i = min(VP_i, ΣVP/F)` — mẫu số
+> `ΣVP` (tổng VP-tham-gia) **chỉ biết sau khi đã duyệt HẾT phiếu**. Trong mẫu spend-đếm theo lô, acc
+> chạy tăng dần nên giữa chừng chưa có ΣVP → **không thể clamp ngay khi cộng**. Giải pháp đúng eUTxO:
+> tách (1) **pha Summing** cộng power thô + đếm DID, (2) **pha Clamped** sau khi ΣVP đã cố định thì
+> duyệt lại để trừ phần vượt trần của các DID lớn. Đây KHÔNG phải chi phí mới đáng kể: pha 2 chỉ chạm
+> các DID **vượt trần** (số rất ít — tối đa `F−1` DID có thể vượt `ΣVP/F`), phần còn lại giữ nguyên
+> (xem §9.5 cách tối ưu để pha 2 không phải duyệt lại toàn bộ phiếu).
+
 Mỗi tx tally **gom một lô** Vote UTxO (vd 50–100 phiếu/tx, dưới `maxTxExUnits`) bằng cách **tiêu**
-chúng (spend), cộng dồn vào acc, **đồng thời đốt nullifier + trả min-ADA về owner từng phiếu** (§8.2).
-Lặp tới khi hết phiếu → tx cuối `RecordTally` lên Proposal. **Không cần `consumed_root`** vì UTxO đã
-tiêu ở lô trước không thể xuất hiện lại ở lô sau (ledger eUTxO bảo đảm) — đây mới là chống đếm-trùng
-đúng eUTxO.
+chúng (spend), cộng dồn vào acc (pha Summing), **đồng thời đốt nullifier + trả min-ADA về owner từng
+phiếu** (§8.2). Lặp tới khi hết phiếu → áp **clamp BFT_FLOOR (§9.5)** → tx cuối `RecordTally` lên
+Proposal. **Không cần `consumed_root`** vì UTxO đã tiêu ở lô trước không thể xuất hiện lại ở lô sau
+(ledger eUTxO bảo đảm) — đây mới là chống đếm-trùng đúng eUTxO.
 
 - Quy đổi `c*_capped → power`: tại Tally, dùng **bảng tra số nguyên** từ UTxO weight-param (trỏ bởi
   `weight_param_ref` của Proposal). Đây là nơi áp `w_k` (số mũ) đã lượng tử hóa — **MATH định dạng
-  bảng**. Tally cộng `power_i` cho YES/NO/Abstain.
+  bảng**. Tally cộng `power_i` cho YES/NO/Abstain (power **THÔ**, clamp ở §9.5).
 - **Không tái dùng `merkle.ak`** cho mục đích này (lý do trên). `merkle.ak` vẫn là khuôn hợp lệ cho
   các root TĨNH (vd Distribution) — chỉ không hợp cho accumulator chạy.
 
@@ -627,26 +657,145 @@ tiêu ở lô trước không thể xuất hiện lại ở lô sau (ledger eUTx
 > §6 nói quorum theo **tổng VP**. "Theo người" ≠ "theo VP" ≠ "theo token" — **ba khái niệm**. Để mơ
 > hồ ở tầng on-chain là nguy hiểm vì validator phải kiểm một **biểu thức cụ thể**.
 
-TallyDatum cung cấp **cả hai** số liệu: `voters_acc` (số DID) và `yes/no/abstain_power_acc` (tổng VP).
-**Mã hóa quorum như biểu thức xác định** mà `ExecuteProposal` (§3.3) kiểm:
+TallyDatum cung cấp **cả ba trục** số liệu: `voters_acc` (số DID đã cộng), `yes_voters_acc` (số DID
+THUẬN — đầu người, cho sàn cứng nguyên lý 5), và `yes/no/abstain_power_eff` (tổng VP **đã clamp** §9.5).
+**Đây là biểu thức `pass(proposal)` DUY NHẤT (canonical)** mà `ExecuteProposal` (§3.3) kiểm — không
+spec/mục nào được viết lại biểu thức thứ hai:
 
 ```
-total_vp     = yes_power_acc + no_power_acc + abstain_power_acc
+total_vp_eff = yes_power_eff + no_power_eff + abstain_power_eff   // power ĐÃ CLAMP (§9.5.1)
 pass(proposal) =
-     total_vp     ≥ quorum_vp_threshold          // quorum THEO VP (trục chính, đồng bộ FEAT §3)
-  && voter_count   ≥ quorum_voter_threshold       // quorum THEO NGƯỜI (sàn chống thiểu-số-VP-cao)
-  && yes_power_acc > no_power_acc                  // ngưỡng thông qua (FEAT/MATH định dạng chính xác)
+     yes_voters_acc ≥ F                            // SÀN CỨNG nguyên lý 5 — số DID THUẬN ≥ bft_floor (§9.5.2)
+  && total_vp_eff   ≥ quorum_vp_threshold          // quorum THEO VP (trục chính, đồng bộ FEAT §3) — ĐÃ CLAMP
+  && voter_count    ≥ quorum_voter_threshold       // quorum THEO NGƯỜI (sàn chống thiểu-số-VP-cao)
+  && yes_power_eff  > no_power_eff                  // ngưỡng thông qua — ĐÃ CLAMP (FEAT/MATH định dạng chính xác)
 ```
+
+> **Một chỗ canonical.** Mọi `*_power` trong biểu thức là power **HIỆU DỤNG sau clamp** (`yes_power_eff`
+> v.v. — đúng tên field TallyDatum §9.2 pha Clamped), KHÔNG phải power thô `*_power_raw`. **KHÔNG có
+> field tên `*_power_acc`** — đó là tên cũ đã bỏ. Clamp (§9.5.1) + đếm `yes_voters_acc` (§9.5.2) phải
+> xong **trước** khi tính `pass`. §9.5.2 chỉ **giải thích nguồn gốc** sàn cứng `yes_voters_acc ≥ F`
+> (trỏ về biểu thức này), KHÔNG viết lại biểu thức — để validator chỉ kiểm MỘT biểu thức, tránh
+> implementer code nhầm theo bản power-thô thiếu sàn cứng (nguyên lý 5 sẽ bị vô hiệu im lặng).
 
 - **Chốt đồng bộ liên-spec:** quyết-định thường **quorum theo VP** là trục chính (đồng bộ FEAT §3.3);
   `voter_count` là **sàn phụ** (chống một thiểu-số VP-cao tự quyết). Cả hai ngưỡng (`quorum_vp_threshold`,
-  `quorum_voter_threshold`) là **tham số mở (DAO định)** — đọc từ UTxO tham số (§5.6).
+  `quorum_voter_threshold`) là **tham số mở (DAO định)** — đọc từ UTxO tham số (§5.6). `F = bft_floor`
+  cũng đọc từ đó (§9.5).
 - **Recall (EXEC §8) khác:** **khởi xướng** recall dùng **co-sign theo đầu người** (vd 200/500 — đếm
   số DID đồng-ký), còn **quyết-định** recall vẫn theo VP. Tách rõ: "đầu người" chỉ cho NGƯỠNG KHỞI
   XƯỚNG, không cho kết quả bỏ phiếu. Xem §10.3.
-- `abstain_power` vào `total_vp` (tính quorum-VP) nhưng KHÔNG vào yes/no → phiếu Abstain *góp quorum*
+- `abstain_power` vào `total_vp_eff` (tính quorum-VP) nhưng KHÔNG vào yes/no → phiếu Abstain *góp quorum*
   mà không nghiêng kết quả. (Phiếu VP≈0 có vào quorum không — đồng bộ FEAT câu hỏi treo §10.6; nếu
-  FEAT chốt loại VP≈0 khỏi quorum thì Tally bỏ qua khi cộng. Xem §13.9.)
+  FEAT chốt loại VP≈0 khỏi quorum thì Tally bỏ qua khi cộng — đồng thời cũng loại khỏi `yes_voters_acc`
+  để sàn cứng không bị nhồi đầu-người-rỗng, xem §9.5.2. Cross-ref §13.9.)
+
+### 9.5 Clamp BFT_FLOOR + sàn cứng số DID thuận (nguyên lý 5 — CONTRACT §2.5)
+
+> **Nguồn:** CONTRACT §2.5 (nguyên lý 5, anh duyệt 2026-06-05): "Sàn phi tập trung Byzantine — không
+> thực thể nào chiếm đa số." Hai cơ chế on-chain tại Tally: (A) **clamp** VP hiệu dụng mỗi DID xuống
+> trần `ΣVP/F`; (B) **sàn cứng** số DID thuận `≥ F`.
+
+**Ký hiệu (nhất quán toàn §9.5):** `F ≡ bft_floor` — đọc từ datum của **UTxO tham số** (DAO-param NFT,
+§5.6, qua `weight_param_ref` của Proposal), **mặc định 21** (CONTRACT §2.5). Trong công thức dùng `F`
+cho gọn; khi nói về **field on-chain** dùng `bft_floor`. Hai cách viết = MỘT đại lượng (tránh nhầm khi
+đối chiếu công thức ↔ datum).
+
+#### 9.5.1 Cơ chế A — clamp tại tally (KHÔNG ở Vote, KHÔNG ở snapshot)
+
+Với `ΣVP = yes_power_raw + no_power_raw + abstain_power_raw` (tổng VP-tham-gia THÔ, đã cộng đủ ở pha
+Summing), mỗi phiếu áp:
+
+```
+cap_per_did = ΣVP / F            // chia số nguyên (làm tròn xuống — thiên về AN TOÀN: trần thấp hơn)
+VP_eff_i    = min( VP_i , cap_per_did )
+```
+
+Hệ quả số (bám CONTRACT §2.5, dữ kiện đã chốt): mỗi DID ≤ `1/F ≈ 4,76%` (F=21) tổng VP-tham-gia. Để
+một phe **đạt** tỷ lệ `t` cần **≥ ⌈t·F⌉ DID độc lập đã max-clamp**: `t=1/3` → 7 DID đúng bằng 1/3
+(cần ≥ 8 để VƯỢT ngưỡng phủ quyết Byzantine); `t=2/3` → đúng 14 DID; `t=1` → 21 DID.
+
+**Vì sao clamp ở Tally, KHÔNG ở Vote:**
+- Mẫu số `ΣVP` chỉ tồn tại **sau khi gộp hết phiếu** (§9.2). Ở Vote, một phiếu **không biết** tổng VP
+  toàn proposal → không thể tính `ΣVP/F`. Đặt clamp ở Vote là **bất khả thi kỹ thuật**, không chỉ
+  kém tối ưu.
+- Vote vẫn giữ đúng vai trò "chốt `c*_capped` từ ref input" (§4.2) — clamp là phép **trần TƯƠNG ĐỐI
+  theo tổng**, bản chất thuộc tầng tally toàn cục, không thuộc tầng phiếu đơn lẻ.
+
+**Vì sao clamp KHÔNG đụng snapshot C4 (§5.4):** clamp thao tác trên `VP_i` (đã quy đổi từ `c*_capped`
+qua bảng tra), **sau** mọi cap tham số riêng lẻ (cap1..cap4, gồm `cap4 = 100_000_000` của C4). Trần
+`1/F` là một lớp **độc lập, chồng lên trên** cap-từng-tham-số: cap4 chặn *một DID* khai quá 100 triệu
+LAMP; clamp BFT_FLOOR chặn *một DID* (dù VP hợp lệ tới đâu) vượt `1/F` tổng. Snapshot C4 vẫn post
+nguyên (committee post `lamp_holding_snapshot` gắn DID tại `vote_open_epoch` như §5.4) — clamp **đọc
+kết quả VP cuối**, không ghi/sửa gì ở registry snapshot. Hai lớp trực giao, không tương tác.
+
+#### 9.5.2 Cơ chế B — sàn cứng số DID thuận ≥ F
+
+CONTRACT §2.5: "quyết định trọng yếu chỉ hợp lệ khi số DID thuận `≥ BFT_FLOOR`". **Biểu thức kiểm nằm
+ở §9.4 (canonical) — mục này chỉ giải thích nguồn gốc + bán kính của trục `yes_voters_acc ≥ F`, KHÔNG
+viết lại biểu thức `pass`** (tránh hai biểu thức lệch trong cùng spec on-chain).
+
+- **`yes_voters_acc` là gì:** số DID có `choice == Yes` đã cộng ở pha Summing (đếm theo **đầu người**,
+  KHÔNG clamp, KHÔNG nhân VP). Khi `yes_voters_acc < F` → **KHÓA**: `ExecuteProposal` fail, proposal
+  không hợp lệ, về **chế độ hội đồng bảo trợ** (bootstrap — EXEC).
+- **Vì sao độc lập với quorum-VP:** kể cả `total_vp_eff` đạt ngưỡng, nếu `< F` DID thuận thì vẫn khóa —
+  chống một nhóm `< F` DID VP-cao tự quyết. Đúng tinh thần "cần `≥ ⌈t·F⌉` DID độc lập mới đạt tỷ lệ
+  `t`" của clamp (§9.5.1): với quyết định trọng yếu (`t` ngầm = 100% người-tham-gia tối thiểu) cần
+  trọn `F` đầu người thuận.
+- **Đồng bộ phiếu VP≈0 (cross-ref §9.4, §13.9):** `yes_voters_acc` chỉ đếm DID thuận có `VP_i > ε`
+  (ngưỡng-VP-tối-thiểu, đồng bộ quyết định §13.9 về VP≈0). Nếu §13.9 / FEAT §10.6 chốt **loại** phiếu
+  VP≈0 khỏi quorum-VP thì **cũng loại khỏi `yes_voters_acc`** — nếu không, một phe nhồi `F` người-thật
+  VP≈0 thuận sẽ qua sàn cứng mà gần như không góp VP, biến sàn cứng thành hình thức. Tally áp **cùng
+  một bộ lọc VP≈0** cho cả `total_vp` lẫn `yes_voters_acc` (một quyết định, hai chỗ dùng).
+
+#### 9.5.3 Áp clamp trong mẫu spend-đếm — pha 2 (Clamped), tối ưu
+
+Khi pha Summing xong (đã tiêu hết Vote UTxO của proposal, biết `ΣVP` và `cap_per_did = ΣVP/F`), một
+**tx chuyển pha** đặt `TallyDatum.phase: Summing → Clamped` và tính power hiệu dụng. Tối ưu để pha 2
+**không** phải tiêu lại 10_000 phiếu:
+
+- **Chỉ DID vượt trần mới cần điều chỉnh.** Số DID có `VP_i > cap_per_did` tối đa là `F − 1` (nếu có
+  `F` DID cùng vượt thì tổng đã > ΣVP — mâu thuẫn). Với F=21 → **tối đa 20 DID** cần trừ. Off-chain
+  liệt kê danh sách "DID vượt trần" + VP thô của chúng; on-chain pha 2 kiểm:
+
+  ```
+  yes_power_eff = yes_power_raw − Σ_{i ∈ over, choice=Yes} ( VP_i − cap_per_did )
+  ```
+
+  (tương tự no/abstain). Mỗi phần tử `over` validator kiểm `VP_i > cap_per_did` (đúng là "vượt trần")
+  và `VP_i` khớp giá trị đã cộng ở pha Summing. Vì `|over| ≤ F−1` nhỏ, pha 2 **gói gọn một tx**.
+- **Tính toàn vẹn pha 2:** để validator biết `VP_i` của các DID `over` là thật (không bịa để trừ ít
+  đi), pha Summing phải để lại **bằng chứng** VP per-DID lớn. Hai cách (chốt khi build, ghi §13.10):
+  (i) pha Summing duy trì một **danh sách bounded gồm `F−1` DID có `VP_i` lớn nhất đã thấy** (top-(F−1)
+  heap) trong TallyDatum — **KHÔNG cần biết ΣVP**. Đây không phải logic vòng tròn: tập "DID vượt trần"
+  luôn là **tập con của top-(F−1)** này, vì mọi DID vượt trần có `VP_i > ΣVP/F ≥ VP_j` của mọi DID `j`
+  **không** vượt → mọi DID vượt đều lớn hơn mọi DID không-vượt → tập vượt nằm trọn trong `F−1` DID lớn
+  nhất. Heap chỉ cần so sánh tương đối giữa các `VP_i` (biết ngay khi cộng), không cần ngưỡng tuyệt đối
+  `ΣVP/F` (ngưỡng này chỉ có sau pha Summing). Pha 2 đọc heap, lọc ra các DID thực `VP_i > cap_per_did`,
+  trừ phần vượt.
+
+  > **Chứng minh `|over| ≤ F−1`:** nếu có `F` DID cùng `VP_i > ΣVP/F` thì tổng riêng nhóm đó
+  > `> F · (ΣVP/F) = ΣVP` — vượt cả tổng VP-tham-gia, vô lý. Vậy tối đa `F−1` DID vượt trần → heap
+  > `F−1` phần tử đủ chứa trọn tập `over`. (F=21 → ≤ 20.)
+
+  (ii) hoặc pha 2 **tiêu lại** đúng các Vote UTxO của DID `over` (≤ `F−1` phiếu) để đọc trực tiếp
+  `c*_capped` rồi tra bảng lại — nhưng §9.2 đã tiêu phiếu ở pha Summing, nên (i) thực tế hơn. **Khuyến
+  nghị (i):** giữ top-(F−1) heap "ứng viên vượt trần" trong TallyDatum (bounded, `O(F)` hằng số).
+
+#### 9.5.4 Chi phí ExUnit — clamp gần như MIỄN PHÍ
+
+- **Pha Summing:** clamp **không thêm** chi phí — vẫn cộng `power_i` thô như §9.2; chỉ thêm đếm
+  `yes_voters_acc` (một phép `+1` có điều kiện) và cập nhật **top-(F−1) heap** ứng viên vượt trần
+  (so sánh + chèn vào heap ≤ 20 phần tử — rẻ, hằng số theo F). Vì Tally **đã duyệt hết phiếu** để cộng
+  (bắt buộc cho mẫu số 2/3 — không có nó thì không tính được quorum-VP), việc kèm theo so sánh trần là
+  **biên zero gần như miễn phí**: không thêm vòng lặp, không thêm decode, không thêm hash/pairing.
+- **Pha 2 (Clamped):** một tx duy nhất duyệt ≤ `F−1` phần tử (F=21 → ≤ 20) — `O(F)` hằng số, độc lập
+  số cử tri. Mỗi phần tử là vài phép số nguyên (`min`, trừ) → rẻ. So với chi phí decode 4–5 ref input
+  + verify pairing (nếu có) ở tx vote, clamp là **bậc nhỏ hơn nhiều**.
+- **Sàn cứng B:** chỉ một so sánh `yes_voters_acc ≥ F` tại `ExecuteProposal` — chi phí không đáng kể.
+- **Kết luận:** nguyên lý 5 **không** làm tx vote đắt thêm (clamp không ở Vote — §9.5.1) và **không**
+  làm Tally đắt thêm đáng kể (clamp ăn theo vòng duyệt vốn đã phải có). Đây là lý do đặt clamp ở Tally
+  tối ưu hơn mọi phương án khác.
 
 ---
 
@@ -713,6 +862,7 @@ veto" — §13.6).
 | Epoch ân hạn `CloseVoting` (chống đua biên — §3.3) | DAO định. |
 | `quorum_vp_threshold` (quorum theo VP — §9.4) | DAO định (trục chính). |
 | `quorum_voter_threshold` (quorum theo người — §9.4) | DAO định (sàn phụ). |
+| `bft_floor` (F — nguyên lý 5 §9.5) | **Mặc định 21** (CONTRACT §2.5). DAO chỉnh, đọc từ UTxO tham số (§5.6). Là **SÀN tối thiểu**, không phải ghế cố định — hệ trưởng thành (Nakamoto coef ≫ 21) nâng F để nới trần `1/F`. |
 | Ngưỡng thông qua proposal | FEAT/MATH định; DAO chỉnh. |
 | `cosign_threshold` khởi xướng recall (đầu người — §10.3) | DAO định. |
 | Ngưỡng VP + VP tối thiểu khởi xướng recall | DAO định (cao hơn proposal thường). |
@@ -736,7 +886,9 @@ veto" — §13.6).
    root tĩnh, không accumulator — §9.2). Aiken stdlib v3.1.0, Plutus V3 (`aiken.toml`).
 4. **LAMP-holding registry + Reputation registry (LAMP-side, mới):** validator riêng post snapshot C4
    (§5.4) + C3 (§5.5) gắn DID, phi tập trung (EXEC). C4 KHÔNG đọc ví trần (sửa audit #2).
-5. **MATH spec.** Dạng lượng tử hóa `w_k`, thang fixed-point, làm tròn, bảng tra power.
+5. **MATH spec.** Dạng lượng tử hóa `w_k`, thang fixed-point, làm tròn, bảng tra power. **Clamp
+   nguyên lý 5 (§9.5)** thao tác trên VP đã ở thang integer fixed-point này — `cap_per_did = ΣVP/F`
+   dùng chia số nguyên (làm tròn xuống, thiên an toàn); MATH chốt thang để phép chia không mất nghĩa.
 6. **FEAT spec.** `RetractVote` đổi `choice` tại chỗ hay khóa cứng (KHÔNG burn-vote-lại — §6.4); loại
    quyết định; ngưỡng chính sách; phiếu VP≈0 vào quorum không (§9.4).
 
@@ -767,6 +919,11 @@ veto" — §13.6).
    phút chót không bị "cướp" Proposal UTxO. Tham số mở.
 9. **Phiếu VP≈0 vào quorum-VP không (sửa audit #5):** đồng bộ FEAT câu hỏi treo §10.6. Nếu loại,
    Tally bỏ qua khi cộng `total_vp`.
+10. **Bằng chứng pha 2 clamp (nguyên lý 5 — §9.5.3):** cách giữ VP per-DID của các DID vượt trần để
+    pha Clamped trừ đúng — (i) **top-(F−1) heap** "DID VP lớn nhất đã thấy" trong TallyDatum (khuyến
+    nghị, KHÔNG cần ΣVP; tập vượt trần luôn nằm trong heap này — chứng minh §9.5.3), hay (ii) tiêu lại
+    các Vote UTxO của DID vượt trần. Chốt khi build; cả hai đều `O(F)` hằng số. Cách (i) thực tế hơn vì
+    §9.2 đã tiêu phiếu ở pha Summing.
 
 ---
 
@@ -809,9 +966,47 @@ veto" — §13.6).
     đọc từ **UTxO tham số** (DAO-param NFT, §5.6), KHÔNG redeploy. Bỏ vế "redeploy" khỏi §5.2/§5.5.
     cap4 cố định cứng (CONTRACT chốt). Cập nhật §4.2, §11.
 
-**Không bác phát hiện nào** — tất cả đều đúng về bản chất eUTxO/ExUnit/CONTRACT. Các con số tham số
-(cap, weight, ngưỡng quorum, độ dài cửa sổ, epoch ân hạn) giữ **tham số mở (DAO định)**; chỉ
-`cap4=100_000_000` cố định theo CONTRACT §3.
+**Không bác phát hiện nào** (vòng audit bản 2) — tất cả đều đúng về bản chất eUTxO/ExUnit/CONTRACT.
+Các con số tham số (cap, weight, ngưỡng quorum, độ dài cửa sổ, epoch ân hạn) giữ **tham số mở (DAO
+định)**; chỉ `cap4=100_000_000` cố định theo CONTRACT §3.
+
+---
+
+### Vòng audit nguyên lý 5 (BFT_FLOOR — 2026-06-05)
+
+Tích hợp nguyên lý 5 (CONTRACT §2.5) vào §9.5 + biểu thức `pass` §9.4. Xử lý 5 phát hiện:
+
+1. **[major] Hai biểu thức `pass` lệch (§9.4 power-thô vs §9.5.2 power-eff) + tên field sai
+   (`*_power_acc` không tồn tại trong TallyDatum) — ÁP DỤNG.** Hợp nhất về **một biểu thức canonical
+   ở §9.4**, dùng đúng tên field `*_power_eff` (pha Clamped, §9.2) + đưa luôn dòng `yes_voters_acc ≥ F`
+   vào §9.4. §9.5.2 giờ **chỉ giải thích nguồn gốc** sàn cứng, trỏ về §9.4, KHÔNG viết lại biểu thức.
+   Bỏ mọi `*_power_acc`. Lý do: validator chỉ kiểm MỘT biểu thức — để hai bản lệch là nguy hiểm
+   (implementer code nhầm theo bản power-thô thiếu sàn cứng → nguyên lý 5 vô hiệu im lặng).
+2. **[minor] §9.5.3(i) diễn đạt vòng tròn ("DID đủ lớn để CÓ THỂ vượt trần" trong khi ngưỡng vượt
+   `ΣVP/F` chỉ biết sau Summing) — ÁP DỤNG.** Sửa thành **top-(F−1) heap** "DID VP lớn nhất đã thấy"
+   — chỉ so sánh tương đối giữa các `VP_i`, KHÔNG cần ΣVP. Thêm chứng minh: tập vượt trần ⊆ top-(F−1)
+   (mọi DID vượt > mọi DID không-vượt), và `|over| ≤ F−1` (F DID cùng vượt thì tổng > ΣVP). Cập nhật
+   §9.5.4, §13.10.
+3. **[minor] Vênh CONTRACT §2.5 vs TECH §9.5.1 ở sắc thái ngưỡng 1/3 — KHÔNG SỬA TECH (báo anh).**
+   TECH §9.5.1 đã đúng toán ("7 DID đúng bằng 1/3, cần ≥8 để VƯỢT"; 8/21 = 0,381 > 1/3). CONTRACT
+   §2.5 dòng 56 viết "≥8 DID ... **chạm** ngưỡng Byzantine 1/3" — từ "chạm" hơi lỏng (mốc chạm-đúng
+   1/3 là 7 DID, không phải 8). Vì TECH là spec phải-bám-CONTRACT và CONTRACT là interface contract
+   anh đã duyệt, **không tự sửa CONTRACT**. Giữ nguyên TECH. **→ Báo anh ở mục riêng dưới.**
+4. **[minor] Tương tác sàn cứng B ↔ phiếu VP≈0 (§13.9) chưa khóa — ÁP DỤNG.** Làm rõ ở §9.5.2 +
+   §9.4: `yes_voters_acc` chỉ đếm DID thuận có `VP_i > ε`; Tally áp **cùng bộ lọc VP≈0** cho cả
+   `total_vp` lẫn `yes_voters_acc` (đồng bộ quyết định §13.9). Nếu loại VP≈0 khỏi quorum thì cũng loại
+   khỏi sàn cứng — chống nhồi `F` đầu-người-rỗng. Cross-ref §13.9 ↔ §9.5.2.
+5. **[nit] Lẫn ký hiệu F / BFT_FLOOR / bft_floor — ÁP DỤNG.** Thêm dòng định nghĩa đầu §9.5:
+   `F ≡ bft_floor` (đọc từ UTxO tham số §5.6, mặc định 21); dùng `F` trong công thức, `bft_floor` khi
+   nói field datum.
+
+**Bác 1/5 (finding 3) — không phải lỗi TECH:** vênh thuộc CONTRACT, là quyết định của anh trên file
+interface contract, không tự sửa. Báo anh dưới.
+
+> **BÁO ANH — cân nhắc chỉnh CONTRACT §2.5 (dòng 56):** từ "**≥ 8 DID độc lập** mới chạm ngưỡng
+> Byzantine 1/3" → "**≥ 8 DID** để VƯỢT ngưỡng phủ quyết 1/3 (đúng 1/3 tại **7 DID**)". Lý do: 7/21 =
+> 1/3 (chạm đúng), 8/21 = 0,381 > 1/3 (vượt). TECH §9.5.1 đã dùng cách diễn đạt chính xác này. Đây là
+> chỉnh sắc thái trên CONTRACT (interface contract anh duyệt) — không tự sửa, chờ anh quyết.
 
 ---
 

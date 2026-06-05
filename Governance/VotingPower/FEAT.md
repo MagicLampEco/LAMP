@@ -25,12 +25,17 @@ Nguyên lý nền (từ contract §2, KHÔNG vi phạm):
 2. **Chi phí thâu tóm = chi phí đóng góp thật.** Không có đường tắt mua quyền lực.
 3. **Token đơn thuần bị vô hiệu hóa** (cap C4 + công thức nhân).
 4. **Sybil chết từ gốc** (DID sinh trắc + lịch sử + uy tín + đốt LAMP, bốn lớp khóa nhau).
+5. **Sàn phi tập trung Byzantine — không thực thể/nhóm nhỏ nào chiếm đa số.** Khi kiểm
+   phiếu, VP hiệu dụng mỗi DID bị clamp `1/BFT_FLOOR` (mặc định `1/21`); quyết định trọng
+   yếu cần **điều kiện kép**: đủ tỉ lệ VP **và** đủ số DID độc lập thuận (§3.6).
 
 ### 0.2 Thuộc spec này
 
 - Vòng đời cử tri: đăng ký DID → tập sự (VP ≈ 0) → tích lũy quyền lực qua epoch.
 - Phân biệt **quyền THAM GIA** và **quyền LỰC**.
 - Các loại quyết định và ngưỡng thông qua (thường, siêu đa số, hiến pháp, recall).
+- **Sàn Byzantine (nguyên lý 5):** clamp VP hiệu dụng `1/21` + điều kiện thông qua **kép**
+  (tỉ lệ VP + số DID độc lập) cho quyết định trọng yếu (§3.6).
 - Luồng `proposal → vote → tally → execute`.
 - Recall / bãi miễn.
 - User story cho từng vai (cử tri mới, cử tri kỳ cựu, hội đồng).
@@ -41,11 +46,13 @@ Nguyên lý nền (từ contract §2, KHÔNG vi phạm):
 |---|---|
 | Công thức VP, cap, weight, chứng minh toán | [MATH](./MATH.md) *(chưa viết)* |
 | Tính bounded / monotonic / sybil-cost của VP | MATH |
+| Công thức clamp `min(VP_i, ΣVP/BFT_FLOOR)` + chứng minh cận "k DID → tỉ lệ tối đa" | MATH |
 | Datum / redeemer / validator Aiken | [TECH](./TECH.md) *(chưa viết)* |
 | Đọc C1–C4 qua reference input, cross-repo data flow | TECH |
+| Đếm số DID độc lập thuận + áp clamp khi tally on-chain | TECH |
 | Chống double-vote ở tầng on-chain | TECH |
 | Tích hợp zk-proof DID on-chain | TECH |
-| Lộ trình build, mốc, test plan, deploy Preview | [EXEC](./EXEC.md) *(chưa viết)* |
+| Lộ trình build, mốc, test plan, deploy Preview; chế độ hội đồng bảo trợ bootstrap | [EXEC](./EXEC.md) *(chưa viết)* |
 | Cơ chế sinh DID sinh trắc, zk-proof "1 người = 1 DID" | backend **PhoenixKey** (ngoài repo LAMP) |
 
 ### 0.4 Quan hệ với các tài liệu cũ — CONTRACT là chuẩn, SPEC.md cũ DEPRECATE
@@ -94,6 +101,8 @@ về CONTRACT) để tránh resume sau hiểu nhầm — **FEAT không tự sử
   (C1–C4) theo công thức **nhân** (geometric) — chi tiết ở MATH/CONTRACT §1.
 - **Không mua đứt được:** cap C4 = 100 triệu LAMP chặn vốn; công thức nhân khiến yếu
   một tham số là kéo sụp toàn bộ.
+- **Còn bị clamp khi kiểm phiếu (nguyên lý 5):** dù VP "thô" của một DID rất lớn, khi tally
+  nó bị chặn trần `1/21` tổng VP-tham-gia (§3.6) → một cá nhân không tự đạt ngưỡng quyết định.
 
 ### 1.3 Vì sao tách hai loại — first-principles
 
@@ -204,16 +213,17 @@ ràng buộc bản chất — không phải con số tự do tuyệt đối. MAT
 DAO ra nhiều loại quyết định với mức hệ trọng khác nhau. Quyết định càng khó đảo ngược,
 ngưỡng càng cao. **Ngưỡng thông qua đếm theo tổng VP** của phiếu hợp lệ (chống đám đông Sybil
 lật người đóng góp thật). Nhưng **quorum dùng hàng rào hai trục** — vừa theo VP vừa theo đầu
-người — vì quorum chỉ-theo-VP là bề mặt tấn công (§3.3).
+người — vì quorum chỉ-theo-VP là bề mặt tấn công (§3.3). **Riêng quyết định trọng yếu còn phải
+qua điều kiện thông qua KÉP của nguyên lý 5** (VP đã clamp + số DID độc lập, §3.6).
 
 ### 3.1 Bảng loại quyết định
 
-| Loại | Ví dụ nội dung | Ngưỡng thông qua (theo VP) | Quorum (hai trục — xem §3.3) |
-|---|---|---|---|
-| **Thường** | chỉnh tham số nhỏ, chi tiêu ngân quỹ nhỏ, lịch trình vận hành | **> 1/2** tổng VP THUẬN | (a) **≥ Q_người** cử tri có-trọng-số tham gia **VÀ** (b) **≥ Q_VP%** tổng VP lưu hành tham gia — mức **mở (DAO định)** |
-| **Siêu đa số** | chỉnh weight/cap VP, nâng cấp validator, chi tiêu lớn | **≥ 2/3** tổng VP THUẬN | như trên, **Q_người và Q_VP% cao hơn** (DAO định) |
-| **Hiến pháp** | đổi 4 nguyên lý nền, đổi mô hình VP, đổi cap C4 | **≥ 3/4** tổng VP THUẬN | cao nhất; **+ hai vòng cách nhau N epoch** cho đổi cap C4 (§3.5) |
-| **Recall / bãi miễn** | gỡ một thành viên hội đồng / khóa VP một cử tri lạm dụng | **≥ 2/3** tổng VP THUẬN (xem §6) | khởi xướng **theo đầu người** + quorum hai trục (§6.1) |
+| Loại | Ví dụ nội dung | Ngưỡng thông qua (theo VP) | Quorum (hai trục — xem §3.3) | Điều kiện kép §3.6 |
+|---|---|---|---|---|
+| **Thường** | chỉnh tham số nhỏ, chi tiêu ngân quỹ nhỏ, lịch trình vận hành | **> 1/2** tổng VP THUẬN | (a) **≥ Q_người** cử tri có-trọng-số tham gia **VÀ** (b) **≥ Q_VP%** tổng VP lưu hành tham gia — mức **mở (DAO định)** | không bắt buộc (DAO định) |
+| **Siêu đa số** | chỉnh weight/cap VP, nâng cấp validator, chi tiêu lớn | **≥ 2/3** tổng VP (đã clamp) THUẬN | như trên, **Q_người và Q_VP% cao hơn** (DAO định) | **CÓ:** ≥ 14 DID độc lập + sàn cứng ≥ 21 |
+| **Hiến pháp** | đổi 4 nguyên lý nền, đổi mô hình VP, đổi cap C4, đổi `BFT_FLOOR` | **≥ 3/4** tổng VP (đã clamp) THUẬN | cao nhất; **+ hai vòng cách nhau N epoch** cho đổi cap C4 (§3.5) | **CÓ:** ≥ 16 DID độc lập (=⌈3/4·21⌉) + sàn cứng ≥ 21 — sàn 21 trội |
+| **Recall / bãi miễn** | gỡ một thành viên hội đồng / khóa VP một cử tri lạm dụng | **≥ 2/3** tổng VP (đã clamp) THUẬN (xem §6) | khởi xướng **theo đầu người** + quorum hai trục (§6.1) | **CÓ:** ≥ 14 DID độc lập + sàn cứng ≥ 21 |
 
 Trong đó (đều là **tham số mở (DAO định)** về con số, nhưng **chốt về bản chất**):
 
@@ -221,12 +231,23 @@ Trong đó (đều là **tham số mở (DAO định)** về con số, nhưng **
   **đầu người DID**, không theo VP. Chặn trường hợp 2–3 cử tri VP khổng lồ tự đạt quorum.
 - **Q_VP%** = phần trăm tối thiểu **tổng VP đang lưu hành** phải tham gia. Chặn trường hợp đông
   người nhưng toàn VP≈0, hệ thiếu chính danh thực chất.
+- **"Quyết định trọng yếu"** (cột cuối) = siêu đa số / hiến pháp / recall — các quyết định khó
+  đảo ngược. Chúng phải qua **điều kiện thông qua kép §3.6**: (a) đủ tỉ lệ VP **sau clamp**,
+  (b) đủ **số DID độc lập** thuận (≥ 14 cho mốc 2/3, đúng 21 cho mốc 3/4 / 100%), cộng **sàn
+  cứng ≥ BFT_FLOOR=21 DID thuận**. Quyết định **thường** không bắt buộc điều kiện kép (DAO có
+  thể bật nếu muốn).
 
 Vòng bỏ phiếu hợp lệ chỉ khi **cả hai** điều kiện quorum đạt. Cử tri tập sự (VP≈0) **không**
 tính vào Q_người (vì Q_người đếm cử tri có-trọng-số) — xử lý câu hỏi treo §10 mục 6.
 
 > Ranh giới phân loại (nội dung nào là "thường" vs "siêu đa số" vs "hiến pháp") là
 > **tham số mở (DAO định)** — cần một bảng phân loại chính thức do DAO chốt.
+
+> **Vì sao sàn cứng 21 luôn là ràng buộc trội.** Với mọi tầng trọng yếu, mốc `⌈t·21⌉` (số DID
+> cần để **đạt** tỉ lệ `t`) luôn **≤ 21** vì `t ≤ 1` (siêu đa số `t=2/3 → 14`; hiến pháp
+> `t=3/4 → 16`; recall `t=2/3 → 14`). Sàn cứng `≥ 21` do đó **luôn ≥ ⌈t·21⌉**: đạt được 21 DID
+> độc lập THUẬN thì tự động thỏa mốc `⌈t·21⌉`. Nên cột "điều kiện kép §3.6" ghi cả hai số chỉ
+> để minh bạch hình thức — **21 là ràng buộc thực sự cắn**, `⌈t·21⌉` luôn được bao trùm.
 
 ### 3.2 Vì sao ghi "≥ 2/3" (đạt-hoặc-vượt), KHÔNG ghi "> 2/3"
 
@@ -265,6 +286,11 @@ Mức **Q_người** và **Q_VP%** cho từng loại quyết định là **tham 
 nhưng **yêu cầu phải-đạt-cả-hai-trục đã chốt** trong FEAT (chống bề mặt tấn công). Cử tri tập
 sự không tính vào Q_người (§3.1).
 
+> **Quan hệ với điều kiện kép §3.6.** Quorum (§3.3) đo **sự tham gia** (đủ người + đủ VP đã
+> bỏ phiếu, bất kể THUẬN/CHỐNG). Điều kiện kép §3.6 đo **bề rộng của phe THUẬN** (đủ DID độc
+> lập đồng thuận). Hai hàng rào khác mục tiêu, không thay thế nhau: một vòng có thể đủ quorum
+> mà vẫn trượt sàn cứng 21-DID nếu phe THUẬN quá hẹp.
+
 ### 3.4 Xử lý phiếu TRẮNG — chốt bản chất, để DAO chọn mẫu số
 
 Phiếu TRẮNG (abstain) là **tín hiệu "tham gia nhưng không nghiêng bên nào"**, khác hẳn
@@ -273,6 +299,8 @@ không-vote. FEAT chốt **bản chất** sau (con số/lựa chọn cuối đ�
 - TRẮNG **tính vào quorum** (cả Q_người nếu là cử tri có-trọng-số, và Q_VP%) — vì người đó
   **đã tham gia**, thể hiện hệ có chính danh.
 - TRẮNG **không** tính vào VP THUẬN.
+- TRẮNG **không** tính vào "số DID độc lập THUẬN" của điều kiện kép §3.6 (chỉ phiếu THUẬN
+  thực sự mới được đếm vào sàn cứng).
 - **Mẫu số ngưỡng**: DAO chọn **một trong hai**, và phải khai báo công khai cho từng loại:
   - **(M1) THUẬN / (THUẬN + CHỐNG)** — TRẮNG trung lập hoàn toàn, không ngầm thành CHỐNG.
   - **(M2) THUẬN / (tổng VP tham gia, gồm TRẮNG)** — TRẮNG ngầm thành lực cản (gần như CHỐNG).
@@ -287,10 +315,90 @@ không-vote. FEAT chốt **bản chất** sau (con số/lựa chọn cuối đ�
 
 Cap C4 = 100 triệu LAMP là **tham số chống thâu tóm cốt lõi** (CONTRACT §2.3). Một proposal
 hiến pháp đổi cap C4 phải qua **hai vòng bỏ phiếu cách nhau N epoch** (N là **tham số mở
-(DAO định)**), mỗi vòng đều **≥ 3/4** tổng VP THUẬN + quorum hiến pháp. Lý do: nếu một liên
-minh tạm chiếm đủ VP trong một vòng, khoảng cách N epoch cho cộng đồng phát hiện và phản ứng
-(rời hệ, recall, huy động cử tri) trước khi cap bị nới — phòng thủ chiều sâu cho đúng thông số
-giữ "token không mua được quyền lực". Xử lý câu hỏi treo §10 mục 4.
+(DAO định)**), mỗi vòng đều **≥ 3/4** tổng VP THUẬN + quorum hiến pháp + **điều kiện kép §3.6
+(sàn cứng ≥ 21 DID độc lập THUẬN)**. Lý do: nếu một liên minh tạm chiếm đủ VP trong một vòng,
+khoảng cách N epoch cho cộng đồng phát hiện và phản ứng (rời hệ, recall, huy động cử tri) trước
+khi cap bị nới — phòng thủ chiều sâu cho đúng thông số giữ "token không mua được quyền lực".
+Xử lý câu hỏi treo §10 mục 4.
+
+> **Cùng tinh thần đó áp cho `BFT_FLOOR`.** `BFT_FLOOR` (mặc định 21) là tham số chống thâu
+> tóm ngang hàng cap C4: hạ nó xuống là nới trần `1/BFT_FLOOR` cho mỗi DID. Đổi `BFT_FLOOR`
+> thuộc tầng **hiến pháp** (§3.1) và nên qua hai vòng như đổi cap C4.
+
+### 3.6 Sàn phi tập trung Byzantine — điều kiện thông qua KÉP (nguyên lý 5)
+
+Đây là phần tích hợp **nguyên lý 5 của CONTRACT (§2.5)** vào hành vi tally. Mục tiêu: không một
+**cá nhân** lẫn một **nhóm nhỏ** nào — dù VP thô lớn tới đâu — tự quyết được một quyết định
+trọng yếu. Cap C4 chỉ chặn một cá nhân; nguyên lý 5 chặn mọi nhóm nhỏ.
+
+**(1) Clamp VP hiệu dụng khi tally.** Trước khi cộng tỉ lệ THUẬN, VP của mỗi DID bị chặn trần:
+
+```
+VP_eff_i = min( VP_i , ΣVP / BFT_FLOOR )      với  BFT_FLOOR = 21 (tham số DAO chỉnh)
+```
+
+- `ΣVP` = tổng VP-tham-gia hợp lệ của vòng đó. Trần `ΣVP/21 ≈ 4,76%` áp đồng đều cho mọi DID.
+- Hệ quả: **không DID nào đóng góp quá `1/21 ≈ 4,76%`** tổng VP. Mọi tỉ lệ ngưỡng (1/2, 2/3,
+  3/4) ở §3.1 tính theo:
+
+  ```
+  tỉ lệ = Σ VP_eff(THUẬN) / ΣVP
+  ```
+
+  với **TỬ SỐ = `Σ VP_eff(THUẬN)`** (tổng VP **đã clamp** của phe THUẬN) và **MẪU SỐ = `ΣVP`**
+  — đúng cái **tổng VP-tham-gia GỐC (CHƯA clamp)** dùng để tính trần ở dòng `VP_eff_i =
+  min(VP_i, ΣVP/21)` ngay trên. **KHÔNG dùng `Σ VP_eff` (tổng các VP đã clamp) làm mẫu số.**
+- **Vì sao mẫu số là `ΣVP` gốc, không phải `Σ VP_eff`.** Chia cho `ΣVP` gốc thì mỗi DID đã
+  chạm trần đóng đúng `(ΣVP/21)/ΣVP = 1/21` tổng → `k` DID-clamp = `k/21`. Đó là **cái neo**
+  cho bảng 8/14/21 dưới đây: đạt tỉ lệ `t` cần `k ≥ ⌈t·21⌉`. Nếu lấy `Σ VP_eff` làm mẫu số,
+  cơ chế **thủng**: ví dụ 8 cá voi mỗi con VP thô ≈ phần lớn `ΣVP`, 92 DID còn lại VP≈0, cả 8
+  THUẬN → mỗi cá voi clamp xuống `ΣVP/21`, nên `Σ VP_eff(THUẬN) = 8·ΣVP/21`. Với mẫu số `ΣVP`
+  gốc, tỉ lệ = `8/21 ≈ 38%` (khớp "cần ≥ 8 để vượt 1/3"). Với mẫu số `Σ VP_eff` (≈ `8·ΣVP/21`
+  vì 92 con ≈ 0), tỉ lệ = `8/8 = 100%` — **SAI**: một nhóm 8 cá voi tự đạt 100%, phá toàn bộ
+  nguyên lý 5. Vì vậy mẫu số **bắt buộc** là `ΣVP` gốc.
+- Để **đạt** tỉ lệ `t` của tổng cần **≥ ⌈t·21⌉ DID độc lập** đã chạm trần. Cụ thể:
+  | Mốc tỉ lệ `t` | Số DID độc lập (đã clamp) cần | Ghi chú |
+  |---|---|---|
+  | `t = 1/3` (ngưỡng phủ quyết Byzantine) | 7 DID đúng bằng 1/3; **cần ≥ 8** để VƯỢT | chặn 1/3-veto |
+  | `t = 2/3` (siêu đa số) | **đúng 14 DID** | mốc thông qua siêu đa số / recall |
+  | `t = 1` (toàn bộ) | **21 DID** | trần lý thuyết |
+
+**(2) Sàn cứng số DID độc lập THUẬN.** Một quyết định **trọng yếu** chỉ hợp lệ khi **số DID
+độc lập bỏ THUẬN ≥ BFT_FLOOR = 21**, đồng thời với điều kiện tỉ lệ VP đã clamp ở (1). Tức điều
+kiện thông qua là **KÉP**:
+
+- **(a) tỉ lệ:** `Σ VP_eff(THUẬN) / ΣVP` ≥ ngưỡng loại quyết định (2/3 hoặc 3/4 — §3.1), với
+  mẫu số là **`ΣVP` tổng VP-tham-gia GỐC, KHÔNG clamp** (cùng `ΣVP` định nghĩa trần ở (1) —
+  KHÔNG dùng `Σ VP_eff` làm mẫu số);
+- **(b) bề rộng:** số DID độc lập THUẬN ≥ 21 (sàn cứng), và ≥ ⌈t·21⌉ theo mốc tỉ lệ (≥14 cho
+  2/3 — vốn đã ≤ 21 nên sàn 21 là ràng buộc trội).
+
+Phải đạt **cả (a) và (b)**. Thiếu một trong hai → **không thông qua**.
+
+**(3) Khi chưa đủ 21 DID có-trọng-số (bootstrap) → khóa, về chế độ hội đồng bảo trợ.** Giai
+đoạn đầu hệ chưa có đủ 21 DID độc lập đạt trọng số. Lúc đó **không** một quyết định trọng yếu
+nào hợp lệ qua đường DAO thường (sàn cứng (b) bất khả thi). Hệ **về chế độ hội đồng bảo trợ**
+(steward council) — một hội đồng bootstrap tạm quản các quyết định trọng yếu cho tới khi
+Nakamoto coefficient của hệ vượt 21, rồi **chuyển giao** sang DAO đầy đủ. Hành vi/nhiệm kỳ/cách
+chuyển giao của hội đồng bảo trợ thuộc **EXEC (bootstrap)**; FEAT chỉ chốt: **sàn cứng không
+được bỏ qua để "chạy cho có"** — thiếu bề rộng thì khóa, không hạ chuẩn an toàn.
+
+**(4) Vì sao `BFT_FLOOR = 21` là SÀN, không phải số ghế cố định.** Chuẩn an-toàn BFT chịu
+`< 1/3` độc hại (`n ≥ 3f+1`). 21 **không** khớp `3f+1` chính xác (`f=6 → 19`, `f=7 → 22`); 21
+chịu `f=6`. 21 là **mức sàn tối thiểu** để có ý nghĩa Byzantine, **KHÔNG** phải số người cầm
+quyền cố định — tránh bẫy oligarchy kiểu 21 block-producer (mô hình EOS bị phê phán vì 21 BP
+cố định gom quyền). Hệ trưởng thành phải có
+[Nakamoto coefficient](https://web.archive.org/web/2018/https://news.earn.com/quantifying-decentralization-e39db233c28e) **≫ 21**;
+khi đó trần `1/21` tự nới (vì `ΣVP/21` lớn hơn VP thực của mọi DID đã rải đều) và **không còn
+ràng buộc** — clamp chỉ "cắn" khi tồn tại DID phình to bất thường. Đây đúng là hành vi mong
+muốn: cơ chế chỉ siết khi có nguy cơ tập trung, tự lùi khi hệ đã phi tập trung thật.
+
+**(5) "DID độc lập" nghĩa là gì.** Đếm theo **đầu người DID PhoenixKey** (1 người = 1 DID sinh
+trắc, nguyên lý 4). Sàn cứng dựa trên proof-of-personhood: vì mỗi DID là một người thật khác
+nhau, "21 DID độc lập THUẬN" là **21 con người độc lập** đồng thuận — đó mới là nội dung
+Byzantine thật, không phải 21 ví. Cách phát hiện/xử lý DID cùng-một-thực-thể-điều-khiển (nếu
+vi phạm luật DAO) đi qua recall §6, KHÔNG nới lỏng cách đếm sàn cứng ở đây. Cơ chế đếm + áp
+clamp on-chain thuộc **TECH**; chứng minh cận "k DID → tỉ lệ tối đa" thuộc **MATH**.
 
 ---
 
@@ -300,8 +408,8 @@ giữ "token không mua được quyền lực". Xử lý câu hỏi treo §10 m
 
 ```
 [ Soạn proposal ] → [ Đệ trình on-chain ] → [ Thảo luận / cooldown ]
-        → [ Cửa sổ bỏ phiếu mở ] → [ Tally (đếm theo VP) ]
-        → đạt ngưỡng + quorum? ──yes──→ [ Hàng đợi thực thi (timelock) ] → [ Execute ]
+        → [ Cửa sổ bỏ phiếu mở ] → [ Tally (clamp VP + đếm theo VP_eff + đếm DID THUẬN) ]
+        → đạt ngưỡng + quorum + (điều kiện kép §3.6 nếu trọng yếu)? ──yes──→ [ Hàng đợi thực thi (timelock) ] → [ Execute ]
                                   └──no───→ [ Bác bỏ / lưu lịch sử ]
 ```
 
@@ -344,12 +452,21 @@ giữ "token không mua được quyền lực". Xử lý câu hỏi treo §10 m
 
 ### 4.5 Bước TALLY (đếm)
 
-- Cộng **tổng VP** của các phiếu THUẬN, CHỐNG, TRẮNG riêng.
+- **Clamp trước:** tính `ΣVP` (tổng VP-tham-gia), rồi đặt `VP_eff_i = min(VP_i, ΣVP/21)` cho
+  mỗi DID (§3.6). Mọi phép cộng dưới đây dùng `VP_eff`, KHÔNG dùng VP thô.
+- Cộng **tổng VP_eff** của các phiếu THUẬN, CHỐNG, TRẮNG riêng.
+- **Đếm số DID độc lập THUẬN** (đầu người, chỉ phiếu THUẬN) — phục vụ điều kiện kép §3.6.
 - Kiểm tra **quorum hai trục** (§3.3): đạt **cả** Q_người (số cử tri có-trọng-số tham gia) và
   Q_VP% (phần trăm tổng VP lưu hành tham gia).
-- So tỉ lệ THUẬN với **ngưỡng loại quyết định** (§3.1), dùng **≥** cho tầng 2/3 và 3/4.
-- Phiếu TRẮNG tính vào quorum nhưng **không** tính THUẬN. Mẫu số ngưỡng (M1 hay M2) theo §3.4
-  — DAO chọn, nhưng **phải công khai trước khi mở vote và không đổi giữa chừng**.
+- So tỉ lệ THUẬN = **`Σ VP_eff(THUẬN) / ΣVP`** với **ngưỡng loại quyết định** (§3.1), dùng **≥**
+  cho tầng 2/3 và 3/4. **Tử số = `Σ VP_eff(THUẬN)`** (đã clamp); **mẫu số = `ΣVP` tổng VP-tham-gia
+  GỐC** (chưa clamp — cùng `ΣVP` dùng tính trần ở §3.6(1)), **KHÔNG** lấy `Σ VP_eff` làm mẫu số
+  (xem giải thích phản-ví-dụ 8 cá voi ở §3.6(1)).
+- **Nếu là quyết định trọng yếu:** kiểm thêm **điều kiện kép §3.6** — số DID độc lập THUẬN
+  ≥ 21 (sàn cứng) và ≥ ⌈t·21⌉ theo mốc tỉ lệ. Thiếu → **không thông qua** (kể cả khi tỉ lệ đạt).
+- Phiếu TRẮNG tính vào quorum nhưng **không** tính THUẬN và **không** tính vào số DID THUẬN của
+  §3.6. Mẫu số ngưỡng (M1 hay M2) theo §3.4 — DAO chọn, nhưng **phải công khai trước khi mở
+  vote và không đổi giữa chừng**.
 
 ### 4.6 Bước EXECUTE (thực thi) + TIMELOCK
 
@@ -373,6 +490,11 @@ giữ "token không mua được quyền lực". Xử lý câu hỏi treo §10 m
   những việc đó luôn cần bỏ phiếu toàn DAO ở tầng siêu đa số / hiến pháp.
 - **Hội đồng bị giám sát bằng recall** (§6): cử tri có thể bãi miễn thành viên hội đồng.
 - Cách bầu hội đồng, nhiệm kỳ, hạn mức chi tiêu là **tham số mở (DAO định)**.
+
+> **Phân biệt với "hội đồng bảo trợ bootstrap" (§3.6 mục 3).** Hội đồng vận hành ở đây là
+> tùy chọn thường trực cho việc nhỏ. Hội đồng **bảo trợ** chỉ là cơ chế **tạm thời giai đoạn
+> bootstrap** khi hệ chưa đủ 21 DID độc lập có-trọng-số để qua sàn cứng; nó chuyển giao về DAO
+> đầy đủ khi Nakamoto coefficient vượt 21. Chi tiết hội đồng bảo trợ thuộc **EXEC**.
 
 ---
 
@@ -403,7 +525,7 @@ trừng phe đối lập:
 ```
 [ Kiến nghị recall ]  ── cần số chữ ký DID tối thiểu (theo ĐẦU NGƯỜI) + đặt cọc LAMP khởi xướng
         → [ Cooldown / phản biện ]  ── nêu cáo buộc vi phạm cụ thể (§6.0)
-        → [ Bỏ phiếu recall ]  ── ngưỡng ≥ 2/3 tổng VP THUẬN
+        → [ Bỏ phiếu recall ]  ── ngưỡng ≥ 2/3 tổng VP (đã clamp) THUẬN + điều kiện kép §3.6
         → đạt? ──yes──→ [ Gỡ vai trò / khóa-giảm VP đối tượng ] + hoàn cọc người khởi xướng
                   └──no──→ [ Bác, lưu lịch sử ] + TỊCH THU cọc nếu kiến nghị bị đánh giá quấy rối
 ```
@@ -414,11 +536,12 @@ trừng phe đối lập:
   (mức **mở (DAO định)**). Hoàn lại nếu recall đạt hoặc được đánh giá thiện chí; **tịch thu**
   nếu bị đánh giá quấy rối/ác ý. Cọc đặt chi phí thật lên việc khởi xướng → chống grinding (mở
   hàng loạt recall rác).
-- **Ngưỡng thông qua recall = ≥ 2/3 tổng VP THUẬN** (dùng **≥**, lý do như §3.2). FEAT **chốt
-  con số này**; nó **thay thế** các số cũ rải rác (SPEC.md cũ ghi vote 66%/75% + co-sign
-  200/500 DID — xem §0.4): **một** ngưỡng vote duy nhất **≥ 2/3** cho mọi recall, và co-sign
-  khởi xướng theo đầu người (con số DAO định, không chốt cứng 200/500). EXEC.md/SPEC.md phải
-  bám §6 này.
+- **Ngưỡng thông qua recall = ≥ 2/3 tổng VP (đã clamp) THUẬN** (dùng **≥**, lý do như §3.2),
+  **cộng điều kiện kép §3.6** (≥ 14 DID độc lập + sàn cứng ≥ 21 DID THUẬN — recall là quyết
+  định trọng yếu). FEAT **chốt con số này**; nó **thay thế** các số cũ rải rác (SPEC.md cũ ghi
+  vote 66%/75% + co-sign 200/500 DID — xem §0.4): **một** ngưỡng vote duy nhất **≥ 2/3** cho
+  mọi recall, và co-sign khởi xướng theo đầu người (con số DAO định, không chốt cứng 200/500).
+  EXEC.md/SPEC.md phải bám §6 này.
 - **Quyết định cuối đếm theo VP** (chống đám đông Sybil lật người đóng góp thật); **khởi
   xướng đếm theo đầu người** (chống VP-lớn đơn lẻ tự mở recall đối thủ).
 - Hệ quả khi recall đạt: gỡ vai trò hội đồng và/hoặc **giảm/khóa VP** đối tượng (ví dụ hạ C3
@@ -464,12 +587,17 @@ sự chú ý của cộng đồng, hoặc ép đối tượng liên tục tự b
 - Bình **soạn proposal** siêu đa số (đổi một weight VP), đặt cọc LAMP, qua cooldown.
 - Nếu Bình **ngừng hoạt động** vài epoch, C1/C2 trượt khỏi cửa sổ → VP giảm. Quyền lực của
   Bình phản ánh đóng góp **đang diễn ra**, không phải quá khứ.
-- *Cảm nhận đúng:* "Quyền lực tôi kiếm được là thật, nhưng phải tiếp tục nuôi hệ mới giữ."
+- Dù VP của Bình rất lớn, khi tally nó bị **clamp về `1/21` tổng** (§3.6): một mình Bình
+  **không** đủ thông qua proposal siêu đa số — phải có ≥ 14 cử tri khác đồng thuận, và đủ sàn
+  cứng 21 người. Quyền lực kỳ cựu là **lực kéo**, không phải **quyền phủ quyết cá nhân**.
+- *Cảm nhận đúng:* "Quyền lực tôi kiếm được là thật, nhưng phải tiếp tục nuôi hệ mới giữ — và
+  một mình tôi cũng không tự quyết được việc lớn."
 
 ### 7.3 HỘI ĐỒNG (nhóm vận hành)
 
 - Hội đồng duyệt nhanh một khoản chi nhỏ trong hạn mức — không cần vòng bỏ phiếu toàn DAO.
-- Khi cần đổi cap C4, hội đồng **không tự quyết**: phải đưa ra bỏ phiếu hiến pháp (≥ 3/4).
+- Khi cần đổi cap C4, hội đồng **không tự quyết**: phải đưa ra bỏ phiếu hiến pháp (≥ 3/4 + sàn
+  cứng 21 DID + hai vòng).
 - Nếu một thành viên hội đồng lạm quyền, cộng đồng **khởi xướng recall** (§6) và gỡ họ.
 - *Cảm nhận đúng:* "Chúng tôi vận hành nhanh việc nhỏ, nhưng mọi việc lớn vẫn thuộc DAO, và
   chúng tôi bị giám sát bằng recall."
@@ -479,11 +607,14 @@ sự chú ý của cộng đồng, hoặc ép đối tượng liên tục tự b
 - Cường giàu, mua 12 tỷ LAMP. Nhưng cap C4 = 100 triệu → Cường chỉ được tính như **một cử
   tri 100 triệu**. Muốn dùng hết, phải chia cho ~120 DID người-thật, mỗi DID cần lịch sử +
   uy tín + đốt LAMP (contract §2.3).
-- Cường thuê 120 người vote hộ. Để 120 người đó có VP thật, Cường phải khiến họ **đóng góp
-  thật** bằng đúng giá trị thu được — và hành vi cùng phục vụ một thực thể **lộ thiên
-  on-chain**, cộng đồng phát hiện, **huy động phiếu đối trọng**, và nếu nhóm này **vi phạm
-  luật DAO** (không chỉ vì bỏ phiếu cùng hướng — §6.0) thì có thể **recall**.
-- *Kết quả đúng:* "Không có đường tắt. Chi phí thâu tóm = chi phí đóng góp thật."
+- Giả sử Cường gom được vài DID VP cực lớn. Vẫn vô ích cho việc lớn: clamp `1/21` (§3.6) chặn
+  mỗi DID ở `4,76%`, và **sàn cứng đòi ≥ 21 DID độc lập THUẬN**. Cường buộc phải có **21 con
+  người độc lập** thật sự đóng góp đồng thuận — đúng chi phí Byzantine, không có đường tắt.
+- Cường thuê người vote hộ. Để họ có VP thật, Cường phải khiến họ **đóng góp thật** bằng đúng
+  giá trị thu được — và hành vi cùng phục vụ một thực thể **lộ thiên on-chain**, cộng đồng phát
+  hiện, **huy động phiếu đối trọng**, và nếu nhóm này **vi phạm luật DAO** (không chỉ vì bỏ
+  phiếu cùng hướng — §6.0) thì có thể **recall**.
+- *Kết quả đúng:* "Không có đường tắt. Chi phí thâu tóm = chi phí đóng góp thật của ≥ 21 người."
 
 ---
 
@@ -495,50 +626,70 @@ là mở.
 
 - Cap từng tham số C1, C2, C3 (C4 = 100 triệu LAMP đã chốt ở contract); weight `w_k` — **với
   ràng buộc đã chốt: `w_3` (uy tín) không lép vế `w_4` (vốn), §2.5**.
+- **`BFT_FLOOR`** — mặc định **21** (**bản chất "clamp `1/BFT_FLOOR` + sàn cứng + điều kiện
+  kép" đã chốt §3.6**; chỉ con số 21 là tham số DAO chỉnh, đổi nó thuộc tầng hiến pháp §3.5).
 - Độ dài cửa sổ trượt C1 (~18 epoch ví dụ) và C2 (~24 epoch ví dụ).
-- Bảng phân loại quyết định (nội dung nào thuộc thường / siêu đa số / hiến pháp).
+- Bảng phân loại quyết định (nội dung nào thuộc thường / siêu đa số / hiến pháp; loại nào bật
+  điều kiện kép §3.6 — **bản chất "trọng yếu = siêu đa số/hiến pháp/recall bắt buộc kép" đã
+  chốt §3.1/§3.6**).
 - **Con số** quorum: Q_người và Q_VP% cho từng loại (**bản chất "hai trục, đạt cả hai" đã chốt
   §3.3**).
 - **Con số** mẫu số TRẮNG: chọn M1 hay M2 cho từng loại (**bản chất "TRẮNG vào quorum, không
-  vào THUẬN, mẫu số công khai trước và bất biến" đã chốt §3.4**).
+  vào THUẬN, không vào số DID THUẬN §3.6, mẫu số công khai trước và bất biến" đã chốt §3.4**).
 - Điều kiện tối thiểu để đề xuất proposal (VP tối thiểu và/hoặc đặt cọc LAMP).
-- Độ dài cooldown, cửa sổ bỏ phiếu, timelock thực thi; **N epoch giữa hai vòng đổi cap C4**
-  (**bản chất "hai vòng" đã chốt §3.5**).
+- Độ dài cooldown, cửa sổ bỏ phiếu, timelock thực thi; **N epoch giữa hai vòng đổi cap C4 /
+  đổi `BFT_FLOOR`** (**bản chất "hai vòng" đã chốt §3.5**).
 - **Con số** các mốc snapshot (**bản chất đã chốt §4.4: C1/C2/C3 chốt mốc mở vote, C4 chốt
   sớm tại mốc đệ trình**).
-- Có hay không có hội đồng; cách bầu, nhiệm kỳ, hạn mức chi tiêu hội đồng.
+- Có hay không có hội đồng; cách bầu, nhiệm kỳ, hạn mức chi tiêu hội đồng. **Hội đồng bảo trợ
+  bootstrap** (nhiệm kỳ, cách chuyển giao khi vượt 21 DID) — bản chất "khóa → bảo trợ → chuyển
+  giao" đã chốt §3.6 mục 3; chi tiết thuộc EXEC.
 - **Con số** recall: ngưỡng khởi xướng (số chữ ký DID, đầu người), mức cọc LAMP, trần K recall
-  song song/người, hệ quả khi đạt, thời gian miễn (**bản chất đã chốt §6: vote ≥ 2/3 VP, khởi
-  xướng theo đầu người + cọc, trần đồng thời, recall chỉ cho vi phạm**).
+  song song/người, hệ quả khi đạt, thời gian miễn (**bản chất đã chốt §6: vote ≥ 2/3 VP đã
+  clamp + điều kiện kép §3.6, khởi xướng theo đầu người + cọc, trần đồng thời, recall chỉ cho
+  vi phạm**).
 - Định nghĩa C3 cụ thể (**ràng buộc đã chốt §2.4: phải tránh tín hiệu herding**).
 
 ## 9. Phụ thuộc
 
 - **PhoenixKey DID sinh trắc + zk-proof "1 DID = 1 người thật"** — backend PhoenixKey,
   ngoài repo LAMP. **Blocker tiên quyết:** Governance không chạy thật trước khi có DID proof
-  on-chain (contract §3).
+  on-chain (contract §3). **Nguyên lý 5 (§3.6) dựa trực tiếp lên proof này** — "21 DID độc lập"
+  chỉ có nghĩa khi 1 DID = 1 người thật khác nhau (chống Sybil đẻ DID để vượt sàn cứng).
 - **C1 (MAGIC tiêu thụ)** và **C2 (ScheduleGen)**: đọc từ repo **MAGIC** qua reference input.
 - **C4 (LAMP nắm giữ)**: đọc từ repo **LAMP**.
-- Công thức VP, tính chất toán: **MATH**.
-- Datum/redeemer, snapshot, chống double-vote, đọc C1–C4 on-chain, timelock: **TECH**.
-- Lộ trình build, mốc, test plan: **EXEC**.
+- Công thức VP, tính chất toán, **chứng minh cận clamp "k DID → tỉ lệ tối đa"**: **MATH**.
+- Datum/redeemer, snapshot, chống double-vote, đọc C1–C4 on-chain, **áp clamp + đếm DID THUẬN
+  khi tally**, timelock: **TECH**.
+- Lộ trình build, mốc, test plan, **chế độ hội đồng bảo trợ bootstrap**: **EXEC**.
 
 ## 10. Câu hỏi còn treo
 
 > Nhiều câu hỏi treo cũ đã được audit yêu cầu **chốt bản chất**; phần dưới ghi rõ cái nào FEAT
 > đã chốt (chỉ còn con số cho DAO) và cái nào còn thực sự mở.
 
-1. **Mẫu số ngưỡng (TRẮNG):** **bản chất đã chốt §3.4** (TRẮNG vào quorum, không vào THUẬN, mẫu
-   số M1/M2 công khai trước và bất biến). Còn mở: DAO chọn M1 hay M2 cho từng loại.
+1. **Mẫu số ngưỡng (TRẮNG):** **bản chất đã chốt §3.4** (TRẮNG vào quorum, không vào THUẬN,
+   không vào số DID THUẬN §3.6, mẫu số M1/M2 công khai trước và bất biến). Còn mở: DAO chọn M1
+   hay M2 cho từng loại.
 2. **VP biến động trong cửa sổ vote:** **đã chốt §4.4** — C1/C2/C3 chốt mốc mở vote; C4 (mua
    được tức thì) chốt **sớm** tại mốc đệ trình. Không còn để mở chiều "chốt mốc đóng vote" vì
    nó mở cửa mua-gấp.
-3. **Recall đối tượng VP rất lớn:** **còn mở** (chuyển sang MATH/CONTRACT). Nếu một DID VP áp
-   đảo (gần tự đạt 1/3) thì ngưỡng recall ≥ 2/3 khó khả thi → cân nhắc **trần VP tối đa cho
-   một DID** (khác cap C4). FEAT nêu vấn đề; con số/cơ chế trần thuộc MATH + CONTRACT (vì đụng
-   mô hình VP). **Đề nghị anh quyết có thêm trần-VP-mỗi-DID vào CONTRACT không.**
+3. **Recall / kiểm soát đối tượng VP rất lớn — trần-VP-mỗi-DID: ✅ ĐÃ CHỐT (clamp `1/21`,
+   §3.6).** Trước đây để treo: "nếu một DID VP áp đảo (gần tự đạt 1/3) thì ngưỡng ≥ 2/3 khó khả
+   thi → cân nhắc trần VP tối đa cho một DID". **Nay CONTRACT §2.5 (nguyên lý 5) + FEAT §3.6 đã
+   chốt cơ chế**: VP hiệu dụng mỗi DID bị **clamp `VP_eff = min(VP, ΣVP/21)`** khi tally →
+   **không DID nào vượt `1/21 ≈ 4,76%`** tổng. Vì sao một DID **không thể** tự đạt `1/3`: trần
+   `4,76% < 33,3%`, nên muốn chạm 1/3 cần **≥ 8 DID độc lập**, 2/3 cần **đúng 14 DID**, 100%
+   cần **21 DID** — một cá nhân đơn lẻ **bất khả** đạt bất kỳ mốc quyết định nào. Cộng **điều
+   kiện kép** (số DID độc lập THUẬN ≥ 21) làm ngưỡng recall/siêu-đa-số/hiến-pháp **luôn cần đủ
+   bề rộng người thật**, không một-hai cá nhân nào tự quyết. **Rủi ro còn lại duy nhất là
+   bootstrap** (hệ chưa đủ 21 DID có-trọng-số) — đã có **sàn cứng + chế độ hội đồng bảo trợ**
+   (§3.6 mục 3): thiếu bề rộng thì **khóa**, không hạ chuẩn. Trần `1/21` này **khác cap C4**
+   (cap C4 chặn vốn ở tầng tính VP; clamp `1/21` chặn tỉ trọng ở tầng tally) và **bổ sung**,
+   không thay thế. → **Câu hỏi treo này đóng.** (Con số `BFT_FLOOR=21` vẫn là tham số DAO chỉnh
+   tầng hiến pháp; cận toán học thuộc MATH.)
 4. **Hiến pháp đổi cap C4:** **đã chốt §3.5** — bắt buộc **hai vòng cách nhau N epoch**, mỗi
-   vòng ≥ 3/4. Còn mở: con số N.
+   vòng ≥ 3/4 + sàn cứng 21 DID. Còn mở: con số N. (Đổi `BFT_FLOOR` cùng cơ chế hai vòng.)
 5. **Quyền tham gia của DID đã bị recall:** **còn mở**. Khuyến nghị FEAT: recall **giảm/khóa
    VP và gỡ vai trò**, KHÔNG xóa quyền tham gia cơ bản (vote với VP đã hạ), để giữ nguyên lý
    "ai có DID đều tham gia" (§1.1) — trừ trường hợp DID bị chứng minh **giả mạo sinh trắc** thì
@@ -567,6 +718,15 @@ trong [../SPEC.md](../SPEC.md). Tóm các neo lý thuyết cho các khái niệm
   [DeSoc — Weyl, Ohlhaver, Buterin](https://papers.ssrn.com/sol3/papers.cfm?abstract_id=4105763).
 - **Ngưỡng siêu đa số / "≥2/3"**: [supermajority](https://en.wikipedia.org/wiki/Supermajority);
   bối cảnh quản trị on-chain Cardano: [CIP-1694](https://cips.cardano.org/cip/CIP-1694).
+- **Sàn Byzantine `1/3` + clamp + điều kiện kép (§3.6)**: an toàn BFT chịu `< 1/3` độc hại,
+  `n ≥ 3f+1` — [Byzantine fault tolerance](https://en.wikipedia.org/wiki/Byzantine_fault);
+  bài gốc [Lamport, Shostak, Pease — The Byzantine Generals Problem (1982)](https://lamport.azurewebsites.net/pubs/byz.pdf);
+  ngưỡng `2/3` đồng thuận thực dụng [Castro–Liskov — Practical BFT (1999)](https://pmg.csail.mit.edu/papers/osdi99.pdf).
+- **`BFT_FLOOR` là SÀN, không phải ghế cố định — đo phi tập trung bằng**
+  [Nakamoto coefficient — Quantifying Decentralization, Balaji S. Srinivasan & Leland Lee](https://web.archive.org/web/2018/https://news.earn.com/quantifying-decentralization-e39db233c28e)
+  (bản lưu Wayback Machine — domain gốc `news.earn.com` đã ngừng hoạt động);
+  bài học oligarchy số-ghế-cố-định:
+  [phê phán mô hình 21 block-producer của EOS (dPoS)](https://en.wikipedia.org/wiki/EOS.IO).
 - **Quorum & nghịch lý cử tri thờ ơ** (vì sao tách trục đầu-người và trục VP):
   [voter turnout / apathy](https://en.wikipedia.org/wiki/Voter_apathy).
 
@@ -574,7 +734,8 @@ trong [../SPEC.md](../SPEC.md). Tóm các neo lý thuyết cho các khái niệm
 
 ## Phản hồi audit (2026-06-05)
 
-Bản FEAT này áp dụng 6 finding audit. Tóm tắt cách xử lý + chỗ cần anh/đồng đội theo tiếp:
+Bản FEAT này áp dụng 6 finding audit + tích hợp **nguyên lý 5** (sàn Byzantine). Tóm tắt cách
+xử lý + chỗ cần anh/đồng đội theo tiếp:
 
 - **F1 (recall ngưỡng — major):** FEAT **chốt** một ngưỡng recall duy nhất **≥ 2/3 tổng VP
   THUẬN** (vote) + khởi xướng **theo đầu người** (§3.1, §6.1). Số cũ rải rác trong `SPEC.md`
@@ -597,7 +758,53 @@ Bản FEAT này áp dụng 6 finding audit. Tóm tắt cách xử lý + chỗ c�
   chống herding cho C3** (§2.4) + ràng buộc **`w_3` không lép vế `w_4`** để hiệu ứng kéo-sụp
   thật sự đúng (§2.5); chốt **recall chỉ cho vi phạm cụ thể, KHÔNG cho liên minh hợp pháp**
   (§6.0).
+- **Nguyên lý 5 — sàn Byzantine (2026-06-05, tích hợp từ CONTRACT §2.5):** thêm **§3.6** (clamp
+  `VP_eff = min(VP, ΣVP/21)` + điều kiện thông qua **KÉP**: tỉ lệ VP đã clamp **và** số DID độc
+  lập THUẬN ≥ 21 cho quyết định trọng yếu + sàn cứng + chế độ hội đồng bảo trợ bootstrap); cập
+  nhật **§0.1/§0.2** (nguyên lý nền + phạm vi), **§3.1** (cột "điều kiện kép" cho siêu đa
+  số/hiến pháp/recall, tỉ lệ tính trên VP đã clamp), **§3.4** (TRẮNG không vào số DID THUẬN),
+  **§3.5** (đổi `BFT_FLOOR` cùng cơ chế hai vòng), **§4.1/§4.5** (tally: clamp trước, đếm DID
+  THUẬN), **§5** (phân biệt hội đồng vận hành vs hội đồng bảo trợ), **§6.1** (recall = quyết
+  định trọng yếu, áp kép), **§7.2/§7.4** (user story kỳ cựu + tấn công phản ánh clamp), **§8**
+  (`BFT_FLOOR` tham số DAO), **§9** (phụ thuộc DID proof + MATH cận clamp + EXEC bootstrap),
+  **§11** (tham chiếu BFT: Lamport 1982, PBFT 1999, Nakamoto coefficient, phê phán EOS). **Giải
+  dứt điểm câu hỏi treo §10 mục 3** (trần-VP-mỗi-DID): từ "còn mở" → **ĐÃ CHỐT bằng clamp
+  `1/21`**, một DID bất khả đạt `1/3`, rủi ro còn lại chỉ là bootstrap (đã có sàn cứng + bảo
+  trợ).
 
-**Không bỏ qua finding nào** — cả 6 đều được áp dụng. Hai điểm cần anh quyết tiếp ngoài phạm vi
-FEAT: (a) deprecate/cập nhật `Governance/SPEC.md`; (b) có thêm **trần VP tối đa cho một DID**
-vào CONTRACT/MATH hay không (§10 mục 3).
+### Vòng audit nguyên lý 5 — 2026-06-05 (4 finding)
+
+- **F-NL5-1 (mẫu số tỉ lệ — major, ĐÃ SỬA):** trước đây §3.6(1) ghi "mẫu số đã clamp" và
+  §3.6(a) ghi "/ mẫu số" — mơ hồ, đọc tự nhiên thành `Σ VP_eff` (tổng VP **đã clamp**) làm mẫu
+  số, **thủng cơ chế**: phản-ví-dụ 8 cá voi + 92 DID VP≈0 cho tỉ lệ `8/8 = 100%` thay vì `8/21
+  ≈ 38%`. **Sửa:** định nghĩa minh bạch ở **§3.6(1)**, **§3.6(a)**, **§4.5** — **TỬ SỐ =
+  `Σ VP_eff(THUẬN)`** (đã clamp); **MẪU SỐ = `ΣVP` tổng VP-tham-gia GỐC** (CHƯA clamp — đúng
+  `ΣVP` dùng tính trần `ΣVP/21`). Bỏ cụm "mẫu số đã clamp". Thêm câu giải thích neo bảng
+  8/14/21: chia cho `ΣVP` gốc thì mỗi DID-clamp đóng đúng `1/21`, nên `k` DID-clamp = `k/21`,
+  đạt `t` cần `k ≥ ⌈t·21⌉` — kèm phản-ví-dụ 8 cá voi để khóa cứng định nghĩa.
+- **F-NL5-2 (bất đối xứng hàng Hiến pháp — minor, ĐÃ SỬA):** §3.1 hàng Hiến pháp trước chỉ ghi
+  "sàn cứng ≥ 21", không ghi mốc `⌈3/4·21⌉ = 16` như hàng siêu đa số (có "≥ 14"). Không sai kết
+  quả (21 > 16, sàn 21 trội) nhưng bất nhất hình thức. **Sửa:** hàng Hiến pháp ghi "≥ 16 DID
+  độc lập (=⌈3/4·21⌉) + sàn cứng ≥ 21 — sàn 21 trội"; **thêm ghi chú cuối §3.1** nói rõ với mọi
+  tầng trọng yếu `⌈t·21⌉ ≤ 21` (vì `t ≤ 1`), nên **sàn cứng 21 luôn là ràng buộc trội**.
+- **F-NL5-3 (link Nakamoto chết — nit, ĐÃ SỬA trong FEAT):** link gốc
+  `news.earn.com/quantifying-decentralization-e39db233c28e` **không truy cập được** trong môi
+  trường này (lỗi chứng chỉ TLS) và **domain đã ngừng hoạt động** — đã verify thêm: bản Coinbase
+  `blog.coinbase.com/...e39db233c28e` redirect 301 về `coinbase.com/blog` (mất bài), Wikipedia
+  `Nakamoto_coefficient` trả 404. **Sửa trong FEAT (§3.6(4), §11):** trỏ sang **bản lưu Wayback
+  Machine** `web.archive.org/web/2018/https://news.earn.com/...` + ghi rõ "domain gốc đã ngừng".
+  Giữ nguyên lập luận (sàn ≠ ghế cố định, EOS 21 BP). **CONTRACT §2.5 dòng 60 dùng cùng link
+  chết** — em **không tự sửa CONTRACT** (file chuẩn đã duyệt, ngoài phạm vi tích hợp nguyên lý
+  5 vào FEAT). **Cần anh duyệt thay link trong CONTRACT §2.5** sang cùng bản Wayback.
+- **F-NL5-4 (soát toán + không có link bịa — nit, XÁC NHẬN):** đã soát `⌈t·21⌉` (t=1/3→7 chia
+  hết nên cần ≥8 để vượt; t=2/3→14; t=1→21), lập luận `n≥3f+1` (21 chịu f=6, là sàn không phải
+  ghế), tương tác clamp với cap C4 (hai tầng bổ sung, không thay thế) — **khớp CONTRACT §2.5,
+  không mâu thuẫn, đúng toán**. Các link còn lại đã verify hợp lý (Lamport byz.pdf, CIP-1694,
+  PBFT, Cobb-Douglas/AM-GM, Buterin). **Khuyến nghị MATH.md** chứng minh hình thức cận "k
+  DID-clamp → tỉ lệ tối đa `k/21` trên mẫu số `ΣVP` gốc" để khóa cứng định nghĩa mẫu số (đã ghi
+  ở §0.3 và §9 là việc của MATH).
+
+**Không bỏ qua finding nào.** Hai điểm cần anh quyết tiếp ngoài phạm vi FEAT: (a)
+deprecate/cập nhật `Governance/SPEC.md`; (b) ~~có thêm trần VP tối đa cho một DID~~ **— đã giải
+quyết bằng nguyên lý 5 (clamp `1/21`), §10 mục 3 đóng.** **(c) thay link Nakamoto chết trong
+CONTRACT §2.5** sang bản Wayback (FEAT đã thay; CONTRACT em không tự sửa — F-NL5-3).

@@ -451,6 +451,211 @@ dụ số ở §10 chỉ dùng cho minh họa và KHÔNG được phụ thuộc 
 
 ---
 
+## 8B. Clamp BFT khi kiểm phiếu — sàn phi tập trung Byzantine (nguyên lý 5)
+
+Mục này đặc tả toán cho **CONTRACT §2 nguyên lý 5** ("sàn phi tập trung Byzantine"). Cap mỗi yếu tố
+(§3) chỉ chặn **một** cá nhân tích tụ qua **một** trục đóng góp; nó KHÔNG chặn một **nhóm nhỏ** DID
+hợp lệ (mỗi DID `VP_i` cao) gộp lại chiếm đa số. Nguyên lý 5 thêm một **clamp ở tầng tally** (giữa
+các cử tri), bổ trợ cho cap ở tầng cá nhân (bên trong một cử tri). Hai tầng độc lập: cap (§3) áp
+**bên trong** công thức (2); clamp (§8B) áp **sau** khi đã có `VP_i`, lúc gom phe (6).
+
+### 8B.1 Định nghĩa hình thức — VP hiệu dụng (effective VP)
+
+Đặt `F = BFT_FLOOR` là **sàn Byzantine** (tham số DAO định, mặc định `F = 21`). Gọi tổng VP thô của
+phe **tham gia** `P` là `ΣVP = W(P) = Σ_{i∈P} VP_i` (6). Trần một-DID khi tally:
+
+```
+τ = ΣVP / F .      (11)   [τ = "ceiling" một DID, theo phe tham gia P]
+```
+
+VP **hiệu dụng** của mỗi cử tri là VP thô bị kẹp trần `τ`:
+
+```
+VP_eff_i = min( VP_i , ΣVP / F ) = min( VP_i , τ ) .      (12)
+```
+
+Mọi sức nặng phe ở §8 (7a, 7b, 8.2b) khi áp nguyên lý 5 **dùng `VP_eff_i` thay cho `VP_i`**:
+
+```
+W_eff(X) = Σ_{i∈X} VP_eff_i ,   X ∈ {S, O, A, P} .      (12')
+```
+
+> **Lưu ý điểm cố định (self-reference).** `τ` định nghĩa qua `ΣVP` = tổng **VP thô** `W(P)` (mẫu
+> số dùng VP trước clamp), KHÔNG phải tổng `VP_eff`. Đây là lựa chọn có chủ đích để (12) là **một
+> bước hàm đơn**, không phải phương trình điểm cố định: nếu lấy mẫu số = `Σ VP_eff` thì clamp lại
+> đổi mẫu số → đổi `τ` → lặp vô hạn. Dùng `ΣVP` thô làm mẫu số cho `τ` khiến clamp **đơn định một
+> lượt**, dễ kiểm trên chuỗi (TECH §5.x sẽ chốt). Hệ quả: `Σ_i VP_eff_i ≤ ΣVP` (clamp chỉ hạ, không
+> nâng), nên tỷ lệ `W_eff(S)/W_eff(base)` của một phe bị chặn như §8B.3.
+
+### 8B.2 Tính chất cơ bản của clamp (đơn điệu, bị chặn, idempotent)
+
+**(P1) Bị chặn (bounded).** `0 ≤ VP_eff_i ≤ τ = ΣVP/F`. Trực tiếp từ (12). Mỗi DID đóng góp tối đa
+`1/F` tổng VP thô.
+
+**(P2) Đơn điệu (monotonic).** Giữ `ΣVP` cố định, `VP_i ↦ min(VP_i, τ)` là hàm không-giảm theo
+`VP_i` (cận trên hằng `τ`). Đóng góp thật vẫn được thưởng cho tới khi chạm trần tally — không có
+vùng phạt ngược. (So §4: đây là phiên bản tầng-tally của tính đơn điệu tầng-cá-nhân.)
+
+**(P3) Idempotent trên trần cố định.** Với `τ` cố định, `min(min(VP_i,τ),τ) = min(VP_i,τ)`. Áp
+clamp hai lần không đổi kết quả — clamp là **phép chiếu** lên đoạn `[0, τ]`.
+
+**(P4) Tương thích cận trên cá nhân.** Vì `VP_i ≤ VP_max` (§3.1) và `VP_eff_i ≤ VP_i`, ta có
+`VP_eff_i ≤ min(VP_max, τ)`. Clamp BFT chỉ **siết thêm**, không nới cận trên §3.
+
+### 8B.3 Bổ đề trần tỷ lệ — "không tập con < ⌈t·F⌉ DID nào đạt tỷ lệ t"
+
+**Phát biểu.** Cho phe tham gia `P`, tổng thô `ΣVP > 0`, sàn `F`. Với bất kỳ tập con `G ⊆ P` và
+mục tiêu tỷ lệ `t ∈ (0,1]`, nếu `G` đạt (hoặc vượt) tỷ lệ `t` của tổng thô bằng VP **hiệu dụng**:
+
+```
+Σ_{i∈G} VP_eff_i  ≥  t · ΣVP ,
+```
+
+thì số DID trong `G` thỏa
+
+```
+|G|  ≥  ⌈ t · F ⌉ .      (13)
+```
+
+Tương đương (đảo đề): **mọi** tập con có `|G| < ⌈t·F⌉` DID **KHÔNG** thể đạt tỷ lệ `t`.
+
+**Chứng minh.** Từ (P1), mỗi `VP_eff_i ≤ τ = ΣVP/F`. Cộng trên `G`:
+
+```
+Σ_{i∈G} VP_eff_i  ≤  |G| · τ  =  |G| · ΣVP / F .
+```
+
+Giả thiết `Σ_{i∈G} VP_eff_i ≥ t·ΣVP`. Kết hợp:
+
+```
+t · ΣVP  ≤  |G| · ΣVP / F .
+```
+
+Chia hai vế cho `ΣVP > 0`: `t ≤ |G|/F`, tức `|G| ≥ t·F`. Vì `|G|` nguyên, `|G| ≥ ⌈t·F⌉`. ∎
+
+**Hệ quả số (với `F = 21`).** Trần một-DID là `τ = ΣVP/21 ≈ 4,76%` tổng. Suy trực tiếp từ (13):
+
+| Mục tiêu `t` | `⌈t·F⌉` (số DID tối thiểu để **đạt** t) | Diễn giải BFT |
+|---|---|---|
+| `t = 1/3` | `⌈21/3⌉ = 7` | 7 DID đạt **đúng** 1/3; cần **≥ 8** để **VƯỢT** ngưỡng phủ quyết 1/3 (xem ghi chú) |
+| `t = 2/3` | `⌈42/3⌉ = 14` | siêu đa số 2/3 cần **đúng 14** DID độc lập (đã max-clamp) |
+| `t = 1` | `⌈21⌉ = 21` | đạt 100% cần **TỐI THIỂU 21** DID (mỗi DID phải max-clamp); `⌈t·F⌉` là số DID tối thiểu, KHÔNG bảo đảm đủ |
+
+> **Mẫu số của bảng = `ΣVP = W(P)` (toàn phe THAM GIA), KHÔNG phải `W(base)` ngưỡng §8.2.** Bổ đề
+> (13) định tỷ lệ `t` **trên `ΣVP = W(P)`** (tổng VP thô toàn phe tham gia, gồm cả TRẮNG). Khi ánh
+> xạ sang ngưỡng thông qua/phủ quyết §8.2, nếu DAO chọn `W(base) = W(S)+W(O)` (TRẮNG **ngoài** mẫu
+> số, FEAT §4.5) thì `W(base) ≤ W(P)` khi có phiếu TRẮNG (`W(A)>0`) — và số DID THUẬN tối thiểu để
+> đạt `θ` của `W(base)` có thể **NHỎ hơn `⌈θ·F⌉`**, vì mẫu số thông qua nhỏ hơn tổng phe tham gia.
+> Con số 7/14/21 là cận chặt **CHỈ khi `W(base) = W(P)`** (không TRẮNG, hoặc TRẮNG vào mẫu số). Đây
+> là điểm dễ nhầm giữa §8B.3 và §8.2/I-3: cùng ký hiệu `t` nhưng **hai mẫu số khác nhau** khi có
+> TRẮNG. Chặn số-DID độc lập theo **mẫu số thông qua** là việc của **sàn cứng `|S|≥F` (14)** — sàn
+> cứng đếm người trên phe THUẬN, không qua mẫu số nên không bị TRẮNG làm lệch. Tóm: bảng §8B.3 đọc
+> đúng với giả định mẫu số `= W(P)`; sàn cứng (14) mới là chốt chặn rời rạc bất kể TRẮNG.
+
+> **Ghi chú dấu "đạt" vs "vượt" cho phủ quyết (khớp §8.2b).** Bổ đề (13) là điều kiện để **đạt**
+> `Σ_{G} VP_eff ≥ t·ΣVP` (dấu `≥`). Phủ quyết §8.2b dùng dấu **chặt** `W_eff(O) > (1−θ)·W(base)`.
+> Với `θ=2/3`, ngưỡng phủ quyết là `> 1/3`: 7 DID (đã max-clamp) đạt **đúng** `1/3 = 7·(1/21)`,
+> CHƯA **vượt** → cần **≥ 8** DID để vượt ngưỡng `>1/3` (trừ khi các DID chưa max-clamp, thấy
+> §8B.5). Hai số 7 (đạt đúng) và 8 (vượt) khớp dữ kiện CONTRACT §2 nguyên lý 5.
+>
+> **Ghi chú dòng `t=1` (cận dưới, điều kiện CẦN — không phải ĐỦ).** "Đạt 100% của `ΣVP`" về toán
+> đòi **mọi** DID trong `P` đều max-clamp (mỗi `VP_eff_i = τ = ΣVP/F`) VÀ `|P| = F` đúng. Nếu
+> `|P| > F` mà phân bố không đều thì KHÔNG tập 21 DID nào gom đủ 100% `W(P)` (còn phần dư của các
+> DID khác). Vậy "100% cần 21 DID" chỉ đúng theo nghĩa **cận dưới**: `⌈t·F⌉` là số DID **tối thiểu**
+> để đạt `t` (đúng theo bổ đề (13), điều kiện CẦN), KHÔNG phải "có 21 DID là gom đủ 100%" (điều kiện
+> ĐỦ). Đọc nhất quán với câu mở §8B.3: "số DID tối thiểu để **đạt** `t`".
+
+### 8B.4 Sàn cứng số-DID — ràng buộc RỜI RẠC (đếm người, không cộng VP)
+
+Ngoài clamp liên tục (12), nguyên lý 5 đặt một **sàn cứng rời rạc**: một quyết định **trọng yếu**
+chỉ hợp lệ khi **số DID** bỏ THUẬN đạt sàn `F`, độc lập với sức nặng VP:
+
+```
+|S|  ≥  F      (sàn cứng số-DID, BFT_FLOOR) .      (14)
+```
+
+Đây là ràng buộc trên **lực lượng tập (cardinality)** `|S|`, KHÔNG trên tổng VP — một **cổng thứ
+ba** bên cạnh quorum (7a) và siêu đa số (7b). Lý do first-principles: clamp (12) bảo đảm **không ai
+vượt 1/F**, nhưng về lý thuyết một phe đông VP-thấp vẫn có thể gom đủ tỷ lệ với ít hơn `F` DID nếu
+các DID **chưa** max-clamp (VP_i < τ). Sàn cứng (14) đóng kẽ đó: buộc **tối thiểu `F` con người
+độc lập** đồng thuận cho quyết định trọng yếu — đúng tinh thần "không thực thể nào, kể cả nhóm nhỏ,
+quyết thay cộng đồng". Chưa đủ `F` DID thuận → quyết định **khóa**, hệ về **chế độ hội đồng bảo
+trợ** (EXEC bootstrap; CONTRACT §2 nguyên lý 5).
+
+**Quan hệ (13) ↔ (14).** Bổ đề (13) cho cận dưới `|G| ≥ ⌈t·F⌉` **khi mọi DID max-clamp**; sàn cứng
+(14) ép `|S| ≥ F` **luôn**, kể cả khi DID chưa max-clamp. Hai ràng buộc cùng hướng (đều buộc đủ
+người), (14) chặt hơn cho `t<1` và là **độc lập VP** nên không bị thao túng bằng bơm VP. Quyết định
+loại nào là "trọng yếu" (áp (14)) do **FEAT** định theo loại quyết định.
+
+### 8B.5 Khi clamp KHÔNG ràng buộc — Nakamoto coefficient và trưởng thành hệ
+
+Clamp (12) chỉ **cắn** (binding) khi có DID `VP_i > τ`, tức khi VP tập trung. Nếu phe tham gia đã
+**phân tán đủ** (mọi `VP_i ≤ τ`) thì `VP_eff_i = VP_i` mọi `i` → clamp **vô hiệu**, tally chạy như
+§8 thường.
+
+> **Định lượng ngưỡng cắn — nối cap C4 (trong-cá-nhân) ↔ clamp BFT (giữa-cá-nhân).** Cap C4 (§3)
+> chặn tích tụ **trong một** cử tri nhưng **KHÔNG** chặn một **nhóm nhỏ** DID, mỗi DID đã max cả 4
+> yếu tố (mỗi DID `VP_i = VP_max`); clamp BFT (§8B) là cơ chế **DUY NHẤT** chặn trường hợp đó. Cụ
+> thể: gọi `m` = số DID cùng đạt `VP_i = VP_max`. Khi đó `ΣVP ≥ m·VP_max`, nên `τ = ΣVP/F`. Clamp
+> **bắt đầu cắn** lên các DID max-VP khi `VP_max > τ`, tức khi `m < F` (vì lúc đó, nếu cả phe chỉ
+> gồm `m` DID max-VP, `ΣVP = m·VP_max < F·VP_max → τ = ΣVP/F < VP_max`). Clamp **ngừng cắn** lên
+> chúng khi `≥ F` DID cùng đạt `VP_max` (`τ ≥ VP_max → VP_eff_i = VP_i` mọi DID max-VP). Diễn giải:
+> cap C4 một mình để **một** DID max-VP vẫn lọt; phải có **≥ F** DID độc lập cùng max-VP thì trần
+> `1/F` mới hết cắn — đúng tinh thần câu mở §8B (dòng 456–460), nay định lượng ngưỡng `m = F`. Đo độ phân tán này bằng **Nakamoto coefficient** — số thực thể tối thiểu để đạt một
+ngưỡng kiểm soát (vd 1/3 hoặc 1/2); xem
+[Quantifying Decentralization](https://news.earn.com/quantifying-decentralization-e39db233c28e).
+
+Gọi `NC_t(P)` = số DID tối thiểu mà tổng VP **thô** của họ đạt tỷ lệ `t`. Bổ đề (13) áp lên VP hiệu
+dụng cho: **sau clamp**, không nhóm `< ⌈t·F⌉` DID nào đạt `t` — tức clamp **ép Nakamoto coefficient
+hiệu dụng `≥ ⌈t·F⌉`** dù phân bố thô lệch tới đâu. Khi hệ **trưởng thành**, `NC_t(P)` thô tự vượt
+`⌈t·F⌉` (cộng đồng đông + phân tán) → clamp ngừng cắn → trần `1/F` **tự nới**, không còn ràng buộc
+(CONTRACT §2 nguyên lý 5: "hệ trưởng thành Nakamoto coefficient ≫ 21"). `F` là **đáy an toàn lúc
+non trẻ**, không phải mục tiêu cố định.
+
+### 8B.6 Quan hệ với chuẩn BFT `n ≥ 3f+1` — vì sao F=21 là SÀN, không phải ghế cố định
+
+Lý thuyết đồng thuận Byzantine cổ điển: hệ `n` thực thể chịu được tối đa `f` thực thể độc hại khi
+`n ≥ 3f+1`, tức an toàn nếu phần độc hại **`< 1/3`**. Nền tảng:
+[Practical Byzantine Fault Tolerance (Castro–Liskov, OSDI 1999)](https://pmg.csail.mit.edu/papers/osdi99.pdf)
+và họ giao thức kế thừa (vd
+[Tendermint BFT](https://docs.cometbft.com/v0.38/spec/consensus/consensus)). Clamp (12) + ngưỡng
+§8.2 tái hiện đúng biên `1/3` này ở tầng **bỏ phiếu người-thật**: với `θ=2/3`, một phe chống `< 1/3`
+KHÔNG phủ quyết được (§8.2b), và trần `1/F` bảo đảm cần **nhiều** DID độc lập mới chạm `1/3`.
+
+**Vì sao `21` (không khớp chính xác `3f+1`).** Họ `n=3f+1` cho các giá trị rời rạc `4, 7, 10, 13,
+16, 19, 22, …`. Số **21 KHÔNG nằm** trong dãy (gần nhất: `f=6 → 19`, `f=7 → 22`). Với `n=21`:
+`⌊(21−1)/3⌋ = ⌊20/3⌋ = 6`, nên `n=21` chịu **`f=6`** độc hại (cần `n≥3·6+1=19`, thừa 2 ghế dự
+phòng), CHƯA đủ cho `f=7` (đòi `n≥22`). Con số `f=6` khớp cả hai cách phát biểu chuẩn an toàn:
+(i) `3f+1`: `f=6 → n≥19 ≤ 21`; (ii) "phần độc hại `< 1/3`": `6/21 < 1/3 ≤ 7/21`, tức `7/21 = 1/3`
+đúng **ranh giới** — khớp bảng §8B.3 (7 DID = đúng `1/3` = đúng ngưỡng một phe độc hại bắt đầu phủ
+quyết được), nên chịu an toàn tối đa `f=6 < 7`. Vậy `F=21` chọn vì:
+
+- Là **sàn tối thiểu hào phóng**: chịu ít nhất `f=6` thực thể độc hại, dư biên so với `19`.
+- KHÔNG phải "đúng `3f+1`" vì đây là **sàn động**, không phải số ghế cố định. Cố định đúng `n=3f+1`
+  ghế dẫn tới **bẫy oligarchy** kiểu 21 block-producer của EOS (số validator khóa cứng → tập trung
+  quyền lực). MagicLamp tránh bẫy đó: `F` chỉ là **đáy** số người-thật tối thiểu; hệ trưởng thành
+  có Nakamoto coefficient `≫ F` (§8B.5), lúc đó biên `1/3` được bảo đảm bởi **phân tán thực tế**,
+  không bởi con số `21` khóa cứng.
+- `F` là **tham số DAO định** (mặc định 21): DAO nâng `F` khi cộng đồng lớn lên để siết trần `1/F`
+  chặt hơn, hoặc giữ làm đáy an toàn.
+
+### 8B.7 Thứ tự áp dụng (cap C4 trước, clamp BFT sau) — bất biến
+
+Hai cơ chế chặn tích tụ áp ở **hai tầng khác nhau, theo đúng thứ tự**:
+
+```
+bước 1 (tầng cá nhân):  x_{k,i} = min(C_{k,i}, cap_k)   →   VP_i = ∏_k x_{k,i}^{w_k}     (cap, §3)
+bước 2 (tầng tally):    VP_eff_i = min( VP_i , ΣVP/F )                                    (clamp, §8B)
+bước 3 (gom phe):       W_eff(X) = Σ_{i∈X} VP_eff_i ; kiểm (7a),(7b),(14) trên W_eff/|S|
+```
+
+Clamp BFT (12) **PHẢI** áp **SAU** khi `VP_i` đã tính xong từ tích (2) (gồm cap C4 ở bước 1), KHÔNG
+trộn vào trong tích. Lý do: `τ = ΣVP/F` cần biết **toàn phe** mới tính được (mẫu số là tổng), trong
+khi cap C4 thuần **cục bộ** một cử tri. Đảo thứ tự (clamp trước cap) vô nghĩa vì chưa có `VP_i` để
+tính `ΣVP`. Ràng buộc thứ tự này được nâng thành **Bất biến I-4** (§12.2).
+
+---
+
 ## 9. Xử lý biên
 
 ### 9.1 Người mới — `C_{k,i}=0` mọi `k` → `VP_i = 0`
@@ -742,6 +947,7 @@ số), và **kiểm thử so khớp** với tính chính xác (so VP_int với V
 | `θ` (ngưỡng siêu đa số) | phần VP cần để thông qua | `∈(1/2,1]`; dùng `≥`; mẫu số = `W(base)` phe tham gia (§8.2) | **mở** (gợi ý 2/3 hiến chương) |
 | Mẫu số `W(base)` | xử lý TRẮNG | `W(S)+W(O)` hoặc `W(P)` (§8.2, FEAT §4.5) | **mở** → DAO/FEAT |
 | `q` (quorum) | sàn VP tham gia | `≥ 0`; cổng độc lập với θ (§8.2) | **mở** |
+| `F` (`BFT_FLOOR`) | sàn Byzantine: trần một-DID khi tally `τ=ΣVP/F` (§8B.1) + sàn cứng số-DID `|S|≥F` (§8B.4) | nguyên `≥ 4`; clamp áp SAU cap (I-4); là SÀN, không phải ghế cố định (§8B.6) | **mở** (mặc định 21) |
 | `K` | số yếu tố | `≥ 4` (CONTRACT) | mở để tăng |
 | `floor_k` (tùy chọn) | sàn dương bootstrap (§9.2) | `≥ 0`; mặc định 0 | **mở** (mặc định tắt) |
 | `floor_3` | sàn uy tín cho cử tri hợp lệ (§9.4 phương án a) | `> 0` nếu chọn (a) để giữ đơn điệu phạt | **mở** → FEAT/TECH |
@@ -770,6 +976,15 @@ là **cố ý**. Một chuẩn hóa ngữ nghĩa C3-âm phải nhất quán gi�
 `W(base)` của §8.2 (phe tham gia), KHÔNG trộn "tổng toàn cử tri" với "tham gia". Quorum (7a) là
 cổng **độc lập**, không gộp vào ngưỡng (7b).
 
+**I-4 (Thứ tự cap → clamp BFT, và sàn cứng số-DID).** Khi áp nguyên lý 5: (i) clamp BFT
+`VP_eff_i = min(VP_i, ΣVP/F)` (§8B.1) **PHẢI** áp **SAU** khi `VP_i` đã tính xong từ tích (2) (gồm
+cap C4), KHÔNG trộn clamp vào trong tích — vì `τ=ΣVP/F` cần tổng toàn phe (§8B.7). (ii) Mẫu số của
+`τ` là tổng VP **thô** `ΣVP=W(P)`, KHÔNG phải `ΣVP_eff` (tránh điểm cố định, §8B.1). (iii) Quyết
+định **trọng yếu** (loại do FEAT định) phải thỏa **sàn cứng rời rạc** `|S| ≥ F` (§8B.4) — ràng buộc
+trên **số DID** thuận, độc lập VP, là cổng thứ ba bên cạnh quorum (7a) + siêu đa số (7b). Chưa đủ →
+khóa, về chế độ hội đồng bảo trợ (EXEC). Thực thi: **TECH** (tính `VP_eff`, đếm `|S|`, thứ tự
+on-chain) + **FEAT** (định loại quyết định trọng yếu áp (14) + chế độ hội đồng bảo trợ khi khóa).
+
 ---
 
 ## 13. Phụ thuộc
@@ -779,9 +994,12 @@ cổng **độc lập**, không gộp vào ngưỡng (7b).
   mỗi `i` ứng đúng một người thật; nếu DID không bảo đảm 1-người-1-DID thì mô hình chi phí §10 sụp
   (sybil rẻ). Thuộc backend PhoenixKey, ngoài repo LAMP (CONTRACT §3).
 - **TECH** — đo `C1,C2,C4` (cross-repo MAGIC + LAMP qua reference input), chốt fixed-point,
-  thuật toán `ln`/`exp` nguyên, datum/redeemer, chống double-vote.
-- **FEAT** — vòng đời tập sự, định nghĩa các loại quyết định gắn `θ` khác nhau, recall, gom phiếu.
-- **EXEC** — bootstrap (xử lý §9.2: cả hệ VP=0 lúc chưa có uy tín → bật `w_3` dần hoặc floor tạm).
+  thuật toán `ln`/`exp` nguyên, datum/redeemer, chống double-vote; **tính `VP_eff` (clamp BFT §8B)
+  đúng thứ tự cap→clamp (I-4), đếm `|S|` cho sàn cứng (14)**.
+- **FEAT** — vòng đời tập sự, định nghĩa các loại quyết định gắn `θ` khác nhau, recall, gom phiếu;
+  **định loại quyết định "trọng yếu" áp sàn cứng `|S|≥F` (§8B.4) + chế độ hội đồng bảo trợ khi khóa**.
+- **EXEC** — bootstrap (xử lý §9.2: cả hệ VP=0 lúc chưa có uy tín → bật `w_3` dần hoặc floor tạm);
+  **chế độ hội đồng bảo trợ khi chưa đủ `F` DID (§8B.4)**.
 - **Tokenomics / Foundation-Bootstrap** — **[cần verify]** tổng cung 36 tỷ và phân bổ Cộng đồng
   24 tỷ (2/3) — CHỈ ảnh hưởng khối minh họa §8.3b. Con số `12 tỷ` (gốc CONTRACT §2.3) và kết quả
   "12 tỷ → 120 DID" (§8.3) KHÔNG phụ thuộc xác nhận này (chỉ dựa `cap_4`).
@@ -809,6 +1027,11 @@ cổng **độc lập**, không gộp vào ngưỡng (7b).
    vào cận dưới chi phí chìm. **TECH/DAO.**
 8. **Ngữ nghĩa `C3` sau phạt (§9.4):** chọn (a) sàn `floor_3>0` giữ đơn điệu phạt, hay (b) `C3=0`
    khi recall (khóa VP)? Đồng bộ MATH §9.4 ↔ FEAT §6 ↔ TECH §5.5. **FEAT/TECH.**
+9. **Giá trị `F` (`BFT_FLOOR`) và lịch nâng (§8B):** giữ mặc định 21 (chịu `f=6` độc hại, §8B.6)
+   hay DAO nâng theo độ lớn cộng đồng? Cần lịch nâng `F` khi Nakamoto coefficient thực vượt
+   `⌈t·F⌉` (§8B.5) để trần `1/F` tự nới. **DAO/EXEC.**
+10. **Loại quyết định "trọng yếu" áp sàn cứng `|S|≥F` (§8B.4):** FEAT định danh sách loại + chế độ
+    hội đồng bảo trợ khi khóa. **FEAT/EXEC.**
 
 ---
 
@@ -851,6 +1074,44 @@ Vòng audit 2026-06-05 nêu 9 finding; xử lý như sau (đánh số trùng aud
    **quy ước** (giữ nguyên — đã đúng); §10.3 "định lý không đường tắt" hạ xuống "mệnh đề cấu trúc"
    (trùng finding #4). Các mục §3/§4/§5 giữ "định lý" vì có chứng minh đầy đủ.
 
+### Vòng audit nguyên lý 5 (clamp BFT §8B) — 2026-06-05
+
+Audit phản biện riêng cho mục §8B (sàn phi tập trung Byzantine) nêu 5 finding; xử lý:
+
+1. **[major, đã sửa]** Bảng §8B.3 tính 7/14/21 DID trên mẫu số `ΣVP = W(P)` (toàn phe tham gia,
+   gồm TRẮNG), nhưng ngưỡng §8.2 cho phép `W(base) = W(S)+W(O)` (TRẮNG **ngoài** mẫu số) — hai mẫu
+   số khác nhau khi có TRẮNG. Bổ đề (13) chỉ ràng buộc `|G|` theo tỷ lệ của `ΣVP=W(P)`, KHÔNG trực
+   tiếp suy "cần 14 DID để đạt 2/3 của `W(base)`". Khi `W(base) < W(P)`, một phe THUẬN có thể đạt
+   `θ` trên `W(base)` với **ít hơn** `⌈θ·F⌉` DID. **Đã sửa:** thêm khối ghi chú ngay dưới bảng
+   §8B.3 nêu rõ mẫu số bảng = `W(P)`, cảnh báo `W(base) ≤ W(P)` làm số DID thuận tối thiểu nhỏ hơn
+   `⌈θ·F⌉`; con số 7/14/21 là cận chặt **chỉ khi `W(base)=W(P)`**; sàn cứng `|S|≥F` (14) mới là chốt
+   chặn rời rạc bất kể TRẮNG (đếm người trên phe THUẬN, không qua mẫu số).
+2. **[minor, đã sửa]** Dòng `t=1` của bảng ("100% cần 21 DID") dễ đọc nhầm thành điều kiện ĐỦ.
+   "100% của `ΣVP`" về toán đòi mọi DID trong `P` max-clamp VÀ `|P|=F`; nếu `|P|>F` phân bố không
+   đều thì không tập 21 DID nào gom đủ 100%. **Đã sửa:** đổi diễn giải dòng `t=1` sang nghĩa cận
+   dưới (điều kiện CẦN, "tối thiểu 21 DID, mỗi DID phải max-clamp; `⌈t·F⌉` không bảo đảm đủ") + thêm
+   ghi chú riêng, nhất quán câu mở §8B.3 ("số DID tối thiểu để **đạt** `t`").
+3. **[minor, đã sửa]** Tương tác clamp BFT ↔ cap C4 ở trường hợp biên chưa định lượng: cap C4 chặn
+   trong-một-cử-tri, KHÔNG chặn **nhóm nhỏ** DID mỗi DID đã max cả 4 yếu tố; clamp BFT là cơ chế
+   DUY NHẤT chặn trường hợp đó. **Đã sửa:** thêm khối định lượng ở §8B.5 — clamp **bắt đầu cắn** lên
+   các DID max-VP khi số DID đạt `VP_max` còn `< F` (khi đó `τ=ΣVP/F < VP_max`), và **ngừng cắn**
+   khi `≥ F` DID cùng đạt `VP_max` (`τ ≥ VP_max`). Nối tường minh cap C4 (§3, trong-cá-nhân) ↔
+   clamp (§8B, giữa-cá-nhân), định lượng ngưỡng `m = F`.
+4. **[nit, KHÔNG sửa nội dung]** Hai link nền BFT không tự verify được trong môi trường sandbox:
+   PBFT (`https://pmg.csail.mit.edu/papers/osdi99.pdf`) trả ECONNREFUSED; Nakamoto coefficient
+   (`https://news.earn.com/quantifying-decentralization-e39db233c28e`) lỗi chứng chỉ TLS. **Cả hai
+   là URL kinh điển có thật** (Castro–Liskov OSDI 1999; bài Balaji trên news.earn.com), lỗi do
+   sandbox mạng/chứng chỉ chứ KHÔNG phải link bịa. Link Tendermint/CometBFT, Wikipedia
+   (Generalized_mean, CES, Cobb–Douglas, Supermajority, LogSumExp, Weighted_geometric_mean,
+   Zero_to_the_power_of_zero), Aiken Int, Cardano epoch đều là nguồn chuẩn thật. **Việc cần làm khi
+   có mạng sạch:** chạy lại verify hai link PBFT + Nakamoto một lượt; cân nhắc thêm mirror
+   archive.org cho bài Nakamoto (domain earn.com là domain cũ Coinbase, có thể redirect) để bền lâu.
+5. **[nit, đã sửa]** §8B.6 tính `⌊20/3⌋=6` đúng nhưng có thể nối chặt hơn với bảng §8B.3. **Đã
+   sửa:** thêm nửa câu nối — `f=6` khớp cả hai cách phát biểu ((i) `3f+1`; (ii) phần độc hại `<1/3`,
+   `6/21<1/3≤7/21`), và `7/21=1/3` là **đúng ranh giới** = bảng §8B.3 (7 DID = đúng `1/3` = ngưỡng
+   một phe độc hại bắt đầu phủ quyết được), nên chịu an toàn tối đa `f=6 < 7`. Củng cố nhất quán nội
+   bộ f=6 ↔ ngưỡng 7-DID.
+
 **Ghi chú anchor (không phải bất đồng, chỉ chỉnh dẫn chiếu cho đúng):** finding #3 đề nghị trỏ
 "FEAT §10 câu 4 (khóa weight trong kỳ)". Khi đối chiếu file FEAT thực tế, **FEAT §10 câu 4** hiện
 nói về quy trình đổi **cap C4** (hai vòng bỏ phiếu), KHÔNG phải khóa weight; câu treo về snapshot/
@@ -862,5 +1123,6 @@ MATH, là việc đồng bộ liên-spec).
 
 ---
 
-*Hết MATH. Phần TECH sẽ chốt cách đo C_k, fixed-point, thuật toán số nguyên cho ln/exp, và
-datum/redeemer on-chain.*
+*Hết MATH. Phần TECH sẽ chốt cách đo C_k, fixed-point, thuật toán số nguyên cho ln/exp,
+datum/redeemer on-chain, và cách tính VP_eff (clamp BFT §8B) đúng thứ tự cap→clamp + đếm `|S|`
+cho sàn cứng số-DID.*
