@@ -87,6 +87,21 @@ Vì vậy mục dưới đặt tên theo **redeemer nhánh** (`Collect`, `Releas
 **một Custody validator**. "Collect validator" và "Release validator" trong CONTRACT là **góc nhìn
 nghiệp vụ** của hai nhánh này, không phải 2 script tách.
 
+> **Custody throughput — ĐO TRƯỚC khi chốt 1 UTxO, shard-by-asset nếu nghẽn (CHỐT T4 = Treasury
+> CONTRACT §9 T4).** Một custody UTxO là **điểm contention tuần tự**: mọi Collect/Release/Rebalance đều
+> SPEND nó rồi tạo lại → hai tx đụng cùng custody không thể vào cùng block độc lập (tx sau phải tham
+> chiếu UTxO mới của tx trước). v1 **đề xuất 1 custody** (đơn giản, throughput đủ vì Collect đã batch N
+> micro-fee/tx, §4.3) — NHƯNG đây là quyết-định-có-số-đo, không mặc định mù:
+> - **EXEC PHẢI đo throughput TRƯỚC khi chốt** (nâng câu hỏi treo #3 thành điều kiện có số đo): đo
+>   `batch N/tx × tx/block × block/epoch` so **tải tổng nhiều thuê bao** (mọi caller generators+OriLife+
+>   app SDK đổ chung 1 custody). Nếu tải đỉnh vượt khả năng tuần tự của 1 UTxO → **nghẽn**.
+> - **Nếu nghẽn → shard-by-asset**: tách asset thành **nhiều custody độc lập** (mỗi shard = 1 UTxO + 1
+>   sổ riêng). Bất biến sổ↔value (§3) + bảo-toàn-value áp **per-shard** (mỗi shard tự đóng); off-chain
+>   **cộng tổng qua mọi shard** khi tính `circulating` (= S_total − Σ_{mọi shard + I_emg} bal). Shard
+>   theo asset (không theo bucket) vì bất biến per-asset độc lập sẵn — tách asset không vỡ logic; sổ mỗi
+>   shard nhỏ hơn → K·M_shard giảm, đỡ trần ExUnit (§3 phân tích K·M). Đánh đổi: nhiều UTxO → nhiều
+>   min-ADA + off-chain phải tổng hợp. Chỉ shard **khi đo thấy nghẽn**, không phức tạp hóa sớm.
+
 > Emergency bucket: CONTRACT §1 yêu cầu **tách physical**. → Emergency là **một Custody instance
 > riêng** `I_emg` (script hash khác, governance/threshold riêng, param `buckets=[emergency]`), KHÔNG
 > phải một dòng sổ trong custody thường. Isolation thật ở mức UTxO/địa chỉ, không phải sổ.
@@ -210,13 +225,44 @@ pub type BucketMove {
    chạm K UTxO (giảm ExUnit + tránh contention nhiều UTxO).
 3. **Đếm phiếu/đọc số dư:** off-chain đọc 1 datum ra toàn bộ sổ, không phải quét K·M UTxO.
 
-**Bất biến sổ↔value (ép trong validator):**
+**Bất biến sổ↔value — INCREMENTAL, KHÔNG fold lại toàn sổ mỗi tx (CHỐT T3 = Treasury CONTRACT §9 T3):**
+
+Bất biến nền (ngữ nghĩa, luôn đúng sau mọi tx):
 ```
 ∀ asset a:  Σ_{bucket b} ledger.balances[(b, a)]  ==  custody.value(a) − reserved_min_ada(a)
 ```
 Với ADA, `reserved_min_ada` = phần ADA tối thiểu giữ UTxO sống (không thuộc bucket nào). Với LAMP/
 token, `reserved_min_ada = 0`. Bất biến này khóa "sổ không nói dối": tổng các bucket luôn bằng value
 thật trong custody. Drain bất kỳ asset nào → vế phải giảm → bất biến vỡ → tx reject.
+
+**Cách ÉP trong validator (T3 — chỉ kiểm asset CÓ Δ, không fold toàn sổ):** mỗi tx Treasury (Collect/
+Release/Rebalance/Migrate) đụng **một tập nhỏ asset** `A_Δ` (asset xuất hiện trong items/draws/moves).
+Validator CHỈ kiểm **incremental** trên `A_Δ`:
+```
+∀ a ∈ A_Δ:   Σ_{bucket b} ( ledger_out[(b,a)] − ledger_in[(b,a)] )  ==  Δvalue(a)
+             với Δvalue(a) = custody_out.value(a) − custody_in.value(a)
+∀ a ∉ A_Δ:   custody_out.value(a) == custody_in.value(a)   (value bảo toàn → sổ a giữ nguyên,
+             KHÔNG cần fold lại các dòng sổ của asset a)
+```
+Lý do (first-principles + tối ưu eUTXO): bất biến nền tương đương "tổng đầu == tổng đầu sau Δ" khi
+`ledger_in` ĐÃ thỏa bất biến nền (bất biến quy nạp). Nếu mỗi tx fold lại Σ toàn sổ K·M dòng thì ExUnit
+phình tuyến tính theo **toàn bộ** danh mục — vô lý vì một collect 1 asset không đụng K−1 bucket × M−1
+asset còn lại. Kiểm Δ chỉ trên `A_Δ` giữ chi phí tỉ lệ **kích thước tx**, không tỉ lệ kích thước sổ.
+Δvalue(a) cho LAMP/token là `== Σcut` (collect) hay `== −Σdraw` (release) — khóa ba đầu cut↔Δsổ↔Δvalue
+(xem C-COL-5, C-REL-5/6).
+
+**Phân tích ExUnit theo K·M + trần (T3 — đặt trần đo-thực TRƯỚC M2):**
+- Gọi **K** = số bucket có dòng sổ, **M** = số asset trong danh mục. Sổ `ledger.balances` là
+  `Pairs<BucketKey,Int>` cỡ **≤ K·M** dòng → mỗi lần spend custody, validator phải **đọc + giải mã
+  datum** chứa tới K·M dòng (chi phí O(K·M) bất kể tx đụng mấy asset, vì datum nằm nguyên khối). Đây là
+  **chi phí cố định của datum**, KHÁC chi phí kiểm Δ (O(|A_Δ| · K) cho phần cập nhật sổ).
+- Cập nhật incremental: với mỗi `a ∈ A_Δ` cần tra/ghi tối đa K dòng bucket → O(|A_Δ| · K). Tổng mỗi tx
+  ≈ **O(K·M)** (giải mã datum) **+ O(|A_Δ|·K)** (cập nhật) **+ O(N)** (fold items/draws, N = số item lô).
+- **Trần (tham số mở — đo thực TRƯỚC M2):** vì giải mã datum là O(K·M) cứng, K·M không được vượt mức làm
+  datum quá [max tx size] / [datum ExUnit budget]. Đặt **trần `K·M ≤ KM_max`** (đo bằng `aiken check`
+  ExUnit thật + tx-build Preview), và **trần `N ≤ N_max`** mỗi batch (đã nêu §4.3). Nếu danh mục lớn tới
+  mức K·M chạm trần → **shard-by-asset** (T4, §1): tách asset thành nhiều custody → mỗi shard sổ nhỏ hơn,
+  K·M_shard < KM_max. `KM_max`/`N_max` chốt bằng số đo (không đoán) như chuẩn build mode.
 
 ---
 
@@ -263,12 +309,16 @@ C-COL-4  Split cut đúng sổ — MODEL ĐƠN-BUCKET (category rời rạc, kh�
              output riêng trong cùng tx (Treasury không quản, CONTRACT §3.1).
            ⇒ chỉ phần `cut` vào custody + vào sổ; residual đi thẳng provider trong cùng settlement tx.
 
-         > Bỏ split_table/BucketSplit khỏi đường collect (sửa audit finding 2): TECH trước đây rải cut
-         > đa-bucket bằng weight_bps gây lỗ hổng double-rounding `Σ_b ⌊cut·weight_b/10000⌋ ≤ cut` (lệch
-         > tới (số bucket − 1) oil) → sổ có thể cộng KHÁC cut → tạo/rớt balance ma → vỡ bất biến sổ↔value.
-         > MATH §10 #2 đã chốt category rời rạc; TECH nay khớp. split_table CHỈ giữ nếu một instance thật
-         > cần đa-bucket, và KHI ĐÓ phải áp kỹ thuật PARTITION (MATH §3.2): "bucket cuối = cut − Σ bucket
-         > trước" để Σ_b Δledger == cut TUYỆT ĐỐI (không floor độc lập từng bucket).
+         > Bỏ split_table/BucketSplit khỏi đường collect (sửa audit finding 2 + CHỐT T2 = Treasury
+         > CONTRACT §9 T2): TECH trước đây rải cut đa-bucket bằng weight_bps gây lỗ hổng double-rounding
+         > `Σ_b ⌊cut·weight_b/10000⌋ ≤ cut` (lệch tới (số bucket − 1) oil) → sổ có thể cộng KHÁC cut →
+         > tạo/rớt balance ma → vỡ bất biến sổ↔value. **Dạng CHÍNH của MATH là ĐƠN-BUCKET**:
+         > `Δ_bucket(category) == cut` (MATH §10 #2 — category rời rạc), TECH khớp đúng dạng này.
+         > split_table/đa-bucket là **TÙY CHỌN instance**, KHÔNG phải đường mặc định; MATH hạ
+         > PARTITION-MULTI xuống mục tùy chọn (T2 — hết cite chéo ngược TECH↔MATH "MATH chốt đa-bucket").
+         > KHI một instance thật bật đa-bucket, BẮT BUỘC áp kỹ thuật PARTITION (MATH §3.2, mục tùy chọn):
+         > "bucket cuối = cut − Σ bucket trước" để Σ_b Δledger == cut TUYỆT ĐỐI (không floor độc lập từng
+         > bucket) — vì chỉ PARTITION mới giữ C-COL-5(a).
 
 C-COL-5  Bất biến nối Δsổ ↔ cut ↔ value (sửa audit finding 2 — mắt xích nối C-COL-2 với §3):
            (a) ∀ asset a:  Σ_{bucket b} (ledger_out[(b,a)] − ledger_in[(b,a)]) == Σ_{item.asset=a} cut(item)
@@ -348,11 +398,27 @@ receipt_root_out = blake2b_256( receipt_root_in ∥ encode(items ∥ epoch) )
 
 ## 7. Nhánh `Release` — chi qua cổng Governance (CONTRACT §4, nhóm B)
 
-### 7.1 Đọc kết quả Governance qua reference input + Proposal NFT
+### 7.1 Release-gate = Model A duy nhất — Treasury chỉ KIỂM CỜ, KHÔNG tự tính ngưỡng (CHỐT T1)
+
+**T1 = Treasury CONTRACT §9 T1 = Gov CONTRACT §5 D3.** Treasury Release **KHÔNG tự tính bất kỳ ngưỡng
+nào** (không `yes>no`, không nhân-chéo `≥ θ`, không clamp BFT, không sàn `|S|≥F`). Toàn bộ ngưỡng (gồm
+clamp `VP_eff` 1/21 + sàn cứng số DID) do **Governance `ExecuteProposal` ép TRƯỚC** ở một tx riêng. Cổng
+release của Treasury chỉ kiểm **đúng 4 thứ** (mọi bất đẳng thức tự-kiểm ngưỡng đã BỎ khỏi Treasury):
+
+| # | Treasury kiểm | Ràng buộc | Vì sao đủ (Model A) |
+|---|---|---|---|
+| 1 | `status == Executed` | C-REL-2 | Governance đã ép toàn bộ ngưỡng + chuyển Tallied→Executed ở tx riêng |
+| 2 | **Proposal authenticity NFT** | C-REL-1 | chống datum giả mạo địa chỉ (token one-shot chứng thực) |
+| 3 | `spend_spec_hash` khớp draws | C-REL-3 | khóa đích chi (ai/bao nhiêu) đúng điều đã duyệt |
+| 4 | `execute_after_epoch` time-lock | C-REL-8 | epoch hiện tại ≥ mốc duyệt |
+
+Treasury **tin** cờ + NFT, KHÔNG đọc `yes_power/no_power/voter_count` để tự so ngưỡng (đó là việc của
+Governance — đọc lại sẽ nhân đôi logic + mở lỗ hổng "release bỏ qua clamp" GAME-1, đã đóng bởi D3).
+
 Governance phơi kết quả ở **Proposal UTxO** mang **Proposal authenticity NFT** (one-shot, mẫu
-`beacon_nft.ak`), datum `ProposalDatum{ status, yes_power, no_power, voter_count, ... }`
-([Governance TECH §3](../Governance/VotingPower/TECH.md)). Release đọc UTxO này làm **reference
-input** (không tiêu — nhiều release/đọc song song):
+`beacon_nft.ak`), datum `ProposalDatum{ status, spend_spec_hash, execute_after_epoch, released_cumulative,
+... }` (Gov CONTRACT §5 D2; [Governance TECH §3](../Governance/VotingPower/TECH.md)). Release đọc UTxO
+này làm **reference input** (không tiêu — nhiều release/đọc song song):
 [`Transaction.reference_inputs`](https://aiken-lang.github.io/stdlib/cardano/transaction.html).
 
 ```
@@ -598,10 +664,12 @@ Evidence bắt buộc: `aiken check` output pass FULL (như chuẩn build mode �
    Distribution) — HARD BLOCKER nếu v1 hỗ trợ vesting. Nếu v1 CHỈ chi một lần (không vesting) → có thể
    hoãn field này nhưng phải ép `released_cumulative` ngầm = toàn bộ (một Release dùng hết proposal).
    Chốt: v1 có vesting hay chỉ chi một lần?
-3. **Custody shard** — một UTxO custody là điểm contention (mỗi collect/release đều spend nó →
-   sequential). Có cần shard theo asset hoặc theo bucket để song song hóa? Đánh đổi: shard tăng
-   throughput nhưng phức tạp bất biến sổ↔value (phải tổng qua các shard). v1 đề xuất **1 custody**
-   (đơn giản, throughput đủ vì collect đã batch); shard hóa khi đo thấy nghẽn.
+3. **Custody shard — QUYẾT-ĐỊNH-CÓ-SỐ-ĐO (T4, không còn treo mở):** một UTxO custody là điểm contention
+   tuần tự. EXEC **phải đo throughput** (batch N/tx × tx/block so tải tổng nhiều thuê bao) TRƯỚC khi
+   chốt; nếu nghẽn → **shard-by-asset** (mỗi shard 1 UTxO, bất biến per-shard, off-chain cộng tổng cho
+   circulating — §1). v1 đề xuất **1 custody** (đủ vì collect đã batch) nhưng kèm điều kiện đo, không
+   mặc định mù. Shard theo ASSET (không theo bucket) để bất biến per-asset độc lập không vỡ + giảm K·M
+   mỗi shard (§3).
 4. **Migrate (a) vs (b)** — chốt con đường nạp generators (đề xuất b-ii adapter, không sửa generators
    live). Cần EXEC xác nhận generators cho output script-address mang datum.
 5. **Emergency instance riêng** — xác nhận emergency = Custody instance tách script hash (isolation
@@ -634,3 +702,21 @@ Evidence bắt buộc: `aiken check` output pass FULL (như chuẩn build mode �
 **Không bỏ qua finding nào** — cả 13 đã áp. Hai finding chạm Governance (7) + MATH (1,2,9,10,11) ghi rõ
 phần "Đồng bộ MATH cần làm" + Phụ thuộc; chúng là sửa Ở FILE KHÁC (ngoài TECH), ghi lại để truy vết
 chứ TECH không tự sửa MATH/Governance trong vòng này.
+
+---
+
+## Phản hồi reconcile 2026-06-05
+
+Áp 4 quyết định ghim cứng từ **Treasury CONTRACT §9 (T1–T5)** + **Gov CONTRACT §5 (D1–D9)**. Chỉ đụng
+mục liên quan; phần còn lại giữ nguyên. Số cụ thể vẫn "tham số mở (DAO định)" trừ cái CONTRACT đã chốt.
+
+| Áp | Nơi sửa | Đã sửa gì | Cite |
+|---|---|---|---|
+| **T1** | §7.1 (mới: "Release-gate = Model A duy nhất") + C-REL-2/3 | Khẳng định Treasury KHÔNG tự tính ngưỡng (bỏ mọi bất đẳng thức tự-kiểm); bảng "đúng 4 thứ kiểm": `status==Executed` + Proposal NFT + `spend_spec_hash` + `execute_after_epoch`. Không đọc yes/no_power để so ngưỡng (đóng GAME-1). | Treasury §9 **T1** = Gov §5 **D3** |
+| **T2** | §4.2 C-COL-4 (ghi chú split_table) + Tham số mở | Sửa cite "MATH chốt đa-bucket" → **dạng CHÍNH của MATH là ĐƠN-BUCKET** `Δ_bucket(category)==cut`; split_table/đa-bucket = TÙY CHỌN instance; MATH hạ PARTITION-MULTI xuống mục tùy chọn (hết cite chéo ngược). | Treasury §9 **T2** |
+| **T3** | §3 (bất biến sổ↔value) | Đổi sang **INCREMENTAL**: chỉ kiểm `Σ_b Δledger[(b,a)]==Δvalue(a)` cho `a ∈ A_Δ`; asset không đụng → value bảo toàn, KHÔNG fold toàn sổ. Thêm phân tích **ExUnit K·M** (giải mã datum O(K·M) + cập nhật O(\|A_Δ\|·K) + fold O(N)) + **trần `KM_max`/`N_max` đo-thực TRƯỚC M2**; chạm trần → shard (T4). | Treasury §9 **T3** |
+| **T4** | §1 (note custody throughput) + Câu hỏi treo #3 | Ghi rõ **đo throughput TRƯỚC** khi chốt 1 UTxO (EXEC đo batch N/tx × tx/block so tải đa thuê bao); **shard-by-asset nếu nghẽn** (per-shard invariant, off-chain cộng tổng circulating + I_emg). #3 nâng từ "treo mở" → quyết-định-có-số-đo. | Treasury §9 **T4** |
+
+Bất biến KHÔNG đụng tới (giữ nguyên): LAMP không burn `Σ_out=Σ_in` per-asset (§0, §3, C-COL-2/C-REL-5);
+per-capita không token-weighted (Treasury chỉ đọc cờ Gov, không đọc power thô — T1); clamp BFT 1/21 +
+sàn `|S|≥F` do Governance ép, Treasury không nhúng (T1/D3); định giá ở app (§0 "KHÔNG thuộc spec").

@@ -23,8 +23,9 @@ suy ra mã từ định lý chứ không từ trực giác. Cụ thể chứng m
    **bảo toàn value** (`≥` + TOTAL-CONSERVE) — xem §3.1.
 4. **Bất biến theo lô (batch):** gộp N lệnh `collect` trong một settlement tx vẫn bảo toàn tổng và đúng
    tổng cut.
-5. **Ngưỡng release dạng "≥"** (so sánh số nguyên, không số thực) + **tính chất chống drain** (không tx nào
-   rút value vượt phần được phép).
+5. **Cổng release = vị từ boolean `pass(P)`** đọc từ Governance (Treasury KHÔNG tự kiểm ngưỡng — T5/T1/D3;
+   ngưỡng + clamp BFT do Governance ép trước) + **tính chất chống drain** (không tx nào rút value vượt phần
+   được phép).
 
 ### 0.2 KHÔNG thuộc spec này (ranh giới)
 
@@ -193,42 +194,48 @@ mấu chốt: ta định nghĩa `rest` bằng **phép trừ** (`amount − cut`)
 độc lập — cách thứ hai có thể lệch `1 oil` so với `amount` (lỗi double-rounding). **Luôn lấy một phần bằng
 floor rồi phần kia bằng phép trừ.**
 
-### 3.2.1 Phân `cut` về NHIỀU bucket — định lý PARTITION-multi (đồng bộ TECH)
+### 3.2.1 Phân `cut` về bucket — dạng CHÍNH đơn-bucket; PARTITION-MULTI là tùy chọn
 
-**Mô hình đã chốt (đồng bộ TECH §4.2 C-COL-4, FEAT §6 dòng "Tỉ lệ phân bổ cut theo bucket"):** `cut` KHÔNG
-nhất thiết vào đúng một bucket. Mỗi instance có `split_table = [(b_1, w_1), …, (b_m, w_m)]` với
-`Σ_{i=1}^{m} w_i = 10000` bps. `cut` được chia về `m` bucket theo trọng số `w_i`.
+**Áp T2 (CONTRACT §9).** Dạng **mặc định + chính** là **đơn-bucket**: `cut` vào **đúng một** bucket =
+`item.category`. KHÔNG có double-floor, không cần kỹ thuật phân hoạch:
 
-> **Lịch sử (finding 2):** bản MATH trước giả định "category rời rạc" (`cut` → 1 bucket) và đánh dấu
-> `[cần xác nhận với FEAT]`. Nhưng TECH ĐÃ chốt đa-bucket theo `split_table` weights. Để 3 spec nhất quán,
-> MATH **theo TECH**: dưới đây là mô hình đa-bucket + định lý phân hoạch không lệch floor. Trường hợp
-> "1 bucket" là **đặc biệt** của mô hình này khi `split_table = [(category, 10000)]` (một bucket nhận 100%).
+```
+Δ_bucket(category)  ==  cut                              (PARTITION-SINGLE — dạng chính, mặc định)
+```
 
-**Vấn đề double-floor.** Cách ngây thơ `part_i = ⌊cut · w_i / 10000⌋` cho mỗi bucket gây **double-floor**
-(`cut` đã floor một lần, rồi `cut·w_i/10000` floor lần nữa). Khi đó nói chung
-`Σ_{i=1}^{m} part_i = cut − k` với `0 ≤ k ≤ m−1` — **mất tới `m−1` oil** mỗi item. Điều này **phá**
-bất biến sổ↔value của TECH §3 (`Σ_b ledger[(b,a)] == value(a) − min_ada`), vì sổ cộng lại thiếu `k` oil so
-với phần `cut` thực vào custody.
+Đây là dạng Treasury dùng theo mặc định. Mỗi `collect` chỉ ghi `cut` vào một field bucket (`category`) trong
+sổ datum, không chia nhỏ.
 
-**Định lý 2′ (PARTITION-multi — phân `cut` đúng tổng, không lệch floor).** Định nghĩa các phần bằng floor
-cho `m−1` bucket đầu, **phần cuối bằng phép trừ**:
+> **Lịch sử (finding 2 + T2):** một bản MATH trước nâng `split_table` (đa-bucket) lên thành dạng chính và đẩy
+> đơn-bucket xuống "trường hợp đặc biệt". T2 đảo lại: **đơn-bucket là đường mặc định**; `split_table`
+> (đa-bucket) **CHỈ là tùy chọn instance**, không phải dạng chính. Hết cite chéo ngược TECH↔MATH. Phần dưới
+> đây giữ lại PARTITION-MULTI chỉ như **tùy chọn đa-bucket** cho instance nào tự bật.
+
+**Tùy chọn đa-bucket (chỉ khi instance bật `split_table`).** Một instance CÓ THỂ khai báo
+`split_table = [(b_1, w_1), …, (b_m, w_m)]` với `Σ_{i=1}^{m} w_i = 10000` bps để chia `cut` về `m` bucket
+theo trọng số `w_i`. Khi đó phải tránh **double-floor**: cách ngây thơ `part_i = ⌊cut · w_i / 10000⌋` cho
+mỗi bucket khiến `Σ part_i = cut − k` với `0 ≤ k ≤ m−1` — **mất tới `m−1` oil** mỗi item, phá bất biến
+sổ↔value (TECH §3). Khắc phục bằng "phần cuối = phép trừ":
 
 ```
 part_i  =  ⌊ cut × w_i / 10000 ⌋            với i = 1 … m−1
-part_m  =  cut  −  Σ_{i=1}^{m−1} part_i      (phần dư — KHÔNG floor)            (PARTITION-MULTI)
+part_m  =  cut  −  Σ_{i=1}^{m−1} part_i      (phần dư — KHÔNG floor)            (PARTITION-MULTI, tùy chọn)
 ```
 
-Khi đó **Σ_{i=1}^{m} part_i = cut** đúng tuyệt đối (số nguyên), KHÔNG mất oil nào.
+**Định lý 2′ (PARTITION-MULTI — khi bật tùy chọn đa-bucket).** Với định nghĩa trên,
+**Σ_{i=1}^{m} part_i = cut** đúng tuyệt đối (số nguyên), KHÔNG mất oil nào.
 
 *Chứng minh.* `Σ_{i=1}^{m} part_i = (Σ_{i=1}^{m−1} part_i) + part_m = (Σ_{i=1}^{m−1} part_i) + cut −
 (Σ_{i=1}^{m−1} part_i) = cut`. ∎ Mỗi `part_i` (i<m) là floor nên `≥ 0`; `part_m = cut − Σ part_i ≥ 0` vì
 `Σ_{i<m} ⌊cut·w_i/10000⌋ ≤ ⌊cut·(Σ_{i<m} w_i)/10000⌋ ≤ ⌊cut·(10000−w_m)/10000⌋ ≤ cut` (do `w_m ≥ 0`). Vậy
 mọi phần không âm và tổng đúng `cut`. Đây là **cùng kỹ thuật** "một phần bằng floor, phần cuối bằng phép trừ"
-đã dùng cho `cut/rest` ở §3.2, nay áp cho `cut → buckets`.
+đã dùng cho `cut/rest` ở §3.2. Đơn-bucket (PARTITION-SINGLE) là `m = 1`: `part_1 = cut`, không floor — hiển
+nhiên đúng.
 
-> **Lưu ý thứ tự xác định:** `part_m` (bucket cuối theo thứ tự `split_table`) hấp thụ toàn bộ crumb làm tròn
-> `≤ m−1` oil. Off-chain + on-chain phải dùng **cùng thứ tự** `split_table` để byte-perfect (TECH chốt thứ tự
-> canonical). Crumb dồn vào một bucket xác định ⟹ vẫn audit được, không "bốc hơi".
+> **Lưu ý thứ tự xác định (chỉ áp khi bật đa-bucket):** `part_m` (bucket cuối theo thứ tự `split_table`) hấp
+> thụ toàn bộ crumb làm tròn `≤ m−1` oil. Off-chain + on-chain phải dùng **cùng thứ tự** `split_table` để
+> byte-perfect (TECH chốt thứ tự canonical). Crumb dồn vào một bucket xác định ⟹ vẫn audit được, không
+> "bốc hơi". Dạng đơn-bucket mặc định không có crumb nên không gặp vấn đề này.
 
 ### 3.3 Bất biến validator collect (INV-COLLECT chi tiết)
 
@@ -236,18 +243,18 @@ Validator collect kiểm 3 điều, tất cả là so sánh số nguyên:
 
 ```
 (C1)  cut          == amount × cut_bps / 10000        // floor, đúng SPLIT
-(C2)  part_i        theo PARTITION-MULTI (§3.2.1):     // cut chia về m bucket của split_table
-        Δ_bucket(b_i) == part_i  ∀i=1…m,  với  Σ_i part_i == cut
-        (part_{m} = cut − Σ_{i<m} part_i — bucket cuối hấp thụ crumb, KHÔNG floor)
+(C2)  Δ_bucket(category) == cut                        // dạng chính đơn-bucket, PARTITION-SINGLE (§3.2.1)
 (C3)  Σ_{o∈OUT_I} o.value(a)  ≥  Σ_{i∈IN_I} i.value(a) + cut    // INV-COLLECT, §2.3
 ```
 
 `C2` thao tác trên **sổ trong datum** (bucket = field, KHÔNG phải UTxO riêng — CONTRACT §1, chống bloat),
-nên không tạo UTxO mới mỗi collect. **Σ các phần bucket = `cut` đúng tuyệt đối** (Định lý 2′) ⟹ bất biến
-sổ↔value của TECH §3 KHÔNG vỡ. `C3` thao tác trên **value vật lý** của custody UTxO.
+nên không tạo UTxO mới mỗi collect. Dạng mặc định: `cut` vào đúng một bucket = `item.category`, đẳng thức
+chính xác ⟹ bất biến sổ↔value của TECH §3 KHÔNG vỡ. `C3` thao tác trên **value vật lý** của custody UTxO.
 
-> **Trường hợp 1 bucket (category rời rạc):** khi `split_table = [(category, 10000)]`, PARTITION-MULTI thu về
-> `Δ_bucket(category) == cut` — đúng dạng C2 cũ. Mô hình đa-bucket **bao hàm** trường hợp này, không loại trừ.
+> **Tùy chọn đa-bucket (chỉ khi instance bật `split_table`):** C2 thay bằng PARTITION-MULTI (§3.2.1):
+> `Δ_bucket(b_i) == part_i  ∀i=1…m` với `Σ_i part_i == cut` (`part_m = cut − Σ_{i<m} part_i`, bucket cuối
+> hấp thụ crumb). Đây KHÔNG phải đường mặc định (T2) — instance phải tự bật. Đơn-bucket là `split_table =
+> [(category, 10000)]` ⟹ thu về đúng C2 chính.
 
 ---
 
@@ -281,16 +288,17 @@ KHÔNG tính một lần trên tổng `amount` rồi gán.
 ```
 (B1)  Σ_{outputs} o.value(a) = Σ_{inputs} i.value(a)              ∀a     (TOTAL-CONSERVE toàn lô)
 (B2)  Δ_I(a)  ≥  CUT_batch(a)  =  Σ_j cut_j(a)                            (INV-COLLECT cộng dồn)
-(B3)  Δ_bucket(b)  =  Σ_j part_{j,b}   ∀ bucket b                          (PARTITION-MULTI cộng dồn)
+(B3)  Δ_bucket(b)  =  Σ_j part_{j,b}   ∀ bucket b                          (PARTITION cộng dồn)
         với  Σ_b Δ_bucket(b)  =  Σ_j cut_j  =  CUT_batch                   (tổng các bucket = tổng cut)
 ```
 
 *Chứng minh.* (B1) là Định lý 1 áp cho tx lô (POV không phụ thuộc N). (B2): áp INV-COLLECT cho từng lệnh rồi
-cộng `N` bất đẳng thức cùng chiều `≥` → tổng vẫn `≥`. (B3): mỗi lệnh `j` phân `cut_j` về các bucket theo
-PARTITION-MULTI (§3.2.1) với `Σ_b part_{j,b} = cut_j` đúng tuyệt đối (Định lý 2′); cộng theo lệnh ⟹ mỗi bucket
-nhận đúng tổng phần con của nó, và `Σ_b Δ_bucket(b) = Σ_j Σ_b part_{j,b} = Σ_j cut_j = CUT_batch`. Vì mỗi lệnh
-phân hoạch không lệch floor, **tổng sổ toàn lô = tổng cut toàn lô** — bất biến sổ↔value (TECH §3) giữ qua cả
-lô. ∎
+cộng `N` bất đẳng thức cùng chiều `≥` → tổng vẫn `≥`. (B3): dạng mặc định **đơn-bucket** (§3.2.1
+PARTITION-SINGLE) — mỗi lệnh `j` đóng toàn bộ `cut_j` vào đúng bucket `category_j`, tức `part_{j,b} = cut_j`
+nếu `b = category_j` và `0` ngược lại; cộng theo lệnh ⟹ mỗi bucket nhận đúng tổng các `cut_j` cùng category,
+và `Σ_b Δ_bucket(b) = Σ_j cut_j = CUT_batch`. (Nếu instance bật tùy chọn **đa-bucket**, thay bằng
+PARTITION-MULTI với `Σ_b part_{j,b} = cut_j` đúng tuyệt đối — Định lý 2′; tổng vẫn `= CUT_batch`.) Cả hai
+trường hợp **tổng sổ toàn lô = tổng cut toàn lô** — bất biến sổ↔value (TECH §3) giữ qua cả lô. ∎
 
 ### 4.3 Receipt + audit
 
@@ -360,27 +368,28 @@ là **bất biến** qua mọi giao dịch. Không tồn tại tx hợp lệ ph�
 
 ## 6. Ngưỡng release + chống drain
 
-### 6.1 Cổng governance + ngưỡng "≥"
+### 6.1 Cổng governance = vị từ boolean `pass(P)` (Treasury KHÔNG tự kiểm ngưỡng)
 
-Release chỉ hợp lệ khi **một proposal P đã pass** (đọc kết quả qua reference input / beacon — CONTRACT §4).
-Đặt `approval(P)` = số phiếu thuận (theo Voting Power model đã chốt, NGOÀI spec này) và `total(P)` mẫu số
-ngưỡng. Điều kiện ngưỡng cho bucket loại `k`:
+**Áp T5 (CONTRACT §9) + T1 + D3 (VotingPower CONTRACT §5).** Release-gate là **Model A**: Treasury KHÔNG
+tính lại bất kỳ bất đẳng thức ngưỡng nào. Nó **chỉ đọc một vị từ boolean** `pass(P)` đã được Governance ép
+xong qua `ExecuteProposal` (`status == Executed` + Proposal NFT + `spend_spec_hash` + `execute_after_epoch`).
+Toàn bộ ngưỡng — gồm nhân-chéo `≥`, sàn cứng BFT, clamp `VP_eff` — do **Governance** ép TRƯỚC; Treasury chỉ
+nhận kết quả.
 
 ```
-approval(P) × denom_k  ≥  total(P) × numer_k            (THRESHOLD-k)
-   ∧   total(P) > 0   ∧   approval(P) ≥ BFT_FLOOR        (chặn biên suy biến + sàn cứng)
+release(P) hợp lệ   ⟹   pass(P) == True                 (GATE — vị từ boolean, đọc từ Governance)
 ```
 
-dạng "≥" **nhân chéo số nguyên** (tránh chia/số thực — đúng nguyên tắc no-Number). Ví dụ ngưỡng (CONTRACT §4,
-**tham số mở DAO**): community `≥ 2/3` ⟹ `(numer,denom)=(2,3)`; ops `≥ 1/2`; emergency `≥ 2/3`. **Luôn dùng
-`≥`** (không `>`): biên đúng ngưỡng được coi là **đạt** — quyết định thiết kế để biên ngưỡng xác định, không
-phụ thuộc dấu phẩy động.
+với `pass(P)` đọc qua reference input / Proposal NFT (CONTRACT §4 + T1). **Không có** bất đẳng thức
+`approval × denom ≥ total × numer` ở tầng Treasury — đặt nó ở đây là **lặp logic Governance** + mở lỗ hổng
+"release bỏ qua clamp" (GAME-1). MATH bản trước tự-kiểm ngưỡng ở Treasury → **đã bỏ** theo T5/T1/D3.
 
-> **Chặn pass-rỗng (finding 7):** khi `total(P)=0` (chưa ai vote), bất đẳng thức nhân chéo thành `0 ≥ 0` →
-> TRUE → proposal pass với **0 phiếu** — biên suy biến nguy hiểm. Phải thêm `total(P) > 0` để loại trừ. Ngoài
-> ra bổ sung **sàn cứng BFT** `approval(P) ≥ BFT_FLOOR` cho khớp EXEC §6.1 + VotingPower CONTRACT §2 nguyên lý
-> 5 (release trọng yếu chỉ hợp lệ khi số DID thuận ≥ `BFT_FLOOR`, mặc định 21). Bản MATH trước thiếu cả hai
-> điều kiện này — nay đồng bộ với EXEC. `BFT_FLOOR` là **tham số mở** (đọc từ Governance, không bịa số cuối).
+> **Ngữ nghĩa `pass(P)` (chỉ để hiểu, KHÔNG implement lại ở Treasury) — cross-ref VotingPower MATH §8B + D1:**
+> Governance dựng `pass(P)` từ `approval = Σ VP_eff(thuận)` **đã clamp** (mỗi DID đã bị
+> `min(VP_i, ΣVP/BFT_FLOOR)` — VotingPower CONTRACT §2 nguyên lý 5) và `total = Σ VP-tham-gia GỐC` (power
+> thô, chưa clamp, làm mẫu số). KÈM sàn cứng `số DID thuận ≥ BFT_FLOOR`. **Đừng** đọc nhầm `total` thành tổng
+> đã clamp, và **đừng** dùng power thô cho tử số — đó là việc của Governance, không phải Treasury. Đóng GAME-1:
+> vì `approval` đã clamp ở Governance, không tx release nào "lách" được trần BFT.
 
 ### 6.2 Giới hạn rút (cap release theo proposal)
 
@@ -454,10 +463,11 @@ tách biệt mọi ví caller.
 | INV-COLLECT | `Δ_I(a) ≥ cut(a)` | bất đẳng thức ≥ | §2.3; generators |
 | SPLIT | `cut = ⌊amount·bps/10000⌋` | floor số nguyên | §3.1 |
 | PARTITION | `cut + rest = amount` | đẳng thức (rest = amount−cut) | §3.2 |
-| PARTITION-MULTI | `Σ_i part_i = cut` (part cuối = cut − Σ trước) | đẳng thức, chia cut → m bucket | §3.2.1 |
+| PARTITION-SINGLE | `Δ_bucket(category) = cut` | đẳng thức, cut → 1 bucket (mặc định) | §3.2.1 |
+| PARTITION-MULTI | `Σ_i part_i = cut` (part cuối = cut − Σ trước) | đẳng thức, chia cut → m bucket (**tùy chọn**) | §3.2.1 |
 | BATCH-CUT | `CUT_batch = Σ_j cut_j` (per-lệnh) | tổng floor per-lệnh | §4.2 |
 | CIRC | `circulating = S_total − Σ bal_I − undistributed` | định nghĩa | §5.1 |
-| THRESHOLD-k | `approval·denom_k ≥ total·numer_k ∧ total>0 ∧ approval≥BFT_FLOOR` | nhân chéo ≥ + sàn | §6.1 |
+| GATE | `release(P) ⟹ pass(P) == True` (đọc từ Governance, đã clamp) | vị từ boolean | §6.1 |
 | CAP | `−Δ_I(a) ≤ amount_P(a)` (delta nội bộ `IN_I/OUT_I`) | bất đẳng thức ≤ | §6.2 |
 | NO-DRAIN | đúng 1 cặp custody theo payment script hash | đếm = 1 | §6.3; treasury.ak C-TRE-1 |
 
@@ -468,15 +478,15 @@ tách biệt mọi ví caller.
 Không bịa số cuối — đây là **dạng + miền**:
 
 - `cut_bps ∈ [0, 10000]` (protocol cut, bps). Tham số instance.
-- Ngưỡng từng bucket: cặp `(numer_k, denom_k)` với `0 ≤ numer_k ≤ denom_k`, dạng "≥". Vd khung CONTRACT §4:
-  community/emergency `2/3`, ops `1/2` — **chờ DAO chốt**.
+- **Ngưỡng + sàn BFT KHÔNG phải tham số Treasury** (T5/T1): cặp `(numer_k, denom_k)`, `BFT_FLOOR`, clamp
+  `VP_eff` thuộc **Governance**; Treasury chỉ đọc vị từ `pass(P)` đã ép xong (§6.1). Vd khung community/
+  emergency `2/3`, ops `1/2` (CONTRACT §4) là tham số **Governance**, không Treasury.
 - Kích thước lô `N_max` mỗi settlement tx: bị chặn trên bởi ngân sách ExUnit + kích thước tx (protocol
   param `maxTxExUnits`, `maxTxSize`). Tham số vận hành.
-- Time-lock release (số slot/epoch chờ sau khi proposal pass): tham số DAO.
-- `split_table` weights `[(b_i, w_i)]` với `Σ w_i = 10000` bps (chia cut → m bucket, §3.2.1). bps đủ độ phân
-  giải cho phân-bucket; không cần `Q`-resolution trừ khi DAO muốn tỷ lệ mịn hơn 1/10000 (chưa cần).
-- `BFT_FLOOR` (sàn cứng số DID thuận cho release trọng yếu, §6.1) — đọc từ Governance, mặc định 21
-  (VotingPower CONTRACT §2.5). Tham số mở.
+- Time-lock release (`execute_after_epoch`): chốt ở Proposal (Governance D2); Treasury chỉ kiểm mốc.
+- `split_table` weights `[(b_i, w_i)]` với `Σ w_i = 10000` bps — **CHỈ khi instance bật tùy chọn đa-bucket**
+  (§3.2.1); mặc định đơn-bucket không dùng. bps đủ độ phân giải; không cần `Q`-resolution trừ khi DAO muốn
+  tỷ lệ mịn hơn 1/10000 (chưa cần).
 - `mulBps(a, bps) = a × bps / 10000` (floor) — helper off-chain CẦN BỔ SUNG (`protocol-utils` hiện chỉ có
   `mulQ`); đối xứng on-chain. KHÔNG phải tham số, là ghi chú triển khai (finding 8).
 - Danh sách `accepted_assets[]` mỗi instance.
@@ -506,11 +516,12 @@ Không bịa số cuối — đây là **dạng + miền**:
 
 1. **`rest` định tuyến** (provider/node) — phần này rời Treasury ngay trong tx collect, hay Treasury cũng
    giữ tạm rồi mới chuyển? Ảnh hưởng số UTxO output. (TECH cần chốt; ưu tiên: rời ngay, ít UTxO hơn.)
-2. **[ĐÃ CHỐT — đồng bộ TECH]** Bucket chia theo **% qua `split_table` weights** (đa-bucket), KHÔNG phải
-   category rời rạc. MATH §3.2.1 đã chứng minh PARTITION-MULTI (Σ phần = cut, không lệch floor — "phần cuối =
-   cut − Σ phần trước"). Trường hợp "1 bucket" là đặc biệt khi `split_table = [(category, 10000)]`. (Trước đây
-   MATH giả định category rời rạc + đánh dấu `[cần xác nhận với FEAT]`, nhưng TECH §4.2 C-COL-4 đã chốt
-   đa-bucket — MATH nay theo TECH, hết treo. Finding 2 đã xử lý.)
+2. **[ĐÃ CHỐT — T2 CONTRACT §9]** Bucket dạng **CHÍNH = đơn-bucket**: `cut → đúng item.category` (một
+   bucket), MATH §3.2.1 dạng `Δ_bucket(category) == cut` (PARTITION-SINGLE). `split_table` (đa-bucket) CHỈ là
+   **tùy chọn instance**, không phải đường mặc định; khi instance bật, dùng PARTITION-MULTI (Σ phần = cut,
+   "phần cuối = cut − Σ phần trước" để không lệch floor). Đơn-bucket là `split_table = [(category, 10000)]`.
+   Hết cite chéo ngược TECH↔MATH. (Một bản trước đẩy đa-bucket lên dạng chính — T2 đảo lại. Finding 2 + T2
+   đã xử lý.)
 3. **Emergency bucket tách physical** — có cần bất biến cô lập riêng (không cho release emergency rút từ
    custody chính)? Nếu có, thêm ràng buộc `h_emergency ≠ h_main` ở mức instance. (TECH.)
 4. **Đa-asset trong một proposal** — `amount_P` là vector (nhiều asset/tx release) hay vô hướng (một asset)?
@@ -533,3 +544,18 @@ Không bịa số cuối — đây là **dạng + miền**:
 | 6 | minor | §2.1 gắn CIP-1694 sai cho mệnh đề fee (đúng nguồn là Shelley monetary) | **Nhận.** Đổi nguồn fee sang Shelley ledger/monetary policy; giữ CIP-1694 cho treasury donation §5.2. |
 | 7 | nit | §6.1 THRESHOLD-k biên `total=0` → `0≥0` pass-rỗng; thiếu sàn BFT của EXEC | **Nhận.** Thêm `total(P)>0` ∧ `approval(P)≥BFT_FLOOR` (mặc định 21, đồng bộ EXEC §6.1 + VotingPower). Cập nhật bảng + §8. |
 | 8 | nit | §3.1 ngụ ý `mulQ` dùng được cho bps; thực tế chưa có `mulBps` | **Nhận.** Ghi chú: `protocol-utils` chỉ có `mulQ` (mẫu Q); bps cần `mulBps(a,bps)=a*bps/10000` mới — off-chain bổ sung. Thêm vào §3.1, §8, phụ thuộc. |
+
+> **Lưu ý:** finding 2 (chốt đa-bucket) + finding 7 (THRESHOLD-k + sàn BFT ở Treasury) ở bảng trên **đã bị
+> ĐẢO** bởi vòng reconcile §12 (T2, T5). Đọc §12 là trạng thái mới nhất.
+
+---
+
+## 12. Phản hồi reconcile 2026-06-05 (interface KHÓA — CONTRACT §9 + VotingPower §5)
+
+Áp các quyết định ghim cứng của `Treasury/CONTRACT.md §9` + `Governance/VotingPower/CONTRACT.md §5`. Mục này
+**override** phần liên quan ở bảng §11 khi mâu thuẫn.
+
+| Quyết định | Đã sửa gì | Cite |
+|---|---|---|
+| **T5 + T1 + D3** — release-gate = Model A; Treasury KHÔNG tự kiểm ngưỡng | §6.1 viết lại: **BỎ** bất đẳng thức tự-kiểm `approval×denom ≥ total×numer` (cùng `total>0`, sàn BFT cũ — finding 7). Chỉ giữ vị từ boolean `GATE: release(P) ⟹ pass(P)==True` đọc từ Governance (đã clamp). Ngữ nghĩa ghi rõ `approval = Σ VP_eff(thuận)` **đã clamp**, `total = Σ VP-tham-gia GỐC` — cross-ref VotingPower MATH §8B + D1. §0.1(5) sửa "ngưỡng ≥" → "vị từ boolean". Bảng §7: `THRESHOLD-k` → `GATE`. **Đóng GAME-1**: `approval` đã clamp ở Governance ⟹ không release nào lách trần BFT. | CONTRACT §9 T5/T1; VP CONTRACT §5 D3; VP MATH §8B + D1 |
+| **T2** — collect ĐƠN-BUCKET mặc định | §3.2.1 viết lại: dạng **chính + mặc định** = đơn-bucket `Δ_bucket(category) == cut` (PARTITION-SINGLE). PARTITION-MULTI (đa-bucket theo `split_table`) **hạ xuống "tùy chọn instance"**, không phải đường mặc định. C2 (§3.3) đổi về `Δ_bucket(category) == cut` (đa-bucket là ghi chú tùy chọn). B3 (§4.2) viết lại quanh đơn-bucket (đa-bucket là nhánh phụ). Bảng §7: thêm `PARTITION-SINGLE`, đánh dấu `PARTITION-MULTI` **(tùy chọn)**. §10.2 sửa lời chốt (đơn-bucket là chính). Hết cite chéo ngược TECH↔MATH. | CONTRACT §9 T2 |

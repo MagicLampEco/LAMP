@@ -88,9 +88,9 @@ Mục tiêu cuối của cả dự án: **làm LAMP có giá trị**. Treasury p
 | Mốc | Nội dung | Phụ thuộc | DoD (bằng chứng) |
 |---|---|---|---|
 | **M0** | Khởi tạo skeleton `Treasury/onchain` (aiken project) + `offchain` (tái dùng `package.json`/lucid của Distribution). Copy `Distribution/treasury.ak` làm nền `treasury_core.ak`. | — | `aiken build` xanh; import được `util` (count_inputs_at_script…). |
-| **M1** | **Datum + bucket sổ** (TECH): `TreasuryDatum { buckets: List<Bucket>, protocol_cut_bps, governance_ref, accepted_assets }`; `Bucket { id, balance, release_threshold_num/den }`. Unit Aiken: encode/decode + invariant `Σ bucket.balance ≤ custody.value(LAMP)`. | M0 | test datum round-trip + invariant pass. |
-| **M2** | **`Collect` redeemer** (lớp thu): kiểm `cut = amount × protocol_cut_bps / 10000` cộng đúng vào `bucket(category)`; bảo-toàn-value tổng quát (CONTRACT §3.2); receipt `(app_id, asset, amount, cut, epoch)` ghi vào datum. Đếm theo **payment script hash** (chống double-satisfaction). **Mặc định 1-custody:** `count_inputs_at_script == 1` ∧ `count_outputs_at_script == 1` (kế thừa C-TRE-1, MATH NO-DRAIN). | M1, **câu hỏi #1/#13 ĐÃ CHỐT** (xem §3 ghi chú dưới) | unit: happy + cut sai + receipt thiếu + double-satisfaction → reject. |
-| **M3** | **`Release` redeemer** (lớp chi): release **chỉ khi** beacon Governance (reference input) cho biết proposal đã pass + đủ ngưỡng bucket (≥) + **khớp `spend_spec_hash`** (đích/asset/amount đã duyệt — xem §6.1). Tái dùng C-TRE-1 (đếm script hash, 1-custody) + C-VAL-0 (bảo toàn asset khác). Time-lock + multi-sig council. | M2, **Governance beacon CÓ `spend_spec_hash`** (blocker cứng — xem §6.1) | unit: release-no-proposal → reject; release-dưới-ngưỡng → reject; **release-sai-đích (spend_spec_hash lệch) → reject**; release-đúng → pass; ada-drain → reject (kế thừa M1 test). |
+| **M1** | **Datum + bucket sổ** (TECH): `TreasuryDatum { buckets: List<Bucket>, protocol_cut_bps, governance_ref, accepted_assets }`; `Bucket { id, balance }`. ⚠️ **KHÔNG có `release_threshold_num/den` trong `Bucket`** — Treasury KHÔNG tự kiểm ngưỡng (T1 = Gov D3). Toàn bộ ngưỡng (gồm clamp BFT) do Governance ép TRƯỚC; Treasury chỉ kiểm `status==Executed` + Proposal NFT + `spend_spec_hash` + `execute_after_epoch`. Unit Aiken: encode/decode + invariant `Σ bucket.balance ≤ custody.value(LAMP)`. | M0 | test datum round-trip + invariant pass. |
+| **M2** | **`Collect` redeemer** (lớp thu): kiểm `cut = amount × protocol_cut_bps / 10000` cộng đúng vào `bucket(category)`; bảo-toàn-value tổng quát (CONTRACT §3.2); receipt `(app_id, asset, amount, cut, epoch)` ghi vào datum. Đếm theo **payment script hash** (chống double-satisfaction). **Mặc định 1-custody:** `count_inputs_at_script == 1` ∧ `count_outputs_at_script == 1` (kế thừa C-TRE-1, MATH NO-DRAIN). | M1, **1-custody bootstrap chốt; throughput đo ở M6** (T4 — xem §3.1) | unit: happy + cut sai + receipt thiếu + double-satisfaction → reject. |
+| **M3** | **`Release` redeemer** (lớp chi, T1 = Gov D3): release **chỉ khi** beacon Governance (reference input) cho biết proposal `status==Executed` + Proposal NFT + **khớp `spend_spec_hash`** (đích/asset/amount đã duyệt — xem §6.1) + **`execute_after_epoch` đã tới** (time-lock). Treasury KHÔNG tự kiểm ngưỡng bucket — Governance đã ép ngưỡng (gồm clamp BFT) TRƯỚC khi đặt `status==Executed`. Tái dùng C-TRE-1 (đếm script hash, 1-custody) + C-VAL-0 (bảo toàn asset khác). Multi-sig council. | M2, **Governance beacon CÓ `spend_spec_hash` + `execute_after_epoch`** (blocker cứng — xem §6.1, D2) | unit: release-no-proposal → reject; **release khi proposal chưa `Executed` → reject**; **release-sai-đích (spend_spec_hash lệch) → reject**; **release trước `execute_after_epoch` → reject**; release-đúng → pass; ada-drain → reject (kế thừa M1 test). |
 | **M4** | **Property bảo-toàn-value** (MATH-driven test): sinh ngẫu nhiên N collect + M release → assert `Σ value_out(asset) = Σ value_in(asset)` tuyệt đối ∀ asset; `circulating = tổng − Σ bucket.balance`; **không có nhánh nào giảm tổng cung** (CONTRACT §5). | M2, M3 | property test (≥ vài trăm case) xanh; có log Σ_in == Σ_out. |
 | **M5** | **Offchain SDK**: `buildCollectTx`, `buildReleaseTx`, `decodeTreasuryDatum`, `reapplyValidators`. Tái dùng `config.ts`/`awaitTx`/`explorerTx` của Distribution. | M1–M4 | vitest offchain: datum decode khớp Aiken; tx build hợp lệ (dry-run). |
 | **M6** | **E2E Preview** (harness 00→04 kiểu Distribution): `01_deploy` (instance MagicLamp) → `02_collect_batch` (gộp lô nhiều collect) → `03_post_governance_beacon` (giả proposal pass) → `04_release` → verify on-chain (in tx hash + explorer). | M5 | record `LIVE_DEPLOY_PREVIEW.md` riêng cho Treasury với tx hash thật. |
@@ -98,13 +98,15 @@ Mục tiêu cuối của cả dự án: **làm LAMP có giá trị**. Treasury p
 
 > Thứ tự M2 trước M3 có chủ đích: **thu là đường nóng, độc lập Governance**; chi phụ thuộc beacon (blocker ngoài). Build + test được toàn bộ đường thu (và migrate generators) **trước khi** Governance beacon sẵn sàng → không bị blocker chặn tiến độ.
 
-### 3.1 Ràng buộc 1-custody vs shard (BẮT BUỘC chốt TRƯỚC M2)
+### 3.1 Ràng buộc 1-custody vs shard — ĐO THROUGHPUT TRƯỚC khi chốt (T4)
 
 **M2/M3 mặc định 1-custody:** custody là **đúng 1 UTxO** mỗi tx — bất biến NO-DRAIN dạng `count_inputs_at_script == 1` ∧ `count_outputs_at_script == 1` (MATH §6.3, TECH §10, kế thừa code [`treasury.ak` L36–37](../Distribution/onchain/validators/treasury.ak) `count_inputs_at_script == 1`). Đây là lõi chống double-satisfaction.
 
-⚠️ **Chuyển sang shard (nhiều custody UTxO) KHÔNG phải tham số vận hành — là THAY ĐỔI BẤT BIẾN AN TOÀN.** Nếu shard, `count == 1` VỠ (không còn đúng 1 cặp in/out), phải **viết lại** NO-DRAIN thành "**đúng K cặp custody khai báo + bảo toàn tổng qua K cặp**" (trỏ MATH §9 câu treo #5) + thêm test double-satisfaction riêng cho shard. Đó là một **mốc riêng M-shard**, không gài vào M2/M3 đang code `==1`.
+⚠️ **T4 (CONTRACT §9): một UTxO custody là ĐIỂM CONTENTION TUẦN TỰ** — mọi collect/release tranh spend cùng một UTxO, throughput trần = 1 tx/block cho custody đó. Vì vậy việc chốt 1-custody KHÔNG phải mặc định "cho đơn giản" rồi quên — **EXEC PHẢI ĐO** trước khi khoá: `batch N/tx × tx/block` so với tải nhiều thuê bao thực tế (M6 Preview cho số đo thật). Nâng câu hỏi treo #1 thành **quyết-định-có-số-đo**, không phải chốt cảm tính.
 
-**Hệ quả lộ trình:** câu hỏi treo **#1 (custody một UTxO hay shard)** và **#13** phải **ĐÓNG TRƯỚC khi vào M2**, không để treo song song với việc code. Nếu chốt shard sau khi M2/M3 đã code `==1` ⇒ phải làm lại lõi an toàn (NO-DRAIN), tốn kép. Khuyến nghị: chốt **1-custody** để bootstrap (đơn giản nhất, đúng trục "ít UTXO"); thêm M-shard chỉ khi đo được contention thật trên Preview.
+⚠️ **Đường mở rộng khi đo thấy nghẽn = shard-by-asset** (T4): mỗi shard giữ **1 asset**, là **1 UTxO độc lập**; bất biến NO-DRAIN + bảo-toàn-value áp **per-shard** (`count == 1` vẫn đúng TRONG mỗi shard — không phải viết lại thành "K cặp"); off-chain **cộng tổng các shard** cho `circulating` accounting. Shard-by-asset giữ nguyên lõi an toàn 1-cặp/shard (khác cách shard tuỳ-ý từng làm vỡ `count==1`) → ít tốn kép hơn. Vẫn là **mốc riêng M-shard**, không gài vào M2/M3 đang code `==1` cho custody đơn.
+
+**Hệ quả lộ trình:** không treo song song với code. Khuyến nghị: chốt **1-custody** để bootstrap (đơn giản nhất, đúng trục "ít UTXO"); **đo throughput ở M6 Preview**; chỉ thêm **M-shard (shard-by-asset)** khi số đo cho thấy contention thật. Nếu đổi sang shard-by-asset, lõi an toàn 1-cặp/shard giữ nguyên → migration nhẹ.
 
 ---
 
@@ -161,15 +163,15 @@ OriLife đang **chờ một spec settlement**: làm sao phí thu từ app (vd `a
 
 ### 6.1 Governance beacon (cổng release — blocker cho M3, KHÔNG cho M2)
 
-`Release` đọc kết quả vote qua **reference input / beacon** ([CONTRACT §4](./CONTRACT.md); mẫu beacon đã chạy ở [`Distribution/onchain/validators/beacon_nft.ak`](../Distribution/onchain/validators/beacon_nft.ak)). Cần từ Governance:
+`Release` đọc kết quả vote qua **reference input / beacon** ([CONTRACT §4](./CONTRACT.md); mẫu beacon đã chạy ở [`Distribution/onchain/validators/beacon_nft.ak`](../Distribution/onchain/validators/beacon_nft.ak)). Theo **T1 = Gov D3 (Model A)**: Treasury KHÔNG tự kiểm ngưỡng; chỉ kiểm `status==Executed` + Proposal NFT + `spend_spec_hash` + `execute_after_epoch`. Cần từ Governance (3 field HARD BLOCKER, **Gov D2**):
 
-- Một **UTxO beacon** mang datum "proposal P đã pass, ngưỡng đạt, bucket=community/ops/emergency" — đọc-chỉ bằng reference input (không spend).
-- ⚠️ **BLOCKER CỨNG M3 — ProposalDatum phải có `spend_spec_hash`** (TECH §7 C-REL-3, TECH câu treo #1): hash của **danh sách chi đã duyệt** (bucket + asset + amount + đích). `Release` so khớp output thực tế với `spend_spec_hash` → nếu thiếu, **Release không biết proposal duyệt chi cho ai/bao nhiêu → LỖ HỔNG CHI SAI** (release đúng tổng nhưng sai đích vẫn pass). Phải **chốt với Governance TRƯỚC khi code M3** — đây KHÔNG chỉ là "beacon kết quả vote".
-- Nếu hỗ trợ vesting/chi nhiều đợt: ProposalDatum thêm `released_cumulative` (chống chi vượt qua nhiều tx). [tham số mở — bàn FEAT/Governance]
-- Ngưỡng theo bucket dạng **"≥"** (CONTRACT §4): vd community ≥2/3, ops ≥1/2, emergency ≥2/3 — **tham số mở (DAO định)**.
-- Kết quả vote đã qua **BFT clamp + sàn cứng** ([VotingPower CONTRACT §2 nguyên lý 5](../Governance/VotingPower/CONTRACT.md)): release trọng yếu chỉ hợp lệ khi `số DID thuận ≥ BFT_FLOOR`. Treasury **chấp hành** kết quả này, không tự tính VP.
+- Một **UTxO beacon** mang ProposalDatum với `status==Executed` (Governance đã ép TOÀN BỘ ngưỡng — gồm clamp BFT `VP_eff` + sàn cứng `|S|≥F` — TRƯỚC khi đặt trạng thái này) — đọc-chỉ bằng reference input (không spend).
+- ⚠️ **BLOCKER CỨNG M3 — `spend_spec_hash`** (Gov D2; TECH §7 C-REL-3): hash canonical của **danh sách chi đã duyệt** `(bucket, asset, amount, to)`. `Release` so khớp output thực tế với `spend_spec_hash` → nếu thiếu, **Release không biết proposal duyệt chi cho ai/bao nhiêu → LỖ HỔNG CHI SAI** (release đúng tổng nhưng sai đích vẫn pass). Phải **chốt với Governance TRƯỚC khi code M3**.
+- ⚠️ **BLOCKER CỨNG M3 — `execute_after_epoch`** (Gov D2): mốc time-lock. `Release` reject nếu epoch hiện tại **chưa tới** `execute_after_epoch`. Đây là cơ chế time-lock duy nhất (không còn ngưỡng/threshold ở Treasury). Phải có trong ProposalDatum cùng `spend_spec_hash`.
+- `released_cumulative` (Gov D2): chống chi vượt qua nhiều tx (vesting/chi nhiều đợt). Bắt buộc nếu hỗ trợ chi nhiều đợt; tham số mở phần nhịp chi — bàn FEAT/Governance.
+- **KHÔNG còn ngưỡng bucket "≥" ở Treasury** (T1): bất đẳng thức ngưỡng (community ≥2/3, ops ≥1/2…) **do Governance ép** khi tính `status==Executed`, KHÔNG tự kiểm ở Release. Treasury **chấp hành** trạng thái Executed, không tự tính VP/ngưỡng/BFT clamp.
 
-**Giảm rủi ro blocker:** M3 dùng **beacon giả lập** (committee 1-of-1 ký, như Distribution genesis) để test release-gate *cơ chế* trên Preview trước khi Governance beacon thật sẵn sàng. ⚠️ Beacon giả lập **PHẢI mô phỏng `spend_spec_hash`** (commit danh sách chi rồi cho `Release` so khớp) — nếu không, test release-gate là **rỗng**: release đúng số nhưng sai đích vẫn pass, C-REL-3 không được kiểm. Khi Governance live → wire reference input thật (đổi param `governance_ref`), không sửa validator core.
+**Giảm rủi ro blocker:** M3 dùng **beacon giả lập** (committee 1-of-1 ký, như Distribution genesis) để test release-gate *cơ chế* trên Preview trước khi Governance beacon thật sẵn sàng. ⚠️ Beacon giả lập **PHẢI mô phỏng đủ 3 field Gov D2**: `status==Executed` + `spend_spec_hash` (commit danh sách chi rồi cho `Release` so khớp) + `execute_after_epoch` (test time-lock reject trước mốc) — nếu thiếu, test release-gate là **rỗng**: release đúng số nhưng sai đích/sai thời điểm vẫn pass, C-REL-3 không được kiểm. Khi Governance live → wire reference input thật (đổi param `governance_ref`), không sửa validator core.
 
 ### 6.2 Oracle (app-side, NGOÀI Treasury)
 
@@ -247,8 +249,8 @@ Bám nguyên tắc "verify behavior, không chỉ structure". Mỗi mốc phải
 ## 11. Tham số mở (DAO định)
 
 - `protocol_cut_bps` (tỷ lệ cut protocol khi collect).
-- Ngưỡng release mỗi bucket (community/ops/emergency/reward) dạng "≥".
-- `BFT_FLOOR` cho release trọng yếu (đọc từ Governance; mặc định 21 — [VotingPower CONTRACT §2.5](../Governance/VotingPower/CONTRACT.md)).
+- ⚠️ **Ngưỡng release mỗi bucket KHÔNG còn ở Treasury** (T1 = Gov D3): ngưỡng "≥" (community ≥2/3, ops ≥1/2…) **do Governance ép** khi đặt `status==Executed`; Treasury chỉ chấp hành. Đây là tham số mở **của Governance**, không phải Treasury.
+- `BFT_FLOOR` cho release trọng yếu (đọc từ Governance; mặc định 21 — [VotingPower CONTRACT §2.5](../Governance/VotingPower/CONTRACT.md)). Governance ép, Treasury không tự tính.
 - Cửa sổ gộp lô collect (bao nhiêu micro-fee/settlement tx).
 - Ngưỡng bucket-shard (khi nào tách custody thành nhiều UTxO chống contention).
 - Giới hạn receipts/UTxO + chính sách archive theo epoch.
@@ -263,7 +265,7 @@ KHÔNG bịa số cuối ở EXEC — các spec dưới + DAO chốt.
 | `Distribution/onchain/validators/treasury.ak` + `util` | tái dùng nền (copy → mở rộng) | ✅ live Preview |
 | Harness 00→04 + `config.ts` Distribution | tái dùng | ✅ chạy thật |
 | Governance beacon (kết quả vote, ngưỡng ≥, BFT clamp) | cổng release (blocker M3, không blocker M2) | 🔜 CONTRACT duyệt, beacon chưa có → dùng giả lập |
-| **Governance ProposalDatum có `spend_spec_hash`** (+ `released_cumulative` nếu vesting) | **blocker CỨNG M3** — chống chi-sai-đích (TECH C-REL-3, §6.1) | 🔜 **phải chốt với Governance TRƯỚC khi code M3**; beacon giả lập M3 cũng phải mô phỏng |
+| **Governance ProposalDatum có `spend_spec_hash` + `execute_after_epoch`** (+ `released_cumulative` nếu vesting) — Gov D2 | **blocker CỨNG M3** — chống chi-sai-đích + time-lock (TECH C-REL-3, §6.1; T1 Model A) | 🔜 **phải chốt với Governance TRƯỚC khi code M3**; beacon giả lập M3 cũng phải mô phỏng cả 3 field |
 | `MAGIC/AppEconomics` (W/distribute) | nguồn số reward (Treasury chỉ chi) | ✅ engine + test |
 | `MAGIC/oracle` (LAMP↔USD/ADA) | app-side định giá, NGOÀI Treasury | ✅ có code; Treasury không gọi |
 | OriLife (`animal_fee` định giá) | caller collect (app) | chờ settlement spec này |
@@ -272,7 +274,7 @@ KHÔNG bịa số cuối ở EXEC — các spec dưới + DAO chốt.
 
 ## 13. Câu hỏi còn treo (cần anh/DAO chốt)
 
-1. **Custody một UTxO hay shard ngay từ đầu?** ⚠️ **Phải CHỐT TRƯỚC M2** (xem §3.1) — KHÔNG để treo song song với việc code. Một UTxO đơn giản nhất nhưng dễ contention khi nhiều collect song song (nhiều tx tranh spend cùng custody). **Quan trọng:** chọn shard = **thay đổi bất biến an toàn NO-DRAIN** (`count == 1` → "K cặp", MATH §9 #5), không phải tham số vận hành — phải có mốc riêng M-shard. Đề xuất: chốt **1-custody** để bootstrap; thêm shard (M-shard riêng) khi đo được contention thật trên Preview. (Tránh yak-shaving sharding sớm; tránh làm lại lõi an toàn nếu đổi sau khi đã code `==1`.)
+1. **Custody một UTxO hay shard — quyết-định-có-số-đo** (T4, CONTRACT §9). Không còn câu hỏi mở cảm tính: **chốt 1-custody bootstrap**, **đo throughput ở M6 Preview** (`batch N/tx × tx/block` so tải đa thuê bao); chỉ thêm **M-shard = shard-by-asset** khi số đo cho thấy contention thật. Shard-by-asset giữ lõi an toàn 1-cặp/shard (`count==1` per-shard) → migration nhẹ, không phải viết lại NO-DRAIN. Chi tiết §3.1.
 2. **`protocol_cut_bps` khởi tạo bao nhiêu?** Tham số mở — cần anh/DAO cho giá trị khởi tạo an toàn để bootstrap (em không bịa).
 3. **Reward bucket nằm trong Treasury core hay tách instance?** Reward (AppEconomics distribute) có nhịp chi khác community/ops (theo epoch, tự động hơn). Có nên tách physical như emergency? — đề xuất bàn ở FEAT.
 4. **Nguồn oracle TWAP cuối** (Score DEX TWAP vs Charli3) — [cần verify], thuộc app-side nhưng ảnh hưởng định giá OriLife.
@@ -293,3 +295,18 @@ Vòng audit đối kháng. EXEC chỉ tự sửa nội dung EXEC; các điểm c
 | 5 | minor | §8 lặp công thức bất biến (trôi dạt khi MATH sửa) | ✅ §8 nay TRỎ mã MATH (TOTAL-CONSERVE/BIV-1/NO-DRAIN) thay vì lặp công thức | — |
 | 6 | minor | Danh mục bucket khác nhau giữa 3 spec (reward/grants/reserve/emergency) | ✅ §7.1 ghi 'danh mục minh họa, DAO chốt' + đối chiếu `bucket_id` TECH | (khuyến nghị các spec không liệt kê danh sách cứng khác nhau) |
 | 7 | nit | EXEC dùng đúng tên `count_inputs_at_script` (verify util.ak L59) | ✅ EXEC giữ nguyên (tên đúng) | **Báo MATH §6.3:** sửa `count_inputs_at_payment_script_hash` → `count_inputs_at_script` (tên thật trong [`util.ak` L59](../Distribution/onchain/lib/magiclamp/lampdist/util.ak)) để khớp code. |
+
+---
+
+## 15. Phản hồi reconcile 2026-06-05
+
+Áp các quyết định KHÓA của CONTRACT (Treasury §9 T1–T5 + Governance §5 D2) vào EXEC. Chỉ đụng mục liên quan; phần còn lại giữ nguyên.
+
+| Áp | Quyết định cite | Đã sửa gì ở EXEC |
+|---|---|---|
+| **M1 datum bỏ ngưỡng** | **T1** (Treasury CONTRACT §9 = Gov **D3** Model A) | §3 M1: `Bucket { id, balance }` — bỏ `release_threshold_num/den`. Treasury KHÔNG tự kiểm ngưỡng; chỉ kiểm `status==Executed` + Proposal NFT + `spend_spec_hash` + `execute_after_epoch`. |
+| **M3 DoD đổi điều kiện reject** | **T1** (= Gov **D3**) | §3 M3: bỏ "release-dưới-ngưỡng → reject"; thay bằng **"release khi proposal chưa `Executed` → reject"** + **"release trước `execute_after_epoch` → reject"**. Treasury chấp hành trạng thái Executed, Governance đã ép ngưỡng + clamp BFT trước. |
+| **Custody đo throughput trước** | **T4** (Treasury CONTRACT §9) | §3.1 + §13 #1: một UTxO custody là điểm contention tuần tự → **EXEC phải đo** (`batch N/tx × tx/block`) ở M6 Preview trước khi khoá. Câu treo #1 nâng thành **quyết-định-có-số-đo**. |
+| **shard-by-asset = đường mở rộng** | **T4** | §3.1: đường mở rộng khi nghẽn = **shard-by-asset** (mỗi shard 1 asset = 1 UTxO độc lập; NO-DRAIN per-shard, `count==1` vẫn đúng trong shard; off-chain cộng tổng cho circulating). Giữ lõi an toàn 1-cặp/shard → migration nhẹ, KHÔNG viết lại NO-DRAIN thành "K cặp". |
+| **Thêm `execute_after_epoch` + `spend_spec_hash`** | **D2** (Gov CONTRACT §5) | §6.1 + §12: `Release` đọc từ ProposalDatum cả `spend_spec_hash` (chống chi-sai-đích) **và** `execute_after_epoch` (time-lock) — 2 blocker cứng M3. `released_cumulative` nếu vesting. Beacon giả lập M3 phải mô phỏng cả 3 field. |
+| Dọn tham số mở | T1 | §11: ghi rõ ngưỡng release bucket + `BFT_FLOOR` **không còn ở Treasury** — do Governance ép, Treasury chấp hành. |

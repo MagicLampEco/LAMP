@@ -77,7 +77,7 @@ Theo [§3 CONTRACT](./CONTRACT.md): **Governance không chạy THẬT trước k
 | C1 — MAGIC tiêu thụ (~18 epoch) | repo MAGIC (registry/committee MAGIC) | UTxO repo MAGIC + authenticity token → reference input | MAGIC chưa expose; MVP dùng UTxO MAGIC **giả lập** (gắn authenticity token) — KHÔNG phải beacon Governance |
 | C2 — LAMP cam kết ScheduleGen (~24 epoch) | repo MAGIC (ScheduleGen) | reference input UTxO ScheduleGen | ScheduleGen có trong MAGIC [cần verify mức sẵn sàng]; MVP dùng UTxO mock nếu chưa sẵn |
 | C3 — uy tín cộng đồng | **Reputation registry on-chain LAMP-side** | reference input đọc UTxO registry | registry chưa có; MVP dùng UTxO registry **giả lập** LAMP-side |
-| C4 — LAMP nắm giữ (cap 100 triệu) | repo LAMP | reference input đọc UTxO ví cử tri (snapshot tại proposal-open epoch) | đọc trực tiếp on-chain được |
+| C4 — LAMP nắm giữ (cap 100 triệu) | repo LAMP | reference input đọc **registry LAMP-holding gắn DID**; mỗi entry `did_commit→holding` BACKED bởi LAMP **khóa thật** trong lock UTxO **một-LAMP-một-DID** (D4) | registry chưa có; MVP dùng registry **giả lập** LAMP-side gắn DID + lock UTxO mock |
 
 Reference input (đọc UTxO mà không tiêu) là cơ chế **CIP-0031**: <https://cips.cardano.org/cip/CIP-0031>. Tài liệu Cardano về reference input: <https://developers.cardano.org/docs/get-started/technical-concepts/#reference-inputs> [cần verify đúng URL canonical] — đã vào ledger từ nâng cấp Vasil.
 
@@ -86,7 +86,7 @@ Reference input (đọc UTxO mà không tiêu) là cơ chế **CIP-0031**: <http
 - **C1** đọc **trực tiếp từ UTxO repo MAGIC** qua reference input + **authenticity token** của committee MAGIC (TECH §5.2) — committee MAGIC chứ KHÔNG phải committee/beacon Governance. MVP chưa có nguồn thật → dùng **UTxO MAGIC giả lập gắn authenticity token**.
 - **C2** đọc **UTxO ScheduleGen** (repo MAGIC) qua reference input (TECH §5.3). MVP dùng UTxO mock nếu ScheduleGen chưa expose.
 - **C3** đọc **Reputation registry on-chain LAMP-side** qua reference input (TECH §5.5 CHỐT). **KHÔNG** lấy từ beacon committee post. MVP dùng UTxO registry giả lập LAMP-side.
-- **C4** đọc trực tiếp UTxO ví cử tri, theo **snapshot tại proposal-open epoch** (TECH §5.4 — tránh lỗ hổng "mua LAMP trước tally rồi tiêu sau").
+- **C4** đọc qua **registry LAMP-holding gắn DID** (CONTRACT §5 **D4**): mỗi entry `did_commit→holding` chỉ hợp lệ khi BACKED bởi LAMP **khóa thật** trong lock UTxO **một-LAMP-một-DID** (UTxO bị tiêu khi khóa → không double-count một kho LAMP cho 2 DID). **CẤM đọc số dư ví trần** qua reference input (mô hình cũ "ví-ref-input snapshot" đã bị D4 loại — vừa hở "mượn-ảnh" hai DID trỏ một ví, vừa cho phép C4 sống lại bằng số dư ví bất kỳ). MVP dùng registry giả lập LAMP-side gắn DID + lock UTxO mock. Negative-test "mượn-ảnh" + "mua trước tiêu sau" theo registry: §3 M5.
 
 Lý do (tối ưu eUTXO): script context không có sẵn các tổng hợp lịch sử nhiều epoch → tổng hợp được tính ở nguồn (MAGIC registry / ScheduleGen / Reputation registry), lõi Governance chỉ **đọc qua reference input + verify token xác thực**. Trust-but-verify: giá trị public, ai cũng đối chiếu được.
 
@@ -133,13 +133,13 @@ Mỗi mốc có: đầu vào, việc, **đầu ra kiểm chứng được** (tes
 ### M1 — MATH: công thức VP (DID-agnostic)
 
 - **Đầu vào:** CONTRACT §1 (công thức nhân `VP_i = ∏_k min(C_{k,i}, cap_k)^{w_k}`).
-- **Việc:** theo TECH QĐ-T1, **off-chain TÍNH VP đầy đủ** (kể cả mũ phân số `w_k` qua `exp`/`ln` float) → quy về **fixed-point `vp_claimed`**; **on-chain KHÔNG tính lại lũy thừa**, Tally CHỈ **verify rẻ bằng bảng tra số nguyên** do MATH định (chốt `c*_capped` + tra bảng quy đổi). Vì Plutus không có số thực và hàm siêu việt (`exp`/`ln`) không có sẵn, không tồn tại "hàm VP on-chain đầy đủ" để bit-khớp với float off-chain. Biểu diễn fixed-point + bảng tra do MATH định; EXEC chỉ yêu cầu **xác định (deterministic)** và **`vp_claimed` off-chain khớp Tally-tra-bảng trong dải sai số fixed-point do MATH định** (KHÔNG phải hai engine lũy thừa chạy song song khớp bit).
-- **Test:** property-based (xem §4.2) cho các tính chất MATH chứng minh: bounded (cap chặn trên), monotonic theo từng C, geometric (một C=0 → VP=0). Đối chiếu `vp_claimed` off-chain với kết quả Tally tra bảng on-chain trên cùng bộ vector.
-- **Xong khi:** ≥ N property pass (N do MATH định) + bộ vector `vp_claimed` off-chain khớp Tally-tra-bảng on-chain **trong dải sai số MATH định**.
+- **Việc:** theo TECH QĐ-T1, **off-chain TÍNH VP đầy đủ** (kể cả mũ phân số `w_k` qua `exp`/`ln` float) → quy về **fixed-point `vp_offchain_ref`** (giá trị off-chain CHỈ để hiển thị/đối chiếu test, **KHÔNG vào VoteDatum, KHÔNG là input của Tally** — D5); **on-chain KHÔNG tính lại lũy thừa**, Tally CHỈ **verify rẻ bằng bảng tra số nguyên** do MATH định (chốt `c*_capped` + tra bảng quy đổi). Vì Plutus không có số thực và hàm siêu việt (`exp`/`ln`) không có sẵn, không tồn tại "hàm VP on-chain đầy đủ" để bit-khớp với float off-chain. Biểu diễn fixed-point + bảng tra do MATH định; EXEC chỉ yêu cầu **xác định (deterministic)** và **`vp_offchain_ref` off-chain khớp Tally-tra-bảng trong dải sai số fixed-point do MATH định** (KHÔNG phải hai engine lũy thừa chạy song song khớp bit).
+- **Test:** property-based (xem §4.2) cho các tính chất MATH chứng minh: bounded (cap chặn trên), monotonic theo từng C, geometric (một C=0 → VP=0). Đối chiếu `vp_offchain_ref` off-chain với kết quả Tally tra bảng on-chain trên cùng bộ vector.
+- **Xong khi:** ≥ N property pass (N do MATH định) + bộ vector `vp_offchain_ref` off-chain khớp Tally-tra-bảng on-chain **trong dải sai số MATH định**.
 
 ### M2 — TECH: datum/redeemer + đọc C1–C4 + clamp BFT (nguyên lý 5)
 
-- **Việc:** validators `VotingPower` đọc C1–C4 qua reference input (C1 từ UTxO MAGIC + authenticity token; C2 từ ScheduleGen; C3 từ Reputation registry LAMP-side; C4 trực tiếp UTxO ví theo snapshot — TECH §5). Schema UTxO mock + token xác thực cho C1/C2/C3 (cơ chế test khi nguồn thật chưa expose, §2.2), format `did_proof` opaque + `Stub` verifier (committee multisig, tái dùng mẫu Distribution).
+- **Việc:** validators `VotingPower` đọc C1–C4 qua reference input (C1 từ UTxO MAGIC + authenticity token; C2 từ ScheduleGen; C3 từ Reputation registry LAMP-side; **C4 từ registry LAMP-holding gắn DID, mỗi entry BACKED bởi LAMP khóa thật trong lock UTxO một-LAMP-một-DID — CONTRACT §5 D4, CẤM đọc số dư ví trần**). Schema UTxO mock + token xác thực cho C1/C2/C3 + registry+lock-UTxO mock cho C4 (cơ chế test khi nguồn thật chưa expose, §2.2), format `did_proof` opaque + `Stub` verifier (committee multisig, tái dùng mẫu Distribution).
 - **Việc (clamp BFT — nguyên lý 5 CONTRACT §2):** Tally KHÔNG cộng thẳng `VP_i`. Mỗi DID bị **kẹp về sàn phi tập trung** trước khi cộng:
   ```
   VP_eff_i = min( VP_i , ΣVP / BFT_FLOOR )      với BFT_FLOOR = 21 (tham số DAO chỉnh, mặc định 21)
@@ -176,15 +176,17 @@ Mỗi mốc có: đầu vào, việc, **đầu ra kiểm chứng được** (tes
 
 ### M5 — Deploy Preview (committee bootstrap, DID vẫn giả lập)
 
-- **Việc:** script tuần tự bám mẫu Distribution: `00_preflight` (kiểm tra ví/quỹ Preview) → `01_deploy` (script address + beacon NFT one-shot) → `02_seed` (post UTxO mock C1/C2/C3 gắn token xác thực + nạp LAMP test cho C4, ghi nhận **snapshot số dư tại proposal-open epoch** theo TECH §5.4) → `03_genesis` (mở proposal mẫu) → `04_e2e` (3 cử tri Stub vote, tally on-chain, recall thử). Ghi nhật ký như [`LIVE_DEPLOY_PREVIEW.md`](../../Distribution/scripts/LIVE_DEPLOY_PREVIEW.md).
-- **Negative test snapshot C4 (bắt buộc):** thêm kịch bản cử tri Stub **đổi số dư LAMP SAU khi vote** (tiêu hoặc nạp thêm), kiểm tally vẫn dùng **giá trị snapshot tại proposal-open epoch** (TECH §5.4), KHÔNG dùng số dư mới. Đây là negative-case "mua LAMP trước tally rồi tiêu sau" — e2e phải phủ.
+- **Việc:** script tuần tự bám mẫu Distribution: `00_preflight` (kiểm tra ví/quỹ Preview) → `01_deploy` (script address + beacon NFT one-shot) → `02_seed` (post UTxO mock C1/C2/C3 gắn token xác thực; cho C4 thì **khóa LAMP test vào lock UTxO một-LAMP-một-DID rồi post registry mock LAMP-holding gắn `did_commit` của từng cử tri Stub** — CONTRACT §5 D4, KHÔNG nạp LAMP vào ví trần để đọc số dư) → `03_genesis` (mở proposal mẫu) → `04_e2e` (3 cử tri Stub vote, tally on-chain, recall thử). Ghi nhật ký như [`LIVE_DEPLOY_PREVIEW.md`](../../Distribution/scripts/LIVE_DEPLOY_PREVIEW.md).
+- **Negative test C4 registry (bắt buộc — CONTRACT §5 D4):** hai kịch bản phủ trên **registry LAMP-holding + lock UTxO một-LAMP-một-DID** (KHÔNG còn đọc số dư ví trần):
+  - **(i) "mượn-ảnh" (lỗ hổng C4 sống lại — bắt buộc):** dựng **2 DID Stub cùng trỏ một kho LAMP** (hai entry registry `did_commit_A→holding` và `did_commit_B→holding` cùng BACKED bởi **một** lock UTxO LAMP) → tally **fail** (vì lock UTxO một-LAMP-một-DID đã bị tiêu cho DID A thì DID B không còn bằng chứng khóa, hoặc validator phát hiện hai entry trỏ chung một UTxO khóa). Đây là negative-case lõi của D4: một kho LAMP KHÔNG được tính C4 cho hai DID.
+  - **(ii) "mua trước tiêu sau" theo registry (giữ, đổi sang registry):** cử tri Stub **rút/tiêu LAMP đã khóa SAU khi vote** → kiểm: nếu phá lock UTxO thì entry registry C4 **mất hiệu lực** (hết bằng chứng khóa), tally KHÔNG còn tính C4 cho DID đó; LAMP khóa là điều kiện C4 đứng vững, không phải số dư ví đọc lén. e2e phải phủ cả (i) và (ii).
 - **Negative test clamp + sàn cứng (bắt buộc — nguyên lý 5, §4.5):** (1) **clamp e2e:** dựng 1 DID Stub có VP rất lớn → tally on-chain Preview ghi `VP_eff` kẹp về `ΣVP_thô/21` (mẫu số = ΣVP THÔ, đã chốt M2), đọc lại datum khớp. (2) **sàn cứng e2e:** chạy một quyết định **trọng yếu** với **< 21 DID** thuận → tx tally **fail thật trên Preview** (proposal khóa, về chế độ hội đồng bảo trợ §5.4); ghi tx hash của lần fail như bằng chứng. M5 chạy với committee bootstrap đóng vai hội đồng bảo trợ (chưa đủ 21 DID độc lập thật là điều BÌNH THƯỜNG ở giai đoạn này — đúng §5.4).
 - **Lưu ý collateral/datum decode:** Distribution từng vấp datum decode + collateral ở e2e live (commit `1fbd78a4`) → kế thừa bài học: test decode datum thật trên Preview, đặt collateral đúng.
 - **Bất biến chống-thâu-tóm cho M5 (BẮT BUỘC — vì M5 là điểm tập trung quyền lực tối đa):** trong M5 một committee đơn lẻ đang kiểm soát CẢ danh tính (DID Stub) LẪN UTxO mock C1/C2/C3 → về nguyên tắc có thể bịa cử tri + VP tùy ý. Phải chặn bằng các bất biến sau:
   - (a) **Danh sách DID Stub công khai + cố định TRƯỚC khi mở proposal**, commit on-chain (vd hash danh sách trong datum genesis). Committee **KHÔNG được thêm DID giữa kỳ** bỏ phiếu.
   - (b) **Mỗi giá trị mock C1/C2/C3 kèm bằng chứng đối chiếu nguồn** (link Cardano/MAGIC thật) ngay cả ở MVP. Nếu chưa đối chiếu được nguồn thật, **đánh dấu rõ: "M5 là test TIN-CẬY-COMMITTEE, KHÔNG phải bằng chứng chống-sybil — chống-sybil chỉ có hiệu lực từ M6"** (xem §2.1).
   - (c) **Kết quả tally M5 KHÔNG được dùng làm tiền lệ quản trị thật** — chỉ là bằng chứng cơ chế chạy đúng.
-- **Xong khi:** có tx hash Preview thật cho mỗi bước + tally on-chain đọc lại khớp tính toán off-chain (trong dải sai số MATH định) + negative test snapshot C4 pass + **negative test clamp + sàn cứng pass (có tx hash lần tally fail khi < 21 DID)** + Nakamoto coefficient đo được ghi vào nhật ký (§5.5) + ba bất biến (a)(b)(c) được khẳng định trong nhật ký deploy.
+- **Xong khi:** có tx hash Preview thật cho mỗi bước + tally on-chain đọc lại khớp tính toán off-chain (trong dải sai số MATH định) + **negative test C4 registry pass — cả "mượn-ảnh" (2 DID trỏ một kho LAMP → fail) lẫn "mua trước tiêu sau" (phá lock → mất C4)** + **negative test clamp + sàn cứng pass (có tx hash lần tally fail khi < 21 DID)** + Nakamoto coefficient đo được ghi vào nhật ký (§5.5) + ba bất biến (a)(b)(c) được khẳng định trong nhật ký deploy.
 
 ### M6 — Mở blocker DID + chuyển sang DAO (chạy thật)
 
@@ -213,7 +215,7 @@ Nguyên tắc gốc: **verify behavior, không chỉ structure**. Compile pass �
   - **bounded:** mỗi `min(C_k, cap_k)` ≤ `cap_k` → VP có chặn trên.
   - **monotonic:** tăng một `C_k` không làm VP giảm.
   - **geometric collapse:** tồn tại `k` với `C_k = 0` → `VP = 0` (token max C4 + C3=0 ⇒ VP=0; đây là chứng minh "token không mua được quyền lực", CONTRACT §1).
-  - **xác định:** `vp_claimed` off-chain (exp/ln float → fixed-point) khớp Tally-tra-bảng on-chain **trong dải sai số fixed-point MATH định** trên cùng vector. KHÔNG kỳ vọng bit-khớp tuyệt đối: xấp xỉ số nguyên của hàm siêu việt (exp/ln) không thể bit-khớp với float — chỉ khớp trong dải (MATH §11.5).
+  - **xác định:** `vp_offchain_ref` off-chain (exp/ln float → fixed-point) khớp Tally-tra-bảng on-chain **trong dải sai số fixed-point MATH định** trên cùng vector. KHÔNG kỳ vọng bit-khớp tuyệt đối: xấp xỉ số nguyên của hàm siêu việt (exp/ln) không thể bit-khớp với float — chỉ khớp trong dải (MATH §11.5).
 - Off-chain (TS) có thể bổ sung property test bằng `fast-check` để đối chiếu chéo [cần verify đã có trong node_modules].
 
 **Ví dụ số minh hoạ** (con số cap/weight là **tham số mở (DAO định)** — đây chỉ để hiểu tính chất):
@@ -308,7 +310,7 @@ Hệ quả trực tiếp của **sàn cứng** (nguyên lý 5): nếu số DID �
 |---|---|---|---|
 | R1 | **DID PhoenixKey trượt tiến độ** → M6 kẹt | Cao | Tách build/test khỏi chạy thật (§2.1). M0–M5 hoàn tất độc lập với DID. Hệ "sẵn sàng cắm DID" chứ không "chờ DID". |
 | R2 | **Committee beacon gian lận / sai số** (C1/C2/C3) | Trung | Giá trị public, trust-but-verify (mẫu Distribution QĐ2). Bất kỳ ai đối chiếu Cardano/MAGIC thật; sai → cộng đồng phát hiện + recall committee. |
-| R3 | **Lệch fixed-point on-chain vs off-chain** → tally sai | Cao | Bắt buộc `vp_claimed` off-chain khớp **Tally-tra-bảng on-chain trong dải sai số fixed-point MATH định** (M1) — KHÔNG phải hai engine lũy thừa khớp bit (off-chain dùng exp/ln float, on-chain chỉ tra bảng số nguyên) + property test xác định (§4.2). Không ship nếu vector lệch ra ngoài dải. |
+| R3 | **Lệch fixed-point on-chain vs off-chain** → tally sai | Cao | Bắt buộc `vp_offchain_ref` off-chain khớp **Tally-tra-bảng on-chain trong dải sai số fixed-point MATH định** (M1) — KHÔNG phải hai engine lũy thừa khớp bit (off-chain dùng exp/ln float, on-chain chỉ tra bảng số nguyên) + property test xác định (§4.2). Không ship nếu vector lệch ra ngoài dải. |
 | R4 | **Cross-repo (MAGIC) đổi schema C1/C2** phá đọc reference input | Trung | Khoá interface contract beacon ở M0; versioned schema; integration test đối chiếu schema MAGIC thật trước M5. |
 | R5 | **Double-vote / replay** qua UTxO khéo léo | Cao | One-shot vote receipt (DID+proposal_id), mẫu beacon NFT one-shot Distribution; negative test bắt buộc (§4.1). |
 | R6 | **Genesis voters thành tầng lớp đặc quyền** (không chịu rút) | Trung | Không cấp VP đặc quyền vĩnh viễn (§5.1); lộ trình GĐ A→B→C ghi sẵn; danh sách công khai; recall được. |
@@ -323,7 +325,7 @@ Hệ quả trực tiếp của **sàn cứng** (nguyên lý 5): nếu số DID �
 
 | Spec | Xong khi |
 |---|---|
-| **MATH** | Công thức VP biểu diễn xác định (fixed-point + bảng tra); ≥ property test cho bounded/monotonic/geometric-collapse pass (Aiken fuzzer); chứng minh "token không mua được quyền lực" viết rõ; **`vp_claimed` off-chain khớp Tally-tra-bảng on-chain trong dải sai số MATH định (có test so khớp)** — KHÔNG kỳ vọng bit-khớp tuyệt đối với fixed-point exp/ln (MATH §11.5). |
+| **MATH** | Công thức VP biểu diễn xác định (fixed-point + bảng tra); ≥ property test cho bounded/monotonic/geometric-collapse pass (Aiken fuzzer); chứng minh "token không mua được quyền lực" viết rõ; **`vp_offchain_ref` off-chain khớp Tally-tra-bảng on-chain trong dải sai số MATH định (có test so khớp)** — KHÔNG kỳ vọng bit-khớp tuyệt đối với fixed-point exp/ln (MATH §11.5). |
 | **TECH** | Datum/redeemer định nghĩa đủ; validators đọc C1–C4 (C4 trực tiếp, C1/C2/C3 qua beacon+reference input); `Stub` DID verifier cắm được, thay bằng zk-verifier không phá datum; Aiken unit test phủ mọi nhánh + negative test. |
 | **FEAT** | Vòng đời cử tri (gồm tập sự VP≈0) + 3 loại quyết định + luồng proposal/vote/recall mô tả đủ; double-vote chặn; ngưỡng recall (co-sign + %) khớp Governance SPEC; integration test chạy 1 vòng quản trị. |
 | **EXEC** (file này) | M0–M5 có đầu ra kiểm chứng (test xanh + tx hash Preview); kế hoạch M6 + bootstrap DAO ghi rõ; rủi ro + giảm thiểu liệt kê; **clamp BFT + sàn cứng (nguyên lý 5) có test bắt buộc (§4.5) + chế độ hội đồng bảo trợ (§5.4) + mốc đo Nakamoto coefficient (§5.5) ghi rõ**; tài liệu deploy ghi như `LIVE_DEPLOY_PREVIEW.md`. |
@@ -349,7 +351,7 @@ Các tham số EXEC **cố ý KHÔNG bịa con số cuối**:
 
 - **PhoenixKey DID proof on-chain** — blocker tiên quyết cho **chạy thật** (M6). NGOÀI repo LAMP. Build/test (M0–M5) KHÔNG chờ nó (§2.1).
 - **repo MAGIC** — nguồn C1 (MAGIC tiêu thụ) + C2 (ScheduleGen). Đọc qua reference input; cần khoá schema beacon ở M0 (R4).
-- **repo LAMP** — C4 (LAMP UTxO) đọc trực tiếp; tái dùng toolchain + mẫu beacon/committee/one-shot của Distribution.
+- **repo LAMP** — C4 đọc qua **registry LAMP-holding gắn DID + lock UTxO một-LAMP-một-DID** (CONTRACT §5 D4 — KHÔNG đọc số dư ví trần); tái dùng toolchain + mẫu beacon/committee/one-shot của Distribution.
 - **protocol-utils** — tái dùng tiện ích chung.
 
 ---
@@ -357,7 +359,7 @@ Các tham số EXEC **cố ý KHÔNG bịa con số cuối**:
 ## 10. Câu hỏi còn treo
 
 1. **Phi tập trung beacon C1/C2/C3:** sau GĐ C, ai post beacon? Một committee đa chữ ký giữ lâu dài (rủi ro tập trung dữ liệu) hay nhiều committee độc lập / oracle? — chưa chốt, cần thiết kế trước GĐ C (§5.3).
-2. **Biểu diễn fixed-point cho weight `w_k` + bảng tra:** phân số `p/q` + luỹ thừa nguyên, hay log-domain (cộng log thay nhân)? Ảnh hưởng độ chính xác on-chain. Có vòng lặp MATH↔TECH (MATH §14 Q3, TECH §13 Q1, xem ghi chú §2.3). — **MATH** quyết, EXEC chỉ yêu cầu xác định + `vp_claimed` khớp Tally-tra-bảng trong dải sai số (KHÔNG bit-khớp tuyệt đối).
+2. **Biểu diễn fixed-point cho weight `w_k` + bảng tra:** phân số `p/q` + luỹ thừa nguyên, hay log-domain (cộng log thay nhân)? Ảnh hưởng độ chính xác on-chain. Có vòng lặp MATH↔TECH (MATH §14 Q3, TECH §13 Q1, xem ghi chú §2.3). — **MATH** quyết, EXEC chỉ yêu cầu xác định + `vp_offchain_ref` khớp Tally-tra-bảng trong dải sai số (KHÔNG bit-khớp tuyệt đối).
 3. **C3 (uy tín) lấy on-chain hay beacon?** "Lịch sử quyết định đúng" có thể suy ra on-chain từ vote receipts, hoặc committee chấm điểm rồi post beacon. On-chain thì sạch hơn nhưng tốn ExUnit/khó định nghĩa "đúng". — cần FEAT+TECH chốt nguồn trước M2.
 4. **Mức sẵn sàng thật của ScheduleGen (C2) trong MAGIC** — `[cần verify]` có UTxO đọc được qua reference input chưa, schema ổn định chưa.
 5. **Ngưỡng recall** trong Governance SPEC (200/500 DID, 66%/75%) — có còn đúng sau khi mô hình chuyển sang VP nhân không? FEAT cần rà lại (co-sign theo đầu người hay theo VP?).
@@ -372,13 +374,13 @@ Các tham số EXEC **cố ý KHÔNG bịa con số cuối**:
 
 Đã áp dụng cả 9 finding. Tóm tắt cách xử lý + chỗ sửa:
 
-1. **[major] M1/R3/§4.2 "bit-khớp" sai chỗ** → đã sửa. M1 bỏ "cài hàm VP on-chain đầy đủ"; theo TECH QĐ-T1: off-chain tính exp/ln float → `vp_claimed` fixed-point, on-chain Tally chỉ tra bảng số nguyên. R3 + §4.2 + DoD MATH §7 đổi "bit-khớp" thành "khớp Tally-tra-bảng trong dải sai số MATH định".
+1. **[major] M1/R3/§4.2 "bit-khớp" sai chỗ** → đã sửa. M1 bỏ "cài hàm VP on-chain đầy đủ"; theo TECH QĐ-T1: off-chain tính exp/ln float → `vp_offchain_ref` fixed-point, on-chain Tally chỉ tra bảng số nguyên. R3 + §4.2 + DoD MATH §7 đổi "bit-khớp" thành "khớp Tally-tra-bảng trong dải sai số MATH định".
 2. **[major] Nguồn C1/C3 sai khuôn** → đã đồng bộ §2.2 với TECH §5: C1 từ UTxO MAGIC + authenticity token (committee MAGIC, không phải beacon Governance); C2 từ ScheduleGen; C3 từ Reputation registry LAMP-side qua reference input. "Beacon giả lập" chỉ là cơ chế UTxO mock để test, không phải nguồn chuẩn — ghi rõ. §1 cũng sửa cho khớp.
 3. **[major] M5 single-point-of-trust (sybil)** → đã thêm 3 bất biến vào M5 §3 + §5.1 GĐ A: (a) danh sách DID Stub công khai + cố định, commit on-chain trước proposal; (b) mock C1/C2/C3 kèm bằng chứng nguồn, hoặc đánh dấu rõ "M5 là test tin-cậy-committee, không phải bằng chứng chống-sybil"; (c) tally M5 không làm tiền lệ quản trị thật.
 4. **[minor] Bịa số recall ở M3** → đã dời con số 200/500 + 66/75 ra khỏi việc-phải-build M3, đánh dấu "tham số mở (DAO định)"; §8 ghi rõ đó chỉ là GỢI Ý chưa chốt (FEAT dùng 2/3, 3/4 khác).
 5. **[minor] "vuông góc" + URL Vasil** → đã sửa §2.1: thay "vuông góc (⟂)" bằng "tách được về build/test, NHƯNG đúng đắn chống-thâu-tóm PHỤ THUỘC giả định 1-DID-1-người (MATH §10/§13); M0–M5 chỉ chứng minh cơ chế, an toàn sybil từ M6". Thay URL Vasil `[cần verify]` bằng link Cardano developers reference-input (vẫn để `[cần verify]` đúng canonical), giữ CIP-0031.
 6. **[minor] DoD MATH §7 "bit-khớp"** → đã sửa cùng finding 1 (khớp trong dải, có test so khớp).
-7. **[minor] M5 thiếu snapshot C4** → đã thêm negative test "đổi số dư LAMP sau khi vote, tally vẫn dùng snapshot tại proposal-open epoch" (TECH §5.4) vào M5 04_e2e + DoD M5.
+7. **[minor] M5 thiếu negative test C4** → đã thêm negative test C4 vào M5 04_e2e + DoD M5. **Lưu ý (cập nhật theo D4):** vòng audit này ban đầu dùng mô hình "ví-ref-input snapshot tại proposal-open epoch (TECH §5.4)"; mô hình đó đã bị **CONTRACT §5 D4 loại** (hở "mượn-ảnh" + cho C4 sống lại bằng số dư ví bất kỳ). Negative test C4 nay theo **registry LAMP-holding gắn DID + lock UTxO một-LAMP-một-DID**: "mượn-ảnh" (2 DID trỏ một kho LAMP → fail) + "mua trước tiêu sau" (phá lock → mất C4). Xem §3 M5 + mục "Phản hồi reconcile 2026-06-05" cuối file.
 8. **[nit] Đồ thị phụ thuộc thiếu vòng MATH↔TECH** → đã thêm ghi chú dưới đồ thị §2.3: M1/M2 chạy interleaved, chốt chung dạng lượng tử hóa `w_k` + bảng tra trước khi khóa (MATH §14 Q3, TECH §13 Q1).
 9. **[nit] §5.2 thiếu bất biến VP=0 toàn cục** → đã thêm bất biến bootstrap: đặt `w_3=0` lúc bootstrap rồi bật dần, hoặc dùng `floor_k` tạm; ghi rõ lý do; liên kết MATH §9.2 / §14 Q1.
 
@@ -419,3 +421,23 @@ Audit phản biện sau khi tích hợp nguyên lý 5 (§12). Áp 5 finding:
 5. **[nit] §12 dòng tóm tắt lặp "2/3 → đúng 14" theo cách bất đối xứng cũ** — đã đồng bộ §12 mục 1+2: nêu rõ mẫu số = ΣVP THÔ, quy ước 1/3 VƯỢT / 2/3 ĐẠT, 8/14/21 là cận dưới. Ba chỗ (M2, §4.5, §12) nay khớp nhau.
 
 **Không có finding nào bị bỏ** — cả 5 đúng và đã áp. Mọi sửa nằm trong M2 + §4.5 (TC1/TC1b/TC2) + §5.4 (clamp e2e mẫu số) + §12; KHÔNG đụng phần khác, giữ nguyên cấu trúc + đánh số.
+
+---
+
+## 14. Phản hồi reconcile 2026-06-05 (áp D4 — sửa lỗ hổng C4 sống lại)
+
+Áp **CONTRACT §5 D4**: C4 (LAMP nắm giữ) đọc qua **registry LAMP-holding gắn DID**, mỗi entry `did_commit→holding` BACKED bởi LAMP **khóa thật** trong lock UTxO **một-LAMP-một-DID** (UTxO bị tiêu khi khóa → không double-count một kho LAMP cho 2 DID). **CẤM đọc số dư ví trần** qua reference input. Bỏ hẳn mô hình cũ "ví-ref-input snapshot tại proposal-open epoch (TECH §5.4)" — mô hình đó vừa hở **"mượn-ảnh"** (2 DID trỏ chung một ví/kho LAMP), vừa cho **C4 sống lại** bằng số dư ví bất kỳ.
+
+Đã sửa (tất cả cite **D4**, BỎ mọi cite **TECH §5.4** cho mô hình ví-ref-input):
+
+- **§2.2 bảng** (hàng C4): từ "reference input đọc UTxO ví cử tri (snapshot)" → "registry LAMP-holding gắn DID + lock UTxO một-LAMP-một-DID"; trạng thái nguồn đổi sang "registry giả lập LAMP-side gắn DID + lock UTxO mock".
+- **§2.2 quyết định** (bullet C4): đổi sang registry + lock một-LAMP-một-DID; ghi rõ CẤM đọc số dư ví trần + lý do D4 (mượn-ảnh + C4 sống lại); cite D4.
+- **M2** (đọc C1–C4): C4 từ registry gắn DID + lock UTxO một-LAMP-một-DID, CẤM ví trần; mock registry+lock cho C4; cite D4.
+- **M5 `02_seed`**: thay "nạp LAMP vào ví cho C4 + ghi snapshot" → **khóa LAMP vào lock UTxO một-LAMP-một-DID rồi post registry mock gắn `did_commit`** từng cử tri Stub; cite D4.
+- **M5 negative test**: BỎ negative test snapshot-ví cũ; THÊM **(i) "mượn-ảnh"** — 2 DID trỏ một kho LAMP → tally **fail** (lõi của D4); **(ii) "mua trước tiêu sau" theo registry** (giữ ý cũ nhưng đổi cơ chế) — phá lock UTxO sau khi vote → entry C4 mất hiệu lực, không còn tính C4. DoD M5 cập nhật theo.
+- **§9 phụ thuộc**: C4 đọc qua registry + lock một-LAMP-một-DID (D4), không đọc ví trần.
+- **§11 mục 7** (audit cũ): ghi chú cập nhật theo D4 — mô hình TECH §5.4 đã bị loại, negative test C4 nay theo registry.
+
+**Giữ nguyên (KHÔNG đụng):** mọi mục clamp BFT / sàn cứng / mẫu số ΣVP THÔ (§2.2 C1/C2/C3, M2 clamp, §4.5 TC1–TC4, §5.4, §5.5, §12, §13); cap C4 = 100 triệu LAMP (CONTRACT §1/§3); per-capita không token-weighted. LAMP **khóa** ở đây là **chuyển trạng thái** (lock UTxO), KHÔNG burn — bảo toàn `Σ_out = Σ_in` (Treasury CONTRACT §5). Con số cap/weight khác vẫn là "tham số mở (DAO định)".
+
+**Lý do (4 trục):** *Định hướng dài hạn* — đóng lỗ hổng cho phép token-thuần mua C4 qua ví ảo, giữ đúng "token đơn thuần vô hiệu" (CONTRACT §2 nguyên lý 3) → tăng tin cậy hệ open-SDK. *Nguyên bản* — C4 phải là **bằng chứng khóa vốn gắn danh tính**, không phải số dư đọc lén (số dư ví chia sẻ được giữa nhiều DID). *Tối ưu eUTXO* — lock UTxO một-LAMP-một-DID bị **tiêu** khi khóa nên double-count bất khả thi về cấu trúc (không cần kiểm tra phức tạp); registry chỉ là reference input rẻ. *Lợi ích user + bền vững* — chống "mượn-ảnh" sybil bằng vốn chung, an toàn vốn user (LAMP khóa truy vết được, mở khóa được, không đốt).

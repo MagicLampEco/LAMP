@@ -110,13 +110,15 @@ tham số mạng: [Cardano docs](https://docs.cardano.org/about-cardano/explore-
 **Quyết định:** chia hai pha.
 
 1. **Off-chain (client/indexer):** đọc C1–C4 từ chain, tính `VP_i` đầy đủ (kể cả mũ phân số bằng
-   số thực), tạo phiếu mang **`vp_claimed`** (số nguyên fixed-point, MATH định thang).
+   số thực) để hiển thị/ước lượng cho cử tri. **KHÔNG** nhét số VP vào datum phiếu — VoteDatum chỉ
+   mang 4 đầu vào `c*_capped` (CONTRACT §5 D5 bỏ `vp_claimed`).
 2. **On-chain (Vote validator):** KHÔNG tính lại lũy thừa. Thay vào đó **verify rẻ**:
    - Mỗi `C_{k,i}` được **chứng minh bằng reference input thật** (xem §5) → giá trị đầu vào không
      bịa được.
-   - Vote validator **chỉ chốt các đầu vào `C_k` (đã cap) vào datum phiếu**. Vote **KHÔNG** kiểm
-     `vp_claimed` (không quy đổi sang power ở Vote). **Tally** mới quy đổi `c*_capped → power` bằng
-     **bảng tra (lookup table) số nguyên** do DAO công bố on-chain (trỏ bởi `weight_param_ref`).
+   - Vote validator **chỉ chốt các đầu vào `C_k` (đã cap) vào datum phiếu**. Vote **KHÔNG** tính
+     power. **Tally** mới quy đổi `c*_capped → power` bằng **bảng tra (lookup table) số nguyên** do
+     DAO công bố on-chain (trỏ bởi `weight_param_ref`). **Không có `vp_claimed` để kiểm** — Tally là
+     nguồn power duy nhất (CONTRACT §5 D5).
 
    > **Sửa audit #9:** Bản trước nêu hai biến thể — (i) "kiểm `vp_claimed` nằm trong khoảng
    > `[VP_lo, VP_hi]` mà off-chain cung cấp **mốc nội suy đã ký**", và (ii) "chốt `c*_capped`, Tally
@@ -174,8 +176,13 @@ pub type ProposalDatum {
   snapshot_epoch  : Int,         // epoch khóa snapshot C4 (= vote_open_epoch; xem §5.4)
   // snapshot tham chiếu (chống đổi luật giữa chừng — xem §5.6):
   weight_param_ref: OutputReference, // UTxO bảng weight/cap dùng cho đề xuất này
+  // --- interface Gov→Treasury (CONTRACT §5 D2 + Treasury §9 T1) — HARD BLOCKER cho Release ---
+  spend_spec_hash    : ByteArray, // hash canonical danh sách (bucket, asset, amount, to) đã duyệt;
+                                  //   = b"" nếu proposal không chi kho bạc. Treasury so khớp (T1).
+  released_cumulative: Int,       // tổng đã giải ngân qua nhiều tx — chống chi vượt spend_spec_hash.
+  execute_after_epoch: Int,       // mốc time-lock: ExecuteProposal/Release chỉ hợp lệ khi epoch ≥ giá trị này.
   // kết quả (điền khi Tallied):
-  yes_power       : Int,         // tổng VP phiếu YES (fixed-point)
+  yes_power       : Int,         // tổng VP phiếu YES — power ĐÃ CLAMP (fixed-point, §9.5.1)
   no_power        : Int,
   abstain_power   : Int,         // tổng VP phiếu Abstain (vào quorum-VP, không vào yes/no)
   voter_count     : Int,         // số DID đã vote (quorum theo người — xem §9.4)
@@ -199,11 +206,15 @@ pub type ProposalRedeemer {
 - `RecordTally`: chỉ hợp lệ khi **Tally validator** chạy cùng tx (kiểm bằng có input/withdraw từ
   Tally script hash, hoặc Tally NFT có mặt); ghi `yes_power/no_power/abstain_power/voter_count`;
   `Closed → Tallied`.
-- `ExecuteProposal`: `status = Tallied` và **điều kiện thông qua đạt** (biểu thức quorum + ngưỡng —
-  xem §9.4, **kèm sàn cứng số DID thuận ≥ `bft_floor` của nguyên lý 5 — §9.5.2**; power dùng là
-  **đã clamp**, §9.5.1). Các ngưỡng là **tham số mở**, FEAT/MATH định. Nếu đề xuất chi tiêu kho bạc → tx này
-  đồng thời chi `treasury.ak` (Distribution), Proposal validator chỉ chuyển trạng thái, **không** tự
-  kiểm logic kho bạc (treasury tự kiểm).
+- `ExecuteProposal`: `status = Tallied` và **điều kiện thông qua đạt** (biểu thức `pass` canonical
+  §9.4: nhân-chéo số nguyên dấu `≥` + sàn cứng số DID thuận ≥ `bft_floor` — §9.5.2; power dùng là
+  **đã clamp**, §9.5.1). **Time-lock:** `get_epoch(tx) ≥ execute_after_epoch` (D2). Các ngưỡng là
+  **tham số mở**, FEAT/MATH định. Nếu đề xuất chi tiêu kho bạc → tx này đồng thời chi `treasury.ak`,
+  Proposal validator chỉ chuyển trạng thái + cổng-mở; **không** tự kiểm logic kho bạc (treasury tự
+  kiểm). Theo **Model A** (CONTRACT §5 D3 + Treasury §9 T1): Governance ép TOÀN BỘ ngưỡng (gồm clamp
+  BFT + sàn cứng) **trước**; Treasury chỉ kiểm `status==Executed` + Proposal NFT + `spend_spec_hash`
+  + `execute_after_epoch` — đóng lỗ hổng "release bỏ qua clamp" (GAME-1). `released_cumulative` cập
+  nhật mỗi tx chi để chống chi vượt qua nhiều tx (tổng giải ngân ≤ tổng trong `spend_spec_hash`).
 
 > **Ghi chú liveness (sửa audit #7):** Vote dùng Proposal UTxO làm **reference input** (đọc, không
 > tiêu) còn `CloseVoting` **tiêu (spend)** Proposal UTxO. Ở biên cửa-sổ-đóng có **điều kiện đua**:
@@ -238,7 +249,8 @@ pub type VoteDatum {
   c2_capped    : Int,          // ScheduleGen commitment, đã min(·, cap2)
   c3_capped    : Int,          // reputation, đã min(·, cap3)
   c4_capped    : Int,          // LAMP nắm giữ (registry-DID), đã min(·, cap4=100_000_000 — CONTRACT §1)
-  vp_claimed   : Int,          // VP fixed-point off-chain tính (Tally kiểm lại bằng bảng tra)
+  // KHÔNG có `vp_claimed` (CONTRACT §5 D5): KHÔNG tin số VP off-chain mớm. Tally tự tính
+  // `power` từ `c*_capped` + bảng tra (§9.2). VoteDatum chỉ chốt 4 đầu vào `c*_capped` đã cap.
 }
 
 pub type VoteRedeemer {
@@ -285,8 +297,8 @@ pub type VoteRedeemer {
      cứng / không redeploy (sửa audit #11, xem §5.2, §5.5). `cap4 = 100_000_000` (CONTRACT §3) có thể
      cứng vì CONTRACT đã chốt là ngoại lệ.
 6. **VP nhất quán:** TECH **không** tính lũy thừa ở Vote (QĐ-T1). Vote **chỉ** chốt `c*_capped` đúng;
-   `vp_claimed` được **Tally** kiểm lại bằng bảng tra. (Không còn biến thể "kiểm ngay ở Vote" — đã
-   chốt một-đường, sửa audit #9.)
+   **Tally** tự tính `power` từ `c*_capped` qua bảng tra (CONTRACT §5 D5 — không có `vp_claimed`
+   off-chain để kiểm). (Không còn biến thể "kiểm ngay ở Vote" — đã chốt một-đường, sửa audit #9.)
 7. **Value/min-ADA:** phiếu UTxO chỉ cần min-ADA + 1 Nullifier token. Bảo toàn: không rút ADA của
    ai khác; output phiếu đặt tại Vote script hash. min-ADA theo
    [ledger `coinsPerUTxOByte`](https://docs.cardano.org/about-cardano/explore-more/parameter-guide/)
@@ -363,10 +375,14 @@ một người vote được.
   ref hint tới beacon của DID khác → tx **fail**.
 - **cap1 đọc từ UTxO tham số** (`weight_param_ref`), **KHÔNG** tham số hóa cứng / không redeploy
   (sửa audit #11).
-- **Ranh giới:** **định nghĩa datum của MAGIC thuộc repo MAGIC.** TECH chỉ chốt *interface*: cần một
-  trường số nguyên "MAGIC consumed trong cửa sổ N epoch, gắn DID" tại UTxO **đọc được bằng reference
-  input** + **được chứng thực** (authenticity token), nếu không attacker tự đặt UTxO giả. → **phụ
-  thuộc cross-repo (xem §12).**
+- **Ranh giới + CONTRACT §5 D9 (CẦN MAGIC xác nhận):** **định nghĩa datum của MAGIC thuộc repo
+  MAGIC.** TECH chỉ chốt *interface*: cần một trường số nguyên "MAGIC consumed trong cửa sổ N epoch"
+  tại UTxO **đọc được bằng reference input** + **được chứng thực** (authenticity token). **Bắt buộc
+  D9:** datum beacon C1 của MAGIC PHẢI **nhúng `did_commit`** đọc **byte-perfect** (cùng encoding với
+  `did_commit` của VoteDatum) để điều kiện (b) chống-mượn-C1 thực thi được. Nếu MAGIC nhúng khác
+  encoding (vd hash khác, thêm prefix) → so khớp byte (b) fail im lặng = vô hiệu chống-mượn. **Cho
+  tới khi MAGIC xác nhận encoding `did_commit` byte-perfect → đánh dấu chống-mượn-C1 là "phụ thuộc
+  xác nhận MAGIC", KHÔNG coi là đã chặn** (CONTRACT §5 D9). → **phụ thuộc cross-repo (xem §12).**
 
 ### 5.3 C2 — ScheduleGen commitment (repo MAGIC)
 - **Nguồn:** UTxO ScheduleGen ghi LAMP cử tri cam kết khóa cho cửa sổ tương lai ~24 epoch, gắn DID.
@@ -376,6 +392,12 @@ một người vote được.
   tham số (sửa audit #11).
 - **Tinh tế thời gian:** cam kết phải còn hiệu lực **tại epoch vote** — Vote kiểm `commit_end_epoch ≥
   epoch` để không tính cam kết đã hết hạn. (chống "cam kết rồi rút ngay").
+- **CONTRACT §5 D9 (CẦN MAGIC xác nhận):** beacon C2 của ScheduleGen PHẢI **nhúng `did_commit`
+  byte-perfect** (cùng encoding VoteDatum) để điều kiện (b) chống-mượn-C2 chạy. Cho tới khi MAGIC xác
+  nhận encoding → chống-mượn-C2 là **"phụ thuộc xác nhận MAGIC"**, chưa coi là đã chặn.
+- **CONTRACT §5 D8 (chống đòn bẩy mua-bằng-tiền):** C2 chỉ tính nếu LAMP **đã khóa qua đủ N epoch
+  tương lai** (biến C2 thành chi-phí-cơ-hội-thời-gian như C1, không phải khóa-tức-thì). Ngoài ra
+  MATH ràng `w_2 + w_4 ≤ w_1 + w_3` ở tầng bảng weight (TECH chỉ tiêu thụ bảng).
 
 ### 5.4 C4 — LAMP nắm giữ (repo LAMP) — **registry gắn DID, KHÔNG reference input ví** (sửa audit #2)
 
@@ -387,18 +409,28 @@ một người vote được.
 >   cùng trỏ ref input tới MỘT ví cá voi** ("cho mượn ảnh") → mỗi DID khai `c4_capped = cap4` từ cùng
 >   một kho LAMP không ai thực giữ. Đọc `quantity_of` không kiểm quyền sở hữu gắn DID.
 
-- **Quyết định v1 (chốt — khuyến nghị (a) của audit):** **bỏ "reference input ví"**, đo C4 qua một
-  **LAMP-holding registry gắn DID** (giống C3 §5.5). Buộc **khóa/đăng ký LAMP theo DID**: một lượng
-  LAMP chỉ đếm cho **một** DID (registry ghi `did_commit → lamp_holding_snapshot`, committee/oracle
-  post tại `snapshot_epoch = vote_open_epoch`). Vì là registry gắn DID + một-LAMP-một-DID, không thể
-  "cho mượn ảnh" cho 120 DID.
-- **Giao diện đọc:** Vote nhận `c4_ref_hint`, kiểm (a) đúng script hash LAMP-holding registry,
-  (b) `did_commit` khớp VoteDatum, (c) trường holding snapshot tại `snapshot_epoch` của Proposal.
-  `c4_capped = min(holding, cap4)`. cap4 = **100 triệu LAMP** (CONTRACT §3 — con số đã chốt, ngoại lệ
-  duy nhất so với "tham số mở").
-- **Vì sao registry chứ không spend-để-chống-mượn:** giải pháp thay thế "buộc chính UTxO ví bị spend
-  trong tx vote rồi trả lại" sẽ **phá tính song song §5.1** (spend = contention). Registry post-trước
-  giữ được song song. (Đọc value khi committee dựng snapshot: `assets.quantity_of`,
+- **Quyết định v1 (chốt — CONTRACT §5 D4):** **bỏ "reference input ví"**, đo C4 qua một
+  **LAMP-holding registry gắn DID** mà mỗi entry `did_commit → holding` được **BACKED bởi LAMP khóa
+  thật** trong một **lock UTxO một-LAMP-một-DID**. Cơ chế khóa: cử tri **tiêu (spend)** LAMP của
+  mình vào một lock UTxO ghi `did_commit` → ledger eUTxO bảo đảm số LAMP đó **rời ví, không còn
+  double-count được cho DID khác** (UTxO bị tiêu khi khóa = không thể đồng thời nằm ở ví cá voi để
+  DID thứ hai trỏ tới). Đây là khác biệt cốt lõi với "đọc số dư": **không đọc, mà KHÓA** — số LAMP
+  được tính C4 phải thực sự bị giam, một lượng LAMP chỉ phục vụ **một** DID. Vì vậy "cho mượn ảnh"
+  cho 120 DID **bất khả thi** (muốn 120 DID cùng khai cap4 phải khóa thật 120 × 100 triệu LAMP).
+- **CẤM tuyệt đối đọc số dư ví trần qua reference input** (CONTRACT §5 D4): `quantity_of` trên một
+  ví không kiểm quyền-sở-hữu-gắn-DID và đọc số dư **hiện tại** (đổi được) → mở "mượn ảnh" + "tiêu
+  rồi nạp lại". Mọi C4 PHẢI đến từ lock UTxO đã giam LAMP gắn DID.
+- **Giao diện đọc:** Vote nhận `c4_ref_hint`, kiểm (a) đúng script hash LAMP-holding registry / lock,
+  (b) `did_commit` khớp VoteDatum, (c) trường holding = lượng LAMP **đang bị khóa** gắn DID đó tại
+  `snapshot_epoch` của Proposal. `c4_capped = min(holding, cap4)`. cap4 = **100 triệu LAMP**
+  (CONTRACT §3 — con số đã chốt, ngoại lệ duy nhất so với "tham số mở").
+- **Negative test bắt buộc (CONTRACT §5 D4):** "mượn-ảnh" — hai DID cùng trỏ `c4_ref_hint` tới **một**
+  kho/lock LAMP → tx thứ hai **fail** (vì lock UTxO đã gắn `did_commit` thứ nhất, không khớp DID thứ
+  hai ở điều kiện (b); và LAMP đã bị tiêu vào lock, không nằm ở ví để khóa lần hai).
+- **Vì sao lock-khóa chứ không spend-trong-tx-vote:** khóa là một tx **riêng, trước** mùa vote (như
+  ScheduleGen C2). Lúc vote chỉ **đọc** lock UTxO qua reference input → giữ tính song song §5.1
+  (nhiều phiếu cùng đọc registry, không tranh chấp). Buộc spend ngay trong tx vote sẽ phá song song.
+  (Dựng/đọc snapshot lượng khóa: `assets.quantity_of`,
   [stdlib `cardano/assets`](https://aiken-lang.github.io/stdlib/cardano/assets.html).)
 - **Ai post snapshot phi tập trung** (không tạo "người canh" — CONTRACT §1): chung câu hỏi với C3 —
   thiết kế validator registry riêng (EXEC). Xem §13.4.
@@ -605,6 +637,12 @@ pub type TallyPhase {
   Clamped     // pha 2 đã chốt: power hiệu dụng sau clamp BFT_FLOOR, sẵn sàng RecordTally
 }
 
+// Một ứng viên "DID vượt trần" — bằng chứng để pha 2 trừ đúng phần vượt (CONTRACT §5 D6):
+pub type TopEntry {
+  vp_raw : Int,         // VP THÔ của DID (đã quy đổi từ c*_capped qua bảng tra, CHƯA clamp)
+  choice : VoteChoice,  // Yes/No/Abstain — để trừ đúng phe khi clamp ở pha 2
+}
+
 pub type TallyDatum {
   proposal_id   : ByteArray,
   phase         : TallyPhase,
@@ -615,6 +653,10 @@ pub type TallyDatum {
   voters_acc    : Int,        // số DID đã cộng (quorum theo người — §9.4)
   // số DID THUẬN (choice == Yes) đã cộng — dùng cho SÀN CỨNG ≥ BFT_FLOOR (§9.5):
   yes_voters_acc : Int,
+  // top-(F−1) DID có VP_raw lớn nhất đã thấy (CONTRACT §5 D6) — bounded ≤ F−1 phần tử.
+  // Pha Summing duy trì như heap; pha Clamped đọc để trừ phần vượt trần (§9.5.3). Tập "DID vượt
+  // trần" LUÔN ⊆ top-(F−1) (chứng minh §9.5.3) → đủ chứa trọn tập over, KHÔNG cần biết ΣVP khi dựng.
+  top_did_vp    : List<TopEntry>,
   // --- pha 2 (Clamped): power hiệu dụng sau khi áp VP_eff = min(VP_i, ΣVP/F) ---
   yes_power_eff : Int,
   no_power_eff  : Int,
@@ -622,6 +664,12 @@ pub type TallyDatum {
   // KHÔNG còn consumed_root: chống đếm-trùng bằng SPEND Vote UTxO (đã tiêu = không cộng lại).
 }
 ```
+
+> **min-ADA TallyDatum (CONTRACT §5 D6).** `top_did_vp` là list bounded `≤ F−1` phần tử
+> (`TopEntry` = 1 `Int` + 1 constr-tag nhỏ). Heap đầy (F=21 → 20 phần tử) thêm cỡ vài trăm byte vào
+> datum → tăng min-ADA UTxO Tally theo `coinsPerUTxOByte`. Phải cấp min-ADA cho UTxO Tally tính theo
+> **bytes heap đầy** ngay từ lúc tạo acc (không để pha Summing chèn thêm rồi thiếu min-ADA giữa
+> chừng). Vì bounded `O(F)` hằng số nên cận trên min-ADA xác định trước, không phụ thuộc số cử tri.
 
 > **Vì sao HAI PHA (first-principles).** Clamp nguyên lý 5 là `VP_eff_i = min(VP_i, ΣVP/F)` — mẫu số
 > `ΣVP` (tổng VP-tham-gia) **chỉ biết sau khi đã duyệt HẾT phiếu**. Trong mẫu spend-đếm theo lô, acc
@@ -660,16 +708,31 @@ Proposal. **Không cần `consumed_root`** vì UTxO đã tiêu ở lô trước 
 TallyDatum cung cấp **cả ba trục** số liệu: `voters_acc` (số DID đã cộng), `yes_voters_acc` (số DID
 THUẬN — đầu người, cho sàn cứng nguyên lý 5), và `yes/no/abstain_power_eff` (tổng VP **đã clamp** §9.5).
 **Đây là biểu thức `pass(proposal)` DUY NHẤT (canonical)** mà `ExecuteProposal` (§3.3) kiểm — không
-spec/mục nào được viết lại biểu thức thứ hai:
+spec/mục nào được viết lại biểu thức thứ hai.
+
+> **CONTRACT §5 D1 (interface KHÓA).** Ngưỡng thông qua dùng **một dạng duy nhất**: nhân-chéo **số
+> nguyên** (KHÔNG dấu phẩy động, KHÔNG dùng `yes>no`), dấu **`≥`** (đúng ngưỡng phải PASS):
+> `Σ VP_eff(THUẬN) × θ_den ≥ W_base_eff × θ_num`, với `W_base_eff = VP_eff(thuận) + VP_eff(chống)`
+> (TRẮNG/Abstain **ngoài** mẫu, KHÔNG vào `W_base_eff`), `(θ_num, θ_den)` đọc từ UTxO tham số (§5.6,
+> mặc định 2/3). KÈM **sàn cứng** `yes_voters_acc ≥ F`. Đồng bộ MATH §8.2 (chuẩn).
 
 ```
-total_vp_eff = yes_power_eff + no_power_eff + abstain_power_eff   // power ĐÃ CLAMP (§9.5.1)
+W_base_eff = yes_power_eff + no_power_eff                         // chỉ THUẬN + CHỐNG (Abstain NGOÀI mẫu — D1)
+total_vp_eff = yes_power_eff + no_power_eff + abstain_power_eff   // gồm Abstain — chỉ cho quorum-VP
 pass(proposal) =
      yes_voters_acc ≥ F                            // SÀN CỨNG nguyên lý 5 — số DID THUẬN ≥ bft_floor (§9.5.2)
   && total_vp_eff   ≥ quorum_vp_threshold          // quorum THEO VP (trục chính, đồng bộ FEAT §3) — ĐÃ CLAMP
   && voter_count    ≥ quorum_voter_threshold       // quorum THEO NGƯỜI (sàn chống thiểu-số-VP-cao)
-  && yes_power_eff  > no_power_eff                  // ngưỡng thông qua — ĐÃ CLAMP (FEAT/MATH định dạng chính xác)
+  && yes_power_eff * θ_den ≥ W_base_eff * θ_num     // NGƯỠNG THÔNG QUA — nhân-chéo số nguyên, dấu ≥ (D1)
 ```
+
+> **Vì sao nhân-chéo số nguyên thay `yes>no` (D1).** (1) `yes>no` chỉ là đa-số-đơn (>1/2 trong
+> THUẬN+CHỐNG) — KHÔNG biểu diễn được ngưỡng siêu-đa-số 2/3 mà DAO cần. (2) Aiken `Int` là bignum
+> → `yes_power_eff * θ_den` không overflow, **không chia** (tránh mất số dư / sai làm tròn của phép
+> chia số nguyên). (3) Dấu `≥`: đạt **đúng** ngưỡng (vd chẵn 2/3) là PASS. (4) Abstain ngoài
+> `W_base_eff`: phiếu trắng **góp quorum** (`total_vp_eff`) nhưng KHÔNG làm loãng/đặc tỷ lệ thuận —
+> chỉ THUẬN vs CHỐNG quyết kết quả. Với `θ_num/θ_den = 1/2` biểu thức quy về đa-số-đơn; với `2/3` ép
+> siêu-đa-số — **một biểu thức, mọi ngưỡng**.
 
 > **Một chỗ canonical.** Mọi `*_power` trong biểu thức là power **HIỆU DỤNG sau clamp** (`yes_power_eff`
 > v.v. — đúng tên field TallyDatum §9.2 pha Clamped), KHÔNG phải power thô `*_power_raw`. **KHÔNG có
@@ -766,8 +829,9 @@ Khi pha Summing xong (đã tiêu hết Vote UTxO của proposal, biết `ΣVP` v
   và `VP_i` khớp giá trị đã cộng ở pha Summing. Vì `|over| ≤ F−1` nhỏ, pha 2 **gói gọn một tx**.
 - **Tính toàn vẹn pha 2:** để validator biết `VP_i` của các DID `over` là thật (không bịa để trừ ít
   đi), pha Summing phải để lại **bằng chứng** VP per-DID lớn. Hai cách (chốt khi build, ghi §13.10):
-  (i) pha Summing duy trì một **danh sách bounded gồm `F−1` DID có `VP_i` lớn nhất đã thấy** (top-(F−1)
-  heap) trong TallyDatum — **KHÔNG cần biết ΣVP**. Đây không phải logic vòng tròn: tập "DID vượt trần"
+  (i) pha Summing duy trì một **danh sách bounded gồm `F−1` DID có `VP_i` lớn nhất đã thấy** — đúng
+  field `top_did_vp : List<TopEntry>` của TallyDatum (CONTRACT §5 D6, §9.2), top-(F−1) heap —
+  **KHÔNG cần biết ΣVP**. Đây không phải logic vòng tròn: tập "DID vượt trần"
   luôn là **tập con của top-(F−1)** này, vì mọi DID vượt trần có `VP_i > ΣVP/F ≥ VP_j` của mọi DID `j`
   **không** vượt → mọi DID vượt đều lớn hơn mọi DID không-vượt → tập vượt nằm trọn trong `F−1` DID lớn
   nhất. Heap chỉ cần so sánh tương đối giữa các `VP_i` (biết ngay khi cộng), không cần ngưỡng tuyệt đối
@@ -780,7 +844,8 @@ Khi pha Summing xong (đã tiêu hết Vote UTxO của proposal, biết `ΣVP` v
 
   (ii) hoặc pha 2 **tiêu lại** đúng các Vote UTxO của DID `over` (≤ `F−1` phiếu) để đọc trực tiếp
   `c*_capped` rồi tra bảng lại — nhưng §9.2 đã tiêu phiếu ở pha Summing, nên (i) thực tế hơn. **Khuyến
-  nghị (i):** giữ top-(F−1) heap "ứng viên vượt trần" trong TallyDatum (bounded, `O(F)` hằng số).
+  nghị (i):** giữ top-(F−1) heap "ứng viên vượt trần" trong field `top_did_vp` của TallyDatum
+(bounded, `O(F)` hằng số — CONTRACT §5 D6).
 
 #### 9.5.4 Chi phí ExUnit — clamp gần như MIỄN PHÍ
 
@@ -825,7 +890,7 @@ pub type RecallRedeemer {
   OpenRecall { cosigners: Int } // chỉ mở khi cosign_count ≥ ngưỡng đầu-người (tham số mở)
   CloseRecall
   RecordRecallTally { yes: Int, no: Int, abstain: Int, voters: Int }
-  ExecuteRecall   // nếu đạt ngưỡng VP (thường CAO hơn proposal thường — tham số mở)
+  ExecuteRecall   // áp ĐÚNG biểu thức pass canonical §9.4 (clamp BFT + sàn cứng), θ_recall ≥ θ thường
 }
 ```
 
@@ -835,8 +900,10 @@ Recall **dùng lại** cơ chế Vote + Nullifier + Tally (cùng `did_commit`, n
 - **Khởi xướng theo đầu người:** `OpenRecall` chỉ hợp lệ khi `cosign_count ≥ cosign_threshold` (số
   DID đồng-ký, vd 200/500 — EXEC §8). Đây là ngưỡng **đầu-người** (sửa audit #5: chỉ KHỞI XƯỚNG mới
   đếm đầu người).
-- **Quyết-định theo VP:** `ExecuteRecall` kiểm biểu thức quorum-VP như §9.4 nhưng **ngưỡng cao hơn**
-  proposal thường (chống lạm dụng bãi nhiệm).
+- **Quyết-định theo VP — recall là quyết định TRỌNG YẾU:** `ExecuteRecall` áp **ĐÚNG biểu thức pass
+  canonical §9.4** — nhân-chéo `ΣVP_eff(thuận)×θ_den ≥ W_base_eff×θ_num` (VP **đã clamp BFT** §9.5) +
+  **sàn cứng** `yes_voters_acc ≥ BFT_FLOOR`. KHÔNG được bỏ clamp hay sàn cứng (nếu bỏ = tái tạo lỗ
+  hổng GAME-1 cho nhánh recall). Chỉ khác: `θ_recall ≥ θ` proposal thường (mặc định ≥ 2/3, tham số mở).
 - Có thể yêu cầu **VP tối thiểu của người khởi xướng** (chống spam recall).
 - Các ngưỡng đều **tham số mở (DAO định)**.
 
@@ -862,11 +929,12 @@ veto" — §13.6).
 | Epoch ân hạn `CloseVoting` (chống đua biên — §3.3) | DAO định. |
 | `quorum_vp_threshold` (quorum theo VP — §9.4) | DAO định (trục chính). |
 | `quorum_voter_threshold` (quorum theo người — §9.4) | DAO định (sàn phụ). |
+| `(θ_num, θ_den)` ngưỡng thông qua (nhân-chéo — §9.4, CONTRACT §5 D1) | DAO định, đọc từ UTxO tham số. Mặc định 2/3. |
 | `bft_floor` (F — nguyên lý 5 §9.5) | **Mặc định 21** (CONTRACT §2.5). DAO chỉnh, đọc từ UTxO tham số (§5.6). Là **SÀN tối thiểu**, không phải ghế cố định — hệ trưởng thành (Nakamoto coef ≫ 21) nâng F để nới trần `1/F`. |
 | Ngưỡng thông qua proposal | FEAT/MATH định; DAO chỉnh. |
 | `cosign_threshold` khởi xướng recall (đầu người — §10.3) | DAO định. |
 | Ngưỡng VP + VP tối thiểu khởi xướng recall | DAO định (cao hơn proposal thường). |
-| Thang fixed-point của `vp_claimed`/power | MATH định. |
+| Thang fixed-point của `power` (Tally tra bảng) | MATH định. |
 
 ---
 
@@ -875,17 +943,20 @@ veto" — §13.6).
 1. **PhoenixKey (BLOCKER tiên quyết).** Cần: định dạng `did_commit`, **registry chứng thực** (v1 —
    §7), bảo đảm DID không chuyển nhượng. (SNARK BLS12-381 chỉ nếu tách tx register-once — §4.4.) Đến
    khi có → build/test bằng DID mock. (CONTRACT §3.)
-2. **Repo MAGIC.** Cần MAGIC expose, ở UTxO đọc-bằng-reference-input + có authenticity token + **gắn
-   `did_commit`**:
+2. **Repo MAGIC (CẦN xác nhận — CONTRACT §5 D9).** Cần MAGIC expose, ở UTxO đọc-bằng-reference-input
+   + có authenticity token + **nhúng `did_commit` byte-perfect** (cùng encoding VoteDatum — D9, điều
+   kiện sống-còn cho chống-mượn-C_k):
    - C1: "MAGIC consumed trong cửa sổ N epoch, gắn DID".
-   - C2: "LAMP committed trong ScheduleGen còn hiệu lực, gắn DID".
-   Datum/policy do **MAGIC repo** định; TECH chỉ tiêu thụ. (CONTRACT §3.)
+   - C2: "LAMP committed trong ScheduleGen còn hiệu lực, gắn DID" (+ D8: đã khóa đủ N epoch).
+   Datum/policy do **MAGIC repo** định; TECH chỉ tiêu thụ. **Cho tới khi MAGIC xác nhận encoding
+   `did_commit` → chống-mượn-C1/C2 là "phụ thuộc xác nhận MAGIC", chưa coi đã chặn** (D9). (CONTRACT §3.)
 3. **Repo LAMP — sẵn có để tái dùng:** `util.ak` (đếm theo script hash, `get_epoch`, builders),
    `treasury.ak` (liên kết ExecuteProposal chi kho bạc), mẫu one-shot `beacon_nft.ak` (authenticity
    NFT + nullifier policy, **cấm burn**). **Lưu ý:** `merkle.ak` **KHÔNG** dùng cho Tally (chỉ verify
    root tĩnh, không accumulator — §9.2). Aiken stdlib v3.1.0, Plutus V3 (`aiken.toml`).
-4. **LAMP-holding registry + Reputation registry (LAMP-side, mới):** validator riêng post snapshot C4
-   (§5.4) + C3 (§5.5) gắn DID, phi tập trung (EXEC). C4 KHÔNG đọc ví trần (sửa audit #2).
+4. **LAMP-holding registry + Reputation registry (LAMP-side, mới):** validator riêng cho C4 (§5.4)
+   + C3 (§5.5) gắn DID, phi tập trung (EXEC). C4 = **lock UTxO một-LAMP-một-DID** (LAMP khóa thật,
+   tiêu khi khóa — CONTRACT §5 D4); KHÔNG đọc ví trần (sửa audit #2). Kèm negative-test "mượn-ảnh".
 5. **MATH spec.** Dạng lượng tử hóa `w_k`, thang fixed-point, làm tròn, bảng tra power. **Clamp
    nguyên lý 5 (§9.5)** thao tác trên VP đã ở thang integer fixed-point này — `cap_per_did = ΣVP/F`
    dùng chia số nguyên (làm tròn xuống, thiên an toàn); MATH chốt thang để phép chia không mất nghĩa.
@@ -1010,5 +1081,44 @@ interface contract, không tự sửa. Báo anh dưới.
 
 ---
 
-*Hết TECH (bản 2 sau audit). Nguồn chuẩn khung: `CONTRACT.md`. Công thức/giá trị: `MATH`. Hành vi:
-`FEAT`. Lộ trình: `EXEC`.*
+## Phản hồi reconcile 2026-06-05
+
+Áp các quyết định ghim cứng ở **Governance CONTRACT §5 (D1–D9)** + **Treasury CONTRACT §9 (T1–T5)**.
+Chỉ đụng mục liên quan, giữ phần còn lại. Bất biến KHÔNG phá: LAMP không burn (`Σ_out = Σ_in`);
+per-capita không token-weighted; clamp BFT `1/F` (mặc định F=21); định giá ở app. Con số tham số
+vẫn "tham số mở (DAO định)" trừ cái CONTRACT đã chốt (`cap4 = 100_000_000`, `bft_floor` mặc định 21,
+`(θ_num,θ_den)` mặc định 2/3).
+
+- **D1 — biểu thức `pass` (§3.3, §9.4).** Đổi ngưỡng thông qua sang **nhân-chéo số nguyên**
+  `yes_power_eff × θ_den ≥ W_base_eff × θ_num` (dấu `≥`), `W_base_eff = yes_power_eff + no_power_eff`
+  (Abstain NGOÀI mẫu), `(θ_num,θ_den)` đọc UTxO tham số (mặc định 2/3). **BỎ `yes_power_eff > no_power_eff`**
+  (chỉ là đa-số-đơn, không biểu diễn được 2/3). Giữ **sàn cứng** `yes_voters_acc ≥ F`. Thêm `(θ_num,θ_den)`
+  vào §11. Power vẫn ĐÃ CLAMP (§9.5.1). Đồng bộ MATH §8.2.
+- **D2 — ProposalDatum (§3.2, §3.3).** Thêm 3 field interface Gov→Treasury: `spend_spec_hash`,
+  `released_cumulative`, `execute_after_epoch`. `ExecuteProposal` thêm time-lock `epoch ≥
+  execute_after_epoch`; cập nhật `released_cumulative` mỗi tx chi (chống chi vượt). Theo **Model A**
+  (D3 + Treasury T1): Gov ép toàn bộ ngưỡng trước, Treasury chỉ kiểm `status==Executed` + NFT +
+  `spend_spec_hash` + `execute_after_epoch`.
+- **D4 — C4 lock một-LAMP-một-DID (§5.4, §12).** C4 = LAMP **khóa thật** trong lock UTxO gắn DID, UTxO
+  bị **tiêu khi khóa** → không double-count cho 2 DID. **CẤM đọc số dư ví trần** qua reference input.
+  Thêm negative-test "mượn-ảnh" (2 DID trỏ một kho LAMP → fail).
+- **D5 — bỏ `vp_claimed` (§2 QĐ-T1, §4.1, §4.2 bước 6).** VoteDatum KHÔNG còn `vp_claimed`. Tally tự
+  tính `power` từ `c*_capped` + bảng tra; không tin số off-chain mớm.
+- **D6 — TallyDatum `top_did_vp` (§9.2, §9.5.3).** Thêm `top_did_vp : List<TopEntry{vp_raw, choice}>`
+  (bounded ≤ F−1) cho pha Clamped trừ đúng phần vượt trần. Thêm type `TopEntry`. Cập nhật **min-ADA**
+  UTxO Tally theo bytes heap đầy (cận trên xác định, `O(F)` hằng số).
+- **D8 — chống đòn bẩy mua-bằng-tiền (§5.3).** Ghi C2 chỉ tính nếu LAMP đã khóa đủ N epoch tương lai
+  (chi-phí-cơ-hội-thời-gian); ràng weight `w_2 + w_4 ≤ w_1 + w_3` ở tầng bảng (MATH định, TECH tiêu thụ).
+- **D9 — interface MAGIC beacon `did_commit` byte-perfect (§5.2, §5.3, §12).** Beacon C1/C2 của MAGIC
+  PHẢI nhúng `did_commit` đọc byte-perfect (cùng encoding VoteDatum) để điều kiện (b) chống-mượn-C_k
+  chạy. **Phụ thuộc xác nhận MAGIC** — tới khi MAGIC xác nhận encoding, chống-mượn-C1/C2 chưa coi là
+  đã chặn.
+
+> **Không áp ở TECH:** D3 (Release-gate Model A) + D7 (thuật toán bảng power) + Treasury T2–T5 — D3
+> đã phản ánh gián tiếp ở §3.3 (Model A), D7 thuộc MATH (TECH tiêu thụ bảng tra), T2–T5 thuộc Treasury
+> spec. Không đụng các mục đó ở file này.
+
+---
+
+*Hết TECH (bản 2 sau audit + reconcile D1–D9). Nguồn chuẩn khung: `CONTRACT.md`. Công thức/giá trị:
+`MATH`. Hành vi: `FEAT`. Lộ trình: `EXEC`.*

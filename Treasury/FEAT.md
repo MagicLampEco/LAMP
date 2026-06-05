@@ -23,7 +23,8 @@ nhu cầu, không trộn lẫn:
    một phần phí về Treasury qua **một hàm chung** `collectToTreasury`, thay vì mỗi app tự chế.
 2. **Ghi sổ minh bạch** — mỗi lần thu để lại receipt `(app_id, asset, amount, cut, epoch)` →
    kiểm toán được, làm đầu vào cho uy tín / Voting Power.
-3. **Giải ngân có kiểm soát** — tiền chỉ rời kho khi một proposal Governance đã pass, qua
+3. **Giải ngân có kiểm soát** — tiền chỉ rời kho khi một proposal Governance đã **duyệt xong**
+   (status `Executed`); Treasury **thi hành**, không tự bỏ phiếu/tự tính ngưỡng (T1). Qua
    multi-sig council + time-lock.
 4. **Giảm lưu hành mà KHÔNG phá tổng cung** — LAMP fixed-supply 36 tỷ là tuyệt đối; "thu về
    Treasury" chỉ **chuyển trạng thái** UTxO lưu hành → kế toán trong kho, đúng mô hình
@@ -49,7 +50,7 @@ Nguyên lý nền (từ CONTRACT §2, §5 — KHÔNG vi phạm):
 - Luồng `collectToTreasury`: app gọi → split protocol cut → ghi vào bucket → phát receipt.
 - Thu theo lô (batch) — nhiều micro-fee gộp vào một settlement tx.
 - Vòng đời bucket: tạo → nạp (qua collect) → đề xuất chi → release → đối soát.
-- Cổng giải ngân qua Governance (đọc kết quả vote qua reference input / beacon) + ngưỡng "≥".
+- Cổng giải ngân qua Governance: Governance đã duyệt (status `Executed`) → Treasury **thi hành**, KHÔNG tự bỏ phiếu / tự tính ngưỡng (T1).
 - Tạo và cấu hình instance đa thuê bao (open SDK).
 - Giảm lưu hành bằng chuyển trạng thái (KHÔNG burn).
 - Vai của từng caller: generators (MAGIC), OriLife, app SDK; council giải ngân; business mở
@@ -129,9 +130,14 @@ thấy được; **không bước nào định giá** (app đã tính `amount` t
    giờ nằm trong custody. App/caller chỉ định đích của `residual`; Treasury không can thiệp giá trị
    nhưng tx phải chứng kiến `cut` về custody (mô hình "chỉ cut vào custody, residual ra provider
    cùng tx" — KHÔNG phải "thu cả `amount` rồi rút `residual` sau").
-3. **Ghi vào bucket.** Số dư bucket `category` tăng đúng **`cut`** trong **sổ kế toán (datum)**,
-   KHÔNG tạo UTxO mới cho bucket. Value vật lý vào custody cũng chỉ là **`cut`** (vào **một UTxO
-   custody** hoặc shard) — khớp với số dư bucket. `residual` không qua custody.
+3. **Ghi vào bucket — ĐƠN-BUCKET (mặc định).** Toàn bộ `cut` vào **đúng một** bucket =
+   `category` của lần thu: số dư bucket `category` tăng đúng **`cut`** trong **sổ kế toán (datum)**,
+   KHÔNG tạo UTxO mới cho bucket. Đây là đường mặc định (`cut → category`, **T2** —
+   [CONTRACT §9 T2](./CONTRACT.md)): một collect chỉ chạm **một** bucket, KHÔNG chia cut ra nhiều
+   bucket. Value vật lý vào custody cũng chỉ là **`cut`** (vào **một UTxO custody** hoặc shard) —
+   khớp với số dư bucket `category`. `residual` không qua custody.
+   *(Đa-bucket — chia một `cut` cho nhiều bucket theo `split_table` — CHỈ là **tùy chọn instance**,
+   KHÔNG phải đường mặc định; xem §5.1.)*
 4. **Phát receipt.** Ghi `(app_id, asset, amount, cut, epoch)` → để kiểm toán + làm tín dụng cho
    Voting Power / uy tín (app_id biết "ai đóng góp bao nhiêu").
 
@@ -241,35 +247,53 @@ chấp nhận được vì chỉ một bucket. Chi tiết cô lập physical ở
 
 ## 4. Release qua cổng Governance
 
-Tiền **chỉ rời kho** khi một proposal Governance đã pass. Treasury **không tự** quyết chi — nó là
-cái két, Governance là người giữ chìa.
+Tiền **chỉ rời kho** khi một proposal Governance đã **duyệt xong** (status `Executed`). Treasury
+**không tự** quyết chi, **không tự bỏ phiếu, không tự tính ngưỡng** — nó là cái két **thi hành**
+quyết định Governance đã chốt. Governance là người giữ chìa; Treasury chỉ mở két khi thấy cờ
+`Executed` (mô hình Model A, **T1 / Gov D3** — [CONTRACT §9 T1](./CONTRACT.md),
+[VotingPower/CONTRACT.md §5 D3](../Governance/VotingPower/CONTRACT.md)).
 
-### 4.1 Cổng đọc kết quả vote
+### 4.1 Cổng đọc cờ Executed (KHÔNG tự tính ngưỡng)
 
-Release đọc kết quả proposal qua **reference input / beacon** của Governance (không tiêu UTxO
-Governance, chỉ đọc — [CIP-31 reference inputs](https://cips.cardano.org/cip/CIP-31)). Treasury
-kiểm: proposal này (a) đúng bucket + asset + amount + đích, (b) đã pass đủ ngưỡng.
+Release đọc trạng thái proposal qua **reference input / beacon** của Governance (không tiêu UTxO
+Governance, chỉ đọc — [CIP-31 reference inputs](https://cips.cardano.org/cip/CIP-31)). Theo
+**Model A (T1)**, Treasury kiểm **đúng bốn điều cờ**, KHÔNG tự đánh giá vote:
 
-### 4.2 Ngưỡng theo loại bucket — dạng "≥"
+1. `status == Executed` — proposal đã được Governance duyệt và chuyển sang thi hành.
+2. **Proposal NFT** đúng (định danh proposal hợp lệ, chống giả mạo).
+3. `spend_spec_hash` khớp — hash canonical danh sách `(bucket, asset, amount, đích)` Treasury
+   sắp chi đúng bằng cái Governance đã duyệt (chống đổi đích/số sau khi pass).
+4. `execute_after_epoch` đã tới — mốc time-lock đã qua.
 
-Mỗi bucket có ngưỡng release riêng, viết dạng **"≥"** (tham số mở — DAO định). Ví dụ minh họa
-(KHÔNG phải số cuối):
+Treasury **KHÔNG** đọc số phiếu, **KHÔNG** so ngưỡng, **KHÔNG** tính Voting Power. Mọi đánh giá
+ngưỡng (gồm clamp BFT) Governance đã ép **trước** khi đặt cờ `Executed` (xem §4.2).
 
-| Bucket | Ngưỡng minh họa |
+### 4.2 Ngưỡng do Governance ép trước — Treasury không tự kiểm
+
+Ngưỡng release **không phải việc của Treasury**. Governance là nơi tính và ép ngưỡng; khi một
+proposal đạt ngưỡng (gồm clamp BFT 1/21 + sàn cứng số DID thuận), Governance mới đặt cờ
+`status == Executed`. Treasury chỉ thấy cờ đó (§4.1) rồi thi hành.
+
+Ngưỡng minh họa theo loại proposal/bucket (số do **Governance** giữ, KHÔNG phải Treasury — viết
+dạng **"≥"**, tham số mở DAO định, KHÔNG phải số cuối):
+
+| Loại bucket | Ngưỡng minh họa (Governance ép) |
 |---|---|
 | community (grants, ecosystem) | ≥ 2/3 |
 | ops (vận hành, hạ tầng) | ≥ 1/2 |
 | emergency (security incident) | ≥ 2/3 |
 
 Ngưỡng tính theo mô hình Voting Power đã chốt (cử tri = người, KHÔNG phải token-weighted —
-xem [VotingPower/CONTRACT.md](../Governance/VotingPower/CONTRACT.md)).
+xem [VotingPower/CONTRACT.md](../Governance/VotingPower/CONTRACT.md)). **Bảng trên chỉ để minh
+họa bối cảnh** — Treasury không cài đặt nó; nó là tham số phía Governance.
 
 ### 4.3 Council + time-lock
 
 Giải ngân cần **multi-sig council** ký + **time-lock** (một khoảng chờ giữa pass và chi).
 
-**Vai council = CHỈ thực thi, KHÔNG phủ quyết.** Council chỉ ký tx release **sau khi** proposal đã
-pass đủ ngưỡng (§4.2) + qua time-lock. Council **KHÔNG** có quyền chặn một proposal đã đạt ngưỡng
+**Vai council = CHỈ thực thi, KHÔNG phủ quyết.** Council chỉ ký tx release **sau khi** Governance
+đã đặt cờ `status == Executed` (§4.1, ngưỡng do Governance ép — §4.2) + qua time-lock. Council
+**KHÔNG** có quyền chặn một proposal đã đạt ngưỡng
 (≥) — nếu cho phép chặn thì council thành một quyền phủ quyết M-of-N **lên trên** kết quả vote
 DID-based (cử tri = người, [VotingPower/CONTRACT.md](../Governance/VotingPower/CONTRACT.md)), tái
 tập trung đúng thứ governance model muốn tránh, mâu thuẫn nguyên lý "Governance giữ chìa, Treasury
@@ -300,8 +324,12 @@ Treasury là **một validator param hóa**. Mỗi hệ sinh thái dựng **mộ
 
 - `governance_ref` — beacon/hash của hệ Governance giữ chìa release của instance này.
 - `accepted_assets[]` — các asset instance chấp nhận thu (vd LAMP, ADA, token doanh nghiệp).
-- `buckets[]` — danh sách bucket + thuộc tính (tên, ngưỡng release, tỉ lệ phân bổ cut).
+- `buckets[]` — danh sách bucket + thuộc tính (tên, ngưỡng release). Mặc định mỗi collect dồn
+  `cut` vào **một** bucket = `category` (đơn-bucket, **T2** — §2.1 bước 3).
 - `protocol_cut_bps` — phần Treasury giữ lại mỗi lần thu (tham số mở — DAO định).
+- `split_table` *(tùy chọn)* — bảng chia một `cut` cho **nhiều** bucket theo tỉ lệ. **KHÔNG**
+  bật mặc định; chỉ instance nào cần đa-bucket mới cấu hình. Khi không có `split_table`, hệ chạy
+  đơn-bucket `cut → category` (§2.1 bước 3, T2).
 
 ### 5.2 Cấu hình ai đổi được gì
 
@@ -375,11 +403,13 @@ kho MagicLamp), hoặc (b) **mở instance riêng** (§5) rồi tự là caller 
 > minh đóng góp. Tôi KHÔNG phải tự viết logic kho bạc, split, hay chống double-satisfaction."
 
 **US-2 — Council giải ngân (thành viên hội đồng MagicLamp):**
-> "Một proposal grant đã pass ≥2/3 community. Tôi cùng council ký tx release sau khi qua time-lock.
-> Validator kiểm proposal khớp bucket/asset/amount/đích và mọi asset khác giữ nguyên. Tôi KHÔNG thể
-> rút quá số proposal duyệt, KHÔNG thể drain ADA, KHÔNG thể chi khi chưa pass. Và tôi **KHÔNG thể
-> chặn** một proposal đã đạt ngưỡng — vai tôi chỉ là **ký thực thi kết quả vote**, không phải phê
-> duyệt lại (§4.3)."
+> "Governance đã duyệt một proposal grant community (đạt ≥2/3 — Governance tự ép ngưỡng đó) và đặt
+> cờ `status == Executed`. Tôi cùng council ký tx release sau khi qua time-lock. Validator Treasury
+> KHÔNG đếm phiếu — nó chỉ kiểm cờ `Executed` + Proposal NFT + `spend_spec_hash` (khớp
+> bucket/asset/amount/đích Governance đã chốt) + `execute_after_epoch`, và mọi asset khác giữ
+> nguyên (§4.1). Tôi KHÔNG thể rút quá số proposal duyệt, KHÔNG thể drain ADA, KHÔNG thể chi khi
+> chưa `Executed`. Và tôi **KHÔNG thể chặn** một proposal đã `Executed` — vai tôi chỉ là **ký thi
+> hành kết quả Governance**, không phải phê duyệt lại (§4.3)."
 
 **US-3 — Business mở instance riêng (team Cardano khác):**
 > "Tôi dựng một Treasury instance cho token của mình: `accepted_assets=[MYTOKEN, ADA]`,
@@ -396,7 +426,7 @@ kho MagicLamp), hoặc (b) **mở instance riêng** (§5) rồi tự là caller 
 | `protocol_cut_bps` | phần Treasury giữ mỗi lần thu | mỗi instance riêng; đổi qua proposal |
 | Ngưỡng release từng bucket | vd community ≥2/3, ops ≥1/2, emergency ≥2/3 | dạng "≥"; số minh họa, chưa chốt |
 | Cửa sổ batch | bao nhiêu collect / bao lâu gộp một settlement | đánh đổi độ trễ ghi sổ ↔ phí |
-| Tỉ lệ phân bổ cut theo bucket | cut chia về các bucket thế nào | nếu instance định tuyến đa bucket |
+| `split_table` (tỉ lệ phân bổ cut theo bucket) | cut chia về các bucket thế nào | **TÙY CHỌN** — mặc định đơn-bucket `cut → category` (T2); chỉ bật khi instance cần đa-bucket |
 | Time-lock release | khoảng chờ giữa pass và chi | phanh an toàn |
 | Số shard custody | khi value quá lớn cho một UTxO | [cần verify] ngưỡng tối ưu — TECH |
 | Ngưỡng tách physical ngoài emergency | có bucket nào khác cần cô lập không | mặc định chỉ emergency |
@@ -482,3 +512,28 @@ kho MagicLamp), hoặc (b) **mở instance riêng** (§5) rồi tự là caller 
 **Ghi chú đồng bộ ngoài FEAT** (cần áp ở các spec kia, ngoài phạm vi lần sửa này):
 - Finding 1: sửa nguồn donation ở CONTRACT §2, TECH §0, MATH §2.1 (cùng đổi CIP-1694 → conway.cddl).
 - Finding 2: EXEC §1 + §4.1 đã sửa kèm lần này (đổi "tập con" → "siết chặt + đếm script-hash").
+
+---
+
+## 12. Phản hồi reconcile 2026-06-05
+
+Áp hai quyết định ghim CONTRACT §9 (**T1**, **T2**). Chỉ sửa mục lệch, giữ phần còn lại.
+
+1. **[T1 — Release-gate Model A]** Mô tả release lại thành "**Governance đã duyệt (Executed) →
+   Treasury thi hành**", KHÔNG còn để Treasury tự bỏ phiếu / tự tính ngưỡng:
+   - §4 mở đầu: đổi "proposal đã pass" → "đã duyệt (status `Executed`)"; nói rõ Treasury không tự
+     bỏ phiếu/tính ngưỡng (Model A, cite T1 / Gov D3).
+   - §4.1 viết lại thành "cổng đọc cờ Executed": Treasury kiểm đúng **bốn điều cờ** (`status ==
+     Executed` + Proposal NFT + `spend_spec_hash` + `execute_after_epoch`), KHÔNG đọc số phiếu,
+     KHÔNG so ngưỡng, KHÔNG tính VP. Khớp CONTRACT §9 T1 + Gov §5 D3.
+   - §4.2: ngưỡng (gồm clamp BFT 1/21) do **Governance** ép TRƯỚC; bảng ngưỡng chỉ minh họa bối
+     cảnh, Treasury KHÔNG cài đặt. Cite VotingPower CONTRACT §5 D1/D3.
+   - §4.3 + US-2 §7.4: council ký **sau khi** Governance đặt cờ `Executed` (không phải "sau khi
+     pass đủ ngưỡng"); US-2 nêu rõ validator Treasury không đếm phiếu, chỉ kiểm cờ + `spend_spec_hash`.
+   - §0.1 mục 3 + §0.2: đồng bộ ngôn ngữ "Executed → thi hành (T1)".
+2. **[T2 — Collect đơn-bucket mặc định]** Khẳng định collect dồn `cut` vào **đúng một** bucket =
+   `category`; `split_table` (đa-bucket) chỉ là tùy chọn:
+   - §2.1 bước 3: ghi rõ ĐƠN-BUCKET `cut → category` là đường mặc định (cite T2); đa-bucket qua
+     `split_table` là tùy chọn instance.
+   - §5.1: tách `split_table` thành tham số **tùy chọn**, không bật mặc định; khi vắng → đơn-bucket.
+   - §8 (bảng tham số mở): dòng phân bổ cut đánh dấu **TÙY CHỌN**, mặc định đơn-bucket (T2).

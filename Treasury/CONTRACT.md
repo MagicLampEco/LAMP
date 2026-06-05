@@ -84,3 +84,24 @@ tách 2 nhóm (tránh trùng datum/bất biến):
   TECH validator thu, EXEC tích hợp generators/OriLife.
 - **B — Core**: custody + buckets + release + governance-gate + giảm-lưu-hành + đa thuê bao
   (§1, §4, §5, §6).
+
+## 9. Quyết định reconcile 2026-06-05 (interface KHÓA — mọi spec phải khớp)
+
+Sau rà soát đối kháng, ghim cứng. Đồng bộ với Governance CONTRACT §5 (D1–D9).
+
+- **T1 — Release-gate = Model A** (= Gov D3). Treasury KHÔNG tự tính ngưỡng; chỉ kiểm
+  `status==Executed` + Proposal NFT + `spend_spec_hash` + `execute_after_epoch`. Toàn bộ ngưỡng
+  (gồm clamp BFT) do Governance ép trước. → bỏ mọi bất đẳng thức tự-kiểm ngưỡng ở Treasury.
+- **T2 — Collect ĐƠN-BUCKET mặc định.** `cut → đúng item.category` (một bucket). `split_table`
+  (đa-bucket) CHỈ là tùy chọn instance, KHÔNG phải đường mặc định. MATH sửa: hạ PARTITION-MULTI
+  xuống "tùy chọn", dạng chính là `Δ_bucket(category) == cut`. Hết cite chéo ngược TECH↔MATH.
+- **T3 — Bất biến sổ↔value là INCREMENTAL.** Mỗi tx chỉ kiểm asset CÓ Δ: `Σ_b Δledger[(b,a)] ==
+  Δvalue(a)`; asset không đụng thì value bảo toàn → sổ giữ nguyên (không fold lại toàn sổ mỗi tx).
+  Thêm phân tích ExUnit theo K·M (số bucket × số asset) + đặt trần đo-thực trước M2.
+- **T4 — Custody: đo throughput trước khi chốt 1 UTxO.** Một UTxO custody là điểm contention tuần
+  tự. EXEC phải đo (batch N/tx × tx/block) so tải nhiều thuê bao; nếu nghẽn → **shard-by-asset**
+  (mỗi shard 1 UTxO độc lập, bất biến áp per-shard, off-chain cộng tổng cho circulating). Nâng câu
+  hỏi treo #3 thành quyết-định-có-số-đo.
+- **T5 — MATH §6.1 bỏ tự-kiểm ngưỡng.** Chỉ giữ vị từ boolean `pass(P)` đọc từ Governance (đã clamp,
+  khớp §0.2 + T1). Nếu mô tả ngữ nghĩa thì ghi rõ `approval = Σ VP_eff(thuận)` (đã clamp),
+  `total = ΣVP-tham-gia GỐC` — cross-ref VotingPower MATH §8B + D1, để không implement nhầm power thô.

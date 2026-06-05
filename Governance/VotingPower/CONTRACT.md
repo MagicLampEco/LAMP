@@ -76,3 +76,35 @@ VP_i = ∏_k  min( C_{k,i}, cap_k )^( w_k )
 | **MATH** | Công thức VP, cap, weight, tính chất toán (bounded, monotonic, sybil-cost, geometric vs additive), chứng minh "token không mua được quyền lực". |
 | **TECH** | Kiến trúc on-chain Cardano/Aiken: datum/redeemer, validators, reference input đọc C1–C4, tích hợp DID proof, chống double-vote, cross-repo data flow. |
 | **EXEC** | Lộ trình triển khai, mốc, phụ thuộc (DID blocker), thứ tự build, test plan, deploy Preview, bootstrap DAO. |
+
+## 5. Quyết định reconcile 2026-06-05 (interface KHÓA — mọi spec phải khớp)
+
+Sau rà soát đối kháng, các interface dưới đây được **ghim cứng**. Spec nào lệch phải sửa theo đây.
+
+- **D1 — Ngưỡng thông qua (MỘT dạng duy nhất).** Validator pass dùng dạng nhân-chéo số nguyên:
+  `Σ VP_eff(THUẬN) × θ_den ≥ W_base_eff × θ_num`, **dấu `≥`** (đúng ngưỡng phải PASS),
+  `W_base_eff = VP_eff(thuận) + VP_eff(chống)` (TRẮNG ngoài mẫu), `(θ_num,θ_den)` đọc từ UTxO tham
+  số (mặc định 2/3). KÈM sàn cứng `số DID thuận ≥ BFT_FLOOR`. TECH §9.4 BỎ `yes>no`; MATH §8.2 là chuẩn.
+- **D2 — ProposalDatum (interface Gov→Treasury).** Thêm field: `spend_spec_hash` (hash canonical
+  danh sách `(bucket, asset, amount, to)` đã duyệt), `released_cumulative` (chống chi vượt qua nhiều
+  tx), `execute_after_epoch` (mốc time-lock). 3 field này là HARD BLOCKER cho Treasury Release.
+- **D3 — Release-gate = Model A.** Treasury KHÔNG tự tính ngưỡng; chỉ kiểm `status==Executed` +
+  Proposal NFT + `spend_spec_hash`. Governance `ExecuteProposal` ép TOÀN BỘ ngưỡng (gồm clamp BFT
+  `VP_eff` + sàn cứng `|S|≥F`) TRƯỚC. Đóng lỗ hổng "release bỏ qua clamp" (GAME-1).
+- **D4 — C4 (LAMP nắm giữ) = registry khóa.** Đọc qua LAMP-holding registry gắn DID, mỗi entry
+  `did_commit→holding` BACKED bởi LAMP **khóa thật** trong lock UTxO **một-LAMP-một-DID** (UTxO bị
+  tiêu khi khóa → không double-count cho 2 DID). CẤM đọc số dư ví trần qua reference input. EXEC/M2/M5
+  theo đây; thêm negative-test "mượn-ảnh" (2 DID trỏ một kho LAMP → fail).
+- **D5 — Bỏ `vp_claimed` khỏi VoteDatum.** Tally tự tính `power` từ `c*_capped` + bảng tra; không
+  tin số off-chain mớm.
+- **D6 — TallyDatum thêm `top_did_vp: List<TopEntry>`** (≤ F−1, `TopEntry{vp_raw, choice}`) để pha
+  Clamped trừ đúng phần vượt trần; cập nhật min-ADA Tally UTxO theo bytes heap.
+- **D7 — Thuật toán VP on-chain (chốt khả thi).** Bảng 1-chiều `pow_k[c] = round(c^{w_k}·SCALE)` cho
+  từng yếu tố (nội suy tuyến tính giữa mốc) rồi `power = (pow_1·pow_2·pow_3·pow_4)/SCALE^3` trên
+  Aiken `Int` (bignum, không overflow). Đặc tả SCALE + sai số nội suy + property test VP_int vs VP_float.
+- **D8 — Chống đòn bẩy mua-bằng-tiền (C2+C4).** Ràng buộc cứng `w_2 + w_4 ≤ w_1 + w_3` (tổng weight
+  yếu tố mua-được-bằng-tiền ≤ tổng weight yếu tố cần-thời-gian). C2 chỉ tính nếu LAMP **đã khóa** qua
+  đủ N epoch tương lai (biến C2 thành chi-phí-cơ-hội-thời-gian như C1, không phải khóa-tức-thì).
+- **D9 — Interface cross-repo MAGIC (CẦN MAGIC xác nhận).** Beacon C1/C2 của MAGIC PHẢI nhúng
+  `did_commit` đọc byte-perfect trong datum để ràng (b) chống-mượn-C_k thực thi được. Cho tới khi MAGIC
+  xác nhận → đánh dấu chống-mượn-C1/C2 là "phụ thuộc xác nhận MAGIC", không coi là đã chặn.

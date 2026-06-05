@@ -225,6 +225,16 @@ qua điều kiện thông qua KÉP của nguyên lý 5** (VP đã clamp + số D
 | **Hiến pháp** | đổi 4 nguyên lý nền, đổi mô hình VP, đổi cap C4, đổi `BFT_FLOOR` | **≥ 3/4** tổng VP (đã clamp) THUẬN | cao nhất; **+ hai vòng cách nhau N epoch** cho đổi cap C4 (§3.5) | **CÓ:** ≥ 16 DID độc lập (=⌈3/4·21⌉) + sàn cứng ≥ 21 — sàn 21 trội |
 | **Recall / bãi miễn** | gỡ một thành viên hội đồng / khóa VP một cử tri lạm dụng | **≥ 2/3** tổng VP (đã clamp) THUẬN (xem §6) | khởi xướng **theo đầu người** + quorum hai trục (§6.1) | **CÓ:** ≥ 14 DID độc lập + sàn cứng ≥ 21 |
 
+> **Ngưỡng θ là tham số, KHÔNG hằng cứng (D1).** Các tỉ lệ thông qua ở cột "Ngưỡng thông qua"
+> (1/2, 2/3, 3/4) là cặp số nguyên `(θ_num, θ_den)` **đọc từ UTxO tham số**, **mặc định** lần
+> lượt 1/2, 2/3, 3/4 — DAO chỉnh được (đổi θ tầng trọng yếu thuộc hiến pháp). Validator kiểm
+> ngưỡng dùng **một dạng duy nhất** — bất đẳng thức nhân-chéo số nguyên `≥`:
+> `Σ VP_eff(THUẬN) × θ_den ≥ W_base × θ_num` (đúng ngưỡng PASS), với `W_base` là mẫu số §3.6/§4.5.
+> **KHÔNG bao giờ dùng đa số đơn "THUẬN > CHỐNG"** cho bất kỳ tầng nào — kể cả tầng "thường"
+> (1/2) cũng so theo tỉ lệ trên tổng, không phải so trực tiếp hai phe. Quyết định trọng yếu
+> (siêu đa số / hiến pháp / recall) còn buộc **điều kiện KÉP** (§3.6): đạt θ trên VP **đã clamp**
+> **VÀ** số DID độc lập THUẬN ≥ `BFT_FLOOR` (mặc định 21).
+
 Trong đó (đều là **tham số mở (DAO định)** về con số, nhưng **chốt về bản chất**):
 
 - **Q_người** = số tối thiểu **cử tri có-trọng-số** (VP > một mức sàn) phải tham gia. Đếm theo
@@ -367,9 +377,10 @@ VP_eff_i = min( VP_i , ΣVP / BFT_FLOOR )      với  BFT_FLOOR = 21 (tham số 
 độc lập bỏ THUẬN ≥ BFT_FLOOR = 21**, đồng thời với điều kiện tỉ lệ VP đã clamp ở (1). Tức điều
 kiện thông qua là **KÉP**:
 
-- **(a) tỉ lệ:** `Σ VP_eff(THUẬN) / ΣVP` ≥ ngưỡng loại quyết định (2/3 hoặc 3/4 — §3.1), với
-  mẫu số là **`ΣVP` tổng VP-tham-gia GỐC, KHÔNG clamp** (cùng `ΣVP` định nghĩa trần ở (1) —
-  KHÔNG dùng `Σ VP_eff` làm mẫu số);
+- **(a) tỉ lệ:** `Σ VP_eff(THUẬN) / ΣVP` ≥ ngưỡng `θ` loại quyết định (mặc định 2/3 hoặc 3/4
+  — §3.1; θ là cặp `(θ_num,θ_den)` **đọc từ UTxO tham số**, dùng **dấu `≥`**, KHÔNG bao giờ là
+  đa số đơn "THUẬN > CHỐNG"), với mẫu số là **`ΣVP` tổng VP-tham-gia GỐC, KHÔNG clamp** (cùng
+  `ΣVP` định nghĩa trần ở (1) — KHÔNG dùng `Σ VP_eff` làm mẫu số);
 - **(b) bề rộng:** số DID độc lập THUẬN ≥ 21 (sàn cứng), và ≥ ⌈t·21⌉ theo mốc tỉ lệ (≥14 cho
   2/3 — vốn đã ≤ 21 nên sàn 21 là ràng buộc trội).
 
@@ -632,6 +643,10 @@ là mở.
 - Bảng phân loại quyết định (nội dung nào thuộc thường / siêu đa số / hiến pháp; loại nào bật
   điều kiện kép §3.6 — **bản chất "trọng yếu = siêu đa số/hiến pháp/recall bắt buộc kép" đã
   chốt §3.1/§3.6**).
+- **Ngưỡng `θ = (θ_num, θ_den)`** cho từng loại — **con số** mở (mặc định 1/2 thường, 2/3 siêu
+  đa số, 3/4 hiến pháp, 2/3 recall), đọc từ UTxO tham số, đổi θ tầng trọng yếu thuộc hiến pháp.
+  **Bản chất đã chốt §3.1/§3.6 (D1): dạng `≥θ` nhân-chéo số nguyên + điều kiện KÉP cho trọng
+  yếu, KHÔNG bao giờ đa số đơn "THUẬN > CHỐNG".**
 - **Con số** quorum: Q_người và Q_VP% cho từng loại (**bản chất "hai trục, đạt cả hai" đã chốt
   §3.3**).
 - **Con số** mẫu số TRẮNG: chọn M1 hay M2 cho từng loại (**bản chất "TRẮNG vào quorum, không
@@ -808,3 +823,31 @@ xử lý + chỗ cần anh/đồng đội theo tiếp:
 deprecate/cập nhật `Governance/SPEC.md`; (b) ~~có thêm trần VP tối đa cho một DID~~ **— đã giải
 quyết bằng nguyên lý 5 (clamp `1/21`), §10 mục 3 đóng.** **(c) thay link Nakamoto chết trong
 CONTRACT §2.5** sang bản Wayback (FEAT đã thay; CONTRACT em không tự sửa — F-NL5-3).
+
+---
+
+## Phản hồi reconcile 2026-06-05 (áp D1 — ngưỡng siêu đa số)
+
+Áp **Governance CONTRACT §5 D1** vào §3 + §3.6. Đối chiếu Treasury CONTRACT §9 T5 (mẫu số
+`approval = Σ VP_eff(thuận)` đã clamp / `total = ΣVP gốc`) — khớp, không phá.
+
+**Kết quả rà:** bản chất §3 + §3.6 **vốn đã đúng D1** (siêu đa số ghi dạng `≥ 2/3`, §3.2 giải
+thích chọn `≥` không `>`, §3.6 điều kiện KÉP `≥θ VP_eff` + sàn `≥ BFT_FLOOR`). **Không có chỗ
+nào dùng đa số đơn `yes>no`** ở mọi tầng (đã grep toàn file). Lệch duy nhất: θ (2/3, 3/4) bị
+viết như **hằng cứng**, chưa nêu rõ là **tham số `(θ_num,θ_den)` đọc từ UTxO, mặc định 2/3**
+như D1 chốt.
+
+**Đã sửa (3 chỗ, chỉ làm rõ θ là tham số — giữ nguyên phần còn lại):**
+
+- **§3.1** — thêm ghi chú "Ngưỡng θ là tham số, KHÔNG hằng cứng (D1)": (θ_num,θ_den) đọc từ
+  UTxO, mặc định 1/2 · 2/3 · 3/4; validator dùng **một dạng duy nhất** nhân-chéo số nguyên
+  `Σ VP_eff(THUẬN)×θ_den ≥ W_base×θ_num`; **cấm đa số đơn `THUẬN > CHỐNG`** ở mọi tầng (kể cả
+  tầng "thường" cũng so tỉ lệ trên tổng); trọng yếu buộc điều kiện KÉP (θ trên VP đã clamp +
+  ≥ BFT_FLOOR DID độc lập THUẬN). Cite D1.
+- **§3.6(a)** — nêu θ là cặp `(θ_num,θ_den)` đọc từ UTxO tham số, dùng `≥`, KHÔNG đa số đơn.
+- **§8 (tham số mở)** — thêm dòng `θ = (θ_num,θ_den)`: con số mở (đọc UTxO, mặc định nêu trên),
+  bản chất "dạng `≥θ` nhân-chéo + KÉP cho trọng yếu, KHÔNG đa số đơn" đã chốt (D1).
+
+**Bất biến giữ nguyên:** mẫu số là `ΣVP` gốc (chưa clamp) — KHÔNG đổi (khớp T5 + §3.6 phản-ví-dụ
+8 cá voi); clamp `1/BFT_FLOOR` (mặc định 21); LAMP không burn (không đụng). Số θ vẫn để "tham
+số mở (DAO định)" trừ mặc định 2/3 do D1 chốt.

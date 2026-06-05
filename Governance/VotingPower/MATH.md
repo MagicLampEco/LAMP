@@ -292,7 +292,80 @@ biên giảm dần. Với `w_k=1` tuyến tính; `w_k>1` lồi (lợi suất tă
 
 Đặt `w_k ∈ (0,1]` (khuyến nghị MATH) làm cho mỗi yếu tố **bão hòa mềm** trước cả khi chạm cap
 cứng: đóng góp đầu tiên đáng giá hơn đóng góp thứ một triệu. Cùng với cap cứng (§3) tạo **hai lớp
-giảm tốc tích tụ**. Khuyến nghị nằm trong §11 (tham số mở), không ép.
+giảm tốc tích tụ**. Khuyến nghị nằm trong §12.1 (tham số mở), không ép.
+
+---
+
+## 6B. Ràng buộc weight chống đòn bẩy mua-bằng-tiền (BẤT BIẾN — D8)
+
+### 6B.1 Phát biểu — ràng buộc cứng trên tổng weight
+
+Phân loại bốn yếu tố theo **có mua được bằng tiền tức thì hay không** (CONTRACT §1 cột "Mua bằng
+tiền?", §10.3 bảng bản chất chi phí):
+
+- **Yếu tố cần-thời-gian (không nén bằng tiền):** `C1` (MAGIC tiêu thụ qua ~18 epoch quá khứ),
+  `C3` (uy tín — công nhận xã hội qua thời gian). Gọi nhóm `TIME = {1, 3}`.
+- **Yếu tố mua-được-bằng-tiền (nén bằng vốn):** `C2` (khóa LAMP cam kết tương lai), `C4` (LAMP nắm
+  giữ hiện tại). Gọi nhóm `MONEY = {2, 4}`.
+
+CONTRACT D8 ghim **ràng buộc cứng** (KHÔNG phải khuyến nghị) lên trọng số:
+
+```
+w_2 + w_4  ≤  w_1 + w_3 .      (W1)   [tổng weight nhóm MONEY ≤ tổng weight nhóm TIME]
+```
+
+Mọi bảng weight DAO duyệt PHẢI thỏa (W1); bảng vi phạm là **không hợp lệ**, validator tham số từ
+chối (TECH ép lúc nạp bảng weight). Tổng quát `K>4`: `Σ_{k∈MONEY} w_k ≤ Σ_{k∈TIME} w_k`, với việc
+phân loại mỗi yếu tố mới vào `MONEY`/`TIME` do DAO định khi thêm yếu tố.
+
+### 6B.2 Vì sao (W1) — chặn đòn bẩy mua quyền lực (first-principles)
+
+Geometric (§5) đã cấm **thay thế hoàn toàn** (thiếu một yếu tố là sụp). Nhưng nó KHÔNG tự giới hạn
+**ảnh hưởng biên tương đối** của nhóm mua-được-bằng-tiền: từ dạng log (3),
+`∂ ln VP / ∂ ln x_k = w_k` — weight chính là **độ co giãn** của VP theo từng yếu tố. Nếu DAO (vô
+tình hoặc bị phe vốn chi phối) đặt `w_2, w_4` lớn so với `w_1, w_3`, thì một kẻ có vốn — dù vẫn
+phải vượt qua sàn dương `C1,C3>0` (rẻ, chỉ cần chạm mốc tối thiểu) — có thể **đẩy VP lên nhanh**
+chủ yếu bằng `C2,C4` (khóa + giữ LAMP), biến tiền thành đòn bẩy power **trong vùng các yếu tố thời
+gian chỉ vừa đủ dương**. (W1) chặn kịch bản đó: tổng độ co giãn theo nhóm mua-được-bằng-tiền không
+bao giờ vượt tổng độ co giãn theo nhóm cần-thời-gian → **biên kéo VP của tiền ≤ biên kéo VP của
+thời gian/uy tín**. Đây là phát biểu định lượng của CONTRACT §2.2 ("không có đường tắt") **ở tầng
+trọng số**, bổ trợ cho cap (§3) ở tầng giá trị và geometric (§5) ở tầng dạng hàm.
+
+### 6B.3 Hệ quả
+
+- **Trần đòn bẩy vốn.** Tỷ lệ ảnh hưởng nhóm MONEY trên tổng: `(w_2+w_4)/Σw_k ≤ 1/2` (chia (W1) cho
+  `Σw_k = (w_1+w_3)+(w_2+w_4)`). Vốn KHÔNG bao giờ chiếm quá nửa độ co giãn VP, dù DAO chỉnh thế nào.
+- **Kết hợp ba lớp.** (W1) [tầng weight] + cap C4 100 triệu [tầng giá trị, §3] + geometric [tầng dạng,
+  §5] + clamp BFT [tầng tally, §8B] = bốn lớp độc lập cùng chặn "tiền → quyền lực". Mỗi lớp đóng một
+  vector khác nhau; (W1) đóng vector "DAO bị phe vốn dụ nâng weight nhóm MONEY".
+- **C2 phải là chi-phí-thời-gian, không phải khóa-tức-thì** — xem §6B.4 (ràng buộc đo C2).
+
+### 6B.4 C2 chỉ tính nếu LAMP ĐÃ KHÓA qua đủ N epoch (biến C2 thành chi-phí-thời-gian)
+
+(W1) xếp `C2` vào nhóm MONEY (mua được một phần bằng khóa LAMP). Để (W1) đủ chặt, D8 thêm ràng buộc
+**đo C2**: `C2` của một cử tri **chỉ được tính dương** nếu lượng LAMP cam kết đã **khóa thật** trong
+ScheduleGen và **duy trì khóa qua ít nhất `N_2` epoch tương lai** (cửa sổ cam kết, CONTRACT §1
+~24 epoch). Khóa tức-thời (khóa rồi rút ngay) **KHÔNG** sinh `C2`:
+
+```
+C2_i  =  ( LAMP cam kết trong ScheduleGen )  NẾU khóa duy trì ≥ N_2 epoch ;
+         0                                   NẾU không (khóa tức-thời / chưa đủ N_2 epoch).      (W2)
+```
+
+**Lý do (first-principles).** Nếu `C2` tính ngay khi khóa, kẻ có vốn khóa LAMP một mốc để bơm `C2`
+rồi rút — y hệt flash-fill của `C4` (§10.5), biến `C2` thành **vốn hoàn lại tức thì** chứ không phải
+**chi-phí-cơ-hội-thời-gian**. Ràng buộc (W2) biến `C2` thành **chi phí khóa vốn qua `N_2` epoch
+thật** — cùng bản chất "trễ thời gian không mua tắt được" như `C1` (§10.3b). Khi đó, dù `C2∈MONEY`
+trong (W1), phần "mua bằng tiền" của nó đã mang **thành tố thời gian** (khóa `N_2` epoch), nên đòn
+bẩy vốn yếu hơn nhiều so với mua tức thời. `N_2` là **tham số mở (DAO định)**, ràng buộc `N_2 ≥ 1`
+(gợi ý theo cửa sổ ~24 epoch CONTRACT §1); MATH chốt rằng `C2` đo **trên cửa sổ khóa**, KHÔNG đo
+khóa-một-mốc. TECH ép (W2) khi đọc beacon C2 từ MAGIC (CONTRACT D9: beacon C2 nhúng `did_commit` +
+mốc khóa để kiểm thời hạn khóa byte-perfect on-chain).
+
+> Quan hệ với §10.3 bảng bản chất chi phí: với (W2), `C2` chuyển từ "khóa vốn hoàn lại **một phần,
+> tức thời**" sang "khóa vốn qua `N_2` epoch" — phần chi phí cơ hội `c_lock` của `C2` nay gắn **độ
+> dài khóa thật**, không còn nén về một mốc. Cùng với `C4` đo trên cửa sổ ổn định (§10.5), cả hai
+> yếu tố MONEY đều mang thành tố thời gian khi đo đúng.
 
 ---
 
@@ -755,7 +828,7 @@ từng yếu tố — đây là điểm cốt lõi: **không phải mọi yếu 
 | Yếu tố | Bản chất chi phí | Hoàn lại được? | Nén bằng tiền tức thì? |
 |---|---|---|---|
 | `C1` (MAGIC tiêu thụ, cửa sổ quá khứ) | **chìm + thời gian** — phải tiêu MAGIC qua nhiều epoch | KHÔNG | KHÔNG (cần thời gian thật) |
-| `C2` (LAMP cam kết tương lai) | **khóa vốn** (cơ hội) — LAMP bị khóa trong ScheduleGen | một phần (khi mãn hạn) | một phần (mua bằng khóa LAMP) |
+| `C2` (LAMP cam kết tương lai) | **khóa vốn qua `N_2` epoch** (cơ hội-thời-gian) — LAMP khóa trong ScheduleGen, chỉ tính nếu duy trì khóa ≥ `N_2` epoch (D8/W2, §6B.4) | một phần (khi mãn hạn) | một phần (khóa LAMP, NHƯNG phải qua `N_2` epoch — không khóa-tức-thời) |
 | `C3` (uy tín) | **thời gian + công nhận xã hội** | KHÔNG | KHÔNG (cộng đồng phải công nhận) |
 | đốt LAMP | **chìm tuyệt đối** | KHÔNG | có tiền là đốt được, nhưng mất hẳn |
 | `C4` (LAMP nắm giữ hiện tại) | **vốn HOÀN LẠI** — chỉ là chi phí cơ hội của khóa vốn trong cửa sổ snapshot | **CÓ** (rút ngay sau snapshot) | có (xem §10.6 flash-fill) |
@@ -881,54 +954,130 @@ Tóm tắt phạm vi chứng minh §10 (để không phóng đại):
 
 ---
 
-## 11. Ổn định số học (tránh tràn, tránh mất chính xác)
+## 11. Ổn định số học và THUẬT TOÁN VP ON-CHAIN (chốt khả thi — D7)
 
 ### 11.1 Vấn đề
 
-Cài (2) trực tiếp dễ **tràn** (overflow) vì tích các lũy thừa số lớn (cap tới hàng trăm triệu),
-và mũ thực `w_k` không nguyên. On-chain Cardano/Aiken làm **số nguyên** — không có dấu phẩy động
-gốc. Tài liệu Aiken: <https://aiken-lang.org/language-tour/primitive-types#int> (Int là số nguyên
-độ dài tùy ý; không có float gốc).
+Cài (2) trực tiếp đòi **mũ thực** `x^{w_k}` với `w_k` không nguyên — trên Aiken **không có float
+gốc** và **không có hàm mũ/log thực** sẵn. Aiken `Int` là số nguyên **độ dài tùy ý** (bignum) nên
+**KHÔNG sợ tràn** khi nhân nhiều số lớn, nhưng phải tính `x^{w_k}` (mũ phân số) bằng số nguyên.
+Tài liệu Aiken: <https://aiken-lang.org/language-tour/primitive-types#int> (Int độ dài tùy ý,
+không float gốc).
 
-### 11.2 Hướng cài đặt — log-sum (dạng (3))
+> Trước đây mục này nghiêng về hướng **log-sum / exp** (tính `L=Σ w_k·ln x_k` rồi khôi phục
+> `exp`). Hướng đó cần xấp xỉ `ln` **và** `exp` nguyên (hai hàm), tốn ExUnit và khó kiểm sai số khi
+> gom phe. **CONTRACT D7 đã CHỐT** một hướng đơn giản, đơn định hơn: **bảng tra 1-chiều mỗi yếu tố +
+> nội suy tuyến tính**, rồi nhân bốn giá trị bảng. Mục này đặc tả hướng đã chốt; hướng log-sum chỉ
+> còn là ghi chú phương án thay thế (§11.6), KHÔNG phải đường cài đặt v1.
 
-Thay vì tính tích, tính **tổng log** rồi so sánh:
+### 11.2 Thuật toán đã chốt (D7) — bảng `pow_k` + nội suy tuyến tính + tích chia `SCALE^3`
 
-```
-L_i = Σ_k  w_k · ln( x_{k,i} ).      (3 lặp lại)
-```
+**Ý tưởng first-principles.** Phần khó duy nhất là `x^{w_k}` (mũ phân số). Thay vì tính tại chỗ,
+**precompute** giá trị này thành một **bảng tra 1-chiều** cho từng yếu tố `k`, lưu ở thang nguyên
+`SCALE`. On-chain chỉ còn **tra bảng + nội suy tuyến tính + nhân số nguyên** — toàn phép nguyên,
+đơn định, rẻ ExUnit.
 
-So sánh hai cử tri / cộng VP một phe **chỉ cần thứ tự**, mà `ln` đơn điệu nên so sánh trên `L_i`
-tương đương so sánh trên `VP_i` (cho phép so sánh từng-cặp). **Lưu ý quan trọng:** cộng VP một
-phe (6) là cộng `VP_i` (không cộng `L_i`!) → vẫn cần khôi phục `exp(L_i)` khi gom phe. Do đó:
-
-- **So sánh hai cá nhân** (vd xếp hạng): dùng `L_i` trực tiếp — không cần exp, không tràn.
-- **Tổng VP một phe** (7): cần giá trị `VP_i = exp(L_i)`; dùng **số nguyên thang cố định**
-  (fixed-point): biểu diễn `VP_i` ở đơn vị nhỏ (vd 10^−9), tính `exp` qua bảng/khai triển trên
-  số nguyên. TECH chốt độ chính xác fixed-point và thuật toán `ln`/`exp` nguyên.
-
-### 11.3 Mẹo log-sum-exp khi cộng phe (tránh tràn ở bước exp)
-
-Khi cộng `Σ_i exp(L_i)`, rút thừa số lớn nhất `L* = max_i L_i`:
+**Định nghĩa bảng.** Với mỗi yếu tố `k` và mỗi giá trị đã chặn `c = x_{k,i} ∈ [0, cap_k]`:
 
 ```
-Σ_i exp(L_i) = exp(L*) · Σ_i exp(L_i − L*) .      (10)
+pow_k[c] = round( c^{w_k} · SCALE )      (T1)   [giá trị nguyên, thang SCALE]
 ```
 
-Mọi `L_i − L* ≤ 0` → `exp(·) ∈ (0,1]` → không tràn ở tổng; chỉ một thừa số `exp(L*)` chung. So
-sánh ngưỡng `W(S) ≥ θ·W(base)` (§8.2) chia cho thừa số chung → có thể so trên thang đã rút. Kỹ thuật
-chuẩn: <https://en.wikipedia.org/wiki/LogSumExp> (log-sum-exp, ổn định số). TECH quyết có cần
-exp hay so sánh tỷ lệ trực tiếp trên miền log.
+`SCALE` là **hằng số thang fixed-point chung** (lũy thừa 10 hoặc 2; TECH chốt giá trị, khuyến nghị
+`SCALE = 10^9` để cân giữa độ phân giải và độ rộng số — xem §11.4). Bảng KHÔNG lưu mọi `c` (cap tới
+hàng trăm triệu → bảng khổng lồ): chỉ lưu tại một tập **mốc** (knots) `c_0=0 < c_1 < … < c_M = cap_k`
+và **nội suy tuyến tính** giữa hai mốc kề:
 
-### 11.4 Xử lý `ln(0)`
+```
+với c ∈ [c_j, c_{j+1}]:
+  pow_k(c) = pow_k[c_j] + ( pow_k[c_{j+1}] − pow_k[c_j] ) · (c − c_j) / (c_{j+1} − c_j)      (T2)
+```
 
-`x_{k,i}=0` → `ln(0)=−∞`. Cài đặt: gắn cờ "VP=0" cho cử tri đó (nhánh biên §9.2), bỏ khỏi tổng
-log; cử tri VP=0 đóng góp 0 vào (6), loại sạch khỏi mọi phép cộng phe.
+Phép chia ở (T2) là **chia nguyên** (làm tròn xuống) — sai số nội suy giới hạn ở §11.3. Vì `c↦c^{w_k}`
+với `w_k∈(0,1]` là **lõm** (§6.2), dây cung (nội suy tuyến tính) luôn **nằm dưới** đường cong thật →
+`pow_k(c) ≤ round(c^{w_k}·SCALE)`: nội suy **không vượt** giá trị thật (an toàn, không thổi phồng VP).
 
-### 11.5 Cố định thang
-TECH phải cố định: đơn vị fixed-point, cách xấp xỉ `ln`/`exp` nguyên, độ chính xác (số bit phân
-số), và **kiểm thử so khớp** với tính chính xác (so VP_int với VP_float trong dải sai số). Ghi
-§12.
+**Công thức VP nguyên.** Với `K=4` yếu tố (mở rộng `K>4` ở §11.5):
+
+```
+power_i = ( pow_1(x_{1,i}) · pow_2(x_{2,i}) · pow_3(x_{3,i}) · pow_4(x_{4,i}) ) / SCALE^3      (T3)
+```
+
+Chia `SCALE^3` (không phải `SCALE^4`) vì bốn thừa số mỗi cái mang một thừa số `SCALE`; tích có
+`SCALE^4`, ta muốn `power_i` ở **một** thang `SCALE` → chia `SCALE^3`. Kết quả `power_i ≈ VP_i·SCALE`,
+một số nguyên Aiken `Int` đại diện VP ở thang `SCALE`. Mọi so sánh ngưỡng §8.2, clamp BFT §8B, gom
+phe (6) chạy **trực tiếp trên `power_i` nguyên** (cùng thang `SCALE` → so sánh/cộng nguyên hợp lệ).
+
+> **Vì sao chia `SCALE^3` an toàn (không mất bậc).** `power_i` giữ thang `SCALE` (≈9 chữ số thập
+> phân nếu `SCALE=10^9`), đủ phân giải để so ngưỡng. Phép chia nguyên cuối làm tròn xuống một lần,
+> sai số tuyệt đối `< 1` đơn vị thang `SCALE` (tức `< 1/SCALE` ở thang VP) — nhỏ hơn nhiều sai số
+> nội suy §11.3. Aiken `Int` bignum giữ tích `pow_1·pow_2·pow_3·pow_4` (cỡ `SCALE^4 ≈ 10^36`) **không
+> tràn** — đây chính là lý do D7 chọn nhân-rồi-chia thay vì log-sum.
+
+### 11.3 Đặc tả SCALE + sai số (knots, nội suy, làm tròn)
+
+Ba nguồn sai số, mỗi nguồn chặn được:
+
+1. **Sai số lượng tử hóa thang `SCALE`.** `pow_k[c]` làm tròn `c^{w_k}·SCALE` về số nguyên → sai số
+   tuyệt đối `≤ 1/2` đơn vị thang, tức `≤ 1/(2·SCALE)` ở thang VP. Với `SCALE=10^9`: `≤ 5·10^{−10}`.
+2. **Sai số nội suy tuyến tính (knots).** Trên `[c_j,c_{j+1}]`, sai số dây cung của hàm lõm `c^{w_k}`
+   bị chặn bởi độ cong: `|pow_k(c) − c^{w_k}·SCALE| ≤ (1/8)·|f''(ξ)|·(c_{j+1}−c_j)^2·SCALE`, với
+   `f(c)=c^{w_k}`, `f''(c)=w_k(w_k−1)c^{w_k−2}` (§6.2). Sai số **giảm bậc hai** theo khoảng cách
+   mốc → đặt mốc **dày hơn ở vùng `c` nhỏ** (nơi `|f''|` lớn) để cân sai số. TECH chốt lưới mốc sao
+   cho sai số tương đối `≤ ε_tab` (khuyến nghị `ε_tab ≤ 10^{−4}`, tức ≤ 0,01%).
+3. **Sai số chia nguyên ở (T2) và (T3).** Mỗi phép chia nguyên làm tròn xuống `< 1` đơn vị thang.
+   Tổng cộng qua (T2) (một lần/yếu tố) + (T3) (một lần) là `O(K)` đơn vị thang `SCALE` → `O(K/SCALE)`
+   ở thang VP, **bỏ qua được** so với (2).
+
+**Cận sai số tổng (tương đối).** Vì `power_i` là **tích** bốn thừa số, sai số tương đối **cộng dồn**:
+`|power_i/(VP_i·SCALE) − 1| ⪅ Σ_k ε_k + O(K/SCALE)`, với `ε_k` là sai số tương đối của `pow_k`
+(gồm lượng tử hóa + nội suy). Đặt mỗi `ε_k ≤ ε_tab` → tổng `⪅ K·ε_tab`. Với `K=4`, `ε_tab=10^{−4}`:
+sai số VP `⪅ 4·10^{−4}` (≤ 0,04%) — **dưới ngưỡng ảnh hưởng thứ tự** cho mọi so sánh ngưỡng thực tế.
+
+**Ràng buộc thang `SCALE` (TECH chốt số):** `SCALE` đủ lớn để `(1/SCALE) ≪ ε_tab` (lượng tử hóa không
+lấn sai số nội suy) — `SCALE=10^9` thỏa với `ε_tab=10^{−4}`. `SCALE` là **lũy thừa cố định**, **khóa
+theo kỳ** như weight (Bất biến I-1) để hai phiếu cùng proposal dùng cùng thang.
+
+### 11.4 Property test bắt buộc (VP_int vs VP_float)
+
+TECH PHẢI có bộ test so khớp **bắt buộc** trước khi coi thuật toán đạt:
+
+- **PT1 — sai số tương đối bị chặn.** Sinh ngẫu nhiên `(x_1,…,x_4) ∈ [0,cap]^4` (gồm biên: 0, cap,
+  sát mốc, giữa hai mốc). Tính `VP_float = ∏ x_k^{w_k}` (double/rational ngoài chuỗi) và
+  `power_int` (T3). Khẳng định `|power_int/(VP_float·SCALE) − 1| ≤ K·ε_tab` (§11.3).
+- **PT2 — bảo toàn thứ tự (quan trọng nhất cho governance).** Với mọi cặp `(a,b)` sinh ngẫu nhiên:
+  `VP_float(a) < VP_float(b)` ⇒ `power_int(a) ≤ power_int(b)` (cho phép bằng tại biên sai số). Đảm
+  bảo lượng tử hóa KHÔNG lật thứ tự cử tri — tính chất §4 (đơn điệu) được bảo toàn ở bản nguyên.
+- **PT3 — biên geometric.** Bất kỳ `x_k=0` ⇒ `power_int=0` (khớp §1.4, §9.2). `pow_k[0]=0` phải nằm
+  trong bảng (mốc `c_0=0`).
+- **PT4 — nội suy không vượt đường cong.** Với `w_k∈(0,1]` (lõm), `pow_k(c) ≤ round(c^{w_k}·SCALE)`
+  mọi `c` (dây cung dưới đường cong, §11.2) — chống thổi phồng VP.
+- **PT5 — đơn điệu bảng.** `c < c'` ⇒ `pow_k(c) ≤ pow_k(c')` (bảng + nội suy không-giảm) — giữ §4
+  ở tầng cài đặt.
+
+### 11.5 Mở rộng `K > 4` yếu tố
+
+Khi DAO thêm yếu tố (`K>4`, CONTRACT §1), (T3) tổng quát: `power_i = (∏_{k=1}^{K} pow_k(x_{k,i})) /
+SCALE^{K−1}` — tích `K` thừa số chia `SCALE^{K−1}` (mỗi thừa số một `SCALE`, giữ kết quả ở một thang
+`SCALE`). Aiken bignum vẫn không tràn; chỉ ExUnit tăng tuyến tính theo `K`. Bảng `pow_k` thêm một
+hàng/yếu tố, công thức không đổi hình thức.
+
+### 11.6 Phương án thay thế (KHÔNG dùng v1) — log-sum / exp
+
+Giữ lại để truy vết: có thể tính `L_i=Σ_k w_k·ln x_k` rồi khôi phục `exp` (log-sum-exp ổn định:
+`Σ_i exp(L_i)=exp(L*)·Σ_i exp(L_i−L*)`, <https://en.wikipedia.org/wiki/LogSumExp>). Ưu: so sánh
+**từng cặp** chỉ cần `L_i`, không exp. Nhược: **cộng VP một phe** (6) vẫn cần khôi phục `exp(L_i)`
+(không cộng `L_i` được), tức cần **cả** `ln` lẫn `exp` nguyên → hai hàm xấp xỉ, ExUnit cao, sai số
+khó kiểm hơn bảng tra. **D7 chọn bảng tra (§11.2)** vì đơn định, một nguồn sai số chính (nội suy),
+ExUnit thấp. Nếu sau này `K` rất lớn hoặc cần `w_k` đổi liên tục, DAO có thể cân nhắc lại log-sum.
+
+### 11.7 Xử lý `x_{k,i}=0` và cố định thang (khóa theo kỳ)
+
+`x_{k,i}=0` → `pow_k[0]=0` (mốc đầu bảng) → tích (T3) `=0` → `power_i=0`, đúng nhánh biên §9.2 (cử
+tri VP=0 đóng góp 0 vào (6), loại khỏi mọi phép cộng phe). Không cần xử lý `ln(0)=−∞` như hướng
+log-sum cũ — đây là một ưu điểm nữa của bảng tra. `SCALE`, bảng `pow_k`, lưới mốc đều **khóa theo kỳ
+governance** (Bất biến I-1) và trỏ qua tham số UTxO lúc Proposal Open (TECH §5.6) để mọi phiếu cùng
+proposal tính trên cùng bảng.
 
 ---
 
@@ -940,10 +1089,13 @@ số), và **kiểm thử so khớp** với tính chính xác (so VP_int với V
 |---|---|---|---|
 | `cap_1, cap_2, cap_3` | trần C1/C2/C3 | `> 0` | **mở** |
 | `cap_4` | trần C4 (LAMP nắm giữ) | `> 0` | **= 100 triệu** (CONTRACT) |
-| `w_k` | trọng số mỗi yếu tố | `≥ 0`; khuyến nghị `∈(0,1]` (§6); cố định **một** chuẩn hóa, khuyến nghị `Σw_k=1` (§7) | **mở** |
+| `w_k` | trọng số mỗi yếu tố | `≥ 0`; **BẤT BIẾN (W1): `w_2+w_4 ≤ w_1+w_3`** (D8, §6B, I-5); khuyến nghị `∈(0,1]` (§6); cố định **một** chuẩn hóa, khuyến nghị `Σw_k=1` (§7) | **mở** (trong ràng buộc W1) |
 | Độ dài cửa sổ C1 | ~18 epoch (gợi ý CONTRACT) | cửa sổ quá khứ cố định; định `T_1>0` (§10.3b) | **mở** (gợi ý 18) |
 | Độ dài cửa sổ C2 | ~24 epoch (gợi ý CONTRACT) | cửa sổ tương lai cố định | **mở** (gợi ý 24) |
 | `N` (cửa sổ ổn định C4) | số epoch giữ ổn định để tính C4 (chống flash-fill §10.5) | `≥ 1`; nếu đo một-mốc thì C4 KHÔNG vào cận dưới chìm | **mở** → TECH chốt |
+| `N_2` (cửa sổ khóa C2) | số epoch LAMP phải duy trì khóa để C2 tính dương (D8/W2, §6B.4) | `≥ 1`; khóa-tức-thời (< `N_2`) → `C2=0` | **mở** (gợi ý ~24 epoch) → TECH chốt |
+| `SCALE` | thang fixed-point thuật toán bảng (D7, §11.2) | lũy thừa cố định; `1/SCALE ≪ ε_tab`; khóa theo kỳ (I-1) | **mở** (gợi ý `10^9`) → TECH |
+| Lưới mốc + `ε_tab` | knots bảng `pow_k` + ngưỡng sai số nội suy (§11.3) | sai số tương đối mỗi yếu tố `≤ ε_tab` | **mở** (gợi ý `ε_tab ≤ 10^{−4}`) → TECH |
 | `θ` (ngưỡng siêu đa số) | phần VP cần để thông qua | `∈(1/2,1]`; dùng `≥`; mẫu số = `W(base)` phe tham gia (§8.2) | **mở** (gợi ý 2/3 hiến chương) |
 | Mẫu số `W(base)` | xử lý TRẮNG | `W(S)+W(O)` hoặc `W(P)` (§8.2, FEAT §4.5) | **mở** → DAO/FEAT |
 | `q` (quorum) | sàn VP tham gia | `≥ 0`; cổng độc lập với θ (§8.2) | **mở** |
@@ -951,11 +1103,12 @@ số), và **kiểm thử so khớp** với tính chính xác (so VP_int với V
 | `K` | số yếu tố | `≥ 4` (CONTRACT) | mở để tăng |
 | `floor_k` (tùy chọn) | sàn dương bootstrap (§9.2) | `≥ 0`; mặc định 0 | **mở** (mặc định tắt) |
 | `floor_3` | sàn uy tín cho cử tri hợp lệ (§9.4 phương án a) | `> 0` nếu chọn (a) để giữ đơn điệu phạt | **mở** → FEAT/TECH |
-| Thang fixed-point, thuật toán `ln`/`exp` nguyên | ổn định số học | so khớp sai số với chính xác | **mở** → TECH chốt |
+| Thuật toán VP nguyên (bảng `pow_k` + nội suy, D7 §11.2) | tính VP on-chain | `power=(∏pow_k)/SCALE^{K−1}`; so khớp PT1–PT5 (§11.4) | **chốt D7**; số (`SCALE`/mốc/`ε_tab`) → TECH |
 
 **Khuyến nghị MATH (không ép, để DAO cân nhắc):** `Σw_k = 1`; `w_k∈(0,1]`; `θ=2/3` với `≥` cho
 quyết định hiến chương; đo `C4` trên cửa sổ ổn định `N≥1` (không một-mốc) nếu muốn `C4` góp vào
-chi phí chìm.
+chi phí chìm; đo `C2` trên cửa sổ khóa `N_2≥1` (không khóa-tức-thời, W2). **Lưu ý: `w_2+w_4 ≤
+w_1+w_3` (W1) KHÔNG phải khuyến nghị mà là BẤT BIẾN I-5 — mọi bảng weight phải thỏa.**
 
 ### 12.2 Bất biến CỨNG (KHÔNG phải khuyến nghị — mọi spec phải thực thi)
 
@@ -985,6 +1138,18 @@ trên **số DID** thuận, độc lập VP, là cổng thứ ba bên cạnh quo
 khóa, về chế độ hội đồng bảo trợ (EXEC). Thực thi: **TECH** (tính `VP_eff`, đếm `|S|`, thứ tự
 on-chain) + **FEAT** (định loại quyết định trọng yếu áp (14) + chế độ hội đồng bảo trợ khi khóa).
 
+**I-5 (Trần weight nhóm mua-bằng-tiền + C2 phải khóa-thời-gian — D8).** (i) Mọi bảng weight phải
+thỏa **`w_2 + w_4 ≤ w_1 + w_3`** (W1, §6B.1) — tổng trọng số nhóm mua-được-bằng-tiền `MONEY={2,4}`
+KHÔNG vượt tổng trọng số nhóm cần-thời-gian `TIME={1,3}` (tổng quát `K>4`:
+`Σ_{MONEY} w_k ≤ Σ_{TIME} w_k`). Bảng vi phạm là **không hợp lệ** → validator tham số từ chối.
+(ii) `C2` **chỉ tính dương nếu LAMP cam kết đã khóa thật và duy trì khóa ≥ `N_2` epoch** (W2,
+§6B.4); khóa-tức-thời → `C2 = 0`. Biến C2 từ vốn-hoàn-lại-tức-thời thành chi-phí-cơ-hội-thời-gian
+(như C1). Lý do: §6B.2 (weight = độ co giãn VP; chặn đòn bẩy vốn) + §10.5 (chống flash-fill). Thực
+thi: **TECH** (ép W1 lúc nạp bảng weight; ép W2 khi đọc beacon C2 — kiểm thời hạn khóa byte-perfect,
+CONTRACT D9) + **FEAT** (quy trình DAO đổi weight phải kiểm W1 trước khi đưa ra bỏ phiếu) +
+**EXEC/MAGIC** (beacon C2 nhúng mốc khóa để on-chain xác thực `N_2`, CONTRACT D9). Không spec nào
+được nới I-5.
+
 ---
 
 ## 13. Phụ thuộc
@@ -993,9 +1158,11 @@ on-chain) + **FEAT** (định loại quyết định trọng yếu áp (14) + ch
 - **PhoenixKey DID sinh trắc + zk-proof "1 DID = 1 người"** — *blocker tiên quyết*. MATH giả định
   mỗi `i` ứng đúng một người thật; nếu DID không bảo đảm 1-người-1-DID thì mô hình chi phí §10 sụp
   (sybil rẻ). Thuộc backend PhoenixKey, ngoài repo LAMP (CONTRACT §3).
-- **TECH** — đo `C1,C2,C4` (cross-repo MAGIC + LAMP qua reference input), chốt fixed-point,
-  thuật toán `ln`/`exp` nguyên, datum/redeemer, chống double-vote; **tính `VP_eff` (clamp BFT §8B)
-  đúng thứ tự cap→clamp (I-4), đếm `|S|` cho sàn cứng (14)**.
+- **TECH** — đo `C1,C2,C4` (cross-repo MAGIC + LAMP qua reference input), chốt `SCALE` + lưới mốc +
+  `ε_tab` cho **bảng tra `pow_k` (D7, §11.2)** + chạy property test PT1–PT5 (§11.4), datum/redeemer,
+  chống double-vote; **ép W1 (`w_2+w_4≤w_1+w_3`) lúc nạp bảng weight + ép W2 (C2 khóa ≥`N_2` epoch)
+  khi đọc beacon C2 (D8, I-5)**; **tính `VP_eff` (clamp BFT §8B) đúng thứ tự cap→clamp (I-4), đếm
+  `|S|` cho sàn cứng (14)**.
 - **FEAT** — vòng đời tập sự, định nghĩa các loại quyết định gắn `θ` khác nhau, recall, gom phiếu;
   **định loại quyết định "trọng yếu" áp sàn cứng `|S|≥F` (§8B.4) + chế độ hội đồng bảo trợ khi khóa**.
 - **EXEC** — bootstrap (xử lý §9.2: cả hệ VP=0 lúc chưa có uy tín → bật `w_3` dần hoặc floor tạm);
@@ -1013,13 +1180,18 @@ on-chain) + **FEAT** (định loại quyết định trọng yếu áp (14) + ch
 2. **Độ co giãn thay thế:** giữ geometric (`p=0`, `σ=1`) hay cho DAO chọn trung bình lũy thừa
    **bậc âm** (`p<0`, tương ứng `σ<1`, chống thay thế mạnh hơn)? (§5.5). Đánh đổi: `p<0` an toàn
    hơn nhưng `ln`/`exp` nguyên phức tạp hơn.
-3. **Fixed-point `exp` on-chain:** có thực sự cần khôi phục `exp(L_i)` để cộng phe (§11.2) không,
-   hay TECH đổi cách gom phiếu để chỉ làm trên miền log? Ảnh hưởng ExUnit. **TECH.**
+3. **[ĐÃ GỠ TREO — chốt bởi D7]** Thuật toán VP on-chain: KHÔNG dùng log-sum/exp nữa. Chốt
+   **bảng tra `pow_k[c]=round(c^{w_k}·SCALE)` + nội suy tuyến tính + `power=(∏pow_k)/SCALE^{K−1}`**
+   trên Aiken `Int` bignum (§11.2). Không cần khôi phục `exp` (tích nguyên không tràn). Còn lại
+   **TECH chốt**: giá trị `SCALE`, lưới mốc + `ε_tab`, và chạy property test PT1–PT5 (§11.4).
 4. **Khóa weight trong kỳ (Bất biến I-1, §12.2):** đã nâng thành **bất biến cứng**. Câu treo còn
    lại: ranh giới "một kỳ governance" định nghĩa thế nào (theo epoch? theo proposal?) để TECH §5.6
    + FEAT §10 câu 4 thực thi nhất quán. **FEAT/EXEC/TECH.**
-5. **`C2` mua một phần bằng tiền** (khóa LAMP): vì geometric vẫn cần các yếu tố khác, nhưng cần
-   định lượng `cap_2` đủ thấp để khóa LAMP không thành đòn bẩy power. **DAO định cap_2.**
+5. **[ĐÃ NÂNG THÀNH RÀNG BUỘC — chốt bởi D8]** `C2` mua một phần bằng tiền (khóa LAMP) nay bị chặn
+   bằng **hai ràng buộc cứng** (Bất biến I-5, §6B): (W1) `w_2+w_4 ≤ w_1+w_3` — trần trọng số nhóm
+   mua-được-bằng-tiền; và (W2) `C2` chỉ tính dương nếu LAMP **đã khóa ≥ `N_2` epoch** (chi-phí-thời-
+   gian, không khóa-tức-thời). Còn lại **DAO định**: giá trị `cap_2`, `N_2`, và bảng weight cụ thể
+   (miễn thỏa W1).
 6. **Xác nhận tokenomics 36 tỷ / 24 tỷ** với file canonical (Foundation-Bootstrap / SPEC). CHỈ
    ảnh hưởng khối minh họa §8.3b; §8.3 ("12 tỷ → 120 DID") độc lập với việc này (chỉ dựa `cap_4`).
 7. **Cửa sổ ổn định `C4` (`N` epoch) chống flash-fill (§10.5):** TECH chốt v1 dùng snapshot
@@ -1123,6 +1295,43 @@ MATH, là việc đồng bộ liên-spec).
 
 ---
 
-*Hết MATH. Phần TECH sẽ chốt cách đo C_k, fixed-point, thuật toán số nguyên cho ln/exp,
-datum/redeemer on-chain, và cách tính VP_eff (clamp BFT §8B) đúng thứ tự cap→clamp + đếm `|S|`
-cho sàn cứng số-DID.*
+## 16. Phản hồi reconcile 2026-06-05 (áp D7 + D8 từ CONTRACT §5)
+
+Vòng reconcile interface (CONTRACT §5) áp hai quyết định ghim cứng vào MATH; truy vết sửa:
+
+**Áp D7 — thuật toán VP khả thi on-chain (bảng tra, KHÔNG log-sum).**
+- Viết lại toàn bộ **§11** từ "ổn định số học / hướng log-sum-exp" sang **thuật toán đã chốt**:
+  bảng 1-chiều `pow_k[c]=round(c^{w_k}·SCALE)` (T1) + nội suy tuyến tính giữa mốc (T2) +
+  `power_i=(∏_{k} pow_k(x_{k,i}))/SCALE^{K−1}` (T3) trên Aiken `Int` bignum (không tràn). Cite D7.
+- §11.3 đặc tả **SCALE + ba nguồn sai số** (lượng tử hóa thang, nội suy knots bậc hai theo độ cong,
+  chia nguyên) + cận sai số tương đối tổng `⪅ K·ε_tab`; khuyến nghị `SCALE=10^9`, `ε_tab≤10^{−4}`.
+- §11.4 thêm **property test bắt buộc PT1–PT5** (sai số chặn, bảo toàn thứ tự, biên geometric,
+  nội suy-không-vượt-đường-cong lõm, đơn điệu bảng) — so `VP_int` với `VP_float`.
+- §11.6 hạ hướng **log-sum/exp xuống "phương án thay thế, KHÔNG dùng v1"** (giữ truy vết).
+- **Gỡ treo §14 câu 3**: từ câu hỏi mở "có cần exp không" → đã chốt bảng tra; chỉ còn TECH chốt
+  `SCALE`/lưới mốc/`ε_tab` + chạy PT1–PT5.
+
+**Áp D8 — chống đòn bẩy mua-bằng-tiền (C2+C4).**
+- Thêm **§6B** (Bất biến): ràng buộc cứng **(W1) `w_2+w_4 ≤ w_1+w_3`** — tổng weight nhóm
+  mua-được-bằng-tiền `MONEY={2,4}` ≤ tổng weight nhóm cần-thời-gian `TIME={1,3}`. Chứng minh
+  first-principles (§6B.2): weight = độ co giãn VP theo log (`∂lnVP/∂ln x_k=w_k`) → (W1) chặn biên
+  đòn bẩy vốn ≤ 1/2 (§6B.3).
+- §6B.4 thêm **(W2)**: `C2` chỉ tính dương nếu LAMP **đã khóa ≥ `N_2` epoch** (chi-phí-thời-gian,
+  như C1) — khóa-tức-thời → `C2=0`. Chống flash-fill kiểu §10.5 cho C2.
+- Nâng W1+W2 thành **Bất biến cứng I-5 (§12.2)**; thêm `N_2` + ràng buộc W1 vào bảng tham số mở
+  §12.1; cập nhật §10.3 bảng bản chất chi phí dòng `C2` (khóa qua `N_2` epoch).
+- **Nâng §14 câu 5** từ treo ("cần định lượng cap_2") thành **ràng buộc đã chốt** (W1+W2); chỉ còn
+  `cap_2`, `N_2`, bảng weight cụ thể là DAO định (miễn thỏa W1).
+- §13 cập nhật phụ thuộc TECH: ép W1 lúc nạp bảng weight + ép W2 khi đọc beacon C2 (gắn CONTRACT D9
+  — beacon C2 nhúng mốc khóa để xác thực `N_2` byte-perfect on-chain).
+
+**Giữ nguyên (không đụng):** §8.2 ngưỡng `≥θ` làm chuẩn (D1) — mọi mục VP_eff/gom phe vẫn chạy trên
+`power_i` nguyên thang `SCALE`, không đổi định nghĩa ngưỡng. Bất biến I-1 (khóa weight theo kỳ) nay
+phủ thêm `SCALE`/bảng `pow_k`/lưới mốc (khóa cùng kỳ, §11.7). LAMP không burn + per-capita +
+clamp BFT 1/21 + định giá ở app: KHÔNG đụng.
+
+---
+
+*Hết MATH. Phần TECH sẽ chốt `SCALE` + lưới mốc + `ε_tab` cho bảng tra `pow_k` (D7) + chạy property
+test PT1–PT5, cách đo C_k (gồm ép W1/W2 của D8), datum/redeemer on-chain, và cách tính VP_eff
+(clamp BFT §8B) đúng thứ tự cap→clamp + đếm `|S|` cho sàn cứng số-DID.*
