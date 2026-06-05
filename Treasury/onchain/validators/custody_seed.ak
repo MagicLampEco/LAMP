@@ -94,6 +94,10 @@ validator custody_seed(
     // ── S-ACC-0: mọi dòng sổ thuộc accepted_assets ─────────────────────────
     expect all_lines_accepted(seed_datum.ledger, seed_datum.accepted_assets)
 
+    // ── S-CONSUMED-0: genesis CHƯA chi proposal nào (single-use marker C-REL-9
+    //    bắt đầu rỗng). Chống seed pre-mark né replay-guard về sau.
+    expect seed_datum.consumed_proposals == []
+
     True
   }
 

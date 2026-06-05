@@ -42,6 +42,7 @@ fn datum(ledger: List<LedgerEntry>) -> CustodyDatum {
     cut_bps: cut_bps_10,
     governance_ref: #"9999",
     epoch: 10,
+    consumed_proposals: [],
   }
 }
 
@@ -89,7 +90,10 @@ fn run_with(
   d_in      : CustodyDatum,
   items     : List<CollectItem>,
 ) -> Bool {
-  custody.custody.spend(Some(d_in), Collect { items }, util.mk_ref(0), tx)
+  // Collect KHÔNG đụng proposal_policy/ms_per_epoch (chỉ nhánh Release dùng) → dummy.
+  custody.custody.spend(
+    #"feed", 432_000_000, Some(d_in), Collect { items }, util.mk_ref(0), tx,
+  )
 }
 
 // ════════════════════════════════════════════════════════════

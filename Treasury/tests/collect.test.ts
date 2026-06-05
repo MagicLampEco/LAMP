@@ -23,6 +23,7 @@ function baseDatum(over: Partial<CustodyDatum> = {}): CustodyDatum {
     cut_bps: 1000n, // 10%
     governance_ref: "cafe",
     epoch: 5n,
+    consumed_proposals: [],
     ...over,
   };
 }

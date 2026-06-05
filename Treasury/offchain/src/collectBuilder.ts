@@ -107,6 +107,8 @@ export function planCollect(datum: CustodyDatum, valueIn: AssetMap, items: Colle
     cut_bps:         datum.cut_bps,
     governance_ref:  datum.governance_ref,
     epoch,
+    // Collect KHÔNG đụng marker single-use — bảo toàn nguyên (chỉ Release append).
+    consumed_proposals: datum.consumed_proposals,
   };
 
   // Tự kiểm khớp validator (C-COL-3 / C-COL-4) trước khi dựng tx.

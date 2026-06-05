@@ -3,9 +3,11 @@
 // qua stake credential — bài học audit C1/C2/M1 Distribution), KHÔNG so full Address.
 
 use aiken/collection/list
+use aiken/interval.{Finite, IntervalBound, IntervalBoundType}
 use cardano/address.{Address, Inline, Script, VerificationKey}
 use cardano/assets.{Value}
-use cardano/transaction.{InlineDatum, Input, NoDatum, Output, OutputReference}
+use cardano/transaction.{InlineDatum, Input, NoDatum, Output, OutputReference,
+  Transaction}
 
 /// Address của chính UTxO đang spend.
 pub fn own_address(own_ref: OutputReference, inputs: List<Input>) -> Address {
@@ -54,6 +56,23 @@ pub fn input_at_script(inputs: List<Input>, script_hash: ByteArray) -> Output {
 pub fn output_at_script(outputs: List<Output>, script_hash: ByteArray) -> Output {
   expect Some(o) = list.find(outputs, fn(x) { is_at_script(x.address, script_hash) })
   o
+}
+
+// ── Epoch từ validity_range (time-lock C-REL-8 — mirror Distribution util.get_epoch) ──
+// Ledger ép validity_range; lower_bound Finite(posix_ms) chia ms_per_epoch ⇒ epoch
+// hiện tại tin cậy (không cần oracle). Release dùng để so execute_after_epoch.
+
+pub fn get_finite(bt: IntervalBoundType) -> Option<Int> {
+  when bt is {
+    Finite(s) -> Some(s)
+    _ -> None
+  }
+}
+
+pub fn get_epoch(tx: Transaction, ms_per_epoch: Int) -> Int {
+  let IntervalBound { bound_type, .. } = tx.validity_range.lower_bound
+  expect Some(s) = get_finite(bound_type)
+  s / ms_per_epoch
 }
 
 // ── Test-support builders (mock UTxO/tx) ──

@@ -44,6 +44,7 @@ fn seed_datum(ledger: List<LedgerEntry>) -> CustodyDatum {
     cut_bps: 1000,
     governance_ref: #"9999",
     epoch: 0,
+    consumed_proposals: [],
   }
 }
 

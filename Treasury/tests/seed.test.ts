@@ -25,6 +25,7 @@ function datum(ledger: LedgerEntry[], over: Partial<CustodyDatum> = {}): Custody
     cut_bps: 1000n,
     governance_ref: "9999",
     epoch: 0n,
+    consumed_proposals: [],
     ...over,
   };
 }
