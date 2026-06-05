@@ -310,3 +310,28 @@ Vòng audit đối kháng. EXEC chỉ tự sửa nội dung EXEC; các điểm c
 | **shard-by-asset = đường mở rộng** | **T4** | §3.1: đường mở rộng khi nghẽn = **shard-by-asset** (mỗi shard 1 asset = 1 UTxO độc lập; NO-DRAIN per-shard, `count==1` vẫn đúng trong shard; off-chain cộng tổng cho circulating). Giữ lõi an toàn 1-cặp/shard → migration nhẹ, KHÔNG viết lại NO-DRAIN thành "K cặp". |
 | **Thêm `execute_after_epoch` + `spend_spec_hash`** | **D2** (Gov CONTRACT §5) | §6.1 + §12: `Release` đọc từ ProposalDatum cả `spend_spec_hash` (chống chi-sai-đích) **và** `execute_after_epoch` (time-lock) — 2 blocker cứng M3. `released_cumulative` nếu vesting. Beacon giả lập M3 phải mô phỏng cả 3 field. |
 | Dọn tham số mở | T1 | §11: ghi rõ ngưỡng release bucket + `BFT_FLOOR` **không còn ở Treasury** — do Governance ép, Treasury chấp hành. |
+
+---
+
+## 16. Quyết định genesis seed (custody_seed) — ép bất biến nền sổ↔value tại tạo (2026-06-05)
+
+**Lỗ hổng (audit major):** `custody.ak` chỉ chạy khi **SPEND** custody đã tồn tại (nhánh `Collect`), và Collect chỉ kiểm **INCREMENTAL** (`Δsổ == Δvalue`, đúng T3). Custody UTxO **đầu tiên (seed)** do ví thường tạo với inline `CustodyDatum` **tùy ý** → bất biến nền ghi ở `types.ak`
+`∀a Σ_b ledger[(b,a)] == value(a) − reserved_min_ada(a)` **KHÔNG được ép ở đâu on-chain**. Trong v1 (chỉ Collect) value vẫn bảo toàn `Σout=Σin` (không leak), nhưng **kế toán có thể sinh ra đã hỏng** → Release (v1.x) đọc sổ sai sẽ over/under-draw, và không có gì chặn.
+
+**Quyết định: chọn đường (a) — minting-policy one-shot `custody_seed`** (mirror `Distribution/beacon_nft.ak`), KHÔNG chọn đường (b) "tin-cậy-người-seed + chỉ test off-chain".
+
+| Trục | Lý do chọn (a) one-shot seed policy |
+|---|---|
+| **Định hướng dài hạn (LAMP có giá trị + open SDK)** | Mỗi instance thuê bao (đa thuê bao) tự seed custody của họ. Nếu seed là "tin người" thì mỗi team eco phải tự kỷ luật — không kiểm soát được, niềm tin kế toán rạn. One-shot policy **ép on-chain cho MỌI instance** → seed luôn đúng từ gốc, mở SDK an toàn. |
+| **Tư duy nguyên bản (first-principles)** | Bất biến nền là **tiền đề** mà nhánh incremental (`Δsổ==Δvalue`) dựa vào: induction cần **base case** đúng. Ép base case ngay tại genesis = đóng đúng chỗ hở, không vá vòng ngoài. One-shot (consume genesis UTxO) là cách mạnh nhất đạt "policy chạy đúng 1 lần" mà KHÔNG cần state on-chain. |
+| **Tư duy tối ưu (eUTxO/ExUnit/ít UTXO)** | Chi phí chỉ phát sinh **đúng 1 lần** (lúc seed), không đụng đường nóng Collect. Cách ép = **một đẳng thức Value** (`value == ledger_value ⊕ reserved`), mirror `value_ok` — rẻ nhất, khóa cả 2 chiều (thiếu/thừa asset). NFT seed kiêm authenticity token (custody "thật" = UTxO mang NFT) → tái dùng cho validator/offchain phụ thuộc về sau, không thêm UTXO. |
+| **Lợi ích người dùng + bền vững** | Kế toán **không thể sinh ra đã hỏng** → an toàn vốn khi Release. Cấm burn NFT → supply authenticity bất biến, đơn giản hóa lý luận an toàn mọi validator phụ thuộc. |
+
+**Triển khai:**
+- `lib/magiclamp/treasury/collect.ak`: thêm `ledger_value` + `seed_value_ok(value, ledger, reserved_min_ada)` (ép `value == ledger_value(ledger) ⊕ reserved_min_ada`).
+- `validators/custody_seed.ak`: minting policy `custody_seed(genesis_ref, custody_script_hash)`, redeemer `SeedGenesis { reserved_min_ada }`. Ép: one-shot (consume `genesis_ref`); mint đúng 1 NFT name=`instance_id` qty +1; đúng 1 output custody theo SCRIPT HASH mang inline datum; `seed_value_ok`; `no_dup_lines`; mọi dòng ∈ `accepted_assets`; `reserved_min_ada ≥ 0`. Burn cấm (`else fail`).
+- Offchain (`offchain/src/collect.ts`): `ledgerValue` / `seedValue` / `seedValueOk` / `allLinesAccepted` / `seedDatumOk` — gương đủ validator để off-chain DỰNG đúng seed + tự kiểm TRƯỚC khi build genesis tx.
+
+**Bằng chứng test:** `aiken check` 27/27 pass (12 cũ + **15 seed** `custody_seed_test.ak`); `vitest run` 57/57 pass (41 cũ + **16 seed** `tests/seed.test.ts`). Phủ: seed đúng / thiếu genesis / mint qty-size sai / sổ≠value (thiếu reserved, thừa asset, booked thiếu) / dòng trùng khóa / asset không accepted / NFT name lệch instance_id / 2 custody output / burn / reserved âm.
+
+**Lưu ý migrate sang shard-by-asset (T4):** nếu sau đo throughput chốt shard, mỗi shard là 1 custody UTxO độc lập → seed policy áp **per-shard** (mỗi shard 1 NFT, `seed_value_ok` per-shard). Lõi không đổi.
