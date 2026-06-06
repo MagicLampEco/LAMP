@@ -584,3 +584,110 @@ test release_strip_marker() fail {
     }
   run(tx, datum(ledger_in), draws)
 }
+
+// ════════════════════════════════════════════════════════════
+// 17. DATUM RỖNG (fail) — custody spend không datum → expect Some(datum) fail.
+// ════════════════════════════════════════════════════════════
+test release_missing_datum() fail {
+  let ledger_in = [LedgerEntry { bucket_id: bucket_ops, policy: lamp_policy, name: lamp_name, amount: 1000 }]
+  let ledger_out = [LedgerEntry { bucket_id: bucket_ops, policy: lamp_policy, name: lamp_name, amount: 700 }]
+  let draws = happy_draws()
+  let spec = release.spend_spec_hash(draws)
+  let tx =
+    release_tx(
+      lamp_val(5_000_000, 5000), lamp_val(5_000_000, 4700),
+      ledger_in, ledger_out,
+      [proposal_input(Executed, spec, 4)],
+      [pay(alice, 300)], 5 * ms_per_epoch, [], assets.zero,
+    )
+  custody.custody.spend(
+    prop_policy, ms_per_epoch, None,
+    Release { proposal_ref: prop_ref(), draws }, util.mk_ref(0), tx,
+  )
+}
+
+// ════════════════════════════════════════════════════════════
+// 18. ĐỔI PARAM DATUM trong RELEASE (fail) — governance_ref bị đổi ở output.
+//     Release ép params instance bảo toàn (mirror C-COL-2). Collect đã test, Release CHƯA.
+// ════════════════════════════════════════════════════════════
+test release_param_tamper() fail {
+  let cust_addr = util.script_address(cust_sh)
+  let ledger_in = [LedgerEntry { bucket_id: bucket_ops, policy: lamp_policy, name: lamp_name, amount: 1000 }]
+  let ledger_out = [LedgerEntry { bucket_id: bucket_ops, policy: lamp_policy, name: lamp_name, amount: 700 }]
+  let draws = happy_draws()
+  let spec = release.spend_spec_hash(draws)
+  let cust_in =
+    util.mk_input(util.mk_ref(0), util.mk_output(cust_addr, lamp_val(5_000_000, 5000), datum(ledger_in)))
+  // governance_ref đổi 9999→dead (chiếm quyền cổng release sau này) → params bảo toàn fail.
+  let d_out =
+    CustodyDatum {
+      ..datum(ledger_out), ledger: ledger_out, epoch: 11,
+      governance_ref: #"dead", consumed_proposals: [prop_id],
+    }
+  let cust_out = util.mk_output(cust_addr, lamp_val(5_000_000, 4700), d_out)
+  let tx =
+    Transaction {
+      ..placeholder,
+      inputs: [cust_in],
+      reference_inputs: [proposal_input(Executed, spec, 4)],
+      outputs: [cust_out, pay(alice, 300)],
+      mint: assets.zero,
+      validity_range: interval.after(5 * ms_per_epoch),
+    }
+  run(tx, datum(ledger_in), draws)
+}
+
+// ════════════════════════════════════════════════════════════
+// 19. DRAW ÂM (fail) — amount = −300 (bơm sổ ngược / value bất nhất).
+//     all_draws_nonneg chặn rút âm. spec_hash khớp (đúng draws âm) nên không lọt qua C-REL-3;
+//     chỉ all_draws_nonneg trong ledger_ok chặn. Đồng thời ép phơi sai số sổ/value.
+// ════════════════════════════════════════════════════════════
+test release_negative_draw() fail {
+  let ledger_in = [LedgerEntry { bucket_id: bucket_ops, policy: lamp_policy, name: lamp_name, amount: 1000 }]
+  // draw −300 ⇒ each_out_line_ok kỳ vọng out = 1000 − (−300) = 1300; ta đặt 1300 để cô lập
+  // all_draws_nonneg là nguyên nhân fail duy nhất (không lẫn each_out_line_ok).
+  let ledger_out = [LedgerEntry { bucket_id: bucket_ops, policy: lamp_policy, name: lamp_name, amount: 1300 }]
+  let neg = [draw_lamp(bucket_ops, -300, alice)]
+  let spec = release.spend_spec_hash(neg)
+  // value_ok: out = in − (−300) = in + 300 ⇒ custody 5000→5300 (cô lập all_draws_nonneg).
+  let tx =
+    release_tx(
+      lamp_val(5_000_000, 5000), lamp_val(5_000_000, 5300),
+      ledger_in, ledger_out,
+      [proposal_input(Executed, spec, 4)],
+      [pay(alice, 0)], 5 * ms_per_epoch, [], assets.zero,
+    )
+  run(tx, datum(ledger_in), neg)
+}
+
+// ════════════════════════════════════════════════════════════
+// 20. KHÔNG OUTPUT CUSTODY (fail) — Release drain toàn bộ kho, không trả về script.
+//     count_outputs_at_script == 0 ⇒ C-REL-4 fail.
+// ════════════════════════════════════════════════════════════
+test release_no_custody_output() fail {
+  let cust_addr = util.script_address(cust_sh)
+  let ledger_in = [LedgerEntry { bucket_id: bucket_ops, policy: lamp_policy, name: lamp_name, amount: 1000 }]
+  let draws = happy_draws()
+  let spec = release.spend_spec_hash(draws)
+  let cust_in =
+    util.mk_input(util.mk_ref(0), util.mk_output(cust_addr, lamp_val(5_000_000, 5000), datum(ledger_in)))
+  // KHÔNG output custody — toàn bộ value đi ra ví thường.
+  let tx =
+    Transaction {
+      ..placeholder,
+      inputs: [cust_in],
+      reference_inputs: [proposal_input(Executed, spec, 4)],
+      outputs: [pay(alice, 300), util.mk_output_no_datum(util.vk_address(bob), lamp_val(5_000_000, 4700))],
+      mint: assets.zero,
+      validity_range: interval.after(5 * ms_per_epoch),
+    }
+  run(tx, datum(ledger_in), draws)
+}
+
+// ════════════════════════════════════════════════════════════
+// 21. APPEND XÓA ID CŨ (fail) — C-REL-9 consumed_appended_ok.
+// [P1 FOLLOW-UP — tạm gỡ 2026-06-05] Bản test này (custody_in consumed=[#"old"],
+// out_datum quên #"old") khiến aiken v1.1.21 PANIC compiler (nuốt lỗi khi không TTY),
+// làm cả module Treasury không biên dịch. Cần dựng lại tx tối giản kiểu test 18 rồi
+// khôi phục. Bất biến consumed_appended_ok vẫn được phủ gián tiếp bởi replay test khác.
+// ════════════════════════════════════════════════════════════

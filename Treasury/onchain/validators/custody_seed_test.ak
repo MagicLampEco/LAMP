@@ -270,3 +270,28 @@ test seed_negative_reserved() fail {
     )
   run(tx, -1)
 }
+
+// ════════════════════════════════════════════════════════════
+// 11. SEED PRE-MARK consumed_proposals (fail) — S-CONSUMED-0.
+//     genesis datum đặt sẵn consumed_proposals khác [] → mở đường né replay-guard
+//     C-REL-9 (seed sẵn id giả để "đã chi" hoặc làm hỏng append). PHẢI bắt đầu rỗng.
+// ════════════════════════════════════════════════════════════
+test seed_consumed_not_empty() fail {
+  let bad_datum =
+    CustodyDatum { ..seed_datum(happy_ledger()), consumed_proposals: [#"beef"] }
+  let bad_out = util.mk_output(util.script_address(cust_sh), happy_value(), bad_datum)
+  let tx = seed_tx([genesis_input()], seed_mint(instance_id, 1), [bad_out])
+  run(tx, reserved)
+}
+
+// ════════════════════════════════════════════════════════════
+// 12. KHÔNG OUTPUT CUSTODY (fail) — mint NFT nhưng không có output custody mang nó.
+//     count_outputs_at_script == 0 ⇒ S-OUT-1 fail (NFT lạc, instance không sinh ra đúng).
+// ════════════════════════════════════════════════════════════
+test seed_no_custody_output() fail {
+  // output gửi NFT vào ví thường thay vì custody script.
+  let wallet_out =
+    util.mk_output_no_datum(util.vk_address(#"a0"), happy_value() |> assets.add(seed_policy, instance_id, 1))
+  let tx = seed_tx([genesis_input()], seed_mint(instance_id, 1), [wallet_out])
+  run(tx, reserved)
+}

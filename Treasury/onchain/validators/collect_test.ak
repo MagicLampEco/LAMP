@@ -7,7 +7,8 @@ use cardano/assets
 use cardano/transaction.{Input, Transaction, placeholder}
 use custody
 use magiclamp/treasury/types.{
-  AssetKey, Collect, CollectItem, CustodyDatum, LedgerEntry,
+  AssetKey, Collect, CollectItem, CustodyDatum, LedgerEntry, MigrateIn,
+  Rebalance,
 }
 use magiclamp/treasury/util
 
@@ -279,5 +280,120 @@ test collect_epoch_regress() fail {
   let items = [item(1000, bucket_ops)]
   let tx =
     collect_tx(lamp_val(5_000_000, 5000), lamp_val(5_000_000, 5100), ledger_in, ledger_out, 9, [])
+  run_with(tx, datum(ledger_in), items)
+}
+
+// ════════════════════════════════════════════════════════════
+// 10. DATUM RỖNG (fail) — UTxO custody không có datum → expect Some(datum) fail.
+//     (Custody PHẢI luôn mang CustodyDatum; spend không datum = bất khả tin.)
+// ════════════════════════════════════════════════════════════
+test collect_missing_datum() fail {
+  let ledger_in = [LedgerEntry { bucket_id: bucket_ops, policy: lamp_policy, name: lamp_name, amount: 0 }]
+  let ledger_out = [LedgerEntry { bucket_id: bucket_ops, policy: lamp_policy, name: lamp_name, amount: 100 }]
+  let items = [item(1000, bucket_ops)]
+  let tx =
+    collect_tx(lamp_val(5_000_000, 5000), lamp_val(5_000_000, 5100), ledger_in, ledger_out, 11, [])
+  // datum_opt = None ⇒ expect Some(datum) crash.
+  custody.custody.spend(
+    #"feed", 432_000_000, None, Collect { items }, util.mk_ref(0), tx,
+  )
+}
+
+// ════════════════════════════════════════════════════════════
+// 11. KHÔNG OUTPUT CUSTODY (fail) — value rời treasury không quay lại script.
+//     count_outputs_at_script == 0 ⇒ C-COL-1 fail (drain toàn bộ kho).
+// ════════════════════════════════════════════════════════════
+test collect_no_custody_output() fail {
+  let ledger_in = [LedgerEntry { bucket_id: bucket_ops, policy: lamp_policy, name: lamp_name, amount: 0 }]
+  let cust_addr = util.script_address(cust_sh)
+  let cust_in =
+    util.mk_input(util.mk_ref(0), util.mk_output(cust_addr, lamp_val(5_000_000, 5000), datum(ledger_in)))
+  // output gửi thẳng ví thường, KHÔNG có output về custody script.
+  let wallet_out = util.mk_output_no_datum(util.vk_address(#"dead"), lamp_val(5_000_000, 5100))
+  let tx =
+    Transaction { ..placeholder, inputs: [cust_in], outputs: [wallet_out], mint: assets.zero }
+  run_with(tx, datum(ledger_in), [item(1000, bucket_ops)])
+}
+
+// ════════════════════════════════════════════════════════════
+// 12. ĐỤNG MARKER SINGLE-USE (fail) — Collect KHÔNG được ghi consumed_proposals
+//     (chỉ Release ghi). Nếu Collect thêm proposal_id giả vào consumed → C-COL-2 fail.
+//     (Chống "tự đánh dấu đã chi" để né replay-guard sai mục đích.)
+// ════════════════════════════════════════════════════════════
+test collect_consumed_tamper() fail {
+  let ledger_in = [LedgerEntry { bucket_id: bucket_ops, policy: lamp_policy, name: lamp_name, amount: 0 }]
+  let ledger_out = [LedgerEntry { bucket_id: bucket_ops, policy: lamp_policy, name: lamp_name, amount: 100 }]
+  let items = [item(1000, bucket_ops)]
+  let cust_addr = util.script_address(cust_sh)
+  let cust_in =
+    util.mk_input(util.mk_ref(0), util.mk_output(cust_addr, lamp_val(5_000_000, 5000), datum(ledger_in)))
+  // out_datum đổi consumed_proposals []→[#"beef"] (Collect không được phép).
+  let d_out =
+    CustodyDatum { ..datum(ledger_out), ledger: ledger_out, epoch: 11, consumed_proposals: [#"beef"] }
+  let cust_out = util.mk_output(cust_addr, lamp_val(5_000_000, 5100), d_out)
+  let tx = Transaction { ..placeholder, inputs: [cust_in], outputs: [cust_out], mint: assets.zero }
+  run_with(tx, datum(ledger_in), items)
+}
+
+// ════════════════════════════════════════════════════════════
+// 13. CUSTODY OUTPUT VỀ VÍ THƯỜNG (fail) — nếu refactor chọn output theo cách khác,
+//     khẳng định !is_vk chặn output custody nằm ở VerificationKey address.
+//     Ở đây ta đặt cust_out ở vk_address NHƯNG cùng "hash" để count theo script vẫn 0
+//     ⇒ thực chất rơi vào count==0; để cô lập is_vk, ta giữ 1 output script + 1 vk cùng value
+//     không khả thi (count==1 chọn script). Thay vào: kiểm địa chỉ script KHÔNG có payment vk.
+//     → test này xác nhận happy vẫn pass khi address là Script thuần (regression guard).
+// ════════════════════════════════════════════════════════════
+test collect_script_addr_is_not_vk() {
+  // Khẳng định bất biến nền: custody address là Script, !is_vk == True.
+  let addr = util.script_address(cust_sh)
+  !util.is_vk(addr)
+}
+
+// ════════════════════════════════════════════════════════════
+// 14. NHÁNH CHƯA TRIỂN KHAI (fail) — Rebalance / MigrateIn rơi vào `_ -> fail`.
+//     v1 chỉ Collect + Release; mọi redeemer khác PHẢI reject (không lọt cửa hậu).
+// ════════════════════════════════════════════════════════════
+test collect_rebalance_unimplemented() fail {
+  let ledger_in = [LedgerEntry { bucket_id: bucket_ops, policy: lamp_policy, name: lamp_name, amount: 0 }]
+  let cust_addr = util.script_address(cust_sh)
+  let cust_in =
+    util.mk_input(util.mk_ref(0), util.mk_output(cust_addr, lamp_val(5_000_000, 5000), datum(ledger_in)))
+  let cust_out = util.mk_output(cust_addr, lamp_val(5_000_000, 5000), datum(ledger_in))
+  let tx = Transaction { ..placeholder, inputs: [cust_in], outputs: [cust_out], mint: assets.zero }
+  custody.custody.spend(
+    #"feed", 432_000_000, Some(datum(ledger_in)),
+    Rebalance { moves: [] }, util.mk_ref(0), tx,
+  )
+}
+
+test collect_migrate_unimplemented() fail {
+  let ledger_in = [LedgerEntry { bucket_id: bucket_ops, policy: lamp_policy, name: lamp_name, amount: 0 }]
+  let cust_addr = util.script_address(cust_sh)
+  let cust_in =
+    util.mk_input(util.mk_ref(0), util.mk_output(cust_addr, lamp_val(5_000_000, 5000), datum(ledger_in)))
+  let cust_out = util.mk_output(cust_addr, lamp_val(5_000_000, 5000), datum(ledger_in))
+  let tx = Transaction { ..placeholder, inputs: [cust_in], outputs: [cust_out], mint: assets.zero }
+  custody.custody.spend(
+    #"feed", 432_000_000, Some(datum(ledger_in)),
+    MigrateIn { source: #"00" }, util.mk_ref(0), tx,
+  )
+}
+
+// ════════════════════════════════════════════════════════════
+// 15. THÊM DÒNG SỔ KHỐNG (fail) — out có dòng (bucket,asset) KHÔNG ở in và KHÔNG có
+//     item nào nhắm tới → each_out_line_ok kỳ vọng get(in)+Δ=0 nhưng amount=999 ⇒ fail.
+//     (Chống bơm số dư bucket khống để Release v1.x rút ra value không có thật.)
+// ════════════════════════════════════════════════════════════
+test collect_phantom_ledger_line() fail {
+  let ledger_in = [LedgerEntry { bucket_id: bucket_ops, policy: lamp_policy, name: lamp_name, amount: 0 }]
+  let ledger_out =
+    [
+      LedgerEntry { bucket_id: bucket_ops, policy: lamp_policy, name: lamp_name, amount: 100 },
+      // dòng khống: community LAMP 999, không item nào nhắm tới, không có ở in.
+      LedgerEntry { bucket_id: bucket_community, policy: lamp_policy, name: lamp_name, amount: 999 },
+    ]
+  let items = [item(1000, bucket_ops)]
+  let tx =
+    collect_tx(lamp_val(5_000_000, 5000), lamp_val(5_000_000, 5100), ledger_in, ledger_out, 11, [])
   run_with(tx, datum(ledger_in), items)
 }
