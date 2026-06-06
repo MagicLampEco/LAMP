@@ -11,10 +11,3 @@ pub const p_max     : Int = 10_000_000_000   // 10_000 LAMP [hard ceiling]
 // P adjustment
 pub const max_p_delta_q : Int = 100_000_000  // ±10% = 0.10 × Q
 pub const p_ema_window  : Int = 3            // α = 0.5
-
-// Lottery
-pub const target_rate_q : Int = 3_300_000    // 0.33% (Q) — ~70% in 5 years
-
-// Merkle domain separation (RFC 6962 style)
-pub const merkle_leaf_prefix : ByteArray = #"00"
-pub const merkle_node_prefix : ByteArray = #"01"

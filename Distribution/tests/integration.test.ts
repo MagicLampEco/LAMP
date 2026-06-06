@@ -1,120 +1,127 @@
-// Integration test — mô phỏng full flow SPEC §8 off-chain (pure logic).
-// Kiểm chứng: cumulative accounting, Merkle interop, chống double-redeem, batch tự nhiên,
-// bất biến redeemed ≤ won ≤ claimed. Mirror CHÍNH XÁC logic claim_account Redeem validator.
+// Integration test — full flow CONTRACT v2 "Capped Drop" off-chain (pure logic).
+// Kiểm chứng: vested cộng dồn, cap E, đa-claim redeemed cộng dồn, chống double-redeem,
+// entitlement bảo toàn (bỏ lỡ epoch không mất quyền), ví nhỏ E<D nhận hết ngay.
+// Mirror CHÍNH XÁC logic claim_account Redeem validator.
 
 import { describe, it, expect } from "vitest";
-import { buildMerkleTree, verifyClaim } from "../offchain/src/merkle.js";
-import { runLottery } from "../offchain/src/lottery.js";
-import { computeNextP } from "../offchain/src/pparam.js";
-import { P_GENESIS, Q, lampOil } from "./helpers.js";
-import type { LotteryAccount } from "../offchain/src/types.js";
+import { vested } from "../offchain/src/vested.js";
+import { lampOil } from "./helpers.js";
 
-// ── Mô hình ClaimAccount (mirror onchain datum) ──
-interface Account { owner: string; claimedCumulative: bigint; redeemedCumulative: bigint; }
-
-// Mirror claim_account.ak Redeem: trả released + redeemed mới (hoặc throw như validator).
-function simulateRedeem(
-  acc: Account, wonCumulative: bigint, proof: string[], rootHex: string,
-): { released: bigint; newRedeemed: bigint } {
-  // C-RDM-1
-  if (!verifyClaim(rootHex, acc.owner, wonCumulative, proof)) throw new Error("C-RDM-1: bad proof");
-  // C-RDM-2
-  if (wonCumulative <= acc.redeemedCumulative) throw new Error("C-RDM-2: released <= 0");
-  // C-RDM-5
-  if (wonCumulative > acc.claimedCumulative) throw new Error("C-RDM-5: exceeds claimed");
-  const released = wonCumulative - acc.redeemedCumulative;   // C-RDM-3
-  return { released, newRedeemed: wonCumulative };           // C-RDM-4
+// ── Mô hình ClaimAccount (mirror onchain datum v2) ──
+interface Account {
+  owner: string;
+  entitlement: bigint;
+  redeemed: bigint;
+  startEpoch: bigint;
+  dropsPerEpoch: bigint;
 }
 
-describe("Full distribution flow (SPEC §8)", () => {
-  it("claim → P announce → lottery → redeem → double-redeem reject → batch", () => {
-    // 1. CLAIM: committee confirm A=250 LAMP, B=1000 LAMP
-    const accounts: Account[] = [
-      { owner: "a1", claimedCumulative: lampOil(250n),  redeemedCumulative: 0n },
-      { owner: "b2", claimedCumulative: lampOil(1000n), redeemedCumulative: 0n },
-    ];
+// Mirror claim_account.ak Redeem: trả amount + redeemed mới (hoặc throw như validator).
+//   vested = min(E, D·dpe·max(0, t−t0)); amount = vested − redeemed > 0.
+function simulateRedeem(
+  acc: Account, D: bigint, currentEpoch: bigint,
+): { amount: bigint; newRedeemed: bigint } {
+  const v = vested(acc.entitlement, D, acc.dropsPerEpoch, acc.startEpoch, currentEpoch);
+  const amount = v - acc.redeemed;            // C-RDM-1
+  if (amount <= 0n) throw new Error("C-RDM-1: redeemable <= 0");
+  return { amount, newRedeemed: acc.redeemed + amount };   // C-RDM-4
+}
 
-    // 2. P ANNOUNCE: cân bằng → P giữ genesis 100 LAMP
-    const pRes = computeNextP(P_GENESIS, {
-      magicConsumed: 1000n, magicGenerated: 1000n, lampnetUtil: 0n, claimedUnredeemed: 0n,
-    }, 0n);
-    const P1 = pRes.pNext;
-    expect(P1).toBe(P_GENESIS);
+describe("Full distribution flow (Capped Drop)", () => {
+  it("claim → drip nhiều epoch → redeem cộng dồn → double-redeem reject", () => {
+    const D = lampOil(100n);   // committee post DropParam D = 100 LAMP
 
-    // 3. LOTTERY epoch 1: p=100% (test deterministic) → mọi remaining thắng
-    const lotteryAccts1: LotteryAccount[] = accounts.map(a => ({
-      owner: a.owner, claimedCum: a.claimedCumulative, wonCumPrev: 0n,
-    }));
-    const res1 = runLottery(lotteryAccts1, { nonceHex: "ab".repeat(32), P: P1, targetRateQ: Q });
+    // CLAIM: committee confirm A có entitlement 250 LAMP, start t0=0, dpe=1.
+    const accA: Account = {
+      owner: "a1", entitlement: lampOil(250n), redeemed: 0n, startEpoch: 0n, dropsPerEpoch: 1n,
+    };
 
-    // 4. BUILD MERKLE root_1 từ won_cumulative
-    const leaves1 = res1.filter(r => r.wonCumNew > 0n).map(r => ({ owner: r.owner, wonCumulative: r.wonCumNew }));
-    const tree1 = buildMerkleTree(leaves1);
+    // epoch 1: vested=100 → redeem 100
+    const r1 = simulateRedeem(accA, D, 1n);
+    expect(r1.amount).toBe(lampOil(100n));
+    accA.redeemed = r1.newRedeemed;
 
-    // 5. REDEEM: A redeem → nhận đúng won_A
-    const wonA1 = res1.find(r => r.owner === "a1")!.wonCumNew;
-    const accA = accounts.find(a => a.owner === "a1")!;
-    const r1 = simulateRedeem(accA, wonA1, tree1.proofs.get("a1")!, tree1.rootHex);
-    expect(r1.released).toBe(wonA1);            // p=100% → won = full 250 LAMP
-    expect(r1.released).toBe(lampOil(250n));
-    accA.redeemedCumulative = r1.newRedeemed;
+    // double-redeem cùng epoch → vested=100, redeemed=100 → amount 0 → reject
+    expect(() => simulateRedeem(accA, D, 1n)).toThrow("C-RDM-1");
 
-    // 6. DOUBLE-REDEEM: dùng lại proof_1 → reject (released = 0)
-    expect(() => simulateRedeem(accA, wonA1, tree1.proofs.get("a1")!, tree1.rootHex))
-      .toThrow("C-RDM-2");
+    // epoch 2: vested=200 → redeem thêm 100
+    const r2 = simulateRedeem(accA, D, 2n);
+    expect(r2.amount).toBe(lampOil(100n));
+    accA.redeemed = r2.newRedeemed;
 
-    // 7. BATCH: thêm claim cho A (epoch sau), lottery epoch 2, won tăng → 1 proof gộp
-    accA.claimedCumulative += lampOil(150n);     // A claim thêm 150 → tổng 400
-    const lotteryAccts2: LotteryAccount[] = [{
-      owner: "a1", claimedCum: accA.claimedCumulative, wonCumPrev: wonA1,
-    }];
-    const res2 = runLottery(lotteryAccts2, { nonceHex: "cd".repeat(32), P: P1, targetRateQ: Q });
-    const wonA2 = res2[0]!.wonCumNew;
-    expect(wonA2).toBe(lampOil(400n));           // p=100% → toàn bộ 400 LAMP đã thắng
-    const tree2 = buildMerkleTree([{ owner: "a1", wonCumulative: wonA2 }]);
-    const r2 = simulateRedeem(accA, wonA2, tree2.proofs.get("a1")!, tree2.rootHex);
-    expect(r2.released).toBe(lampOil(150n));      // chỉ phần mới (400 − 250)
-    accA.redeemedCumulative = r2.newRedeemed;
+    // epoch 3: vested=min(250, 300)=250 (cap E) → redeem 50 cuối
+    const r3 = simulateRedeem(accA, D, 3n);
+    expect(r3.amount).toBe(lampOil(50n));
+    accA.redeemed = r3.newRedeemed;
+    expect(accA.redeemed).toBe(accA.entitlement);   // tổng nhận = E
 
-    // 8. INVARIANTS
-    for (const a of accounts) {
-      expect(a.redeemedCumulative).toBeLessThanOrEqual(a.claimedCumulative); // redeemed ≤ claimed
-      expect(a.redeemedCumulative).toBeGreaterThanOrEqual(0n);
-    }
-    expect(accA.redeemedCumulative).toBe(lampOil(400n));
+    // epoch 4: đã cap, redeemed=E → reject
+    expect(() => simulateRedeem(accA, D, 4n)).toThrow("C-RDM-1");
   });
 
-  it("partial lottery (p<100%) keeps won ≤ claimed across epochs", () => {
-    const acc: Account = { owner: "c3", claimedCumulative: lampOil(10000n), redeemedCumulative: 0n };
-    let wonPrev = 0n;
-    let redeemed = 0n;
-    // 5 epoch lottery với p=20%, cộng dồn
-    for (let e = 0; e < 5; e++) {
-      const res = runLottery(
-        [{ owner: "c3", claimedCum: acc.claimedCumulative, wonCumPrev: wonPrev }],
-        { nonceHex: e.toString(16).padStart(2, "0").repeat(32), P: lampOil(100n), targetRateQ: 200_000_000n },
-      );
-      const won = res[0]!.wonCumNew;
-      expect(won).toBeGreaterThanOrEqual(wonPrev);            // đơn điệu
-      expect(won).toBeLessThanOrEqual(acc.claimedCumulative); // ≤ claimed
-      if (won > redeemed) {
-        const tree = buildMerkleTree([{ owner: "c3", wonCumulative: won }]);
-        const r = simulateRedeem(acc, won, tree.proofs.get("c3")!, tree.rootHex);
-        expect(r.released).toBe(won - redeemed);
-        acc.redeemedCumulative = r.newRedeemed;   // mirror validator: account datum cập nhật
-        redeemed = r.newRedeemed;
+  it("entitlement bảo toàn: bỏ lỡ epoch 1-4, redeem ở epoch 5 nhận gộp đủ", () => {
+    const D = lampOil(100n);
+    const acc: Account = {
+      owner: "b2", entitlement: lampOil(1000n), redeemed: 0n, startEpoch: 0n, dropsPerEpoch: 1n,
+    };
+    // không redeem ở epoch 1-4; epoch 5 redeem lần đầu → vested(5)=500, nhận đủ 500.
+    const r = simulateRedeem(acc, D, 5n);
+    expect(r.amount).toBe(lampOil(500n));   // không mất 4 epoch trước (khác lottery)
+    acc.redeemed = r.newRedeemed;
+    // tiếp tục tới cap
+    expect(acc.redeemed).toBe(lampOil(500n));
+  });
+
+  it("ví nhỏ E < D → nhận hết ngay epoch đầu", () => {
+    const D = lampOil(100n);
+    const acc: Account = {
+      owner: "c3", entitlement: lampOil(30n), redeemed: 0n, startEpoch: 0n, dropsPerEpoch: 1n,
+    };
+    const r = simulateRedeem(acc, D, 1n);
+    expect(r.amount).toBe(lampOil(30n));    // min(30, 100) = 30 = full
+    acc.redeemed = r.newRedeemed;
+    expect(() => simulateRedeem(acc, D, 2n)).toThrow("C-RDM-1"); // hết
+  });
+
+  it("invariants xuyên suốt: redeemed đơn điệu, ≤ E, vested đơn điệu", () => {
+    const D = lampOil(100n);
+    const acc: Account = {
+      owner: "d4", entitlement: lampOil(1000n), redeemed: 0n, startEpoch: 0n, dropsPerEpoch: 1n,
+    };
+    let prevVested = -1n;
+    let prevRedeemed = -1n;
+    for (let t = 1n; t <= 15n; t++) {
+      const v = vested(acc.entitlement, D, acc.dropsPerEpoch, acc.startEpoch, t);
+      expect(v >= prevVested).toBe(true);            // vested đơn điệu
+      expect(v <= acc.entitlement).toBe(true);       // cap E
+      prevVested = v;
+      if (v > acc.redeemed) {
+        const r = simulateRedeem(acc, D, t);
+        acc.redeemed = r.newRedeemed;
       }
-      wonPrev = won;
+      expect(acc.redeemed >= prevRedeemed).toBe(true); // redeemed đơn điệu
+      expect(acc.redeemed <= acc.entitlement).toBe(true);
+      prevRedeemed = acc.redeemed;
     }
-    expect(redeemed).toBe(wonPrev);
-    expect(redeemed).toBeLessThanOrEqual(acc.claimedCumulative);
+    expect(acc.redeemed).toBe(acc.entitlement);        // tổng cuối = E
   });
 
-  it("redeem rejects forged won_cumulative (not in tree)", () => {
-    const acc: Account = { owner: "a1", claimedCumulative: lampOil(1000n), redeemedCumulative: 0n };
-    const tree = buildMerkleTree([{ owner: "a1", wonCumulative: lampOil(100n) }]);
-    // kẻ gian khai won = 999 LAMP nhưng tree chỉ commit 100 → proof fail
-    expect(() => simulateRedeem(acc, lampOil(999n), tree.proofs.get("a1")!, tree.rootHex))
-      .toThrow("C-RDM-1");
+  it("committee tăng entitlement (Claim) giữa chừng → drip tiếp phần mới", () => {
+    const D = lampOil(100n);
+    const acc: Account = {
+      owner: "e5", entitlement: lampOil(200n), redeemed: 0n, startEpoch: 0n, dropsPerEpoch: 1n,
+    };
+    // epoch 1,2 redeem hết 200 (cap)
+    acc.redeemed = simulateRedeem(acc, D, 2n).newRedeemed;
+    expect(acc.redeemed).toBe(lampOil(200n));
+
+    // committee Claim thêm 300 → entitlement 500 (start_epoch giữ nguyên 0).
+    acc.entitlement += lampOil(300n);
+
+    // epoch 5: vested=min(500, 500)=500 → redeem thêm 300.
+    const r = simulateRedeem(acc, D, 5n);
+    expect(r.amount).toBe(lampOil(300n));
+    acc.redeemed = r.newRedeemed;
+    expect(acc.redeemed).toBe(lampOil(500n));
   });
 });

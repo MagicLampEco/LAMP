@@ -1,22 +1,16 @@
 // LampDistribution claimBuilder — committee 2/3 confirm → tạo/cập nhật ClaimAccount.
+// CONTRACT v2 "Capped Drop": Claim cấp/tăng entitlement E (committee confirm activity).
 //
-// State machine: EARNED → CLAIMED (SPEC §2). Committee xác nhận wallet `owner`
-// đáng nhận `amount` oil → claimed_cumulative += amount, last_claim_epoch = current.
+//   CREATE: account chưa có → datum {owner, entitlement=amount, redeemed=0,
+//           start_epoch=current, drops_per_epoch}.
+//   UPDATE: account đã có → entitlement += amount; redeemed/start_epoch/dpe bất biến.
 //
-// Invariants (SPEC §6):
+// Invariants:
 //   C-CLAIM-1  ≥ ⌈2N/3⌉ committee signatures.
-//   C-CLAIM-2  out.claimed_cumulative = in.claimed_cumulative + amount; amount > 0.
-//   C-CLAIM-3  out.owner == in.owner; redeemed_cumulative unchanged.
-//   C-CLAIM-4  out.last_claim_epoch == current_epoch.
-//   C-CLAIM-5  đúng 1 ClaimAccount input + 1 output cùng script (update path).
+//   C-CLAIM-2  out.entitlement = in.entitlement + amount; amount > 0.
+//   C-CLAIM-3  out.owner == in.owner; redeemed/start_epoch/drops_per_epoch unchanged.
 //   C-MINT-0   tx.mint == 0 (builder không gọi .mintAssets).
-//   C-VAL-0    assets bảo toàn (lovelace + dust) — chỉ datum đổi, value giữ nguyên.
-//
-// 2 path:
-//   (a) UPDATE: account đã tồn tại → spend ClaimAccount UTxO (Claim redeemer),
-//       trả về output mới cùng script, bảo toàn toàn bộ assets.
-//   (b) CREATE: account chưa có → chỉ pay.ToAddressWithData (không spend script),
-//       initial datum {owner, claimed=amount, redeemed=0, last_claim_epoch=current}.
+//   C-VAL-0    assets bảo toàn (lovelace + dust) — chỉ datum đổi.
 
 import {
   Data,
@@ -30,6 +24,7 @@ import {
   claimAccountDatumToCbor, claimRedeemerToCbor, decodeClaimAccountDatum,
 } from "./datum.js";
 import { assertCommitteeSigners } from "./committee.js";
+import { DEFAULT_DROPS_PER_EPOCH } from "./constants.js";
 
 export interface ClaimParams {
   lucid:        LucidEvolution;
@@ -39,16 +34,19 @@ export interface ClaimParams {
 
   /** PKH chủ ví (hex 28-byte) được committee xác nhận. */
   ownerPkh:     string;
-  /** Số oil claim thêm lần này (> 0). */
+  /** Số oil entitlement cấp thêm lần này (> 0). */
   amount:       bigint;
   /** Epoch hiện tại (committee tính off-chain từ validity range). */
   currentEpoch: bigint;
 
   /**
    * ClaimAccount UTxO hiện tại của owner (UPDATE path). Bỏ trống → CREATE path
-   * (account đầu tiên cho owner này).
+   * (account đầu tiên cho owner này): start_epoch = currentEpoch.
    */
   claimAccountUtxo?: UTxO;
+
+  /** drops_per_epoch cho account mới (CREATE). Mặc định 1 (MVP). */
+  dropsPerEpoch?: bigint;
 
   /** Min-ADA cho ClaimAccount UTxO mới (CREATE path). Mặc định 2 ADA. */
   accountLovelace?: bigint;
@@ -59,10 +57,8 @@ export interface ClaimParams {
   signerKeyHashes?:  string[];
 
   /**
-   * POSIX ms cho lower_bound của validity_range (BẮT BUỘC để live tx hợp lệ).
-   * Validator get_epoch đọc lower_bound.bound_type = Finite(s); epoch = s / ms_per_epoch
-   * phải khớp `currentEpoch` (C-CLAIM-4). Truyền `currentEpoch * ms_per_epoch`.
-   * Bỏ trống → KHÔNG set (chỉ dùng cho unit test off-chain; live sẽ fail get_epoch).
+   * POSIX ms cho lower_bound validity_range (BẮT BUỘC live tx CREATE: validator
+   * get_epoch đọc lower_bound → start_epoch). Bỏ trống → KHÔNG set (unit test off-chain).
    */
   validFromMs?: bigint;
 }
@@ -120,10 +116,11 @@ export async function buildClaimTx(params: ClaimParams): Promise<ClaimResult> {
     }
 
     newDatum = {
-      owner:               prev.owner,                         // C-CLAIM-3
-      claimed_cumulative:  prev.claimed_cumulative + amount,   // C-CLAIM-2
-      redeemed_cumulative: prev.redeemed_cumulative,           // C-CLAIM-3 (unchanged)
-      last_claim_epoch:    currentEpoch,                       // C-CLAIM-4
+      owner:           prev.owner,                       // C-CLAIM-3
+      entitlement:     prev.entitlement + amount,        // C-CLAIM-2
+      redeemed:        prev.redeemed,                    // C-CLAIM-3 (unchanged)
+      start_epoch:     prev.start_epoch,                 // C-CLAIM-3 (unchanged)
+      drops_per_epoch: prev.drops_per_epoch,             // C-CLAIM-3 (unchanged)
     };
 
     // Bảo toàn TẤT CẢ assets (lovelace + bất kỳ dust) — chỉ datum đổi (C-VAL-0).
@@ -138,9 +135,10 @@ export async function buildClaimTx(params: ClaimParams): Promise<ClaimResult> {
     const accountLovelace = params.accountLovelace ?? DEFAULT_ACCOUNT_LOVELACE;
     newDatum = {
       owner,
-      claimed_cumulative:  amount,
-      redeemed_cumulative: 0n,
-      last_claim_epoch:    currentEpoch,
+      entitlement:     amount,
+      redeemed:        0n,
+      start_epoch:     currentEpoch,
+      drops_per_epoch: params.dropsPerEpoch ?? DEFAULT_DROPS_PER_EPOCH,
     };
     outAssets = { lovelace: accountLovelace };
   }
@@ -153,7 +151,7 @@ export async function buildClaimTx(params: ClaimParams): Promise<ClaimResult> {
 
   for (const k of signers) txb = txb.addSignerKey(k);
 
-  // validity_range lower_bound → validator get_epoch (C-CLAIM-4). Live tx bắt buộc.
+  // validity_range lower_bound → validator get_epoch (CREATE start_epoch). Live tx bắt buộc.
   if (params.validFromMs !== undefined) {
     txb = txb.validFrom(Number(params.validFromMs));
   }
@@ -164,9 +162,9 @@ export async function buildClaimTx(params: ClaimParams): Promise<ClaimResult> {
     `═══ Claim (${mode}) ═══`,
     `Owner:        ${owner}`,
     `Amount:       ${amount / 1_000_000n} LAMP (${amount} oil)`,
-    `Claimed cum:  ${newDatum.claimed_cumulative} oil`,
-    `Redeemed cum: ${newDatum.redeemed_cumulative} oil (unchanged)`,
-    `Epoch:        ${currentEpoch}`,
+    `Entitlement:  ${newDatum.entitlement} oil`,
+    `Redeemed:     ${newDatum.redeemed} oil`,
+    `Start epoch:  ${newDatum.start_epoch}  · drops/epoch ${newDatum.drops_per_epoch}`,
     `Committee:    ${signers.length}/${committeeKeyHashes.length} signers (need ${threshold})`,
     `Claim addr:   ${claimAddress}`,
   ].join("\n");

@@ -1,67 +1,61 @@
-// LampDistribution/scripts/04_e2e.ts — Full flow THẬT trên Preview.
+// LampDistribution/scripts/04_e2e.ts — Full flow THẬT trên Preview (CONTRACT v2 "Capped Drop").
 //
 // Chạy: npm run e2e   (sau 01 → 02 → 03)
 //
-// Flow (SPEC §8):
-//   a. Claim:  committee 2/3 ký → A claim 250 LAMP, B claim 1000 LAMP.
-//   b. Beacon: post P_1 + nonce_1 (đọc nonce Cardano thật qua Blockfrost nếu được).
-//   c. Lottery off-chain (runLottery) → won_cumulative A,B → buildMerkleTree → post root.
-//   d. Redeem: A submit proof → nhận LAMP thật vào ví.
-//   e. Verify: query lại UTxO, in redeemed_cumulative + LAMP balance.
+// Flow tất định (CONTRACT v2 §1/§4 — KHÔNG lottery/merkle/nonce):
+//   a. Claim:   committee 2/3 ký → cấp entitlement E cho A (250 LAMP), B (1000 LAMP).
+//   b. Beacon:  committee post DropParam{D} (drop value) cho epoch hiện tại.
+//   c. Redeem:  A tự tính vested(t) on-chain → nhận LAMP đã mở khoá vào ví (permissionless).
+//   d. Verify:  query lại UTxO, in redeemed (cộng dồn) + LAMP balance.
+//
+//   vested(t) = min(E, D · drops_per_epoch · max(0, t − start_epoch))
+//   amount    = vested − redeemed   (yêu cầu > 0)
 //
 // Mỗi tx: in tx hash + explorer link + await confirm trước khi sang bước sau.
 //
-// LƯU Ý epoch: validator claim_account tính epoch từ validity_range POSIX ms
-// (posix_ms_to_epoch). Lucid mặc định set validity range bao quanh slot hiện tại →
-// epoch khớp currentEpoch ta tính từ tip. Nếu C-CLAIM-4 fail vì lệch epoch ranh giới
-// ngày, chạy lại (epoch ổn định trong ngày Preview = 86_400_000 ms).
+// LƯU Ý epoch: validator claim_account tính epoch từ validity_range POSIX ms.
+// Lucid set validity range quanh slot hiện tại → epoch khớp currentEpoch ta tính từ tip.
+// Với E (250 hoặc 1000 LAMP) và D (mặc định 100 LAMP), vested epoch đầu = min(E, D·1·0)=0
+// NẾU t==start_epoch. Để A nhận được ngay trong e2e, ta cấp E ở Claim với start_epoch =
+// epoch genesis (đã set ở 03), rồi redeem ở epoch ≥ start_epoch+1 (xem ghi chú redeem).
 
 import { Data } from "@lucid-evolution/lucid";
 import {
-  NETWORK, BLOCKFROST_URL, BLOCKFROST_KEY, BEACON_ASSET_NAMES, MS_PER_EPOCH,
+  NETWORK, DROP_ASSET_NAME, MS_PER_EPOCH,
   makeLucid, walletPkh, loadDeployed, reapplyValidators,
   toUnit, explorerTx, awaitTx, currentEpoch,
 } from "./config.js";
-import {
-  decodeClaimAccountDatum,
-} from "../offchain/src/datum.js";
+import { decodeClaimAccountDatum } from "../offchain/src/datum.js";
 import { buildClaimTx }      from "../offchain/src/claimBuilder.js";
 import { buildPostBeaconTx } from "../offchain/src/beaconBuilder.js";
 import { buildRedeemTx }     from "../offchain/src/redeemBuilder.js";
-import { runLottery }        from "../offchain/src/lottery.js";
-import { buildMerkleTree }   from "../offchain/src/merkle.js";
-import { P_GENESIS } from "../offchain/src/constants.js";
+import { D_GENESIS }         from "../offchain/src/constants.js";
 import type { LucidEvolution, UTxO, TxSignBuilder } from "@lucid-evolution/lucid";
 
-const LAMP_A = 250_000_000n;   // 250 LAMP (oil)
-const LAMP_B = 1_000_000_000n; // 1000 LAMP (oil)
+const LAMP_A = 250_000_000n;   // 250 LAMP entitlement (oil)
+const LAMP_B = 1_000_000_000n; // 1000 LAMP entitlement (oil)
 
-// e2e dùng target rate cao để demo có vé thắng với ít ticket. Override TARGET_RATE_Q_E2E.
-// Mặc định = 50% để A (250/100=3 vé) gần như chắc có ≥1 thắng → won>0 → redeem được.
-const E2E_TARGET_RATE_Q = BigInt(process.env.TARGET_RATE_Q_E2E ?? (500_000_000n).toString());
-
-const TEST_NONCE_HEX =
-  "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff";
+// DropParam D (oil/drop·epoch). Khớp 03 genesis (DROP_VALUE_OIL) nếu set; else D_GENESIS.
+const DROP_VALUE = BigInt(process.env.DROP_VALUE_OIL ?? D_GENESIS.toString());
 
 function norm(h: string): string {
   return (h.startsWith("0x") ? h.slice(2) : h).toLowerCase();
 }
 
-/** Tìm ClaimAccount UTxO theo owner PKH (decode datum). Re-resolve sau mỗi spend. */
+/** Tìm ClaimAccount UTxO theo owner PKH (decode datum). Re-resolve sau mỗi spend.
+ *  Nhiều account cùng owner → chọn cái entitlement cao nhất (account "hoạt động"). */
 async function findClaimAccount(
   lucid: LucidEvolution, address: string, ownerPkh: string,
 ): Promise<UTxO> {
   const utxos = await lucid.utxosAt(address);
-  // Có thể nhiều ClaimAccount cùng owner (re-genesis) → chọn cái claimed_cumulative cao nhất
-  // (account "hoạt động" đã tích luỹ claim). Deterministic.
   let best: UTxO | null = null;
-  let bestClaimed = -1n;
+  let bestEnt = -1n;
   for (const u of utxos) {
     if (!u.datum) continue;
     try {
       const d = decodeClaimAccountDatum(Data.from(u.datum));
-      if (norm(d.owner) === norm(ownerPkh) && d.claimed_cumulative > bestClaimed) {
-        best = u; bestClaimed = d.claimed_cumulative;
+      if (norm(d.owner) === norm(ownerPkh) && d.entitlement > bestEnt) {
+        best = u; bestEnt = d.entitlement;
       }
     } catch { /* không phải ClaimAccountDatum */ }
   }
@@ -69,7 +63,7 @@ async function findClaimAccount(
   throw new Error(`không tìm thấy ClaimAccount cho owner ${ownerPkh} tại ${address}`);
 }
 
-/** Tìm beacon UTxO theo NFT asset (kind). Re-resolve sau mỗi PostBeacon. */
+/** Tìm beacon UTxO theo NFT asset. Re-resolve sau mỗi PostBeacon. */
 async function findBeacon(
   lucid: LucidEvolution, address: string, nftUnit: string,
 ): Promise<UTxO> {
@@ -77,19 +71,6 @@ async function findBeacon(
   const u = utxos.find((x) => (x.assets[nftUnit] ?? 0n) === 1n);
   if (!u) throw new Error(`không tìm thấy beacon UTxO chứa ${nftUnit}`);
   return u;
-}
-
-/** Đọc epoch nonce Cardano thật qua Blockfrost (/epochs/latest/parameters → nonce). */
-async function fetchCardanoNonce(): Promise<string | null> {
-  try {
-    const res = await fetch(`${BLOCKFROST_URL}/epochs/latest/parameters`, {
-      headers: { project_id: BLOCKFROST_KEY },
-    });
-    if (!res.ok) return null;
-    const p = (await res.json()) as { nonce?: string };
-    if (p.nonce && /^[0-9a-f]{64}$/i.test(p.nonce)) return p.nonce.toLowerCase();
-    return null;
-  } catch { return null; }
 }
 
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
@@ -108,13 +89,12 @@ async function submit(
   return txHash;
 }
 
-/** Đảm bảo ví có ≥2 UTxO ADA-thuần (≥5 tADA) làm collateral cho Plutus tx.
- *  Nếu thiếu → tạo bằng 1 tx tự trả về ví. Plutus spend cần collateral ADA-only. */
+/** Đảm bảo ví có ≥2 UTxO ADA-thuần (≥5 tADA) làm collateral cho Plutus tx. */
 async function ensureCollateral(lucid: LucidEvolution): Promise<void> {
   const addr = await lucid.wallet().address();
   const isPureAda = (u: UTxO): boolean =>
     Object.keys(u.assets).length === 1 && (u.assets["lovelace"] ?? 0n) >= 5_000_000n;
-  let utxos = await lucid.wallet().getUtxos();
+  const utxos = await lucid.wallet().getUtxos();
   if (utxos.filter(isPureAda).length >= 2) {
     console.log("   collateral: đã có UTxO ADA-thuần ✓");
     return;
@@ -132,7 +112,7 @@ async function ensureCollateral(lucid: LucidEvolution): Promise<void> {
 }
 
 async function main(): Promise<void> {
-  console.log("=== LampDistribution Step 4: E2E live flow ===\n");
+  console.log("=== LampDistribution Step 4: E2E live flow (Capped Drop v2) ===\n");
 
   const state = await loadDeployed();
   if (!state.genesis || !state.wallets || !state.testLamp || !state.beaconNftPolicy) {
@@ -151,16 +131,13 @@ async function main(): Promise<void> {
   const threshold = state.committee.threshold;
 
   const epoch = await currentEpoch();
-  // lower_bound POSIX ms cho validity_range Claim tx → validator get_epoch (C-CLAIM-4).
-  // = epoch * ms_per_epoch ⇒ floor(validFrom / mspe) == epoch == last_claim_epoch.
+  // lower_bound POSIX ms cho validity_range → validator get_epoch khớp epoch.
   const validFromMs = epoch * MS_PER_EPOCH;
   console.log(`Network: ${NETWORK}   epoch: ${epoch}`);
   console.log(`Committee: ${committee.length} keys (threshold ${threshold}, source ${state.committee.source})`);
 
   const lampUnit = toUnit(state.testLamp.policyId, state.testLamp.assetName);
-  const mrNft    = toUnit(state.beaconNftPolicy, BEACON_ASSET_NAMES.MerkleRoot);
-  const ppNft    = toUnit(state.beaconNftPolicy, BEACON_ASSET_NAMES.PParam);
-  const rnNft    = toUnit(state.beaconNftPolicy, BEACON_ASSET_NAMES.Randomness);
+  const dropNft  = toUnit(state.beaconNftPolicy, DROP_ASSET_NAME);
 
   // balance A trước flow
   const balBefore = (await lucid.wallet().getUtxos())
@@ -168,9 +145,9 @@ async function main(): Promise<void> {
   console.log(`Ví A test-LAMP trước: ${balBefore / 1_000_000n} LAMP\n`);
 
   // ════════════════════════════════════════════════════════════
-  // a. CLAIM (committee confirm) — A 250 LAMP, B 1000 LAMP
+  // a. CLAIM — committee cấp entitlement E (A 250 LAMP, B 1000 LAMP)
   // ════════════════════════════════════════════════════════════
-  console.log("── a. Claim ──");
+  console.log("── a. Claim (committee cấp entitlement E) ──");
 
   await ensureCollateral(lucid);
 
@@ -185,7 +162,7 @@ async function main(): Promise<void> {
   console.log(claimA.summary);
   await submit(lucid, claimA.tx, "claim A");
 
-  // Claim B (ví placeholder) — best-effort: lỗi không chặn flow chính (A→lottery→redeem).
+  // Claim B (ví placeholder) — best-effort: lỗi không chặn flow chính (A → redeem).
   try {
     const accB0 = await findClaimAccount(lucid, state.claimAccount.address, bPkh);
     const claimB = await buildClaimTx({
@@ -202,127 +179,87 @@ async function main(): Promise<void> {
   }
 
   // ════════════════════════════════════════════════════════════
-  // b. POST BEACON — P_1 + nonce_1
+  // b. POST DropParam beacon — committee post D cho epoch hiện tại
   // ════════════════════════════════════════════════════════════
-  console.log("\n── b. Post beacon (P + nonce) ──");
+  console.log("\n── b. Post DropParam beacon (D) ──");
 
-  // nonce thật nếu lấy được
-  let nonceHex = await fetchCardanoNonce();
-  if (nonceHex) console.log(`   nonce Cardano thật (epoch latest): ${nonceHex}`);
-  else { nonceHex = TEST_NONCE_HEX; console.log(`   nonce fallback test vector: ${nonceHex}`); }
-
-  // PParam beacon: post P_GENESIS cho epoch+1 (announcement). value = P big-endian.
-  let pHex = P_GENESIS.toString(16); if (pHex.length % 2) pHex = "0" + pHex;
-  const ppUtxo = await findBeacon(lucid, state.beacon.address, ppNft);
-  const postP = await buildPostBeaconTx({
-    lucid, beaconUtxo: ppUtxo, beaconScript, network: NETWORK,
+  const dropUtxo = await findBeacon(lucid, state.beacon.address, dropNft);
+  const postD = await buildPostBeaconTx({
+    lucid, beaconUtxo: dropUtxo, beaconScript, network: NETWORK,
     beaconNftPolicy: state.beaconNftPolicy,
-    newBeacon: { epoch: epoch + 1n, kind: "PParam", value: pHex },
+    newBeacon: { epoch, kind: "DropParam", drop_value: DROP_VALUE },
     committeeKeyHashes: committee, threshold,
   });
-  console.log(postP.summary);
-  await submit(lucid, postP.tx, "post P");
-
-  // Randomness beacon: post nonce cho epoch hiện tại.
-  const rnUtxo = await findBeacon(lucid, state.beacon.address, rnNft);
-  const postR = await buildPostBeaconTx({
-    lucid, beaconUtxo: rnUtxo, beaconScript, network: NETWORK,
-    beaconNftPolicy: state.beaconNftPolicy,
-    newBeacon: { epoch: epoch + 1n, kind: "Randomness", value: nonceHex },
-    committeeKeyHashes: committee, threshold,
-  });
-  console.log(postR.summary);
-  await submit(lucid, postR.tx, "post nonce");
+  console.log(postD.summary);
+  await submit(lucid, postD.tx, "post DropParam");
 
   // ════════════════════════════════════════════════════════════
-  // c. LOTTERY off-chain + post MerkleRoot
+  // c. REDEEM — A tự tính vested(t), nhận LAMP đã mở khoá
   // ════════════════════════════════════════════════════════════
-  console.log("\n── c. Lottery off-chain + post MerkleRoot ──");
+  console.log("\n── c. Redeem (ví A — tất định, self-compute vested) ──");
 
-  const results = runLottery(
-    [
-      { owner: norm(aPkh), claimedCum: LAMP_A, wonCumPrev: 0n },
-      { owner: norm(bPkh), claimedCum: LAMP_B, wonCumPrev: 0n },
-    ],
-    { nonceHex, P: P_GENESIS, targetRateQ: E2E_TARGET_RATE_Q },
-  );
-  for (const r of results) {
-    console.log(`   ${r.owner.slice(0, 12)}…  tickets=${r.tickets} wins=${r.wins} ` +
-      `wonThis=${r.wonThis / 1_000_000n} won_cum=${r.wonCumNew / 1_000_000n} LAMP`);
-  }
-
-  const wonA = results.find((r) => norm(r.owner) === norm(aPkh))!.wonCumNew;
-  if (wonA <= 0n) {
-    throw new Error(
-      `A won_cumulative = 0 (không trúng vé nào với target ${E2E_TARGET_RATE_Q} Q). ` +
-      `Tăng TARGET_RATE_Q_E2E hoặc đổi nonce.`,
+  // current_epoch dùng cho redeem: phải > start_epoch để vested > 0
+  // (vested = min(E, D·dpe·(t−t0))). start_epoch = epoch genesis (set ở 03).
+  // Đọc start_epoch thực từ datum để tính validFrom chuẩn.
+  const accA1     = await findClaimAccount(lucid, state.claimAccount.address, aPkh);
+  const dA1       = decodeClaimAccountDatum(Data.from(accA1.datum!));
+  const redeemEpoch = await currentEpoch();
+  const redeemValidFromMs = redeemEpoch * MS_PER_EPOCH;
+  if (redeemEpoch <= dA1.start_epoch) {
+    console.log(
+      `   ⚠ epoch hiện tại (${redeemEpoch}) ≤ start_epoch (${dA1.start_epoch}) → vested=0. ` +
+      `Đợi sang epoch kế rồi chạy lại bước redeem (Preview epoch = 1 ngày).`,
     );
   }
 
-  // Merkle leaves: chỉ won > 0.
-  const leaves = results
-    .filter((r) => r.wonCumNew > 0n)
-    .map((r) => ({ owner: norm(r.owner), wonCumulative: r.wonCumNew }));
-  const tree = buildMerkleTree(leaves);
-  console.log(`   Merkle root: ${tree.rootHex} (${tree.leafCount} lá)`);
-
-  const mrUtxo = await findBeacon(lucid, state.beacon.address, mrNft);
-  const postM = await buildPostBeaconTx({
-    lucid, beaconUtxo: mrUtxo, beaconScript, network: NETWORK,
-    beaconNftPolicy: state.beaconNftPolicy,
-    newBeacon: { epoch, kind: "MerkleRoot", value: tree.rootHex },
-    committeeKeyHashes: committee, threshold,
-  });
-  console.log(postM.summary);
-  await submit(lucid, postM.tx, "post MerkleRoot");
-
-  // ════════════════════════════════════════════════════════════
-  // d. REDEEM — A submit proof → nhận LAMP
-  // ════════════════════════════════════════════════════════════
-  console.log("\n── d. Redeem (ví A) ──");
-
-  const accA1     = await findClaimAccount(lucid, state.claimAccount.address, aPkh);
   const treasuryU = (await lucid.utxosAt(state.treasury.address))
     .find((u) => (u.assets[lampUnit] ?? 0n) > 0n);
   if (!treasuryU) throw new Error("không tìm thấy treasury UTxO còn LAMP");
-  const mrBeacon  = await findBeacon(lucid, state.beacon.address, mrNft);
+  const dropBeacon = await findBeacon(lucid, state.beacon.address, dropNft);
 
   const redeem = await buildRedeemTx({
     lucid, network: NETWORK,
     claimAccountUtxo: accA1, claimScript,
     treasuryUtxo: treasuryU, treasuryScript,
-    merkleBeaconUtxo: mrBeacon,
-    wonCumulative: wonA, lotteryEpoch: epoch,
-    lotteryLeaves: leaves,
+    dropBeaconUtxo: dropBeacon,
+    currentEpoch: redeemEpoch,
+    validFromMs: redeemValidFromMs,
     lampPolicyId: state.testLamp.policyId, lampAssetName: state.testLamp.assetName,
   });
   console.log(redeem.summary);
   await submit(lucid, redeem.tx, "redeem A");
 
   // ════════════════════════════════════════════════════════════
-  // e. VERIFY on-chain
+  // d. VERIFY on-chain (redeemed cộng dồn + LAMP balance)
   // ════════════════════════════════════════════════════════════
-  console.log("\n── e. Verify on-chain ──");
+  console.log("\n── d. Verify on-chain ──");
 
   const accA2 = await findClaimAccount(lucid, state.claimAccount.address, aPkh);
   const dA    = decodeClaimAccountDatum(Data.from(accA2.datum!));
   const balAfter = (await lucid.wallet().getUtxos())
     .reduce((s, u) => s + (u.assets[lampUnit] ?? 0n), 0n);
 
-  console.log(`   ClaimAccount A: claimed=${dA.claimed_cumulative / 1_000_000n} ` +
-    `redeemed=${dA.redeemed_cumulative / 1_000_000n} LAMP`);
+  console.log(`   ClaimAccount A: entitlement=${dA.entitlement / 1_000_000n} ` +
+    `redeemed=${dA.redeemed / 1_000_000n} LAMP ` +
+    `(start_epoch=${dA.start_epoch}, drops/epoch=${dA.drops_per_epoch})`);
+  console.log(`   Vested tại redeem: ${redeem.vested / 1_000_000n} LAMP; released ${redeem.amount / 1_000_000n} LAMP`);
   console.log(`   Ví A test-LAMP: ${balBefore / 1_000_000n} → ${balAfter / 1_000_000n} LAMP ` +
     `(+${(balAfter - balBefore) / 1_000_000n})`);
 
-  if (dA.redeemed_cumulative !== wonA) {
-    throw new Error(`redeemed_cumulative ${dA.redeemed_cumulative} ≠ wonA ${wonA}`);
+  // Bất biến: redeemed cộng dồn = amount đã redeem lần này (genesis redeemed=0).
+  if (dA.redeemed !== redeem.amount) {
+    throw new Error(`redeemed on-chain (${dA.redeemed}) ≠ amount redeem (${redeem.amount})`);
   }
-  if (balAfter - balBefore !== redeem.released) {
-    console.log(`   ⚠ chênh balance (${balAfter - balBefore}) ≠ released (${redeem.released}) ` +
+  // Bất biến: tổng nhận ≤ entitlement.
+  if (dA.redeemed > dA.entitlement) {
+    throw new Error(`redeemed (${dA.redeemed}) > entitlement (${dA.entitlement}) — vi phạm cap E`);
+  }
+  if (balAfter - balBefore !== redeem.amount) {
+    console.log(`   ⚠ chênh balance (${balAfter - balBefore}) ≠ released (${redeem.amount}) ` +
       `— có thể do change UTxO/min-ADA; kiểm tra explorer.`);
   }
 
-  console.log("\n✅ E2E hoàn tất — claim → beacon → lottery → redeem chạy THẬT trên Preview.");
+  console.log("\n✅ E2E hoàn tất — claim → post DropParam → redeem (vested tất định) chạy THẬT trên Preview.");
 }
 
 main().catch((e) => { console.error("❌", e instanceof Error ? e.message : e); process.exit(1); });

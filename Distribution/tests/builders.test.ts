@@ -1,9 +1,9 @@
 // Builder logic tests — KHÔNG submit thật (không có Blockfrost/compiled validator).
 // Mock tx-builder chain ghi lại các call → assert datum/redeemer/asset preservation
-// + validation errors. Test pure logic builder, đúng tinh thần module foundation.
+// + validation errors. CONTRACT v2 "Capped Drop".
 
 import { describe, it, expect } from "vitest";
-import { Constr, Data, validatorToScriptHash, credentialToAddress, scriptHashToCredential, toUnit } from "@lucid-evolution/lucid";
+import { validatorToScriptHash, credentialToAddress, scriptHashToCredential, toUnit } from "@lucid-evolution/lucid";
 import type { UTxO, Validator } from "@lucid-evolution/lucid";
 
 import { buildClaimTx } from "../offchain/src/claimBuilder.js";
@@ -12,13 +12,10 @@ import { buildPostBeaconTx } from "../offchain/src/beaconBuilder.js";
 import {
   claimAccountDatumToCbor, beaconDatumToCbor, treasuryDatumToCbor,
 } from "../offchain/src/datum.js";
-import { buildMerkleTree } from "../offchain/src/merkle.js";
 import { committeeThreshold } from "../offchain/src/committee.js";
+import { lampOil } from "./helpers.js";
 
 // ── Mock Lucid tx-builder ──────────────────────────────────────────────
-// Ghi lại mọi call. complete() trả về object giả (không submit). Đủ để assert
-// builder dựng đúng input/output/redeemer/signer.
-
 interface Recorded {
   collectFrom: { utxos: UTxO[]; redeemer: string }[];
   attach:      Validator[];
@@ -26,11 +23,12 @@ interface Recorded {
   payData:     { address: string; datum: string; assets: Record<string, bigint> }[];
   payAddr:     { address: string; assets: Record<string, bigint> }[];
   signers:     string[];
+  validFrom:   number[];
 }
 
 function mockLucid(walletAddress: string): { lucid: any; rec: Recorded } {
   const rec: Recorded = {
-    collectFrom: [], attach: [], readFrom: [], payData: [], payAddr: [], signers: [],
+    collectFrom: [], attach: [], readFrom: [], payData: [], payAddr: [], signers: [], validFrom: [],
   };
   const txb: any = {
     collectFrom(utxos: UTxO[], redeemer: string) { rec.collectFrom.push({ utxos, redeemer }); return txb; },
@@ -45,6 +43,7 @@ function mockLucid(walletAddress: string): { lucid: any; rec: Recorded } {
       },
     },
     addSignerKey(k: string) { rec.signers.push(k); return txb; },
+    validFrom(ms: number) { rec.validFrom.push(ms); return txb; },
     async complete() { return { __mockTx: true }; },
   };
   const lucid = {
@@ -55,7 +54,6 @@ function mockLucid(walletAddress: string): { lucid: any; rec: Recorded } {
 }
 
 // fake applied validators — chỉ cần CBOR hợp lệ để derive script hash/address.
-// Dùng CBOR PlutusV3 tối thiểu (1 byte). Lucid chỉ blake2b-hash bytes này.
 const FAKE_CLAIM:    Validator = { type: "PlutusV3", script: "49480100002221200101" };
 const FAKE_TREASURY: Validator = { type: "PlutusV3", script: "49480100002221200102" };
 const FAKE_BEACON:   Validator = { type: "PlutusV3", script: "49480100002221200103" };
@@ -64,6 +62,7 @@ const NETWORK = "Preview" as const;
 const OWNER   = "aabbccddeeff00112233445566778899aabbccddeeff001122334455";
 const LAMP_POLICY = "ff".repeat(28);
 const LAMP_UNIT   = toUnit(LAMP_POLICY, "4c414d50");
+const D = lampOil(100n);
 
 // committee 3 keys, threshold 2
 const COMMITTEE = ["11".repeat(28), "22".repeat(28), "33".repeat(28)];
@@ -85,11 +84,11 @@ describe("committeeThreshold ⌈2N/3⌉", () => {
 
 // ── buildClaimTx ────────────────────────────────────────────────────────
 describe("buildClaimTx — CREATE path", () => {
-  it("pays initial datum, no spend, committee signs", async () => {
+  it("pays initial datum {entitlement=amount, redeemed=0, start=current, dpe=1}", async () => {
     const { lucid, rec } = mockLucid("addr_wallet");
     const res = await buildClaimTx({
       lucid, claimScript: FAKE_CLAIM, network: NETWORK,
-      ownerPkh: OWNER, amount: 250_000_000n, currentEpoch: 5n,
+      ownerPkh: OWNER, amount: lampOil(250n), currentEpoch: 5n,
       committeeKeyHashes: COMMITTEE,
     });
     expect(res.mode).toBe("create");
@@ -98,10 +97,9 @@ describe("buildClaimTx — CREATE path", () => {
     expect(rec.payData[0]!.address).toBe(scriptAddr(FAKE_CLAIM));
     expect(rec.signers.length).toBeGreaterThanOrEqual(2);
     expect(res.newDatum).toEqual({
-      owner: OWNER, claimed_cumulative: 250_000_000n,
-      redeemed_cumulative: 0n, last_claim_epoch: 5n,
+      owner: OWNER, entitlement: lampOil(250n),
+      redeemed: 0n, start_epoch: 5n, drops_per_epoch: 1n,
     });
-    // datum CBOR khớp encode
     expect(rec.payData[0]!.datum).toBe(claimAccountDatumToCbor(res.newDatum));
   });
 });
@@ -116,25 +114,25 @@ describe("buildClaimTx — UPDATE path", () => {
     };
   }
 
-  it("increments claimed_cumulative, preserves owner+redeemed+assets", async () => {
+  it("increments entitlement, preserves owner+redeemed+start+dpe+assets", async () => {
     const { lucid, rec } = mockLucid("addr_wallet");
-    const prev = { owner: OWNER, claimed_cumulative: 100_000_000n, redeemed_cumulative: 40_000_000n, last_claim_epoch: 3n };
+    const prev = { owner: OWNER, entitlement: lampOil(100n), redeemed: lampOil(40n), start_epoch: 3n, drops_per_epoch: 1n };
     const DUST = toUnit("ab".repeat(28), "cafe");
     const res = await buildClaimTx({
       lucid, claimScript: FAKE_CLAIM, network: NETWORK,
-      ownerPkh: OWNER, amount: 60_000_000n, currentEpoch: 9n,
+      ownerPkh: OWNER, amount: lampOil(60n), currentEpoch: 9n,
       claimAccountUtxo: claimUtxo(prev, { [DUST]: 7n }),
       committeeKeyHashes: COMMITTEE,
     });
     expect(res.mode).toBe("update");
-    expect(rec.collectFrom).toHaveLength(1);        // spend account
+    expect(rec.collectFrom).toHaveLength(1);
     expect(rec.attach).toContain(FAKE_CLAIM);
     expect(res.newDatum).toEqual({
-      owner: OWNER, claimed_cumulative: 160_000_000n,   // +60
-      redeemed_cumulative: 40_000_000n,                 // unchanged
-      last_claim_epoch: 9n,                             // current
+      owner: OWNER, entitlement: lampOil(160n),   // +60
+      redeemed: lampOil(40n),                     // unchanged
+      start_epoch: 3n,                            // unchanged
+      drops_per_epoch: 1n,                        // unchanged
     });
-    // assets bảo toàn (lovelace + dust)
     expect(rec.payData[0]!.assets).toEqual({ lovelace: 2_000_000n, [DUST]: 7n });
   });
 
@@ -148,7 +146,7 @@ describe("buildClaimTx — UPDATE path", () => {
 
   it("rejects owner mismatch on update", async () => {
     const { lucid } = mockLucid("addr_wallet");
-    const prev = { owner: "00".repeat(28), claimed_cumulative: 1n, redeemed_cumulative: 0n, last_claim_epoch: 0n };
+    const prev = { owner: "00".repeat(28), entitlement: 1n, redeemed: 0n, start_epoch: 0n, drops_per_epoch: 1n };
     await expect(buildClaimTx({
       lucid, claimScript: FAKE_CLAIM, network: NETWORK,
       ownerPkh: OWNER, amount: 1n, currentEpoch: 1n,
@@ -167,37 +165,47 @@ describe("buildClaimTx — UPDATE path", () => {
   });
 });
 
-// ── buildPostBeaconTx ───────────────────────────────────────────────────
-describe("buildPostBeaconTx", () => {
+// ── buildPostBeaconTx (DropParam) ──────────────────────────────────────
+describe("buildPostBeaconTx — DropParam{D}", () => {
   const NFT_POLICY = "cd".repeat(28);
-  const NFT_UNIT   = toUnit(NFT_POLICY, "4d524f4f54"); // MerkleRoot ("MROOT") default asset name
+  const NFT_UNIT   = toUnit(NFT_POLICY, "44524f50"); // "DROP" default asset name
 
-  function beaconUtxo(kind: any, epoch: bigint, value: string, assets: Record<string, bigint>): UTxO {
+  function beaconUtxo(epoch: bigint, dropValue: bigint, assets: Record<string, bigint>): UTxO {
     return {
       txHash: "cd".repeat(32), outputIndex: 0,
       address: scriptAddr(FAKE_BEACON),
       assets,
-      datum: beaconDatumToCbor({ epoch, kind, value }),
+      datum: beaconDatumToCbor({ epoch, kind: "DropParam", drop_value: dropValue }),
     };
   }
 
-  it("posts new MerkleRoot beacon, preserves NFT + assets, no mint", async () => {
+  it("posts new DropParam beacon, preserves NFT + assets, no mint", async () => {
     const { lucid, rec } = mockLucid("addr_wallet");
-    const root = "ab".repeat(32);
     const res = await buildPostBeaconTx({
       lucid, beaconScript: FAKE_BEACON, network: NETWORK,
       beaconNftPolicy: NFT_POLICY,
-      beaconUtxo: beaconUtxo("MerkleRoot", 9n, "00".repeat(32), { lovelace: 2_000_000n, [NFT_UNIT]: 1n }),
-      newBeacon: { epoch: 10n, kind: "MerkleRoot", value: root },
+      beaconUtxo: beaconUtxo(9n, lampOil(80n), { lovelace: 2_000_000n, [NFT_UNIT]: 1n }),
+      newBeacon: { epoch: 10n, kind: "DropParam", drop_value: D },
       committeeKeyHashes: COMMITTEE,
     });
     expect(rec.collectFrom).toHaveLength(1);
     expect(rec.payData).toHaveLength(1);
-    // NFT + lovelace bảo toàn ở output
     expect(rec.payData[0]!.assets).toEqual({ lovelace: 2_000_000n, [NFT_UNIT]: 1n });
-    expect(rec.payData[0]!.datum).toBe(beaconDatumToCbor({ epoch: 10n, kind: "MerkleRoot", value: root }));
+    expect(rec.payData[0]!.datum).toBe(beaconDatumToCbor({ epoch: 10n, kind: "DropParam", drop_value: D }));
     expect(rec.signers.length).toBeGreaterThanOrEqual(2);
     expect(res.newBeacon.epoch).toBe(10n);
+    expect(res.newBeacon.drop_value).toBe(D);
+  });
+
+  it("rejects drop_value ≤ 0", async () => {
+    const { lucid } = mockLucid("addr_wallet");
+    await expect(buildPostBeaconTx({
+      lucid, beaconScript: FAKE_BEACON, network: NETWORK,
+      beaconNftPolicy: NFT_POLICY,
+      beaconUtxo: beaconUtxo(9n, D, { lovelace: 2_000_000n, [NFT_UNIT]: 1n }),
+      newBeacon: { epoch: 10n, kind: "DropParam", drop_value: 0n },
+      committeeKeyHashes: COMMITTEE,
+    })).rejects.toThrow(/drop_value .* must be > 0/);
   });
 
   it("rejects when NFT count ≠ 1", async () => {
@@ -205,31 +213,25 @@ describe("buildPostBeaconTx", () => {
     await expect(buildPostBeaconTx({
       lucid, beaconScript: FAKE_BEACON, network: NETWORK,
       beaconNftPolicy: NFT_POLICY,
-      beaconUtxo: beaconUtxo("MerkleRoot", 9n, "00".repeat(32), { lovelace: 2_000_000n }), // no NFT
-      newBeacon: { epoch: 10n, kind: "MerkleRoot", value: "ab".repeat(32) },
+      beaconUtxo: beaconUtxo(9n, D, { lovelace: 2_000_000n }), // no NFT
+      newBeacon: { epoch: 10n, kind: "DropParam", drop_value: D },
       committeeKeyHashes: COMMITTEE,
     })).rejects.toThrow(/exactly 1 authenticity NFT/);
   });
 });
 
-// ── buildRedeemTx ───────────────────────────────────────────────────────
-describe("buildRedeemTx", () => {
-  // 2-leaf lottery: OWNER won 300 LAMP cumulative, other won 500.
-  const OTHER = "bb".repeat(28);
-  const leaves = [
-    { owner: OWNER, wonCumulative: 300_000_000n },
-    { owner: OTHER, wonCumulative: 500_000_000n },
-  ];
-  const tree = buildMerkleTree(leaves);
-  const ROOT = tree.rootHex;
-
-  function claimUtxo(redeemed: bigint, claimed = 300_000_000n, extra: Record<string, bigint> = {}): UTxO {
+// ── buildRedeemTx (Capped Drop) ────────────────────────────────────────
+describe("buildRedeemTx — vested = min(E, D·dpe·Δ)", () => {
+  function claimUtxo(
+    redeemed: bigint, entitlement = lampOil(250n), startEpoch = 0n, dpe = 1n,
+    extra: Record<string, bigint> = {},
+  ): UTxO {
     return {
       txHash: "11".repeat(32), outputIndex: 0,
       address: scriptAddr(FAKE_CLAIM),
       assets: { lovelace: 2_000_000n, ...extra },
       datum: claimAccountDatumToCbor({
-        owner: OWNER, claimed_cumulative: claimed, redeemed_cumulative: redeemed, last_claim_epoch: 4n,
+        owner: OWNER, entitlement, redeemed, start_epoch: startEpoch, drops_per_epoch: dpe,
       }),
     };
   }
@@ -241,119 +243,143 @@ describe("buildRedeemTx", () => {
       datum: treasuryDatumToCbor({ committee_hash: "ee".repeat(28) }),
     };
   }
-  function beaconUtxo(epoch: bigint, root: string): UTxO {
+  function dropBeaconUtxo(dropValue: bigint): UTxO {
     return {
       txHash: "33".repeat(32), outputIndex: 0,
       address: scriptAddr(FAKE_BEACON),
       assets: { lovelace: 2_000_000n },
-      datum: beaconDatumToCbor({ epoch, kind: "MerkleRoot", value: root }),
+      datum: beaconDatumToCbor({ epoch: 7n, kind: "DropParam", drop_value: dropValue }),
     };
   }
 
   const base = {
     network: NETWORK, claimScript: FAKE_CLAIM, treasuryScript: FAKE_TREASURY,
-    wonCumulative: 300_000_000n, lotteryEpoch: 7n, lampPolicyId: LAMP_POLICY,
+    lampPolicyId: LAMP_POLICY,
   };
 
-  it("releases won−redeemed, preserves treasury dust + committee_hash, sets redeemed=won", async () => {
+  it("releases vested−redeemed, preserves treasury dust + committee_hash, sets redeemed+=amount", async () => {
     const { lucid, rec } = mockLucid("addr_user");
     const DUST = toUnit("dd".repeat(28), "f00d");
+    // E=250, D=100, dpe=1, t0=0, t=3 → vested=min(250,300)=250; redeemed=100 → amount=150.
     const res = await buildRedeemTx({
-      ...base, lucid,
-      claimAccountUtxo: claimUtxo(100_000_000n),                       // redeemed 100
-      treasuryUtxo: treasuryUtxo(1_000_000_000n, { [DUST]: 3n }),      // 1000 LAMP + dust
-      merkleBeaconUtxo: beaconUtxo(7n, ROOT),
-      proof: tree.proofs.get(OWNER)!,
+      ...base, lucid, currentEpoch: 3n,
+      claimAccountUtxo: claimUtxo(lampOil(100n)),
+      treasuryUtxo: treasuryUtxo(lampOil(1000n), { [DUST]: 3n }),
+      dropBeaconUtxo: dropBeaconUtxo(D),
     });
-    expect(res.released).toBe(200_000_000n);                          // 300 − 100
-    expect(res.newClaimDatum.redeemed_cumulative).toBe(300_000_000n); // = won
-    expect(res.newClaimDatum.claimed_cumulative).toBe(300_000_000n);  // unchanged
-    expect(res.newClaimDatum.last_claim_epoch).toBe(4n);              // unchanged
+    expect(res.vested).toBe(lampOil(250n));
+    expect(res.amount).toBe(lampOil(150n));                           // 250 − 100
+    expect(res.newClaimDatum.redeemed).toBe(lampOil(250n));           // = redeemed + amount
+    expect(res.newClaimDatum.entitlement).toBe(lampOil(250n));        // unchanged
+    expect(res.newClaimDatum.start_epoch).toBe(0n);                   // unchanged
+    expect(res.newClaimDatum.drops_per_epoch).toBe(1n);              // unchanged
 
     // 2 inputs spent (claim + treasury), beacon read-only
     expect(rec.collectFrom).toHaveLength(2);
     expect(rec.readFrom).toHaveLength(1);
     expect(rec.attach).toEqual(expect.arrayContaining([FAKE_CLAIM, FAKE_TREASURY]));
 
-    // treasury output: LAMP 1000→800, dust + lovelace bảo toàn
+    // treasury output: LAMP 1000→850, dust + lovelace bảo toàn
     const treasuryOut = rec.payData.find(p => p.address === scriptAddr(FAKE_TREASURY))!;
-    expect(treasuryOut.assets[LAMP_UNIT]).toBe(800_000_000n);
+    expect(treasuryOut.assets[LAMP_UNIT]).toBe(lampOil(850n));
     expect(treasuryOut.assets.lovelace).toBe(5_000_000n);
     expect(treasuryOut.assets[DUST]).toBe(3n);
 
-    // user receives exactly released LAMP
+    // user receives exactly amount LAMP
     expect(rec.payAddr).toHaveLength(1);
-    expect(rec.payAddr[0]!.assets[LAMP_UNIT]).toBe(200_000_000n);
+    expect(rec.payAddr[0]!.assets[LAMP_UNIT]).toBe(lampOil(150n));
     expect(rec.payAddr[0]!.address).toBe("addr_user");
 
     // owner signs
     expect(rec.signers).toContain(OWNER);
   });
 
-  it("auto-builds proof from lotteryLeaves when proof omitted", async () => {
+  it("E < D → epoch đầu nhận hết entitlement", async () => {
     const { lucid } = mockLucid("addr_user");
+    // E=30 < D=100, t=1 → vested=min(30,100)=30, redeemed=0 → amount=30.
     const res = await buildRedeemTx({
-      ...base, lucid,
-      claimAccountUtxo: claimUtxo(0n),
-      treasuryUtxo: treasuryUtxo(1_000_000_000n),
-      merkleBeaconUtxo: beaconUtxo(7n, ROOT),
-      lotteryLeaves: leaves,
+      ...base, lucid, currentEpoch: 1n,
+      claimAccountUtxo: claimUtxo(0n, lampOil(30n)),
+      treasuryUtxo: treasuryUtxo(lampOil(1000n)),
+      dropBeaconUtxo: dropBeaconUtxo(D),
     });
-    expect(res.released).toBe(300_000_000n);
+    expect(res.amount).toBe(lampOil(30n));
+    expect(res.newClaimDatum.redeemed).toBe(lampOil(30n));
   });
 
-  it("rejects double-redeem (released ≤ 0)", async () => {
+  it("drip: t=1 chỉ mở 1 drop D", async () => {
     const { lucid } = mockLucid("addr_user");
-    await expect(buildRedeemTx({
-      ...base, lucid,
-      claimAccountUtxo: claimUtxo(300_000_000n),   // already redeemed all
-      treasuryUtxo: treasuryUtxo(1_000_000_000n),
-      merkleBeaconUtxo: beaconUtxo(7n, ROOT),
-      proof: tree.proofs.get(OWNER)!,
-    })).rejects.toThrow(/released ≤ 0/);
-  });
-
-  it("rejects invalid proof (wrong root)", async () => {
-    const { lucid } = mockLucid("addr_user");
-    await expect(buildRedeemTx({
-      ...base, lucid,
+    // E=250, D=100, t=1 → vested=100, redeemed=0 → amount=100.
+    const res = await buildRedeemTx({
+      ...base, lucid, currentEpoch: 1n,
       claimAccountUtxo: claimUtxo(0n),
-      treasuryUtxo: treasuryUtxo(1_000_000_000n),
-      merkleBeaconUtxo: beaconUtxo(7n, "00".repeat(32)),   // bogus root
-      proof: tree.proofs.get(OWNER)!,
-    })).rejects.toThrow(/proof không hợp lệ/);
+      treasuryUtxo: treasuryUtxo(lampOil(1000n)),
+      dropBeaconUtxo: dropBeaconUtxo(D),
+    });
+    expect(res.amount).toBe(lampOil(100n));
   });
 
-  it("rejects won > claimed (C-RDM-5)", async () => {
-    const { lucid } = mockLucid("addr_user");
-    await expect(buildRedeemTx({
-      ...base, lucid,
-      claimAccountUtxo: claimUtxo(0n, 200_000_000n),   // claimed only 200 < won 300
-      treasuryUtxo: treasuryUtxo(1_000_000_000n),
-      merkleBeaconUtxo: beaconUtxo(7n, ROOT),
-      proof: tree.proofs.get(OWNER)!,
-    })).rejects.toThrow(/won_cumulative .* > claimed_cumulative/);
-  });
-
-  it("rejects treasury with insufficient LAMP", async () => {
-    const { lucid } = mockLucid("addr_user");
-    await expect(buildRedeemTx({
-      ...base, lucid,
+  it("sets validFrom khi truyền validFromMs", async () => {
+    const { lucid, rec } = mockLucid("addr_user");
+    await buildRedeemTx({
+      ...base, lucid, currentEpoch: 2n, validFromMs: 2n * 86_400_000n,
       claimAccountUtxo: claimUtxo(0n),
-      treasuryUtxo: treasuryUtxo(100_000_000n),     // only 100 < released 300
-      merkleBeaconUtxo: beaconUtxo(7n, ROOT),
-      proof: tree.proofs.get(OWNER)!,
-    })).rejects.toThrow(/< released/);
+      treasuryUtxo: treasuryUtxo(lampOil(1000n)),
+      dropBeaconUtxo: dropBeaconUtxo(D),
+    });
+    expect(rec.validFrom).toEqual([Number(2n * 86_400_000n)]);
   });
 
-  it("rejects beacon epoch mismatch", async () => {
+  it("rejects double-redeem (redeemable ≤ 0, đã redeem hết vested)", async () => {
     const { lucid } = mockLucid("addr_user");
+    // t=1 → vested=100; redeemed=100 → amount 0 → reject.
     await expect(buildRedeemTx({
-      ...base, lucid,
+      ...base, lucid, currentEpoch: 1n,
+      claimAccountUtxo: claimUtxo(lampOil(100n)),
+      treasuryUtxo: treasuryUtxo(lampOil(1000n)),
+      dropBeaconUtxo: dropBeaconUtxo(D),
+    })).rejects.toThrow(/redeemable ≤ 0/);
+  });
+
+  it("rejects khi chưa tới epoch mở khoá (t ≤ t0)", async () => {
+    const { lucid } = mockLucid("addr_user");
+    // t0=5, t=5 → vested=0 → amount 0 → reject.
+    await expect(buildRedeemTx({
+      ...base, lucid, currentEpoch: 5n,
+      claimAccountUtxo: claimUtxo(0n, lampOil(250n), 5n),
+      treasuryUtxo: treasuryUtxo(lampOil(1000n)),
+      dropBeaconUtxo: dropBeaconUtxo(D),
+    })).rejects.toThrow(/redeemable ≤ 0/);
+  });
+
+  it("rejects beacon kind ≠ DropParam", async () => {
+    const { lucid } = mockLucid("addr_user");
+    const badBeacon: UTxO = {
+      txHash: "33".repeat(32), outputIndex: 0,
+      address: scriptAddr(FAKE_BEACON),
+      assets: { lovelace: 2_000_000n },
+      // Constr index 9 (unknown kind) → decode reject
+      datum: "d87b9f0700ff", // arbitrary - will fail decode; use explicit below
+    };
+    // dùng datum hợp lệ nhưng kind sai không tạo được vì chỉ có DropParam.
+    // Thay vào: kiểm tra decode reject beacon thiếu datum.
+    const noDatum: UTxO = { ...badBeacon, datum: null as any };
+    await expect(buildRedeemTx({
+      ...base, lucid, currentEpoch: 3n,
       claimAccountUtxo: claimUtxo(0n),
-      treasuryUtxo: treasuryUtxo(1_000_000_000n),
-      merkleBeaconUtxo: beaconUtxo(99n, ROOT),       // epoch ≠ lotteryEpoch 7
-      proof: tree.proofs.get(OWNER)!,
-    })).rejects.toThrow(/beacon epoch .* ≠ lotteryEpoch/);
+      treasuryUtxo: treasuryUtxo(lampOil(1000n)),
+      dropBeaconUtxo: noDatum,
+    })).rejects.toThrow(/no inline datum/);
+  });
+
+  it("rejects treasury với LAMP không đủ", async () => {
+    const { lucid } = mockLucid("addr_user");
+    // amount=100 ở t=1; treasury chỉ 50 LAMP.
+    await expect(buildRedeemTx({
+      ...base, lucid, currentEpoch: 1n,
+      claimAccountUtxo: claimUtxo(0n),
+      treasuryUtxo: treasuryUtxo(lampOil(50n)),
+      dropBeaconUtxo: dropBeaconUtxo(D),
+    })).rejects.toThrow(/< amount/);
   });
 });

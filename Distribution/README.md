@@ -1,76 +1,90 @@
-# LampDistribution — Drop Lottery phân bổ LAMP
+# LampDistribution — Capped Drop phân bổ LAMP
 
-Triển khai cơ chế phân bổ LAMP theo **Probabilistic Drop Lottery** (nguồn chuẩn:
-`MagicLamp-Docs/docs/LAMP-Distribution.md` v1.0). Core engine **DID-agnostic** — dùng
-được cho mọi Cardano team, không lock vào PhoenixKey.
+Triển khai cơ chế phân bổ LAMP theo **Capped Drop** — tất định, O(1), permissionless.
+Mỗi account có entitlement `E`, mở khoá nhỏ giọt `D`/epoch tới hết, account tự rút on-chain
+không cần proof/committee. Core engine **DID-agnostic** — dùng cho mọi Cardano team.
 
-Đặc tả đầy đủ + 7 quyết định kiến trúc: **[SPEC.md](./SPEC.md)**.
+> **Đã thay cơ chế.** Bản cũ dùng **Probabilistic Drop Lottery** (random + Merkle + committee
+> nonce), có 2 lỗ hổng (proof hết hạn → mất quyền redeem; committee nonce grinding). Capped
+> Drop bỏ random/merkle/committee-chọn-winner.
+
+Nguồn chuẩn (interface contract): **[CONTRACT-CappedDrop.md](./CONTRACT-CappedDrop.md)**.
+Đặc tả đầy đủ: **[SPEC.md](./SPEC.md)** · hành vi **[SPEC-CappedDrop-FEAT.md](./SPEC-CappedDrop-FEAT.md)** ·
+chứng minh **[SPEC-CappedDrop-MATH.md](./SPEC-CappedDrop-MATH.md)**.
+
+## Công thức trung tâm
+
+```
+vested(t)  = min( E , D · drops_per_epoch · max(0, t − t0) )   // t0 = start_epoch, MVP drops_per_epoch=1
+redeemable = vested(t) − redeemed
+```
+
+- `E ≤ D` → ví nhỏ nhận hết ngay epoch đầu.
+- `E > D` → ví lớn nhỏ giọt `D`/epoch, hết sau `⌈E/D⌉` epoch.
+- Bỏ lỡ epoch **không mất quyền** (vested cộng dồn từ `t0`).
 
 ## Kiểm tra (1 lệnh)
 
 ```bash
-bash LampDistribution/verify.sh
+bash Distribution/verify.sh
 ```
-
-Kết quả mong đợi: **22 Aiken test + 75 vitest test = 97 pass**, blueprint `plutus.json` sinh OK.
 
 ## Cấu trúc
 
 ```
-LampDistribution/
-  SPEC.md                       # thuật toán + 7 quyết định kiến trúc + invariants
+Distribution/
+  CONTRACT-CappedDrop.md        # interface contract (xương sống — bám file này)
+  SPEC.md                       # spec tổng hợp (mô hình + datum + redeem + invariants)
+  SPEC-CappedDrop-FEAT.md       # hành vi: entitlement → drip → redeem, ví nhỏ/lớn, hooks DAO
+  SPEC-CappedDrop-MATH.md       # chứng minh: đơn điệu, cap E, ⌈E/D⌉, đa-claim, bảo toàn
   onchain/                      # Aiken (Plutus V3)
     lib/magiclamp/lampdist/
       constants.ak  types.ak  math.ak
-      merkle.ak                 # BLAKE2b-256, RFC6962 domain-sep, sorted-pair
-      util.ak                   # helper + chống double-satisfaction (script-hash count)
+      util.ak                   # helper + chống double-satisfaction (payment-hash count)
     validators/
-      claim_account.ak          # Claim (committee) + Redeem (Merkle proof)
-      beacon.ak                 # post P / nonce / MerkleRoot (committee, NFT-auth)
+      claim_account.ak          # Redeem (vested tất định, không proof)
+      beacon.ak                 # post DropParam (committee, NFT-auth)
       treasury.ak               # release LAMP cho redeem (bảo toàn non-LAMP value)
   offchain/src/                 # TypeScript (Lucid Evolution)
-    merkle.ts lottery.ts pparam.ts   # engine (mirror onchain byte-perfect)
     datum.ts committee.ts            # codec Data + committee threshold
-    beaconBuilder.ts claimBuilder.ts redeemBuilder.ts   # tx builders
+    beaconBuilder.ts claimBuilder.ts redeemBuilder.ts   # tx builders (redeem tính vested)
   tests/                        # vitest (foundation + builders + integration)
 ```
 
-## Luồng (4 trạng thái)
+**Gỡ bỏ so với v0.1:** `merkle.ak`, randomness logic, `lottery.ts`, `merkle.ts`, `pparam.ts`.
+
+## Luồng
 
 ```
-EARNED → CLAIMED → REDEEMABLE → LIQUID
-        (committee   (lottery off-chain    (user redeem,
-         confirm)     + Merkle root)        1 UTXO batch)
+GÁN ENTITLEMENT ───▶ DRIP (tự mở khoá theo epoch) ───▶ REDEEM (owner tự rút)
+(committee M/N        vested(t)=min(E, D·r·(t−t0))      amount=vested−redeemed,
+ gán E vào datum)     không cần giao dịch                treasury nhả đúng amount
 ```
 
-1. **Claim** — committee 2/3 confirm activity → `claimed_cumulative += amount`.
-2. **Beacon** — committee post `P_{N+1}` (1 epoch trước), `nonce_N`, `MerkleRoot_N`.
-3. **Lottery** (off-chain) — `seed = blake2b(nonce ‖ wallet ‖ idx)`, win nếu `seed < p·2^256`;
-   `won = min(d·P, remaining)`; build Merkle tree cumulative.
-4. **Redeem** — user submit Merkle proof của `won_cumulative` → nhận `won − redeemed` LAMP.
-   Cumulative ⇒ chống double-redeem + batch nhiều epoch trong 1 UTXO.
+1. **Gán entitlement** — committee M-of-N tạo `ClaimAccount` UTxO với `E`, `t0`, `redeemed=0`.
+2. **Drip** — vested tự tăng theo epoch (thuần toán), dừng ở `E`. Không ai phải làm gì.
+3. **Redeem** — owner spend `ClaimAccount`, validator tính `vested` từ datum + `DropParam`
+   beacon (reference input) + validity range; nhả `vested − redeemed` LAMP; cập nhật `redeemed`.
 
-## An toàn (đã audit + fix)
+## An toàn (giữ 3 fix audit treasury)
 
-Vòng audit adversarial đã phát hiện + sửa:
-- **C1** double-satisfaction qua stake credential → đếm theo **payment script hash**, không full-address.
+- **C1** double-satisfaction qua stake credential → đếm theo **payment script hash**.
 - **C2** treasury N× release → ràng đúng 1 treasury/tx theo script hash.
-- **M1** treasury drain ADA → `tre_out.value == tre_in.value − released LAMP` (bảo toàn mọi asset khác).
+- **M1** treasury drain ADA → `tre_out.value == tre_in.value − amount` (bảo toàn mọi asset khác).
 
-Test `script_count_catches_stake_cred_double` (Aiken) chứng minh fix C1.
-Test `leaf_hash_xcheck_offchain` (Aiken) chứng minh Merkle khớp byte-perfect với TypeScript.
+LAMP **không burn** (fixed-supply 36 tỷ bất biến); giảm lưu hành chỉ qua Treasury accounting.
 
 ## MVP — phạm vi & defer
 
-| Có (build + test) | Defer (lý do trong SPEC §0) |
+| Có (build + test) | Defer (lý do trong SPEC / CONTRACT §5) |
 |---|---|
-| Claim / Redeem / Beacon / Treasury validator | 7 validator riêng từng kênh (ISPO/Scavenger/…) |
-| P engine + Lottery engine + Merkle | PhoenixKey on-chain DID proof (anti-sybil ở tầng committee) |
-| Off-chain tx builders + 97 test | On-chain P computation; live Preview deploy (cần Blockfrost key) |
+| ClaimAccount Redeem (vested tất định) / DropParam beacon / Treasury | 7 validator riêng từng kênh (ISPO/Scavenger/…) |
+| Datum codec + tx builders + test | PhoenixKey on-chain DID proof (anti-sybil ở tầng committee) |
+| Aiken mock-tx + vitest | Cơ chế DAO chỉnh `drops_per_epoch` (multi-drop/pause) — hooks chừa chỗ |
 
-## Còn lại trước mainnet
+## Hooks DAO (post-MVP — chừa chỗ)
 
-- Deploy scripts Preview (cần Blockfrost key của anh) + chạy live end-to-end.
-- Thêm validator-level Aiken mock-tx test (treasury double-release, redeem happy/sad path).
-- Beacon NFT minting policy one-shot (genesis) — verify ở deploy.
-- Tối ưu lottery cho whale (binomial sampling thay vì lặp từng ticket) khi balance lớn.
+- **Multi-drop per-DID:** DAO tăng `drops_per_epoch` cho DID uy tín → rút nhanh hơn, vẫn cap `E`.
+- **Pause/penalty:** DAO đặt `drops_per_epoch = 0` trong `N` epoch → vested đứng yên, không tịch thu.
+
+Cả 2 không phá đơn điệu/cap (chứng minh [SPEC-CappedDrop-MATH.md](./SPEC-CappedDrop-MATH.md) §5).

@@ -1,36 +1,36 @@
 // LampDistribution onchain types — interface contract (SPEC §5)
 // Phải khớp byte-perfect với offchain types.ts (Constr index theo thứ tự khai báo).
 
-/// Per-wallet account tại claim_account script (QĐ5).
-/// Mọi giá trị là oil. Bất biến: 0 ≤ redeemed_cumulative ≤ claimed_cumulative.
+/// Per-wallet account tại claim_account script — CONTRACT v2 "Capped Drop".
+/// Mọi giá trị là oil. Bất biến: 0 ≤ redeemed ≤ entitlement; vested cộng dồn cap E.
+///   vested(t) = min(entitlement, D · drops_per_epoch · max(0, t − start_epoch))
+///   redeemable = vested − redeemed
 pub type ClaimAccountDatum {
-  owner               : ByteArray,   // PKH chủ ví
-  claimed_cumulative  : Int,         // tổng đã claim (committee confirm)
-  redeemed_cumulative : Int,         // tổng đã rút ra ví
-  last_claim_epoch    : Int,
+  owner           : ByteArray,   // PKH chủ ví
+  entitlement     : Int,         // E — tổng LAMP được phân bổ (cố định khi genesis/claim)
+  redeemed        : Int,         // đã nhận tích lũy
+  start_epoch     : Int,         // t0
+  drops_per_epoch : Int,         // MVP = 1 (DAO chỉnh per-DID ở v.sau)
 }
 
 pub type ClaimAccountRedeemer {
-  // committee 2/3 confirm activity → claimed_cumulative += amount
+  // committee 2/3 confirm activity → entitlement += amount (cấp/tăng phân bổ)
   Claim { amount: Int }
-  // user redeem với Merkle proof của won_cumulative (cumulative, QĐ6)
-  Redeem { won_cumulative: Int, lottery_epoch: Int, proof: List<ByteArray> }
+  // user tự tính vested on-chain, rút redeemable = vested − redeemed (permissionless)
+  Redeem
 }
 
 pub type BeaconKind {
-  PParam
-  Randomness
-  MerkleRoot
+  // tham số drop value D (oil/drop) committee/DAO post
+  DropParam
 }
 
-/// Beacon UTxO do committee post (QĐ2/QĐ3). value:
-///   PParam     → P (oil) big-endian
-///   Randomness → epoch nonce (32 bytes)
-///   MerkleRoot → merkle root (32 bytes)
+/// Beacon UTxO do committee post. Authenticity = NFT.
+///   DropParam → drop_value D (oil) — số LAMP mở khoá mỗi drop·epoch.
 pub type BeaconDatum {
-  epoch : Int,
-  kind  : BeaconKind,
-  value : ByteArray,
+  epoch     : Int,
+  kind      : BeaconKind,
+  drop_value: Int,
 }
 
 pub type BeaconRedeemer {

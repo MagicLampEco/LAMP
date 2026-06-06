@@ -1,11 +1,9 @@
 // @magiclamp/lampdist-sdk — LampDistribution off-chain SDK
-// Drop Lottery distribution engine (LAMP-Distribution v1.0). DID-agnostic core.
+// CONTRACT v2 "Capped Drop" — tất định, permissionless self-compute vested. DID-agnostic core.
 
 export * from "./constants.js";
 export * from "./types.js";
-export * from "./merkle.js";
-export * from "./lottery.js";
-export * from "./pparam.js";
+export * from "./vested.js";
 
 // ── tx builders (Lucid Evolution off-chain) ──
 export * from "./datum.js";

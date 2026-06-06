@@ -112,16 +112,13 @@ export async function resolveCommittee(lucid: LucidEvolution): Promise<Committee
 export const LAMP_ASSET_NAME = "4c414d50"; // "LAMP"
 
 // ── Beacon NFT (authenticity) ──────────────────────────────────
-// Blueprint hiện CHƯA có validator beacon_nft minting policy (agent khác viết
-// song song). MVP self-contained: 03_genesis.ts mint 3 beacon NFT bằng NATIVE
-// sig policy của ví deploy (one-shot), ghi policy id vào deployed.json. Khi
-// agent kia ship beacon_nft policy, đọc từ blueprint thay native (xem TODO genesis).
-// PHẢI khớp onchain util.beacon_name (validator hardcode các tên này).
-export const BEACON_ASSET_NAMES = {
-  PParam:     "505041524d", // "PPARAM"
-  Randomness: "4e4f4e4345", // "NONCE"
-  MerkleRoot: "4d524f4f54", // "MROOT"
-} as const;
+// CONTRACT v2 "Capped Drop": chỉ còn 1 beacon DropParam{D} duy nhất. Bỏ
+// PParam/Randomness/MerkleRoot (cơ chế lottery đã gỡ). Asset name "DROP".
+// MVP self-contained: 03_genesis.ts mint 1 beacon NFT bằng NATIVE sig policy của
+// ví deploy (one-shot), ghi policy id vào deployed.json. Khi agent beacon_nft ship
+// policy thật, đọc từ blueprint thay native. PHẢI khớp offchain
+// DEFAULT_BEACON_ASSET_NAMES.DropParam + onchain util.beacon_name.
+export const DROP_ASSET_NAME = "44524f50"; // "DROP"
 
 /**
  * Native one-shot minting policy (sig của ví deploy) — dùng cho cả test-LAMP (02)
@@ -226,11 +223,10 @@ export interface DeployedState {
   testLamp?: { policyId: string; assetName: string; minted: string };
   // beacon NFT policy (03)
   beaconNftPolicy?: string;
-  // genesis UTxOs (03) — txHash#index để bước sau resolve
+  // genesis UTxOs (03) — txHash#index để bước sau resolve.
+  // v2: 1 beacon DropParam duy nhất (bỏ pparam/randomness/merkle).
   genesis?: {
-    pparamBeacon:     BeaconRef;
-    randomnessBeacon: BeaconRef;
-    merkleBeacon:     BeaconRef;
+    dropParamBeacon:  BeaconRef;
     treasuryUtxo:     BeaconRef;
     claimAccountA:    BeaconRef;
     claimAccountB:    BeaconRef;

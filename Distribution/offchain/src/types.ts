@@ -1,44 +1,25 @@
-// LampDistribution offchain types — mirror onchain types.ak (SPEC §5)
+// LampDistribution offchain types — mirror onchain types.ak (CONTRACT v2 "Capped Drop").
+// Mọi giá trị là oil. Bất biến: 0 ≤ redeemed ≤ entitlement; vested cộng dồn cap E.
+//   vested(t) = min(entitlement, D · drops_per_epoch · max(0, t − start_epoch))
+//   redeemable = vested − redeemed
 
 export interface ClaimAccountDatum {
-  owner               : string;  // PKH hex
-  claimed_cumulative  : bigint;  // oil
-  redeemed_cumulative : bigint;  // oil
-  last_claim_epoch    : bigint;
+  owner           : string;  // PKH hex
+  entitlement     : bigint;  // E — tổng LAMP được phân bổ (oil), cố định khi genesis/claim
+  redeemed        : bigint;  // đã nhận tích lũy (oil)
+  start_epoch     : bigint;  // t0
+  drops_per_epoch : bigint;  // MVP = 1 (DAO chỉnh per-DID ở v.sau)
 }
 
-export type BeaconKind = "PParam" | "Randomness" | "MerkleRoot";
+/** Chỉ còn 1 beacon tham số: DropParam{D}. Bỏ Randomness/MerkleRoot. */
+export type BeaconKind = "DropParam";
 
 export interface BeaconDatum {
-  epoch : bigint;
-  kind  : BeaconKind;
-  value : string;  // hex
+  epoch      : bigint;
+  kind       : BeaconKind;
+  drop_value : bigint;  // D (oil/drop) — số LAMP mở khoá mỗi drop·epoch
 }
 
 export interface TreasuryDatum {
   committee_hash : string;  // hex
-}
-
-/** 1 dòng account đưa vào lottery engine. */
-export interface LotteryAccount {
-  owner        : string;  // PKH hex
-  claimedCum   : bigint;  // oil
-  wonCumPrev   : bigint;  // oil (won_cumulative tới epoch trước)
-}
-
-/** Kết quả lottery 1 epoch cho 1 wallet. */
-export interface LotteryResult {
-  owner      : string;
-  wonCumNew  : bigint;   // won_cumulative tới epoch này (đơn điệu tăng)
-  wonThis    : bigint;   // phần thắng trong epoch này
-  tickets    : bigint;   // D
-  wins       : bigint;   // d
-}
-
-/** Tín hiệu P parameter (SPEC §4). */
-export interface PSignals {
-  magicConsumed   : bigint;  // S1
-  magicGenerated  : bigint;  // S2
-  lampnetUtil     : bigint;  // S3 (đã quy về cùng đơn vị demand)
-  claimedUnredeemed: bigint; // S4 (latent supply; chưa dùng MVP, để mở rộng)
 }

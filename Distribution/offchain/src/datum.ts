@@ -1,26 +1,20 @@
 // LampDistribution datum/redeemer codec — Plutus Data (Lucid Evolution).
+// CONTRACT v2 "Capped Drop". PHẢI khớp byte-perfect với onchain `types.ak`.
+// Constr index = thứ tự khai báo trong types.ak (Aiken đánh số constructor từ 0).
 //
-// PHẢI khớp byte-perfect với onchain `types.ak`. Constr index = thứ tự khai báo
-// trong types.ak (Aiken đánh số constructor theo thứ tự xuất hiện, bắt đầu 0).
-//
-//   ClaimAccountDatum{owner, claimed_cumulative, redeemed_cumulative, last_claim_epoch}
-//     = Constr(0, [bytes, int, int, int])
+//   ClaimAccountDatum{owner, entitlement, redeemed, start_epoch, drops_per_epoch}
+//     = Constr(0, [bytes, int, int, int, int])
 //
 //   ClaimAccountRedeemer:
-//     Claim {amount}                                = Constr(0, [int])
-//     Redeem {won_cumulative, lottery_epoch, proof} = Constr(1, [int, int, List<bytes>])
+//     Claim { amount } = Constr(0, [int])
+//     Redeem           = Constr(1, [])        // tất định: user tự tính vested on-chain
 //
-//   BeaconKind:  PParam = Constr(0,[]), Randomness = Constr(1,[]), MerkleRoot = Constr(2,[])
-//   BeaconDatum{epoch, kind, value}                 = Constr(0, [int, kind, bytes])
-//   BeaconRedeemer: PostBeacon                       = Constr(0, [])
+//   BeaconKind:  DropParam = Constr(0, [])
+//   BeaconDatum{epoch, kind, drop_value} = Constr(0, [int, kind, int])
+//   BeaconRedeemer: PostBeacon            = Constr(0, [])
 //
-//   TreasuryDatum{committee_hash}                    = Constr(0, [bytes])
-//   TreasuryRedeemer: ReleaseForRedeem               = Constr(0, [])
-//
-// LƯU Ý ORCHESTRATOR: onchain repo CHƯA có plutus.json/validators build output
-// (chỉ có lib/types.ak). Không thể resolve constr index runtime như withdrawLamp.ts
-// → ta hardcode index theo types.ak ĐÃ XÁC NHẬN. Khi onchain build ra plutus.json,
-// nên thêm cross-check (resolveConstrIndex) để chống desync.
+//   TreasuryDatum{committee_hash}         = Constr(0, [bytes])
+//   TreasuryRedeemer: ReleaseForRedeem    = Constr(0, [])
 
 import { Constr, Data } from "@lucid-evolution/lucid";
 import type { BeaconDatum, BeaconKind, ClaimAccountDatum, TreasuryDatum } from "./types.js";
@@ -30,17 +24,13 @@ import type { BeaconDatum, BeaconKind, ClaimAccountDatum, TreasuryDatum } from "
 /** ClaimAccountRedeemer variants. */
 export const CLAIM_ACCOUNT_REDEEMER = { Claim: 0, Redeem: 1 } as const;
 
-/** BeaconKind variants (PParam | Randomness | MerkleRoot). */
+/** BeaconKind variants (DropParam only ở v2). */
 export const BEACON_KIND_INDEX: Record<BeaconKind, number> = {
-  PParam:     0,
-  Randomness: 1,
-  MerkleRoot: 2,
+  DropParam: 0,
 };
 
 const BEACON_KIND_FROM_INDEX: Record<number, BeaconKind> = {
-  0: "PParam",
-  1: "Randomness",
-  2: "MerkleRoot",
+  0: "DropParam",
 };
 
 // ── helpers ────────────────────────────────────────────────────────────
@@ -51,10 +41,13 @@ function normHex(hex: string): string {
   return h.toLowerCase();
 }
 
+/**
+ * Robust với trường hợp có 2 bản @lucid-evolution/lucid khác nhau (offchain vs scripts):
+ * `instanceof` fail vì khác class identity, dù object đúng cấu trúc Constr {index, fields}.
+ * Duck-type theo {index:number, fields:[]}.
+ */
 function asConstr(d: Data, ctx: string): Constr<Data> {
   if (d instanceof Constr) return d;
-  // Robust với trường hợp có 2 bản @lucid-evolution/lucid khác nhau (offchain vs scripts):
-  // `instanceof` fail vì khác class identity, dù object đúng cấu trúc Constr {index:number, fields:[]}.
   if (
     d !== null && typeof d === "object" &&
     typeof (d as { index?: unknown }).index === "number" &&
@@ -90,26 +83,28 @@ export function decodeBeaconKind(d: Data): BeaconKind {
 }
 
 // ── ClaimAccountDatum ──────────────────────────────────────────────────
-// Constr(0, [owner:bytes, claimed_cumulative:int, redeemed_cumulative:int, last_claim_epoch:int])
+// Constr(0, [owner:bytes, entitlement:int, redeemed:int, start_epoch:int, drops_per_epoch:int])
 
 export function encodeClaimAccountDatum(d: ClaimAccountDatum): Constr<Data> {
   return new Constr(0, [
     normHex(d.owner),
-    d.claimed_cumulative,
-    d.redeemed_cumulative,
-    d.last_claim_epoch,
+    d.entitlement,
+    d.redeemed,
+    d.start_epoch,
+    d.drops_per_epoch,
   ]);
 }
 
 export function decodeClaimAccountDatum(d: Data): ClaimAccountDatum {
   const c = asConstr(d, "ClaimAccountDatum");
   if (c.index !== 0) throw new Error(`DATUM-020: ClaimAccountDatum expects Constr 0, got ${c.index}`);
-  if (c.fields.length !== 4) throw new Error(`DATUM-021: ClaimAccountDatum expects 4 fields, got ${c.fields.length}`);
+  if (c.fields.length !== 5) throw new Error(`DATUM-021: ClaimAccountDatum expects 5 fields, got ${c.fields.length}`);
   return {
-    owner:               asBytes(c.fields[0]!, "owner"),
-    claimed_cumulative:  asInt(c.fields[1]!, "claimed_cumulative"),
-    redeemed_cumulative: asInt(c.fields[2]!, "redeemed_cumulative"),
-    last_claim_epoch:    asInt(c.fields[3]!, "last_claim_epoch"),
+    owner:           asBytes(c.fields[0]!, "owner"),
+    entitlement:     asInt(c.fields[1]!, "entitlement"),
+    redeemed:        asInt(c.fields[2]!, "redeemed"),
+    start_epoch:     asInt(c.fields[3]!, "start_epoch"),
+    drops_per_epoch: asInt(c.fields[4]!, "drops_per_epoch"),
   };
 }
 
@@ -129,36 +124,24 @@ export function encodeClaimRedeemer(amount: bigint): Constr<Data> {
   return new Constr(CLAIM_ACCOUNT_REDEEMER.Claim, [amount]);
 }
 
-/**
- * Redeem { won_cumulative, lottery_epoch, proof } = Constr(1, [int, int, List<bytes>]).
- * `proof` là danh sách sibling hash (hex) từ buildMerkleTree (foundation).
- */
-export function encodeRedeemRedeemer(
-  wonCumulative: bigint,
-  lotteryEpoch:  bigint,
-  proofHex:      string[],
-): Constr<Data> {
-  const proof: Data[] = proofHex.map(normHex);
-  return new Constr(CLAIM_ACCOUNT_REDEEMER.Redeem, [wonCumulative, lotteryEpoch, proof]);
+/** Redeem = Constr(1, []) — tất định, không field (user tự tính vested on-chain). */
+export function encodeRedeemRedeemer(): Constr<Data> {
+  return new Constr(CLAIM_ACCOUNT_REDEEMER.Redeem, []);
 }
 
 export function claimRedeemerToCbor(amount: bigint): string {
   return Data.to(encodeClaimRedeemer(amount));
 }
 
-export function redeemRedeemerToCbor(
-  wonCumulative: bigint,
-  lotteryEpoch:  bigint,
-  proofHex:      string[],
-): string {
-  return Data.to(encodeRedeemRedeemer(wonCumulative, lotteryEpoch, proofHex));
+export function redeemRedeemerToCbor(): string {
+  return Data.to(encodeRedeemRedeemer());
 }
 
 // ── BeaconDatum ────────────────────────────────────────────────────────
-// Constr(0, [epoch:int, kind:BeaconKind, value:bytes])
+// Constr(0, [epoch:int, kind:BeaconKind, drop_value:int])
 
 export function encodeBeaconDatum(d: BeaconDatum): Constr<Data> {
-  return new Constr(0, [d.epoch, encodeBeaconKind(d.kind), normHex(d.value)]);
+  return new Constr(0, [d.epoch, encodeBeaconKind(d.kind), d.drop_value]);
 }
 
 export function decodeBeaconDatum(d: Data): BeaconDatum {
@@ -166,9 +149,9 @@ export function decodeBeaconDatum(d: Data): BeaconDatum {
   if (c.index !== 0) throw new Error(`DATUM-030: BeaconDatum expects Constr 0, got ${c.index}`);
   if (c.fields.length !== 3) throw new Error(`DATUM-031: BeaconDatum expects 3 fields, got ${c.fields.length}`);
   return {
-    epoch: asInt(c.fields[0]!, "epoch"),
-    kind:  decodeBeaconKind(c.fields[1]!),
-    value: asBytes(c.fields[2]!, "value"),
+    epoch:      asInt(c.fields[0]!, "epoch"),
+    kind:       decodeBeaconKind(c.fields[1]!),
+    drop_value: asInt(c.fields[2]!, "drop_value"),
   };
 }
 

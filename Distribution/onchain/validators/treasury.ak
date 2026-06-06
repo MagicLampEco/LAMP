@@ -1,7 +1,7 @@
 // DistributionTreasury validator (SPEC §QĐ7, C-TRE-1/2).
 // Giữ LAMP pool; release đúng `released` cho mỗi Redeem cùng tx.
-// KHÔNG cần committee — release được kích hoạt bởi 1 Redeem hợp lệ (đã verify Merkle
-// proof ở claim_account validator). Treasury chỉ kiểm LAMP delta khớp redeemed delta.
+// KHÔNG cần committee — release được kích hoạt bởi 1 Redeem hợp lệ (đã verify vested
+// = min(E, D·dpe·Δepoch) ở claim_account validator). Treasury chỉ kiểm LAMP delta khớp redeemed delta.
 
 use aiken/collection/list
 use cardano/assets
@@ -50,10 +50,10 @@ validator treasury(
     expect
       list.count(tx.outputs, fn(o) { util.is_at_script(o.address, claim_account_hash) }) == 1
 
-    // released = ClaimAccount.redeemed_cumulative(out) − redeemed_cumulative(in)
+    // released = ClaimAccount.redeemed(out) − redeemed(in)
     let ca_in = find_claim_account_input(tx.inputs, claim_account_hash)
     let ca_out = find_claim_account_output(tx.outputs, claim_account_hash)
-    let released = ca_out.redeemed_cumulative - ca_in.redeemed_cumulative
+    let released = ca_out.redeemed - ca_in.redeemed
     expect released > 0
 
     // C-TRE-1 + C-VAL-0: output treasury == input value với LAMP giảm ĐÚNG released.
@@ -103,9 +103,10 @@ fn tt_tre_d() -> TreasuryDatum {
 fn tt_ca_d(redeemed: Int) -> ClaimAccountDatum {
   ClaimAccountDatum {
     owner: tt_owner,
-    claimed_cumulative: 1000,
-    redeemed_cumulative: redeemed,
-    last_claim_epoch: 0,
+    entitlement: 1000,
+    redeemed: redeemed,
+    start_epoch: 0,
+    drops_per_epoch: 1,
   }
 }
 

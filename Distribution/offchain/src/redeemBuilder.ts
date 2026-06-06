@@ -1,26 +1,27 @@
-// LampDistribution redeemBuilder — user redeem LAMP đã thắng (CLAIMED→LIQUID, SPEC §2).
+// LampDistribution redeemBuilder — user redeem LAMP đã vested (CONTRACT v2 §4).
+//
+// Tất định, permissionless: account tự tính vested on-chain, không proof/committee.
 //
 // Input:
-//   - ClaimAccount UTxO (của owner) — spend với Redeem redeemer (proof).
+//   - ClaimAccount UTxO (của owner) — spend với Redeem redeemer (Constr 1, no fields).
 //   - Treasury UTxO (giữ LAMP pool) — spend với ReleaseForRedeem redeemer.
 // Reference input:
-//   - MerkleRoot beacon UTxO[lottery_epoch] (read-only, không spend).
+//   - DropParam beacon UTxO (read-only) — cung cấp D (drop_value).
 // Output:
-//   - ClaimAccount': redeemed_cumulative = won_cumulative; field khác bảo toàn.
-//   - Treasury': LAMP giảm đúng `released`; committee_hash + dust bảo toàn.
-//   - User: nhận đúng `released` LAMP.
+//   - ClaimAccount': redeemed' = redeemed + amount; field khác bất biến.
+//   - Treasury': LAMP giảm đúng `amount`; committee_hash + dust bảo toàn.
+//   - User: nhận đúng `amount` LAMP.
 //
-// released = won_cumulative − redeemed_cumulative  (QĐ6 cumulative accounting).
+//   vested  = min(E, D · drops_per_epoch · max(0, current_epoch − start_epoch))
+//   amount  = vested − redeemed   (yêu cầu > 0)
 //
-// Invariants (SPEC §6):
-//   C-RDM-1  Merkle proof hợp lệ cho leaf (owner, won_cumulative) vs MerkleRoot beacon.
-//   C-RDM-2  won_cumulative > in.redeemed_cumulative (released > 0).
-//   C-RDM-3  released = won − redeemed; user nhận đúng released LAMP.
-//   C-RDM-4  out.redeemed_cumulative == won_cumulative; field khác unchanged.
-//   C-RDM-5  won_cumulative ≤ in.claimed_cumulative.
+// Invariants (CONTRACT §4/§7):
+//   C-RDM-1  amount = vested − redeemed > 0.
+//   C-RDM-2  vested ≤ entitlement (cap E — đã bảo đảm bởi vested()).
+//   C-RDM-3  user nhận đúng `amount` LAMP.
+//   C-RDM-4  out.redeemed == redeemed + amount; field khác unchanged.
 //   C-RDM-6  owner signs.
-//   C-RDM-7  đúng 1 ClaimAccount input + 1 output.
-//   C-TRE-1  treasury release ≤ released; phần dư về treasury script.
+//   C-TRE-1  treasury_out.value = treasury_in.value − amount (bảo toàn, không burn).
 //   C-TRE-2  treasury datum (committee_hash) bảo toàn.
 //   C-MINT-0 tx.mint == 0.
 //   C-VAL-0  mọi assets khác bảo toàn (audit dust lesson — không drop token nào).
@@ -38,7 +39,7 @@ import {
   claimAccountDatumToCbor, redeemRedeemerToCbor,
   decodeTreasuryDatum, treasuryDatumToCbor, treasuryRedeemerToCbor,
 } from "./datum.js";
-import { verifyClaim, buildMerkleTree, type MerkleLeafInput } from "./merkle.js";
+import { vested } from "./vested.js";
 
 const DEFAULT_LAMP_ASSET_NAME = "4c414d50"; // "LAMP"
 
@@ -60,24 +61,23 @@ export interface RedeemParams {
   treasuryScript:   Validator;
 
   /**
-   * MerkleRoot beacon UTxO cho lottery_epoch — dùng làm REFERENCE input.
-   * Datum phải là BeaconDatum{kind: MerkleRoot, epoch: lottery_epoch}.
+   * DropParam beacon UTxO — dùng làm REFERENCE input (read-only).
+   * Datum phải là BeaconDatum{kind: DropParam}; cung cấp D = drop_value.
    */
-  merkleBeaconUtxo: UTxO;
-
-  /** won_cumulative (oil) từ lottery engine — committee công bố trong Merkle leaf. */
-  wonCumulative:    bigint;
-  /** Epoch lottery của Merkle root đang dùng (khớp beacon datum.epoch). */
-  lotteryEpoch:     bigint;
+  dropBeaconUtxo:   UTxO;
 
   /**
-   * Merkle proof (sibling hex list) cho leaf (owner, won_cumulative).
-   * Lấy từ buildMerkleTree(...).proofs.get(owner) (foundation). Nếu bỏ trống,
-   * builder tự dựng từ `lotteryLeaves` (toàn bộ leaf epoch đó) để trích proof.
+   * Epoch hiện tại t (caller tính off-chain từ validity range).
+   * Validator đọc current_epoch từ validity_range → truyền `validFromMs` để khớp.
    */
-  proof?: string[];
-  /** Toàn bộ leaf của lottery epoch (để builder tự dựng proof nếu `proof` trống). */
-  lotteryLeaves?: MerkleLeafInput[];
+  currentEpoch:     bigint;
+
+  /**
+   * POSIX ms cho lower_bound validity_range (BẮT BUỘC live tx).
+   * Validator get_epoch đọc lower_bound = current_epoch · ms_per_epoch.
+   * Bỏ trống → KHÔNG set (chỉ unit test off-chain; live sẽ fail get_epoch).
+   */
+  validFromMs?:     bigint;
 
   /** LAMP policy + asset-name. */
   lampPolicyId:   string;
@@ -89,7 +89,8 @@ export interface RedeemParams {
 
 export interface RedeemResult {
   tx:            TxSignBuilder;
-  released:      bigint;
+  amount:        bigint;     // released = vested − redeemed
+  vested:        bigint;     // vested(t) đã tính
   newClaimDatum: ClaimAccountDatum;
   treasuryAfter: bigint;     // LAMP còn lại trên treasury output
   summary:       string;
@@ -98,8 +99,8 @@ export interface RedeemResult {
 export async function buildRedeemTx(params: RedeemParams): Promise<RedeemResult> {
   const {
     lucid, network, claimAccountUtxo, claimScript,
-    treasuryUtxo, treasuryScript, merkleBeaconUtxo,
-    wonCumulative, lotteryEpoch, lampPolicyId,
+    treasuryUtxo, treasuryScript, dropBeaconUtxo,
+    currentEpoch, lampPolicyId,
   } = params;
   const lampAssetName = params.lampAssetName ?? DEFAULT_LAMP_ASSET_NAME;
   const lampUnit = toUnit(lampPolicyId, lampAssetName);
@@ -109,51 +110,23 @@ export async function buildRedeemTx(params: RedeemParams): Promise<RedeemResult>
   const claim = decodeClaimAccountDatum(Data.from(claimAccountUtxo.datum));
   const owner = normHex(claim.owner);
 
-  // ── released = won − redeemed (QĐ6); C-RDM-2 / C-RDM-5 ─────────────
-  const released = wonCumulative - claim.redeemed_cumulative;        // C-RDM-3
-  if (released <= 0n) {
-    throw new Error(
-      `REDEEM-002: released ≤ 0 (won=${wonCumulative}, redeemed=${claim.redeemed_cumulative}). ` +
-      `Double-redeem hoặc proof cũ.`,                                // C-RDM-2
-    );
+  // ── Đọc D từ DropParam beacon (reference input) ────────────────────
+  if (!dropBeaconUtxo.datum) throw new Error("REDEEM-004: dropBeaconUtxo has no inline datum");
+  const beacon = decodeBeaconDatum(Data.from(dropBeaconUtxo.datum));
+  if (beacon.kind !== "DropParam") {
+    throw new Error(`REDEEM-005: beacon kind must be DropParam, got ${beacon.kind}`);
   }
-  if (wonCumulative > claim.claimed_cumulative) {
-    throw new Error(
-      `REDEEM-003: won_cumulative ${wonCumulative} > claimed_cumulative ${claim.claimed_cumulative}`, // C-RDM-5
-    );
-  }
+  const D = beacon.drop_value;
 
-  // ── Resolve Merkle proof + verify against beacon root (C-RDM-1) ────
-  if (!merkleBeaconUtxo.datum) throw new Error("REDEEM-004: merkleBeaconUtxo has no inline datum");
-  const beacon = decodeBeaconDatum(Data.from(merkleBeaconUtxo.datum));
-  if (beacon.kind !== "MerkleRoot") {
-    throw new Error(`REDEEM-005: beacon kind must be MerkleRoot, got ${beacon.kind}`);
-  }
-  if (beacon.epoch !== lotteryEpoch) {
-    throw new Error(`REDEEM-006: beacon epoch ${beacon.epoch} ≠ lotteryEpoch ${lotteryEpoch}`);
-  }
-  const rootHex = normHex(beacon.value);
-
-  let proof = params.proof;
-  if (!proof) {
-    if (!params.lotteryLeaves) {
-      throw new Error("REDEEM-007: cần `proof` hoặc `lotteryLeaves` để trích proof");
-    }
-    const tree = buildMerkleTree(params.lotteryLeaves);
-    if (tree.rootHex !== rootHex) {
-      throw new Error(
-        `REDEEM-008: root từ lotteryLeaves (${tree.rootHex}) ≠ beacon root (${rootHex})`,
-      );
-    }
-    const p = tree.proofs.get(owner);
-    if (!p) throw new Error(`REDEEM-009: owner ${owner} không có trong lotteryLeaves`);
-    proof = p;
-  }
-
-  if (!verifyClaim(rootHex, owner, wonCumulative, proof)) {
+  // ── vested(t) = min(E, D · dpe · max(0, t − t0)); amount = vested − redeemed ──
+  const vestedNow = vested(
+    claim.entitlement, D, claim.drops_per_epoch, claim.start_epoch, currentEpoch,
+  );                                                                // C-RDM-2
+  const amount = vestedNow - claim.redeemed;                        // C-RDM-1
+  if (amount <= 0n) {
     throw new Error(
-      `REDEEM-010: Merkle proof không hợp lệ cho (owner=${owner}, won=${wonCumulative}) ` +
-      `vs root ${rootHex}`,                                          // C-RDM-1
+      `REDEEM-002: redeemable ≤ 0 (vested=${vestedNow}, redeemed=${claim.redeemed}). ` +
+      `Chưa tới epoch mở khoá thêm, hoặc đã redeem hết phần vested.`,
     );
   }
 
@@ -161,10 +134,10 @@ export async function buildRedeemTx(params: RedeemParams): Promise<RedeemResult>
   if (!treasuryUtxo.datum) throw new Error("REDEEM-011: treasuryUtxo has no inline datum");
   const treasury: TreasuryDatum = decodeTreasuryDatum(Data.from(treasuryUtxo.datum));
   const treasuryLamp = treasuryUtxo.assets[lampUnit] ?? 0n;
-  if (treasuryLamp < released) {
+  if (treasuryLamp < amount) {
     throw new Error(
-      `REDEEM-012: treasury UTxO chỉ có ${treasuryLamp} oil LAMP < released ${released}. ` +
-      `Chọn treasury UTxO khác hoặc tách (QĐ7).`,
+      `REDEEM-012: treasury UTxO chỉ có ${treasuryLamp} oil LAMP < amount ${amount}. ` +
+      `Chọn treasury UTxO khác hoặc tách.`,
     );
   }
 
@@ -178,12 +151,13 @@ export async function buildRedeemTx(params: RedeemParams): Promise<RedeemResult>
   const destination = params.destinationAddress ?? (await lucid.wallet().address());
 
   // ── Output datums ──────────────────────────────────────────────────
-  // ClaimAccount': redeemed = won; các field khác unchanged (C-RDM-4).
+  // ClaimAccount': redeemed' = redeemed + amount; field khác unchanged (C-RDM-4).
   const newClaimDatum: ClaimAccountDatum = {
-    owner:               claim.owner,
-    claimed_cumulative:  claim.claimed_cumulative,
-    redeemed_cumulative: wonCumulative,             // C-RDM-4
-    last_claim_epoch:    claim.last_claim_epoch,
+    owner:           claim.owner,
+    entitlement:     claim.entitlement,
+    redeemed:        claim.redeemed + amount,        // C-RDM-4
+    start_epoch:     claim.start_epoch,
+    drops_per_epoch: claim.drops_per_epoch,
   };
   // Treasury': datum bảo toàn (C-TRE-2).
   const newTreasuryDatum: TreasuryDatum = { committee_hash: treasury.committee_hash };
@@ -192,24 +166,24 @@ export async function buildRedeemTx(params: RedeemParams): Promise<RedeemResult>
   // ClaimAccount: chỉ datum đổi → clone toàn bộ assets.
   const claimOutAssets: Record<string, bigint> = { ...claimAccountUtxo.assets };
 
-  // Treasury: clone toàn bộ rồi trừ đúng `released` LAMP (giữ lovelace + dust).
+  // Treasury: clone toàn bộ rồi trừ đúng `amount` LAMP (giữ lovelace + dust).
   const treasuryOutAssets: Record<string, bigint> = { ...treasuryUtxo.assets };
-  const treasuryAfter = treasuryLamp - released;
+  const treasuryAfter = treasuryLamp - amount;
   if (treasuryAfter > 0n) treasuryOutAssets[lampUnit] = treasuryAfter;
   else delete treasuryOutAssets[lampUnit];          // hết LAMP → bỏ unit, giữ lovelace+dust
 
   // ── Redeemers ──────────────────────────────────────────────────────
-  const claimRedeemer    = redeemRedeemerToCbor(wonCumulative, lotteryEpoch, proof);
+  const claimRedeemer    = redeemRedeemerToCbor();   // Constr(1, [])
   const treasuryRedeemer = treasuryRedeemerToCbor();
 
   // ── Build tx ───────────────────────────────────────────────────────
-  const tx = await lucid
+  let txb = lucid
     .newTx()
     .collectFrom([claimAccountUtxo], claimRedeemer)
     .attach.SpendingValidator(claimScript)
     .collectFrom([treasuryUtxo], treasuryRedeemer)
     .attach.SpendingValidator(treasuryScript)
-    .readFrom([merkleBeaconUtxo])                   // reference input (read-only)
+    .readFrom([dropBeaconUtxo])                       // reference input (read-only)
     .pay.ToAddressWithData(
       claimAddress,
       { kind: "inline", value: claimAccountDatumToCbor(newClaimDatum) },
@@ -220,21 +194,28 @@ export async function buildRedeemTx(params: RedeemParams): Promise<RedeemResult>
       { kind: "inline", value: treasuryDatumToCbor(newTreasuryDatum) },
       treasuryOutAssets,
     )
-    .pay.ToAddress(destination, { [lampUnit]: released })   // C-RDM-3: user nhận đúng released
-    .addSignerKey(owner)                            // C-RDM-6: owner signs
-    .complete();
+    .pay.ToAddress(destination, { [lampUnit]: amount })   // C-RDM-3: user nhận đúng amount
+    .addSignerKey(owner);                            // C-RDM-6: owner signs
+
+  // validity_range lower_bound → validator get_epoch khớp currentEpoch.
+  if (params.validFromMs !== undefined) {
+    txb = txb.validFrom(Number(params.validFromMs));
+  }
+
+  const tx = await txb.complete();
 
   const summary = [
-    `═══ Redeem ═══`,
+    `═══ Redeem (Capped Drop) ═══`,
     `Owner:          ${owner}`,
-    `Won cumulative: ${wonCumulative} oil`,
-    `Redeemed before:${claim.redeemed_cumulative} oil`,
-    `Released:       ${released / 1_000_000n} LAMP (${released} oil)`,
-    `Lottery epoch:  ${lotteryEpoch}`,
+    `Entitlement E:  ${claim.entitlement} oil`,
+    `Redeemed before:${claim.redeemed} oil`,
+    `Drop value D:   ${D} oil  · drops/epoch ${claim.drops_per_epoch}`,
+    `Epoch:          t0=${claim.start_epoch} → t=${currentEpoch}`,
+    `Vested(t):      ${vestedNow} oil`,
+    `Amount:         ${amount / 1_000_000n} LAMP (${amount} oil)`,
     `Treasury LAMP:  ${treasuryLamp} → ${treasuryAfter} oil`,
     `Destination:    ${destination}`,
-    `Proof len:      ${proof.length}`,
   ].join("\n");
 
-  return { tx, released, newClaimDatum, treasuryAfter, summary };
+  return { tx, amount, vested: vestedNow, newClaimDatum, treasuryAfter, summary };
 }

@@ -1,12 +1,11 @@
-// LampDistribution beaconBuilder — committee post BeaconDatum mới cho epoch kế.
+// LampDistribution beaconBuilder — committee post DropParam{D} cho epoch kế (CONTRACT v2 §3).
 //
-// Beacon UTxO giữ 1 authenticity NFT (param beaconNftPolicy + assetName theo kind).
+// Beacon UTxO giữ 1 authenticity NFT (param beaconNftPolicy + assetName "DROP").
 // Spend beacon UTxO cũ (PostBeacon redeemer) → tạo beacon UTxO mới với BeaconDatum
-// epoch+kind+value mới, NFT đi cùng. Require ≥ threshold committee signatures
+// epoch+kind+drop_value mới, NFT đi cùng. Require ≥ threshold committee signatures
 // (C-BCN-1). KHÔNG mint (C-MINT-0): NFT đã tồn tại, chỉ chuyển tiếp.
 //
-// kind cố định cho 1 beacon UTxO (PParam | Randomness | MerkleRoot). Mỗi kind
-// thường dùng assetName NFT riêng → assetName resolve theo kind (xem nftAssetNameForKind).
+// v2 chỉ còn 1 kind: DropParam. Bỏ Randomness/MerkleRoot beacon.
 
 import {
   Data, toUnit,
@@ -21,14 +20,12 @@ import { assertCommitteeSigners } from "./committee.js";
 
 /** Asset-name hex NFT từng kind — PHẢI khớp onchain util.beacon_name. */
 export const DEFAULT_BEACON_ASSET_NAMES: Record<BeaconKind, string> = {
-  PParam:     "505041524d", // "PPARAM"
-  Randomness: "4e4f4e4345", // "NONCE"
-  MerkleRoot: "4d524f4f54", // "MROOT"
+  DropParam: "44524f50", // "DROP"
 };
 
 export interface PostBeaconParams {
   lucid:        LucidEvolution;
-  /** Beacon UTxO hiện tại (giữ NFT authenticity, datum kind = newKind). */
+  /** Beacon UTxO hiện tại (giữ NFT authenticity, datum kind = DropParam). */
   beaconUtxo:   UTxO;
   /** Applied beacon validator (đã bake params, định nghĩa beacon address). */
   beaconScript: Validator;
@@ -36,13 +33,13 @@ export interface PostBeaconParams {
 
   /** Authenticity NFT policy id (compile-time param của beacon validator). */
   beaconNftPolicy: string;
-  /** NFT asset-name hex; mặc định theo kind (DEFAULT_BEACON_ASSET_NAMES). */
+  /** NFT asset-name hex; mặc định "DROP" (DEFAULT_BEACON_ASSET_NAMES). */
   beaconNftAssetName?: string;
 
-  /** Giá trị beacon mới sẽ post (epoch kế + kind + value). */
+  /** Giá trị beacon mới sẽ post (epoch kế + DropParam + drop_value D). */
   newBeacon: BeaconDatum;
 
-  /** Danh sách committee key-hash (hex). Threshold = ⌈2N/3⌉ (SPEC §7). */
+  /** Danh sách committee key-hash (hex). Threshold = ⌈2N/3⌉. */
   committeeKeyHashes: string[];
   /** Override threshold (mặc định ⌈2N/3⌉). */
   threshold?: number;
@@ -58,12 +55,12 @@ export interface PostBeaconResult {
 }
 
 /**
- * Build unsigned tx: committee post BeaconDatum mới cho epoch kế.
+ * Build unsigned tx: committee post DropParam{D} mới cho epoch kế.
  *
  * Bảo toàn (C-BCN-1 / C-MINT-0 / C-VAL-0):
  *   - NFT authenticity đi từ beacon input sang beacon output (cùng 1 NFT).
  *   - Toàn bộ assets khác trên beacon UTxO bảo toàn (lovelace + bất kỳ dust).
- *   - epoch mới > epoch cũ (đơn điệu tăng); kind bảo toàn.
+ *   - epoch mới > epoch cũ (đơn điệu tăng); kind bảo toàn (DropParam).
  *   - tx KHÔNG mint.
  *   - ≥ threshold committee signers (addSignerKey từng key).
  */
@@ -75,6 +72,10 @@ export async function buildPostBeaconTx(params: PostBeaconParams): Promise<PostB
 
   const signers   = params.signerKeyHashes ?? committeeKeyHashes;
   const threshold = assertCommitteeSigners(committeeKeyHashes, signers, params.threshold);
+
+  if (newBeacon.drop_value <= 0n) {
+    throw new Error(`BEACON-001: drop_value (D) must be > 0, got ${newBeacon.drop_value}`);
+  }
 
   const assetName = params.beaconNftAssetName ?? DEFAULT_BEACON_ASSET_NAMES[newBeacon.kind];
   const nftUnit   = toUnit(beaconNftPolicy, assetName);
@@ -101,7 +102,6 @@ export async function buildPostBeaconTx(params: PostBeaconParams): Promise<PostB
   );
 
   // ── Output assets: bảo toàn TẤT CẢ assets từ input (NFT + lovelace + dust) ──
-  // {...assets} clone toàn bộ — không drop bất kỳ token nào (audit dust lesson).
   const outAssets: Record<string, bigint> = { ...beaconUtxo.assets };
 
   const datumCbor    = beaconDatumToCbor(newBeacon);
@@ -122,10 +122,10 @@ export async function buildPostBeaconTx(params: PostBeaconParams): Promise<PostB
   const tx = await txb.complete();
 
   const summary = [
-    `═══ PostBeacon (${newBeacon.kind}) ═══`,
+    `═══ PostBeacon (DropParam) ═══`,
     `Beacon in:    ${beaconUtxo.txHash}#${beaconUtxo.outputIndex}`,
     `Epoch:        ${newBeacon.epoch}`,
-    `Value:        ${newBeacon.value}`,
+    `Drop value D: ${newBeacon.drop_value} oil`,
     `NFT:          ${nftUnit}`,
     `Committee:    ${signers.length}/${committeeKeyHashes.length} signers (need ${threshold})`,
     `Beacon addr:  ${beaconAddress}`,

@@ -1,13 +1,12 @@
-// Beacon validator (SPEC §QĐ2/QĐ3, C-BCN-1).
-// Committee post P / Randomness nonce / MerkleRoot mỗi epoch. Authenticity = NFT.
+// Beacon validator (CONTRACT v2, C-BCN-1).
+// Committee post DropParam D mỗi epoch. Authenticity = NFT.
 // Genesis beacon (epoch đầu) được tạo bằng cách pay-to-address + NFT lúc deploy
 // (không qua validator). Mọi update sau spend + re-create với epoch tăng.
 
-use aiken/collection/list
 use cardano/assets
 use cardano/transaction.{InlineDatum, OutputReference, Transaction, placeholder}
 use magiclamp/lampdist/types.{
-  BeaconDatum, BeaconKind, BeaconRedeemer, PParam, PostBeacon, Randomness,
+  BeaconDatum, BeaconKind, BeaconRedeemer, DropParam, PostBeacon,
 }
 use magiclamp/lampdist/util
 
@@ -73,21 +72,22 @@ const bt_threshold: Int = 2
 
 const bt_nft_policy: ByteArray = #"beac"
 
-fn bt_datum(epoch: Int, kind: BeaconKind) -> BeaconDatum {
-  BeaconDatum { epoch: epoch, kind: kind, value: #"00" }
+fn bt_datum(epoch: Int, kind: BeaconKind, d: Int) -> BeaconDatum {
+  BeaconDatum { epoch: epoch, kind: kind, drop_value: d }
 }
 
 fn beacon_tx(
   in_epoch  : Int,
   out_epoch : Int,
   sigs      : List<ByteArray>,
-  out_kind  : BeaconKind,
+  out_d     : Int,
 ) -> Transaction {
   let addr = util.script_address(bt_sh)
   let nft_val =
-    assets.add(assets.from_lovelace(2_000_000), bt_nft_policy, util.beacon_name(PParam), 1)
-  let b_in = util.mk_input(util.mk_ref(0), util.mk_output(addr, nft_val, bt_datum(in_epoch, PParam)))
-  let b_out = util.mk_output(addr, nft_val, bt_datum(out_epoch, out_kind))
+    assets.add(assets.from_lovelace(2_000_000), bt_nft_policy, util.beacon_name(DropParam), 1)
+  let b_in =
+    util.mk_input(util.mk_ref(0), util.mk_output(addr, nft_val, bt_datum(in_epoch, DropParam, 100)))
+  let b_out = util.mk_output(addr, nft_val, bt_datum(out_epoch, DropParam, out_d))
   Transaction {
     ..placeholder,
     inputs: [b_in],
@@ -98,36 +98,27 @@ fn beacon_tx(
 }
 
 test beacon_happy() {
-  let tx = beacon_tx(5, 6, [#"c1", #"c2"], PParam)
+  let tx = beacon_tx(5, 6, [#"c1", #"c2"], 120)
   beacon.spend(
-    bt_committee, bt_threshold, bt_nft_policy, Some(bt_datum(5, PParam)), PostBeacon, util.mk_ref(0),
-    tx,
+    bt_committee, bt_threshold, bt_nft_policy, Some(bt_datum(5, DropParam, 100)), PostBeacon,
+    util.mk_ref(0), tx,
   )
 }
 
 test beacon_epoch_not_increasing() fail {
   // out.epoch == in.epoch (không tăng) → reject (C-BCN-1)
-  let tx = beacon_tx(5, 5, [#"c1", #"c2"], PParam)
+  let tx = beacon_tx(5, 5, [#"c1", #"c2"], 120)
   beacon.spend(
-    bt_committee, bt_threshold, bt_nft_policy, Some(bt_datum(5, PParam)), PostBeacon, util.mk_ref(0),
-    tx,
-  )
-}
-
-test beacon_kind_changed() fail {
-  // out.kind ≠ in.kind → reject (C-BCN-1)
-  let tx = beacon_tx(5, 6, [#"c1", #"c2"], Randomness)
-  beacon.spend(
-    bt_committee, bt_threshold, bt_nft_policy, Some(bt_datum(5, PParam)), PostBeacon, util.mk_ref(0),
-    tx,
+    bt_committee, bt_threshold, bt_nft_policy, Some(bt_datum(5, DropParam, 100)), PostBeacon,
+    util.mk_ref(0), tx,
   )
 }
 
 test beacon_insufficient_committee() fail {
   // 1 sig < threshold 2 → reject
-  let tx = beacon_tx(5, 6, [#"c1"], PParam)
+  let tx = beacon_tx(5, 6, [#"c1"], 120)
   beacon.spend(
-    bt_committee, bt_threshold, bt_nft_policy, Some(bt_datum(5, PParam)), PostBeacon, util.mk_ref(0),
-    tx,
+    bt_committee, bt_threshold, bt_nft_policy, Some(bt_datum(5, DropParam, 100)), PostBeacon,
+    util.mk_ref(0), tx,
   )
 }

@@ -1,24 +1,14 @@
-// LampDistribution constants — mirror onchain constants.ak (SPEC §7)
-// ALL arithmetic BigInt. Đơn vị oil. Q = 10^9.
+// LampDistribution constants — CONTRACT v2 "Capped Drop".
+// ALL arithmetic BigInt. Đơn vị oil. 1 LAMP = 10^6 oil.
 
-export const Q = 1_000_000_000n;
+/** oil mỗi LAMP. */
+export const OIL_PER_LAMP = 1_000_000n;
 
-// P parameter (oil/drop)
-export const P_GENESIS = 100_000_000n;     // 100 LAMP
-export const P_MIN     = 10_000_000n;      // 10 LAMP
-export const P_MAX     = 10_000_000_000n;  // 10_000 LAMP
+/** MVP drops_per_epoch mặc định (datum field; DAO override per-DID ở v.sau). */
+export const DEFAULT_DROPS_PER_EPOCH = 1n;
 
-// P adjustment
-export const MAX_P_DELTA_Q = 100_000_000n; // ±10% = 0.10 × Q
-export const P_EMA_WINDOW  = 3n;           // α = 0.5
-// Sensitivity factor: ánh xạ imbalance phân số → P change phân số.
-// MVP = 1.0 (Q): raw_delta = ratio − 1 trực tiếp. Clamp ±10% chi phối.
-// [Design choice — SPEC §4; điều chỉnh khi có dữ liệu thực ecosystem.]
-export const SENSITIVITY_Q = Q;
-
-// Lottery
-export const TARGET_RATE_Q = 3_300_000n;   // 0.33% (Q)
-
-// Merkle domain separation
-export const MERKLE_LEAF_PREFIX = 0x00;
-export const MERKLE_NODE_PREFIX = 0x01;
+/**
+ * Giá trị genesis gợi ý cho DropParam D (oil/drop) khi committee post beacon đầu.
+ * D là THAM SỐ đọc từ beacon, KHÔNG hardcode trong validator — đây chỉ là default tiện dụng.
+ */
+export const D_GENESIS = 100_000_000n; // 100 LAMP/drop·epoch

@@ -1,16 +1,19 @@
-// ClaimAccount validator (SPEC §5, §6 — C-CLAIM-*, C-RDM-*).
+// ClaimAccount validator — CONTRACT v2 "Capped Drop" (tất định).
 // Per-wallet account UTxO. 2 redeemer:
-//   Claim  — committee 2/3 confirm activity → claimed_cumulative += amount.
-//   Redeem — user redeem với Merkle proof của won_cumulative (cumulative, QĐ6),
-//            nhận đúng `released` LAMP từ treasury cùng tx.
+//   Claim  — committee 2/3 confirm activity → entitlement += amount (cấp/tăng E).
+//   Redeem — user tự tính vested on-chain (permissionless, không proof/committee):
+//            vested = min(E, D · drops_per_epoch · (current_epoch − start_epoch)),
+//            rút redeemable = vested − redeemed từ treasury cùng tx.
 
 use aiken/collection/list
 use aiken/interval
 use cardano/assets
-use cardano/transaction.{InlineDatum, Input, OutputReference, Transaction, placeholder}
-use magiclamp/lampdist/merkle
+use cardano/transaction.{
+  InlineDatum, Input, Output, OutputReference, Transaction, placeholder,
+}
+use magiclamp/lampdist/math
 use magiclamp/lampdist/types.{
-  BeaconDatum, Claim, ClaimAccountDatum, ClaimAccountRedeemer, MerkleRoot, Redeem,
+  BeaconDatum, Claim, ClaimAccountDatum, ClaimAccountRedeemer, DropParam, Redeem,
 }
 use magiclamp/lampdist/util
 
@@ -50,42 +53,58 @@ validator claim_account(
     expect acc_out.value == acc_in.value
 
     when redeemer is {
-      // ── CLAIM (committee) ──────────────────────────────────
+      // ── CLAIM (committee cấp/tăng entitlement) ─────────────
       Claim { amount } -> {
         expect amount > 0
         // C-CLAIM-1
         expect util.count_committee_sigs(committee, tx.extra_signatories) >= threshold
-        let current_epoch = util.get_epoch(tx, ms_per_epoch)
-        // C-CLAIM-2/3/4
+        // C-CLAIM-2/3/4: entitlement += amount; các field khác bất biến.
         expect out_datum.owner == datum.owner
-        expect out_datum.claimed_cumulative == datum.claimed_cumulative + amount
-        expect out_datum.redeemed_cumulative == datum.redeemed_cumulative
-        expect out_datum.last_claim_epoch == current_epoch
+        expect out_datum.entitlement == datum.entitlement + amount
+        expect out_datum.redeemed == datum.redeemed
+        expect out_datum.start_epoch == datum.start_epoch
+        expect out_datum.drops_per_epoch == datum.drops_per_epoch
         True
       }
 
-      // ── REDEEM (user + Merkle proof) ───────────────────────
-      Redeem { won_cumulative, lottery_epoch, proof } -> {
+      // ── REDEEM (permissionless, tự tính vested) ────────────
+      Redeem -> {
         // C-RDM-6: owner ký
         expect list.has(tx.extra_signatories, datum.owner)
 
-        // C-RDM-1: Merkle proof hợp lệ với MerkleRoot beacon[lottery_epoch]
-        let root = find_merkle_root(tx.reference_inputs, beacon_nft_policy, lottery_epoch)
-        expect merkle.verify_claim(root, datum.owner, won_cumulative, proof)
+        // C-RDM-1: D đọc từ DropParam beacon qua reference input (authenticity NFT).
+        let drop_value = find_drop_value(tx.reference_inputs, beacon_nft_policy)
+        expect drop_value > 0
+        expect datum.drops_per_epoch > 0
 
-        // C-RDM-2: released > 0; C-RDM-5: không vượt đã claim
-        expect won_cumulative > datum.redeemed_cumulative
-        expect won_cumulative <= datum.claimed_cumulative
-        let released = won_cumulative - datum.redeemed_cumulative
+        // current_epoch từ validity range lower bound.
+        let current_epoch = util.get_epoch(tx, ms_per_epoch)
+        // elapsed = max(0, current_epoch − start_epoch). vested cộng dồn, cap E.
+        let elapsed =
+          if current_epoch > datum.start_epoch {
+            current_epoch - datum.start_epoch
+          } else {
+            0
+          }
+        let raw = drop_value * datum.drops_per_epoch * elapsed
+        // vested = min(E, raw) — đơn điệu tăng theo t, không vượt entitlement.
+        let vested = math.clamp(raw, 0, datum.entitlement)
 
-        // C-RDM-4: chỉ redeemed_cumulative đổi, các field khác giữ nguyên
+        // C-RDM-2: redeemable > 0 (chặn redeem khi vested == redeemed).
+        let amount = vested - datum.redeemed
+        expect amount > 0
+
+        // C-RDM-4: chỉ redeemed đổi; owner/entitlement/start_epoch/drops_per_epoch bất biến.
         expect out_datum.owner == datum.owner
-        expect out_datum.claimed_cumulative == datum.claimed_cumulative
-        expect out_datum.redeemed_cumulative == won_cumulative
-        expect out_datum.last_claim_epoch == datum.last_claim_epoch
+        expect out_datum.entitlement == datum.entitlement
+        expect out_datum.redeemed == datum.redeemed + amount
+        expect out_datum.start_epoch == datum.start_epoch
+        expect out_datum.drops_per_epoch == datum.drops_per_epoch
 
-        // C-RDM-3: owner nhận ĐÚNG (≥) released LAMP
-        expect util.lamp_to_owner(tx.outputs, datum.owner, lamp_policy, lamp_name) >= released
+        // C-RDM-3: owner nhận ĐÚNG (≥) amount LAMP. Bảo toàn value treasury do
+        // treasury.ak ép tre_out = tre_in − (redeemed_out − redeemed_in); chống
+        // double-satisfaction theo payment script hash ở cả 2 validator.
+        expect util.lamp_to_owner(tx.outputs, datum.owner, lamp_policy, lamp_name) >= amount
 
         True
       }
@@ -95,6 +114,24 @@ validator claim_account(
   else(_) {
     fail
   }
+}
+
+/// Đọc D từ reference input mang beacon NFT (kind=DropParam).
+/// Authenticity qua NFT → chống datum hijacking (fake beacon ở cùng address).
+fn find_drop_value(
+  ref_inputs        : List<Input>,
+  beacon_nft_policy : ByteArray,
+) -> Int {
+  let drop_name = util.beacon_name(DropParam)
+  expect Some(ri) =
+    list.find(
+      ref_inputs,
+      fn(i) { assets.quantity_of(i.output.value, beacon_nft_policy, drop_name) == 1 },
+    )
+  expect InlineDatum(d) = ri.output.datum
+  expect bd: BeaconDatum = d
+  expect bd.kind == DropParam
+  bd.drop_value
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -117,21 +154,26 @@ const t_beacon_policy: ByteArray = #"beac"
 
 const t_owner: ByteArray = #"0a0a"
 
-fn ca_datum(claimed: Int, redeemed: Int, last_epoch: Int) -> ClaimAccountDatum {
+fn ca_datum(
+  entitlement: Int,
+  redeemed: Int,
+  start_epoch: Int,
+  dpe: Int,
+) -> ClaimAccountDatum {
   ClaimAccountDatum {
     owner: t_owner,
-    claimed_cumulative: claimed,
-    redeemed_cumulative: redeemed,
-    last_claim_epoch: last_epoch,
+    entitlement: entitlement,
+    redeemed: redeemed,
+    start_epoch: start_epoch,
+    drops_per_epoch: dpe,
   }
 }
 
-// tx cho CLAIM: 1 account input + 1 output, committee sigs, epoch.
+// ── CLAIM tx: 1 account input + 1 output, committee sigs ──
 fn claim_tx(
-  in_d  : ClaimAccountDatum,
-  out_d : ClaimAccountDatum,
-  sigs  : List<ByteArray>,
-  epoch : Int,
+  in_d      : ClaimAccountDatum,
+  out_d     : ClaimAccountDatum,
+  sigs      : List<ByteArray>,
   out_value : assets.Value,
 ) -> Transaction {
   let acc_addr = util.script_address(t_sh)
@@ -143,151 +185,202 @@ fn claim_tx(
     inputs: [acc_in],
     outputs: [acc_out],
     extra_signatories: sigs,
-    validity_range: interval.after(epoch * t_mspe),
     mint: assets.zero,
   }
 }
 
 test claim_happy_path() {
-  let in_d = ca_datum(0, 0, 0)
-  let out_d = ca_datum(100, 0, 5)
-  let tx = claim_tx(in_d, out_d, [#"c1", #"c2"], 5, assets.from_lovelace(2_000_000))
+  // cấp E: 0 → 1000.
+  let in_d = ca_datum(0, 0, 5, 1)
+  let out_d = ca_datum(1000, 0, 5, 1)
+  let tx = claim_tx(in_d, out_d, [#"c1", #"c2"], assets.from_lovelace(2_000_000))
   claim_account.spend(
     t_committee, t_threshold, t_mspe, t_lamp_policy, t_lamp_name, t_beacon_policy,
-    Some(in_d), Claim { amount: 100 }, util.mk_ref(0), tx,
+    Some(in_d), Claim { amount: 1000 }, util.mk_ref(0), tx,
   )
 }
 
 test claim_insufficient_committee() fail {
-  let in_d = ca_datum(0, 0, 0)
-  let out_d = ca_datum(100, 0, 5)
+  let in_d = ca_datum(0, 0, 5, 1)
+  let out_d = ca_datum(1000, 0, 5, 1)
   // chỉ 1 committee sig < threshold 2 → reject
-  let tx = claim_tx(in_d, out_d, [#"c1"], 5, assets.from_lovelace(2_000_000))
+  let tx = claim_tx(in_d, out_d, [#"c1"], assets.from_lovelace(2_000_000))
   claim_account.spend(
     t_committee, t_threshold, t_mspe, t_lamp_policy, t_lamp_name, t_beacon_policy,
-    Some(in_d), Claim { amount: 100 }, util.mk_ref(0), tx,
+    Some(in_d), Claim { amount: 1000 }, util.mk_ref(0), tx,
   )
 }
 
 test claim_value_tamper() fail {
-  let in_d = ca_datum(0, 0, 0)
-  let out_d = ca_datum(100, 0, 5)
+  let in_d = ca_datum(0, 0, 5, 1)
+  let out_d = ca_datum(1000, 0, 5, 1)
   // output nhét token lạ → acc_out.value != acc_in.value → reject (C-VAL-0)
   let tampered = assets.add(assets.from_lovelace(2_000_000), #"dead", #"beef", 1)
-  let tx = claim_tx(in_d, out_d, [#"c1", #"c2"], 5, tampered)
+  let tx = claim_tx(in_d, out_d, [#"c1", #"c2"], tampered)
   claim_account.spend(
     t_committee, t_threshold, t_mspe, t_lamp_policy, t_lamp_name, t_beacon_policy,
-    Some(in_d), Claim { amount: 100 }, util.mk_ref(0), tx,
+    Some(in_d), Claim { amount: 1000 }, util.mk_ref(0), tx,
   )
 }
 
-// tx cho REDEEM: account in/out + owner nhận LAMP + beacon ref input (MerkleRoot NFT).
+// ── REDEEM tx: account in/out + owner nhận LAMP + DropParam beacon ref input ──
 fn redeem_tx(
   in_d           : ClaimAccountDatum,
   out_d          : ClaimAccountDatum,
   owner_lamp_out : Int,
-  beacon_epoch   : Int,
-  root           : ByteArray,
+  drop_value     : Int,
+  current_epoch  : Int,
   sigs           : List<ByteArray>,
+  extra_outs     : List<Output>,
 ) -> Transaction {
   let acc_addr = util.script_address(t_sh)
   let val = assets.from_lovelace(2_000_000)
   let acc_in = util.mk_input(util.mk_ref(0), util.mk_output(acc_addr, val, in_d))
   let acc_out = util.mk_output(acc_addr, val, out_d)
-  let owner_val = assets.add(assets.from_lovelace(2_000_000), t_lamp_policy, t_lamp_name, owner_lamp_out)
+  let owner_val =
+    assets.add(assets.from_lovelace(2_000_000), t_lamp_policy, t_lamp_name, owner_lamp_out)
   let owner_out = util.mk_output(util.vk_address(t_owner), owner_val, in_d)
-  // beacon reference input mang NFT MerkleRoot
+  // beacon reference input mang NFT DropParam
   let beacon_addr = util.script_address(#"bbbbbbbb")
   let beacon_val =
-    assets.add(assets.from_lovelace(2_000_000), t_beacon_policy, util.beacon_name(MerkleRoot), 1)
-  let beacon_datum = BeaconDatum { epoch: beacon_epoch, kind: MerkleRoot, value: root }
-  let beacon_ref = util.mk_input(util.mk_ref(5), util.mk_output(beacon_addr, beacon_val, beacon_datum))
+    assets.add(assets.from_lovelace(2_000_000), t_beacon_policy, util.beacon_name(DropParam), 1)
+  let beacon_datum = BeaconDatum { epoch: 0, kind: DropParam, drop_value: drop_value }
+  let beacon_ref =
+    util.mk_input(util.mk_ref(5), util.mk_output(beacon_addr, beacon_val, beacon_datum))
   Transaction {
     ..placeholder,
     inputs: [acc_in],
     reference_inputs: [beacon_ref],
-    outputs: [acc_out, owner_out],
+    outputs: list.concat([acc_out, owner_out], extra_outs),
     extra_signatories: sigs,
+    validity_range: interval.after(current_epoch * t_mspe),
     mint: assets.zero,
   }
 }
 
-test redeem_happy_path() {
-  let in_d = ca_datum(1000, 0, 0)
-  let out_d = ca_datum(1000, 100, 0)
-  // cây 1 leaf → root == leaf_hash(owner, won); proof rỗng
-  let root = merkle.leaf_hash(t_owner, 100)
-  let tx = redeem_tx(in_d, out_d, 100, 5, root, [t_owner])
+test redeem_happy() {
+  // E=1000, D=100, dpe=1, start=0, epoch=3 → vested=min(1000, 300)=300, redeemed=0 → amount=300.
+  let in_d = ca_datum(1000, 0, 0, 1)
+  let out_d = ca_datum(1000, 300, 0, 1)
+  let tx = redeem_tx(in_d, out_d, 300, 100, 3, [t_owner], [])
   claim_account.spend(
     t_committee, t_threshold, t_mspe, t_lamp_policy, t_lamp_name, t_beacon_policy,
-    Some(in_d), Redeem { won_cumulative: 100, lottery_epoch: 5, proof: [] }, util.mk_ref(0), tx,
+    Some(in_d), Redeem, util.mk_ref(0), tx,
   )
 }
 
-test redeem_double_spend() fail {
-  // redeemed đã = 100, submit lại won=100 → won > redeemed sai → reject (C-RDM-2)
-  let in_d = ca_datum(1000, 100, 0)
-  let out_d = ca_datum(1000, 100, 0)
-  let root = merkle.leaf_hash(t_owner, 100)
-  let tx = redeem_tx(in_d, out_d, 0, 5, root, [t_owner])
+test redeem_small_entitlement_full_first_epoch() {
+  // E=50 < D=100 → vested=min(50, 100·1·1)=50 ngay epoch đầu (elapsed=1) → amount=50.
+  let in_d = ca_datum(50, 0, 0, 1)
+  let out_d = ca_datum(50, 50, 0, 1)
+  let tx = redeem_tx(in_d, out_d, 50, 100, 1, [t_owner], [])
   claim_account.spend(
     t_committee, t_threshold, t_mspe, t_lamp_policy, t_lamp_name, t_beacon_policy,
-    Some(in_d), Redeem { won_cumulative: 100, lottery_epoch: 5, proof: [] }, util.mk_ref(0), tx,
+    Some(in_d), Redeem, util.mk_ref(0), tx,
   )
 }
 
-test redeem_forged_amount() fail {
-  // root commit won=100, attacker khai won=999 → proof fail (C-RDM-1)
-  let in_d = ca_datum(1000, 0, 0)
-  let out_d = ca_datum(1000, 999, 0)
-  let root = merkle.leaf_hash(t_owner, 100)
-  let tx = redeem_tx(in_d, out_d, 999, 5, root, [t_owner])
+test redeem_multi_claim_accumulate() {
+  // Đa-claim cộng dồn 3 đợt. E=1000, D=100, dpe=1, start=0.
+  // Đợt 1: epoch=2 → vested=200, redeemed 0→200, amount=200.
+  let d1_in = ca_datum(1000, 0, 0, 1)
+  let d1_out = ca_datum(1000, 200, 0, 1)
+  let tx1 = redeem_tx(d1_in, d1_out, 200, 100, 2, [t_owner], [])
+  let r1 =
+    claim_account.spend(
+      t_committee, t_threshold, t_mspe, t_lamp_policy, t_lamp_name, t_beacon_policy,
+      Some(d1_in), Redeem, util.mk_ref(0), tx1,
+    )
+  // Đợt 2: epoch=5 → vested=500, redeemed 200→500, amount=300.
+  let d2_in = ca_datum(1000, 200, 0, 1)
+  let d2_out = ca_datum(1000, 500, 0, 1)
+  let tx2 = redeem_tx(d2_in, d2_out, 300, 100, 5, [t_owner], [])
+  let r2 =
+    claim_account.spend(
+      t_committee, t_threshold, t_mspe, t_lamp_policy, t_lamp_name, t_beacon_policy,
+      Some(d2_in), Redeem, util.mk_ref(0), tx2,
+    )
+  // Đợt 3: epoch=20 → raw=2000, vested=min(1000,2000)=1000, redeemed 500→1000, amount=500.
+  let d3_in = ca_datum(1000, 500, 0, 1)
+  let d3_out = ca_datum(1000, 1000, 0, 1)
+  let tx3 = redeem_tx(d3_in, d3_out, 500, 100, 20, [t_owner], [])
+  let r3 =
+    claim_account.spend(
+      t_committee, t_threshold, t_mspe, t_lamp_policy, t_lamp_name, t_beacon_policy,
+      Some(d3_in), Redeem, util.mk_ref(0), tx3,
+    )
+  // tổng nhận = 200+300+500 = 1000 = E (cap chính xác).
+  r1 && r2 && r3
+}
+
+test redeem_vested_capped_at_E() {
+  // epoch xa (50) → raw=5000 nhưng vested cap E=1000. redeemed 0→1000, amount=1000.
+  // out.redeemed = 1001 (vượt E) phải reject; ở đây out.redeemed=1000 hợp lệ → pass.
+  let in_d = ca_datum(1000, 0, 0, 1)
+  let out_d = ca_datum(1000, 1000, 0, 1)
+  let tx = redeem_tx(in_d, out_d, 1000, 100, 50, [t_owner], [])
   claim_account.spend(
     t_committee, t_threshold, t_mspe, t_lamp_policy, t_lamp_name, t_beacon_policy,
-    Some(in_d), Redeem { won_cumulative: 999, lottery_epoch: 5, proof: [] }, util.mk_ref(0), tx,
+    Some(in_d), Redeem, util.mk_ref(0), tx,
+  )
+}
+
+test redeem_over_cap_rejected() fail {
+  // vested cap = 1000 nhưng out.redeemed khai 1500 (> vested) → amount sai → reject.
+  let in_d = ca_datum(1000, 0, 0, 1)
+  let out_d = ca_datum(1000, 1500, 0, 1)
+  let tx = redeem_tx(in_d, out_d, 1500, 100, 50, [t_owner], [])
+  claim_account.spend(
+    t_committee, t_threshold, t_mspe, t_lamp_policy, t_lamp_name, t_beacon_policy,
+    Some(in_d), Redeem, util.mk_ref(0), tx,
+  )
+}
+
+test redeem_nothing_vested_rejected() fail {
+  // vested == redeemed → amount=0 → expect amount > 0 reject.
+  // E=1000, D=100, epoch=5 → vested=500, redeemed đã =500 → amount=0.
+  let in_d = ca_datum(1000, 500, 0, 1)
+  let out_d = ca_datum(1000, 500, 0, 1)
+  let tx = redeem_tx(in_d, out_d, 0, 100, 5, [t_owner], [])
+  claim_account.spend(
+    t_committee, t_threshold, t_mspe, t_lamp_policy, t_lamp_name, t_beacon_policy,
+    Some(in_d), Redeem, util.mk_ref(0), tx,
   )
 }
 
 test redeem_no_owner_sig() fail {
   // không có owner trong extra_signatories → reject (C-RDM-6)
-  let in_d = ca_datum(1000, 0, 0)
-  let out_d = ca_datum(1000, 100, 0)
-  let root = merkle.leaf_hash(t_owner, 100)
-  let tx = redeem_tx(in_d, out_d, 100, 5, root, [])
+  let in_d = ca_datum(1000, 0, 0, 1)
+  let out_d = ca_datum(1000, 300, 0, 1)
+  let tx = redeem_tx(in_d, out_d, 300, 100, 3, [], [])
   claim_account.spend(
     t_committee, t_threshold, t_mspe, t_lamp_policy, t_lamp_name, t_beacon_policy,
-    Some(in_d), Redeem { won_cumulative: 100, lottery_epoch: 5, proof: [] }, util.mk_ref(0), tx,
+    Some(in_d), Redeem, util.mk_ref(0), tx,
   )
 }
 
-test redeem_beacon_wrong_epoch() fail {
-  // beacon epoch 7 ≠ redeemer lottery_epoch 5 → find_merkle_root reject (C-RDM-1)
-  let in_d = ca_datum(1000, 0, 0)
-  let out_d = ca_datum(1000, 100, 0)
-  let root = merkle.leaf_hash(t_owner, 100)
-  let tx = redeem_tx(in_d, out_d, 100, 7, root, [t_owner])
+test redeem_double_satisfaction() fail {
+  // 2 account output cùng script hash (khác stake cred) → count_outputs_at_script == 2 → reject.
+  let in_d = ca_datum(1000, 0, 0, 1)
+  let out_d = ca_datum(1000, 300, 0, 1)
+  // output account thứ 2 trùng script hash t_sh, khác stake cred → vẫn is_at_script.
+  let dup_addr = util.script_address_staked(t_sh, #"5742")
+  let dup_out = util.mk_output(dup_addr, assets.from_lovelace(2_000_000), out_d)
+  let tx = redeem_tx(in_d, out_d, 300, 100, 3, [t_owner], [dup_out])
   claim_account.spend(
     t_committee, t_threshold, t_mspe, t_lamp_policy, t_lamp_name, t_beacon_policy,
-    Some(in_d), Redeem { won_cumulative: 100, lottery_epoch: 5, proof: [] }, util.mk_ref(0), tx,
+    Some(in_d), Redeem, util.mk_ref(0), tx,
   )
 }
 
-/// Đọc Merkle root từ reference input mang beacon NFT (kind=MerkleRoot, epoch khớp).
-/// Authenticity qua NFT → chống datum hijacking (fake beacon ở cùng address).
-fn find_merkle_root(
-  ref_inputs        : List<Input>,
-  beacon_nft_policy : ByteArray,
-  lottery_epoch     : Int,
-) -> ByteArray {
-  let mroot_name = util.beacon_name(MerkleRoot)
-  expect Some(ri) =
-    list.find(
-      ref_inputs,
-      fn(i) { assets.quantity_of(i.output.value, beacon_nft_policy, mroot_name) == 1 },
-    )
-  expect InlineDatum(d) = ri.output.datum
-  expect bd: BeaconDatum = d
-  expect bd.kind == MerkleRoot
-  expect bd.epoch == lottery_epoch
-  bd.value
+test redeem_mint_rejected() fail {
+  // tx có mint ≠ 0 → expect assets.is_zero(tx.mint) reject (C-MINT-0).
+  let in_d = ca_datum(1000, 0, 0, 1)
+  let out_d = ca_datum(1000, 300, 0, 1)
+  let base = redeem_tx(in_d, out_d, 300, 100, 3, [t_owner], [])
+  let tx = Transaction { ..base, mint: assets.add(assets.zero, #"dead", #"beef", 1) }
+  claim_account.spend(
+    t_committee, t_threshold, t_mspe, t_lamp_policy, t_lamp_name, t_beacon_policy,
+    Some(in_d), Redeem, util.mk_ref(0), tx,
+  )
 }

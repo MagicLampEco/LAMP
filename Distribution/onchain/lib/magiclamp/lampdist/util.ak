@@ -6,7 +6,7 @@ use cardano/address.{Address, Inline, Script, VerificationKey}
 use cardano/assets
 use cardano/assets.{AssetName, PolicyId, Value}
 use cardano/transaction.{InlineDatum, Input, NoDatum, Output, OutputReference, Transaction}
-use magiclamp/lampdist/types.{BeaconKind, MerkleRoot, PParam, Randomness}
+use magiclamp/lampdist/types.{BeaconKind, DropParam}
 
 /// Epoch từ validity_range lower_bound (POSIX ms). ms_per_epoch network-specific.
 pub fn get_epoch(tx: Transaction, ms_per_epoch: Int) -> Int {
@@ -121,9 +121,7 @@ pub fn lamp_to_owner(
 /// Asset name của beacon NFT theo kind (authenticity token).
 pub fn beacon_name(kind: BeaconKind) -> AssetName {
   when kind is {
-    PParam -> #"505041524d"      // "PPARAM"
-    Randomness -> #"4e4f4e4345"  // "NONCE"
-    MerkleRoot -> #"4d524f4f54"  // "MROOT"
+    DropParam -> #"44524f50"  // "DROP"
   }
 }
 
@@ -137,10 +135,8 @@ test committee_sig_none() {
   count_committee_sigs([#"a1", #"b2"], [#"ff"]) == 0
 }
 
-test beacon_name_distinct() {
-  beacon_name(PParam) != beacon_name(Randomness) && beacon_name(Randomness) != beacon_name(
-    MerkleRoot,
-  )
+test beacon_name_dropparam() {
+  beacon_name(DropParam) == #"44524f50"
 }
 
 // ── Test-support builders (mock UTxO/tx) cho validator tests ──
