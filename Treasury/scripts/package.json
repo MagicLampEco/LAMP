@@ -1,0 +1,25 @@
+{
+  "name": "@magiclamp/treasury-scripts",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "description": "Deploy + collect e2e live test runner cho Treasury trên Cardano Preview",
+  "scripts": {
+    "preflight": "tsx 00_preflight.ts",
+    "deploy":    "tsx 01_deploy_custody.ts",
+    "collect":   "tsx 02_collect_e2e.ts",
+    "all":       "npm run deploy && npm run collect",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@lucid-evolution/lucid": "^0.4.0",
+    "@magiclamp/treasury-sdk": "file:../offchain",
+    "@magiclamp/protocol-utils": "file:../../protocol-utils",
+    "dotenv": "^16.4.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.41",
+    "tsx": "^4.7.0",
+    "typescript": "^5.4.0"
+  }
+}

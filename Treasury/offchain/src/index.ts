@@ -6,6 +6,7 @@ export * from "./datum.js";
 export * from "./collect.js";
 export * from "./collectBuilder.js";
 export * from "./releaseBuilder.js";
+export * from "./circulating.js";
 
 // release.js: 5 hàm (ledgerOk/valueOk/planLedgerOut/eachOutLineOk/eachInLinePresent)
 // trùng tên với collect.js (mỗi nhánh có bản riêng). Re-export có alias `release*`
