@@ -108,3 +108,24 @@ Sau rà soát đối kháng, các interface dưới đây được **ghim cứng
 - **D9 — Interface cross-repo MAGIC (CẦN MAGIC xác nhận).** Beacon C1/C2 của MAGIC PHẢI nhúng
   `did_commit` đọc byte-perfect trong datum để ràng (b) chống-mượn-C_k thực thi được. Cho tới khi MAGIC
   xác nhận → đánh dấu chống-mượn-C1/C2 là "phụ thuộc xác nhận MAGIC", không coi là đã chặn.
+
+- **D10 — `ProposalResult` beacon Gov→Treasury (KHÓA byte-perfect, orchestrator ghim 2026-06-07).**
+  Audit phát hiện: Treasury `release.ak` decode type **`ProposalResult` 5 field**
+  (`Treasury/onchain/lib/magiclamp/treasury/types.ak:78-84`), KHÔNG decode `ProposalDatum` 12 field.
+  → Governance KHÔNG bắt Treasury đọc `ProposalDatum` nặng. Thay vào đó: tại `ExecuteProposal`,
+  Governance **phơi một Proposal UTxO mang Proposal NFT one-shot**, datum = **`ProposalResult` GỌN
+  khớp BYTE-PERFECT** định nghĩa Treasury hiện có:
+  ```
+  ProposalResult { proposal_id: ByteArray, status: ProposalStatus,
+                   spend_spec_hash: ByteArray, execute_after_epoch: Int,
+                   released_cumulative: Int }
+  ProposalStatus { Open, Tallied, Executed, Rejected }   // Constr index 0,1,2,3 — Executed=2
+  ```
+  **BẮT BUỘC:** Governance `types.ak` khai báo `ProposalStatus` ĐÚNG THỨ TỰ `{Open, Tallied,
+  Executed, Rejected}` (KHÔNG `{Open, Closed, Tallied, Executed}` như TECH.md draft — lệch index sẽ
+  decode-fail trên UTxO thật). TECH.md phải sửa theo đây. `ProposalDatum` 12 field (D2) vẫn dùng NỘI
+  BỘ cho Tally/Vote; `ProposalResult` chỉ là projection phơi ra cho Treasury.
+  **Lý do (4 trục):** tối ưu eUTXO (reference input gọn, ít byte); KHÔNG rework Treasury đã build+test
+  61 pass; ranh giới sạch onchain↔onchain; bền vững (đổi nội bộ Governance không phá Treasury).
+  Governance build phải có Aiken negative-test: round-trip serialise `ProposalResult` của Governance
+  → decode bằng type Treasury (mirror) PHẢI khớp; `status=Closed` (không tồn tại) → fail.
