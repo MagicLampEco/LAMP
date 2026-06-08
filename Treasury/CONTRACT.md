@@ -39,6 +39,66 @@ Chữ ký: `collectToTreasury(asset ∈ accepted_assets, amount, app_id, categor
 5. **ĐỊNH GIÁ KHÔNG ở đây.** Bao nhiêu phí (bò ≠ gà) là việc của app (OriLife `animal_fee`); hàm này
    chỉ nhận `amount` đã tính. Quy đổi LAMP↔USD/ADA (oracle) cũng ở phía app/caller.
 
+## 3.1 Điều tiết cung-cầu — split đa người nhận (`distributeToTreasuries`)
+
+Mở rộng §3: thu LAMP từ giao dịch rồi **chia về ≥2 người nhận theo TRỌNG SỐ**, mỗi người nhận là một
+**custody Accounting (script, KHÔNG ví PKH)**. MVP hardcode **20% MagicLamp custody / 80% App custody**.
+
+**`SplitParam`** (governance beacon hoặc param):
+`{ recipients: List<{ custody_hash: ByteArray, weight_bps: Int }>, min_oil: Int }`.
+Bất biến `param_valid`: `≥2 recipient` ∧ mọi `weight_bps ∈ [0,10000]` ∧ `Σ weight_bps == 10000` ∧
+`min_oil ≥ 0` ∧ mọi `custody_hash` đúng **28 byte** (script blake2b-224). MVP default:
+`[{magiclamp_custody, 2000}, {app_custody, 8000}]`, `min_oil = 360`.
+
+**`split_amounts(total, recipients) -> List<Int>`** (lib thuần `split.ak` ⇄ mirror `split.ts`):
+- `part_i = ⌊ total × weight_i / 10000 ⌋` (floor, Int thuần — KHÔNG float).
+- **Phần dư** `remainder = total − Σ floor` (∈ `[0, |recipients|)`) **dồn vào recipient ĐẦU (MagicLamp)**
+  → protocol KHÔNG thiệt khi chia lẻ.
+- **Bất biến cứng `Σ parts == total`** (S1) — value bảo toàn TUYỆT ĐỐI, KHÔNG rơi oil. Chứng minh bằng
+  aiken test + property-test offchain dải total rộng (gồm 36 tỉ).
+
+**`min_oil`** (mặc định 360): mỗi settlement ép `total ≥ min_oil` (S3) — chống bụi + buộc gộp lô. Biên
+test: 359 reject, 360 pass.
+
+**Orchestrator offchain `distributeToTreasuries(total, splitParam, custodyUtxos[], custodyScripts[], …)`**:
+tính `parts` → với MỖI recipient dựng **1 Collect tx riêng** vào custody tương ứng (tái dùng
+`buildCollectTx`, `CollectItem{app_id, amount=part_i}`). Mỗi custody recipient là **toàn-thu**
+(`cut_bps == 10000` ⇒ `cut == part_i` ⇒ toàn bộ `part_i` vào custody). Cả N custody vào Accounting
+(ledger). Ép: số custody UTxO == số recipient; mỗi custody script hash khớp `recipient.custody_hash`
+(chặn ví PKH lọt vì custody address dựng từ `validatorToScriptHash` → luôn `Script` credential, và
+`custody.ak` còn ép `!is_vk(cust_out.address)`).
+
+### Enforce tỷ lệ — MVP-offchain vs v1.x-onchain-splitter
+
+**MVP: enforce ở orchestrator offchain + receipt on-chain minh bạch.** Mỗi Collect ghi `app_id + amount`
+vào ledger custody (per-instance) → đối soát tỷ lệ off-chain bằng tổng các receipt.
+
+**Hard-enforce `Σ outputs đúng weight` onchain = HOÃN sang v1.x** (splitter validator). Lý do (4 trục):
+
+- **Tư duy nguyên bản (bản chất kiến trúc):** MVP dựng **1 Collect tx RIÊNG cho mỗi recipient**. Custody
+  validator (`custody.ak` nhánh Collect) chỉ thấy **đúng 1 custody input + 1 custody output của CHÍNH NÓ**
+  (C-COL-1, chống double-satisfaction). Nó **không có cái nhìn toàn settlement** — không biết `total`,
+  không biết weight, không biết các custody recipient khác. Vì vậy nó **không thể** ép tỷ lệ 20/80 trong
+  kiến trúc per-tx hiện tại, dù muốn. Enforce protocol-cut onchain ngay MVP là **bất khả thi rẻ** — không
+  phải "chưa làm" mà là "kiến trúc per-tx không cho phép".
+- **Tư duy tối ưu (eUTXO/ExUnit):** muốn hard-enforce phải **gộp N recipient vào 1 tx** + thêm **splitter
+  validator** đọc `total` (provider input) + `SplitParam` (reference beacon) rồi ép
+  `Σ output→custody_i ≥ ⌊total×weight_i/10000⌋` per recipient. Việc này cộng 1 UTxO splitter + 1 reference
+  input + fold qua mọi output mỗi tx → đắt ExUnit + tăng contention 1 UTxO. MVP per-tx rẻ hơn nhiều và đủ
+  cho giai đoạn bootstrap (caller MagicLamp tự dựng đúng).
+- **Định hướng dài hạn (open SDK, LAMP có giá trị):** v1.x splitter là **đường để bên thứ ba không tin
+  cậy** cũng buộc phải chia đúng tỷ lệ (khi App tự dựng tx). Giai đoạn MVP caller là chính MagicLamp →
+  rủi ro tự-gian-lận tỷ lệ ≈ 0; receipt on-chain đã đủ để cộng đồng đối soát. Ship MVP trước, mở splitter
+  khi có integrator ngoài.
+- **Lợi ích người dùng + bền vững:** value LUÔN bảo toàn tuyệt đối **mỗi Collect** (`Σout=Σin` per-asset,
+  KHÔNG burn) ngay MVP — user không mất oil dù tỷ lệ chia do offchain quyết. Tệ nhất nếu offchain chia sai
+  weight: vẫn không mất tiền, chỉ lệch phân bổ giữa 2 custody MagicLamp ↔ App, và receipt on-chain phơi
+  ngay sai lệch đó. Rủi ro giới hạn + quan sát được → hoãn an toàn.
+
+**v1.x — splitter validator (follow-up):** 1 tx gộp N output custody; đọc `total` + `SplitParam` beacon;
+ép `Σ output→custody_i` đúng `split_amounts(total, recipients)` per recipient (remainder dồn đầu); vẫn
+KHÔNG burn (`Σ out = total`). Lib `split.ak` (đã build) tái dùng nguyên — chỉ thêm validator bọc ngoài.
+
 ## 4. Bucket release — chi ra (nhóm B)
 
 - Release **chỉ khi** một proposal Governance đã pass (đọc kết quả qua reference input / beacon).

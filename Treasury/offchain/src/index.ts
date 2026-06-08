@@ -5,6 +5,8 @@ export * from "./types.js";
 export * from "./datum.js";
 export * from "./collect.js";
 export * from "./collectBuilder.js";
+export * from "./split.js";
+export * from "./distribute.js";
 export * from "./releaseBuilder.js";
 export * from "./circulating.js";
 
