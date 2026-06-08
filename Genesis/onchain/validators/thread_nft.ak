@@ -10,14 +10,13 @@
 // thread NFT BẤT BIẾN, sống suốt vòng đời module (đóng vector A3/A12 từ gốc).
 
 use aiken/collection/list
-use cardano/address.{Script}
 use cardano/assets.{PolicyId}
-use cardano/transaction.{Input, Output, OutputReference, Transaction, placeholder}
+use cardano/transaction.{Input, OutputReference, Transaction, placeholder}
 use magiclamp/genesis/constants
-use magiclamp/genesis/types.{MintGenesis, SupplyState, ThreadNftRedeemer}
+use magiclamp/genesis/types.{MintGenesis, ThreadNftRedeemer}
 use magiclamp/genesis/util
 
-validator thread_nft(genesis_ref: OutputReference, supply_state_hash: ByteArray) {
+validator thread_nft(genesis_ref: OutputReference) {
   mint(_r: ThreadNftRedeemer, policy_id: PolicyId, tx: Transaction) {
     // ONE-SHOT: consume genesis_ref (1 lần duy nhất trong lịch sử chain).
     expect list.any(tx.inputs, fn(i) { i.output_reference == genesis_ref })
@@ -26,21 +25,15 @@ validator thread_nft(genesis_ref: OutputReference, supply_state_hash: ByteArray)
     expect util.policy_name_count(tx.mint, policy_id) == 1
     expect assets.quantity_of(tx.mint, policy_id, constants.supply_name) == 1
 
-    // ── D8-#2: NEO output mang SUPPLY NFT vào supply_state script + datum genesis ──
-    // KHÔNG ủy thác offchain neo bootstrap đúng. Mint thread NFT chỉ hợp lệ khi tx
-    // đồng thời đặt nó tại Script(supply_state_hash) với datum genesis CHÍNH DANH
-    // (counter = 0, cap = hằng). Loại bỏ đường tạo SupplyState khởi tạo bịa (cap phình
-    // hoặc counter ≠ 0) ngay tại lượt mint thread duy nhất.
-    let s_out: Output =
-      util.output_holding_nft(tx.outputs, policy_id, constants.supply_name)
-    expect s_out.address.payment_credential == Script(supply_state_hash)
-    expect genesis: SupplyState = util.inline_datum(s_out)
-    expect genesis == SupplyState {
-      dist_minted: 0,
-      reserve_minted: 0,
-      dist_cap: constants.dist_cap_oil,
-      reserve_cap: constants.reserve_cap_oil,
-    }
+    // KHÔNG ghim output tại Script(supply_state_hash) với datum genesis (D8-#2 cũ):
+    // ghim đó cần param supply_state_hash → tạo VÒNG (supply_state_hash phụ thuộc
+    // tlamp_policy phụ thuộc thread_policy = ĐÂY) → không apply-param được khi deploy.
+    //
+    // An toàn vẫn đủ qua 2 lớp tuyến tính tầng-2:
+    //   • Neo NFT one-shot: SUPPLY NFT duy nhất ⟺ SupplyState chính danh (count==1).
+    //   • D7-#1 (tlamp_mint): cap == hằng genesis. SupplyState khởi tạo cap-phình /
+    //     counter≠0 sẽ KHÔNG mint nổi tLAMP → vô dụng. Không cần ép datum tại lượt mint
+    //     thread. Một nguồn sự thật cho cap nằm ở tlamp_mint, không trùng lặp.
     True
   }
 
@@ -54,8 +47,6 @@ validator thread_nft(genesis_ref: OutputReference, supply_state_hash: ByteArray)
 // ══════════════════════════════════════════════════════════════
 
 const pol: PolicyId = #"5544"
-
-const sscript: ByteArray = #"5151"
 
 fn g_ref() -> OutputReference {
   OutputReference { transaction_id: #"bb", output_index: 3 }
@@ -73,67 +64,34 @@ fn mint_supply(qty: Int) {
   assets.zero |> assets.add(pol, constants.supply_name, qty)
 }
 
-fn genesis_state() -> SupplyState {
-  SupplyState {
-    dist_minted: 0,
-    reserve_minted: 0,
-    dist_cap: constants.dist_cap_oil,
-    reserve_cap: constants.reserve_cap_oil,
-  }
-}
-
-/// Output mang SUPPLY NFT, tại supply_state script, datum = s (canonical genesis nếu dùng genesis_state()).
-fn supply_out(s: SupplyState) -> Output {
-  let v =
-    assets.from_lovelace(2_000_000) |> assets.add(pol, constants.supply_name, 1)
-  util.mk_output(util.script_address(sscript), v, s)
-}
-
 test thread_oneshot_happy() {
+  // consume genesis_ref + mint đúng 1 SUPPLY NFT → hợp lệ. Định danh genesis (cap/counter)
+  // KHÔNG còn ép tại đây — đã ủy cho neo-NFT + D7-#1 (tlamp_mint). Không cần output datum.
   let tx =
     Transaction {
       ..placeholder,
       inputs: [other_input(), g_input()],
-      outputs: [supply_out(genesis_state())],
       mint: mint_supply(1),
     }
-  thread_nft.mint(g_ref(), sscript, MintGenesis, pol, tx)
+  thread_nft.mint(g_ref(), MintGenesis, pol, tx)
 }
 
 test thread_without_genesis() fail {
   // KHÔNG consume genesis → one-shot reject (A3: không thể mint thread tùy tiện).
-  let tx =
-    Transaction {
-      ..placeholder,
-      inputs: [other_input()],
-      outputs: [supply_out(genesis_state())],
-      mint: mint_supply(1),
-    }
-  thread_nft.mint(g_ref(), sscript, MintGenesis, pol, tx)
+  let tx = Transaction { ..placeholder, inputs: [other_input()], mint: mint_supply(1) }
+  thread_nft.mint(g_ref(), MintGenesis, pol, tx)
 }
 
 test mint_two_threads() fail {
   // mint qty 2 → ≠ 1 → reject (A3: không 2 thread NFT).
-  let tx =
-    Transaction {
-      ..placeholder,
-      inputs: [g_input()],
-      outputs: [supply_out(genesis_state())],
-      mint: mint_supply(2),
-    }
-  thread_nft.mint(g_ref(), sscript, MintGenesis, pol, tx)
+  let tx = Transaction { ..placeholder, inputs: [g_input()], mint: mint_supply(2) }
+  thread_nft.mint(g_ref(), MintGenesis, pol, tx)
 }
 
 test thread_burn_rejected() fail {
   // qty -1 (burn) → reject (NFT bất biến).
-  let tx =
-    Transaction {
-      ..placeholder,
-      inputs: [g_input()],
-      outputs: [supply_out(genesis_state())],
-      mint: mint_supply(-1),
-    }
-  thread_nft.mint(g_ref(), sscript, MintGenesis, pol, tx)
+  let tx = Transaction { ..placeholder, inputs: [g_input()], mint: mint_supply(-1) }
+  thread_nft.mint(g_ref(), MintGenesis, pol, tx)
 }
 
 test thread_extra_name() fail {
@@ -142,48 +100,7 @@ test thread_extra_name() fail {
     Transaction {
       ..placeholder,
       inputs: [g_input()],
-      outputs: [supply_out(genesis_state())],
       mint: mint_supply(1) |> assets.add(pol, #"9999", 1),
     }
-  thread_nft.mint(g_ref(), sscript, MintGenesis, pol, tx)
-}
-
-// ── D8-#2: output SUPPLY NFT rời supply_state script ─────────────
-test thread_output_wrong_address() fail {
-  // NFT đặt ở địa chỉ ví thường, không phải Script(supply_state_hash) → reject.
-  let v =
-    assets.from_lovelace(2_000_000) |> assets.add(pol, constants.supply_name, 1)
-  let moved = util.mk_output(util.vk_address(#"dead"), v, genesis_state())
-  let tx =
-    Transaction { ..placeholder, inputs: [g_input()], outputs: [moved], mint: mint_supply(1) }
-  thread_nft.mint(g_ref(), sscript, MintGenesis, pol, tx)
-}
-
-// ── D8-#2: datum genesis KHÔNG canonical (cap phình) ─────────────
-test thread_genesis_cap_inflated() fail {
-  // datum khởi tạo cap > hằng → reject (chống bootstrap cap phình từ lượt mint thread).
-  let bad =
-    SupplyState { ..genesis_state(), dist_cap: constants.dist_cap_oil + 1 }
-  let tx =
-    Transaction {
-      ..placeholder,
-      inputs: [g_input()],
-      outputs: [supply_out(bad)],
-      mint: mint_supply(1),
-    }
-  thread_nft.mint(g_ref(), sscript, MintGenesis, pol, tx)
-}
-
-// ── D8-#2: counter genesis ≠ 0 ───────────────────────────────────
-test thread_genesis_counter_nonzero() fail {
-  // datum khởi tạo dist_minted ≠ 0 → reject (genesis phải sạch counter).
-  let bad = SupplyState { ..genesis_state(), dist_minted: 1_000_000 }
-  let tx =
-    Transaction {
-      ..placeholder,
-      inputs: [g_input()],
-      outputs: [supply_out(bad)],
-      mint: mint_supply(1),
-    }
-  thread_nft.mint(g_ref(), sscript, MintGenesis, pol, tx)
+  thread_nft.mint(g_ref(), MintGenesis, pol, tx)
 }

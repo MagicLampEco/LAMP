@@ -78,9 +78,11 @@ async function main(): Promise<void> {
   const tlampPid = policyId(tlampPolicy);
   console.log(`(2) tlamp_mint policy id: ${tlampPid}`);
 
-  // ── Tầng 3: supply_state spend = apply(tlamp_pid) ───────────────────
+  // ── Tầng 3: supply_state spend = apply(tlamp_pid, thread_pid) ───────
+  // 2 param tuyến tính: tlamp_policy (tầng 2, ủy quyền transition) + thread_nft_policy
+  // (tầng 1, ghim UTxO spend mang SUPPLY NFT thật — D8-#3). Cả hai đã biết tại đây.
   const ssRaw = await rawValidator("supply_state.supply_state.spend");
-  const ssScript: Validator = applyValidator(ssRaw.compiledCode, [tlampPid]);
+  const ssScript: Validator = applyValidator(ssRaw.compiledCode, [tlampPid, threadPid]);
   const ssHash = scriptHashOf(ssScript);
   const ssAddr = scriptAddress(ssScript);
   console.log(`(3) supply_state hash: ${ssHash}`);

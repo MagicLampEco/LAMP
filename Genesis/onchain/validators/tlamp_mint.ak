@@ -12,12 +12,17 @@
 // Param: thread_nft_policy + thread_nft_name (tầng 1) + dist_authority/reserve_authority
 // (keyhash stub MVP) + auth threshold. KHÔNG tham chiếu ngược tầng 3 (không vòng lặp).
 //
+// NEO ĐỊNH DANH SupplyState = qua SUPPLY NFT one-shot (KHÔNG qua script-hash). Thread NFT
+// được mint đúng MỘT lần (thread_nft one-shot, param genesis_ref) → tồn tại DUY NHẤT 1 bản
+// trên chain → "UTxO mang đúng 1 SUPPLY NFT" ⟺ "SupplyState chính danh". Không cần ghim
+// payment_credential == Script(supply_state_hash): ghim đó tạo VÒNG (supply_state_hash phụ
+// thuộc tlamp_policy phụ thuộc lại supply_state_hash) — không apply-param được khi deploy.
+//
 // LƯU Ý: validator này KHÔNG tự đọc supply_state spend (nó là MINT policy). Nó tìm
-// SupplyState input/output qua THREAD NFT. supply_state.ak (tầng 3) chỉ ép "có mint
+// SupplyState input/output qua SUPPLY NFT. supply_state.ak (tầng 3) chỉ ép "có mint
 // tLAMP" rồi ủy quyền toàn bộ transition cho ĐÂY → một nguồn sự thật cho cap.
 
 use aiken/collection/list
-use cardano/address.{Script}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{InlineDatum, Input, Output, Transaction, placeholder}
 use magiclamp/genesis/constants
@@ -29,7 +34,6 @@ use magiclamp/genesis/util
 validator tlamp_mint(
   thread_nft_policy : PolicyId,
   thread_nft_name   : ByteArray,
-  supply_state_hash : ByteArray,
   dist_authority    : List<ByteArray>,
   reserve_authority : List<ByteArray>,
   auth_threshold    : Int,
@@ -46,13 +50,16 @@ validator tlamp_mint(
     let s_in: Output = util.input_holding_nft(tx.inputs, thread_nft_policy, thread_nft_name)
     let s_out: Output = util.output_holding_nft(tx.outputs, thread_nft_policy, thread_nft_name)
 
-    // ── D8-#1: GHIM địa chỉ SupplyState input vào supply_state script (neo on-chain) ──
-    // KHÔNG tin offchain đặt thread NFT đúng chỗ. Thread NFT phải tới TỪ supply_state
-    // script chính danh — nếu không, kẻ tấn công tự dựng UTxO mang NFT giả + datum
-    // cap phình ở địa chỉ bất kỳ rồi cho mint policy "đọc" nó.
-    expect s_in.address.payment_credential == Script(supply_state_hash)
-
-    // SupplyState output PHẢI ở lại CÙNG địa chỉ script (thread không rời chỗ).
+    // ── D8-#1 (neo NFT, không ghim hash): định danh SupplyState bằng SUPPLY NFT ──
+    // KHÔNG ghim payment_credential == Script(supply_state_hash) — ghim đó tạo VÒNG
+    // (supply_state_hash phụ thuộc tlamp_policy phụ thuộc lại nó). Thay vào: SUPPLY NFT
+    // là one-shot DUY NHẤT (thread_nft param genesis_ref) → "mang đúng 1 SUPPLY NFT"
+    // ⟺ SupplyState chính danh. Kẻ tấn công KHÔNG đúc nổi NFT thứ 2 để dựng SupplyState
+    // giả. Cap-phình ở UTxO giả vô dụng: D7-#1 dưới ép cap == hằng genesis (sai cap →
+    // không mint được), nên không cần ghim địa chỉ.
+    //
+    // SupplyState output PHẢI ở lại CÙNG địa chỉ input (thread không rời chỗ) — so trực
+    // tiếp input↔output, KHÔNG cần param, KHÔNG vòng.
     expect s_out.address == s_in.address
 
     expect s: SupplyState = util.inline_datum(s_in)
@@ -192,7 +199,7 @@ fn build_tx(
 
 fn run(r: TLampMintRedeemer, tx: Transaction) -> Bool {
   tlamp_mint.mint(
-    thr_pol, constants.supply_name, sscript,
+    thr_pol, constants.supply_name,
     [auth_a, auth_b], [res_auth], 1,
     r, tlamp_pol, tx,
   )
@@ -206,7 +213,7 @@ fn run_thr(
   threshold: Int,
 ) -> Bool {
   tlamp_mint.mint(
-    thr_pol, constants.supply_name, sscript,
+    thr_pol, constants.supply_name,
     dist_auth, [res_auth], threshold,
     r, tlamp_pol, tx,
   )
@@ -483,12 +490,12 @@ test garbage_output_datum() fail {
 // NEGATIVE bổ sung — neo bootstrap on-chain (Nhóm A/B/C audit MECE)
 // ══════════════════════════════════════════════════════════════
 
-/// SupplyState input ở địa chỉ TÙY Ý (test D8-#1 ghim địa chỉ).
-fn ss_input_at(addr_hash: ByteArray, s: SupplyState) -> Input {
-  let v =
-    assets.from_lovelace(2_000_000)
-      |> assets.add(thr_pol, constants.supply_name, 1)
-  util.mk_input(util.mk_ref(0), util.mk_output(util.script_address(addr_hash), v, s))
+/// SupplyState input KHÔNG mang SUPPLY NFT (UTxO giả tại địa chỉ script).
+fn ss_input_no_nft(s: SupplyState) -> Input {
+  util.mk_input(
+    util.mk_ref(0),
+    util.mk_output(util.script_address(sscript), assets.from_lovelace(2_000_000), s),
+  )
 }
 
 // ── D7-#1: cap INPUT phình (neo hằng) ─────────────────────────
@@ -519,15 +526,16 @@ test input_reserve_counter_negative() fail {
   run(ReserveDraw, build_tx(s, s2, 1, [res_auth]))
 }
 
-// ── D8-#1: SupplyState INPUT sai địa chỉ script ───────────────
-test input_wrong_script_address() fail {
-  // thread NFT đến từ địa chỉ KHÁC supply_state_hash → reject (offchain đặt sai chỗ).
+// ── D8-#1 (neo NFT): SupplyState INPUT KHÔNG mang SUPPLY NFT → reject ──
+test input_no_supply_nft() fail {
+  // UTxO giả KHÔNG mang SUPPLY NFT → count_inputs_holding_nft == 0 ≠ 1 → reject.
+  // Đây là neo định danh mới: không bằng địa chỉ-script (gây vòng) mà bằng NFT one-shot.
   let s = fresh()
   let s2 = SupplyState { ..s, dist_minted: 1_000_000 }
   let tx =
     Transaction {
       ..placeholder,
-      inputs: [ss_input_at(#"9999", s)],
+      inputs: [ss_input_no_nft(s)],
       outputs: [ss_output(s2)],
       mint: mint_tlamp(1_000_000),
       extra_signatories: [auth_a],
