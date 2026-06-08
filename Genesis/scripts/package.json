@@ -1,0 +1,21 @@
+{
+  "name": "@magiclamp/genesis-scripts",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "description": "Deploy runner mô hình Genesis 4-POT trên Cardano Preview (SUBMIT=false mặc định)",
+  "scripts": {
+    "genesis": "tsx 01_genesis_4pots.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@lucid-evolution/lucid": "^0.4.0",
+    "@magiclamp/treasury-sdk": "file:../../Treasury/offchain",
+    "dotenv": "^16.4.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.41",
+    "tsx": "^4.7.0",
+    "typescript": "^5.4.0"
+  }
+}

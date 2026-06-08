@@ -1,0 +1,20 @@
+{
+  "compilerOptions": {
+    "target":           "ES2022",
+    "module":           "NodeNext",
+    "moduleResolution": "NodeNext",
+    "lib":              ["ES2022"],
+    "strict":           true,
+    "exactOptionalPropertyTypes": true,
+    "noUncheckedIndexedAccess":   true,
+    "skipLibCheck":     true,
+    "noEmit":           true,
+    "sourceMap":        true,
+    "baseUrl":          ".",
+    "paths": {
+      "@magiclamp/treasury-sdk": ["../../Treasury/offchain/src/index.ts"]
+    }
+  },
+  "include": ["src/**/*", "../tests/**/*"],
+  "exclude": ["node_modules", "dist"]
+}

@@ -1,0 +1,20 @@
+{
+  "name": "@magiclamp/genesis-sdk",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Genesis 4-POT off-chain SDK — mint 36 tỷ tLAMP one-shot → 4 pot accounting (LAMP Genesis v1)",
+  "scripts": {
+    "build":      "tsc",
+    "test":       "vitest run",
+    "test:watch": "vitest",
+    "typecheck":  "tsc --noEmit"
+  },
+  "dependencies": {
+    "@lucid-evolution/lucid": "^0.4.0",
+    "@magiclamp/treasury-sdk": "file:../../Treasury/offchain"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0",
+    "vitest":     "^1.6.0"
+  }
+}
