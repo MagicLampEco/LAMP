@@ -16,8 +16,10 @@
 // SupplyState input/output qua THREAD NFT. supply_state.ak (tầng 3) chỉ ép "có mint
 // tLAMP" rồi ủy quyền toàn bộ transition cho ĐÂY → một nguồn sự thật cho cap.
 
+use aiken/collection/list
+use cardano/address.{Script}
 use cardano/assets.{PolicyId}
-use cardano/transaction.{Input, Output, Transaction, placeholder}
+use cardano/transaction.{InlineDatum, Input, Output, Transaction, placeholder}
 use magiclamp/genesis/constants
 use magiclamp/genesis/types.{
   DistributionVest, ReserveDraw, SupplyState, TLampMintRedeemer,
@@ -27,6 +29,7 @@ use magiclamp/genesis/util
 validator tlamp_mint(
   thread_nft_policy : PolicyId,
   thread_nft_name   : ByteArray,
+  supply_state_hash : ByteArray,
   dist_authority    : List<ByteArray>,
   reserve_authority : List<ByteArray>,
   auth_threshold    : Int,
@@ -43,11 +46,27 @@ validator tlamp_mint(
     let s_in: Output = util.input_holding_nft(tx.inputs, thread_nft_policy, thread_nft_name)
     let s_out: Output = util.output_holding_nft(tx.outputs, thread_nft_policy, thread_nft_name)
 
+    // ── D8-#1: GHIM địa chỉ SupplyState input vào supply_state script (neo on-chain) ──
+    // KHÔNG tin offchain đặt thread NFT đúng chỗ. Thread NFT phải tới TỪ supply_state
+    // script chính danh — nếu không, kẻ tấn công tự dựng UTxO mang NFT giả + datum
+    // cap phình ở địa chỉ bất kỳ rồi cho mint policy "đọc" nó.
+    expect s_in.address.payment_credential == Script(supply_state_hash)
+
     // SupplyState output PHẢI ở lại CÙNG địa chỉ script (thread không rời chỗ).
     expect s_out.address == s_in.address
 
     expect s: SupplyState = util.inline_datum(s_in)
     expect s2: SupplyState = util.inline_datum(s_out)
+
+    // ── D7-#1: NEO CAP vào HẰNG SỐ (chống cap phình → mint vượt 36 tỷ) ─────
+    // Cap không chỉ "bất biến qua transition" (luật 4) mà phải ĐÚNG hằng genesis.
+    // Nếu UTxO vào mang cap bịa (lớn hơn), luật 4 vẫn pass vì chỉ so s2==s.
+    expect s.dist_cap == constants.dist_cap_oil
+    expect s.reserve_cap == constants.reserve_cap_oil
+
+    // ── D7-#10: counter KHÔNG âm (chống dist_minted/reserve_minted âm → cap ảo) ──
+    expect s.dist_minted >= 0
+    expect s.reserve_minted >= 0
 
     // ── Luật 2 + 3: Δ>0 và policy chỉ mint đúng 1 name = tLAMP ─────────────
     // Δ = lượng tLAMP mint trong tx (cùng biến dùng cho transition → A8 không lệch).
@@ -82,6 +101,21 @@ validator tlamp_mint(
     expect s2.dist_minted <= s2.dist_cap                             // A1
     expect s2.reserve_minted <= s2.reserve_cap
 
+    // ── D7-#2: TRẦN TỔNG (defense-in-depth, chống mint vượt 36 tỷ) ─────────
+    // Dù cap đã neo hằng, ép thêm trần tổng tuyệt đối: tổng phát hành ≤ 36 tỷ oil.
+    expect s2.dist_minted + s2.reserve_minted <= constants.total_cap_oil
+
+    // ── D3-#1 + D3-#3: KHÓA continuing output (SupplyState UTxO sạch) ──────
+    // SupplyState UTxO KHÔNG được chứa tLAMP (chống nhồi tLAMP vào state để né
+    // recipient / làm nhiễu kế toán circulating).
+    expect assets.quantity_of(s_out.value, policy_id, constants.tlamp_name) == 0
+    // KHÔNG đính reference_script (chống biến SupplyState thành script-carrier rác).
+    expect s_out.reference_script == None
+    // Lý tưởng: continuing output chỉ gồm 1 thread NFT + lovelace (không token lạ).
+    // policy_name_count thread == 1 đã ngầm bởi luật 1; ép thêm: KHÔNG có policy nào
+    // khác ngoài thread_nft_policy + lovelace (ngăn token rác bám SupplyState).
+    expect util.value_only_nft_and_ada(s_out.value, thread_nft_policy)
+
     // ── Luật 8: authority gate (stub MVP) ─────────────────────────────────
     // A10: thiếu chữ ký authority đúng đường mint → reject.
     let authority =
@@ -89,6 +123,11 @@ validator tlamp_mint(
         DistributionVest -> dist_authority
         ReserveDraw -> reserve_authority
       }
+    // ── D2-#1/#2: threshold tự vệ (1 ≤ threshold ≤ |authority|) ────────────
+    // threshold==0 → ai cũng mint được (vô hiệu authority). threshold > N → khóa
+    // chết không bao giờ mint được. Ghim biên hợp lệ ngay trong validator.
+    expect auth_threshold >= 1
+    expect auth_threshold <= list.length(list.unique(authority))
     expect util.count_sigs(authority, tx.extra_signatories) >= auth_threshold
 
     True
@@ -152,7 +191,25 @@ fn build_tx(
 }
 
 fn run(r: TLampMintRedeemer, tx: Transaction) -> Bool {
-  tlamp_mint.mint(thr_pol, constants.supply_name, [auth_a, auth_b], [res_auth], 1, r, tlamp_pol, tx)
+  tlamp_mint.mint(
+    thr_pol, constants.supply_name, sscript,
+    [auth_a, auth_b], [res_auth], 1,
+    r, tlamp_pol, tx,
+  )
+}
+
+/// run với threshold tùy chỉnh (test D2-#1/#2).
+fn run_thr(
+  r: TLampMintRedeemer,
+  tx: Transaction,
+  dist_auth: List<ByteArray>,
+  threshold: Int,
+) -> Bool {
+  tlamp_mint.mint(
+    thr_pol, constants.supply_name, sscript,
+    dist_auth, [res_auth], threshold,
+    r, tlamp_pol, tx,
+  )
 }
 
 fn fresh() -> SupplyState {
@@ -420,4 +477,173 @@ test garbage_output_datum() fail {
       extra_signatories: [auth_a],
     }
   run(DistributionVest, tx)
+}
+
+// ══════════════════════════════════════════════════════════════
+// NEGATIVE bổ sung — neo bootstrap on-chain (Nhóm A/B/C audit MECE)
+// ══════════════════════════════════════════════════════════════
+
+/// SupplyState input ở địa chỉ TÙY Ý (test D8-#1 ghim địa chỉ).
+fn ss_input_at(addr_hash: ByteArray, s: SupplyState) -> Input {
+  let v =
+    assets.from_lovelace(2_000_000)
+      |> assets.add(thr_pol, constants.supply_name, 1)
+  util.mk_input(util.mk_ref(0), util.mk_output(util.script_address(addr_hash), v, s))
+}
+
+// ── D7-#1: cap INPUT phình (neo hằng) ─────────────────────────
+test input_cap_inflated() fail {
+  // s.dist_cap > hằng genesis → reject (luật 4 cũ chỉ so s2==s, không bắt được).
+  let s = SupplyState { ..fresh(), dist_cap: constants.dist_cap_oil + 1_000_000_000 }
+  let s2 = SupplyState { ..s, dist_minted: 1_000_000 }
+  run(DistributionVest, build_tx(s, s2, 1_000_000, [auth_a]))
+}
+
+test input_reserve_cap_inflated() fail {
+  let s = SupplyState { ..fresh(), reserve_cap: constants.reserve_cap_oil * 10 }
+  let s2 = SupplyState { ..s, reserve_minted: 1_000_000 }
+  run(ReserveDraw, build_tx(s, s2, 1_000_000, [res_auth]))
+}
+
+// ── D7-#10: counter INPUT âm ──────────────────────────────────
+test input_counter_negative() fail {
+  // s.dist_minted < 0 → reject (chống cap ảo qua counter âm).
+  let s = SupplyState { ..fresh(), dist_minted: -1_000_000 }
+  let s2 = SupplyState { ..s, dist_minted: 0 }
+  run(DistributionVest, build_tx(s, s2, 1_000_000, [auth_a]))
+}
+
+test input_reserve_counter_negative() fail {
+  let s = SupplyState { ..fresh(), reserve_minted: -5 }
+  let s2 = SupplyState { ..s, reserve_minted: -4 }
+  run(ReserveDraw, build_tx(s, s2, 1, [res_auth]))
+}
+
+// ── D8-#1: SupplyState INPUT sai địa chỉ script ───────────────
+test input_wrong_script_address() fail {
+  // thread NFT đến từ địa chỉ KHÁC supply_state_hash → reject (offchain đặt sai chỗ).
+  let s = fresh()
+  let s2 = SupplyState { ..s, dist_minted: 1_000_000 }
+  let tx =
+    Transaction {
+      ..placeholder,
+      inputs: [ss_input_at(#"9999", s)],
+      outputs: [ss_output(s2)],
+      mint: mint_tlamp(1_000_000),
+      extra_signatories: [auth_a],
+    }
+  run(DistributionVest, tx)
+}
+
+// ── D7-#2: vượt TRẦN TỔNG (defense-in-depth) ──────────────────
+// Lưu ý: với cap neo hằng, trần tổng = dist_cap+reserve_cap; muốn chạm trần phải
+// đẩy 1 nhánh tới cap rồi nhánh kia vượt. Test bằng reserve tới sát rồi cộng vượt
+// tổng nhưng vẫn ≤ reserve_cap là bất khả (reserve_cap < total). Dùng kịch bản:
+// dist đã = dist_cap, mint reserve khiến tổng > total — nhưng reserve_minted vẫn phải
+// ≤ reserve_cap. Vì dist_cap+reserve_cap == total_cap, chạm trần ⟺ chạm cả 2 cap.
+// → trần tổng là lớp phòng thủ dư (đã được 2 cap riêng bao). Khẳng định nó KHÔNG
+// loại oan happy-case biên kép:
+test total_cap_double_boundary_ok() {
+  // dist đầy cap, reserve mint tới đúng cap → tổng == total_cap (==, không vượt).
+  let s = SupplyState { ..fresh(), dist_minted: constants.dist_cap_oil, reserve_minted: constants.reserve_cap_oil - 1 }
+  let s2 = SupplyState { ..s, reserve_minted: constants.reserve_cap_oil }
+  run(ReserveDraw, build_tx(s, s2, 1, [res_auth]))
+}
+
+// ── D3-#1: nhồi tLAMP vào SupplyState output ──────────────────
+test state_output_holds_tlamp() fail {
+  // s_out chứa tLAMP → reject (continuing output phải sạch tLAMP).
+  let s = fresh()
+  let s2 = SupplyState { ..s, dist_minted: 1_000_000 }
+  let dirty =
+    util.mk_output(
+      util.script_address(sscript),
+      assets.from_lovelace(2_000_000)
+        |> assets.add(thr_pol, constants.supply_name, 1)
+        |> assets.add(tlamp_pol, constants.tlamp_name, 500_000),
+      s2,
+    )
+  let tx =
+    Transaction {
+      ..placeholder,
+      inputs: [ss_input(s)],
+      outputs: [dirty],
+      mint: mint_tlamp(1_000_000),
+      extra_signatories: [auth_a],
+    }
+  run(DistributionVest, tx)
+}
+
+// ── D3 (token rác): SupplyState output mang token policy lạ ────
+test state_output_foreign_token() fail {
+  // s_out mang thread NFT + 1 token policy lạ → value_only_nft_and_ada fail → reject.
+  let s = fresh()
+  let s2 = SupplyState { ..s, dist_minted: 1_000_000 }
+  let dirty =
+    util.mk_output(
+      util.script_address(sscript),
+      assets.from_lovelace(2_000_000)
+        |> assets.add(thr_pol, constants.supply_name, 1)
+        |> assets.add(#"aaaa", #"1234", 7),
+      s2,
+    )
+  let tx =
+    Transaction {
+      ..placeholder,
+      inputs: [ss_input(s)],
+      outputs: [dirty],
+      mint: mint_tlamp(1_000_000),
+      extra_signatories: [auth_a],
+    }
+  run(DistributionVest, tx)
+}
+
+// ── D3-#3: SupplyState output đính reference_script ───────────
+test state_output_has_reference_script() fail {
+  // s_out.reference_script != None → reject.
+  let s = fresh()
+  let s2 = SupplyState { ..s, dist_minted: 1_000_000 }
+  let with_ref =
+    Output {
+      address: util.script_address(sscript),
+      value: assets.from_lovelace(2_000_000)
+        |> assets.add(thr_pol, constants.supply_name, 1),
+      datum: InlineDatum(s2),
+      reference_script: Some(#"deadbeef"),
+    }
+  let tx =
+    Transaction {
+      ..placeholder,
+      inputs: [ss_input(s)],
+      outputs: [with_ref],
+      mint: mint_tlamp(1_000_000),
+      extra_signatories: [auth_a],
+    }
+  run(DistributionVest, tx)
+}
+
+// ── D2-#1: threshold == 0 ─────────────────────────────────────
+test threshold_zero_rejected() fail {
+  // threshold 0 → vô hiệu authority (ai cũng mint) → reject (ép >= 1).
+  let s = fresh()
+  let s2 = SupplyState { ..s, dist_minted: 1_000_000 }
+  run_thr(DistributionVest, build_tx(s, s2, 1_000_000, [auth_a]), [auth_a, auth_b], 0)
+}
+
+// ── D2-#2: threshold > |authority| ────────────────────────────
+test threshold_exceeds_n_rejected() fail {
+  // threshold 3 > 2 authority key → khóa chết → reject (ép <= N).
+  let s = fresh()
+  let s2 = SupplyState { ..s, dist_minted: 1_000_000 }
+  run_thr(DistributionVest, build_tx(s, s2, 1_000_000, [auth_a, auth_b]), [auth_a, auth_b], 3)
+}
+
+// ── D2-#3: key authority trùng không phình N ──────────────────
+test duplicate_authority_key_no_inflate() fail {
+  // authority = [auth_a, auth_a] (N giả = 2), threshold 2; chỉ auth_a ký.
+  // count_sigs dedupe → distinct count = 1 < 2 → reject. (Đồng thời threshold <= unique N=1
+  // cũng fail → chống nhồi key.)
+  let s = fresh()
+  let s2 = SupplyState { ..s, dist_minted: 1_000_000 }
+  run_thr(DistributionVest, build_tx(s, s2, 1_000_000, [auth_a]), [auth_a, auth_a], 2)
 }

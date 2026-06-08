@@ -58,9 +58,18 @@ pub fn policy_name_count(v: Value, policy: PolicyId) -> Int {
   dict.size(assets.tokens(v, policy))
 }
 
-/// Đếm chữ ký authority có mặt (M-of-N stub).
+/// Value chỉ gồm lovelace + đúng 1 policy NFT (không token rác). (D3 — continuing output sạch.)
+/// assets.policies(v) gồm cả ada policy (#""), nên hợp lệ ⟺ tập policy == {ada, nft_policy}.
+pub fn value_only_nft_and_ada(v: Value, nft_policy: PolicyId) -> Bool {
+  let pols = assets.policies(v)
+  list.length(pols) == 2 && list.has(pols, nft_policy)
+}
+
+/// Đếm chữ ký authority có mặt (M-of-N stub) — ĐẾM THEO TẬP KEY PHÂN BIỆT (D2-#3).
+/// Dedupe authority trước khi đếm → key trùng trong danh sách authority chỉ tính 1 lần
+/// (chống nhồi cùng 1 key để phình N giả / vượt threshold bằng 1 chữ ký duy nhất).
 pub fn count_sigs(authority: List<ByteArray>, signatories: List<ByteArray>) -> Int {
-  list.count(authority, fn(k) { list.has(signatories, k) })
+  list.count(list.unique(authority), fn(k) { list.has(signatories, k) })
 }
 
 /// Lấy InlineDatum của output → Data (expect inline).
@@ -110,6 +119,11 @@ test sigs_count() {
 
 test sigs_none() {
   count_sigs([#"a1"], [#"ff"]) == 0
+}
+
+test sigs_dedup_authority() {
+  // D2-#3: authority có #"a1" trùng 2 lần; chỉ 1 chữ ký #"a1" → đếm == 1 (không 2).
+  count_sigs([#"a1", #"a1", #"b2"], [#"a1"]) == 1
 }
 
 test name_count_one() {

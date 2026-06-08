@@ -12,19 +12,29 @@
 //   Mọi lần SupplyState bị tiêu PHẢI kèm mint tLAMP → tlamp_mint luôn được kích hoạt
 //   → transition luôn được kiểm. Không có đường "rút NFT/đổi datum" lách tlamp_mint.
 
+use aiken/collection/list
 use cardano/assets.{PolicyId}
-use cardano/transaction.{OutputReference, Transaction, placeholder}
+use cardano/transaction.{Input, OutputReference, Transaction, placeholder}
 use magiclamp/genesis/constants
 use magiclamp/genesis/types.{Advance, SupplyState, SupplyStateRedeemer}
 use magiclamp/genesis/util
 
-validator supply_state(tlamp_policy: PolicyId) {
+validator supply_state(tlamp_policy: PolicyId, thread_nft_policy: PolicyId) {
   spend(
     _datum: Option<SupplyState>,
     _r: SupplyStateRedeemer,
-    _own_ref: OutputReference,
+    own_ref: OutputReference,
     tx: Transaction,
   ) {
+    // D8-#3: UTxO BỊ SPEND phải mang ĐÚNG thread NFT thật (qty==1 đúng policy đó).
+    // Không tin "đây là SupplyState" chỉ vì ngồi ở script này — kẻ tấn công có thể
+    // tạo UTxO rác KHÔNG có NFT tại cùng địa chỉ rồi spend để tiêu min-ADA / gây nhiễu.
+    // Ghim NFT thật → chỉ UTxO SupplyState chính danh mới được đường spend này.
+    expect Some(own_input) =
+      list.find(tx.inputs, fn(i) { i.output_reference == own_ref })
+    expect
+      assets.quantity_of(own_input.output.value, thread_nft_policy, constants.supply_name) == 1
+
     // Spend ⟺ có mint tLAMP (Δ>0). Ủy quyền transition cho tlamp_mint (tầng 2).
     let delta = util.minted_qty(tx.mint, tlamp_policy, constants.tlamp_name)
     delta > 0
@@ -41,6 +51,10 @@ validator supply_state(tlamp_policy: PolicyId) {
 
 const tlamp_pol: PolicyId = #"7717"
 
+const thr_pol: PolicyId = #"5544"
+
+const sscript: ByteArray = #"5151"
+
 fn some_state() -> Option<SupplyState> {
   Some(SupplyState {
     dist_minted: 0,
@@ -54,19 +68,58 @@ fn mint_tlamp(qty: Int) {
   assets.zero |> assets.add(tlamp_pol, constants.tlamp_name, qty)
 }
 
+/// own_ref được spend; input tương ứng MANG thread NFT thật (qty==1).
+fn own_ref() -> OutputReference {
+  util.mk_ref(0)
+}
+
+fn ss_input_with_nft() -> Input {
+  let v =
+    assets.from_lovelace(2_000_000)
+      |> assets.add(thr_pol, constants.supply_name, 1)
+  expect Some(s) = some_state()
+  util.mk_input(own_ref(), util.mk_output(util.script_address(sscript), v, s))
+}
+
+/// input bị spend KHÔNG mang thread NFT (UTxO rác tại cùng địa chỉ).
+fn ss_input_no_nft() -> Input {
+  expect Some(s) = some_state()
+  util.mk_input(
+    own_ref(),
+    util.mk_output(util.script_address(sscript), assets.from_lovelace(2_000_000), s),
+  )
+}
+
 test spend_with_mint() {
-  let tx = Transaction { ..placeholder, mint: mint_tlamp(1_000_000) }
-  supply_state.spend(tlamp_pol, some_state(), Advance, util.mk_ref(0), tx)
+  let tx =
+    Transaction {
+      ..placeholder,
+      inputs: [ss_input_with_nft()],
+      mint: mint_tlamp(1_000_000),
+    }
+  supply_state.spend(tlamp_pol, thr_pol, some_state(), Advance, own_ref(), tx)
 }
 
 test spend_without_mint() fail {
   // A12: spend SupplyState mà không mint tLAMP (Δ=0) → reject (phá thread vô cớ).
-  let tx = Transaction { ..placeholder, mint: assets.zero }
-  supply_state.spend(tlamp_pol, some_state(), Advance, util.mk_ref(0), tx)
+  let tx = Transaction { ..placeholder, inputs: [ss_input_with_nft()], mint: assets.zero }
+  supply_state.spend(tlamp_pol, thr_pol, some_state(), Advance, own_ref(), tx)
 }
 
 test spend_with_burn_attempt() fail {
   // mint âm (Δ<0) → reject (không cho spend kèm burn).
-  let tx = Transaction { ..placeholder, mint: mint_tlamp(-1) }
-  supply_state.spend(tlamp_pol, some_state(), Advance, util.mk_ref(0), tx)
+  let tx =
+    Transaction { ..placeholder, inputs: [ss_input_with_nft()], mint: mint_tlamp(-1) }
+  supply_state.spend(tlamp_pol, thr_pol, some_state(), Advance, own_ref(), tx)
+}
+
+test spend_without_real_nft() fail {
+  // D8-#3: UTxO bị spend KHÔNG mang thread NFT thật → reject (dù có mint tLAMP).
+  let tx =
+    Transaction {
+      ..placeholder,
+      inputs: [ss_input_no_nft()],
+      mint: mint_tlamp(1_000_000),
+    }
+  supply_state.spend(tlamp_pol, thr_pol, some_state(), Advance, own_ref(), tx)
 }
