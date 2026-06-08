@@ -37,12 +37,14 @@ của MagicLamp — chốt 1 policy, deprecate các tLAMP cũ phân mảnh (xem 
 
 Redeemer: `MintGenesis = Constr(0, [])` (không Burn).
 
-Asset name: `"LAMP"` = `#"4c414d50"`.
+Asset name: `"tLAMP"` = `#"744c414d50"` (0x74 `'t'` + `"LAMP"`). KHÔNG dùng `"LAMP"`
+(`#"4c414d50"`) để tránh nhầm với token LAMP thật. Đơn vị nhỏ nhất = **oil**, 6
+decimals (1 tLAMP = 10^6 oil — y như lovelace với ADA).
 
 **Bất biến mint** (tất cả phải đúng, nếu không → `fail`):
 - `MINT-A` consume đúng `genesis_ref` (one-shot — chống mint lần 2).
 - `MINT-B` `dict.size(tokens(mint, policy)) == 1` (không mint asset name lạ kèm theo).
-- `MINT-C` `quantity_of(mint, policy, "LAMP") == total_supply` (đúng tổng cung — không
+- `MINT-C` `quantity_of(mint, policy, "tLAMP") == total_supply` (đúng tổng cung — không
   dư, không thiếu, không âm/burn).
 - `else(_) { fail }` chặn mọi purpose khác + mọi mint âm.
 
@@ -116,7 +118,7 @@ pool mới rẻ). Nếu v1.1 cần chống cạn: thêm per-address marker UTxO 
 - `buildClaimTx(params)` — dev claim: spend pool, pool_out = pool_in − claim_amount,
   dev nhận đúng claim_amount, datum + ADA + dust bảo toàn, no mint. (`claimBuilder.ts`)
 - Constants: `OIL_PER_LAMP=1e6`, `TOTAL_SUPPLY_OIL=3.6e16`, `CLAIM_AMOUNT_OIL=1e8`,
-  `TLAMP_ASSET_NAME="4c414d50"`.
+  `TLAMP_ASSET_NAME="744c414d50"`.
 
 Scripts (`Faucet/scripts/`, đọc `.env` từ `MAGIC/.env`:
 `BLOCKFROST_TOKEN_GREENSUN` + `VEDATA_WALLET_MNEMONIC`):

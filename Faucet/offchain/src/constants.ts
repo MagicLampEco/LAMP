@@ -9,8 +9,9 @@ export const TOTAL_SUPPLY_LAMP = 36_000_000_000n;
 /** Tổng cung tLAMP tính bằng oil = 36e9 × 1e6 = 3.6e16 oil. */
 export const TOTAL_SUPPLY_OIL = TOTAL_SUPPLY_LAMP * OIL_PER_LAMP;
 
-/** Asset name "LAMP" = 4c414d50 (khớp Distribution LAMP_ASSET_NAME + onchain). */
-export const TLAMP_ASSET_NAME = "4c414d50";
+/** Asset name "tLAMP" = 744c414d50 (0x74 't' + "LAMP"). Tiền tố "t" để KHÔNG
+ * nhầm với LAMP thật (Distribution LAMP_ASSET_NAME = 4c414d50). Khớp onchain. */
+export const TLAMP_ASSET_NAME = "744c414d50";
 
 /** Lượng tLAMP mỗi claim = 100 LAMP (như tADA faucet). */
 export const CLAIM_LAMP = 100n;

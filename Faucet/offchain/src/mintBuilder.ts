@@ -49,7 +49,7 @@ export interface MintPoolParams {
   claimAmountOil?: bigint;
   /** ADA (lovelace) kèm pool UTxO (min-ADA). Mặc định 5 tADA. */
   poolLovelace?: bigint;
-  /** Asset name tLAMP. Mặc định "LAMP". */
+  /** Asset name tLAMP. Mặc định "tLAMP". */
   tlampAssetName?: string;
 }
 

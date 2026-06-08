@@ -34,7 +34,7 @@ export interface ClaimParams {
   poolUtxo:     UTxO;
   faucetScript: Validator;
 
-  /** tLAMP policy id (asset name mặc định "LAMP"). */
+  /** tLAMP policy id (asset name mặc định "tLAMP"). */
   tlampPolicyId:   string;
   tlampAssetName?: string;
 

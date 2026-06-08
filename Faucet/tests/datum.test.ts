@@ -47,7 +47,7 @@ describe("constants — decimals 6, supply 36e9", () => {
   it("claim = 100 LAMP = 1e8 oil", () => {
     expect(CLAIM_AMOUNT_OIL).toBe(100_000_000n);
   });
-  it("asset name LAMP = 4c414d50", () => {
-    expect(TLAMP_ASSET_NAME).toBe("4c414d50");
+  it("asset name tLAMP = 744c414d50", () => {
+    expect(TLAMP_ASSET_NAME).toBe("744c414d50");
   });
 });
