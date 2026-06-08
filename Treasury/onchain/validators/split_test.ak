@@ -180,6 +180,31 @@ test t_param_bad_hash_len_reject() {
   !param_valid(bad)
 }
 
+// ── GUARD total < 0 (parity onchain↔offchain) ──
+// Aiken `/` là FLOOR division (về -∞), khác JS BigInt trunc-toward-zero. Để hai
+// impl khớp byte, split_amounts ép total ≥ 0: total < 0 → []. Các test dưới khoá
+// hành vi đó + ghi nhận giá trị floor số âm thực tế của Aiken.
+
+// Khoá bản chất: Aiken floor_part số âm = floor (về -∞), KHÔNG trunc.
+// -101 × 2000 / 10000 = -202000/10000 = -20.2 → floor = -21 (JS trunc cho -20).
+test t_floor_part_negative_is_floor() {
+  floor_part(-101, 2000) == -21 && floor_part(-101, 8000) == -81
+}
+
+// Guard: total < 0 → [] (không vào miền floor≠trunc).
+test t_split_negative_total_empty() {
+  split_amounts(-101, mvp_recipients()) == [] && split_amounts(
+    -1,
+    three_recipients(),
+  ) == []
+}
+
+// Biên total = 0 vẫn chia hợp lệ (≥ 0 ⇒ qua guard): [0, 0], Σ = 0.
+test t_split_zero_total_ok() {
+  let p = split_amounts(0, mvp_recipients())
+  p == [0, 0] && sum_ints(p) == 0
+}
+
 // ── helper bất biến ──
 
 test t_weights_sum() {

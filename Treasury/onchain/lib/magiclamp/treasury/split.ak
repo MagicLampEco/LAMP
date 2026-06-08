@@ -61,8 +61,12 @@ pub fn min_oil_ok(total: Int, min_oil: Int) -> Bool {
   total >= min_oil
 }
 
-/// floor part theo weight: ⌊ total × weight_bps / 10000 ⌋. total ≥ 0, weight ≥ 0
-/// ⇒ phép chia Aiken (trunc-toward-zero) == floor.
+/// floor part theo weight: ⌊ total × weight_bps / 10000 ⌋.
+/// CHÚ Ý bản chất phép chia: Aiken `/` là FLOOR division (Euclidean, làm tròn về
+/// -∞), KHÔNG phải trunc-toward-zero. JS BigInt `/` thì trunc-toward-zero. Hai phép
+/// này CHỈ trùng kết quả khi tử số ≥ 0, tức total ≥ 0 ∧ weight_bps ≥ 0. Khi total < 0
+/// chúng LỆCH (vd floor_part(-101,2000): Aiken = -21, JS = -20) ⇒ vỡ parity
+/// onchain↔offchain. split_amounts ép total ≥ 0 để khoá miền trùng (xem guard dưới).
 pub fn floor_part(total: Int, weight_bps: Int) -> Int {
   total * weight_bps / 10000
 }
@@ -76,14 +80,24 @@ pub fn floor_parts(total: Int, recipients: List<Recipient>) -> List<Int> {
 /// = floor_parts với REMAINDER (total − Σ floor) dồn vào phần tử ĐẦU (MagicLamp).
 /// Bất biến S1: Σ kết quả == total. S2: phần tử i≥1 == floor_i.
 ///
+/// GUARD total ≥ 0: lib tự ép total ≥ 0 (KHÔNG dựa gián tiếp vào min_oil ở tầng
+/// distribute) để mọi caller tương lai (splitter v1.x onchain, tool offchain) an
+/// toàn. total < 0 → []: tránh miền floor≠trunc làm vỡ parity onchain↔offchain
+/// (xem chú thích floor_part). param_valid + min_oil_ok đã bảo đảm total ≥ 0 ở
+/// luồng distribute; guard này khoá thêm tại tầng lib.
+///
 /// recipients rỗng → [] (param_valid đã chặn ở tầng gọi; ở đây an toàn trả []).
 pub fn split_amounts(total: Int, recipients: List<Recipient>) -> List<Int> {
-  let floors = floor_parts(total, recipients)
-  let assigned = list.foldl(floors, 0, fn(p, acc) { acc + p })
-  let remainder = total - assigned
-  when floors is {
-    [] -> []
-    [head, ..rest] -> [head + remainder, ..rest]
+  if total < 0 {
+    []
+  } else {
+    let floors = floor_parts(total, recipients)
+    let assigned = list.foldl(floors, 0, fn(p, acc) { acc + p })
+    let remainder = total - assigned
+    when floors is {
+      [] -> []
+      [head, ..rest] -> [head + remainder, ..rest]
+    }
   }
 }
 

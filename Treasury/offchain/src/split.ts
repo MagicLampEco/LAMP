@@ -63,7 +63,12 @@ export function minOilOk(total: bigint, minOil: bigint): boolean {
   return total >= minOil;
 }
 
-/** ⌊ total × weight_bps / 10000 ⌋. total ≥ 0, weight ≥ 0 ⇒ trunc == floor. */
+/** ⌊ total × weight_bps / 10000 ⌋.
+ *  CHÚ Ý bản chất phép chia: JS BigInt `/` là TRUNC-toward-zero, còn Aiken `/`
+ *  (onchain split.ak) là FLOOR division (về -∞). Hai phép CHỈ trùng khi tử số ≥ 0,
+ *  tức total ≥ 0 ∧ weightBps ≥ 0. Khi total < 0 chúng LỆCH (vd floorPart(-101n,2000n):
+ *  JS = -20n, Aiken = -21n) ⇒ vỡ parity onchain↔offchain. splitAmounts ép total ≥ 0
+ *  để khoá miền trùng (xem guard dưới). */
 export function floorPart(total: bigint, weightBps: bigint): bigint {
   return (total * weightBps) / BPS_DENOM;
 }
@@ -77,8 +82,13 @@ export function floorParts(total: bigint, recipients: Recipient[]): bigint[] {
  * split_amounts(total, recipients) -> bigint[] theo thứ tự recipients.
  * floor_parts với remainder (total − Σ floor) dồn vào phần tử ĐẦU (MagicLamp).
  * Bất biến S1: Σ == total. recipients rỗng → [].
+ *
+ * GUARD total ≥ 0: mirror split.ak — lib tự ép total ≥ 0 để mọi caller tương lai
+ * an toàn, tránh miền floor≠trunc làm vỡ parity onchain↔offchain (xem floorPart).
+ * total < 0 → [].
  */
 export function splitAmounts(total: bigint, recipients: Recipient[]): bigint[] {
+  if (total < 0n) return [];
   const floors = floorParts(total, recipients);
   const assigned = floors.reduce((acc, p) => acc + p, 0n);
   const remainder = total - assigned;

@@ -201,6 +201,90 @@ describe("mirror onchain split_test.ak (vector khớp byte)", () => {
   });
 });
 
+// ── GUARD total < 0 + parity onchain↔offchain trên dải total ÂM ───────────
+// Aiken `/` = FLOOR division (về -∞); JS BigInt `/` = trunc-toward-zero. Hai phép
+// CHỈ trùng khi total ≥ 0. splitAmounts ép total ≥ 0 (mirror split_amounts) → []
+// cho total < 0, tránh miền lệch. Test này khoá hành vi + đối chiếu giá trị floor
+// số âm THỰC của Aiken (hard-code từ aiken test t_floor_part_negative_is_floor).
+describe("guard total < 0 + parity miền âm (mirror split.ak)", () => {
+  it("total < 0 → [] (guard, mirror onchain t_split_negative_total_empty)", () => {
+    expect(splitAmounts(-101n, mvpRecipients())).toEqual([]);
+    expect(splitAmounts(-1n, threeRecipients())).toEqual([]);
+  });
+
+  it("total = 0 (biên) qua guard → [0, 0], Σ = 0", () => {
+    const p = splitAmounts(0n, mvpRecipients());
+    expect(p).toEqual([0n, 0n]);
+    expect(sumInts(p)).toBe(0n);
+  });
+
+  it("floorPart số âm: JS TRUNC khác Aiken FLOOR — minh chứng lý do guard", () => {
+    // JS BigInt trunc-toward-zero: -202000n/10000n = -20n.
+    expect(floorPart(-101n, 2000n)).toBe(-20n);
+    expect(floorPart(-101n, 8000n)).toBe(-80n);
+    // Onchain Aiken FLOOR (về -∞) cho -21n / -81n (aiken test xác nhận).
+    // ⇒ JS ≠ Aiken ở total âm; guard total≥0 ở CẢ HAI khoá miền trùng.
+    const AIKEN_FLOOR_101_2000 = -21n; // giá trị onchain thực
+    const AIKEN_FLOOR_101_8000 = -81n;
+    expect(floorPart(-101n, 2000n)).not.toBe(AIKEN_FLOOR_101_2000);
+    expect(floorPart(-101n, 8000n)).not.toBe(AIKEN_FLOOR_101_8000);
+  });
+
+  it("guard đồng bộ: với total < 0, cả hai impl trả [] ⇒ KHÔNG còn lệch", () => {
+    for (let t = -500n; t < 0n; t++) {
+      expect(splitAmounts(t, mvpRecipients())).toEqual([]);
+      expect(splitAmounts(t, threeRecipients())).toEqual([]);
+    }
+  });
+});
+
+// ── parity vector cứng onchain (mirror split_test.ak) trên dải total ≥ 0 rộng ─
+// Hard-code giá trị onchain (đã xác nhận bằng aiken test) vào offchain để bắt drift.
+describe("parity vector cứng onchain↔offchain (dải total ≥ 0 rộng)", () => {
+  it("mvp 20/80: vector khớp byte với split_amounts onchain", () => {
+    const rs = mvpRecipients();
+    // [total, expected] — onchain cho cùng kết quả (floor + remainder dồn đầu).
+    const cases: [bigint, bigint[]][] = [
+      [0n, [0n, 0n]],
+      [1n, [1n, 0n]],
+      [359n, [72n, 287n]],     // 359×0.2=71.8→71; 359×0.8=287.2→287; rem=1 → 72,287
+      [360n, [72n, 288n]],
+      [361n, [73n, 288n]],     // 361×0.2=72.2→72; 361×0.8=288.8→288; rem=1 → 73,288
+      [9999n, [2000n, 7999n]], // 9999×0.2=1999.8→1999; ×0.8=7999.2→7999; rem=1 → 2000,7999
+      [36_000_000_000_000_000n, [7_200_000_000_000_000n, 28_800_000_000_000_000n]], // 36 tỉ × 10^6
+    ];
+    for (const [t, exp] of cases) {
+      expect(splitAmounts(t, rs)).toEqual(exp);
+      expect(sumInts(splitAmounts(t, rs))).toBe(t);
+    }
+  });
+
+  it("3 recipient 3333/3333/3334: vector khớp byte onchain", () => {
+    const rs = threeRecipients();
+    const cases: [bigint, bigint[]][] = [
+      [0n, [0n, 0n, 0n]],
+      [5n, [3n, 1n, 1n]],
+      [100n, [34n, 33n, 33n]],
+      [9999n, [3334n, 3332n, 3333n]], // floor 3332/3332/3333 Σ=8997 rem=2 → đầu nhận 3334
+    ];
+    for (const [t, exp] of cases) {
+      expect(splitAmounts(t, rs)).toEqual(exp);
+      expect(sumInts(splitAmounts(t, rs))).toBe(t);
+    }
+  });
+
+  it("weight biên 0/10000: phần tử đầu nhận remainder, đuôi = floor", () => {
+    const rs: Recipient[] = [
+      { custody_hash: MLAMP, weight_bps: 0n },
+      { custody_hash: APP, weight_bps: 10000n },
+    ];
+    // weight 10000 bps = toàn bộ ⇒ floor đuôi = total chẵn, remainder = 0.
+    expect(splitAmounts(1000n, rs)).toEqual([0n, 1000n]);
+    expect(splitAmounts(1001n, rs)).toEqual([0n, 1001n]);
+    expect(sumInts(splitAmounts(1001n, rs))).toBe(1001n);
+  });
+});
+
 // ── planDistribute (orchestrator thuần) ───────────────────────────────────
 describe("planDistribute — orchestrator thuần", () => {
   const APP_ID = "deadbeef";
