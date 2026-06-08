@@ -52,6 +52,11 @@ const escheat_after: Int = 6
 
 const ms_per_epoch: Int = 86_400_000
 
+// LỖ-2 — sàn freshness beacon. beacon demo (dp_param / run_deposit) dùng epoch 5 →
+// min_param_epoch = 5 để mọi happy-test (beacon.epoch 5 ≥ 5) qua; test stale dùng beacon
+// epoch < 5 để reject.
+const min_param_epoch: Int = 5
+
 // phân loại demo: bò (cọc cao) + dưa leo (cọc 0).
 const at_cattle: Int = 0
 
@@ -66,6 +71,13 @@ const vt_low: Int = 0
 const lc_short: Int = 0
 
 const dp_ref_ix: Int = 9
+
+// LỖ-1 — cửa sổ validity HẸP < 1 epoch cho Deposit (cả 2 cận Finite).
+// lo = dep_epoch×ms_per_epoch; hi = lo + (ms_per_epoch−1) → hi−lo = ms_per_epoch−1 < 1 epoch.
+fn dep_window(dep_epoch: Int) -> interval.Interval {
+  let lo = dep_epoch * ms_per_epoch
+  interval.between(lo, lo + ms_per_epoch - 1)
+}
 
 fn accepted() -> List<AssetKey> {
   [AssetKey { policy: #"", name: #"" }, AssetKey { policy: lamp_policy, name: lamp_name }]
@@ -86,6 +98,7 @@ fn datum_with(
     treasury_credential: VerificationKey(treasury_pkh),
     escheat_after_epoch: escheat_after,
     ms_per_epoch: ms_per_epoch,
+    min_param_epoch: min_param_epoch,
     ledger: ledger,
     epoch: 10,
   }
@@ -276,7 +289,9 @@ fn run_deposit_full_at(
       outputs: [pot_out],
       mint: mint,
       extra_signatories: signers,
-      validity_range: interval.after(dep_epoch * ms_per_epoch),
+      // LỖ-1: cửa sổ HẸP < 1 epoch (cả 2 cận Finite). lo = dep_epoch×ms_per_epoch,
+      // hi = lo + (ms_per_epoch−1) → hi−lo < ms_per_epoch, lo/ms_per_epoch = dep_epoch.
+      validity_range: dep_window(dep_epoch),
     }
   deposits.deposits.spend(
     Some(d_in),
@@ -1230,7 +1245,7 @@ fn run_deposit_beacon_at(beacon_addr: Address) -> Bool {
       outputs: [pot_out],
       mint: assets.zero,
       extra_signatories: [alice],
-      validity_range: interval.after(10 * ms_per_epoch),
+      validity_range: dep_window(10),
     }
   deposits.deposits.spend(
     Some(d_in),
@@ -1332,7 +1347,7 @@ test deposit_ms_per_epoch_zero_fail() fail {
       outputs: [pot_out],
       mint: assets.zero,
       extra_signatories: [alice],
-      validity_range: interval.after(10 * ms_per_epoch),
+      validity_range: dep_window(10),
     }
   deposits.deposits.spend(
     Some(d_in),
@@ -1371,7 +1386,7 @@ test deposit_zero_drain_other_asset_fail() fail {
       outputs: [pot_out],
       mint: assets.zero,
       extra_signatories: [alice],
-      validity_range: interval.after(10 * ms_per_epoch),
+      validity_range: dep_window(10),
     }
   deposits.deposits.spend(
     Some(d_in),
@@ -1425,3 +1440,171 @@ test escheat_treasury_credential_tamper_fail() fail {
 
 // REG-4: deposit_param DOUBLE-OUTPUT RÚT NFT → đặt trong deposit_param.ak (nơi validator
 //   + helper sống). Xem test `deposit_param_double_output_fail` ở file đó.
+
+// ════════════════════════════════════════════════════════════════════════════
+// ███ VÒNG 2 — LỖ-1 (epoch một-cận → escheat sớm), LỖ-2 (stale beacon), LỖ-3 ███
+// ════════════════════════════════════════════════════════════════════════════
+
+/// runner deposit bò chuẩn nhưng validity_range TÙY BIẾN + beacon TÙY BIẾN (test
+/// cửa sổ epoch + freshness). amount = beacon cattle base = 1_000_000 ở mult 1.0×.
+fn run_deposit_window(
+  beacon : DepositParam,
+  vrange : interval.Interval,
+  ledger_out : List<DepositLine>,
+) -> Bool {
+  let d_in = datum([])
+  let pot_in =
+    util.mk_input(util.mk_ref(0), util.mk_output(pot_addr(), pot_val(0), d_in))
+  let d_out = PotDatum { ..datum(ledger_out), ledger: ledger_out, epoch: 11 }
+  let pot_out = util.mk_output(pot_addr(), pot_val(1_000_000), d_out)
+  let tx =
+    Transaction {
+      ..placeholder,
+      inputs: [pot_in],
+      reference_inputs: [dp_beacon_ref(beacon, 1)],
+      outputs: [pot_out],
+      mint: assets.zero,
+      extra_signatories: [alice],
+      validity_range: vrange,
+    }
+  deposits.deposits.spend(
+    Some(d_in),
+    Deposit {
+      entity_id: entity1, depositor: alice, policy: lamp_policy, name: lamp_name,
+      asset_type: at_cattle, value_tier: vt_high, lifecycle_class: lc_long, deposit_ref: dp_ref(),
+    },
+    util.mk_ref(0),
+    tx,
+  )
+}
+
+// beacon cattle = 1_000_000 (mult 1.0×) cho test cửa sổ; epoch tham số hóa (freshness).
+fn beacon_cattle(epoch: Int) -> DepositParam {
+  DepositParam {
+    tiers: [
+      DepositTier { asset_type: at_cattle, value_tier: vt_high, lifecycle_class: lc_long, base_deposit: 1_000_000 },
+    ],
+    demand_mult: schedule_q(), m_min: 0, m_max: 2_000_000_000, epoch: epoch,
+  }
+}
+
+// LỖ-1 ATK-1 (fail) — LOWER_BOUND QUÁ KHỨ (=0): cửa sổ HẸP [0, ms−1] (hi−lo < 1 epoch
+//   nên qua guard window) NHƯNG lo=0 → dep_epoch=0 (quá khứ) → dòng đóng dấu epoch 0 →
+//   escheat ngay. dòng out PHẢI epoch=dep_epoch; nếu attacker đóng dấu epoch hiện hành
+//   (10) thì ≠ dep_epoch(0) → F1 fail; nếu đóng dấu 0 thì dòng quá khứ. Ở ĐÂY dòng out
+//   epoch=10 (giá trị thật) nhưng dep_epoch=0 → mismatch → reject. Chống lùi đồng hồ.
+test deposit_lower_bound_past_fail() fail {
+  let ledger_out = [line_at(entity1, alice, 1_000_000, 10)]   // epoch thật 10
+  // cửa sổ [0, ms−1]: hẹp < 1 epoch (qua window guard) nhưng dep_epoch = 0.
+  run_deposit_window(beacon_cattle(5), interval.between(0, ms_per_epoch - 1), ledger_out)
+}
+
+// LỖ-1 ATK-1b (fail) — CỬA SỔ RỘNG ≥ 1 EPOCH: lo = 10×ms, hi = lo + ms (đúng 1 epoch) →
+//   hi − lo = ms_per_epoch KHÔNG < ms_per_epoch → get_deposit_epoch guard fail. Chống nới
+//   cửa sổ để né kẹp epoch (đặt hi xa → lo tự do trong quá khứ).
+test deposit_window_too_wide_fail() fail {
+  let ledger_out = [line_at(entity1, alice, 1_000_000, 10)]
+  let lo = 10 * ms_per_epoch
+  run_deposit_window(beacon_cattle(5), interval.between(lo, lo + ms_per_epoch), ledger_out)
+}
+
+// LỖ-1 HAPPY — CỬA SỔ HẸP đúng now: lo = 10×ms, hi = lo + ms − 1 → hi−lo < 1 epoch,
+//   dep_epoch = 10. dòng out epoch 10 khớp → hợp lệ.
+test deposit_window_narrow_ok() {
+  let ledger_out = [line_at(entity1, alice, 1_000_000, 10)]
+  let lo = 10 * ms_per_epoch
+  run_deposit_window(beacon_cattle(5), interval.between(lo, lo + ms_per_epoch - 1), ledger_out)
+}
+
+// LỖ-1 ATK-2 (fail) — UPPER_BOUND VÔ HẠN (interval.after): get_deposit_epoch ÉP cả 2 cận
+//   Finite; upper = PositiveInfinity → get_finite None → fail. Chống bỏ cận trên (one-shot
+//   lower-bound quá khứ như get_epoch cũ).
+test deposit_upper_unbounded_fail() fail {
+  let ledger_out = [line_at(entity1, alice, 1_000_000, 10)]
+  run_deposit_window(beacon_cattle(5), interval.after(10 * ms_per_epoch), ledger_out)
+}
+
+// LỖ-2 (fail) — STALE BEACON: beacon.epoch = 4 < min_param_epoch(5) → bind bảng phí CŨ
+//   (DAO đã nâng phí ở epoch ≥ 5). validator ÉP pp.epoch ≥ min_param_epoch → reject.
+test deposit_stale_beacon_fail() fail {
+  let ledger_out = [line_at(entity1, alice, 1_000_000, 10)]
+  let lo = 10 * ms_per_epoch
+  run_deposit_window(beacon_cattle(4), interval.between(lo, lo + ms_per_epoch - 1), ledger_out)
+}
+
+// LỖ-2 HAPPY — beacon.epoch = 5 == min_param_epoch → fresh → hợp lệ.
+test deposit_fresh_beacon_ok() {
+  let ledger_out = [line_at(entity1, alice, 1_000_000, 10)]
+  let lo = 10 * ms_per_epoch
+  run_deposit_window(beacon_cattle(5), interval.between(lo, lo + ms_per_epoch - 1), ledger_out)
+}
+
+// LỖ-3 (fail) — escheat_after_epoch == 0: cọc escheat được NGAY trong epoch gửi (cướp cọc
+//   vừa nạp). validator ÉP escheat_after_epoch > 0 → reject (cọc tồn ≥ 1 epoch).
+test escheat_after_zero_fail() fail {
+  let ledger_in = [line_at(entity1, alice, 1_000_000, 10)]
+  let ledger_out = []
+  let d_in =
+    PotDatum { ..datum(ledger_in), ledger: ledger_in, escheat_after_epoch: 0 }
+  let d_out =
+    PotDatum { ..datum(ledger_out), ledger: ledger_out, escheat_after_epoch: 0, epoch: 16 }
+  run_escheat_datum(d_in, d_out, 16)
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// ███ VÒNG 2 — 3 test phòng thủ ███
+// ════════════════════════════════════════════════════════════════════════════
+
+// PHÒNG-1 (fail) — ESCHEAT TỰ TRẢ KHI TREASURY == POT SCRIPT (C-ESC-5/C-ESC-7 xung đột):
+//   nếu treasury_credential = Script(pot_sh) (chính pot), output "về Treasury" lại rơi
+//   vào pot_out → value pot KHÔNG giảm (C-ESC-5 refund_value_ok kỳ vọng −amount) → fail.
+//   Khóa: kho escheat KHÔNG được là chính pot (tiền không thật sự rời sổ).
+test escheat_self_payment_treasury_is_pot_fail() fail {
+  let ledger_in = [line_at(entity1, alice, 1_000_000, 10)]
+  let ledger_out = []
+  // treasury_credential = Script(pot_sh) (chính pot). pot_out giữ value (tiền "về" pot).
+  let d_out =
+    PotDatum {
+      ..datum(ledger_out), treasury_credential: Script(pot_sh),
+      ledger: ledger_out, epoch: 16,
+    }
+  // pot_out value GIỮ 1_000_000 (vì treasury==pot, tiền không rời) → C-ESC-5 value fail.
+  run_escheat(
+    pot_val(1_000_000), pot_val(1_000_000), ledger_in, d_out, pot_addr(),
+    [bob], assets.zero, 16, [],
+    Script(pot_sh), entity1, alice,
+  )
+}
+
+// PHÒNG-2 (fail) — DÒNG TRÙNG KHÓA TRONG SEED (ledger_in dup): sổ in có 2 dòng cùng khóa
+//   (entity1, alice). guard no_dup_lines(datum.ledger) đầu nhánh Deposit → reject (chống
+//   seed/state bẩn làm find/cộng dồn nhập nhằng).
+test deposit_dup_line_in_seed_fail() fail {
+  let dup_in = [line(entity1, alice, 1_000_000), line(entity1, alice, 500_000)]
+  let d_in = datum(dup_in)
+  let pot_in =
+    util.mk_input(util.mk_ref(0), util.mk_output(pot_addr(), pot_val(1_500_000), d_in))
+  let ledger_out = [line(entity1, alice, 2_500_000)]
+  let d_out = PotDatum { ..datum(ledger_out), ledger: ledger_out, epoch: 11 }
+  let pot_out = util.mk_output(pot_addr(), pot_val(2_500_000), d_out)
+  let lo = 10 * ms_per_epoch
+  let tx =
+    Transaction {
+      ..placeholder,
+      inputs: [pot_in],
+      reference_inputs: [dp_beacon_ref(beacon_cattle(5), 1)],
+      outputs: [pot_out],
+      mint: assets.zero,
+      extra_signatories: [alice],
+      validity_range: interval.between(lo, lo + ms_per_epoch - 1),
+    }
+  deposits.deposits.spend(
+    Some(d_in),
+    Deposit {
+      entity_id: entity1, depositor: alice, policy: lamp_policy, name: lamp_name,
+      asset_type: at_cattle, value_tier: vt_high, lifecycle_class: lc_long, deposit_ref: dp_ref(),
+    },
+    util.mk_ref(0),
+    tx,
+  )
+}

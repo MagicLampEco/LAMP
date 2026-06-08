@@ -13,8 +13,8 @@
 //                                               = Constr(0, [bytes×4, int×5])
 //   PotDatum{instance_id,accepted_assets,lifecycle_authority,reserved_min_ada,
 //            deposit_param_policy,deposit_param_name,deposit_param_script_hash,
-//            treasury_credential,escheat_after_epoch,ms_per_epoch,ledger,epoch}
-//                                               = Constr(0, [bytes,List,Cred,int,bytes,bytes,bytes,Cred,int,int,List,int])
+//            treasury_credential,escheat_after_epoch,ms_per_epoch,min_param_epoch,ledger,epoch}
+//                                               = Constr(0, [bytes,List,Cred,int,bytes,bytes,bytes,Cred,int,int,int,List,int])
 //   DepositsRedeemer:
 //     Deposit{entity_id,depositor,policy,name,asset_type,value_tier,lifecycle_class,deposit_ref}
 //                                               = Constr(0, [bytes×4, int×3, OutRef])
@@ -195,6 +195,7 @@ export function encodePotDatum(d: PotDatum): Constr<Data> {
     encodeCredential(d.treasury_credential),
     d.escheat_after_epoch,
     d.ms_per_epoch,
+    d.min_param_epoch,
     d.ledger.map(encodeDepositLine),
     d.epoch,
   ]);
@@ -203,7 +204,7 @@ export function encodePotDatum(d: PotDatum): Constr<Data> {
 export function decodePotDatum(d: Data): PotDatum {
   const c = asConstr(d, "PotDatum");
   if (c.index !== 0) throw new Error(`DDATUM-040: PotDatum expects Constr 0, got ${c.index}`);
-  if (c.fields.length !== 12) throw new Error(`DDATUM-041: PotDatum expects 12 fields, got ${c.fields.length}`);
+  if (c.fields.length !== 13) throw new Error(`DDATUM-041: PotDatum expects 13 fields, got ${c.fields.length}`);
   return {
     instance_id:               asBytes(c.fields[0]!, "PotDatum.instance_id"),
     accepted_assets:           asList(c.fields[1]!, "PotDatum.accepted_assets").map(decodeAssetKey),
@@ -215,8 +216,9 @@ export function decodePotDatum(d: Data): PotDatum {
     treasury_credential:       decodeCredential(c.fields[7]!),
     escheat_after_epoch:       asInt(c.fields[8]!, "PotDatum.escheat_after_epoch"),
     ms_per_epoch:              asInt(c.fields[9]!, "PotDatum.ms_per_epoch"),
-    ledger:                    asList(c.fields[10]!, "PotDatum.ledger").map(decodeDepositLine),
-    epoch:                     asInt(c.fields[11]!, "PotDatum.epoch"),
+    min_param_epoch:           asInt(c.fields[10]!, "PotDatum.min_param_epoch"),
+    ledger:                    asList(c.fields[11]!, "PotDatum.ledger").map(decodeDepositLine),
+    epoch:                     asInt(c.fields[12]!, "PotDatum.epoch"),
   };
 }
 

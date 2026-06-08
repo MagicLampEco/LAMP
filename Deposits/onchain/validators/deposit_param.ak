@@ -37,7 +37,12 @@ validator deposit_param(
     expect util.count_inputs_at_script(tx.inputs, own_hash) == 1
     expect util.count_outputs_at_script(tx.outputs, own_hash) == 1
 
-    // Committee M-of-N đồng thuận.
+    // Committee M-of-N đồng thuận. LỖ phòng thủ:
+    //   - threshold > 0: threshold ≤ 0 → 0 chữ ký cũng qua (beacon bị chiếm tự do).
+    //   - committee KHÔNG trùng key: nếu cùng 1 key xuất hiện n lần trong committee,
+    //     count_sigs đếm n cho 1 chữ ký → 1 người giả lập M-of-N (phá ngưỡng thật).
+    expect threshold > 0
+    expect no_dup_keys(committee)
     expect count_sigs(committee, tx.extra_signatories) >= threshold
 
     let beacon_in = util.input_at_script(tx.inputs, own_hash)
@@ -65,6 +70,11 @@ validator deposit_param(
 
 fn count_sigs(committee: List<ByteArray>, sigs: List<ByteArray>) -> Int {
   list.count(committee, fn(k) { list.has(sigs, k) })
+}
+
+/// committee không có key trùng (mỗi key đếm đúng 1 lần trong M-of-N).
+fn no_dup_keys(committee: List<ByteArray>) -> Bool {
+  list.all(committee, fn(k) { list.count(committee, fn(o) { o == k }) == 1 })
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -137,6 +147,29 @@ test deposit_param_invalid_clamp() fail {
   let tx = dp_tx(5, 6, 3_000_000_000, [#"c1", #"c2"])
   deposit_param.spend(
     dp_committee, dp_threshold, dp_nft_policy, dp_nft_name,
+    Some(mk_dp(5, 1_000_000_000)), PostParam, util.mk_ref(0), tx,
+  )
+}
+
+// PHÒNG-3a (fail) — THRESHOLD ≤ 0: threshold=0 → count_sigs ≥ 0 luôn đúng (0 chữ ký cũng
+//   post được bảng phí → beacon bị chiếm). guard expect threshold > 0 → reject.
+test deposit_param_threshold_zero_fail() fail {
+  let tx = dp_tx(5, 6, 1_500_000_000, [])
+  deposit_param.spend(
+    dp_committee, 0, dp_nft_policy, dp_nft_name,
+    Some(mk_dp(5, 1_000_000_000)), PostParam, util.mk_ref(0), tx,
+  )
+}
+
+// PHÒNG-3b (fail) — COMMITTEE TRÙNG KEY: committee = [c1, c1, c2] (c1 lặp). 1 chữ ký c1
+//   → count_sigs đếm 2 (c1 khớp 2 lần) ≥ threshold 2 → 1 người giả lập M-of-N. guard
+//   no_dup_keys(committee) → reject.
+test deposit_param_committee_dup_fail() fail {
+  let dup_committee: List<ByteArray> = [#"c1", #"c1", #"c2"]
+  // chỉ c1 ký → count_sigs(dup_committee, [c1]) = 2 ≥ threshold 2 (KHÔNG có guard sẽ qua).
+  let tx = dp_tx(5, 6, 1_500_000_000, [#"c1"])
+  deposit_param.spend(
+    dup_committee, dp_threshold, dp_nft_policy, dp_nft_name,
     Some(mk_dp(5, 1_000_000_000)), PostParam, util.mk_ref(0), tx,
   )
 }

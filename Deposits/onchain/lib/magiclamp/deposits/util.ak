@@ -25,10 +25,39 @@ pub fn get_finite(bt: IntervalBoundType) -> Option<Int> {
 
 /// current_epoch = lower_bound(validity_range) / ms_per_epoch. Tx PHẢI có
 /// lower bound hữu hạn (caller đặt validity_range) → không giả epoch.
+///
+/// CHỈ DÙNG CHO ESCHEAT (idiom gating): ledger ép slot ≥ lower_bound, nên
+/// lower_bound là CẬN DƯỚI thật của now → escheat chỉ kích hoạt khi đã thực sự
+/// tới hạn. (Một-cận là ĐÚNG cho gating "đã qua mốc": đặt lower_bound nhỏ KHÔNG
+/// giúp attacker vì điều kiện là current_epoch ≥ mốc.)
 pub fn get_epoch(tx: Transaction, ms_per_epoch: Int) -> Int {
   let IntervalBound { bound_type, .. } = tx.validity_range.lower_bound
   expect Some(s) = get_finite(bound_type)
   s / ms_per_epoch
+}
+
+/// LỖ-1 — epoch ĐÓNG DẤU DÒNG MỚI (Deposit): KẸP CỬA SỔ HẸP < 1 epoch.
+///
+/// get_epoch (một-cận) KHÔNG an toàn để ĐÓNG DẤU dòng mới: ledger chỉ ép
+/// slot ≥ lower_bound, nên attacker đặt lower_bound = 0 (quá khứ) vẫn hợp lệ →
+/// dep_epoch giả nhỏ → dòng đóng dấu epoch quá khứ → escheat SỚM (cướp cọc user).
+///
+/// FIX (idiom chuẩn "epoch hiện tại từ validity range"): ÉP CẢ 2 cận hữu hạn +
+/// cửa sổ HẸP `hi - lo < ms_per_epoch`. Khi đó:
+///   - ledger ép  lo ≤ current_slot ≤ hi  với  hi - lo < ms_per_epoch
+///   - đặt lo = 0 KHÔNG còn được: hi < ms_per_epoch → ledger ép slot ≤ hi →
+///     tx chỉ hợp lệ quanh genesis (slot < ms_per_epoch), KHÔNG dùng cho cọc thật.
+///   - dep_epoch = lo / ms_per_epoch ghim SÁT now (cửa sổ < 1 epoch nên lo & hi
+///     cùng 1 epoch, hoặc lệch tối đa 1 ranh giới — không bịa quá khứ được).
+/// Trả dep_epoch. Fail nếu cận không hữu hạn / cửa sổ rộng ≥ 1 epoch.
+pub fn get_deposit_epoch(tx: Transaction, ms_per_epoch: Int) -> Int {
+  let IntervalBound { bound_type: lo_bt, .. } = tx.validity_range.lower_bound
+  let IntervalBound { bound_type: hi_bt, .. } = tx.validity_range.upper_bound
+  expect Some(lo) = get_finite(lo_bt)
+  expect Some(hi) = get_finite(hi_bt)
+  // cửa sổ HẸP < 1 epoch (chống đặt lo=0 quá khứ: hi phải < ms_per_epoch quanh lo).
+  expect hi - lo < ms_per_epoch
+  lo / ms_per_epoch
 }
 
 /// Script hash của chính validator đang chạy.

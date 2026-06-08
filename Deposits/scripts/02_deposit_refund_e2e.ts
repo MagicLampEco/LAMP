@@ -62,6 +62,8 @@ async function main(): Promise<void> {
       treasury_credential: { kind: "VerificationKey", hash: pkh },
       escheat_after_epoch: escheatAfter,
       ms_per_epoch: BigInt(state?.msPerEpoch ?? "86400000"),
+      // LỖ-2 — sàn freshness beacon. demoBeacon epoch 0 → min 0 (qua). Khớp seed deploy.
+      min_param_epoch: BigInt(state?.minParamEpoch ?? "0"),
       ledger: [],
       epoch: 10n,
     };

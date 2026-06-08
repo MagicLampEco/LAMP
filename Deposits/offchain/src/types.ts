@@ -70,8 +70,11 @@ export interface PotDatum {
   // địa chỉ == Script(hash) này (KHÔNG chỉ tin NFT-qty==1). Mirror onchain types.ak.
   deposit_param_script_hash : string;    // hex
   treasury_credential       : Credential; // đích escheat (Treasury/Reserve)
-  escheat_after_epoch  : bigint;         // số epoch sau deposit mới được escheat
+  escheat_after_epoch  : bigint;         // số epoch sau deposit mới được escheat (> 0)
   ms_per_epoch         : bigint;         // POSIX ms / epoch
+  // LỖ-2 — sàn freshness beacon DepositParam: Deposit ÉP beacon.epoch ≥ min_param_epoch
+  // (chống bind bảng phí CŨ khi DAO đã nâng). Mirror onchain types.ak.
+  min_param_epoch      : bigint;         // sàn epoch beacon hợp lệ
   // state:
   ledger               : DepositLine[];  // sổ cọc
   epoch                : bigint;         // epoch cập nhật gần nhất
