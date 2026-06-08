@@ -5,12 +5,14 @@ import {
   planDepositLedger, applyDepositValue, depositLedgerOk, depositValueOk,
   planRefundLedger, applyRefundValue, refundLedgerOk, refundValueOk,
 } from "../offchain/src/ledger.js";
-import { planDeposit, planRefund } from "../offchain/src/builder.js";
+import { planDeposit, planRefund, planEscheat } from "../offchain/src/builder.js";
+import { validParam, requiredFor, lookupBase, Q } from "../offchain/src/schedule.js";
 import {
   potDatumToCbor, potDatumFromCbor, depositsRedeemerToCbor, decodeDepositsRedeemer,
+  depositParamToCbor, depositParamFromCbor,
 } from "../offchain/src/datum.js";
 import { Data } from "@lucid-evolution/lucid";
-import type { PotDatum, DepositLine } from "../offchain/src/types.js";
+import type { PotDatum, DepositLine, DepositParam } from "../offchain/src/types.js";
 
 // ── Fixtures ──
 const LAMP_POLICY = "aabb".repeat(14); // 56 hex = 28 byte
@@ -20,9 +22,15 @@ const adaK = assetKey("", "");
 const ALICE = "a11ce0";
 const BOB = "b0b0";
 const COUNCIL = "c011c1";
+const TREASURY = "7a5c0001";
 const E1 = "e1";
 const E2 = "e2";
 const RESERVED = 2_000_000n;
+// phân loại demo.
+const AT_CATTLE = 0n, VT_HIGH = 2n, LC_LONG = 2n;
+const AT_PLANT = 1n, VT_LOW = 0n, LC_SHORT = 0n;
+const ESCHEAT_AFTER = 6n;
+const MS_PER_EPOCH = 86_400_000n;
 
 function baseDatum(over: Partial<PotDatum> = {}): PotDatum {
   return {
@@ -30,14 +38,33 @@ function baseDatum(over: Partial<PotDatum> = {}): PotDatum {
     accepted_assets: [{ policy: "", name: "" }, { policy: LAMP_POLICY, name: LAMP_NAME }],
     lifecycle_authority: { kind: "VerificationKey", hash: COUNCIL },
     reserved_min_ada: RESERVED,
+    deposit_param_policy: "9999",
+    deposit_param_name: "5041524d",
+    treasury_credential: { kind: "VerificationKey", hash: TREASURY },
+    escheat_after_epoch: ESCHEAT_AFTER,
+    ms_per_epoch: MS_PER_EPOCH,
     ledger: [],
     epoch: 10n,
     ...over,
   };
 }
 
-function lampLine(entity: string, depositor: string, amount: bigint): DepositLine {
-  return { entity_id: entity, depositor, policy: LAMP_POLICY, name: LAMP_NAME, amount, epoch: 10n };
+function lampLine(entity: string, depositor: string, amount: bigint, epoch = 10n): DepositLine {
+  return {
+    entity_id: entity, depositor, policy: LAMP_POLICY, name: LAMP_NAME, amount, epoch,
+    asset_type: AT_CATTLE, value_tier: VT_HIGH, lifecycle_class: LC_LONG,
+  };
+}
+
+// beacon: bò = `base` ở mult 1.0×; dưa leo = 0.
+function beacon(base: bigint, mult: bigint = Q): DepositParam {
+  return {
+    tiers: [
+      { asset_type: AT_PLANT, value_tier: VT_LOW, lifecycle_class: LC_SHORT, base_deposit: 0n },
+      { asset_type: AT_CATTLE, value_tier: VT_HIGH, lifecycle_class: LC_LONG, base_deposit: base },
+    ],
+    demand_mult: mult, m_min: 0n, m_max: 2_000_000_000n, epoch: 5n,
+  };
 }
 
 // pot value = reserved + lamp bond.
@@ -60,10 +87,14 @@ describe("itemCut/assetKey/lineKey helpers", () => {
 });
 
 // ════════════════════════════════════════════════════════════
-describe("DEPOSIT — plan + bất biến", () => {
-  it("deposit mới: sổ +1 dòng, value +amount", () => {
+// DEPOSIT v2 — amount LẤY TỪ beacon (KHÔNG client mớm). planDeposit nhận beacon +
+// phân loại; trả amount đã ÉP. depositLedgerOk/Value vẫn nhận amount để tự kiểm.
+describe("DEPOSIT — plan động (beacon) + bất biến", () => {
+  it("deposit bò: amount = beacon(1 LAMP), sổ +1 dòng, value +amount", () => {
     const d = baseDatum();
-    const { newDatum, potAfter } = planDeposit(d, potVal(0n), E1, ALICE, LAMP_POLICY, LAMP_NAME, 1_000_000n, 11n);
+    const { newDatum, potAfter, amount } =
+      planDeposit(d, potVal(0n), beacon(1_000_000n), E1, ALICE, LAMP_POLICY, LAMP_NAME, AT_CATTLE, VT_HIGH, LC_LONG, 11n);
+    expect(amount).toBe(1_000_000n);
     expect(newDatum.ledger).toHaveLength(1);
     expect(lineAmount(newDatum.ledger, E1, ALICE, LAMP_POLICY, LAMP_NAME)).toBe(1_000_000n);
     expect(potAfter[lampK]).toBe(1_000_000n);
@@ -72,9 +103,27 @@ describe("DEPOSIT — plan + bất biến", () => {
     expect(depositValueOk(potVal(0n), potAfter, LAMP_POLICY, LAMP_NAME, 1_000_000n)).toBe(true);
   });
 
+  it("deposit dưa leo: amount = 0 (cọc ≈ 0), KHÔNG ghi dòng (sổ giữ nguyên)", () => {
+    const d = baseDatum();
+    const { newDatum, potAfter, amount } =
+      planDeposit(d, potVal(0n), beacon(1_000_000n), E1, ALICE, LAMP_POLICY, LAMP_NAME, AT_PLANT, VT_LOW, LC_SHORT, 11n);
+    expect(amount).toBe(0n);
+    expect(newDatum.ledger).toHaveLength(0);  // không ghi dòng
+    expect(potAfter[lampK] ?? 0n).toBe(0n);   // value không tăng
+  });
+
+  it("deposit demand 2.0×: bò → 2 LAMP (DAO scale toàn bảng)", () => {
+    const d = baseDatum();
+    const { amount, potAfter } =
+      planDeposit(d, potVal(0n), beacon(1_000_000n, 2_000_000_000n), E1, ALICE, LAMP_POLICY, LAMP_NAME, AT_CATTLE, VT_HIGH, LC_LONG, 11n);
+    expect(amount).toBe(2_000_000n);
+    expect(potAfter[lampK]).toBe(2_000_000n);
+  });
+
   it("deposit cộng dồn cùng khóa: 1 dòng, không tách", () => {
     const d = baseDatum({ ledger: [lampLine(E1, ALICE, 1_000_000n)] });
-    const { newDatum, potAfter } = planDeposit(d, potVal(1_000_000n), E1, ALICE, LAMP_POLICY, LAMP_NAME, 500_000n, 11n);
+    const { newDatum, potAfter } =
+      planDeposit(d, potVal(1_000_000n), beacon(500_000n), E1, ALICE, LAMP_POLICY, LAMP_NAME, AT_CATTLE, VT_HIGH, LC_LONG, 11n);
     expect(newDatum.ledger).toHaveLength(1);
     expect(lineAmount(newDatum.ledger, E1, ALICE, LAMP_POLICY, LAMP_NAME)).toBe(1_500_000n);
     expect(potAfter[lampK]).toBe(1_500_000n);
@@ -82,26 +131,32 @@ describe("DEPOSIT — plan + bất biến", () => {
 
   it("deposit giữ NGUYÊN dòng người khác", () => {
     const d = baseDatum({ ledger: [lampLine(E1, ALICE, 1_000_000n)] });
-    const { newDatum } = planDeposit(d, potVal(1_000_000n), E2, BOB, LAMP_POLICY, LAMP_NAME, 700_000n, 11n);
+    const { newDatum } =
+      planDeposit(d, potVal(1_000_000n), beacon(700_000n), E2, BOB, LAMP_POLICY, LAMP_NAME, AT_CATTLE, VT_HIGH, LC_LONG, 11n);
     expect(newDatum.ledger).toHaveLength(2);
     expect(lineAmount(newDatum.ledger, E1, ALICE, LAMP_POLICY, LAMP_NAME)).toBe(1_000_000n);
     expect(lineAmount(newDatum.ledger, E2, BOB, LAMP_POLICY, LAMP_NAME)).toBe(700_000n);
   });
 
-  it("deposit amount ≤ 0 ném lỗi (A4)", () => {
+  it("ATK: phân loại không có trong bảng → ném DEP-007 (chống tier giả né phí)", () => {
     const d = baseDatum();
-    expect(() => planDeposit(d, potVal(0n), E1, ALICE, LAMP_POLICY, LAMP_NAME, 0n, 11n)).toThrow(/DEP-001/);
-    expect(() => planDeposit(d, potVal(0n), E1, ALICE, LAMP_POLICY, LAMP_NAME, -5n, 11n)).toThrow(/DEP-001/);
+    expect(() => planDeposit(d, potVal(0n), beacon(1_000_000n), E1, ALICE, LAMP_POLICY, LAMP_NAME, 9n, 9n, 9n, 11n)).toThrow(/DEP-007/);
+  });
+
+  it("ATK: beacon clamp sai (mult > m_max) → ném DEP-006", () => {
+    const d = baseDatum();
+    const bad: DepositParam = { ...beacon(1_000_000n), demand_mult: 3_000_000_000n };
+    expect(() => planDeposit(d, potVal(0n), bad, E1, ALICE, LAMP_POLICY, LAMP_NAME, AT_CATTLE, VT_HIGH, LC_LONG, 11n)).toThrow(/DEP-006/);
   });
 
   it("deposit asset không accepted ném lỗi", () => {
     const d = baseDatum();
-    expect(() => planDeposit(d, potVal(0n), E1, ALICE, "dead", "beef", 100n, 11n)).toThrow(/DEP-002/);
+    expect(() => planDeposit(d, potVal(0n), beacon(100n), E1, ALICE, "dead", "beef", AT_CATTLE, VT_HIGH, LC_LONG, 11n)).toThrow(/DEP-002/);
   });
 
   it("deposit epoch lùi ném lỗi", () => {
     const d = baseDatum();
-    expect(() => planDeposit(d, potVal(0n), E1, ALICE, LAMP_POLICY, LAMP_NAME, 100n, 9n)).toThrow(/DEP-003/);
+    expect(() => planDeposit(d, potVal(0n), beacon(100n), E1, ALICE, LAMP_POLICY, LAMP_NAME, AT_CATTLE, VT_HIGH, LC_LONG, 9n)).toThrow(/DEP-003/);
   });
 
   it("phantom value: dòng +amount nhưng value không tăng → depositValueOk false (A5)", () => {
@@ -122,6 +177,12 @@ describe("DEPOSIT — plan + bất biến", () => {
     const d = baseDatum({ ledger: [lampLine(E1, ALICE, 1_000_000n)] });
     const unchanged = [lampLine(E1, ALICE, 1_000_000n)];
     expect(depositLedgerOk(d.ledger, unchanged, E1, ALICE, LAMP_POLICY, LAMP_NAME, 500_000n)).toBe(false);
+  });
+
+  it("cọc 0 mà ghi dòng khống → depositLedgerOk false (V2-ATK-5)", () => {
+    const d = baseDatum();
+    const phantom = [lampLine(E1, ALICE, 1n)];
+    expect(depositLedgerOk(d.ledger, phantom, E1, ALICE, LAMP_POLICY, LAMP_NAME, 0n)).toBe(false);
   });
 });
 
@@ -183,6 +244,65 @@ describe("REFUND — plan + bất biến", () => {
 });
 
 // ════════════════════════════════════════════════════════════
+// SCHEDULE v2 — phí cọc từ beacon (mirror schedule.ak)
+describe("SCHEDULE — required từ DepositParam beacon", () => {
+  it("dưa leo → 0 ở mọi mult", () => {
+    expect(requiredFor(beacon(50_000_000n), AT_PLANT, VT_LOW, LC_SHORT)).toBe(0n);
+    expect(requiredFor(beacon(50_000_000n, 2_000_000_000n), AT_PLANT, VT_LOW, LC_SHORT)).toBe(0n);
+  });
+  it("bò mult 1.0× → base; mult 2.0× → 2×base", () => {
+    expect(requiredFor(beacon(50_000_000n), AT_CATTLE, VT_HIGH, LC_LONG)).toBe(50_000_000n);
+    expect(requiredFor(beacon(50_000_000n, 2_000_000_000n), AT_CATTLE, VT_HIGH, LC_LONG)).toBe(100_000_000n);
+  });
+  it("phân loại không có trong bảng → undefined", () => {
+    expect(requiredFor(beacon(1n), 9n, 9n, 9n)).toBeUndefined();
+    expect(lookupBase(beacon(1n).tiers, 9n, 9n, 9n)).toBeUndefined();
+  });
+  it("validParam: clamp + base ≥ 0", () => {
+    expect(validParam(beacon(1_000_000n))).toBe(true);
+    expect(validParam({ ...beacon(1n), demand_mult: 3_000_000_000n })).toBe(false);
+    expect(validParam({ ...beacon(1n), tiers: [{ asset_type: 0n, value_tier: 0n, lifecycle_class: 0n, base_deposit: -1n }] })).toBe(false);
+  });
+});
+
+// ════════════════════════════════════════════════════════════
+// ESCHEAT v2 — DID mồ côi quá hạn → value về Treasury
+describe("ESCHEAT — plan + bất biến", () => {
+  it("escheat đủ hạn: dòng XÓA, value −amount (về Treasury)", () => {
+    const d = baseDatum({ ledger: [lampLine(E1, ALICE, 1_000_000n, 10n)] });
+    const { newDatum, potAfter, escheatAmount } =
+      planEscheat(d, potVal(1_000_000n), E1, ALICE, LAMP_POLICY, LAMP_NAME, 16n, 16n);  // 16 = 10+6
+    expect(escheatAmount).toBe(1_000_000n);
+    expect(newDatum.ledger).toHaveLength(0);
+    expect(potAfter[lampK] ?? 0n).toBe(0n);
+  });
+
+  it("escheat giữ NGUYÊN dòng người khác", () => {
+    const d = baseDatum({ ledger: [lampLine(E1, ALICE, 1_000_000n, 5n), lampLine(E2, BOB, 700_000n, 5n)] });
+    const { newDatum } = planEscheat(d, potVal(1_700_000n), E1, ALICE, LAMP_POLICY, LAMP_NAME, 20n, 20n);
+    expect(newDatum.ledger).toHaveLength(1);
+    expect(lineAmount(newDatum.ledger, E2, BOB, LAMP_POLICY, LAMP_NAME)).toBe(700_000n);
+  });
+
+  it("ATK: escheat SỚM (cur < dep+after) → ném ESC-004", () => {
+    const d = baseDatum({ ledger: [lampLine(E1, ALICE, 1_000_000n, 10n)] });
+    expect(() => planEscheat(d, potVal(1_000_000n), E1, ALICE, LAMP_POLICY, LAMP_NAME, 15n, 15n)).toThrow(/ESC-004/);
+  });
+
+  it("ATK: escheat dòng không tồn tại (phantom) → ném ESC-001", () => {
+    const d = baseDatum();
+    expect(() => planEscheat(d, potVal(0n), E1, ALICE, LAMP_POLICY, LAMP_NAME, 99n, 99n)).toThrow(/ESC-001/);
+  });
+
+  it("ATK: escheat-then-refund double → refund dòng đã xóa ném REF-001", () => {
+    const d0 = baseDatum({ ledger: [lampLine(E1, ALICE, 1_000_000n, 10n)] });
+    const { newDatum } = planEscheat(d0, potVal(1_000_000n), E1, ALICE, LAMP_POLICY, LAMP_NAME, 16n, 16n);
+    const d1 = { ...d0, ledger: newDatum.ledger };
+    expect(() => planRefund(d1, potVal(0n), E1, ALICE, LAMP_POLICY, LAMP_NAME, 17n)).toThrow(/REF-001/);
+  });
+});
+
+// ════════════════════════════════════════════════════════════
 describe("value preservation — Σ bảo toàn (KHÔNG burn)", () => {
   it("deposit chỉ tăng asset đụng, asset khác giữ nguyên", () => {
     const valueIn: AssetMap = { [adaK]: RESERVED, [lampK]: 50n };
@@ -216,8 +336,12 @@ describe("codec — round-trip byte-perfect (mirror onchain Constr)", () => {
     expect(potDatumFromCbor(potDatumToCbor(d))).toEqual(d);
   });
 
-  it("Deposit redeemer round-trip + Constr index 0", () => {
-    const r = { kind: "Deposit" as const, entity_id: E1, depositor: ALICE, policy: LAMP_POLICY, name: LAMP_NAME, amount: 1_000_000n };
+  it("Deposit redeemer round-trip + Constr index 0 (v2: phân loại + deposit_ref)", () => {
+    const r = {
+      kind: "Deposit" as const, entity_id: E1, depositor: ALICE, policy: LAMP_POLICY, name: LAMP_NAME,
+      asset_type: AT_CATTLE, value_tier: VT_HIGH, lifecycle_class: LC_LONG,
+      deposit_ref: { txHash: "bb".repeat(32), index: 9n },
+    };
     const cbor = depositsRedeemerToCbor(r);
     expect(decodeDepositsRedeemer(Data.from(cbor))).toEqual(r);
   });
@@ -226,5 +350,16 @@ describe("codec — round-trip byte-perfect (mirror onchain Constr)", () => {
     const r = { kind: "Refund" as const, entity_id: E1, depositor: ALICE, policy: LAMP_POLICY, name: LAMP_NAME };
     const cbor = depositsRedeemerToCbor(r);
     expect(decodeDepositsRedeemer(Data.from(cbor))).toEqual(r);
+  });
+
+  it("Escheat redeemer round-trip + Constr index 2", () => {
+    const r = { kind: "Escheat" as const, entity_id: E1, depositor: ALICE, policy: LAMP_POLICY, name: LAMP_NAME };
+    const cbor = depositsRedeemerToCbor(r);
+    expect(decodeDepositsRedeemer(Data.from(cbor))).toEqual(r);
+  });
+
+  it("DepositParam beacon round-trip (tiers + clamp)", () => {
+    const p = beacon(50_000_000n, 1_500_000_000n);
+    expect(depositParamFromCbor(depositParamToCbor(p))).toEqual(p);
   });
 });

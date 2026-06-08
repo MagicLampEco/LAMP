@@ -1,31 +1,45 @@
 // Deposits pot validator — bond HOÀN-LẠI chống rác (CONTRACT; SPEC §2).
-// v1: 2 nhánh Deposit / Refund. Pot giữ value đa-asset; mỗi cọc là 1 dòng sổ trong
-// datum (KHÔNG mỗi entity 1 UTxO). Refund XÓA dòng → chống double-refund.
+// v1: 2 nhánh Deposit / Refund. v2 (anh chốt 2026-06-08): GIỮ mọi bất biến v1, THÊM
+//   - Deposit ĐỘNG: amount ÉP khớp DepositParam beacon (reference input) theo phân
+//     loại (asset_type, value_tier, lifecycle_class) — KHÔNG tin client mớm amount.
+//   - Escheat: DID mồ côi quá escheat_after → value về Treasury → xóa dòng.
+// Pot giữ value đa-asset; mỗi cọc là 1 dòng sổ trong datum (KHÔNG mỗi entity 1 UTxO).
+// Refund/Escheat XÓA dòng → chống double.
 //
-// DEPOSIT ÉP:
+// DEPOSIT ÉP (v2):
 //   C-DEP-0  KHÔNG mint/burn (tx.mint == 0).
 //   C-DEP-1  ĐÚNG 1 pot input + 1 pot output theo PAYMENT SCRIPT HASH (chống double-sat).
-//   C-DEP-2  params bảo toàn (instance_id, accepted_assets, lifecycle_authority,
-//            reserved_min_ada); epoch không lùi; pot output ở Script (!is_vk).
-//   C-DEP-3  amount > 0 ∧ asset ∈ accepted_assets.
+//   C-DEP-2  params bảo toàn (mọi field ngoài ledger+epoch); epoch không lùi; pot output ở Script.
+//   C-DEP-3  asset ∈ accepted_assets.
 //   C-DEP-4  depositor PHẢI ký (extra_signatories) — sổ trung thực.
+//   C-DEP-7  **amount = required(beacon, asset_type, value_tier, lifecycle_class)** —
+//            đọc DepositParam qua deposit_ref (reference input mang NFT xác thực),
+//            valid_param(beacon), phân loại PHẢI có trong bảng (None → fail).
+//            amount > 0 KHÔNG còn bắt buộc: cọc 0 hợp lệ (dưa leo). amount ≥ 0 + nếu
+//            > 0 thì ghi dòng; nếu == 0 thì KHÔNG ghi dòng (không value, không sổ).
 //   C-DEP-5  value: pot_out.value == pot_in.value ⊕ {asset: amount} (đẳng thức tuyệt đối).
 //   C-DEP-6  sổ: dòng đích += amount (cộng dồn 1 dòng); dòng khác giữ nguyên; > 0; không dup.
 //
-// REFUND ÉP:
-//   C-REF-0  KHÔNG mint/burn.
-//   C-REF-1  ĐÚNG 1 pot input + 1 pot output theo PAYMENT SCRIPT HASH.
-//   C-REF-2  params bảo toàn; epoch không lùi; pot output ở Script.
-//   C-REF-3  dòng đích (entity,depositor,asset) PHẢI tồn tại in; refund_amount = số dư (>0).
-//   C-REF-4  authority: depositor ký HOẶC lifecycle_authority thỏa (VK ký / Script chứng kiến).
-//   C-REF-5  value: pot_out.value == pot_in.value ⊖ {asset: refund_amount} (đẳng thức tuyệt đối).
-//   C-REF-6  sổ: dòng đích bị XÓA; dòng khác giữ NGUYÊN; > 0; không dup (chống double-refund).
-//   C-REF-7  người nhận: Σ output value(asset) tới depositor ≥ refund_amount ∧ depositor ≠ pot.
+// REFUND ÉP: như v1 (C-REF-0..7).
+//
+// ESCHEAT ÉP (v2):
+//   C-ESC-0  KHÔNG mint/burn.
+//   C-ESC-1  ĐÚNG 1 pot input + 1 pot output theo PAYMENT SCRIPT HASH.
+//   C-ESC-2  params bảo toàn; epoch không lùi; pot output ở Script.
+//   C-ESC-3  dòng đích PHẢI tồn tại; escheat_amount = số dư dòng (> 0).
+//   C-ESC-4  current_epoch ≥ line.epoch + escheat_after_epoch (chưa tới hạn → fail).
+//   C-ESC-5  value: pot_out.value == pot_in.value ⊖ {asset: escheat_amount}.
+//   C-ESC-6  sổ: dòng đích XÓA; dòng khác giữ NGUYÊN (chống double + chống ăn dòng khác).
+//   C-ESC-7  người nhận: Σ output value(asset) tới treasury_credential ≥ escheat_amount
+//            (tiền ÉP về Treasury, KHÔNG về ví attacker).
 
 use cardano/assets
 use cardano/transaction.{InlineDatum, OutputReference, Transaction}
 use magiclamp/deposits/ledger
-use magiclamp/deposits/types.{Deposit, PotDatum, DepositsRedeemer, Refund}
+use magiclamp/deposits/schedule
+use magiclamp/deposits/types.{
+  Deposit, DepositParam, DepositsRedeemer, Escheat, PotDatum, Refund,
+}
 use magiclamp/deposits/util
 
 validator deposits {
@@ -40,7 +54,16 @@ validator deposits {
     let own_hash = util.own_script_hash(own_addr)
 
     when redeemer is {
-      Deposit { entity_id, depositor, policy, name, amount } -> {
+      Deposit {
+        entity_id,
+        depositor,
+        policy,
+        name,
+        asset_type,
+        value_tier,
+        lifecycle_class,
+        deposit_ref,
+      } -> {
         // C-DEP-0
         expect assets.is_zero(tx.mint)
 
@@ -53,22 +76,37 @@ validator deposits {
         // C-DEP-2: params bảo toàn, epoch không lùi, output ở Script.
         expect InlineDatum(od) = pot_out.datum
         expect out_datum: PotDatum = od
-        expect out_datum.instance_id == datum.instance_id
-        expect out_datum.accepted_assets == datum.accepted_assets
-        expect out_datum.lifecycle_authority == datum.lifecycle_authority
-        expect out_datum.reserved_min_ada == datum.reserved_min_ada
+        expect params_preserved(datum, out_datum)
         expect out_datum.epoch >= datum.epoch
         expect !util.is_vk(pot_out.address)
 
-        // C-DEP-3: amount > 0 + asset accepted.
-        expect amount > 0
+        // C-DEP-3: asset accepted.
         expect ledger.asset_accepted(policy, name, datum.accepted_assets)
 
         // C-DEP-4: depositor PHẢI ký.
         expect util.signed_by(tx.extra_signatories, depositor)
 
-        // C-DEP-6: sổ — dòng đích += amount; dòng khác giữ nguyên.
-        expect
+        // C-DEP-7: ĐỌC DepositParam beacon qua reference input (NFT xác thực) → ÉP amount.
+        // KHÔNG tin client mớm amount: amount LẤY TỪ beacon theo phân loại 3 khóa.
+        let pp_data =
+          util.read_beacon_datum(
+            tx.reference_inputs,
+            deposit_ref,
+            datum.deposit_param_policy,
+            datum.deposit_param_name,
+          )
+        expect pp: DepositParam = pp_data
+        expect schedule.valid_param(pp)
+        // phân loại PHẢI có trong bảng (tier giả → None → fail; chống né phí).
+        expect Some(amount) =
+          schedule.required_for(pp, asset_type, value_tier, lifecycle_class)
+
+        // C-DEP-5: value pot tăng đúng amount (asset khác giữ nguyên). amount=0 → value giữ.
+        expect ledger.deposit_value_ok(pot_in.value, pot_out.value, policy, name, amount)
+
+        // C-DEP-6: sổ. amount > 0 → ghi/cộng dồn dòng (kèm classification). amount == 0
+        // → KHÔNG ghi dòng (cọc 0: không value, không sổ → sổ giữ NGUYÊN).
+        if amount > 0 {
           ledger.deposit_ledger_ok(
             datum.ledger,
             out_datum.ledger,
@@ -78,11 +116,10 @@ validator deposits {
             name,
             amount,
           )
-
-        // C-DEP-5: value pot tăng đúng amount (asset khác giữ nguyên).
-        expect ledger.deposit_value_ok(pot_in.value, pot_out.value, policy, name, amount)
-
-        True
+        } else {
+          // cọc 0: sổ out == sổ in (không thêm dòng khống).
+          out_datum.ledger == datum.ledger
+        }
       }
 
       Refund { entity_id, depositor, policy, name } -> {
@@ -98,10 +135,7 @@ validator deposits {
         // C-REF-2: params bảo toàn, epoch không lùi, output ở Script.
         expect InlineDatum(od) = pot_out.datum
         expect out_datum: PotDatum = od
-        expect out_datum.instance_id == datum.instance_id
-        expect out_datum.accepted_assets == datum.accepted_assets
-        expect out_datum.lifecycle_authority == datum.lifecycle_authority
-        expect out_datum.reserved_min_ada == datum.reserved_min_ada
+        expect params_preserved(datum, out_datum)
         expect out_datum.epoch >= datum.epoch
         expect !util.is_vk(pot_out.address)
 
@@ -143,19 +177,87 @@ validator deposits {
             refund_amount,
           )
 
-        // C-REF-7: tiền về ĐÚNG depositor ∧ depositor ≠ pot (tiền thật rời pot).
-        // depositor là pkh ví thường (VerificationKey). pot ở Script hash own_hash —
-        // depositor pkh không thể trùng script hash chính nó về ngữ nghĩa, nhưng ép
-        // tổng-khớp tới VerificationKey(depositor): Σ out tới pkh depositor ≥ refund_amount.
-        expect
-          util.output_sum_to_pkh(tx.outputs, depositor, policy, name) >= refund_amount
+        // C-REF-7: tiền về ĐÚNG depositor (creator-refund) — tổng-khớp tới VK(depositor).
+        util.output_sum_to_pkh(tx.outputs, depositor, policy, name) >= refund_amount
+      }
 
-        True
+      Escheat { entity_id, depositor, policy, name } -> {
+        // C-ESC-0
+        expect assets.is_zero(tx.mint)
+
+        // C-ESC-1
+        expect util.count_inputs_at_script(tx.inputs, own_hash) == 1
+        expect util.count_outputs_at_script(tx.outputs, own_hash) == 1
+        let pot_in = util.input_at_script(tx.inputs, own_hash)
+        let pot_out = util.output_at_script(tx.outputs, own_hash)
+
+        // C-ESC-2: params bảo toàn, epoch không lùi, output ở Script.
+        expect InlineDatum(od) = pot_out.datum
+        expect out_datum: PotDatum = od
+        expect params_preserved(datum, out_datum)
+        expect out_datum.epoch >= datum.epoch
+        expect !util.is_vk(pot_out.address)
+
+        // C-ESC-3: dòng đích PHẢI tồn tại; escheat_amount = số dư dòng (>0).
+        expect Some(line) =
+          ledger.find_line(datum.ledger, entity_id, depositor, policy, name)
+        let escheat_amount = line.amount
+        expect escheat_amount > 0
+
+        // C-ESC-4: ĐÃ tới hạn — current_epoch ≥ deposit_epoch + escheat_after.
+        // current_epoch lấy từ validity_range (caller đặt); deposit_epoch = line.epoch.
+        let current_epoch = util.get_epoch(tx, datum.ms_per_epoch)
+        expect current_epoch >= line.epoch + datum.escheat_after_epoch
+
+        // C-ESC-6: sổ — dòng đích XÓA; dòng khác giữ nguyên (tái dùng refund_ledger_ok).
+        expect
+          ledger.refund_ledger_ok(
+            datum.ledger,
+            out_datum.ledger,
+            entity_id,
+            depositor,
+            policy,
+            name,
+          )
+
+        // C-ESC-5: value pot giảm đúng escheat_amount.
+        expect
+          ledger.refund_value_ok(
+            pot_in.value,
+            pot_out.value,
+            policy,
+            name,
+            escheat_amount,
+          )
+
+        // C-ESC-7: tiền ÉP về Treasury custody (KHÔNG về ví attacker).
+        util.output_sum_to_credential(
+          tx.outputs,
+          datum.treasury_credential,
+          policy,
+          name,
+        ) >= escheat_amount
       }
     }
   }
 
   else(_) {
     fail
+  }
+}
+
+/// Mọi PARAM (mọi field ngoài ledger + epoch) bảo toàn qua tx. Gom 1 chỗ để 3 nhánh
+/// dùng chung — thêm param mới chỉ sửa đây (tránh sót field, bài học audit).
+fn params_preserved(d_in: PotDatum, d_out: PotDatum) -> Bool {
+  and {
+    d_out.instance_id == d_in.instance_id,
+    d_out.accepted_assets == d_in.accepted_assets,
+    d_out.lifecycle_authority == d_in.lifecycle_authority,
+    d_out.reserved_min_ada == d_in.reserved_min_ada,
+    d_out.deposit_param_policy == d_in.deposit_param_policy,
+    d_out.deposit_param_name == d_in.deposit_param_name,
+    d_out.treasury_credential == d_in.treasury_credential,
+    d_out.escheat_after_epoch == d_in.escheat_after_epoch,
+    d_out.ms_per_epoch == d_in.ms_per_epoch,
   }
 }

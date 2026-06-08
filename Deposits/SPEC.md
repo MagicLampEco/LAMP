@@ -124,6 +124,69 @@ là Credential → cắm validator hoặc key, decentralize được.
 ## 5. Bằng chứng test
 
 Xem `Deposits/onchain/validators/deposits_test.ak` (validator tests, mock Transaction — happy +
-NEGATIVE A1–A17) + `Deposits/tests/deposits.test.ts` (offchain plan/codec vitest). Số pass thật ghi ở
+NEGATIVE A1–A17 + v2) + `Deposits/tests/deposits.test.ts` (offchain plan/codec vitest). Số pass thật ghi ở
 báo cáo build. Deploy Preview: `Deposits/scripts/01_deploy_pot.ts` + `02_deposit_refund_e2e.ts`
 (SUBMIT=false ở build-mode — chỉ import + tsc + plan, live khi có `.env`).
+
+---
+
+## 6. v2 — NÂNG CẤP (anh chốt 2026-06-08): deposit ĐỘNG + creator-refund + escheat
+
+GIỮ NGUYÊN mọi bất biến v1 (value-preservation, double-refund, đúng depositor, double-sat). THÊM 3 thứ.
+
+### 6.1 mintDeposit ĐỘNG — amount từ `DepositParam` beacon (KHÔNG client mớm)
+
+- Beacon `DepositParam` (reference input, mang NFT xác thực) = bảng phí cọc do DAO chỉnh:
+  `DepositTier { asset_type, value_tier, lifecycle_class, base_deposit }` + `demand_mult` (clamp `[m_min,m_max]`).
+  `required = base_deposit × demand_mult / Q` (Q=1e9, pure BigInt, floor). Validator `deposit_param.ak` ép
+  committee M-of-N + epoch đơn điệu tăng + `valid_param` (mẫu ConsumeMAGIC `price_param.ak`).
+- Redeemer `Deposit` v2 mang `(asset_type, value_tier, lifecycle_class, deposit_ref)`. Validator ĐỌC beacon
+  qua `deposit_ref` (xác thực NFT theo `deposit_param_policy/name` ghim trong PotDatum) → `valid_param` →
+  tra hàng khớp 3 khóa → **ÉP `amount == required`** (C-DEP-7). amount KHÔNG còn trong redeemer.
+- **Cọc 0 hợp lệ**: dưa leo (cây/thấp/ngắn) → `base_deposit=0` → amount 0 → KHÔNG ghi dòng (min-ADA Cardano
+  đã chống rác). Bò/đất/hợp đồng (cao/dài) → cọc đáng kể.
+
+### 6.2 Creator-refund
+
+- `depositor` = pkh **người TẠO** (DID), ghi trong dòng. Refund/escheat trả về đúng `depositor`, ĐỘC LẬP ví
+  người sở hữu cuối (giải "người tiêu dùng chưa có ví"). Đây đã là ngữ nghĩa v1 (giữ); v2 chỉ làm rõ vai trò.
+  Nhánh authority v1 giữ nguyên (depositor ký HOẶC lifecycle_authority).
+
+### 6.3 Escheat — DID mồ côi → Treasury
+
+- Redeemer `Escheat { entity_id, depositor, policy, name }` (Constr 2). Bất biến C-ESC-0..7:
+  - C-ESC-4 `current_epoch ≥ line.epoch + escheat_after_epoch` (epoch từ `validity_range.lower_bound /
+    ms_per_epoch` — ledger chặn giả epoch tương lai).
+  - C-ESC-7 value ÉP về `treasury_credential` (VK hoặc Script) — KHÔNG về ví attacker.
+  - C-ESC-6 xóa dòng (dùng lại `refund_ledger_ok`) → chống double (escheat-rồi-refund/escheat lại fail vì
+    dòng biến mất). C-ESC-5 value −amount tuyệt đối (chống drain ADA/token khác).
+- Ai cũng trigger được (public-good cleanup) — tiền đích cố định nên không có động cơ trộm.
+
+### 6.4 Vector tấn công v2 (đã đóng + test)
+
+| # | Vector | Cách đóng | Test |
+|---|---|---|---|
+| V1 | Client mớm amount sai lịch | amount ÉP từ beacon (C-DEP-7); value khớp beacon | `v2_deposit_client_underpay_fail` |
+| V2 | Tier giả để cọc=0 / định giá lậu | hàng không có trong bảng → `required_for` None → fail | `v2_deposit_fake_tier_fail` |
+| V3 | Beacon giả (không NFT) | `read_beacon_datum` ép NFT qty==1 | `v2_deposit_fake_beacon_no_nft_fail` |
+| V4 | Beacon rác (clamp/base âm) | `valid_param` (defense-in-depth) | `v2_deposit_invalid_beacon_fail`, schedule tests |
+| V5 | Cọc 0 nhưng ghi dòng khống | nhánh amount==0 ép `sổ_out == sổ_in` | `v2_deposit_zero_phantom_line_fail` |
+| V6 | Escheat sớm (chưa tới hạn) | C-ESC-4 epoch gate | `v2_escheat_too_early_fail` |
+| V7 | Escheat về ví attacker | C-ESC-7 ÉP về `treasury_credential` | `v2_escheat_steal_to_attacker_fail` |
+| V8 | Escheat rồi refund (double) | xóa dòng → refund-phantom fail | `v2_escheat_then_refund_double_fail` |
+| V9 | Escheat phantom (dòng không có) | C-ESC-3 dòng phải tồn tại | `v2_escheat_phantom_fail` |
+| V10 | Escheat ăn dòng người khác | C-ESC-6 dòng khác giữ nguyên | `v2_escheat_eat_other_line_fail` |
+| V11 | Escheat xóa sổ giữ value | C-ESC-5 value −amount tuyệt đối | `v2_escheat_delete_keep_value_fail` |
+| V12 | Escheat đổi param né hạn | C-ESC-2 params_preserved (9 field) | `v2_escheat_param_tamper_fail` |
+| V13 | Escheat mint/burn | C-ESC-0 tx.mint==0 | `v2_escheat_mint_fail` |
+
+### 6.5 Quyết định (4 trục)
+
+- **Định hướng**: phí cọc động theo loại tài sản mở SDK cho mọi loại entity (con vật/cây/đất/hợp đồng) — không
+  ép 1 mức cứng; LAMP có giá trị qua cọc thật cho tài sản giá trị cao.
+- **First-principles**: amount KHÔNG tin client (như giá ConsumeMAGIC) — nguồn sự thật = beacon governance +
+  NFT; phân loại trung thực thuộc AssetDID (ngoài module), validator chỉ đảm bảo "đã trả đúng phí cho loại đã khai".
+- **Tối ưu eUTXO**: beacon là reference input (CIP-31, 1 UTxO chung mọi deposit, không tiêu — không contention);
+  escheat tái dùng `refund_ledger_ok`/`refund_value_ok` (không thêm logic value mới).
+- **Bền vững**: escheat chống kẹt vốn vĩnh viễn (DID mồ côi → Treasury), an toàn vốn user (depositor luôn rút
+  được trước hạn), không trộm được (đích cố định).

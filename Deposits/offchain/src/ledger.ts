@@ -88,11 +88,15 @@ export function potValueOk(value: AssetMap, ledger: DepositLine[], reservedMinAd
 
 // ── DEPOSIT: plan ledger_out + value_out ──
 
-/** Dựng ledger_out cho Deposit: dòng đích += amount (cộng dồn), dòng khác giữ nguyên. */
+/** Dựng ledger_out cho Deposit: dòng đích += amount (cộng dồn), dòng khác giữ nguyên.
+ *  v2: dòng mới mang classification (asset_type, value_tier, lifecycle_class). amount=0
+ *  (cọc dưa leo) → KHÔNG ghi dòng (sổ giữ nguyên — khớp validator nhánh amount==0). */
 export function planDepositLedger(
   ledgerIn: DepositLine[], entity: string, depositor: string,
   policy: string, name: string, amount: bigint, epoch: bigint,
+  assetType: bigint, valueTier: bigint, lifecycleClass: bigint,
 ): DepositLine[] {
+  if (amount === 0n) return ledgerIn.map((e) => ({ ...e }));
   const k = lineKey(entity, depositor, policy, name);
   let found = false;
   const out: DepositLine[] = ledgerIn.map((e) => {
@@ -103,7 +107,10 @@ export function planDepositLedger(
     return { ...e };
   });
   if (!found) {
-    out.push({ entity_id: entity, depositor, policy, name, amount, epoch });
+    out.push({
+      entity_id: entity, depositor, policy, name, amount, epoch,
+      asset_type: assetType, value_tier: valueTier, lifecycle_class: lifecycleClass,
+    });
   }
   return out;
 }
@@ -116,11 +123,16 @@ export function applyDepositValue(valueIn: AssetMap, policy: string, name: strin
   return out;
 }
 
-/** Mirror deposit_ledger_ok onchain. */
+/** Mirror deposit_ledger_ok onchain. amount==0 (cọc dưa leo) → sổ phải GIỮ NGUYÊN. */
 export function depositLedgerOk(
   ledgerIn: DepositLine[], ledgerOut: DepositLine[],
   entity: string, depositor: string, policy: string, name: string, amount: bigint,
 ): boolean {
+  if (amount === 0n) {
+    // nhánh validator: out_datum.ledger == datum.ledger (không thêm dòng khống).
+    if (ledgerOut.length !== ledgerIn.length) return false;
+    return ledgerIn.every((e, i) => sameKey(e, ledgerOut[i]!) && e.amount === ledgerOut[i]!.amount);
+  }
   if (!noDupLines(ledgerOut)) return false;
   if (!allLinesPositive(ledgerOut)) return false;
   const tk = lineKey(entity, depositor, policy, name);

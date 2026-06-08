@@ -88,6 +88,13 @@ export function depositsValidator(compiledCode: string): Validator {
   return { type: "PlutusV3", script: compiledCode };
 }
 
+/** deposit_param.spend CÓ 4 param (committee, threshold, nft_policy, nft_name).
+ *  Build-mode self-test: dùng compiledCode trực tiếp như genesis beacon placeholder
+ *  (apply params thật khi deploy live — caller cấp committee qua .env). */
+export function depositParamValidator(compiledCode: string): Validator {
+  return { type: "PlutusV3", script: compiledCode };
+}
+
 export function scriptAddress(script: Validator): string {
   return credentialToAddress(NETWORK, scriptHashToCredential(validatorToScriptHash(script)));
 }
@@ -108,6 +115,15 @@ export interface DepositsDeployedState {
   instanceId: string;
   lifecycleAuthority: { kind: "VerificationKey" | "Script"; hash: string };
   reservedMinAda: string;
+  // v2:
+  depositParam?: {
+    hash: string; address: string;
+    nftPolicy: string; nftName: string;
+    genesisUtxo?: OutRef;
+  };
+  treasuryCredential?: { kind: "VerificationKey" | "Script"; hash: string };
+  escheatAfterEpoch?: string;
+  msPerEpoch?: string;
   genesis?: { potUtxo: OutRef };
   lamp?: { policyId: string; assetName: string };
   wallet?: { pkh: string };

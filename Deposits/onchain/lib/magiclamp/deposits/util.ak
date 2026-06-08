@@ -3,14 +3,32 @@
 // stake credential — bài học audit C1/C2/M1 Distribution), KHÔNG so full Address.
 
 use aiken/collection/list
+use aiken/interval.{Finite, IntervalBound, IntervalBoundType}
 use cardano/address.{Address, Inline, Script, VerificationKey, Credential}
 use cardano/assets.{Value}
-use cardano/transaction.{InlineDatum, Input, NoDatum, Output, OutputReference}
+use cardano/transaction.{InlineDatum, Input, NoDatum, Output, OutputReference, Transaction}
 
 /// Address của chính UTxO đang spend.
 pub fn own_address(own_ref: OutputReference, inputs: List<Input>) -> Address {
   expect Some(i) = list.find(inputs, fn(x) { x.output_reference == own_ref })
   i.output.address
+}
+
+// ── Epoch từ validity range (v2 — escheat + đọc beacon stale, mẫu ConsumeMAGIC) ──
+
+pub fn get_finite(bt: IntervalBoundType) -> Option<Int> {
+  when bt is {
+    Finite(s) -> Some(s)
+    _ -> None
+  }
+}
+
+/// current_epoch = lower_bound(validity_range) / ms_per_epoch. Tx PHẢI có
+/// lower bound hữu hạn (caller đặt validity_range) → không giả epoch.
+pub fn get_epoch(tx: Transaction, ms_per_epoch: Int) -> Int {
+  let IntervalBound { bound_type, .. } = tx.validity_range.lower_bound
+  expect Some(s) = get_finite(bound_type)
+  s / ms_per_epoch
 }
 
 /// Script hash của chính validator đang chạy.
@@ -83,6 +101,46 @@ pub fn output_sum_to_pkh(
   )
 }
 
+/// Tổng value(asset) của mọi output GỬI tới 1 Credential bất kỳ (VK hoặc Script).
+/// Dùng cho ESCHEAT: tiền ÉP về treasury_credential (Treasury có thể là Script).
+pub fn output_sum_to_credential(
+  outputs : List<Output>,
+  cred    : Credential,
+  policy  : ByteArray,
+  name    : ByteArray,
+) -> Int {
+  list.foldl(
+    outputs,
+    0,
+    fn(o, acc) {
+      if o.address.payment_credential == cred {
+        acc + assets.quantity_of(o.value, policy, name)
+      } else {
+        acc
+      }
+    },
+  )
+}
+
+// ── Beacon DepositParam reader (v2 — reference input mang NFT xác thực) ──
+// CIP-31: đọc datum từ reference input, KHÔNG tiêu beacon. Xác thực = NFT one-shot
+// (đúng 1 token policy/name) → không UTxO giả nào mạo danh bảng phí governance.
+
+/// Đọc datum `T` từ reference input tại `ref`, mang ĐÚNG 1 NFT (policy,name).
+/// Fail nếu: không tìm thấy ref / NFT ≠ 1 / datum không inline / sai kiểu.
+pub fn read_beacon_datum(
+  ref_inputs : List<Input>,
+  ref        : OutputReference,
+  nft_policy : ByteArray,
+  nft_name   : ByteArray,
+) -> Data {
+  expect Some(beacon) =
+    list.find(ref_inputs, fn(i) { i.output_reference == ref })
+  expect assets.quantity_of(beacon.output.value, nft_policy, nft_name) == 1
+  expect InlineDatum(d) = beacon.output.datum
+  d
+}
+
 // ── Authority (C-REF-4) ──
 
 /// pkh có nằm trong extra_signatories?
@@ -152,4 +210,8 @@ pub fn mk_input(ref: OutputReference, out: Output) -> Input {
 
 pub fn mk_ref(ix: Int) -> OutputReference {
   OutputReference { transaction_id: #"00", output_index: ix }
+}
+
+pub fn mk_ref_id(id: ByteArray, ix: Int) -> OutputReference {
+  OutputReference { transaction_id: id, output_index: ix }
 }
