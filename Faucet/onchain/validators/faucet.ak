@@ -274,3 +274,161 @@ test claim_zero_amount_datum() fail {
     ft_tlamp_policy, ft_tlamp_name, Some(ft_datum_amt(0)), Claim, util.mk_ref(0), tx,
   )
 }
+
+// ══════════════════════ RED-TEAM VÒNG 2 ══════════════════════
+
+/// Dựng tx có thêm OUTPUT tùy ý (test 2 pool output / split).
+fn faucet_tx_xout(
+  pool_in_val: assets.Value,
+  pool_out_val: assets.Value,
+  d_in: FaucetDatum,
+  d_out: FaucetDatum,
+  extra_out: List<Output>,
+) -> Transaction {
+  let pool_addr = util.script_address(ft_pool_sh)
+  let pool_in = util.mk_input(util.mk_ref(0), util.mk_output(pool_addr, pool_in_val, d_in))
+  let pool_out = util.mk_output(pool_addr, pool_out_val, d_out)
+  let claimer = util.mk_output_no_datum(util.vk_address(#"c1"), assets.from_lovelace(2_000_000))
+  Transaction {
+    ..placeholder,
+    inputs: [pool_in],
+    outputs: list.concat([pool_out, claimer], extra_out),
+    mint: assets.zero,
+  }
+}
+
+// RT-F1: 2 pool OUTPUT cùng script hash (1 input). count_outputs==2 → C-FAU-1 reject.
+// (Chẻ pool ra 2 output để né value-eq trên 1 output.)
+test rt_two_pool_outputs() fail {
+  let pool_addr2 = util.script_address_staked(ft_pool_sh, #"5742")
+  let extra =
+    util.mk_output(pool_addr2, ft_pool_val(10_000_000, 500_000_000), ft_datum())
+  let tx =
+    faucet_tx_xout(
+      ft_pool_val(10_000_000, 1_000_000_000),
+      ft_pool_val(10_000_000, 500_000_000 - ft_claim),
+      ft_datum(),
+      ft_datum(),
+      [extra],
+    )
+  faucet.spend(
+    ft_tlamp_policy, ft_tlamp_name, Some(ft_datum()), Claim, util.mk_ref(0), tx,
+  )
+}
+
+// RT-F2: pool_out THÊM tLAMP (claim hiệu dụng âm). value-eq đòi out = in − claim;
+// out có nhiều hơn → lệch → reject (không cho "claim ngược" bơm token).
+test rt_negative_effective_claim() fail {
+  let tx =
+    faucet_tx(
+      ft_pool_val(10_000_000, 1_000_000_000),
+      ft_pool_val(10_000_000, 1_000_000_000 + ft_claim),
+      ft_datum(),
+      ft_datum(),
+      assets.zero,
+      [],
+    )
+  faucet.spend(
+    ft_tlamp_policy, ft_tlamp_name, Some(ft_datum()), Claim, util.mk_ref(0), tx,
+  )
+}
+
+// RT-F3: pool_out datum = NoDatum (mất datum để né C-FAU-2 / khoá pool).
+// expect InlineDatum(od) fail → reject.
+test rt_pool_out_no_datum() fail {
+  let pool_addr = util.script_address(ft_pool_sh)
+  let pool_in =
+    util.mk_input(util.mk_ref(0),
+      util.mk_output(pool_addr, ft_pool_val(10_000_000, 1_000_000_000), ft_datum()))
+  let pool_out =
+    util.mk_output_no_datum(pool_addr, ft_pool_val(10_000_000, 1_000_000_000 - ft_claim))
+  let claimer =
+    util.mk_output_no_datum(util.vk_address(#"c1"), assets.from_lovelace(2_000_000))
+  let tx =
+    Transaction { ..placeholder, inputs: [pool_in], outputs: [pool_out, claimer], mint: assets.zero }
+  faucet.spend(
+    ft_tlamp_policy, ft_tlamp_name, Some(ft_datum()), Claim, util.mk_ref(0), tx,
+  )
+}
+
+// RT-F4: mint asset CỦA POLICY KHÁC (NFT rác) trong tx Claim. is_zero(tx.mint)
+// bắt mọi mint ≠ 0 → reject (không né C-FAU-0 bằng policy khác).
+test rt_mint_other_policy() fail {
+  let mint = assets.zero |> assets.add(#"beef", #"01", 1)
+  let tx =
+    faucet_tx(
+      ft_pool_val(10_000_000, 1_000_000_000),
+      ft_pool_val(10_000_000, 1_000_000_000 - ft_claim),
+      ft_datum(),
+      ft_datum(),
+      mint,
+      [],
+    )
+  faucet.spend(
+    ft_tlamp_policy, ft_tlamp_name, Some(ft_datum()), Claim, util.mk_ref(0), tx,
+  )
+}
+
+// RT-F5: claim_amount âm trong datum. claim_amount > 0 reject TRƯỚC value-eq
+// (chặn -claim biến assets.add(..., -(-x)) thành +x bơm pool).
+test rt_negative_claim_amount() fail {
+  let neg = ft_datum_amt(-ft_claim)
+  let tx =
+    faucet_tx(
+      ft_pool_val(10_000_000, 1_000_000_000),
+      ft_pool_val(10_000_000, 1_000_000_000),
+      neg,
+      neg,
+      assets.zero,
+      [],
+    )
+  faucet.spend(
+    ft_tlamp_policy, ft_tlamp_name, Some(neg), Claim, util.mk_ref(0), tx,
+  )
+}
+
+// RT-F6: own_ref trỏ input ví thường (không script). own_script_hash expect
+// Script(h) fail → reject (chống spoof own_ref sang UTxO non-script).
+test rt_own_ref_not_script() fail {
+  let pool_addr = util.script_address(ft_pool_sh)
+  let pool_in =
+    util.mk_input(util.mk_ref(0),
+      util.mk_output(pool_addr, ft_pool_val(10_000_000, 1_000_000_000), ft_datum()))
+  let vk_in =
+    util.mk_input(util.mk_ref(5),
+      util.mk_output_no_datum(util.vk_address(#"99"), assets.from_lovelace(5_000_000)))
+  let pool_out =
+    util.mk_output(pool_addr, ft_pool_val(10_000_000, 1_000_000_000 - ft_claim), ft_datum())
+  let claimer =
+    util.mk_output_no_datum(util.vk_address(#"c1"), assets.from_lovelace(2_000_000))
+  let tx =
+    Transaction { ..placeholder, inputs: [pool_in, vk_in], outputs: [pool_out, claimer], mint: assets.zero }
+  faucet.spend(
+    ft_tlamp_policy, ft_tlamp_name, Some(ft_datum()), Claim, util.mk_ref(5), tx,
+  )
+}
+
+// RT-F7 (HAPPY biến thể): pool giữ dust asset y nguyên + nhả đúng 100 → PASS.
+// Chứng minh value-eq không cấm pool ôm asset phụ hợp lệ (bảo toàn mọi asset khác).
+test rt_happy_with_dust() {
+  let pin =
+    ft_pool_val(10_000_000, 1_000_000_000) |> assets.add(#"dddd", #"f00d", 7)
+  let pout =
+    ft_pool_val(10_000_000, 1_000_000_000 - ft_claim) |> assets.add(#"dddd", #"f00d", 7)
+  let tx = faucet_tx(pin, pout, ft_datum(), ft_datum(), assets.zero, [])
+  faucet.spend(
+    ft_tlamp_policy, ft_tlamp_name, Some(ft_datum()), Claim, util.mk_ref(0), tx,
+  )
+}
+
+// RT-F8: steal dust — pool có dust, claim nhả đúng 100 tLAMP NHƯNG cuỗm luôn dust
+// (pool_out thiếu dust). value-eq lệch → reject (bảo toàn asset phụ).
+test rt_steal_dust() fail {
+  let pin =
+    ft_pool_val(10_000_000, 1_000_000_000) |> assets.add(#"dddd", #"f00d", 7)
+  let pout = ft_pool_val(10_000_000, 1_000_000_000 - ft_claim)
+  let tx = faucet_tx(pin, pout, ft_datum(), ft_datum(), assets.zero, [])
+  faucet.spend(
+    ft_tlamp_policy, ft_tlamp_name, Some(ft_datum()), Claim, util.mk_ref(0), tx,
+  )
+}

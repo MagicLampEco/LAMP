@@ -167,3 +167,62 @@ test mint_extra_asset_name() fail {
     }
   tlamp_policy.mint(tp_genesis_ref(), tp_total, MintGenesis, tp_policy, tx)
 }
+
+// ══════════════════════ RED-TEAM VÒNG 2 ══════════════════════
+
+// RT-P1: consume genesis + LAMP đúng total NHƯNG kèm name lạ qty âm (giả "burn"
+// để né dict.size). assets.add(-1) tạo entry → dict.size == 2 → reject.
+test rt_mint_lamp_plus_negative_other() fail {
+  let mint =
+    assets.zero
+      |> assets.add(tp_policy, lamp_asset_name, tp_total)
+      |> assets.add(tp_policy, #"4641", -1)
+  let tx =
+    Transaction { ..placeholder, inputs: [tp_genesis_input()], mint: mint }
+  tlamp_policy.mint(tp_genesis_ref(), tp_total, MintGenesis, tp_policy, tx)
+}
+
+// RT-P2: mint LAMP qty=0 (rỗng). add qty 0 KHÔNG tạo entry → own_tokens rỗng →
+// dict.size 0 ≠ 1 → reject (không cho mint "0 token" để né quantity check).
+test rt_mint_zero_qty() fail {
+  let tx =
+    Transaction {
+      ..placeholder,
+      inputs: [tp_genesis_input()],
+      mint: assets.zero |> assets.add(tp_policy, lamp_asset_name, 0),
+    }
+  tlamp_policy.mint(tp_genesis_ref(), tp_total, MintGenesis, tp_policy, tx)
+}
+
+// RT-P3: input có transaction_id khớp genesis nhưng output_index khác (off-by-one).
+// OutputReference so sánh cả 2 field → không khớp → one-shot reject.
+test rt_mint_genesis_wrong_index() fail {
+  let bad_input =
+    Input {
+      output_reference: OutputReference {
+        transaction_id: #"aa",
+        output_index: 4,
+      },
+      output: mk_out_no_datum(vk_addr(#"a0"), assets.from_lovelace(2_000_000)),
+    }
+  let tx =
+    Transaction {
+      ..placeholder,
+      inputs: [bad_input],
+      mint: tp_mint(lamp_asset_name, tp_total),
+    }
+  tlamp_policy.mint(tp_genesis_ref(), tp_total, MintGenesis, tp_policy, tx)
+}
+
+// RT-P4: mint asset name lạ DUY NHẤT (không có LAMP) + consume genesis.
+// dict.size==1 NHƯNG quantity_of(LAMP)==0 ≠ total → reject (chống mint token
+// rác mạo danh policy).
+test rt_mint_only_fake_name() fail {
+  let tx =
+    Transaction {
+      ..placeholder,
+      inputs: [tp_genesis_input()],
+      mint: tp_mint(#"4641", tp_total),
+    }
+  tlamp_policy.mint(tp_genesis_ref(), tp_total, MintGenesis, tp_policy, tx)
+}
