@@ -86,14 +86,22 @@ validator deposits {
         // C-DEP-4: depositor PHẢI ký.
         expect util.signed_by(tx.extra_signatories, depositor)
 
-        // C-DEP-7: ĐỌC DepositParam beacon qua reference input (NFT xác thực) → ÉP amount.
-        // KHÔNG tin client mớm amount: amount LẤY TỪ beacon theo phân loại 3 khóa.
+        // F4+F5: bất biến PotDatum trước khi đọc đồng hồ (ms_per_epoch chia 0 / escheat âm).
+        expect datum.ms_per_epoch > 0
+        expect datum.escheat_after_epoch >= 0
+
+        // F1: epoch tx (đóng dấu dòng MỚI). Caller PHẢI đặt validity_range lower bound.
+        let dep_epoch = util.get_epoch(tx, datum.ms_per_epoch)
+
+        // C-DEP-7: ĐỌC DepositParam beacon qua reference input (NFT xác thực + F3 địa chỉ)
+        // → ÉP amount. KHÔNG tin client mớm amount: amount LẤY TỪ beacon theo phân loại.
         let pp_data =
           util.read_beacon_datum(
             tx.reference_inputs,
             deposit_ref,
             datum.deposit_param_policy,
             datum.deposit_param_name,
+            datum.deposit_param_script_hash,
           )
         expect pp: DepositParam = pp_data
         expect schedule.valid_param(pp)
@@ -104,8 +112,8 @@ validator deposits {
         // C-DEP-5: value pot tăng đúng amount (asset khác giữ nguyên). amount=0 → value giữ.
         expect ledger.deposit_value_ok(pot_in.value, pot_out.value, policy, name, amount)
 
-        // C-DEP-6: sổ. amount > 0 → ghi/cộng dồn dòng (kèm classification). amount == 0
-        // → KHÔNG ghi dòng (cọc 0: không value, không sổ → sổ giữ NGUYÊN).
+        // C-DEP-6: sổ. amount > 0 → ghi/cộng dồn dòng (kèm classification + epoch F1/F2).
+        // amount == 0 → KHÔNG ghi dòng (cọc 0: không value, không sổ → sổ giữ NGUYÊN).
         if amount > 0 {
           ledger.deposit_ledger_ok(
             datum.ledger,
@@ -115,6 +123,10 @@ validator deposits {
             policy,
             name,
             amount,
+            dep_epoch,
+            asset_type,
+            value_tier,
+            lifecycle_class,
           )
         } else {
           // cọc 0: sổ out == sổ in (không thêm dòng khống).
@@ -204,6 +216,10 @@ validator deposits {
         let escheat_amount = line.amount
         expect escheat_amount > 0
 
+        // F4+F5: bất biến PotDatum trước khi đọc đồng hồ (ms_per_epoch chia 0 / escheat âm).
+        expect datum.ms_per_epoch > 0
+        expect datum.escheat_after_epoch >= 0
+
         // C-ESC-4: ĐÃ tới hạn — current_epoch ≥ deposit_epoch + escheat_after.
         // current_epoch lấy từ validity_range (caller đặt); deposit_epoch = line.epoch.
         let current_epoch = util.get_epoch(tx, datum.ms_per_epoch)
@@ -256,6 +272,7 @@ fn params_preserved(d_in: PotDatum, d_out: PotDatum) -> Bool {
     d_out.reserved_min_ada == d_in.reserved_min_ada,
     d_out.deposit_param_policy == d_in.deposit_param_policy,
     d_out.deposit_param_name == d_in.deposit_param_name,
+    d_out.deposit_param_script_hash == d_in.deposit_param_script_hash,
     d_out.treasury_credential == d_in.treasury_credential,
     d_out.escheat_after_epoch == d_in.escheat_after_epoch,
     d_out.ms_per_epoch == d_in.ms_per_epoch,

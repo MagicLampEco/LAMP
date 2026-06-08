@@ -140,3 +140,26 @@ test deposit_param_invalid_clamp() fail {
     Some(mk_dp(5, 1_000_000_000)), PostParam, util.mk_ref(0), tx,
   )
 }
+
+// REG-4 (fail) — DOUBLE-OUTPUT RÚT NFT: spend beacon, tạo 2 output ở CÙNG script (1 giữ
+// NFT + datum hợp lệ, 1 phụ) để né "đúng 1 output". count_outputs_at_script==2 → fail.
+// Chống chẻ UTxO beacon (tách NFT khỏi datum / nhân bản bảng phí).
+test deposit_param_double_output_fail() fail {
+  let addr = util.script_address(dp_sh)
+  let nft_val = assets.add(assets.from_lovelace(2_000_000), dp_nft_policy, dp_nft_name, 1)
+  let b_in = util.mk_input(util.mk_ref(0), util.mk_output(addr, nft_val, mk_dp(5, 1_000_000_000)))
+  let b_out1 = util.mk_output(addr, nft_val, mk_dp(6, 1_500_000_000))
+  let b_out2 = util.mk_output_no_datum(addr, assets.from_lovelace(2_000_000))
+  let tx =
+    Transaction {
+      ..placeholder,
+      inputs: [b_in],
+      outputs: [b_out1, b_out2],
+      extra_signatories: [#"c1", #"c2"],
+      mint: assets.zero,
+    }
+  deposit_param.spend(
+    dp_committee, dp_threshold, dp_nft_policy, dp_nft_name,
+    Some(mk_dp(5, 1_000_000_000)), PostParam, util.mk_ref(0), tx,
+  )
+}

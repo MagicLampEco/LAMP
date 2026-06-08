@@ -58,6 +58,7 @@ async function main(): Promise<void> {
       reserved_min_ada: reserved,
       deposit_param_policy: state?.depositParam?.nftPolicy ?? "9999",
       deposit_param_name: state?.depositParam?.nftName ?? "5041524d",
+      deposit_param_script_hash: state?.depositParam?.hash ?? "feed",
       treasury_credential: { kind: "VerificationKey", hash: pkh },
       escheat_after_epoch: escheatAfter,
       ms_per_epoch: BigInt(state?.msPerEpoch ?? "86400000"),

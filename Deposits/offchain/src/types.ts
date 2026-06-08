@@ -64,9 +64,12 @@ export interface PotDatum {
   lifecycle_authority  : Credential;     // ai (ngoài depositor) được trigger Refund
   reserved_min_ada     : bigint;         // lovelace giữ min-UTxO, KHÔNG ghi sổ
   // v2 params:
-  deposit_param_policy : string;         // hex — policy NFT xác thực beacon
-  deposit_param_name   : string;         // hex — name NFT xác thực beacon
-  treasury_credential  : Credential;     // đích escheat (Treasury/Reserve)
+  deposit_param_policy      : string;    // hex — policy NFT xác thực beacon
+  deposit_param_name        : string;    // hex — name NFT xác thực beacon
+  // F3 — script hash validator deposit_param (địa chỉ beacon HỢP LỆ). Đọc beacon ÉP
+  // địa chỉ == Script(hash) này (KHÔNG chỉ tin NFT-qty==1). Mirror onchain types.ak.
+  deposit_param_script_hash : string;    // hex
+  treasury_credential       : Credential; // đích escheat (Treasury/Reserve)
   escheat_after_epoch  : bigint;         // số epoch sau deposit mới được escheat
   ms_per_epoch         : bigint;         // POSIX ms / epoch
   // state:

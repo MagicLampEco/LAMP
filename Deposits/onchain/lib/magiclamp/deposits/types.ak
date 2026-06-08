@@ -85,9 +85,13 @@ pub type PotDatum {
   lifecycle_authority    : Credential,        // ai (ngoài depositor) được trigger Refund
   reserved_min_ada       : Int,               // lovelace giữ min-UTxO, KHÔNG ghi sổ
   // v2 params:
-  deposit_param_policy   : ByteArray,         // policy NFT xác thực beacon DepositParam
-  deposit_param_name     : ByteArray,         // name NFT xác thực beacon DepositParam
-  treasury_credential    : Credential,        // đích escheat (Treasury/Reserve custody)
+  deposit_param_policy      : ByteArray,      // policy NFT xác thực beacon DepositParam
+  deposit_param_name        : ByteArray,      // name NFT xác thực beacon DepositParam
+  // F3 — script hash của validator deposit_param (địa chỉ beacon HỢP LỆ). Đọc beacon
+  // ÉP địa chỉ == Script(hash) này (KHÔNG chỉ tin NFT-qty==1: NFT có thể bị gửi tới UTxO
+  // địa chỉ tùy ý mang datum giả). Khóa beacon về đúng validator governance.
+  deposit_param_script_hash : ByteArray,
+  treasury_credential       : Credential,     // đích escheat (Treasury/Reserve custody)
   escheat_after_epoch    : Int,               // số epoch sau deposit mới được escheat
   ms_per_epoch           : Int,               // POSIX ms / epoch (đổi epoch từ validity range)
   // state:

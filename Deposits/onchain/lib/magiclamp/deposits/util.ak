@@ -126,16 +126,22 @@ pub fn output_sum_to_credential(
 // CIP-31: đọc datum từ reference input, KHÔNG tiêu beacon. Xác thực = NFT one-shot
 // (đúng 1 token policy/name) → không UTxO giả nào mạo danh bảng phí governance.
 
-/// Đọc datum `T` từ reference input tại `ref`, mang ĐÚNG 1 NFT (policy,name).
-/// Fail nếu: không tìm thấy ref / NFT ≠ 1 / datum không inline / sai kiểu.
+/// Đọc datum `T` từ reference input tại `ref`, mang ĐÚNG 1 NFT (policy,name) VÀ ở
+/// ĐÚNG địa chỉ Script(script_hash) — F3.
+/// Fail nếu: không tìm thấy ref / NFT ≠ 1 / SAI địa chỉ beacon / datum không inline.
+/// F3: chỉ NFT-qty==1 KHÔNG đủ — kẻ tấn công có thể gửi NFT tới UTxO địa chỉ tùy ý
+/// (ví thường / script khác) mang datum giả định giá cọc = 0. ÉP địa chỉ == validator
+/// deposit_param khóa beacon về đúng nguồn governance.
 pub fn read_beacon_datum(
-  ref_inputs : List<Input>,
-  ref        : OutputReference,
-  nft_policy : ByteArray,
-  nft_name   : ByteArray,
+  ref_inputs  : List<Input>,
+  ref         : OutputReference,
+  nft_policy  : ByteArray,
+  nft_name    : ByteArray,
+  script_hash : ByteArray,
 ) -> Data {
   expect Some(beacon) =
     list.find(ref_inputs, fn(i) { i.output_reference == ref })
+  expect is_at_script(beacon.output.address, script_hash)
   expect assets.quantity_of(beacon.output.value, nft_policy, nft_name) == 1
   expect InlineDatum(d) = beacon.output.datum
   d

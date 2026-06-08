@@ -40,6 +40,7 @@ function baseDatum(over: Partial<PotDatum> = {}): PotDatum {
     reserved_min_ada: RESERVED,
     deposit_param_policy: "9999",
     deposit_param_name: "5041524d",
+    deposit_param_script_hash: "feed",
     treasury_credential: { kind: "VerificationKey", hash: TREASURY },
     escheat_after_epoch: ESCHEAT_AFTER,
     ms_per_epoch: MS_PER_EPOCH,

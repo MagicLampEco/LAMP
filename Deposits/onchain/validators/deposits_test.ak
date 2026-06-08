@@ -43,6 +43,9 @@ const dp_nft_policy: ByteArray = #"9999"
 
 const dp_nft_name: ByteArray = #"5041524d"
 
+// F3 — script hash của validator deposit_param (địa chỉ beacon hợp lệ).
+const dp_script_hash: ByteArray = #"feed"
+
 const treasury_pkh: ByteArray = #"7a5c0001"
 
 const escheat_after: Int = 6
@@ -79,6 +82,7 @@ fn datum_with(
     reserved_min_ada: 2_000_000,
     deposit_param_policy: dp_nft_policy,
     deposit_param_name: dp_nft_name,
+    deposit_param_script_hash: dp_script_hash,
     treasury_credential: VerificationKey(treasury_pkh),
     escheat_after_epoch: escheat_after,
     ms_per_epoch: ms_per_epoch,
@@ -192,9 +196,16 @@ fn dp_ref() -> OutputReference {
 }
 
 /// beacon reference input mang DepositParam + NFT (qty cho phép sai để test auth).
+/// Địa chỉ = Script(dp_script_hash) (F3 — đúng địa chỉ validator deposit_param).
 fn dp_beacon_ref(pp: DepositParam, nft_qty: Int) -> Input {
   let v = assets.add(assets.from_lovelace(2_000_000), dp_nft_policy, dp_nft_name, nft_qty)
-  util.mk_input(dp_ref(), util.mk_output(util.script_address(#"feed"), v, pp))
+  util.mk_input(dp_ref(), util.mk_output(util.script_address(dp_script_hash), v, pp))
+}
+
+/// beacon ref tại địa chỉ tùy biến (F3 — test beacon NFT gửi tới địa chỉ giả).
+fn dp_beacon_ref_at(pp: DepositParam, nft_qty: Int, addr: Address) -> Input {
+  let v = assets.add(assets.from_lovelace(2_000_000), dp_nft_policy, dp_nft_name, nft_qty)
+  util.mk_input(dp_ref(), util.mk_output(addr, v, pp))
 }
 
 // pot value: reserved_min_ada (2 ADA) + lamp bond.
@@ -226,6 +237,33 @@ fn run_deposit_full(
   vt         : Int,
   lc         : Int,
 ) -> Bool {
+  // F1: dep_epoch mặc định = 10 (khớp line()/line_cuke() dùng epoch 10).
+  run_deposit_full_at(
+    in_val, out_val, ledger_in, d_out, out_addr, signers, mint, extra_in,
+    beacon, nft_qty, entity, depositor, at, vt, lc, 10,
+  )
+}
+
+/// như run_deposit_full nhưng đặt dep_epoch (validity_range lower bound) tùy biến.
+/// F1: validator ÉP dòng MỚI epoch == dep_epoch; dùng để test epoch giả mạo.
+fn run_deposit_full_at(
+  in_val     : assets.Value,
+  out_val    : assets.Value,
+  ledger_in  : List<DepositLine>,
+  d_out      : PotDatum,
+  out_addr   : Address,
+  signers    : List<ByteArray>,
+  mint       : assets.Value,
+  extra_in   : List<Input>,
+  beacon     : DepositParam,
+  nft_qty    : Int,
+  entity     : ByteArray,
+  depositor  : ByteArray,
+  at         : Int,
+  vt         : Int,
+  lc         : Int,
+  dep_epoch  : Int,
+) -> Bool {
   let d_in = datum(ledger_in)
   let pot_in =
     util.mk_input(util.mk_ref(0), util.mk_output(pot_addr(), in_val, d_in))
@@ -238,6 +276,7 @@ fn run_deposit_full(
       outputs: [pot_out],
       mint: mint,
       extra_signatories: signers,
+      validity_range: interval.after(dep_epoch * ms_per_epoch),
     }
   deposits.deposits.spend(
     Some(d_in),
@@ -1058,3 +1097,331 @@ test v2_escheat_to_script_treasury() {
     Script(treasury_script), entity1, alice,
   )
 }
+
+// ════════════════════════════════════════════════════════════════════════════
+// ███ F1 — KHÓA line.epoch (chống đầu độc đồng hồ escheat) ███
+// ════════════════════════════════════════════════════════════════════════════
+
+// F1-ATK-1 (fail) — DÒNG MỚI EPOCH GIẢ: tx ở dep_epoch=10 (validity_range) nhưng dòng
+//   ĐÍCH mới ghi epoch=999 (đẩy đồng hồ về tương lai → KHÔNG bao giờ escheat được).
+//   validator ÉP dòng mới epoch == dep_epoch → fail.
+test deposit_line_epoch_forged_fail() fail {
+  let forged = line_at(entity1, alice, 1_000_000, 999)   // epoch giả 999 ≠ dep_epoch 10
+  let ledger_out = [forged]
+  let d_out = PotDatum { ..datum(ledger_out), ledger: ledger_out, epoch: 11 }
+  run_deposit_full(
+    pot_val(0), pot_val(1_000_000), [], d_out, pot_addr(),
+    [alice], assets.zero, [], dp_param(schedule_q()), 1,
+    entity1, alice, at_cattle, vt_high, lc_long,
+  )
+}
+
+// F1-ATK-1b (fail) — DÒNG MỚI epoch < dep_epoch: ghi epoch=5 trong khi tx ở epoch 10
+//   (làm GIÀ đồng hồ → escheat sớm hơn quyền). validator ÉP == dep_epoch → fail.
+test deposit_line_epoch_too_old_fail() fail {
+  let forged = line_at(entity1, alice, 1_000_000, 5)
+  let ledger_out = [forged]
+  let d_out = PotDatum { ..datum(ledger_out), ledger: ledger_out, epoch: 11 }
+  run_deposit_full(
+    pot_val(0), pot_val(1_000_000), [], d_out, pot_addr(),
+    [alice], assets.zero, [], dp_param(schedule_q()), 1,
+    entity1, alice, at_cattle, vt_high, lc_long,
+  )
+}
+
+// F1-HAPPY — DÒNG MỚI epoch khớp dep_epoch (tx ở epoch 20 → dòng mới epoch 20).
+test deposit_line_epoch_stamped_ok() {
+  let ledger_out = [line_at(entity1, alice, 1_000_000, 20)]
+  let d_out = PotDatum { ..datum(ledger_out), ledger: ledger_out, epoch: 21 }
+  run_deposit_full_at(
+    pot_val(0), pot_val(1_000_000), [], d_out, pot_addr(),
+    [alice], assets.zero, [], dp_param(schedule_q()), 1,
+    entity1, alice, at_cattle, vt_high, lc_long, 20,
+  )
+}
+
+// F1-ATK-2 (fail) — CỘNG DỒN RESET CLOCK: dòng cũ epoch=5, nạp thêm ở tx epoch=20 NHƯNG
+//   dòng đích out ghi epoch=20 (trẻ lại đồng hồ né escheat). validator ÉP cộng dồn giữ
+//   epoch CŨ (== in.epoch=5) → fail.
+test deposit_accumulate_epoch_reset_fail() fail {
+  let ledger_in = [line_at(entity1, alice, 1_000_000, 5)]
+  // beacon cattle = 1.000.000 → cộng dồn +1.000.000 = 2.000.000; epoch bị reset 5→20.
+  let ledger_out = [line_at(entity1, alice, 2_000_000, 20)]
+  let d_out = PotDatum { ..datum(ledger_out), ledger: ledger_out, epoch: 21 }
+  run_deposit_full_at(
+    pot_val(1_000_000), pot_val(2_000_000), ledger_in, d_out, pot_addr(),
+    [alice], assets.zero, [], dp_param(schedule_q()), 1,
+    entity1, alice, at_cattle, vt_high, lc_long, 20,
+  )
+}
+
+// F1-HAPPY-2 — CỘNG DỒN GIỮ epoch cũ: dòng cũ epoch 5, nạp thêm ở tx epoch 20, out giữ
+//   epoch 5 → hợp lệ (mốc escheat KHÔNG đổi).
+test deposit_accumulate_keeps_epoch_ok() {
+  let ledger_in = [line_at(entity1, alice, 1_000_000, 5)]
+  let ledger_out = [line_at(entity1, alice, 2_000_000, 5)]   // +1.000.000, giữ epoch 5
+  let d_out = PotDatum { ..datum(ledger_out), ledger: ledger_out, epoch: 21 }
+  run_deposit_full_at(
+    pot_val(1_000_000), pot_val(2_000_000), ledger_in, d_out, pot_addr(),
+    [alice], assets.zero, [], dp_param(schedule_q()), 1,
+    entity1, alice, at_cattle, vt_high, lc_long, 20,
+  )
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// ███ F2 — KHÓA 3 field phân loại (khớp redeemer/tier beacon) ███
+// ════════════════════════════════════════════════════════════════════════════
+
+// F2-ATK-1 (fail) — DÒNG ĐÍCH SAI PHÂN LOẠI: redeemer khai (cattle,high,long) nhưng
+//   dòng out ghi (plant,low,short) → định giá 1 đằng, ghi sổ 1 nẻo (gaming audit/phí).
+//   validator ÉP dòng đích classification == redeemer → fail.
+test deposit_classification_mismatch_fail() fail {
+  // dòng đích amount 1.000.000, epoch 10 đúng, NHƯNG phân loại = dưa leo.
+  let forged = line_cuke(entity1, alice, 1_000_000)   // (plant,low,short)
+  let ledger_out = [forged]
+  let d_out = PotDatum { ..datum(ledger_out), ledger: ledger_out, epoch: 11 }
+  // redeemer = cattle/high/long → beacon tính amount 1.000.000; sổ ghi phân loại sai.
+  run_deposit_full(
+    pot_val(0), pot_val(1_000_000), [], d_out, pot_addr(),
+    [alice], assets.zero, [], dp_param(schedule_q()), 1,
+    entity1, alice, at_cattle, vt_high, lc_long,
+  )
+}
+
+// F2-ATK-2 (fail) — CỘNG DỒN ĐỔI PHÂN LOẠI dòng cũ: dòng cũ (cattle,high,long), nạp
+//   thêm khai (plant,low,short)? KHÔNG — redeemer phải khớp dòng đích. Test: dòng cũ
+//   cattle, nhưng out đổi dòng đó sang plant (đồng thời cộng dồn) → fail.
+test deposit_accumulate_classification_change_fail() fail {
+  let ledger_in = [line(entity1, alice, 1_000_000)]   // (cattle,high,long)
+  // beacon cattle +1.000.000 → out 2.000.000 (value ĐÚNG) NHƯNG đổi phân loại sang dưa
+  // leo → chỉ classification sai (value/amount/epoch khớp) → ÉP classification fail.
+  let ledger_out = [
+    DepositLine {
+      entity_id: entity1, depositor: alice, policy: lamp_policy, name: lamp_name,
+      amount: 2_000_000, epoch: 10,
+      asset_type: at_plant, value_tier: vt_low, lifecycle_class: lc_short,
+    },
+  ]
+  let d_out = PotDatum { ..datum(ledger_out), ledger: ledger_out, epoch: 11 }
+  run_deposit_full(
+    pot_val(1_000_000), pot_val(2_000_000), ledger_in, d_out, pot_addr(),
+    [alice], assets.zero, [], dp_param(schedule_q()), 1,
+    entity1, alice, at_cattle, vt_high, lc_long,
+  )
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// ███ F3 — ÉP ĐỊA CHỈ beacon (KHÔNG chỉ tin NFT-qty==1) ███
+// ════════════════════════════════════════════════════════════════════════════
+
+/// runner deposit với beacon ref tại ĐỊA CHỈ tùy biến (test F3).
+fn run_deposit_beacon_at(beacon_addr: Address) -> Bool {
+  let d_in = datum([])
+  let pot_in =
+    util.mk_input(util.mk_ref(0), util.mk_output(pot_addr(), pot_val(0), d_in))
+  let ledger_out = [line(entity1, alice, 1_000_000)]
+  let d_out = PotDatum { ..datum(ledger_out), ledger: ledger_out, epoch: 11 }
+  let pot_out = util.mk_output(pot_addr(), pot_val(1_000_000), d_out)
+  let tx =
+    Transaction {
+      ..placeholder,
+      inputs: [pot_in],
+      reference_inputs: [dp_beacon_ref_at(dp_param(schedule_q()), 1, beacon_addr)],
+      outputs: [pot_out],
+      mint: assets.zero,
+      extra_signatories: [alice],
+      validity_range: interval.after(10 * ms_per_epoch),
+    }
+  deposits.deposits.spend(
+    Some(d_in),
+    Deposit {
+      entity_id: entity1, depositor: alice, policy: lamp_policy, name: lamp_name,
+      asset_type: at_cattle, value_tier: vt_high, lifecycle_class: lc_long, deposit_ref: dp_ref(),
+    },
+    util.mk_ref(0),
+    tx,
+  )
+}
+
+// F3-ATK-1 (fail) — BEACON SAI ĐỊA CHỈ: NFT qty==1 NHƯNG UTxO ở ví thường (attacker
+//   gửi NFT tới ví mình + datum giả định giá cọc=0/tùy ý). validator ÉP địa chỉ ==
+//   Script(deposit_param_script_hash) → fail.
+test v2_deposit_beacon_wrong_address_fail() fail {
+  run_deposit_beacon_at(util.vk_address(#"a77ac6"))   // ví thường attacker
+}
+
+// F3-ATK-2 (fail) — BEACON Ở SCRIPT KHÁC: NFT qty==1 ở 1 validator khác (hash sai) →
+//   địa chỉ ≠ deposit_param_script_hash → fail.
+test v2_deposit_beacon_other_script_fail() fail {
+  run_deposit_beacon_at(util.script_address(#"badbad"))
+}
+
+// F3-HAPPY — beacon ở ĐÚNG địa chỉ deposit_param (dp_script_hash) → hợp lệ.
+test v2_deposit_beacon_right_address_ok() {
+  run_deposit_beacon_at(util.script_address(dp_script_hash))
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// ███ F4+F5 — guard bất biến PotDatum (ms_per_epoch>0, escheat_after≥0) ███
+// ════════════════════════════════════════════════════════════════════════════
+
+/// runner escheat với d_in tùy biến đầy đủ (override ms_per_epoch / escheat_after).
+fn run_escheat_datum(d_in: PotDatum, d_out: PotDatum, cur_epoch: Int) -> Bool {
+  let in_val = pot_val(1_000_000)
+  let out_val = pot_val(0)
+  let pot_in =
+    util.mk_input(util.mk_ref(0), util.mk_output(pot_addr(), in_val, d_in))
+  let pot_out = util.mk_output(pot_addr(), out_val, d_out)
+  let tx =
+    Transaction {
+      ..placeholder,
+      inputs: [pot_in],
+      outputs: [pot_out, treasury_out(treasury_pkh, 1_000_000)],
+      mint: assets.zero,
+      extra_signatories: [bob],
+      validity_range: interval.after(cur_epoch * ms_per_epoch),
+    }
+  deposits.deposits.spend(
+    Some(d_in),
+    Escheat { entity_id: entity1, depositor: alice, policy: lamp_policy, name: lamp_name },
+    util.mk_ref(0),
+    tx,
+  )
+}
+
+// F4-ATK (fail) — ms_per_epoch == 0: get_epoch chia 0 / đồng hồ vô nghĩa. guard
+//   expect ms_per_epoch > 0 → fail TRƯỚC khi chia.
+test escheat_ms_per_epoch_zero_fail() fail {
+  let ledger_in = [line_at(entity1, alice, 1_000_000, 10)]
+  let ledger_out = []
+  let d_in =
+    PotDatum { ..datum(ledger_in), ledger: ledger_in, ms_per_epoch: 0 }
+  let d_out =
+    PotDatum { ..datum(ledger_out), ledger: ledger_out, ms_per_epoch: 0, epoch: 16 }
+  run_escheat_datum(d_in, d_out, 16)
+}
+
+// F5-ATK (fail) — escheat_after_epoch < 0: hạn escheat âm (mọi dòng escheat được ngay,
+//   kể cả vừa gửi). guard expect escheat_after_epoch >= 0 → fail.
+test escheat_after_negative_fail() fail {
+  let ledger_in = [line_at(entity1, alice, 1_000_000, 10)]
+  let ledger_out = []
+  let d_in =
+    PotDatum { ..datum(ledger_in), ledger: ledger_in, escheat_after_epoch: -1 }
+  let d_out =
+    PotDatum { ..datum(ledger_out), ledger: ledger_out, escheat_after_epoch: -1, epoch: 16 }
+  run_escheat_datum(d_in, d_out, 16)
+}
+
+// F4-DEP (fail) — ms_per_epoch==0 ở nhánh DEPOSIT (get_epoch cũng gọi): guard chặn.
+test deposit_ms_per_epoch_zero_fail() fail {
+  let ledger_out = [line(entity1, alice, 1_000_000)]
+  let d_out =
+    PotDatum { ..datum(ledger_out), ledger: ledger_out, ms_per_epoch: 0, epoch: 11 }
+  // d_in ms_per_epoch=0 (qua datum override) → guard nhánh Deposit fail.
+  let d_in =
+    PotDatum { ..datum([]), ms_per_epoch: 0 }
+  let pot_in =
+    util.mk_input(util.mk_ref(0), util.mk_output(pot_addr(), pot_val(0), d_in))
+  let pot_out = util.mk_output(pot_addr(), pot_val(1_000_000), d_out)
+  let tx =
+    Transaction {
+      ..placeholder,
+      inputs: [pot_in],
+      reference_inputs: [dp_beacon_ref(dp_param(schedule_q()), 1)],
+      outputs: [pot_out],
+      mint: assets.zero,
+      extra_signatories: [alice],
+      validity_range: interval.after(10 * ms_per_epoch),
+    }
+  deposits.deposits.spend(
+    Some(d_in),
+    Deposit {
+      entity_id: entity1, depositor: alice, policy: lamp_policy, name: lamp_name,
+      asset_type: at_cattle, value_tier: vt_high, lifecycle_class: lc_long, deposit_ref: dp_ref(),
+    },
+    util.mk_ref(0),
+    tx,
+  )
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// ███ HỒI QUY HỞ (4 test bổ sung) ███
+// ════════════════════════════════════════════════════════════════════════════
+
+// REG-1 (fail) — CỌC 0 DRAIN ASSET KHÁC: dưa leo required=0 (sổ giữ), kẻ tấn công nhân
+//   tx rút token X khỏi pot (value asset khác giảm). deposit_value_ok ÉP đẳng thức
+//   TUYỆT ĐỐI mọi asset (out == in ⊕ {LAMP:0}) → asset X giảm ≠ giữ → fail.
+test deposit_zero_drain_other_asset_fail() fail {
+  let token_x_p: ByteArray = #"dead"
+  let token_x_n: ByteArray = #"beef"
+  let d_in = datum([])
+  let in_val = assets.add(pot_val(0), token_x_p, token_x_n, 5000)
+  // out: rút sạch token X (5000→0). LAMP +0 (dưa leo). value asset khác KHÔNG bảo toàn.
+  let out_val = pot_val(0)
+  let pot_in =
+    util.mk_input(util.mk_ref(0), util.mk_output(pot_addr(), in_val, d_in))
+  let d_out = PotDatum { ..datum([]), ledger: [], epoch: 11 }
+  let pot_out = util.mk_output(pot_addr(), out_val, d_out)
+  let tx =
+    Transaction {
+      ..placeholder,
+      inputs: [pot_in],
+      reference_inputs: [dp_beacon_ref(dp_param(schedule_q()), 1)],
+      outputs: [pot_out],
+      mint: assets.zero,
+      extra_signatories: [alice],
+      validity_range: interval.after(10 * ms_per_epoch),
+    }
+  deposits.deposits.spend(
+    Some(d_in),
+    Deposit {
+      entity_id: entity1, depositor: alice, policy: lamp_policy, name: lamp_name,
+      asset_type: at_plant, value_tier: vt_low, lifecycle_class: lc_short, deposit_ref: dp_ref(),
+    },
+    util.mk_ref(0),
+    tx,
+  )
+}
+
+// REG-2 (HAPPY) — AUTHORITY SCRIPT chứng kiến qua REFERENCE INPUT (không chỉ input):
+//   lifecycle_authority = Script; witnessed_by_script chấp nhận ref-input. tiền về Alice.
+test refund_authority_script_via_ref_input_ok() {
+  let ledger_in = [line(entity1, alice, 1_000_000)]
+  let ledger_out = []
+  let auth = Script(lifecycle_script)
+  let d_out = PotDatum { ..datum_with(ledger_out, auth), ledger: ledger_out, epoch: 11 }
+  // chứng kiến tại Script(lifecycle_script) qua REFERENCE input (không phải spend input).
+  let witness_ref =
+    util.mk_input(
+      util.mk_ref(7),
+      util.mk_output_no_datum(util.script_address(lifecycle_script), assets.from_lovelace(2_000_000)),
+    )
+  run_refund(
+    pot_val(1_000_000), pot_val(0), ledger_in, d_out, pot_addr(),
+    [], assets.zero, [], [witness_ref], [refund_out(alice, 1_000_000)],
+    auth, entity1, alice,
+  )
+}
+
+// REG-3 (fail) — TAMPER treasury_credential ở out_datum (đổi đích escheat tương lai sang
+//   ví attacker). params_preserved ÉP treasury_credential bảo toàn → C-ESC-2 fail.
+test escheat_treasury_credential_tamper_fail() fail {
+  let ledger_in = [line_at(entity1, alice, 1_000_000, 10)]
+  let ledger_out = []
+  // out_datum đổi treasury_credential sang ví bob (attacker chiếm đích escheat).
+  let d_out =
+    PotDatum {
+      ..datum(ledger_out),
+      treasury_credential: VerificationKey(bob),
+      ledger: ledger_out, epoch: 16,
+    }
+  run_escheat(
+    pot_val(1_000_000), pot_val(0), ledger_in, d_out, pot_addr(),
+    [bob], assets.zero, 16, [treasury_out(treasury_pkh, 1_000_000)],
+    VerificationKey(treasury_pkh), entity1, alice,
+  )
+}
+
+// REG-4: deposit_param DOUBLE-OUTPUT RÚT NFT → đặt trong deposit_param.ak (nơi validator
+//   + helper sống). Xem test `deposit_param_double_output_fail` ở file đó.
