@@ -1,0 +1,10 @@
+name    = "magiclamp/reserve"
+version = "0.0.1"
+plutus  = "v3"
+license = "Apache-2.0"
+description = "MagicLamp Reserve — automatic release function (cap_release + demand_gate), accounting-pot, permissionless trigger"
+
+[[dependencies]]
+name    = "aiken-lang/stdlib"
+version = "v3.1.0"
+source  = "github"

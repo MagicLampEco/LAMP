@@ -1,270 +1,159 @@
-# Reserve — MATH (công thức + chứng minh + test vectors)
+# Reserve — MATH (công thức hàm nhả + chứng minh bounded + test vectors)
 
-**Nguồn bám:** `Genesis/onchain/lib/magiclamp/genesis/constants.ak`;
-`Genesis/onchain/validators/tlamp_mint.ak` (luật 2–8);
-`Genesis/offchain/src/supplyState.ts` (`applyMint`, `reserveRemaining`).
+**Nguồn bám:** `Reserve/onchain/lib/magiclamp/reserve/release.ak` (canonical);
+`Reserve/offchain/src/release.ts` (P8 mirror); `Distribution/SPEC-CappedDrop-MATH.md` (drip pattern gốc);
+`Genesis/onchain/lib/magiclamp/genesis/constants.ak` (cap hằng).
+
+Mọi số là `Int` (Aiken bigint) / `bigint` (TS) — KHÔNG `Number`. Chia = floor-toward-zero
+(input ≥ 0 → floor = trunc). Aiken `/` và BigInt `/` của JS khớp nhau trên miền này (P8).
 
 ---
 
-## 1. Định nghĩa hình thức
+## 1. Đơn vị + tham số
 
-### 1.1 Đơn vị
-
-| Ký hiệu | Giá trị | Nguồn |
+| Ký hiệu | Nghĩa | Khởi điểm |
 |---|---|---|
-| `oil_per_lamp` | `1_000_000` | `constants.ak:3` |
-| `dist_cap_oil` | `34_200_000_000_000_000` | `constants.ak:dist_cap_oil` |
-| `reserve_cap_oil` | `1_800_000_000_000_000` | `constants.ak:reserve_cap_oil` |
-| `total_cap_oil` | `36_000_000_000_000_000` | `constants.ak:total_cap_oil` |
+| `oil_per_lamp` | `1_000_000` | hằng |
+| `reserve_cap` | trần cứng tuyệt đối Reserve (oil) | `1_800_000_000_000_000` (5%); cấu hình tới `32_400_000_000_000_000` (90%) |
+| `t_g` | `genesis_release_epoch` | epoch deploy + buffer |
+| `R0` | `reserve_release_base` (oil, năm 0) | `5_000_000_000_000` (5 triệu LAMP) |
+| `g_bps` | `annual_growth_bps` (clamp [300,500]) | `400` (4%/năm) |
+| `E_y` | `epochs_per_year` | `73` |
+| `floor_bps` | `demand_floor_bps` (sàn allowance) | `2000` (20%) |
+| `bps_denom` | `10000` (= 100%) | hằng |
 
-Kiểm tra: `dist_cap_oil + reserve_cap_oil = total_cap_oil` — test `caps_sum_to_total()` trong `constants.ak`.
+---
 
-Tất cả số đều là `Int` (Aiken bigint) / `bigint` (TypeScript) — KHÔNG dùng `Number`.
+## 2. Hàm nhả `cap_release(epoch)` (tầng 1)
 
-### 1.2 Trạng thái SupplyState
+Gọi `e = epoch − t_g` ; `y = ⌊e / E_y⌋` ; `f = e mod E_y`.
+
+**Trần năm (lãi kép rời rạc, floor-mỗi-bước — tránh `pow` on-chain):**
+```
+year_cap(0)   = R0
+year_cap(k+1) = ⌊ year_cap(k) · (10000 + g_bps) / 10000 ⌋
+```
+Tính lặp `k` lần (mỗi năm 1 phép nhân-chia). Floor-mỗi-bước ≤ pow-rồi-chia-1-lần
+⟹ an toàn về phía DƯỚI (không bao giờ nhả nhiều hơn lãi kép thật). TS lặp `y` chốt cùng cách (P8).
+
+**Nội suy tuyến tính trong năm (drip mượt từng epoch):**
+```
+cap_release(epoch) =
+    0                                                            nếu e < 0
+    min( reserve_cap,
+         year_cap(y) + ⌊ (year_cap(y+1) − year_cap(y)) · f / E_y ⌋ )   nếu e ≥ 0
+```
+
+Đây là **drip pattern Capped Drop** (`vested = min(E, D·n)`) nâng cấp: `D` tăng-kép-theo-năm,
+cap tuyệt đối `E = reserve_cap`. Mọi định lý Capped Drop (đơn điệu, bounded, bỏ-lỡ-không-mất-quyền) áp dụng.
+
+**Derivation tăng 3–5%/năm:** `year_cap(y+1)/year_cap(y) = (1 + g_bps/10000) = 1.04` khi `g_bps=400`
+⟹ tổng tích lũy được phép nhả tăng đúng `g_bps/10000`/năm. Vì `reserve_minted ≤ cap_release` (gate ép),
+**tốc độ tăng cung lưu hành từ Reserve ≤ g_bps/10000 /năm**.
+
+---
+
+## 3. `max_draw_per_epoch(epoch)` (đạo hàm rời rạc — chống nhả giật)
 
 ```
-S = { dist_minted: Int, reserve_minted: Int, dist_cap: Int, reserve_cap: Int }
-  = Constr(0, [int, int, int, int])
+max_draw_per_epoch(epoch) = max(0, cap_release(epoch) − cap_release(epoch − 1))
 ```
-Nguồn: `Genesis/onchain/lib/magiclamp/genesis/types.ak` khai báo `SupplyState`.
+Với nội suy tuyến tính trong năm: `≈ ⌊(year_cap(y+1) − year_cap(y)) / E_y⌋ = ⌊year_cap(y)·g_bps/10000/E_y⌋`
+⟹ trần rút mỗi epoch tăng cùng nhịp `g_bps`/năm. KHÔNG hằng DAO — dẫn xuất từ `cap_release`.
 
-### 1.3 Tiền điều kiện (hợp lệ của trạng thái)
+---
+
+## 4. `demand_allowance(epoch)` (tầng 2 — chỉ làm chậm)
+
+Input duy nhất: `sma_ratio_bps ∈ [0, 10000]` = velocity LAMP đo on-chain (SMA `K` epoch) so mức tham chiếu (≤100%).
+```
+demand_allowance(epoch) =
+    cap_release(epoch)                                          nếu velocity_present = False  (bypass MVP)
+    ⌊ cap_release(epoch) · clamp(sma_ratio, floor_bps, 10000) / 10000 ⌋   nếu True
+```
+Velocity cao → allowance LÊN tới `cap_release` (KHÔNG vượt, clamp trên = 10000). Velocity thấp → kéo XUỐNG `floor_bps`.
 
 ```
-valid(S) ⟺
-  S.dist_cap    = dist_cap_oil                    (R-I3, neo hằng — D7-#1)
-  S.reserve_cap = reserve_cap_oil                 (R-I3)
-  S.dist_minted    ≥ 0                            (D7-#10)
-  S.reserve_minted ≥ 0                            (D7-#10)
-  S.dist_minted    ≤ S.dist_cap                   (R-I1)
-  S.reserve_minted ≤ S.reserve_cap                (R-I1)
+approved_cumulative(epoch) = min( cap_release(epoch) , demand_allowance(epoch) )
 ```
 
 ---
 
-## 2. Transition ReserveDraw
+## 5. Bounded proof (3 cận)
 
-### 2.1 Đầu vào
+**(B1) Cận trên cứng — không bao giờ vượt reserve_cap.**
+`cap_release = min(reserve_cap, …) ≤ reserve_cap`. `demand_allowance ≤ cap_release` (clamp trên = 10000 ⟹ ratio ≤ 1).
+`approved = min(cap, demand) ≤ cap_release ≤ reserve_cap`. Kết hợp gate C-10' (`reserve_minted ≤ approved`) + tlamp_mint luật 7 ⟹ R-I1 + defense-in-depth 2 lớp. ∎
 
-- `S` : SupplyState hiện tại (đọc từ UTxO đang spend)
-- `δ` : lượng tLAMP mint trong tx, đơn vị oil (`δ = tx.mint[tlamp_policy, tLAMP_name]`)
+**(B2) Đơn điệu không giảm.** `e` tăng theo `epoch`; `year_cap(y)` tăng theo `y` (g≥0, R0>0);
+số hạng nội suy `≥ 0` và liên tục tại biên năm (`f=E_y−1 → ≈ year_cap(y+1)`; `f=0` năm sau → đúng `year_cap(y+1)`).
+Hợp 2 hàm không giảm + `min` hằng ⟹ `cap_release` đơn điệu không giảm ⟹ `approved` tương thích R-I2. ∎
 
-### 2.2 Điều kiện cần (guard — reject nếu sai bất kỳ)
-
-```
-(G1)  δ > 0                                      (tlamp_mint.ak luật 2)
-(G2)  policy chỉ mint đúng 1 name = tLAMP        (luật 3)
-(G3)  S.reserve_cap = reserve_cap_oil            (luật 4 + D7-#1)
-(G4)  S.reserve_minted ≥ 0                       (D7-#10)
-(G5)  S.reserve_minted + δ ≤ S.reserve_cap       (luật 7)
-(G6)  S.dist_minted + S.reserve_minted + δ ≤ total_cap_oil   (D7-#2, defense-in-depth)
-(G7)  reserve_authority ký đủ auth_threshold     (luật 8)
-(G8)  SupplyState thread NFT: 1 input, 1 output cùng địa chỉ, qty_thread_in_mint = 0   (luật 1)
-(G9)  S'.reserve_cap = S.reserve_cap             (luật 4)
-(G10) S'.dist_cap    = S.dist_cap                (luật 4)
-```
-
-### 2.3 Transition function
-
-Khi tất cả guard đạt:
-
-```
-S' = S { reserve_minted := S.reserve_minted + δ }
-       (dist_minted, dist_cap, reserve_cap giữ nguyên)
-```
-
-Nguồn: `tlamp_mint.ak` luật 5 nhánh `ReserveDraw` + `supplyState.ts:applyMint`.
-
-### 2.4 Hậu điều kiện
-
-```
-(P1)  S'.reserve_minted = S.reserve_minted + δ  (đơn điệu, monotonic)
-(P2)  S'.dist_minted = S.dist_minted            (Distribution không đổi)
-(P3)  S'.reserve_minted ≤ reserve_cap_oil       (R-I1)
-(P4)  S'.dist_minted + S'.reserve_minted ≤ total_cap_oil   (R-I4)
-```
+**(B3) Cận trên mỗi epoch.** `max_draw_per_epoch ≈ ⌊year_cap(y)·g_bps/10000/E_y⌋` bị chặn (nội suy tuyến tính) ⟹ không epoch nào nhả nhảy vọt. Gate C-8' ép `drawn ≤ max_draw`. ∎
 
 ---
 
-## 3. Hàm kế toán Reserve
+## 6. Test vectors (số thật — VERIFIED trong release.ak + release.ts)
 
-### 3.1 Quota còn lại
+Hằng chung: `R0=5_000_000_000_000`, `g=400`, `E_y=73`, `reserve_cap=1_800_000_000_000_000`, `t_g=1000`.
 
+### TV-AR01 — cap_release đầu năm 0, epoch lẻ (nội suy)
 ```
-reserve_remaining(S) = S.reserve_cap − S.reserve_minted
+epoch=1036 → e=36, y=0, f=36
+year_cap(0)=5_000_000_000_000 ; year_cap(1)=⌊5e12·10400/10000⌋=5_200_000_000_000
+cap_release = 5e12 + ⌊200_000_000_000·36/73⌋ = 5e12 + 98_630_136_986 = 5_098_630_136_986 oil
 ```
+✓ `tv_ar01_cap_release_interp` (aiken) + `release.test.ts`.
 
-Nguồn: `Genesis/offchain/src/supplyState.ts:reserveRemaining`.
-
-### 3.2 Circulating tLAMP
-
+### TV-AR02 — max_draw_per_epoch năm 0
 ```
-minted_total(S) = S.dist_minted + S.reserve_minted
-circulating      = minted_total(S) − Σ(Treasury + Deposits tLAMP held)
+cap(1036)=5_098_630_136_986 ; cap(1035)= 5e12+⌊7_000_000_000_000/73⌋=5_095_890_410_958
+max_draw = 5_098_630_136_986 − 5_095_890_410_958 = 2_739_726_028 oil  (≈ 2_740 LAMP/epoch)
 ```
+✓ `tv_ar02_max_draw`. Chống rug: không epoch nào mint > ~2_740 LAMP từ Reserve năm 0.
 
-Nguồn: `Genesis/CONTRACT.md §6`; `Genesis/offchain/src/circulating.ts`.
-
-### 3.3 Rate-limit (lớp gate thêm — ReserveMeter)
-
+### TV-AR03 — demand_gate kéo allowance xuống (velocity 30%)
 ```
-ReserveMeter = { epoch: Int, drawn_in_epoch: Int }
-
-draw_allowed(meter, policy, delta) ⟺
-  meter.epoch = current_epoch
-  delta ≤ policy.max_draw_per_epoch − meter.drawn_in_epoch
-  S.reserve_minted + delta ≤ policy.approved_cumulative
+cap=5_098_630_136_986 ; floor=2000 ; sma_ratio=3000
+demand_allowance = ⌊cap·3000/10000⌋ = 1_529_589_041_095 oil
+approved = min(cap, demand) = 1_529_589_041_095
+→ ế → nhả chậm; phần chưa nhả KHÔNG mất, mở lại khi velocity hồi (M-KEEP). reserve_minted ≤ approved ≤ cap.
 ```
+✓ `tv_ar03_demand_low` + `tv_ar03_approved_low`.
 
-`policy = ReservePolicy { max_draw_per_epoch, approved_cumulative, governance_ref, epoch }`.
+### TV-AR04 — bypass MVP (velocity_source_policy = #"")
+```
+velocity_present=False → demand_gate skip → approved = cap_release = 5_098_630_136_986
+```
+✓ `tv_ar04_bypass`. Testnet chạy ngay không cần Treasury beacon.
 
-Sau tx: `meter' = { epoch: meter.epoch, drawn_in_epoch: meter.drawn_in_epoch + delta }`.
+### TV-AR05 — chạm cap tuyệt đối (năm xa)
+```
+1.04^y ≥ 360 → y ≥ ln(360)/ln(1.04) ≈ 150 năm
+epoch=15600 (y=200 ≫ 150) → cap_release = min(reserve_cap, year_cap(200)) = reserve_cap
+→ Reserve cạn dần ~150 năm (R0=5tr, g=4%), KHÔNG bao giờ vượt 1.8 tỷ.
+```
+✓ `tv_ar05_hits_absolute_cap` + `yearsToCap` (TS: 150–152 năm @5%; 220–230 năm @90%).
 
-Sang epoch mới: `meter' = { epoch: new_epoch, drawn_in_epoch: delta }`.
+### Negative (VERIFIED reject)
+| Vector | Kỳ vọng | Test |
+|---|---|---|
+| velocity bơm sma_ratio=99999 | clamp 10000 → = cap (không vượt) | `demand_pump_cannot_exceed_cap` |
+| `reserve_minted_out > approved` | reject | `reserve_minted_exceeds_approved` (validator) |
+| `drawn > max_draw` | reject | `draw_exceeds_max_draw` |
+| meter epoch cũ (Draw) | reject | `draw_stale_epoch` |
+| Reset không tiến epoch | reject | `reset_not_advancing` |
+| recipient sai (ví trigger) | reject | `recipient_wrong_lock` |
+| `g_bps` ngoài [300,500] | reject | `policy_growth_too_high` |
+| epoch < t_g, δ>0 | reject (approved=0) | `draw_before_genesis_release` |
 
 ---
 
-## 4. Boundary conditions
+## 7. Liên kết SupplyState transition (Genesis — KHÔNG sửa)
 
-| Điều kiện | Kết quả |
-|---|---|
-| `δ = 1` (tối thiểu) | Hợp lệ nếu `reserve_minted + 1 ≤ reserve_cap_oil` |
-| `δ = reserve_cap_oil − reserve_minted` (rút toàn bộ còn lại) | Hợp lệ: `reserve_minted' = reserve_cap_oil` (biên bằng được phép, luật 7 `≤`) |
-| `δ = reserve_cap_oil − reserve_minted + 1` (vượt 1 oil) | Reject: `reserve_minted' > reserve_cap_oil` |
-| `reserve_minted = reserve_cap_oil` (quota cạn) | Mọi δ>0 đều reject (không còn chỗ) |
-| `dist_minted = dist_cap_oil`, `reserve_minted = reserve_cap_oil` (cả 2 đầy) | Reject tổng `total_cap_oil + δ > total_cap_oil` |
-| `S.reserve_minted < 0` | Reject ngay D7-#10 (guard G4) |
-| `δ ≤ 0` | Reject luật 2 (G1) |
-
----
-
-## 5. Test vectors (số thật verifiable)
-
-### TV-R01 — Rút thông thường (từ trạng thái zero)
-
+`reserve_meter` ép NHỊP; `tlamp_mint` ép TRANSITION quota:
 ```
-Input:
-  S = { dist_minted: 0, reserve_minted: 0,
-        dist_cap: 34_200_000_000_000_000, reserve_cap: 1_800_000_000_000_000 }
-  δ = 100_000_000_000_000   // 100 triệu tLAMP (oil)
-
-Guards đạt:
-  G1: δ=100e12 > 0  ✓
-  G5: 0 + 100_000_000_000_000 = 100_000_000_000_000 ≤ 1_800_000_000_000_000  ✓
-  G6: 0 + 0 + 100e12 = 100e12 ≤ 36_000_000_000_000_000  ✓
-
-Output:
-  S'.reserve_minted = 100_000_000_000_000
-  S'.dist_minted    = 0
-  reserve_remaining = 1_800_000_000_000_000 − 100_000_000_000_000
-                    = 1_700_000_000_000_000  (còn 1.7 tỷ tLAMP)
+S' = S { reserve_minted := S.reserve_minted + δ }   (dist_minted, caps giữ nguyên)
+guard: δ>0 ; S.reserve_minted+δ ≤ reserve_cap ; caps neo hằng genesis ; monotonic
 ```
-
-### TV-R02 — Rút đúng biên cap (hợp lệ)
-
-```
-Input:
-  S = { dist_minted: 20_000_000_000_000_000,  // 20 tỷ dist đã mint
-        reserve_minted: 1_799_999_999_999_997,  // còn đúng 3 oil
-        dist_cap: 34_200_000_000_000_000, reserve_cap: 1_800_000_000_000_000 }
-  δ = 3   // 3 oil = 0.000003 tLAMP
-
-Guards đạt:
-  G5: 1_799_999_999_999_997 + 3 = 1_800_000_000_000_000 ≤ 1_800_000_000_000_000  ✓  (biên =)
-  G6: 20e15 + 1.8e15 = 21.8e15 ≤ 36e15  ✓
-
-Output:
-  S'.reserve_minted = 1_800_000_000_000_000  // = reserve_cap (hết quota)
-  reserve_remaining = 0
-```
-
-### TV-R03 — Vượt cap (reject)
-
-```
-Input:
-  S = { dist_minted: 0, reserve_minted: 1_800_000_000_000_000,
-        dist_cap: 34_200_000_000_000_000, reserve_cap: 1_800_000_000_000_000 }
-  δ = 1   // bất kỳ δ > 0
-
-Guard G5 fail:
-  1_800_000_000_000_000 + 1 = 1_800_000_000_000_001 > 1_800_000_000_000_000  ✗
-  → tlamp_mint.ak luật 7: REJECT
-```
-
-Khớp test `mint_exceed_reserve_cap() fail` trong `tlamp_mint.ak`.
-
-### TV-R04 — Distribution không đổi khi ReserveDraw
-
-```
-Input:
-  S = { dist_minted: 5_000_000_000_000_000, reserve_minted: 500_000_000_000_000,
-        dist_cap: 34_200_000_000_000_000, reserve_cap: 1_800_000_000_000_000 }
-  δ = 200_000_000_000_000   // 200 triệu tLAMP
-
-Output:
-  S'.reserve_minted = 700_000_000_000_000   // = 500e12 + 200e12
-  S'.dist_minted    = 5_000_000_000_000_000 // KHÔNG THAY ĐỔI (luật 5 nhánh ReserveDraw)
-```
-
-Khớp test `reservedraw_touches_dist() fail` (nếu dist thay đổi → reject).
-
-### TV-R05 — Rate-limit ReserveMeter (lớp gate thêm)
-
-```
-Input:
-  policy.max_draw_per_epoch = 180_000_000_000_000   // 180 triệu tLAMP/epoch
-  policy.approved_cumulative = 500_000_000_000_000  // tổng DAO phê duyệt
-  meter = { epoch: 500, drawn_in_epoch: 100_000_000_000_000 }  // đã rút 100 triệu epoch 500
-  S.reserve_minted = 200_000_000_000_000
-  δ = 80_000_000_000_000   // thêm 80 triệu
-
-draw_allowed:
-  drawn_after = 100e12 + 80e12 = 180e12 ≤ 180e12  ✓ (biên =)
-  reserve_after = 200e12 + 80e12 = 280e12 ≤ 500e12  ✓
-  → HỢP LỆ
-
-Nếu δ = 80_000_000_000_001:
-  drawn_after = 180_000_000_000_001 > 180_000_000_000_000  ✗ → REJECT rate-limit
-```
-
-### TV-R06 — Tổng cap defense-in-depth (cả 2 nhánh gần đầy)
-
-```
-Input:
-  S = { dist_minted: 34_200_000_000_000_000,   // dist đầy cap
-        reserve_minted: 1_799_999_999_999_999,  // reserve còn 1 oil
-        dist_cap: 34_200_000_000_000_000, reserve_cap: 1_800_000_000_000_000 }
-  δ = 1
-
-G5: 1_799_999_999_999_999 + 1 = 1_800_000_000_000_000 ≤ 1_800_000_000_000_000  ✓
-G6: 34_200_000_000_000_000 + 1_800_000_000_000_000 = 36_000_000_000_000_000 ≤ 36_000_000_000_000_000  ✓
-
-Output: S'.reserve_minted = 1_800_000_000_000_000  (tổng = total_cap, biên = được phép)
-```
-
-Khớp test `total_cap_double_boundary_ok()` trong `tlamp_mint.ak`.
-
----
-
-## 6. Chứng minh bất biến R-I4 (tổng cap)
-
-**Luận điểm:** Với mọi tx `ReserveDraw` hợp lệ, nếu `valid(S)` thì `valid(S')` và
-`S'.dist_minted + S'.reserve_minted ≤ total_cap_oil`.
-
-**Chứng minh:**
-1. `valid(S)` ⟹ `S.dist_minted + S.reserve_minted ≤ dist_cap_oil + reserve_cap_oil = total_cap_oil`.
-2. Transition: `S'.reserve_minted = S.reserve_minted + δ`, `S'.dist_minted = S.dist_minted`.
-3. Guard G5: `S.reserve_minted + δ ≤ reserve_cap_oil`.
-4. Suy ra: `S'.dist_minted + S'.reserve_minted = S.dist_minted + S.reserve_minted + δ`.
-5. Từ (1) và (3): `S'.dist_minted + S'.reserve_minted ≤ dist_cap_oil + reserve_cap_oil = total_cap_oil`. ∎
-
-D7-#2 trong `tlamp_mint.ak` ép thêm guard G6 trực tiếp — defense-in-depth ngay cả khi G5 sai.
-
----
-
-## 7. Không có công thức float / Q-format
-
-Reserve là kế toán đơn giản (cộng oil nguyên). Không dùng Q-format, không nhân/chia lớn,
-không rủi ro tràn (Aiken `Int` = arbitrary precision bigint, TypeScript `bigint`).
-Không có oracle, không tỷ lệ phần trăm tính động — tất cả hằng số ghim cứng lúc genesis.
+Hai tầng độc lập, defense-in-depth. `reserve_meter` thêm: `reserve_minted_out ≤ approved_cumulative(epoch)` (C-10') — đây là điều SPEC v1 để DAO làm tay, nay là HÀM.

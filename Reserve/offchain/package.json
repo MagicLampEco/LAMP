@@ -1,0 +1,18 @@
+{
+  "name": "@magiclamp/reserve-sdk",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "MagicLamp Reserve off-chain SDK — automatic release function (cap_release + demand_gate), permissionless ReserveDraw builder",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@lucid-evolution/lucid": "^0.4.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0",
+    "vitest": "^1.6.0"
+  }
+}
