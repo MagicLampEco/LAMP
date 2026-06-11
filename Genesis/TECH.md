@@ -92,13 +92,17 @@ Apply: `applyPolicy(threadRaw, [genesisRef])` (`01_deploy_lazymint.ts:64`).
 validator tlamp_mint(
   thread_nft_policy : PolicyId,
   thread_nft_name   : ByteArray,
-  dist_authority    : List<ByteArray>,   // keyhash committee (stub MVP)
-  reserve_authority : List<ByteArray>,   // keyhash DAO (stub MVP)
-  auth_threshold    : Int,               // M-of-N
+  dist_authority    : List<ByteArray>,   // keyhash committee (stub MVP) — đường DistributionVest
+  auth_threshold    : Int,               // M-of-N (chỉ DistributionVest)
+  meter_nft_policy  : PolicyId,          // ReserveMeter thread NFT — đường ReserveDraw
+  meter_nft_name    : ByteArray,
 )
 ```
 
-Apply: `applyPolicy(tlampRaw, [threadPid, SUPPLY_NAME, [pkh], [pkh], 1n])` (`01_deploy_lazymint.ts:71–77`).
+Gate theo đường mint: DistributionVest = pubkey-sig M-of-N (dist_authority); ReserveDraw = KHÔNG
+chữ ký, ÉP tx spend đúng 1 ReserveMeter NFT (permissionless, đi qua reserve_meter — release function).
+
+Apply: `applyPolicy(tlampRaw, [threadPid, SUPPLY_NAME, [pkh], 1n, meterPid, meterNm])` (`01_deploy_lazymint.ts`).
 Self-test deploy: cả 2 authority = ví deployer, threshold 1 (1-of-1).
 
 ### 4.3 supply_state (`supply_state.ak:21`)

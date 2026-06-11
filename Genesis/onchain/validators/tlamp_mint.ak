@@ -9,8 +9,16 @@
 //   one-shot DUY NHẤT). Δ = lượng mint trong tx; transition datum ép Δ vào ĐÚNG
 //   quota (Distribution HOẶC Reserve) theo redeemer, ≤ cap, đơn điệu, KHÔNG burn.
 //
-// Param: thread_nft_policy + thread_nft_name (tầng 1) + dist_authority/reserve_authority
-// (keyhash stub MVP) + auth threshold. KHÔNG tham chiếu ngược tầng 3 (không vòng lặp).
+// Param: thread_nft_policy + thread_nft_name (tầng 1) + dist_authority (keyhash stub
+// MVP đường Distribution) + auth_threshold + meter_nft_policy/meter_nft_name (định danh
+// ReserveMeter thread NFT). KHÔNG tham chiếu ngược tầng 3 (không vòng lặp).
+//
+// GATE NHẢ RESERVE = HÀM, KHÔNG CHỮ KÝ (permissionless thật). Nhánh ReserveDraw KHÔNG
+// đòi pubkey-sig nữa: nó ÉP tx phải spend đúng 1 UTxO mang ReserveMeter NFT. ReserveMeter
+// là validator GATE NHỊP (reserve_meter) ép δ ≤ max_draw_per_epoch + reserve_minted_out ≤
+// approved_cumulative(epoch) — release function tất định. ⟹ MỌI ReserveDraw BẮT BUỘC đi
+// qua reserve_meter; không ai (kể cả keyholder cũ) rút tay được. meter_nft là one-shot độc
+// lập (mint trước khi apply-param tlamp_mint) → KHÔNG vòng phụ thuộc apply-param.
 //
 // NEO ĐỊNH DANH SupplyState = qua SUPPLY NFT one-shot (KHÔNG qua script-hash). Thread NFT
 // được mint đúng MỘT lần (thread_nft one-shot, param genesis_ref) → tồn tại DUY NHẤT 1 bản
@@ -35,8 +43,9 @@ validator tlamp_mint(
   thread_nft_policy : PolicyId,
   thread_nft_name   : ByteArray,
   dist_authority    : List<ByteArray>,
-  reserve_authority : List<ByteArray>,
   auth_threshold    : Int,
+  meter_nft_policy  : PolicyId,
+  meter_nft_name    : ByteArray,
 ) {
   mint(r: TLampMintRedeemer, policy_id: PolicyId, tx: Transaction) {
     // ── Luật 1: consume + recreate SupplyState (thread NFT) ───────────────
@@ -123,19 +132,32 @@ validator tlamp_mint(
     // khác ngoài thread_nft_policy + lovelace (ngăn token rác bám SupplyState).
     expect util.value_only_nft_and_ada(s_out.value, thread_nft_policy)
 
-    // ── Luật 8: authority gate (stub MVP) ─────────────────────────────────
-    // A10: thiếu chữ ký authority đúng đường mint → reject.
-    let authority =
+    // ── Luật 8: gate theo đường mint ──────────────────────────────────────
+    // Hai đường mint khóa khác nhau (A10):
+    //   • DistributionVest → pubkey-sig M-of-N (dist_authority + threshold). Đường DAO/
+    //     vesting, MVP stub. Giữ nguyên.
+    //   • ReserveDraw → KHÔNG chữ ký. Ép tx PHẢI spend đúng 1 UTxO mang ReserveMeter NFT
+    //     → reserve_meter.spend BẮT BUỘC chạy → δ + reserve_minted ép bằng release function
+    //     tất định. Permissionless thật: không keyholder nào quyết được con số nhả, ai dựng
+    //     tx đúng lịch cũng được. Đây là điểm khóa "nhả-thuật-toán không ai rút tay".
+    let gate_ok =
       when r is {
-        DistributionVest -> dist_authority
-        ReserveDraw -> reserve_authority
+        DistributionVest -> {
+          // D2-#1/#2: threshold tự vệ (1 ≤ threshold ≤ |authority distinct|).
+          // threshold==0 → ai cũng mint (vô hiệu authority). threshold > N → khóa chết.
+          auth_threshold >= 1
+            && auth_threshold <= list.length(list.unique(dist_authority))
+            && util.count_sigs(dist_authority, tx.extra_signatories) >= auth_threshold
+        }
+        ReserveDraw -> {
+          // Đúng 1 input mang ReserveMeter NFT → tầng gate nhịp (reserve_meter) BẮT BUỘC
+          // được kích hoạt và ép max_draw/approved. Không cho 0 (bỏ qua meter) hay ≥2
+          // (double-meter). meter NFT KHÔNG được mint/burn trong tx (one-shot, sống mãi).
+          util.count_inputs_holding_nft(tx.inputs, meter_nft_policy, meter_nft_name) == 1
+            && assets.quantity_of(tx.mint, meter_nft_policy, meter_nft_name) == 0
+        }
       }
-    // ── D2-#1/#2: threshold tự vệ (1 ≤ threshold ≤ |authority|) ────────────
-    // threshold==0 → ai cũng mint được (vô hiệu authority). threshold > N → khóa
-    // chết không bao giờ mint được. Ghim biên hợp lệ ngay trong validator.
-    expect auth_threshold >= 1
-    expect auth_threshold <= list.length(list.unique(authority))
-    expect util.count_sigs(authority, tx.extra_signatories) >= auth_threshold
+    expect gate_ok
 
     True
   }
@@ -159,7 +181,16 @@ const auth_a: ByteArray = #"a1"
 
 const auth_b: ByteArray = #"b2"
 
-const res_auth: ByteArray = #"c3"
+// ReserveMeter thread NFT (định danh đường ReserveDraw permissionless).
+const meter_pol: PolicyId = #"6655"
+
+const meter_nm: ByteArray = #"4d4554"
+
+/// Input mang ReserveMeter NFT — bằng chứng tx đi qua reserve_meter (gate nhịp).
+fn meter_input() -> Input {
+  let v = assets.from_lovelace(2_000_000) |> assets.add(meter_pol, meter_nm, 1)
+  util.mk_input(util.mk_ref(9), util.mk_output(util.script_address(#"6d6d"), v, 0))
+}
 
 /// SupplyState input UTxO mang thread NFT, datum = s.
 fn ss_input(s: SupplyState) -> Input {
@@ -181,7 +212,7 @@ fn mint_tlamp(qty: Int) {
   assets.zero |> assets.add(tlamp_pol, constants.tlamp_name, qty)
 }
 
-/// Dựng tx mint tLAMP đầy đủ (params chuẩn). sigs = extra_signatories.
+/// Dựng tx DistributionVest đầy đủ (gate pubkey-sig). sigs = extra_signatories.
 fn build_tx(
   s: SupplyState,
   s2: SupplyState,
@@ -197,10 +228,21 @@ fn build_tx(
   }
 }
 
+/// Dựng tx ReserveDraw đầy đủ (gate = spend ReserveMeter NFT, KHÔNG chữ ký).
+fn build_tx_reserve(s: SupplyState, s2: SupplyState, mint_qty: Int) -> Transaction {
+  Transaction {
+    ..placeholder,
+    inputs: [ss_input(s), meter_input()],
+    outputs: [ss_output(s2)],
+    mint: mint_tlamp(mint_qty),
+    extra_signatories: [],
+  }
+}
+
 fn run(r: TLampMintRedeemer, tx: Transaction) -> Bool {
   tlamp_mint.mint(
     thr_pol, constants.supply_name,
-    [auth_a, auth_b], [res_auth], 1,
+    [auth_a, auth_b], 1, meter_pol, meter_nm,
     r, tlamp_pol, tx,
   )
 }
@@ -214,7 +256,7 @@ fn run_thr(
 ) -> Bool {
   tlamp_mint.mint(
     thr_pol, constants.supply_name,
-    dist_auth, [res_auth], threshold,
+    dist_auth, threshold, meter_pol, meter_nm,
     r, tlamp_pol, tx,
   )
 }
@@ -237,9 +279,10 @@ test distvest_happy() {
 }
 
 test reservedraw_happy() {
+  // Permissionless: KHÔNG chữ ký, chỉ cần spend ReserveMeter NFT.
   let s = fresh()
   let s2 = SupplyState { ..s, reserve_minted: 5_000_000 }
-  run(ReserveDraw, build_tx(s, s2, 5_000_000, [res_auth]))
+  run(ReserveDraw, build_tx_reserve(s, s2, 5_000_000))
 }
 
 test distvest_incremental() {
@@ -259,7 +302,7 @@ test distvest_exact_cap_boundary() {
 test reservedraw_exact_cap_boundary() {
   let s = SupplyState { ..fresh(), reserve_minted: constants.reserve_cap_oil - 3 }
   let s2 = SupplyState { ..s, reserve_minted: constants.reserve_cap_oil }
-  run(ReserveDraw, build_tx(s, s2, 3, [res_auth]))
+  run(ReserveDraw, build_tx_reserve(s, s2, 3))
 }
 
 // ── NEGATIVE — A1: vượt cap ──────────────────────────────────
@@ -273,7 +316,7 @@ test mint_exceed_dist_cap() fail {
 test mint_exceed_reserve_cap() fail {
   let s = SupplyState { ..fresh(), reserve_minted: constants.reserve_cap_oil }
   let s2 = SupplyState { ..s, reserve_minted: constants.reserve_cap_oil + 1 }
-  run(ReserveDraw, build_tx(s, s2, 1, [res_auth]))
+  run(ReserveDraw, build_tx_reserve(s, s2, 1))
 }
 
 // ── A2: mint không consume SupplyState ───────────────────────
@@ -315,7 +358,7 @@ test distvest_touches_reserve() fail {
 test reservedraw_touches_dist() fail {
   let s = fresh()
   let s2 = SupplyState { ..s, reserve_minted: 1_000_000, dist_minted: 1_000_000 }
-  run(ReserveDraw, build_tx(s, s2, 1_000_000, [res_auth]))
+  run(ReserveDraw, build_tx_reserve(s, s2, 1_000_000))
 }
 
 // ── A6: burn / no-op (Δ ≤ 0) ─────────────────────────────────
@@ -371,7 +414,7 @@ test widen_dist_cap() fail {
 test widen_reserve_cap() fail {
   let s = fresh()
   let s2 = SupplyState { ..s, reserve_minted: 1_000_000, reserve_cap: constants.reserve_cap_oil * 2 }
-  run(ReserveDraw, build_tx(s, s2, 1_000_000, [res_auth]))
+  run(ReserveDraw, build_tx_reserve(s, s2, 1_000_000))
 }
 
 // ── A10: thiếu chữ ký authority ──────────────────────────────
@@ -383,11 +426,51 @@ test mint_no_authority() fail {
   run(DistributionVest, build_tx(s, s2, 1_000_000, [#"ff"]))
 }
 
-test reservedraw_wrong_authority() fail {
-  // ReserveDraw nhưng chỉ có dist authority ký (không res_auth) → reject.
+test reservedraw_no_meter() fail {
+  // ReserveDraw nhưng tx KHÔNG spend ReserveMeter NFT (chỉ có SupplyState input) →
+  // gate ReserveDraw đòi count_inputs(meter) == 1 → reject. Chứng minh KHÔNG bỏ qua
+  // được reserve_meter (chống bypass rate-limit — block #2 council nêu).
   let s = fresh()
   let s2 = SupplyState { ..s, reserve_minted: 1_000_000 }
-  run(ReserveDraw, build_tx(s, s2, 1_000_000, [auth_a]))
+  run(ReserveDraw, build_tx(s, s2, 1_000_000, []))
+}
+
+test reservedraw_sig_alone_insufficient() fail {
+  // Người giữ key cũ chỉ KÝ (không spend meter) → KHÔNG còn rút được. Permissionless
+  // gate KHÔNG nhận chữ ký thay cho meter. Chứng minh "không ai rút tay".
+  let s = fresh()
+  let s2 = SupplyState { ..s, reserve_minted: 1_000_000 }
+  run(ReserveDraw, build_tx(s, s2, 1_000_000, [auth_a, auth_b]))
+}
+
+test reservedraw_two_meters() fail {
+  // 2 input mang ReserveMeter NFT → count == 2 ≠ 1 → reject (chống double-meter).
+  let s = fresh()
+  let s2 = SupplyState { ..s, reserve_minted: 1_000_000 }
+  let tx =
+    Transaction {
+      ..placeholder,
+      inputs: [ss_input(s), meter_input(), meter_input()],
+      outputs: [ss_output(s2)],
+      mint: mint_tlamp(1_000_000),
+      extra_signatories: [],
+    }
+  run(ReserveDraw, tx)
+}
+
+test reservedraw_meter_minted_in_tx() fail {
+  // tx mint thêm ReserveMeter NFT cùng đường ReserveDraw → qty meter ≠ 0 → reject.
+  let s = fresh()
+  let s2 = SupplyState { ..s, reserve_minted: 1_000_000 }
+  let tx =
+    Transaction {
+      ..placeholder,
+      inputs: [ss_input(s), meter_input()],
+      outputs: [ss_output(s2)],
+      mint: mint_tlamp(1_000_000) |> assets.add(meter_pol, meter_nm, 1),
+      extra_signatories: [],
+    }
+  run(ReserveDraw, tx)
 }
 
 // ── A11: mint asset name lạ cùng policy ──────────────────────
@@ -509,7 +592,7 @@ test input_cap_inflated() fail {
 test input_reserve_cap_inflated() fail {
   let s = SupplyState { ..fresh(), reserve_cap: constants.reserve_cap_oil * 10 }
   let s2 = SupplyState { ..s, reserve_minted: 1_000_000 }
-  run(ReserveDraw, build_tx(s, s2, 1_000_000, [res_auth]))
+  run(ReserveDraw, build_tx_reserve(s, s2, 1_000_000))
 }
 
 // ── D7-#10: counter INPUT âm ──────────────────────────────────
@@ -523,7 +606,7 @@ test input_counter_negative() fail {
 test input_reserve_counter_negative() fail {
   let s = SupplyState { ..fresh(), reserve_minted: -5 }
   let s2 = SupplyState { ..s, reserve_minted: -4 }
-  run(ReserveDraw, build_tx(s, s2, 1, [res_auth]))
+  run(ReserveDraw, build_tx_reserve(s, s2, 1))
 }
 
 // ── D8-#1 (neo NFT): SupplyState INPUT KHÔNG mang SUPPLY NFT → reject ──
@@ -555,7 +638,7 @@ test total_cap_double_boundary_ok() {
   // dist đầy cap, reserve mint tới đúng cap → tổng == total_cap (==, không vượt).
   let s = SupplyState { ..fresh(), dist_minted: constants.dist_cap_oil, reserve_minted: constants.reserve_cap_oil - 1 }
   let s2 = SupplyState { ..s, reserve_minted: constants.reserve_cap_oil }
-  run(ReserveDraw, build_tx(s, s2, 1, [res_auth]))
+  run(ReserveDraw, build_tx_reserve(s, s2, 1))
 }
 
 // ── D3-#1: nhồi tLAMP vào SupplyState output ──────────────────

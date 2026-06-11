@@ -5,7 +5,8 @@
 //
 // Luồng (3 tầng, tuyến tính — CONTRACT §3):
 //   (1) thread_nft policy   = apply(genesis_ref)         — one-shot SUPPLY NFT
-//   (2) tlamp_mint policy    = apply(thread_policy, SUPPLY, [auth], [auth], 1)
+//   (2) tlamp_mint policy    = apply(thread_policy, SUPPLY, [auth], 1, meter_pid, meter_nm)
+//       — ReserveDraw gate = spend ReserveMeter NFT (permissionless, KHÔNG chữ ký)
 //   (3) supply_state spend   = apply(tlamp_policy)        — giữ SupplyState UTxO
 //
 // Tx A (deploy SupplyState): consume genesis_ref → mint 1 SUPPLY NFT → tạo SupplyState
@@ -65,18 +66,26 @@ async function main(): Promise<void> {
   const threadPid = policyId(threadPolicy);
   console.log(`(1) thread_nft policy id: ${threadPid}`);
 
-  // ── Tầng 2: tlamp_mint policy = apply(thread_pid, SUPPLY, [pkh], [pkh], 1) ──
-  // Authority stub MVP = ví deploy (1-of-1 self-test cho cả 2 đường mint).
+  // ── Tầng 2: tlamp_mint policy = apply(thread_pid, SUPPLY, [pkh], 1, meter_pid, meter_nm) ──
+  // dist_authority stub MVP = ví deploy (1-of-1 self-test đường DistributionVest).
+  // ĐƯỜNG ReserveDraw KHÔNG còn chữ ký: gate = spend ReserveMeter NFT (permissionless).
+  // meter_nft_policy/name = ReserveMeter thread NFT (mint one-shot Ở MODULE Reserve trước
+  // — EXEC M2). Tx B dưới chỉ test DistributionVest nên không cần meter thật; nhận từ env,
+  // mặc định placeholder để harness typecheck. Deploy thật: điền METER_NFT_POLICY/NAME.
+  const meterPid = process.env.METER_NFT_POLICY ?? "00".repeat(28);
+  const meterNm = process.env.METER_NFT_NAME ?? "4d4554"; // "MET"
   const tlampRaw = await rawValidator("tlamp_mint.tlamp_mint.mint");
   const tlampPolicy: MintingPolicy = applyPolicy(tlampRaw.compiledCode, [
     threadPid,            // thread_nft_policy
     SUPPLY_NAME,          // thread_nft_name
     [pkh],                // dist_authority (List<ByteArray>)
-    [pkh],                // reserve_authority
     1n,                   // auth_threshold
+    meterPid,             // meter_nft_policy (ReserveMeter thread NFT)
+    meterNm,              // meter_nft_name
   ]);
   const tlampPid = policyId(tlampPolicy);
   console.log(`(2) tlamp_mint policy id: ${tlampPid}`);
+  console.log(`    ReserveDraw gate = spend ReserveMeter NFT (meter_pid=${meterPid})`);
 
   // ── Tầng 3: supply_state spend = apply(tlamp_pid, thread_pid) ───────
   // 2 param tuyến tính: tlamp_policy (tầng 2, ủy quyền transition) + thread_nft_policy

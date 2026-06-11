@@ -58,7 +58,7 @@ Token chưa mint = không tồn tại = không bị tấn công, không khóa mi
 |---|---|---|
 | **Deployer** (foundation) | Chạy genesis một lần: consume UTxO seed → mint thread NFT `SUPPLY` → tạo SupplyState UTxO (bộ đếm) | one-shot (UTxO seed tiêu 1 lần duy nhất) |
 | **Distribution authority** (committee stub) | Mint tLAMP qua đường `DistributionVest` (95% quota) → token tới user | chữ ký `dist_authority` (M-of-N stub MVP) |
-| **DAO / Reserve authority** | Mint tLAMP qua đường `ReserveDraw` (5% quota) | chữ ký `reserve_authority` (M-of-N stub MVP) |
+| **Bất kỳ ai (Reserve trigger)** | Mint tLAMP qua đường `ReserveDraw` (5% quota) — permissionless | KHÔNG chữ ký; ÉP tx spend ReserveMeter NFT (đi qua reserve_meter — release function tất định) |
 | **Bất kỳ ai (read-only)** | Đọc SupplyState datum → biết `minted_total`, quota còn lại, `circulating` | không cần — datum công khai on-chain |
 
 **MVP/stub, v1.1:** authority hiện là **keyhash param hóa** (committee cho Distribution, DAO cho
@@ -151,8 +151,10 @@ SupplyState'.
 
 ### 4.3 Mint qua ReserveDraw (5% quota)
 
-Y hệt 4.2 nhưng redeemer `ReserveDraw`, cộng vào `reserve_minted`, gate bằng `reserve_authority`,
-chặn tại `reserve_cap`. `dist_minted` KHÔNG đổi.
+Y hệt 4.2 nhưng redeemer `ReserveDraw`, cộng vào `reserve_minted`, chặn tại `reserve_cap`,
+`dist_minted` KHÔNG đổi. Gate KHÔNG dùng chữ ký: tx PHẢI spend đúng 1 ReserveMeter NFT →
+permissionless, đi qua `reserve_meter` (Reserve module) ép δ ≤ max_draw + reserve_minted ≤
+approved_cumulative(epoch) (release function tất định). Không ai rút tay.
 
 ### 4.4 Đọc trạng thái (read-only)
 
