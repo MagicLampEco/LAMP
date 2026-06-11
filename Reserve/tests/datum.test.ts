@@ -34,8 +34,8 @@ describe("ReservePolicy codec (8 field)", () => {
   it("roundtrip giữ đúng thứ tự + bytes", () => {
     const p: ReservePolicy = {
       genesis_release_epoch: 1000n,
-      reserve_release_base: 5_000_000_000_000n,
-      annual_growth_bps: 400n,
+      reserve_release_base: 2_000_000_000_000n,
+      annual_growth_bps: 300n,
       epochs_per_year: 73n,
       demand_floor_bps: 2000n,
       velocity_window: 12n,
@@ -48,8 +48,8 @@ describe("ReservePolicy codec (8 field)", () => {
   it("velocity_source_policy non-empty roundtrip", () => {
     const p: ReservePolicy = {
       genesis_release_epoch: 1000n,
-      reserve_release_base: 5_000_000_000_000n,
-      annual_growth_bps: 400n,
+      reserve_release_base: 2_000_000_000_000n,
+      annual_growth_bps: 300n,
       epochs_per_year: 73n,
       demand_floor_bps: 2000n,
       velocity_window: 12n,

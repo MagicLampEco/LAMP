@@ -28,7 +28,7 @@ Reserve = **quota CHƯA mint** (mặc định 5% = 1.8 tỷ LAMP; **cấu hình 
 
 Mục tiêu thiết kế:
 - **Monetary policy giống ADA**: nhả theo hàm tất định, dự đoán được, không thao túng được.
-- **Trần cứng chống lạm phát cung**: tốc độ vào lưu hành từ Reserve ≤ `g_bps`/năm (mặc định 4%).
+- **Trần cứng chống lạm phát cung**: tốc độ vào lưu hành từ Reserve ≤ `g_bps`/năm (CHỐT 3%).
 - **Phản ứng thị trường có cận**: velocity LAMP chỉ làm CHẬM nhả (không bao giờ vượt trần).
 - **Permissionless + minh bạch**: bất kỳ ai trigger; mọi lần rút ghi `SupplyState` + `ReserveMeter`.
 - **Sửa được khi sai nhịp**: đổi tham số qua Governance, KHÔNG cần "đặc cách rút".
@@ -130,8 +130,8 @@ Mối nguy: kẻ tấn công bơm velocity giả (tự thu phí qua app → đ�
 
 | Tham số | Khởi điểm testnet | Đổi thế nào |
 |---|---|---|
-| `reserve_release_base` (R0) | 5 triệu LAMP/năm 0 = `5_000_000_000_000` oil | Governance proposal (đơn điệu: chỉ tăng) |
-| `annual_growth_bps` (g) | `400` (4%/năm) | proposal, clamp `[300,500]` on-chain |
+| `reserve_release_base` (R0) | 2 triệu LAMP/năm 0 = `2_000_000_000_000` oil (CHỐT council) | Governance proposal (đơn điệu: chỉ tăng) |
+| `annual_growth_bps` (g) | `300` (3%/năm — CHỐT council) | proposal, clamp `[300,500]` on-chain (chỉ tăng) |
 | `epochs_per_year` | `73` | hằng mạng |
 | `demand_floor_bps` | `2000` (20%) | proposal |
 | `velocity_window` (K) | `12` epoch | proposal |
@@ -150,7 +150,7 @@ reserve_cap_oil = 32_400_000_000_000_000   // 90%
 Tác động (cần anh chốt con số cuối):
 1. **Distribution co tương ứng**: Σ entitlement các ClaimAccount ≤ `dist_cap` mới. Cần rà `Foundation-Bootstrap §7.1` → **báo anh trước khi sửa doc canonical**.
 2. **Reserve thành đường phát hành CHÍNH**: 90% cung đi qua `cap_release(epoch)` → hàm nhả = monetary policy thực của LAMP. R0 + g_bps quyết toàn bộ tốc độ → đặt R0 nhỏ giọt thật, g_bps ≤ 5%.
-3. **Cạn-cap dài hơn**: với `reserve_cap = 32.4e15`, R0=5tr, g=4% → ~225 năm tới cap (test `yearsToCap`).
+3. **Cạn-cap dài hơn**: với `reserve_cap = 32.4e15`, R0=2tr, g=3% → ~328 năm tới cap (test `yearsToCap`).
 4. **Bất biến giữ nguyên**: R-I1..R-I11 không đổi phát biểu, chỉ đổi giá trị `reserve_cap`.
 
 ---

@@ -15,8 +15,8 @@ export const TOTAL_CAP_OIL   = 36_000_000_000_000_000n;
 export const BPS_DENOM = 10_000n;
 
 // ── Tham số khởi điểm nhỏ giọt (đề xuất, set vào ReservePolicy datum) ──
-export const DEFAULT_RELEASE_BASE_OIL = 5_000_000_000_000n; // 5 triệu LAMP/năm 0
-export const DEFAULT_GROWTH_BPS       = 400n;               // 4%/năm
+export const DEFAULT_RELEASE_BASE_OIL = 2_000_000_000_000n; // 2 triệu LAMP/năm 0 (council)
+export const DEFAULT_GROWTH_BPS       = 300n;               // 3%/năm (council)
 export const DEFAULT_EPOCHS_PER_YEAR  = 73n;
 export const DEFAULT_DEMAND_FLOOR_BPS = 2_000n;             // 20%
 export const DEFAULT_VELOCITY_WINDOW  = 12n;

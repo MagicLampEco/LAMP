@@ -159,8 +159,12 @@ export async function buildRedeemTx(params: RedeemParams): Promise<RedeemResult>
     start_epoch:     claim.start_epoch,
     drops_per_epoch: claim.drops_per_epoch,
   };
-  // Treasury': datum bảo toàn (C-TRE-2).
-  const newTreasuryDatum: TreasuryDatum = { committee_hash: treasury.committee_hash };
+  // Treasury': committee_hash + cumulative_entitlement bảo toàn (C-TRE-2 / C-SOLV-3).
+  // Redeem CHỈ giảm pool LAMP — sổ cái cumulative_entitlement BẤT BIẾN.
+  const newTreasuryDatum: TreasuryDatum = {
+    committee_hash:         treasury.committee_hash,
+    cumulative_entitlement: treasury.cumulative_entitlement,
+  };
 
   // ── Output assets: bảo toàn TẤT CẢ (audit dust lesson, C-VAL-0) ────
   // ClaimAccount: chỉ datum đổi → clone toàn bộ assets.

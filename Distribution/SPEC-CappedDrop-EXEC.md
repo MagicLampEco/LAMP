@@ -26,16 +26,28 @@ WALLET_SEED="word1 word2 ... word24"
 # PRIVATE_KEY=ed25519_sk1...
 
 # Committee (production: CSV 3 keyhash 28-byte hex; tự động threshold=⌈2N/3⌉)
-# Bỏ trống → self-test committee 1-of-1 bằng ví deploy (không cần field này cho Preview self-test)
+# Bỏ trống → self-test committee 1-of-1 bằng ví deploy (CHỈ non-Mainnet; Mainnet FAIL-CLOSED).
+# GUARD: threshold phải 1 ≤ threshold ≤ N; cảnh báo nếu < ⌈2N/3⌉ (mất Byzantine 2/3).
 # COMMITTEE_KEYHASHES=keyhash1,keyhash2,keyhash3
 # COMMITTEE_THRESHOLD=2
+# COMMITTEE_THRESHOLD_ACK=1   # xác nhận khi cố ý đặt threshold < ⌈2N/3⌉ (Mainnet bắt buộc)
 
 # LAMP token (production: policy tLAMP thật; bỏ trống → self-test native sig của ví deploy)
 # LAMP_POLICY_ID=28e916b097be13ed955330f00710bd93e2ea74bbc89aa5f5cd0f12b4
 # LAMP_ASSET_NAME=744c414d50
 
-# Beacon NFT (bỏ trống → native sig policy của ví deploy — tự động nhất quán)
-# BEACON_NFT_POLICY=<hash minting validator beacon_nft khi ship>
+# Beacon NFT — chọn 1 trong 3 (ưu tiên trên xuống):
+#   (1) BEACON_NFT_POLICY=<policy mint ngoài> — anh kiểm soát supply.
+#   (2) ONE-SHOT Aiken beacon_nft (Mainnet TỰ bật; testnet bật BEACON_NFT_ONESHOT=1):
+#       01_deploy chọn 1 UTxO ví làm genesis_ref → policy id one-shot bake vào claim_account/beacon;
+#       03_genesis mint qua Plutus + consume đúng genesis_ref → supply = 1 TUYỆT ĐỐI, KHÔNG re-mint.
+#   (3) native-sig fallback — CHỈ Preview self-test (re-mint được). Mainnet FAIL-CLOSED.
+# BEACON_NFT_POLICY=<policy mint ngoài, nếu có>
+# BEACON_NFT_ONESHOT=1
+
+# Mainnet no-undo: sau khi đối chiếu PREFLIGHT CHECKSUM (committee+3 hash) ở 01_deploy,
+# đặt DEPLOY_ACK=<checksum 16-hex in ra> để xác nhận genesis không thể hoàn tác.
+# DEPLOY_ACK=<checksum>
 
 # Tham số tùy chỉnh genesis (tùy chọn — có default an toàn)
 # TREASURY_FUND_OIL=500000000000   # 500_000 LAMP (oil) — default
@@ -306,13 +318,19 @@ Validator: `expect util.count_committee_sigs(...) >= threshold` (claim_account.a
 Test: claim_insufficient_committee() fail trong claim_account.ak:203.
 ```
 
-**N-10: Treasury thiếu LAMP (pool cạn) → offchain reject trước on-chain**
+**N-10: Treasury thiếu LAMP (pool cạn) → chặn ở 2 tầng off-chain**
 
 ```
-treasury UTxO có < amount LAMP.
-Off-chain: redeemBuilder.ts:137 `if (treasuryLamp < amount) throw REDEEM-012`.
-On-chain: treasury.ak kiểm tra treasury_out = treasury_in − amount → fail nếu không đủ.
-Thao tác: operator phải nạp thêm LAMP vào treasury UTxO (fund thủ công bằng tx ADA+LAMP).
+Tầng CẤP E (mới, mạnh hơn): claimBuilder solvency guard — khi truyền `solvency`
+  {treasuryLamp, otherOutstanding}, builder ép Σ(entitlement−redeemed) sau Claim ≤ treasuryLamp,
+  ném CLAIM-010 nếu under-collateralized. Chặn TỪ LÚC cấp E (không chỉ lúc redeem).
+Tầng REDEEM: redeemBuilder.ts:137 `if (treasuryLamp < amount) throw REDEEM-012`.
+On-chain: treasury.ak kiểm tra treasury_out = treasury_in − amount → fail nếu không đủ
+  (UTxO redeem cuối khi pool cạn → fail; first-come-first-served).
+Verify chủ động: `npm run verify-solvency` query treasury + MỌI account on-chain,
+  assert treasury_lamp ≥ Σ(E−redeemed). BẮT BUỘC PASS trước khi mở Claim trên mainnet.
+Thao tác: operator nạp thêm LAMP vào treasury UTxO (fund thủ công bằng tx ADA+LAMP).
+GHI CHÚ: bất biến solvency CHƯA ép on-chain ở tầng validator (xem §4 NỢ-CROSS).
 ```
 
 ### 2.3 Chạy test Aiken (on-chain unit tests)
@@ -403,9 +421,10 @@ D là THAM SỐ beacon — operator thay đổi bất cứ lúc nào qua PostBea
 ### 3.6 Treasury
 
 Treasury là UTxO duy nhất giữ toàn bộ LAMP pool. Operator phải:
-1. Fund treasury đủ `Σ E_delegator` trước khi delegator redeem.
-2. Nếu treasury cạn trước (thiếu LAMP): off-chain builder throw `REDEEM-012`. Operator fund thêm bằng TX thủ công (pay LAMP vào treasury address — không cần Plutus).
-3. Không burn: `treasury_out = treasury_in − amount` (CONTRACT §7, `treasury.ak`).
+1. **Fund treasury ≥ `Σ E_delegator` TRƯỚC khi mở Claim** (over-collateralization). Sau khi fund + cấp E, chạy `npm run verify-solvency` — PHẢI PASS (treasury_lamp ≥ Σ(E−redeemed)) mới mở redeem cho delegator. Trên mainnet đây là bước gate bắt buộc.
+2. Khi cấp E qua Claim: truyền `solvency` cho `buildClaimTx` (treasuryLamp + Σ outstanding các account khác) → builder ném `CLAIM-010` nếu cấp E vượt quỹ (chặn under-collateralized từ gốc, không để first-come-first-served lúc redeem).
+3. Nếu treasury cạn (thiếu LAMP): off-chain builder throw `REDEEM-012`. Operator fund thêm bằng TX thủ công (pay LAMP vào treasury address — không cần Plutus).
+4. Không burn: `treasury_out = treasury_in − amount` (CONTRACT §7, `treasury.ak`).
 
 ### 3.7 Multi-account genesis batch
 
@@ -428,8 +447,22 @@ Ràng buộc per-TX:
 | KL-4 | D áp dụng đồng nhất cho tất cả account | Không per-account D ở MVP | drops_per_epoch là field datum → DAO có thể override per-account (post-MVP, CONTRACT §5). |
 | KL-5 | drops_per_epoch = 1 MVP (không thay đổi được ở MVP) | Tất cả account cùng tốc độ nhỏ giọt | Cơ chế DAO chỉnh drops_per_epoch defer sang v.sau (CONTRACT §5). |
 | KL-6 | Không cancel/refund entitlement sau Claim | Sau khi Claim TX confirm, redeemed không bị trừ lại | Operator phải kiểm tra kỹ E trước khi Claim. Không có undo. |
-| KL-7 | Native sig beacon NFT (MVP) | Policy id gắn với ví deploy → nếu ví mất thì KHÔNG post beacon mới | Production: ship beacon_nft Aiken minting validator (one-shot UTxO) thay native sig. |
+| KL-7 | ~~Native sig beacon NFT~~ ĐÃ SỬA | One-shot Aiken `beacon_nft` đã nối vào 01_deploy/03_genesis (mode `oneshot`, mặc định trên Mainnet). Supply NFT = 1 tuyệt đối, tách khỏi ví deploy, không re-mint. native-sig chỉ còn cho Preview self-test (Mainnet fail-closed). | Đặt `BEACON_NFT_ONESHOT=1` để bật trên testnet; Mainnet tự bật. |
 | KL-8 | LAMP_ASSET_NAME hardcode `4c414d50` trong DEFAULT | Khi đổi sang tLAMP canonical (`744c414d50`) phải update .env + redeploy | Luôn truyền LAMP_ASSET_NAME qua .env trong production. |
+
+### 4.1 NỢ-CROSS — solvency on-chain (cần anh quyết)
+
+**Bất biến `Σ E ≤ treasury` HIỆN CHƯA ép ở tầng validator.** MVP đã chốt 3 lớp vận hành:
+Claim-time guard (`CLAIM-010`), redeem-time guard (`REDEEM-012`), và `verify-solvency` on-chain
+gate trước khi mở Claim. Ép on-chain tuyệt đối cần re-kiến-trúc, có đánh đổi thật:
+
+- **Co-spend treasury khi Claim** (datum thêm `total_entitlement`/`total_redeemed`): ép mọi Claim
+  cùng spend 1 treasury UTxO → **serialize toàn bộ Claim qua 1 UTxO** = nghẽn cổ chai với hàng trăm
+  delegator ISPO (mâu thuẫn KL-2 "tách nhiều treasury UTxO để concurrent"). Cần accumulator UTxO toàn
+  cục + đổi schema 3 validator + viết lại test.
+- **Đánh đổi:** an toàn tuyệt đối ↔ throughput Claim/redeem. Đây là quyết định dài hạn (trục a + d),
+  KHÔNG tự bake. Đề xuất: giữ 3 lớp off-chain cho MVP ISPO (đủ vì committee tin cậy cấp E theo runbook
+  + verify-solvency bắt buộc), mở on-chain accumulator ở v-next khi có Governance.
 
 ---
 

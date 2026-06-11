@@ -87,14 +87,18 @@ Nhánh `Reset` (epoch mới): `meter_out.epoch==current` && `current>meter_in.ep
 ### 3.1 Deploy (thứ tự tuyến tính)
 ```
 1. thread_nft (SUPPLY one-shot) → supply_nft_policy           [Genesis]
-2. tlamp_mint apply-param (thread_nft_policy, …)               [Genesis]
-3. supply_state apply-param (tlamp_policy, thread_nft_policy)  [Genesis]
-4. mint meter thread NFT → meter_nft_policy                    [Reserve]
+2. mint meter thread NFT (one-shot) → meter_nft_policy        [Reserve]  ← PHẢI trước (3)
+3. tlamp_mint apply-param (thread_nft_policy, supply_name, dist_authority,
+      auth_threshold, meter_nft_policy, meter_name) → tlamp_policy        [Genesis]
+4. supply_state apply-param (tlamp_policy, thread_nft_policy)  [Genesis]
 5. reserve_meter apply-param (tlamp_policy, supply_nft_policy, supply_name,
       meter_nft_policy, meter_name, reserve_policy_nft_policy, recipient_lock, ms_per_epoch)
 6. deploy ReservePolicy beacon (mint authenticity NFT, datum = tham số khởi điểm)
-7. deploy ReserveMeter UTxO (datum = { epoch: e0, drawn_in_epoch: 0 })
+7. deploy ReserveMeter UTxO TẠI script reserve_meter (datum = { epoch: e0, drawn_in_epoch: 0 })
 ```
+DAG apply-param (KHÔNG vòng): `tlamp_mint` ← {thread_nft, meter_nft}; `supply_state` ← tlamp_mint;
+`reserve_meter` ← {tlamp_mint, …}. meter_nft là one-shot độc lập (param genesis_ref riêng) nên
+biết trước (3). Chi tiết EXEC §5.
 
 ### 3.2 ReserveDraw tx (permissionless)
 ```
@@ -157,14 +161,16 @@ Signatories:      chỉ ví trả phí (KHÔNG authority)
 | `onchain/lib/.../release.ak` | hàm nhả (18 test) | mới |
 | `onchain/lib/.../types.ak` | 5 type | mới |
 | `onchain/lib/.../util.ak` | helpers + get_epoch (2 test) | mới |
-| `onchain/validators/reserve_meter.ak` | GATE validator (13 test) | mới |
+| `onchain/validators/reserve_meter.ak` | GATE validator | mới (aiken 41/41 toàn module) |
 | `offchain/src/*.ts` | P8 mirror + builder | mới |
-| `tests/*.test.ts` | release/reserveMeter/datum (42 test) | mới |
+| `tests/*.test.ts` | release/reserveMeter/datum/recipientLock (46 test) | mới |
 
-**KHÔNG sửa (Genesis branch):** `tlamp_mint.ak`, `supply_state.ak`, Genesis `types.ak`/`constants.ak`.
+**KHÔNG sửa (Genesis branch):** `supply_state.ak`, Genesis `types.ak`/`constants.ak`.
 
-**Phụ thuộc cần anh duyệt (chạm canonical Genesis khi tích hợp deploy thật):** Genesis `tlamp_mint` luật 8
-hiện đòi `reserve_authority` ký nhánh ReserveDraw. Để permissionless thật trên mainnet, đổi gate authority
-nhánh ReserveDraw từ pubkey-sig → "phải spend ReserveMeter hợp lệ" (script-cred). Đây là sửa nhỏ DUY NHẤT chạm
-Genesis — ghi dependency, KHÔNG thực hiện trong module này. Testnet MVP: deploy `tlamp_mint` với
-`reserve_authority` = keyhash của ví keeper permissionless (tạm), hoặc dùng nhánh DistributionVest-style.
+**ĐÃ sửa Genesis (cần anh DUYỆT trước merge — chạm canonical):** `tlamp_mint.ak` luật 8 nhánh ReserveDraw
+đổi gate từ pubkey-sig (`reserve_authority`) → ÉP tx spend đúng 1 ReserveMeter NFT + meter NFT không
+mint/burn. Bỏ param `reserve_authority`; thêm param `meter_nft_policy`/`meter_nft_name`. Đường
+DistributionVest giữ nguyên pubkey-sig. ⟹ mọi ReserveDraw BẮT BUỘC đi qua `reserve_meter` → C-8'/C-10'
+luôn ép, rate-limit không bypass được, permissionless thật. Genesis aiken 55/55 + build exit 0; deploy
+script `01_deploy_lazymint.ts` đã đồng bộ thứ tự apply-param. Điều kiện deploy: ReserveMeter NFT khởi tạo
+TẠI script reserve_meter (xem EXEC §5). Chi tiết + lý do không-vòng apply-param: EXEC.md §5.

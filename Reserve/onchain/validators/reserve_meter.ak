@@ -250,9 +250,9 @@ const sink: ByteArray = #"5151"
 // 1 epoch = 432_000_000 ms (Cardano 5 ngày). epoch e ⟺ lower_bound = e·mspe.
 const mspe: Int = 432_000_000
 
-const r0: Int = 5_000_000_000_000
+const r0: Int = 2_000_000_000_000
 
-const g: Int = 400
+const g: Int = 300
 
 const ey: Int = 73
 
@@ -391,19 +391,19 @@ fn meter_in_datum(tx: Transaction) -> ReserveMeter {
 }
 
 // ── HAPPY: Draw bypass MVP (velocity_source_policy = #"") ─────
-// epoch 1036, δ nhỏ ≤ max_draw (~2.74e9). reserve_minted_out ≤ approved=cap.
+// epoch 1036, δ nhỏ ≤ max_draw (~8.22e8). reserve_minted_out ≤ approved=cap.
 test draw_happy_bypass() {
   let mi = ReserveMeter { epoch: 1036, drawn_in_epoch: 0 }
-  let mo = ReserveMeter { epoch: 1036, drawn_in_epoch: 1_000_000_000 }
-  let tx = build_tx(mi, mo, 0, 1_000_000_000, 1_000_000_000, 1_000_000_000, 1036, base_policy(), None)
+  let mo = ReserveMeter { epoch: 1036, drawn_in_epoch: 500_000_000 }
+  let tx = build_tx(mi, mo, 0, 500_000_000, 500_000_000, 500_000_000, 1036, base_policy(), None)
   run(Draw, tx)
 }
 
 // ── HAPPY: Reset sang epoch mới ──────────────────────────────
 test reset_happy() {
   let mi = ReserveMeter { epoch: 1035, drawn_in_epoch: 999 }
-  let mo = ReserveMeter { epoch: 1036, drawn_in_epoch: 1_000_000_000 }
-  let tx = build_tx(mi, mo, 0, 1_000_000_000, 1_000_000_000, 1_000_000_000, 1036, base_policy(), None)
+  let mo = ReserveMeter { epoch: 1036, drawn_in_epoch: 500_000_000 }
+  let tx = build_tx(mi, mo, 0, 500_000_000, 500_000_000, 500_000_000, 1036, base_policy(), None)
   run(Reset, tx)
 }
 
@@ -412,8 +412,8 @@ test draw_happy_velocity_high() {
   let pol = ReservePolicy { ..base_policy(), velocity_source_policy: flow_pol }
   let flow = TreasuryFlowBeacon { window_start_epoch: 1024, sma_ratio_bps: 10000 }
   let mi = ReserveMeter { epoch: 1036, drawn_in_epoch: 0 }
-  let mo = ReserveMeter { epoch: 1036, drawn_in_epoch: 1_000_000_000 }
-  let tx = build_tx(mi, mo, 0, 1_000_000_000, 1_000_000_000, 1_000_000_000, 1036, pol, Some(flow))
+  let mo = ReserveMeter { epoch: 1036, drawn_in_epoch: 500_000_000 }
+  let tx = build_tx(mi, mo, 0, 500_000_000, 500_000_000, 500_000_000, 1036, pol, Some(flow))
   run(Draw, tx)
 }
 
@@ -423,17 +423,17 @@ test draw_velocity_stale() fail {
   let pol = ReservePolicy { ..base_policy(), velocity_source_policy: flow_pol }
   let flow = TreasuryFlowBeacon { window_start_epoch: 1020, sma_ratio_bps: 10000 }
   let mi = ReserveMeter { epoch: 1036, drawn_in_epoch: 0 }
-  let mo = ReserveMeter { epoch: 1036, drawn_in_epoch: 1_000_000_000 }
-  let tx = build_tx(mi, mo, 0, 1_000_000_000, 1_000_000_000, 1_000_000_000, 1036, pol, Some(flow))
+  let mo = ReserveMeter { epoch: 1036, drawn_in_epoch: 500_000_000 }
+  let tx = build_tx(mi, mo, 0, 500_000_000, 500_000_000, 500_000_000, 1036, pol, Some(flow))
   run(Draw, tx)
 }
 
 // ── NEG: drawn vượt max_draw_per_epoch (C-8') ────────────────
 test draw_exceeds_max_draw() fail {
-  // δ = 3e9 > max_draw ~2.74e9 → reject.
+  // δ = 9e8 > max_draw ~8.22e8 → reject.
   let mi = ReserveMeter { epoch: 1036, drawn_in_epoch: 0 }
-  let mo = ReserveMeter { epoch: 1036, drawn_in_epoch: 3_000_000_000 }
-  let tx = build_tx(mi, mo, 0, 3_000_000_000, 3_000_000_000, 3_000_000_000, 1036, base_policy(), None)
+  let mo = ReserveMeter { epoch: 1036, drawn_in_epoch: 900_000_000 }
+  let tx = build_tx(mi, mo, 0, 900_000_000, 900_000_000, 900_000_000, 1036, base_policy(), None)
   run(Draw, tx)
 }
 

@@ -158,14 +158,14 @@ pub fn approved_cumulative(
 }
 
 // ══════════════════════════════════════════════════════════════
-// TESTS — số thật từ thiết kế D2 (TV-AR01..AR05) + đơn điệu/bounded
-// Hằng dùng chung: R0=5_000_000_000_000, g=400, E_y=73,
+// TESTS — số thật từ tham số CHỐT council (TV-AR01..AR05) + đơn điệu/bounded
+// Hằng dùng chung: R0=2_000_000_000_000 (2tr LAMP), g=300 (3%/năm), E_y=73,
 //                  reserve_cap=1_800_000_000_000_000, t_g=1000.
 // ══════════════════════════════════════════════════════════════
 
-const r0: Int = 5_000_000_000_000
+const r0: Int = 2_000_000_000_000
 
-const g: Int = 400
+const g: Int = 300
 
 const ey: Int = 73
 
@@ -173,26 +173,26 @@ const rcap: Int = 1_800_000_000_000_000
 
 const tg: Int = 1000
 
-// year_cap floor-iter: year_cap(1) = ⌊5e12 · 10400 / 10000⌋ = 5_200_000_000_000.
+// year_cap floor-iter: year_cap(1) = ⌊2e12 · 10300 / 10000⌋ = 2_060_000_000_000.
 test year_cap_zero() {
   year_cap(r0, g, 0) == r0
 }
 
 test year_cap_one() {
-  year_cap(r0, g, 1) == 5_200_000_000_000
+  year_cap(r0, g, 1) == 2_060_000_000_000
 }
 
 test year_cap_two() {
-  // ⌊5_200_000_000_000 · 10400 / 10000⌋ = 5_408_000_000_000
-  year_cap(r0, g, 2) == 5_408_000_000_000
+  // ⌊2_060_000_000_000 · 10300 / 10000⌋ = 2_121_800_000_000
+  year_cap(r0, g, 2) == 2_121_800_000_000
 }
 
 // TV-AR01 — cap_release đầu năm 0, epoch lẻ (nội suy).
 // epoch=1036 → e=36, y=0, f=36.
-// interp = 5e12 + (5.2e12 − 5e12)·36/73 = 5e12 + 200_000_000_000·36/73
-//        = 5e12 + ⌊7_200_000_000_000/73⌋ = 5e12 + 98_630_136_986 = 5_098_630_136_986.
+// interp = 2e12 + (2.06e12 − 2e12)·36/73 = 2e12 + 60_000_000_000·36/73
+//        = 2e12 + ⌊2_160_000_000_000/73⌋ = 2e12 + 29_589_041_095 = 2_029_589_041_095.
 test tv_ar01_cap_release_interp() {
-  cap_release(1036, tg, r0, g, ey, rcap) == 5_098_630_136_986
+  cap_release(1036, tg, r0, g, ey, rcap) == 2_029_589_041_095
 }
 
 // e<0 → 0.
@@ -207,16 +207,16 @@ test cap_release_at_genesis() {
 
 // đầu năm 1 (e=73) → đúng year_cap(1).
 test cap_release_year1_start() {
-  cap_release(1073, tg, r0, g, ey, rcap) == 5_200_000_000_000
+  cap_release(1073, tg, r0, g, ey, rcap) == 2_060_000_000_000
 }
 
 // TV-AR02 — max_draw_per_epoch năm 0.
 // cap_release(1036) − cap_release(1035):
-//   cap(1036)=5_098_630_136_986 ; cap(1035): f=35 → 5e12+⌊7_000_000_000_000/73⌋
-//   = 5e12 + 95_890_410_958 = 5_095_890_410_958.
-//   max_draw = 5_098_630_136_986 − 5_095_890_410_958 = 2_739_726_028.
+//   cap(1036)=2_029_589_041_095 ; cap(1035): f=35 → 2e12+⌊2_100_000_000_000/73⌋
+//   = 2e12 + 28_767_123_287 = 2_028_767_123_287.
+//   max_draw = 2_029_589_041_095 − 2_028_767_123_287 = 821_917_808.
 test tv_ar02_max_draw() {
-  max_draw_per_epoch(1036, tg, r0, g, ey, rcap) == 2_739_726_028
+  max_draw_per_epoch(1036, tg, r0, g, ey, rcap) == 821_917_808
 }
 
 // đơn điệu: cap_release(e) ≥ cap_release(e−1).
@@ -225,23 +225,23 @@ test cap_release_monotone() {
 }
 
 // TV-AR03 — demand_gate kéo allowance xuống khi velocity thấp.
-// cap=5_098_630_136_986, floor=2000, sma_ratio=3000 (velocity 30%).
-// allowance = ⌊5_098_630_136_986 · 3000 / 10000⌋ = 1_529_589_041_095.
+// cap=2_029_589_041_095, floor=2000, sma_ratio=3000 (velocity 30%).
+// allowance = ⌊2_029_589_041_095 · 3000 / 10000⌋ = 608_876_712_328.
 test tv_ar03_demand_low() {
   let cap = cap_release(1036, tg, r0, g, ey, rcap)
-  demand_allowance(cap, True, 3000, 2000) == 1_529_589_041_095
+  demand_allowance(cap, True, 3000, 2000) == 608_876_712_328
 }
 
-// approved = min(cap, demand) = demand (1.53e12 < 5.09e12).
+// approved = min(cap, demand) = demand (0.61e12 < 2.03e12).
 test tv_ar03_approved_low() {
-  approved_cumulative(1036, tg, r0, g, ey, rcap, True, 3000, 2000) == 1_529_589_041_095
+  approved_cumulative(1036, tg, r0, g, ey, rcap, True, 3000, 2000) == 608_876_712_328
 }
 
 // demand floor ép sàn: sma_ratio=500 < floor 2000 → clamp lên 2000.
-// allowance = ⌊cap · 2000 / 10000⌋ = ⌊5_098_630_136_986 / 5⌋ = 1_019_726_027_397.
+// allowance = ⌊cap · 2000 / 10000⌋ = ⌊2_029_589_041_095 / 5⌋ = 405_917_808_219.
 test demand_floor_clamps_up() {
   let cap = cap_release(1036, tg, r0, g, ey, rcap)
-  demand_allowance(cap, True, 500, 2000) == 1_019_726_027_397
+  demand_allowance(cap, True, 500, 2000) == 405_917_808_219
 }
 
 // velocity cao (sma_ratio=10000) → allowance = cap (KHÔNG vượt).
@@ -261,10 +261,10 @@ test tv_ar04_bypass() {
   approved_cumulative(1036, tg, r0, g, ey, rcap, False, 0, 2000) == cap_release(1036, tg, r0, g, ey, rcap)
 }
 
-// TV-AR05 — chạm cap tuyệt đối (năm xa y=200 ≫ ~150). cap_release = reserve_cap.
+// TV-AR05 — chạm cap tuyệt đối (năm xa y=300 ≫ ~231). cap_release = reserve_cap.
 test tv_ar05_hits_absolute_cap() {
-  // epoch = t_g + 200·E_y = 1000 + 14600 = 15600, f=0 → year_cap(200) ≫ rcap → min = rcap.
-  cap_release(15600, tg, r0, g, ey, rcap) == rcap
+  // epoch = t_g + 300·E_y = 1000 + 21900 = 22900, f=0 → year_cap(300) ≫ rcap → min = rcap.
+  cap_release(22900, tg, r0, g, ey, rcap) == rcap
 }
 
 // approved KHÔNG bao giờ vượt cap_release (bounded B1), mọi velocity.
@@ -275,5 +275,5 @@ test approved_never_exceeds_cap() {
 
 // approved ≤ reserve_cap mọi lúc (B1 + cap tuyệt đối).
 test approved_le_reserve_cap() {
-  approved_cumulative(15600, tg, r0, g, ey, rcap, True, 10000, 2000) <= rcap
+  approved_cumulative(22900, tg, r0, g, ey, rcap, True, 10000, 2000) <= rcap
 }

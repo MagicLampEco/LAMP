@@ -30,11 +30,11 @@ pub const bps_denom: Int = 10_000
 // Đây là KHỞI ĐIỂM ĐỀ XUẤT, không phải hằng ép on-chain (validator đọc từ
 // ReservePolicy beacon). Ghi ở đây để TS mirror + test dùng chung 1 nguồn.
 
-/// R0 đề xuất: 5 triệu LAMP/năm 0 = 5_000_000 × 10^6 oil.
-pub const default_release_base_oil: Int = 5_000_000_000_000
+/// R0 CHỐT (council): 2 triệu LAMP/năm 0 = 2_000_000 × 10^6 oil.
+pub const default_release_base_oil: Int = 2_000_000_000_000
 
-/// g_bps đề xuất: 400 = 4%/năm (clamp on-chain [300, 500]).
-pub const default_growth_bps: Int = 400
+/// g_bps CHỐT (council): 300 = 3%/năm (clamp on-chain [300, 500]).
+pub const default_growth_bps: Int = 300
 
 /// epoch/năm Cardano (~5 ngày/epoch).
 pub const default_epochs_per_year: Int = 73

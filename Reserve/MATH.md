@@ -16,8 +16,8 @@ Mọi số là `Int` (Aiken bigint) / `bigint` (TS) — KHÔNG `Number`. Chia = 
 | `oil_per_lamp` | `1_000_000` | hằng |
 | `reserve_cap` | trần cứng tuyệt đối Reserve (oil) | `1_800_000_000_000_000` (5%); cấu hình tới `32_400_000_000_000_000` (90%) |
 | `t_g` | `genesis_release_epoch` | epoch deploy + buffer |
-| `R0` | `reserve_release_base` (oil, năm 0) | `5_000_000_000_000` (5 triệu LAMP) |
-| `g_bps` | `annual_growth_bps` (clamp [300,500]) | `400` (4%/năm) |
+| `R0` | `reserve_release_base` (oil, năm 0) | `2_000_000_000_000` (2 triệu LAMP) — CHỐT council |
+| `g_bps` | `annual_growth_bps` (clamp [300,500]) | `300` (3%/năm) — CHỐT council |
 | `E_y` | `epochs_per_year` | `73` |
 | `floor_bps` | `demand_floor_bps` (sàn allowance) | `2000` (20%) |
 | `bps_denom` | `10000` (= 100%) | hằng |
@@ -47,7 +47,7 @@ cap_release(epoch) =
 Đây là **drip pattern Capped Drop** (`vested = min(E, D·n)`) nâng cấp: `D` tăng-kép-theo-năm,
 cap tuyệt đối `E = reserve_cap`. Mọi định lý Capped Drop (đơn điệu, bounded, bỏ-lỡ-không-mất-quyền) áp dụng.
 
-**Derivation tăng 3–5%/năm:** `year_cap(y+1)/year_cap(y) = (1 + g_bps/10000) = 1.04` khi `g_bps=400`
+**Derivation tăng 3–5%/năm:** `year_cap(y+1)/year_cap(y) = (1 + g_bps/10000) = 1.03` khi `g_bps=300`
 ⟹ tổng tích lũy được phép nhả tăng đúng `g_bps/10000`/năm. Vì `reserve_minted ≤ cap_release` (gate ép),
 **tốc độ tăng cung lưu hành từ Reserve ≤ g_bps/10000 /năm**.
 
@@ -95,43 +95,43 @@ Hợp 2 hàm không giảm + `min` hằng ⟹ `cap_release` đơn điệu không
 
 ## 6. Test vectors (số thật — VERIFIED trong release.ak + release.ts)
 
-Hằng chung: `R0=5_000_000_000_000`, `g=400`, `E_y=73`, `reserve_cap=1_800_000_000_000_000`, `t_g=1000`.
+Hằng chung (CHỐT council): `R0=2_000_000_000_000`, `g=300`, `E_y=73`, `reserve_cap=1_800_000_000_000_000`, `t_g=1000`.
 
 ### TV-AR01 — cap_release đầu năm 0, epoch lẻ (nội suy)
 ```
 epoch=1036 → e=36, y=0, f=36
-year_cap(0)=5_000_000_000_000 ; year_cap(1)=⌊5e12·10400/10000⌋=5_200_000_000_000
-cap_release = 5e12 + ⌊200_000_000_000·36/73⌋ = 5e12 + 98_630_136_986 = 5_098_630_136_986 oil
+year_cap(0)=2_000_000_000_000 ; year_cap(1)=⌊2e12·10300/10000⌋=2_060_000_000_000
+cap_release = 2e12 + ⌊60_000_000_000·36/73⌋ = 2e12 + 29_589_041_095 = 2_029_589_041_095 oil
 ```
 ✓ `tv_ar01_cap_release_interp` (aiken) + `release.test.ts`.
 
 ### TV-AR02 — max_draw_per_epoch năm 0
 ```
-cap(1036)=5_098_630_136_986 ; cap(1035)= 5e12+⌊7_000_000_000_000/73⌋=5_095_890_410_958
-max_draw = 5_098_630_136_986 − 5_095_890_410_958 = 2_739_726_028 oil  (≈ 2_740 LAMP/epoch)
+cap(1036)=2_029_589_041_095 ; cap(1035)= 2e12+⌊2_100_000_000_000/73⌋=2_028_767_123_287
+max_draw = 2_029_589_041_095 − 2_028_767_123_287 = 821_917_808 oil  (≈ 822 LAMP/epoch)
 ```
-✓ `tv_ar02_max_draw`. Chống rug: không epoch nào mint > ~2_740 LAMP từ Reserve năm 0.
+✓ `tv_ar02_max_draw`. Chống rug: không epoch nào mint > ~822 LAMP từ Reserve năm 0.
 
 ### TV-AR03 — demand_gate kéo allowance xuống (velocity 30%)
 ```
-cap=5_098_630_136_986 ; floor=2000 ; sma_ratio=3000
-demand_allowance = ⌊cap·3000/10000⌋ = 1_529_589_041_095 oil
-approved = min(cap, demand) = 1_529_589_041_095
+cap=2_029_589_041_095 ; floor=2000 ; sma_ratio=3000
+demand_allowance = ⌊cap·3000/10000⌋ = 608_876_712_328 oil
+approved = min(cap, demand) = 608_876_712_328
 → ế → nhả chậm; phần chưa nhả KHÔNG mất, mở lại khi velocity hồi (M-KEEP). reserve_minted ≤ approved ≤ cap.
 ```
 ✓ `tv_ar03_demand_low` + `tv_ar03_approved_low`.
 
 ### TV-AR04 — bypass MVP (velocity_source_policy = #"")
 ```
-velocity_present=False → demand_gate skip → approved = cap_release = 5_098_630_136_986
+velocity_present=False → demand_gate skip → approved = cap_release = 2_029_589_041_095
 ```
 ✓ `tv_ar04_bypass`. Testnet chạy ngay không cần Treasury beacon.
 
 ### TV-AR05 — chạm cap tuyệt đối (năm xa)
 ```
-1.04^y ≥ 360 → y ≥ ln(360)/ln(1.04) ≈ 150 năm
-epoch=15600 (y=200 ≫ 150) → cap_release = min(reserve_cap, year_cap(200)) = reserve_cap
-→ Reserve cạn dần ~150 năm (R0=5tr, g=4%), KHÔNG bao giờ vượt 1.8 tỷ.
+1.03^y ≥ 900 → y ≥ ln(900)/ln(1.03) ≈ 231 năm
+epoch=22900 (y=300 ≫ 231) → cap_release = min(reserve_cap, year_cap(300)) = reserve_cap
+→ Reserve cạn dần ~231 năm (R0=2tr, g=3%), KHÔNG bao giờ vượt 1.8 tỷ.
 ```
 ✓ `tv_ar05_hits_absolute_cap` + `yearsToCap` (TS: 150–152 năm @5%; 220–230 năm @90%).
 
