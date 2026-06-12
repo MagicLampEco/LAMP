@@ -41,7 +41,7 @@ import {
 } from "./datum.js";
 import { vested } from "./vested.js";
 
-const DEFAULT_LAMP_ASSET_NAME = "4c414d50"; // "LAMP"
+const DEFAULT_LAMP_ASSET_NAME = "744c414d50"; // "tLAMP" — canonical (khớp Genesis/Faucet)
 
 /** Strip leading 0x + lowercase. */
 function normHex(hex: string): string {

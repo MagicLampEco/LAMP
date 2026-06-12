@@ -197,7 +197,7 @@ const t_mspe: Int = 86_400_000
 
 const t_lamp_policy: ByteArray = #"1a3b"
 
-const t_lamp_name: ByteArray = #"4c414d50"
+const t_lamp_name: ByteArray = #"744c414d50"
 
 const t_beacon_policy: ByteArray = #"beac"
 

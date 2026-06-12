@@ -64,7 +64,7 @@ const FAKE_BEACON:   Validator = { type: "PlutusV3", script: "494801000022212001
 const NETWORK = "Preview" as const;
 const OWNER   = "aabbccddeeff00112233445566778899aabbccddeeff001122334455";
 const LAMP_POLICY = "ff".repeat(28);
-const LAMP_UNIT   = toUnit(LAMP_POLICY, "4c414d50");
+const LAMP_UNIT   = toUnit(LAMP_POLICY, "744c414d50"); // tLAMP canonical
 const D = lampOil(100n);
 
 // committee 3 keys, threshold 2

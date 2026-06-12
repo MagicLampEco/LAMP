@@ -139,9 +139,11 @@ export async function resolveCommittee(lucid: LucidEvolution): Promise<Committee
   return { keyHashes: [pkh], threshold: 1, source: "wallet-self" };
 }
 
-// ── LAMP token (test-LAMP self-contained, KHÔNG phụ thuộc tLAMP Tuân) ──
-// 02_mint_test_lamp.ts ghi policy + name vào deployed.json. Asset name "LAMP".
-export const LAMP_ASSET_NAME = "4c414d50"; // "LAMP"
+// ── LAMP token (test-LAMP self-contained: policy riêng để e2e không cần
+// Genesis/Faucet deploy trước, NHƯNG asset NAME = canonical tLAMP để khớp
+// token thật Genesis/Faucet mint — tránh deploy Distribution tìm sai asset) ──
+// 02_mint_test_lamp.ts ghi policy + name vào deployed.json. Asset name "tLAMP".
+export const LAMP_ASSET_NAME = "744c414d50"; // "tLAMP" — canonical (khớp Genesis/Faucet)
 
 // ── Beacon NFT (authenticity) ──────────────────────────────────
 // CONTRACT v2 "Capped Drop": chỉ còn 1 beacon DropParam{D} duy nhất. Bỏ

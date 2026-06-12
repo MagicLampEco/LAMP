@@ -154,7 +154,7 @@ const tt_ca_sh: ByteArray = #"a1a1a1a1"
 
 const tt_lamp_policy: ByteArray = #"1a3b"
 
-const tt_lamp_name: ByteArray = #"4c414d50"
+const tt_lamp_name: ByteArray = #"744c414d50"
 
 const tt_owner: ByteArray = #"0a0a"
 
