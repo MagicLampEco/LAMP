@@ -1,0 +1,19 @@
+{
+  "name": "@magiclamp/reserve-sdk",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Reserve off-chain SDK — linear 1001-epoch release (permissionless draw)",
+  "scripts": {
+    "build":      "tsc",
+    "test":       "vitest run",
+    "test:watch": "vitest",
+    "typecheck":  "tsc --noEmit"
+  },
+  "dependencies": {
+    "@lucid-evolution/lucid": "^0.4.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0",
+    "vitest":     "^1.6.0"
+  }
+}

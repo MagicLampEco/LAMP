@@ -1,0 +1,19 @@
+{
+  "name": "@magiclamp/tokenomics-sdk",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Tokenomics off-chain SDK — Capped Drop + HARD-CAP per-channel (2 lớp: ChannelBudget beacon + treasury con)",
+  "scripts": {
+    "build":      "tsc",
+    "test":       "vitest run",
+    "test:watch": "vitest",
+    "typecheck":  "tsc --noEmit"
+  },
+  "dependencies": {
+    "@lucid-evolution/lucid": "^0.4.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0",
+    "vitest":     "^1.6.0"
+  }
+}
