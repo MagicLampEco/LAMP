@@ -22,7 +22,7 @@ import {
   credentialToAddress, scriptHashToCredential, validatorToScriptHash,
   type LucidEvolution, type UTxO, type MintingPolicy, type Validator, type TxSignBuilder,
 } from "@lucid-evolution/lucid";
-import type { Network } from "@magiclamp/protocol-utils";
+import type { Network } from "@magiclamp/utils";
 
 import { TLAMP_ASSET_NAME, TOTAL_SUPPLY_OIL, CLAIM_AMOUNT_OIL } from "./constants.js";
 import { faucetDatumToCbor, mintGenesisRedeemerToCbor } from "./datum.js";

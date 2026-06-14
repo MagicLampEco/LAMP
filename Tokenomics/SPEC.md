@@ -25,19 +25,20 @@
 | Khoản | LAMP | % | Cơ chế | Bật 18/6? |
 |---|---:|---:|---|---|
 | Team | 12 tỷ | 33,33% | Capped Drop, D nhỏ + `start_epoch` lùi (cliff) | ✓ |
-| Reserve | 7,899 tỷ | 21,94% | Linear 1001 epoch, thuần thuật toán | engine code (nhánh b) |
+| Reserve | 7,899 tỷ | 21,94% | Trần E/1000 mỗi epoch, Treasury-pull gated, rollover (~1001 epoch) | engine ✓ |
 | Platform | 5 tỷ | 13,89% | Capped Drop theo MAGIC tiêu thụ/epoch | ✗ → 27/9 |
 | NewUser | 4,001 tỷ | 11,11% | 1,001 tỷ (1tr DID×1001, Capped Drop) + 3 tỷ (user sau, thuật toán √×MAGIC) | một phần |
-| Development | 3 tỷ | 8,33% | Quỹ vận hành 2 cty, Capped Drop. Nguồn = trích từ Reserve | ✓ |
+| Development | 2 tỷ | 5,56% | Quỹ vận hành 2 cty (R&D, M&A, BD, pháp lý, marketing), Capped Drop. Nguồn = trích từ Reserve | ✓ |
+| Treasury (seed) | 1 tỷ | 2,78% | Vốn mồi điều tiết C↔T + khuyến khích bầu hội đồng/MagicLamp Foundation. Nguồn = trích từ Reserve | ✓ |
 | Affiliate | 1 tỷ | 2,78% | Capped Drop, committee/DID | ✗ → 27/9 |
 | Scavenger | 1 tỷ | 2,78% | Thưởng node lưu/phát tán dữ liệu | ✗ → 27/9 |
 | ISPO | 1 tỷ | 2,78% | reward-redirect 1 tỷ/36 epoch, 2 cty toàn quyền ADA thu | một phần |
 | Thanh khoản | 1 tỷ | 2,78% | LP incentive theo TVL LAMP/ADA | ✗ |
 | TIGER Airdrop | 0,1 tỷ | 0,28% | retro snapshot delegator TIGER pool, claim 360 epoch sau 29/7, dư hoàn Treasury | ✓ |
 
-Tổng: 12 + 7,899 + 5 + 4,001 + 3 + 1 + 1 + 1 + 1 + 0,1 = **36 tỷ** ✓.
+Tổng: 12 + 7,899 + 5 + 4,001 + 2 + 1 (Treasury) + 1 + 1 + 1 + 1 + 0,1 = **36 tỷ** ✓.
 
-**Rổ Genesis (2 nhánh mint):** dist_cap = 28,101 tỷ (tất cả trừ Reserve) + reserve_cap = 7,899 tỷ = 36 tỷ.
+**Rổ Genesis (2 nhánh mint):** dist_cap = 28,101 tỷ (mọi khoản trừ Reserve, gồm cả Development 2 + Treasury 1) + reserve_cap = 7,899 tỷ = 36 tỷ.
 
 ---
 
@@ -53,12 +54,12 @@ Tổng: 12 + 7,899 + 5 + 4,001 + 3 + 1 + 1 + 1 + 1 + 0,1 = **36 tỷ** ✓.
       │ dist bucket                         │ reserve bucket
       ▼                                      ▼
 ┌─ Tokenomics (channel layer) ──┐   ┌─ Reserve engine ──────────┐
-│ HARD-CAP per-channel 2 lớp:   │   │ reserve_draw / meter:     │
-│  A. ChannelBudget beacon NFT  │   │ linear 1001 epoch,        │
-│     (remaining_oil)           │   │ permissionless, gate=hàm  │
-│  B. treasury con per-channel  │   │ (không chữ ký).           │
-│     (value = budget).         │   │ vested(t)=min(E, E·max(0, │
-│ claim_account: Capped Drop    │   │  t−start)/1001)           │
+│ HARD-CAP per-channel 2 lớp:   │   │ reserve_draw + thread:    │
+│  A. ChannelBudget beacon NFT  │   │ trần E/1000 mỗi epoch,    │
+│     (remaining_oil)           │   │ Treasury-pull (gate sàn   │
+│  B. treasury con per-channel  │   │ ở Treasury). rollover.    │
+│     (value = budget).         │   │ delta≤min(E/1000,E−drawn) │
+│ claim_account: Capped Drop    │   │ dest=Treasury. ~1001 ep.  │
 │  vested(t)=min(E, D·dpe·max(  │   └───────────────────────────┘
 │   0,t−start)). Claim/Redeem.  │
 └───────────────────────────────┘
@@ -71,7 +72,7 @@ Tổng: 12 + 7,899 + 5 + 4,001 + 3 + 1 + 1 + 1 + 1 + 0,1 = **36 tỷ** ✓.
 
 - **Distribution/onchain** = engine Capped Drop tái dùng (đã live Preview, 33 test xanh).
 - **Tokenomics/onchain** = tầng phân bổ per-channel (HARD-CAP, 61 test xanh). Offchain: nhánh (a).
-- **Reserve/onchain** = engine linear 1001 epoch: nhánh (b).
+- **Reserve/onchain** = engine trần E/1000/epoch, Treasury-pull gated (reserve_draw + reserve_thread one-shot).
 
 ---
 
@@ -84,12 +85,13 @@ Tổng: 12 + 7,899 + 5 + 4,001 + 3 + 1 + 1 + 1 + 1 + 0,1 = **36 tỷ** ✓.
 - **Tối ưu:** Genesis đã code + test (thread NFT one-shot chống SupplyState giả/đôi; D7-#1 neo cap vào hằng số; no-burn). Tái dùng thay viết lại.
 - **User + bền vững:** không có "kho 36 tỷ" tập trung làm mồi tấn công/nghi ngờ; mint theo nhu cầu kênh.
 
-### QĐ-2: Reserve = thuần linear 1001 epoch, BỎ demand_gate
+### QĐ-2: Reserve = lớp đệm gated, trần E/1000 mỗi epoch, Treasury-pull
 - Reserve KHÔNG 2 chiều (no-burn) → điều tiết cung-cầu thuộc Treasury (C↔T). Reserve chỉ giảm sốc + tái phân phối tác động cá mập, KHÔNG neo giá.
-- Nhả ReserveDraw đi qua `reserve_meter` NFT (gate = HÀM, permissionless, không chữ ký) → không ai rút tay được. (1001 = Aladin 1001 đêm = 7×11×13.)
+- **Trần cứng mỗi epoch = E/1000** (7,899 tỷ oil, chia chẵn) — không cục catch-up. Dư (epoch bị gate) dồn về sau → tổng kéo dài ~1001 epoch; tối đa liên tục cạn trong 1000 epoch.
+- **Treasury-pull (demand-gated):** mỗi draw đòi 1 input mang `treasury_auth` NFT — Treasury co-spend để "kéo" khi cần (parked < sàn). Logic sàn nằm ở Treasury; Reserve chỉ ép nhịp + trần + dest=Treasury. Gate dựa state on-chain tất định (KHÁC demand_gate velocity cũ đã bỏ vì lỗ H2).
 
-### QĐ-3: Development 3 tỷ trích từ Reserve (Team giữ nguyên 12 tỷ)
-- Team = đóng góp TRƯỚC mainnet, sở hữu cá nhân, thuế cá nhân. Development = quỹ vận hành tương lai, 2 cty quản (không sở hữu cá nhân), thuế doanh nghiệp.
+### QĐ-3: 3 tỷ trích từ Reserve → Development 2 + Treasury 1 (Team giữ 12 tỷ)
+- Team = đóng góp TRƯỚC mainnet, sở hữu cá nhân, thuế cá nhân. Development 2 tỷ = quỹ vận hành (R&D, M&A, BD, pháp lý, marketing), 2 cty quản, thuế doanh nghiệp. Treasury 1 tỷ = vốn mồi điều tiết C↔T + khuyến khích lập MagicLamp Foundation.
 
 ---
 
@@ -123,7 +125,7 @@ Constr index = thứ tự khai báo, từ 0. Mọi giá trị oil.
 
 Công thức vested:
 - Channel (Capped Drop): `vested(t) = min(entitlement, drops_per_epoch · max(0, t − start_epoch))`; `redeemable = vested − redeemed`.
-- Reserve (linear): `vested(t) = min(total_oil, total_oil · max(0, t − start_epoch) / 1001)`; `draw = vested(t) − drawn_oil`.
+- Reserve (gated, trần/epoch): `max_per_epoch = total_oil / 1000`; mỗi epoch (t > last_epoch) nhả `delta ≤ min(max_per_epoch, total_oil − drawn_oil)`, đòi Treasury-pull (treasury_auth NFT input). Dư dồn về sau → ~1001 epoch.
 
 ---
 
@@ -133,13 +135,15 @@ Công thức vested:
 
 ---
 
-## 9. Trạng thái module (2026-06-14)
-| Module | onchain | offchain | tests | Ghi chú |
-|---|---|---|---|---|
-| Genesis | ✓ (worktree feat/genesis-lazymint) | ✓ | ✓ | lazy-mint; cap CẦN sửa 34,2/1,8 → 28,101/7,899 |
-| Tokenomics | ✓ 61 test | nhánh (a) đang build | nhánh (a) | HARD-CAP per-channel |
-| Reserve | nhánh (b) đang build | nhánh (b) | nhánh (b) | linear 1001 epoch |
-| Distribution | ✓ live Preview | ✓ | ✓ 33 test | engine Capped Drop tái dùng |
-| Treasury | ✓ | ✓ | ✓ | collect/release C↔T |
+## 9. Trạng thái module (nhánh `integrate/launch-1806`)
+| Module | onchain | offchain | Ghi chú |
+|---|---|---|---|
+| Genesis | ✓ 56 test | ✓ 34 test | lazy-mint; `lamp_mint` + `token_name` param (tLAMP/LAMP); cap 28,101/7,899 |
+| Tokenomics | ✓ 61 test | ✓ 63 test | HARD-CAP per-channel |
+| Reserve | ✓ 38 test | ✓ 22 test | trần E/1000/epoch, Treasury-pull, rollover |
+| Distribution | ✓ live Preview | ✓ 58 test | engine Capped Drop tái dùng |
+| Faucet | ✓ | ✓ 17 test | vòi tLAMP cho dev test (testnet-only) |
+| Utils | — | ✓ 26 test | thư viện helper chung (đổi tên từ protocol-utils) |
+| Treasury | ✓ | ✓ | collect/release C↔T (đang phát triển: ledger.ak) |
 
 Xem `PENDING.md` cho danh sách quyết định chờ chốt.

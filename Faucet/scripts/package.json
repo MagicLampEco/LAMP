@@ -14,7 +14,7 @@
   "dependencies": {
     "@lucid-evolution/lucid": "^0.4.0",
     "@magiclamp/faucet-sdk": "file:../offchain",
-    "@magiclamp/protocol-utils": "file:../../protocol-utils",
+    "@magiclamp/utils": "file:../../Utils",
     "dotenv": "^16.4.0"
   },
   "devDependencies": {

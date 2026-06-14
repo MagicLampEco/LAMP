@@ -55,7 +55,7 @@ drop_per_DID(epoch) = floor + min(cap, base × √holding × magic_consumed[DID,
 
 ## Mục còn lại (gọn)
 
-**🟡 4. Treasury seed allocation ban đầu** — cắt từ đâu? Đề xuất cũ: Development 3 tỷ → 1,5 tỷ Development + 1,5 tỷ Treasury (khuyến khích bầu hội đồng/lập MagicLamp Foundation). **Chờ anh:** Foundation là pháp nhân VN hay DAO on-chain? Ảnh hưởng cách seed.
+**✅ 4. Treasury seed — ĐÃ CHỐT:** Development 3 tỷ → **Development 2 tỷ + Treasury 1 tỷ** (anh chốt). Treasury 1 tỷ = vốn mồi điều tiết C↔T + khuyến khích bầu hội đồng/MagicLamp Foundation. **Còn chờ anh:** Foundation là pháp nhân VN hay DAO on-chain? (ảnh hưởng cách quản Treasury seed, KHÔNG chặn allocation).
 
 **🟡 5. TIGER Airdrop retro vs tiếp diễn** — state chốt retro (cố định snapshot tới 29/7, claim 360 epoch, dư hoàn Treasury). Kiến nghị: GIỮ retro — đơn giản, không cạnh tranh ISPO. Đã rõ, coi như chốt trừ khi anh đổi.
 

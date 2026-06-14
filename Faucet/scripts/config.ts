@@ -11,7 +11,7 @@ import {
   credentialToAddress, scriptHashToCredential, applyParamsToScript,
   type LucidEvolution, type Validator, type MintingPolicy,
 } from "@lucid-evolution/lucid";
-import type { Network } from "@magiclamp/protocol-utils";
+import type { Network } from "@magiclamp/utils";
 import { readFile, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";

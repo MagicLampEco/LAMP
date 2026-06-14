@@ -1,5 +1,5 @@
 {
-  "name": "@magiclamp/protocol-utils",
+  "name": "@magiclamp/utils",
   "version": "1.0.0",
   "type": "module",
   "main": "src/index.ts",

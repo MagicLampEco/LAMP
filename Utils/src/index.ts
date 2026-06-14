@@ -1,4 +1,4 @@
-// @magiclamp/protocol-utils — Shared primitives (GenMAGIC v3.3)
+// @magiclamp/utils — Shared primitives (GenMAGIC v3.3)
 // Single source of truth for all modules.
 // ALL arithmetic BigInt. No Number for oil/nanogic/Q values.
 

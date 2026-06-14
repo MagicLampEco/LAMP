@@ -1,4 +1,4 @@
-// tests/utils.test.ts — protocol-utils canonical tests
+// tests/utils.test.ts — Utils canonical tests
 import { describe, it, expect } from "vitest";
 import {
   slotToEpoch, lampToOil, nanogicToMagicStr,

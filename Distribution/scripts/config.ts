@@ -22,7 +22,7 @@ import {
   applyParamsToScript, mintingPolicyToId, scriptFromNative,
   type LucidEvolution, type Validator, type MintingPolicy,
 } from "@lucid-evolution/lucid";
-import { msPerEpoch, type Network } from "@magiclamp/protocol-utils";
+import { msPerEpoch, type Network } from "@magiclamp/utils";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
