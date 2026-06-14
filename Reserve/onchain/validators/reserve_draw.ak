@@ -25,6 +25,10 @@
 //   reserve_dest          — địa chỉ ĐÍCH nhận LAMP nhả (Treasury — param).
 //   treasury_auth_policy  — policy NFT co-spend authority của Treasury (Treasury-pull gate).
 //   treasury_auth_name    — asset name Treasury auth NFT.
+//   gate_script_hash      — script hash của reserve_gate (Treasury). Auth NFT BẮT BUỘC
+//                           được spend TỪ input nằm ở gate này → ép kích reserve_gate.spend
+//                           (nơi DUY NHẤT kiểm sàn parked < floor). Hằng truyền vào —
+//                           gate KHÔNG phụ thuộc reserve_draw → không vòng phụ thuộc.
 
 use aiken/collection/list
 use aiken/interval.{Finite, Interval, IntervalBound, PositiveInfinity}
@@ -45,6 +49,7 @@ validator reserve_draw(
   reserve_dest          : Address,
   treasury_auth_policy  : PolicyId,
   treasury_auth_name    : ByteArray,
+  gate_script_hash      : ByteArray,
 ) {
   spend(
     _datum: Option<ReserveState>,
@@ -89,16 +94,17 @@ validator reserve_draw(
     expect delta <= math.max_per_epoch(s.total_oil)
     expect delta <= s.total_oil - s.drawn_oil
 
-    // ── Luật 5: Treasury-pull gate — ∃ input mang treasury_auth NFT qty ≥ 1 ──
-    // Treasury co-spend authority NFT của nó để "kéo" Reserve. Reserve KHÔNG biết
-    // logic sàn (parked < floor) — đó là việc của Treasury validator (ngoài phạm vi);
-    // Reserve chỉ đòi sự HIỆN DIỆN auth NFT làm bằng chứng "Treasury chủ động kéo".
-    // qty ≥ 1 (không ép == 1 vì Treasury tự quản UTxO auth của nó).
+    // ── Luật 5: Treasury-pull gate — ∃ input mang treasury_auth NFT Ở GATE SCRIPT ──
+    // Auth NFT PHẢI ở input thuộc gate script → spend nó BẮT BUỘC kích reserve_gate.spend
+    // (ép parked < floor + custody reference). Chỉ đếm NFT là chưa đủ (Vector F): kẻ giữ
+    // auth ở ví thường sẽ bỏ qua gate. Ghim địa chỉ = khôi phục bất biến "nhả ⟺ dưới sàn".
     expect
       list.any(
         tx.inputs,
         fn(i) {
-          assets.quantity_of(i.output.value, treasury_auth_policy, treasury_auth_name) >= 1
+          util.is_at_script(i.output.address, gate_script_hash) && assets.quantity_of(
+            i.output.value, treasury_auth_policy, treasury_auth_name,
+          ) >= 1
         },
       )
 
@@ -166,6 +172,12 @@ const tre_nm: ByteArray = #"545245"
 
 const rscript: ByteArray = #"5151"
 
+// gate script hash của reserve_gate (Treasury). Auth NFT BẮT BUỘC ở đây (Vector 3 fix).
+const gate_hash: ByteArray = #"9191"
+
+// script hash KHÁC gate (test auth đặt sai script → reject).
+const other_script: ByteArray = #"8282"
+
 const dest_pkh: ByteArray = #"deadbeef"
 
 const ms_epoch: Int = 432_000_000
@@ -201,10 +213,22 @@ fn rs_input_no_nft(s: ReserveState) -> Input {
   )
 }
 
-/// Input mang Treasury auth NFT (bằng chứng Treasury-pull).
+/// Input mang Treasury auth NFT TẠI gate script (bằng chứng Treasury-pull qua gate).
 fn treasury_auth_input() -> Input {
   let v = assets.from_lovelace(2_000_000) |> assets.add(tre_pol, tre_nm, 1)
-  util.mk_input(util.mk_ref(7), util.mk_output(util.script_address(#"7474"), v, 0))
+  util.mk_input(util.mk_ref(7), util.mk_output(util.script_address(gate_hash), v, 0))
+}
+
+/// Input mang Treasury auth NFT TẠI VÍ THƯỜNG (vk address — Vector 3: bỏ qua gate).
+fn treasury_auth_input_at_vk() -> Input {
+  let v = assets.from_lovelace(2_000_000) |> assets.add(tre_pol, tre_nm, 1)
+  util.mk_input(util.mk_ref(7), util.mk_output(util.vk_address(#"7474"), v, 0))
+}
+
+/// Input mang Treasury auth NFT TẠI script KHÁC gate (sai địa chỉ → reject).
+fn treasury_auth_input_at_wrong_script() -> Input {
+  let v = assets.from_lovelace(2_000_000) |> assets.add(tre_pol, tre_nm, 1)
+  util.mk_input(util.mk_ref(7), util.mk_output(util.script_address(other_script), v, 0))
 }
 
 /// ReserveState' output mang lại NFT, datum = s2 (cùng script address).
@@ -239,7 +263,7 @@ fn vrange(ep: Int) -> Interval {
 fn run(s_in: ReserveState, tx: Transaction) -> Bool {
   reserve_draw.spend(
     lamp_pol, lamp_nm, thr_pol, thr_nm, ms_epoch, dest_addr(), tre_pol, tre_nm,
-    Some(s_in), Draw, own_ref(), tx,
+    gate_hash, Some(s_in), Draw, own_ref(), tx,
   )
 }
 
@@ -331,6 +355,40 @@ test reject_missing_treasury_auth() fail {
     Transaction {
       ..placeholder,
       inputs: [rs_input(s)],
+      outputs: [rs_output(s2), dest_output(d)],
+      mint: mint_lamp(d),
+      validity_range: vrange(start + 1),
+    }
+  run(s, tx)
+}
+
+test reject_auth_not_at_gate() fail {
+  // Vector 3: auth NFT ở VÍ THƯỜNG (vk address) — đủ qty nhưng KHÔNG ở gate script →
+  // bỏ qua reserve_gate (không ép sàn) → Luật 5 reject (auth phải spend từ gate).
+  let s = fresh()
+  let d = cap
+  let s2 = ReserveState { ..s, drawn_oil: d, last_epoch: start + 1 }
+  let tx =
+    Transaction {
+      ..placeholder,
+      inputs: [rs_input(s), treasury_auth_input_at_vk()],
+      outputs: [rs_output(s2), dest_output(d)],
+      mint: mint_lamp(d),
+      validity_range: vrange(start + 1),
+    }
+  run(s, tx)
+}
+
+test reject_auth_at_wrong_script() fail {
+  // Vector 3: auth NFT ở SCRIPT KHÁC gate (không phải reserve_gate) → không kích đúng
+  // gate ép sàn → Luật 5 reject (gate_script_hash phải khớp reserve_gate).
+  let s = fresh()
+  let d = cap
+  let s2 = ReserveState { ..s, drawn_oil: d, last_epoch: start + 1 }
+  let tx =
+    Transaction {
+      ..placeholder,
+      inputs: [rs_input(s), treasury_auth_input_at_wrong_script()],
       outputs: [rs_output(s2), dest_output(d)],
       mint: mint_lamp(d),
       validity_range: vrange(start + 1),

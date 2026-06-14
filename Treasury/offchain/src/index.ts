@@ -7,6 +7,10 @@ export * from "./collect.js";
 export * from "./collectBuilder.js";
 export * from "./releaseBuilder.js";
 
+// Cầu Reserve↔Treasury (Treasury-pull): mint auth one-shot + spend gate ép sàn.
+export * from "./reserveAuthBuilder.js";
+export * from "./reserveGateBuilder.js";
+
 // release.js: 5 hàm (ledgerOk/valueOk/planLedgerOut/eachOutLineOk/eachInLinePresent)
 // trùng tên với collect.js (mỗi nhánh có bản riêng). Re-export có alias `release*`
 // để barrel sạch — gọi bản nhánh Release qua `releaseLedgerOk`, v.v. Các hàm KHÔNG

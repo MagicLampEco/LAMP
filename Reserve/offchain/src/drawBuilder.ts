@@ -20,7 +20,7 @@
 // truyền `validFromUnixMs`/`epoch` nhất quán; builder set validFrom để lower_bound = epoch.
 
 import {
-  Data, toUnit,
+  Data, toUnit, getAddressDetails,
   type Assets, type LucidEvolution, type MintingPolicy, type TxSignBuilder,
   type UTxO, type Validator,
 } from "@lucid-evolution/lucid";
@@ -59,8 +59,21 @@ export interface DrawParams {
   /** redeemer spend SupplyState (Genesis SupplyStateRedeemer.Advance CBOR). */
   supplyStateRedeemerCbor: string;
 
-  /** Treasury auth UTxO (mang Treasury co-spend authority NFT — bằng chứng Treasury-pull). */
+  /**
+   * Treasury auth UTxO (mang Treasury co-spend authority NFT — bằng chứng Treasury-pull).
+   *
+   * VECTOR 3 (Critical): UTxO này PHẢI nằm Ở gate script (reserve_gate). reserve_draw onchain
+   * (param gate_script_hash) chỉ chấp nhận auth NFT khi input của nó ở đúng gate hash → spend
+   * nó BẮT BUỘC kích reserve_gate.spend (ép parked < floor). Auth ở ví thường/script khác →
+   * onchain reject. Caller chịu trách nhiệm chọn UTxO ở gate (xem gateScriptHash).
+   */
   treasuryAuthUtxo: UTxO;
+  /**
+   * Script hash của reserve_gate (Treasury) — KHỚP param onchain gate_script_hash của
+   * reserve_draw (= hash của reserve_gate validator). Auth UTxO ở trên phải thuộc script này.
+   * (Tham chiếu/đối chiếu: reserve_draw đã apply-param gate_script_hash = hash này.)
+   */
+  gateScriptHash: string;
   /** redeemer spend Treasury auth UTxO (Treasury validator quản — CBOR). */
   treasuryAuthRedeemerCbor?: string;
   /** Treasury validator giữ auth UTxO (đính nếu auth UTxO ở script address). */
@@ -116,6 +129,22 @@ export async function buildDrawTx(p: DrawParams): Promise<{
 }> {
   const minAda = p.reserveMinAda ?? 2_000_000n;
   const tokenName = p.tokenName ?? TLAMP_NAME;
+
+  // VECTOR 3 guard: auth UTxO PHẢI ở gate script. reserve_draw onchain reject auth không-ở-gate;
+  // bắt sớm offchain (paymentCredential.hash == gateScriptHash) tránh dựng tx chắc-chắn-fail.
+  const authCred = p.treasuryAuthUtxo.address
+    ? getAddressDetails(p.treasuryAuthUtxo.address).paymentCredential
+    : undefined;
+  if (
+    !authCred ||
+    authCred.type !== "Script" ||
+    authCred.hash !== p.gateScriptHash
+  ) {
+    throw new Error(
+      "RDB-002: treasuryAuthUtxo phải ở gate script (reserve_gate) khớp gateScriptHash — " +
+        "Vector 3: auth ở ví thường/script khác sẽ bị reserve_draw onchain reject.",
+    );
+  }
 
   const sIn = readReserveState(p.reserveUtxo);
   const requested = p.requestedOil ?? maxPerEpoch(sIn.total_oil);
