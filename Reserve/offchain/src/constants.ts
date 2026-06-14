@@ -3,8 +3,8 @@
 /** 1 LAMP = 10^6 oil. */
 export const OIL_PER_LAMP = 1_000_000n;
 
-/** asset name LAMP — testnet "tLAMP" (hex). Param hóa onchain (lamp_name).
- *  Mainnet đổi sang "LAMP" = "4c414d50". Khớp Genesis constants.tlamp_name. */
+/** asset name LAMP — testnet "tLAMP" (hex). Param hóa onchain (token_name).
+ *  Mainnet đổi sang "LAMP" = "4c414d50". Khớp Genesis constants.ttoken_name. */
 export const TLAMP_NAME = "744c414d50";
 
 /** Số epoch tối thiểu để cạn pot khi nhả liên tục đúng trần (math.release_epochs). */

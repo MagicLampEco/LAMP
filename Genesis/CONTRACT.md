@@ -43,11 +43,11 @@ Phá vòng lặp phụ thuộc bằng tham số hóa TUYẾN TÍNH (mỗi tầng
   (1) thread_nft policy   param = genesis_ref (OutputReference one-shot)
         │  mint đúng 1 (SUPPLY,+1), one-shot → SupplyState UTxO là DUY NHẤT
         ▼
-  (2) tlamp_mint policy    param = thread_nft_policy + thread_nft_name
+  (2) lamp_mint policy    param = thread_nft_policy + thread_nft_name
         │  GATE: mỗi tx mint tLAMP PHẢI consume + recreate SupplyState (nhận diện
         │  qua thread NFT). Toàn bộ luật cap/quota/monotonic/no-burn Ở ĐÂY.
         ▼
-  (3) supply_state spend   param = tlamp_policy
+  (3) supply_state spend   param = lamp_policy
         │  SupplyState UTxO ngồi tại đây. Spend hợp lệ ⟺ tx CÓ mint tLAMP (≠0).
         │  Ủy quyền toàn bộ kiểm tra transition cho (2) — tránh trùng lặp luật.
 ```
@@ -79,7 +79,7 @@ SupplyState {
 
 `minted_total = dist_minted + reserve_minted`. Bất biến: `≤ dist_cap + reserve_cap`.
 
-## 4b. tlamp_mint redeemer
+## 4b. lamp_mint redeemer
 
 ```
 TLampMintRedeemer:
@@ -92,10 +92,10 @@ DistributionVest. Mint policy KHÔNG burn → không có nhánh redeemer âm.)
 
 ---
 
-## 5. Luật ép trong `tlamp_mint` (mọi tx mint tLAMP)
+## 5. Luật ép trong `lamp_mint` (mọi tx mint tLAMP)
 
 Gọi `S` = SupplyState input (datum cũ), `S'` = SupplyState output (datum mới),
-`Δ` = `quantity_of(tx.mint, tlamp_policy, tLAMP_name)` (lượng tLAMP mint trong tx).
+`Δ` = `quantity_of(tx.mint, lamp_policy, tLAMP_name)` (lượng tLAMP mint trong tx).
 
 1. **Consume + recreate SupplyState (thread):** đúng 1 input mang thread NFT
    `(thread_nft_policy, SUPPLY, 1)`, đúng 1 output mang lại NFT đó tại CÙNG địa chỉ
@@ -122,8 +122,8 @@ Gọi `S` = SupplyState input (datum cũ), `S'` = SupplyState output (datum mớ
 
 ## 5b. Luật `supply_state` spend (tối giản)
 
-- Spend hợp lệ ⟺ `quantity_of(tx.mint, tlamp_policy, tLAMP_name) > 0` (có mint tLAMP
-  trong tx). Ủy quyền toàn bộ transition cho `tlamp_mint`.
+- Spend hợp lệ ⟺ `quantity_of(tx.mint, lamp_policy, tLAMP_name) > 0` (có mint tLAMP
+  trong tx). Ủy quyền toàn bộ transition cho `lamp_mint`.
 - KHÔNG cho spend SupplyState mà không mint (chống rút NFT ra / phá thread vô cớ).
 
 ---
@@ -174,7 +174,7 @@ không qua pot trung gian.
 
 ## 9. Trạng thái triển khai
 
-- onchain: `supply_state.ak` (spend, tầng 3) + `tlamp_mint.ak` (mint, tầng 2) +
+- onchain: `supply_state.ak` (spend, tầng 3) + `lamp_mint.ak` (mint, tầng 2) +
   `thread_nft.ak` (mint one-shot, tầng 1) + `lib/.../types.ak` + `constants.ak` + `util.ak`.
 - offchain: `types.ts` + `datum.ts` (codec) + `supplyState.ts` (cap math) +
   `mintBuilder.ts` (DistributionVest/ReserveDraw) + `circulating.ts`.

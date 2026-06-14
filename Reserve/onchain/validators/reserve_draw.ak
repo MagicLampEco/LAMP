@@ -18,7 +18,7 @@
 //
 // Param:
 //   lamp_policy           — minting policy LAMP/tLAMP (Genesis tlamp_mint), đo Δ mint.
-//   lamp_name             — asset name LAMP/tLAMP (param: testnet "tLAMP" / mainnet "LAMP").
+//   token_name             — asset name LAMP/tLAMP (param: testnet "tLAMP" / mainnet "LAMP").
 //   reserve_thread_policy — policy reserve thread NFT one-shot (authenticity ReserveState).
 //   reserve_thread_name   — asset name reserve thread NFT.
 //   ms_per_epoch          — độ dài epoch (POSIX ms) theo network.
@@ -38,7 +38,7 @@ use magiclamp/reserve/util
 
 validator reserve_draw(
   lamp_policy           : PolicyId,
-  lamp_name             : ByteArray,
+  token_name             : ByteArray,
   reserve_thread_policy : PolicyId,
   reserve_thread_name   : ByteArray,
   ms_per_epoch          : Int,
@@ -80,11 +80,11 @@ validator reserve_draw(
     expect t > s.last_epoch
 
     // ── Luật 4: delta mint LAMP — > 0, ≤ trần epoch, ≤ pot còn lại ─────────
-    // delta = Δ mint LAMP (lamp_policy, lamp_name). 3 vế độc lập:
+    // delta = Δ mint LAMP (lamp_policy, token_name). 3 vế độc lập:
     //   delta > 0                     — chống draw rỗng (spam min-ADA / no-burn).
     //   delta ≤ max_per_epoch(total)  — TRẦN CỨNG mỗi epoch (= total/1000).
     //   delta ≤ total − drawn         — KHÔNG vượt pot còn lại.
-    let delta = util.minted_qty(tx.mint, lamp_policy, lamp_name)
+    let delta = util.minted_qty(tx.mint, lamp_policy, token_name)
     expect delta > 0
     expect delta <= math.max_per_epoch(s.total_oil)
     expect delta <= s.total_oil - s.drawn_oil
@@ -123,7 +123,7 @@ validator reserve_draw(
     expect s2.drawn_oil == s.drawn_oil + delta
     expect s2.last_epoch == t
     // ReserveState' KHÔNG ôm LAMP (chống nhồi LAMP vào state né dest).
-    expect assets.quantity_of(s_out.value, lamp_policy, lamp_name) == 0
+    expect assets.quantity_of(s_out.value, lamp_policy, token_name) == 0
     // KHÔNG đính reference_script (chống biến state thành script-carrier rác).
     expect s_out.reference_script == None
 
@@ -135,7 +135,7 @@ validator reserve_draw(
     // ── Luật 9: TOÀN BỘ delta LAMP đi tới reserve_dest (không rò rỉ) ───────
     // Đếm LAMP tới credential dest ≥ delta. (== delta ngầm vì Δ mint == delta và state
     // output không ôm LAMP → không nguồn LAMP nào khác để vượt.)
-    let to_dest = util.qty_to_credential(tx.outputs, reserve_dest, lamp_policy, lamp_name)
+    let to_dest = util.qty_to_credential(tx.outputs, reserve_dest, lamp_policy, token_name)
     expect to_dest >= delta
 
     True

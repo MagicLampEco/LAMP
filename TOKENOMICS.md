@@ -46,7 +46,7 @@ Tổng: 12 + 7,899 + 5 + 4,001 + 2 + 1 (Treasury) + 1 + 1 + 1 + 1 + 0,1 = **36 t
 
 ```
 ┌─ Genesis (mint layer) ───────────────────────────────────────┐
-│  thread_nft (one-shot) → tlamp_mint (cap/quota/no-burn) →     │
+│  thread_nft (one-shot) → lamp_mint (cap/quota/no-burn) →      │
 │  supply_state (holder). SupplyState{dist_minted, reserve_     │
 │  minted, dist_cap=28,101T, reserve_cap=7,899T}. 2 route:      │
 │  DistributionVest (→dist) | ReserveDraw (→reserve, gate meter)│

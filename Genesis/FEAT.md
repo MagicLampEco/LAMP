@@ -77,11 +77,11 @@ vòng lặp policy-id):
   (1) thread_nft policy   ── param = genesis_ref (UTxO seed one-shot)
         │  mint đúng 1 (SUPPLY, +1) MỘT lần → SupplyState là DUY NHẤT
         ▼
-  (2) tlamp_mint policy    ── param = thread_policy + SUPPLY name + authority
+  (2) lamp_mint policy    ── param = thread_policy + SUPPLY name + authority
         │  GATE: mọi tx mint tLAMP PHẢI consume + recreate SupplyState.
         │  Toàn bộ luật cap/quota/monotonic/no-burn Ở ĐÂY.
         ▼
-  (3) supply_state spend   ── param = tlamp_policy
+  (3) supply_state spend   ── param = lamp_policy
         │  SupplyState UTxO ngồi tại đây. Spend hợp lệ ⟺ tx CÓ mint tLAMP.
         │  Ủy quyền toàn bộ kiểm tra transition cho (2).
 ```
@@ -141,7 +141,7 @@ SupplyState là một UTxO DUY NHẤT, mang thread NFT `SUPPLY`, datum bốn s�
 1. Authority Distribution xây tx: spend SupplyState (redeemer `Advance`) + mint `Δ` oil tLAMP
    (redeemer `DistributionVest`) + recreate SupplyState' tại CÙNG địa chỉ script + trả `Δ` tLAMP
    cho recipient + ký bằng `dist_authority`.
-2. `tlamp_mint` ép: `Δ > 0`, `S'.dist_minted = S.dist_minted + Δ`, `S'.reserve_minted` KHÔNG đổi,
+2. `lamp_mint` ép: `Δ > 0`, `S'.dist_minted = S.dist_minted + Δ`, `S'.reserve_minted` KHÔNG đổi,
    caps KHÔNG đổi, `S'.dist_minted ≤ dist_cap`.
 
 **Trạng thái sau:** `dist_minted += Δ`; `Δ` tLAMP nằm trong ví recipient; thread NFT về lại
@@ -208,7 +208,7 @@ Chi tiết cơ chế chặn từng vector → [MATH §định lý](./MATH.md) + 
 
 ## 7. Trạng thái triển khai (tóm tắt — chi tiết EXEC)
 
-- **onchain:** `thread_nft.ak` (tầng 1) + `tlamp_mint.ak` (tầng 2) + `supply_state.ak` (tầng 3)
+- **onchain:** `thread_nft.ak` (tầng 1) + `lamp_mint.ak` (tầng 2) + `supply_state.ak` (tầng 3)
   + lib `types.ak`/`constants.ak`/`util.ak`. Test Aiken: happy 2 đường + biên cap + toàn bộ A1–A12.
 - **offchain:** `types.ts`/`datum.ts` (codec byte-perfect) + `supplyState.ts` (cap math fail-fast)
   + `mintBuilder.ts` + `circulating.ts`. Test vitest: codec round-trip, cap math, circulating.

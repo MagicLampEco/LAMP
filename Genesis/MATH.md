@@ -14,8 +14,8 @@ phát biểu, và truy mỗi định lý về **dòng code thật** (file:dòng)
 | Ký hiệu | Nghĩa | Nguồn |
 |---|---|---|
 | `S = (d, r, D, R)` | SupplyState input: `(dist_minted, reserve_minted, dist_cap, reserve_cap)` | `types.ak:9` |
-| `S' = (d', r', D', R')` | SupplyState output (datum mới) | `tlamp_mint.ak:50` |
-| `Δ` | `quantity_of(tx.mint, tlamp_policy, tLAMP_name)` — lượng tLAMP mint trong tx | `tlamp_mint.ak:54` |
+| `S' = (d', r', D', R')` | SupplyState output (datum mới) | `lamp_mint.ak:50` |
+| `Δ` | `quantity_of(tx.mint, lamp_policy, tLAMP_name)` — lượng tLAMP mint trong tx | `lamp_mint.ak:54` |
 | `M(S)` | `d + r` = minted_total | `supplyState.ts:20` |
 | `CAP` | `D + R = 36_000_000_000_000_000` oil | `constants.ak:22` |
 | `D₀, R₀` | `34_200_000_000_000_000`, `1_800_000_000_000_000` (95% / 5%) | `constants.ak:16,19` |
@@ -25,21 +25,21 @@ Hằng số: `D₀ + R₀ = CAP` (`constants.ak:24` test `caps_sum_to_total`); `
 
 ---
 
-## 1. Tiên đề transition (luật ép trong `tlamp_mint`)
+## 1. Tiên đề transition (luật ép trong `lamp_mint`)
 
-Mọi tx mint tLAMP hợp lệ thỏa ĐỒNG THỜI (CONTRACT §5; `tlamp_mint.ak:34–94`):
+Mọi tx mint tLAMP hợp lệ thỏa ĐỒNG THỜI (CONTRACT §5; `lamp_mint.ak:34–94`):
 
 | # | Tiên đề | Code |
 |---|---|---|
-| **T1** | đúng 1 input + đúng 1 output mang thread NFT; thread NFT không mint/burn; output cùng địa chỉ | `tlamp_mint.ak:39–47` |
-| **T2** | `Δ > 0` | `tlamp_mint.ak:55` |
-| **T3** | policy tlamp mint đúng 1 asset name (= tLAMP) | `tlamp_mint.ak:56` |
-| **T4** | `D' = D ∧ R' = R` (caps bất biến) | `tlamp_mint.ak:59–60` |
-| **T5a** | nếu `DistributionVest`: `d' = d + Δ ∧ r' = r` | `tlamp_mint.ak:67–69` |
-| **T5b** | nếu `ReserveDraw`: `r' = r + Δ ∧ d' = d` | `tlamp_mint.ak:70–72` |
-| **T6** | `d' ≥ d ∧ r' ≥ r` (monotonic guard) | `tlamp_mint.ak:78–79` |
-| **T7** | `d' ≤ D' ∧ r' ≤ R'` (cap enforce) | `tlamp_mint.ak:82–83` |
-| **T8** | `count_sigs(authority, extra_signatories) ≥ threshold` | `tlamp_mint.ak:92` |
+| **T1** | đúng 1 input + đúng 1 output mang thread NFT; thread NFT không mint/burn; output cùng địa chỉ | `lamp_mint.ak:39–47` |
+| **T2** | `Δ > 0` | `lamp_mint.ak:55` |
+| **T3** | policy tlamp mint đúng 1 asset name (= tLAMP) | `lamp_mint.ak:56` |
+| **T4** | `D' = D ∧ R' = R` (caps bất biến) | `lamp_mint.ak:59–60` |
+| **T5a** | nếu `DistributionVest`: `d' = d + Δ ∧ r' = r` | `lamp_mint.ak:67–69` |
+| **T5b** | nếu `ReserveDraw`: `r' = r + Δ ∧ d' = d` | `lamp_mint.ak:70–72` |
+| **T6** | `d' ≥ d ∧ r' ≥ r` (monotonic guard) | `lamp_mint.ak:78–79` |
+| **T7** | `d' ≤ D' ∧ r' ≤ R'` (cap enforce) | `lamp_mint.ak:82–83` |
+| **T8** | `count_sigs(authority, extra_signatories) ≥ threshold` | `lamp_mint.ak:92` |
 
 Spend tầng 3 (`supply_state.ak:29–30`): tx spend SupplyState hợp lệ ⟺ `Δ > 0`.
 
@@ -67,8 +67,8 @@ Mint tầng 1 (`thread_nft.ak:22–26`): mint thread NFT hợp lệ ⟺ consume 
 `genesisSupplyState`). Bước: T4 cho `Dₖ₊₁ = Dₖ`, `Rₖ₊₁ = Rₖ`. ∎
 
 **Hệ quả (vector A1, A9).** Không transition nào nới cap (T4 chặn A9) hay mint vượt cap (T7 chặn
-A1). Biên `= cap` được phép (T7 dùng `≤`): test `distvest_exact_cap_boundary` (`tlamp_mint.ak:188`)
-mint tới ĐÚNG `dist_cap` pass; `mint_exceed_dist_cap` (`tlamp_mint.ak:203`) vượt 1 oil fail.
+A1). Biên `= cap` được phép (T7 dùng `≤`): test `distvest_exact_cap_boundary` (`lamp_mint.ak:188`)
+mint tới ĐÚNG `dist_cap` pass; `mint_exceed_dist_cap` (`lamp_mint.ak:203`) vượt 1 oil fail.
 
 ---
 
@@ -83,7 +83,7 @@ T2 cho `Δ > 0`. Vậy `M(S') = M(S) + Δ > M(S)`. ∎
 
 *Chứng minh.* T6 ép trực tiếp. Dư thừa-có-chủ-đích: đã suy được từ T5+T2 (nhánh tăng cộng `Δ>0`,
 nhánh kia bằng), nhưng T6 là guard tường minh chống mọi rollback (CONTRACT §5 luật 6; chặn A4).
-Test `mint_rollback_dist` (`tlamp_mint.ak:235`) đặt `d' < d` → fail (vi phạm cả T5a lẫn T6). ∎
+Test `mint_rollback_dist` (`lamp_mint.ak:235`) đặt `d' < d` → fail (vi phạm cả T5a lẫn T6). ∎
 
 **Hệ quả monotonic toàn cục.** Vì mỗi transition chỉ tăng và `genesis_ref` one-shot bảo đảm chỉ
 một chuỗi SupplyState duy nhất (Định lý 5.1), `M` đơn điệu tăng theo toàn bộ lịch sử chain ⇒
@@ -99,8 +99,8 @@ một chuỗi SupplyState duy nhất (Định lý 5.1), `M` đơn điệu tăng 
 *Chứng minh.* T5a: `DistributionVest ⇒ r' = r`. T5b: `ReserveDraw ⇒ d' = d`. ∎
 
 **Hệ quả (A5).** Không thể "rút Distribution ghi vào Reserve" hay ngược lại. Tests
-`distvest_touches_reserve` (`tlamp_mint.ak:244`) và `reservedraw_touches_dist`
-(`tlamp_mint.ak:251`) đều fail.
+`distvest_touches_reserve` (`lamp_mint.ak:244`) và `reservedraw_touches_dist`
+(`lamp_mint.ak:251`) đều fail.
 
 **Hệ quả (tổng-cap chặt hơn).** Vì hai quota khóa nhau và mỗi cái có cap riêng, mint tối đa qua
 Distribution = `D₀` dù tổng `M < CAP`. Test `mint vượt total qua dist alone`
@@ -126,9 +126,9 @@ mint lần 2. ∎
 > **Định lý 5.2 (thread bảo toàn qua mint tLAMP).** Mỗi tx mint tLAMP giữ nguyên thread NFT: đúng 1
 > input + 1 output mang nó, KHÔNG mint/burn nó.
 
-*Chứng minh.* T1: `count_inputs_holding_nft == 1` (`tlamp_mint.ak:39`),
-`count_holding_nft(outputs) == 1` (`tlamp_mint.ak:40`), `quantity_of(tx.mint, thread, SUPPLY) == 0`
-(`tlamp_mint.ak:41`), `s_out.address == s_in.address` (`tlamp_mint.ak:47`). ∎
+*Chứng minh.* T1: `count_inputs_holding_nft == 1` (`lamp_mint.ak:39`),
+`count_holding_nft(outputs) == 1` (`lamp_mint.ak:40`), `quantity_of(tx.mint, thread, SUPPLY) == 0`
+(`lamp_mint.ak:41`), `s_out.address == s_in.address` (`lamp_mint.ak:47`). ∎
 
 **Hệ quả.** SUPPLY NFT `mint_or_burn_count` luôn = 1 dù mint tLAMP nhiều lần — dẫn chứng tx thật
 `ed7377fa…` (mint thêm 60 tLAMP, NFT count vẫn 1). Chống A2 (mint lậu: `count == 0 ≠ 1`,
@@ -141,11 +141,11 @@ mint lần 2. ∎
 > **Định lý 6.1 (A8).** Lượng token thực sự đúc ra (`Δ` trong `tx.mint`) BẰNG lượng cộng vào bộ
 > đếm.
 
-*Chứng minh.* `tlamp_mint.ak:54` định nghĩa `delta` là CHÍNH `quantity_of(tx.mint, policy_id, tLAMP)`
-— cùng một biến `delta` dùng trong T5a/T5b (`tlamp_mint.ak:68,71`). Không tồn tại biến thứ hai cho
+*Chứng minh.* `lamp_mint.ak:54` định nghĩa `delta` là CHÍNH `quantity_of(tx.mint, policy_id, tLAMP)`
+— cùng một biến `delta` dùng trong T5a/T5b (`lamp_mint.ak:68,71`). Không tồn tại biến thứ hai cho
 "lượng ghi sổ" → không thể lệch. ∎
 
-**Hệ quả.** `delta_mismatch` (`tlamp_mint.ak:292`): mint 1_000_000 nhưng datum cộng 1 → `s2.dist_minted
+**Hệ quả.** `delta_mismatch` (`lamp_mint.ak:292`): mint 1_000_000 nhưng datum cộng 1 → `s2.dist_minted
 ≠ s.dist_minted + delta` → T5a fail.
 
 ---
@@ -204,7 +204,7 @@ custody.
 `supplyState.ts` `applyMint` (`supplyState.ts:41–64`) tính `S'` offchain ĐÚNG T2/T5/T7 trước khi
 build tx (tránh tốn phí cho tx chắc reject):
 
-| Onchain (tlamp_mint.ak) | Offchain (supplyState.ts) |
+| Onchain (lamp_mint.ak) | Offchain (supplyState.ts) |
 |---|---|
 | T2 `Δ > 0` | `:42` `if (delta <= 0n) throw GMINT-001` |
 | T5a `d' = d + Δ` | `:46,53` `dist_minted: s.dist_minted + delta` |

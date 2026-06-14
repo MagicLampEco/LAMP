@@ -20,7 +20,7 @@ Nguồn chuẩn bắt buộc đọc trước: [`CONTRACT.md`](./CONTRACT.md). Sp
 Đưa Genesis lazy-mint từ thiết kế (CONTRACT) tới **chạy thật trên Preview** với bằng chứng on-chain
 rằng "fixed-supply 36 tỷ KHÔNG cần mint sẵn 36 tỷ". Cụ thể:
 
-1. Ba script Aiken (`thread_nft` / `tlamp_mint` / `supply_state`) build sạch + test full A1–A12.
+1. Ba script Aiken (`thread_nft` / `lamp_mint` / `supply_state`) build sạch + test full A1–A12.
 2. Lớp offchain (codec byte-perfect + cap math fail-fast + tx builder) test xanh.
 3. Deploy SupplyState + lazy-mint thử trên Preview, chứng minh CAP nằm trong datum chứ không phải
    tổng token tồn tại.
@@ -42,8 +42,8 @@ minh được on-chain) — nền cho định giá + governance + SDK bên thứ
 |---|---|---|
 | **M0** | lib `types.ak`/`constants.ak`/`util.ak` — datum/redeemer/helper + hằng số 36 tỷ | ✅ |
 | **M1** | `thread_nft.ak` — policy one-shot SUPPLY NFT (tầng 1) | ✅ |
-| **M2** | `tlamp_mint.ak` — policy lazy-mint, luật 1–8 (tầng 2) | ✅ |
-| **M3** | `supply_state.ak` — spend giữ SupplyState, ủy quyền tlamp_mint (tầng 3) | ✅ |
+| **M2** | `lamp_mint.ak` — policy lazy-mint, luật 1–8 (tầng 2) | ✅ |
+| **M3** | `supply_state.ak` — spend giữ SupplyState, ủy quyền lamp_mint (tầng 3) | ✅ |
 | **M4** | offchain codec + cap math + mintBuilder + circulating + deploy script | ✅ |
 | **M5** | e2e Preview: deploy + lazy-mint + mint-thêm | ✅ (dẫn chứng §4) |
 | **M6** | Capped Drop redeem cho DistributionVest (per-user claim) | ⬜ **v1.1** |
@@ -63,25 +63,25 @@ minh được on-chain) — nền cho định giá + governance + SDK bên thứ
 | `util.ak` | 4 | `sigs_count/none`, `name_count_one/two` |
 | `thread_nft.ak` | 5 | happy + `thread_without_genesis`/`mint_two_threads`/`thread_burn_rejected`/`thread_extra_name` (A3) |
 | `supply_state.ak` | 3 | `spend_with_mint` + `spend_without_mint`(A12) + `spend_with_burn_attempt` |
-| `tlamp_mint.ak` | 24 | happy 2 đường + biên cap + A1/A4/A5/A6/A7/A8/A9/A10/A11 + thread/datum guard |
+| `lamp_mint.ak` | 24 | happy 2 đường + biên cap + A1/A4/A5/A6/A7/A8/A9/A10/A11 + thread/datum guard |
 
 Phủ vector tấn công CONTRACT §7 — **mọi A1–A12 có test negative `fail`**:
 
 | Vector | Test | File |
 |---|---|---|
-| A1 | `mint_exceed_dist_cap`, `mint_exceed_reserve_cap` | tlamp_mint |
-| A2 | `mint_no_supplystate`, `no_supplystate_output` | tlamp_mint |
+| A1 | `mint_exceed_dist_cap`, `mint_exceed_reserve_cap` | lamp_mint |
+| A2 | `mint_no_supplystate`, `no_supplystate_output` | lamp_mint |
 | A3 | `thread_without_genesis`, `mint_two_threads` | thread_nft |
-| A4 | `mint_rollback_dist` | tlamp_mint |
-| A5 | `distvest_touches_reserve`, `reservedraw_touches_dist` | tlamp_mint |
-| A6 | `mint_negative`, `mint_zero`, `thread_burn_rejected` | tlamp_mint / thread_nft |
-| A7 | `two_supplystate_inputs` | tlamp_mint |
-| A8 | `delta_mismatch` | tlamp_mint |
-| A9 | `widen_dist_cap`, `widen_reserve_cap` | tlamp_mint |
-| A10 | `mint_no_authority`, `reservedraw_wrong_authority` | tlamp_mint |
-| A11 | `mint_extra_name` | tlamp_mint |
+| A4 | `mint_rollback_dist` | lamp_mint |
+| A5 | `distvest_touches_reserve`, `reservedraw_touches_dist` | lamp_mint |
+| A6 | `mint_negative`, `mint_zero`, `thread_burn_rejected` | lamp_mint / thread_nft |
+| A7 | `two_supplystate_inputs` | lamp_mint |
+| A8 | `delta_mismatch` | lamp_mint |
+| A9 | `widen_dist_cap`, `widen_reserve_cap` | lamp_mint |
+| A10 | `mint_no_authority`, `reservedraw_wrong_authority` | lamp_mint |
+| A11 | `mint_extra_name` | lamp_mint |
 | A12 | `spend_without_mint` | supply_state |
-| + | `thread_minted_in_tx`, `supplystate_moved_address`, `garbage_output_datum` (guard bổ sung) | tlamp_mint |
+| + | `thread_minted_in_tx`, `supplystate_moved_address`, `garbage_output_datum` (guard bổ sung) | lamp_mint |
 
 ### 2.2 Offchain vitest (đã viết — chạy CI/local có deps)
 
@@ -150,7 +150,7 @@ SupplyState UTxO còn trên Preview tại `addr_test1wphdua0zl60g7rrmjdf30yxtx6n
 
 ### 5.1 Capped Drop redeem cho DistributionVest — **MVP/stub, v1.1**
 
-Hiện DistributionVest gate bằng **authority keyhash** (committee stub, `tlamp_mint.ak:87–92`). CONTRACT
+Hiện DistributionVest gate bằng **authority keyhash** (committee stub, `lamp_mint.ak:87–92`). CONTRACT
 §4b/§8 ghi rõ: v1.1 nối **Capped Drop redeem** (redeemer mang bằng chứng claim của user, thay chữ ký
 committee). Cần:
 - Mở rộng `TLampMintRedeemer::DistributionVest` mang payload claim (Merkle proof / beacon).
@@ -163,7 +163,7 @@ release-gate), thay chữ ký trực tiếp.
 
 ### 5.3 Authority M-of-N thật
 
-`count_sigs` + `auth_threshold` (`util.ak:62–64`, `tlamp_mint.ak:92`) đã hỗ trợ M-of-N. MVP deploy dùng
+`count_sigs` + `auth_threshold` (`util.ak:62–64`, `lamp_mint.ak:92`) đã hỗ trợ M-of-N. MVP deploy dùng
 1-of-1 (ví deployer, `01_deploy_lazymint.ts:71–77`). Production cần param hóa list keyhash committee/DAO
 thật + threshold > 1.
 

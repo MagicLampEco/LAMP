@@ -23,7 +23,7 @@ LAMP = giá trị nền + quản trị. MAGIC = tiêu dùng tầng app. Phụ th
 
 | Thư mục | Nội dung | Trạng thái |
 |---|---|---|
-| `protocol-utils/` | Primitive chung (Q-format, epoch math, clamp, Merkle helper) | ✅ |
+| `Utils/` | Primitive chung (Q-format, epoch math, clamp, Merkle helper) | ✅ |
 | `Distribution/` | Cơ chế phân bổ LAMP (claim → vesting → redeem) + treasury pool | ✅ live Preview |
 | `Treasury/` | 3 kho bạc Foundation (Community / Operational / Emergency), giải ngân theo governance | 🔜 spec |
 | `Governance/` | iVoteSpace, bầu cử 3 hội đồng, Voting Power, Recall | 🔜 spec |

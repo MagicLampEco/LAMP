@@ -45,8 +45,8 @@ export interface DrawParams {
   reserveThreadPolicyId: string;
   reserveThreadName: string;
 
-  /** asset name LAMP (hex) — khớp param onchain lamp_name (testnet "tLAMP"/mainnet "LAMP"). */
-  lampName?: string;
+  /** asset name LAMP (hex) — khớp param onchain token_name (testnet "tLAMP"/mainnet "LAMP"). */
+  tokenName?: string;
 
   /** SupplyState UTxO (Genesis) + spend validator + address + redeemer CBOR. */
   supplyUtxo: UTxO;
@@ -115,14 +115,14 @@ export async function buildDrawTx(p: DrawParams): Promise<{
   drawn: bigint;
 }> {
   const minAda = p.reserveMinAda ?? 2_000_000n;
-  const lampName = p.lampName ?? TLAMP_NAME;
+  const tokenName = p.tokenName ?? TLAMP_NAME;
 
   const sIn = readReserveState(p.reserveUtxo);
   const requested = p.requestedOil ?? maxPerEpoch(sIn.total_oil);
   // Fail-fast offchain: ép t>last_epoch + delta>0 (≤trần & ≤pot) + transition đúng.
   const { next: sOut, drawn } = applyDraw(sIn, p.epoch, requested);
 
-  const lampUnit = toUnit(p.tlampPolicyId, lampName);
+  const lampUnit = toUnit(p.tlampPolicyId, tokenName);
   const mintAssets: Assets = { [lampUnit]: drawn };
 
   const reserveOutValue = reserveNftAssets(

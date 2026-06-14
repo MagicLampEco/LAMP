@@ -5,7 +5,7 @@ KHÔNG định nghĩa lại bất biến (việc của [MATH](./MATH.md)) — TE
 validator/policy Aiken, từng invariant on-chain map tới dòng code, chống double-satisfaction, và
 codec offchain↔onchain**.
 
-> Mọi tham chiếu dòng code: `tlamp_mint.ak`, `thread_nft.ak`, `supply_state.ak` (validators);
+> Mọi tham chiếu dòng code: `lamp_mint.ak`, `thread_nft.ak`, `supply_state.ak` (validators);
 > `lib/magiclamp/genesis/{types,constants,util}.ak`; offchain `src/{types,datum,supplyState,
 > mintBuilder,circulating,constants}.ts`.
 
@@ -15,9 +15,9 @@ codec offchain↔onchain**.
 
 ```
   Tầng 1: thread_nft(genesis_ref)              policy  — mint one-shot SUPPLY NFT
-  Tầng 2: tlamp_mint(thread_policy, SUPPLY,    policy  — mint tLAMP, gate bởi SupplyState
+  Tầng 2: lamp_mint(thread_policy, SUPPLY,    policy  — mint tLAMP, gate bởi SupplyState
                      dist_auth, res_auth, thr)            TOÀN BỘ luật cap/quota/monotonic ở đây
-  Tầng 3: supply_state(tlamp_policy)           spend   — giữ SupplyState UTxO; spend ⟺ Δ>0
+  Tầng 3: supply_state(lamp_policy)           spend   — giữ SupplyState UTxO; spend ⟺ Δ>0
 ```
 
 Phụ thuộc **tuyến tính** (không vòng): (1) chỉ biết `genesis_ref`; (2) chỉ biết policy+name của (1);
@@ -55,7 +55,7 @@ On-chain đọc datum qua `util.inline_datum` (`util.ak:67–70`): `expect Inlin
 NoDatum / datum-hash → fail. SupplyState output PHẢI inline (`mintBuilder.ts:104` `kind: "inline"`).
 
 Sai kiểu datum (datum rác) → `expect s2: SupplyState` fail: test `garbage_output_datum`
-(`tlamp_mint.ak:405`) đặt datum = `42` (Int) → reject.
+(`lamp_mint.ak:405`) đặt datum = `42` (Int) → reject.
 
 ---
 
@@ -86,10 +86,10 @@ validator thread_nft(genesis_ref: OutputReference)
 
 Apply: `applyPolicy(threadRaw, [genesisRef])` (`01_deploy_lazymint.ts:64`).
 
-### 4.2 tlamp_mint (`tlamp_mint.ak:27–33`)
+### 4.2 lamp_mint (`lamp_mint.ak:27–33`)
 
 ```
-validator tlamp_mint(
+validator lamp_mint(
   thread_nft_policy : PolicyId,
   thread_nft_name   : ByteArray,
   dist_authority    : List<ByteArray>,   // keyhash committee (stub MVP) — đường DistributionVest
@@ -108,7 +108,7 @@ Self-test deploy: cả 2 authority = ví deployer, threshold 1 (1-of-1).
 ### 4.3 supply_state (`supply_state.ak:21`)
 
 ```
-validator supply_state(tlamp_policy: PolicyId)
+validator supply_state(lamp_policy: PolicyId)
 ```
 
 Apply: `applyValidator(ssRaw, [tlampPid])` (`01_deploy_lazymint.ts:83`).
@@ -126,36 +126,36 @@ Apply: `applyValidator(ssRaw, [tlampPid])` (`01_deploy_lazymint.ts:83`).
 | qty == 1 | `thread_nft.ak:26` `expect assets.quantity_of(tx.mint, policy_id, supply_name) == 1` | qty≠1, burn |
 | no else | `thread_nft.ak:30` `else(_) { fail }` | burn / spend nhánh khác |
 
-### 5.2 tlamp_mint (mint, luật chính) — CONTRACT §5 luật 1–8
+### 5.2 lamp_mint (mint, luật chính) — CONTRACT §5 luật 1–8
 
 | Luật | Code | Vector |
 |---|---|---|
-| 1: đúng 1 input thread | `tlamp_mint.ak:39` `count_inputs_holding_nft(...) == 1` | A2, A7 |
-| 1: đúng 1 output thread | `tlamp_mint.ak:40` `count_holding_nft(outputs,...) == 1` | A2 |
-| 1: thread không mint/burn | `tlamp_mint.ak:41` `quantity_of(tx.mint, thread, SUPPLY) == 0` | phá thread (`thread_minted_in_tx`) |
-| 1: output cùng địa chỉ | `tlamp_mint.ak:47` `s_out.address == s_in.address` | `supplystate_moved_address` |
-| datum đúng kiểu | `tlamp_mint.ak:49–50` `expect s/s2: SupplyState` | `garbage_output_datum` |
-| 2: Δ > 0 | `tlamp_mint.ak:55` `expect delta > 0` | A6 |
-| 3: đúng 1 name tLAMP | `tlamp_mint.ak:56` `policy_name_count(tx.mint, policy_id) == 1` | A11 |
-| 4: caps bất biến | `tlamp_mint.ak:59–60` `s2.dist_cap == s.dist_cap ∧ s2.reserve_cap == s.reserve_cap` | A9 |
-| 5: cộng đúng quota | `tlamp_mint.ak:65–74` `when r is { DistributionVest -> ... ReserveDraw -> ... }` | A5, A8 |
-| 6: monotonic | `tlamp_mint.ak:78–79` `s2.dist_minted >= s.dist_minted ∧ ...` | A4 |
-| 7: cap enforce | `tlamp_mint.ak:82–83` `s2.dist_minted <= s2.dist_cap ∧ ...` | A1 |
-| 8: authority | `tlamp_mint.ak:87–92` `count_sigs(authority, extra_signatories) >= auth_threshold` | A10 |
-| no else | `tlamp_mint.ak:97–99` `else(_) { fail }` | nhánh khác mint |
+| 1: đúng 1 input thread | `lamp_mint.ak:39` `count_inputs_holding_nft(...) == 1` | A2, A7 |
+| 1: đúng 1 output thread | `lamp_mint.ak:40` `count_holding_nft(outputs,...) == 1` | A2 |
+| 1: thread không mint/burn | `lamp_mint.ak:41` `quantity_of(tx.mint, thread, SUPPLY) == 0` | phá thread (`thread_minted_in_tx`) |
+| 1: output cùng địa chỉ | `lamp_mint.ak:47` `s_out.address == s_in.address` | `supplystate_moved_address` |
+| datum đúng kiểu | `lamp_mint.ak:49–50` `expect s/s2: SupplyState` | `garbage_output_datum` |
+| 2: Δ > 0 | `lamp_mint.ak:55` `expect delta > 0` | A6 |
+| 3: đúng 1 name tLAMP | `lamp_mint.ak:56` `policy_name_count(tx.mint, policy_id) == 1` | A11 |
+| 4: caps bất biến | `lamp_mint.ak:59–60` `s2.dist_cap == s.dist_cap ∧ s2.reserve_cap == s.reserve_cap` | A9 |
+| 5: cộng đúng quota | `lamp_mint.ak:65–74` `when r is { DistributionVest -> ... ReserveDraw -> ... }` | A5, A8 |
+| 6: monotonic | `lamp_mint.ak:78–79` `s2.dist_minted >= s.dist_minted ∧ ...` | A4 |
+| 7: cap enforce | `lamp_mint.ak:82–83` `s2.dist_minted <= s2.dist_cap ∧ ...` | A1 |
+| 8: authority | `lamp_mint.ak:87–92` `count_sigs(authority, extra_signatories) >= auth_threshold` | A10 |
+| no else | `lamp_mint.ak:97–99` `else(_) { fail }` | nhánh khác mint |
 
-**Δ là CÙNG biến cho mint + datum** (`tlamp_mint.ak:54` `let delta = util.minted_qty(...)`, dùng lại
+**Δ là CÙNG biến cho mint + datum** (`lamp_mint.ak:54` `let delta = util.minted_qty(...)`, dùng lại
 ở `:68,71`) → đóng A8 cấu trúc (không thể lệch, MATH §6).
 
 ### 5.3 supply_state (spend, tối giản) — CONTRACT §5b
 
 | Inv | Code | Vector |
 |---|---|---|
-| spend ⟺ Δ > 0 | `supply_state.ak:29–30` `let delta = util.minted_qty(tx.mint, tlamp_policy, tlamp_name); delta > 0` | A12 |
+| spend ⟺ Δ > 0 | `supply_state.ak:29–30` `let delta = util.minted_qty(tx.mint, lamp_policy, tlamp_name); delta > 0` | A12 |
 | no else | `supply_state.ak:33` `else(_) { fail }` | spend nhánh khác |
 
-Spend KHÔNG lặp lại luật transition — ủy quyền cho tlamp_mint (một nguồn sự thật). Vì mọi lần
-SupplyState bị tiêu PHẢI kèm mint tLAMP, tlamp_mint luôn được kích hoạt → transition luôn được kiểm.
+Spend KHÔNG lặp lại luật transition — ủy quyền cho lamp_mint (một nguồn sự thật). Vì mọi lần
+SupplyState bị tiêu PHẢI kèm mint tLAMP, lamp_mint luôn được kích hoạt → transition luôn được kiểm.
 
 ---
 
@@ -163,7 +163,7 @@ SupplyState bị tiêu PHẢI kèm mint tLAMP, tlamp_mint luôn được kích h
 
 | Helper | Dòng | Dùng cho |
 |---|---|---|
-| `minted_qty(mint, policy, name)` | `util.ak:12–14` | Δ (tlamp_mint, supply_state) |
+| `minted_qty(mint, policy, name)` | `util.ak:12–14` | Δ (lamp_mint, supply_state) |
 | `count_holding_nft(outputs, p, n)` | `util.ak:17–23` | đếm output mang NFT (qty==1) |
 | `count_inputs_holding_nft(inputs, p, n)` | `util.ak:26–32` | đếm input mang NFT |
 | `output_holding_nft` / `input_holding_nft` | `util.ak:35–54` | lấy UTxO mang NFT (sau khi count==1) |
@@ -179,14 +179,14 @@ SupplyState bị tiêu PHẢI kèm mint tLAMP, tlamp_mint luôn được kích h
 ## 7. Chống double-satisfaction
 
 Genesis dùng **đếm chính xác** thay vì "tồn tại ít nhất một":
-- Input: `count_inputs_holding_nft == 1` (`tlamp_mint.ak:39`) — đúng MỘT input mang thread NFT. Hai
+- Input: `count_inputs_holding_nft == 1` (`lamp_mint.ak:39`) — đúng MỘT input mang thread NFT. Hai
   SupplyState input → count==2 → fail (`two_supplystate_inputs`, A7).
-- Output: `count_holding_nft(outputs) == 1` (`tlamp_mint.ak:40`) — đúng MỘT output recreate.
+- Output: `count_holding_nft(outputs) == 1` (`lamp_mint.ak:40`) — đúng MỘT output recreate.
 
 Vì thread NFT là **singleton on-chain** (one-shot, MATH §5.1), không thể có 2 UTxO mang nó cùng lúc
 → double-satisfaction bị chặn từ gốc (kẻ tấn công không thể "mượn" cùng một SupplyState cho 2 mint).
 
-`policy_name_count == 1` (`tlamp_mint.ak:56`) chặn "nhét thêm asset name lạ cùng policy tlamp"
+`policy_name_count == 1` (`lamp_mint.ak:56`) chặn "nhét thêm asset name lạ cùng policy tlamp"
 (A11, `mint_extra_name`) — không cho mượn một mint redeemer để đúc token ngoài tLAMP.
 
 ---
@@ -227,10 +227,10 @@ collectFrom([supplyUtxo], Advance)              // spend SupplyState (tầng 3)
 
 - `sOut = applyMint(sIn, route, amount)` (`mintBuilder.ts:88`) — **fail-fast offchain** trước
   `.complete()` (tránh tốn phí cho tx chắc reject on-chain).
-- Builder KHÔNG mint thread NFT → `tx.mint(thread) == 0` tự nhiên đúng (luật 1, `tlamp_mint.ak:41`).
+- Builder KHÔNG mint thread NFT → `tx.mint(thread) == 0` tự nhiên đúng (luật 1, `lamp_mint.ak:41`).
 - Builder KHÔNG gắn chữ ký — chỉ `addSignerKey` để Lucid đòi ví ký (caller cấp khóa thật).
 - Output SupplyState' giữ lại thread NFT (`threadNftAssets`, `mintBuilder.ts:68–73`) tại CÙNG địa
-  chỉ script (luật 1, `tlamp_mint.ak:47`).
+  chỉ script (luật 1, `lamp_mint.ak:47`).
 
 **Duck-type Constr** (`datum.ts:24–34`): tránh lỗi `instanceof` khi 2 bản `@lucid-evolution/lucid`
 khác class identity (offchain vs scripts) — kiểm `index: number` + `Array.isArray(fields)`.
