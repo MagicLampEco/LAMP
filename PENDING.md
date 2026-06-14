@@ -7,7 +7,7 @@
 
 ## 🔴 1. Đích nhả Reserve — Treasury hay thị trường?
 
-**Bối cảnh:** Reserve nhả linear 7,899 tỷ trong 1001 epoch (~13,7 năm) ≈ **7,89 triệu LAMP/epoch** (~1,58 triệu/ngày). Đích nhả `reserve_dest` là param validator — phải chốt địa chỉ.
+**Bối cảnh:** Reserve nhả TRẦN CỨNG E/1000 mỗi epoch = **7,899 triệu LAMP/epoch** (demand-gated qua Treasury-pull, KHÔNG tự động; dư dồn ~1001 epoch). Đích nhả `reserve_dest` là param validator — phải chốt địa chỉ.
 
 **Phương án:**
 | | A. Nhả vào Treasury | B. Nhả thẳng thị trường (DEX/LP) |

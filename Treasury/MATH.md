@@ -18,7 +18,7 @@ suy ra mã từ định lý chứ không từ trực giác. Cụ thể chứng m
 2. **Định nghĩa hình thức `circulating`** = tổng cung − Σ balance các instance Treasury − LAMP chưa phát hành
    (undistributed, còn trong Distribution). "Giảm lưu hành" là **đại lượng kế toán**, không phải đốt on-chain.
 3. **Số học split** của `collectToTreasury`: `cut = ⌊amount × cut_bps / 10000⌋`, tái dùng họ số nguyên
-   BigInt của `protocol-utils`. Chốt chủ đích làm tròn: **floor cut = ưu ái người nộp/provider** (treasury
+   BigInt của `Utils`. Chốt chủ đích làm tròn: **floor cut = ưu ái người nộp/provider** (treasury
    giữ ≤ phần lý thuyết, crumb <1 oil nghiêng về phía RA). An toàn của hệ KHÔNG đến từ hướng làm tròn mà từ
    **bảo toàn value** (`≥` + TOTAL-CONSERVE) — xem §3.1.
 4. **Bất biến theo lô (batch):** gộp N lệnh `collect` trong một settlement tx vẫn bảo toàn tổng và đúng
@@ -44,8 +44,8 @@ suy ra mã từ định lý chứ không từ trực giác. Cụ thể chứng m
 ## 1. Ký hiệu + miền giá trị
 
 Mọi đại lượng value là **số nguyên không âm**, đơn vị nhỏ nhất on-chain (lovelace cho ADA; **oil** cho
-LAMP, `1 LAMP = 10^6 oil` — `protocol-utils`: `OIL_PER_LAMP = 1_000_000`). KHÔNG dùng số thực ở mọi nơi
-ảnh hưởng value (nguyên tắc `protocol-utils`: "ALL arithmetic BigInt. No Number for oil/nanogic/Q values").
+LAMP, `1 LAMP = 10^6 oil` — `Utils`: `OIL_PER_LAMP = 1_000_000`). KHÔNG dùng số thực ở mọi nơi
+ảnh hưởng value (nguyên tắc `Utils`: "ALL arithmetic BigInt. No Number for oil/nanogic/Q values").
 
 | Ký hiệu | Nghĩa |
 |---|---|
@@ -56,7 +56,7 @@ LAMP, `1 LAMP = 10^6 oil` — `protocol-utils`: `OIL_PER_LAMP = 1_000_000`). KH�
 | `T` | tập **instance** Treasury (đa thuê bao). MagicLamp = một phần tử |
 | `bal_I(a)` | tổng lượng asset `a` đang nằm trong custody của instance `I ∈ T` |
 | `cut_bps` | tỷ lệ cắt protocol, đơn vị **basis point** (1 bp = 1/10000). Tham số mở |
-| `Q` | hằng Q-format `= 10^9` (`protocol-utils.Q`), dùng cho tỷ lệ phần-bucket nếu cần độ phân giải cao |
+| `Q` | hằng Q-format `= 10^9` (`Utils.Q`), dùng cho tỷ lệ phần-bucket nếu cần độ phân giải cao |
 
 **Quy ước phép cộng Value** (theo `cardano/assets`): `(u + w)(a) = u(a) + w(a)` ∀a. Giá trị có thể
 khuyết một asset ⇔ lượng asset đó = 0 (multiset rút gọn). Tham chiếu: Aiken stdlib `cardano/assets`
@@ -154,8 +154,8 @@ cut  =  ⌊ amount × cut_bps / 10000 ⌋            (SPLIT)
 - `amount`, `cut_bps`, `cut` đều **số nguyên** (oil cho LAMP). `cut_bps ∈ [0, 10000]` (0% … 100%) —
   **tham số mở (DAO định)**.
 - Phép chia là **chia nguyên cắt sàn** (floor). Cùng họ floor-division số nguyên BigInt với
-  `protocol-utils.mulQ(a,b)=a*b/Q` — chỉ **khác mẫu số**: bps dùng `10000`, không phải `Q=10^9`.
-  > **Chú ý helper (finding 8):** `protocol-utils` hiện CHỈ có `mulQ` (mẫu `Q`), KHÔNG có sẵn `mulBps`.
+  `Utils.mulQ(a,b)=a*b/Q` — chỉ **khác mẫu số**: bps dùng `10000`, không phải `Q=10^9`.
+  > **Chú ý helper (finding 8):** `Utils` hiện CHỈ có `mulQ` (mẫu `Q`), KHÔNG có sẵn `mulBps`.
   > Cut theo bps cần helper mới `mulBps(a, bps) = a × bps / 10000` (floor) — off-chain bổ sung, đối xứng
   > với on-chain. Đừng giả định `mulQ` dùng trực tiếp được cho bps (mẫu số khác → kết quả khác).
 
@@ -319,7 +319,7 @@ circulating(a)  :=  S_total(a)  −  Σ_{I ∈ T} bal_I(a)  −  undistributed(a
 ```
 
 với:
-- `S_total(LAMP) = 36×10^15 oil` **cố định tuyệt đối** (`protocol-utils.S_LAMP_TOTAL`).
+- `S_total(LAMP) = 36×10^15 oil` **cố định tuyệt đối** (`Utils.S_LAMP_TOTAL`).
 - `bal_I(a)` = tổng value asset `a` trong toàn bộ UTxO custody của instance `I` (custody chính + shard +
   emergency bucket tách physical — CONTRACT §1).
 - `undistributed(a)` = LAMP **chưa phát hành / chưa redeem** còn nằm trong các validator Distribution (genesis
@@ -487,7 +487,7 @@ Không bịa số cuối — đây là **dạng + miền**:
 - `split_table` weights `[(b_i, w_i)]` với `Σ w_i = 10000` bps — **CHỈ khi instance bật tùy chọn đa-bucket**
   (§3.2.1); mặc định đơn-bucket không dùng. bps đủ độ phân giải; không cần `Q`-resolution trừ khi DAO muốn
   tỷ lệ mịn hơn 1/10000 (chưa cần).
-- `mulBps(a, bps) = a × bps / 10000` (floor) — helper off-chain CẦN BỔ SUNG (`protocol-utils` hiện chỉ có
+- `mulBps(a, bps) = a × bps / 10000` (floor) — helper off-chain CẦN BỔ SUNG (`Utils` hiện chỉ có
   `mulQ`); đối xứng on-chain. KHÔNG phải tham số, là ghi chú triển khai (finding 8).
 - Danh sách `accepted_assets[]` mỗi instance.
 
@@ -498,7 +498,7 @@ Không bịa số cuối — đây là **dạng + miền**:
   C-MINT-0, M1) — TECH mở rộng từ đây.
 - **`Distribution/onchain/lib/magiclamp/lampdist/math.ak`** — `ceil_div`, `clamp` (tái dùng cho làm tròn an
   toàn-hệ-thống).
-- **`protocol-utils` (`src/index.ts`)** — `Q=10^9`, `mulQ`, `clamp`, `S_LAMP_TOTAL`, `OIL_PER_LAMP`,
+- **`Utils` (`src/index.ts`)** — `Q=10^9`, `mulQ`, `clamp`, `S_LAMP_TOTAL`, `OIL_PER_LAMP`,
   nguyên tắc BigInt-only. Off-chain mirror của số học on-chain. **Chưa có `mulBps`** — cut theo bps cần bổ
   sung `mulBps(a,bps)=a*bps/10000` (finding 8).
 - **Distribution** — cung cấp `undistributed(LAMP)` (genesis pool chưa redeem) cho công thức CIRC §5.1.
@@ -543,7 +543,7 @@ Không bịa số cuối — đây là **dạng + miền**:
 | 5 | minor | §4.2 cận N−1 oil chưa chặt (chưa nêu điều kiện đạt) | **Nhận.** Thêm: cận N−1 là TỐI ĐA, đạt khi mọi `(amount_j·bps mod 10000)` lớn nhất; thực tế nhỏ hơn; điểm cốt lõi là lệch không quy được về receipt → buộc per-lệnh. |
 | 6 | minor | §2.1 gắn CIP-1694 sai cho mệnh đề fee (đúng nguồn là Shelley monetary) | **Nhận.** Đổi nguồn fee sang Shelley ledger/monetary policy; giữ CIP-1694 cho treasury donation §5.2. |
 | 7 | nit | §6.1 THRESHOLD-k biên `total=0` → `0≥0` pass-rỗng; thiếu sàn BFT của EXEC | **Nhận.** Thêm `total(P)>0` ∧ `approval(P)≥BFT_FLOOR` (mặc định 21, đồng bộ EXEC §6.1 + VotingPower). Cập nhật bảng + §8. |
-| 8 | nit | §3.1 ngụ ý `mulQ` dùng được cho bps; thực tế chưa có `mulBps` | **Nhận.** Ghi chú: `protocol-utils` chỉ có `mulQ` (mẫu Q); bps cần `mulBps(a,bps)=a*bps/10000` mới — off-chain bổ sung. Thêm vào §3.1, §8, phụ thuộc. |
+| 8 | nit | §3.1 ngụ ý `mulQ` dùng được cho bps; thực tế chưa có `mulBps` | **Nhận.** Ghi chú: `Utils` chỉ có `mulQ` (mẫu Q); bps cần `mulBps(a,bps)=a*bps/10000` mới — off-chain bổ sung. Thêm vào §3.1, §8, phụ thuộc. |
 
 > **Lưu ý:** finding 2 (chốt đa-bucket) + finding 7 (THRESHOLD-k + sàn BFT ở Treasury) ở bảng trên **đã bị
 > ĐẢO** bởi vòng reconcile §12 (T2, T5). Đọc §12 là trạng thái mới nhất.

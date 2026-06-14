@@ -8,9 +8,9 @@
 //   - Sign:   authority đúng đường mint (extra_signatories) — caller bảo đảm ví ký.
 //
 // PHẠM VI: builder này phục vụ đường DistributionVest (gate pubkey-sig). Đường ReserveDraw
-// KHÔNG còn dùng chữ ký — gate onchain đòi tx SPEND ReserveMeter NFT (permissionless). Tx
-// ReserveDraw thật được dựng bởi Reserve/offchain/reserveDrawBuilder.ts (co-spend Meter +
-// SupplyState + mint tLAMP qua reserve_meter). KHÔNG dùng builder này cho ReserveDraw.
+// KHÔNG còn dùng chữ ký — gate onchain đòi tx SPEND meter NFT (= reserve_thread NFT, permissionless).
+// Tx ReserveDraw thật được dựng bởi Reserve/offchain/drawBuilder.ts (co-spend reserve_thread +
+// SupplyState + mint tLAMP qua reserve_draw). KHÔNG dùng builder này cho ReserveDraw.
 //
 // Invariants ép TRƯỚC khi build (fail-fast offchain qua applyMint): Δ>0, ≤ cap, đúng quota.
 //

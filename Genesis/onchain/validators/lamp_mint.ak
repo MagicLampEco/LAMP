@@ -19,15 +19,16 @@
 //
 // Param: thread_nft_policy + thread_nft_name (tầng 1) + token_name (asset name LAMP) +
 // dist_authority (keyhash stub MVP đường Distribution) + auth_threshold +
-// meter_nft_policy/meter_nft_name (định danh ReserveMeter thread NFT). KHÔNG tham chiếu
-// ngược tầng 3 (không vòng lặp).
+// meter_nft_policy/meter_nft_name (định danh meter NFT = reserve_thread NFT, Reserve module).
+// KHÔNG tham chiếu ngược tầng 3 (không vòng lặp).
 //
 // GATE NHẢ RESERVE = HÀM, KHÔNG CHỮ KÝ (permissionless thật). Nhánh ReserveDraw KHÔNG
-// đòi pubkey-sig nữa: nó ÉP tx phải spend đúng 1 UTxO mang ReserveMeter NFT. ReserveMeter
-// là validator GATE NHỊP (reserve_meter) ép δ ≤ max_draw_per_epoch + reserve_minted_out ≤
-// approved_cumulative(epoch) — release function tất định. ⟹ MỌI ReserveDraw BẮT BUỘC đi
-// qua reserve_meter; không ai (kể cả keyholder cũ) rút tay được. meter_nft là one-shot độc
-// lập (mint trước khi apply-param lamp_mint) → KHÔNG vòng phụ thuộc apply-param.
+// đòi pubkey-sig nữa: nó ÉP tx phải spend đúng 1 UTxO mang meter NFT (= reserve_thread NFT).
+// Gate nhịp = reserve_draw (Reserve module) ép δ ≤ E/1000 (trần CỨNG mỗi epoch) + pot còn
+// lại + Treasury-pull. KHÔNG có validator "reserve_meter" riêng — đó là tên khái niệm gate
+// nhịp, hiện thực bởi reserve_draw + reserve_thread. ⟹ MỌI ReserveDraw BẮT BUỘC đi qua
+// reserve_draw; không ai (kể cả keyholder cũ) rút tay được. meter_nft (= reserve_thread) là
+// one-shot độc lập (mint trước khi apply-param lamp_mint) → KHÔNG vòng phụ thuộc apply-param.
 //
 // NEO ĐỊNH DANH SupplyState = qua SUPPLY NFT one-shot (KHÔNG qua script-hash). Thread NFT
 // được mint đúng MỘT lần (thread_nft one-shot, param genesis_ref) → tồn tại DUY NHẤT 1 bản
@@ -147,9 +148,10 @@ validator lamp_mint(
     // Hai đường mint khóa khác nhau (A10):
     //   • DistributionVest → pubkey-sig M-of-N (dist_authority + threshold). Đường DAO/
     //     vesting, MVP stub. Giữ nguyên.
-    //   • ReserveDraw → KHÔNG chữ ký. Ép tx PHẢI spend đúng 1 UTxO mang ReserveMeter NFT
-    //     → reserve_meter.spend BẮT BUỘC chạy → δ + reserve_minted ép bằng release function
-    //     tất định. Permissionless thật: không keyholder nào quyết được con số nhả, ai dựng
+    //   • ReserveDraw → KHÔNG chữ ký. Ép tx PHẢI spend đúng 1 UTxO mang meter NFT
+    //     (= reserve_thread NFT) → reserve_draw.spend (Reserve) BẮT BUỘC chạy → δ ép
+    //     ≤ E/1000 + pot + Treasury-pull (gate nhịp tất định). Permissionless thật:
+    //     không keyholder nào quyết được con số nhả, ai dựng
     //     tx đúng lịch cũng được. Đây là điểm khóa "nhả-thuật-toán không ai rút tay".
     let gate_ok =
       when r is {
@@ -161,8 +163,8 @@ validator lamp_mint(
             && util.count_sigs(dist_authority, tx.extra_signatories) >= auth_threshold
         }
         ReserveDraw -> {
-          // Đúng 1 input mang ReserveMeter NFT → tầng gate nhịp (reserve_meter) BẮT BUỘC
-          // được kích hoạt và ép max_draw/approved. Không cho 0 (bỏ qua meter) hay ≥2
+          // Đúng 1 input mang meter NFT (= reserve_thread NFT) → tầng gate nhịp (reserve_draw,
+          // Reserve module) BẮT BUỘC được kích hoạt và ép δ ≤ E/1000 + pot. Không cho 0 (bỏ qua meter) hay ≥2
           // (double-meter). meter NFT KHÔNG được mint/burn trong tx (one-shot, sống mãi).
           util.count_inputs_holding_nft(tx.inputs, meter_nft_policy, meter_nft_name) == 1
             && assets.quantity_of(tx.mint, meter_nft_policy, meter_nft_name) == 0
@@ -195,12 +197,12 @@ const auth_a: ByteArray = #"a1"
 
 const auth_b: ByteArray = #"b2"
 
-// ReserveMeter thread NFT (định danh đường ReserveDraw permissionless).
+// meter NFT = reserve_thread NFT (Reserve module — định danh đường ReserveDraw permissionless).
 const meter_pol: PolicyId = #"6655"
 
 const meter_nm: ByteArray = #"4d4554"
 
-/// Input mang ReserveMeter NFT — bằng chứng tx đi qua reserve_meter (gate nhịp).
+/// Input mang meter NFT (= reserve_thread NFT) — bằng chứng tx đi qua reserve_draw (gate nhịp).
 fn meter_input() -> Input {
   let v = assets.from_lovelace(2_000_000) |> assets.add(meter_pol, meter_nm, 1)
   util.mk_input(util.mk_ref(9), util.mk_output(util.script_address(#"6d6d"), v, 0))
@@ -242,7 +244,7 @@ fn build_tx(
   }
 }
 
-/// Dựng tx ReserveDraw đầy đủ (gate = spend ReserveMeter NFT, KHÔNG chữ ký).
+/// Dựng tx ReserveDraw đầy đủ (gate = spend meter NFT = reserve_thread NFT, KHÔNG chữ ký).
 fn build_tx_reserve(s: SupplyState, s2: SupplyState, mint_qty: Int) -> Transaction {
   Transaction {
     ..placeholder,
@@ -293,7 +295,7 @@ test distvest_happy() {
 }
 
 test reservedraw_happy() {
-  // Permissionless: KHÔNG chữ ký, chỉ cần spend ReserveMeter NFT.
+  // Permissionless: KHÔNG chữ ký, chỉ cần spend meter NFT (= reserve_thread NFT).
   let s = fresh()
   let s2 = SupplyState { ..s, reserve_minted: 5_000_000 }
   run(ReserveDraw, build_tx_reserve(s, s2, 5_000_000))
@@ -441,9 +443,9 @@ test mint_no_authority() fail {
 }
 
 test reservedraw_no_meter() fail {
-  // ReserveDraw nhưng tx KHÔNG spend ReserveMeter NFT (chỉ có SupplyState input) →
+  // ReserveDraw nhưng tx KHÔNG spend meter NFT (= reserve_thread NFT, chỉ có SupplyState input) →
   // gate ReserveDraw đòi count_inputs(meter) == 1 → reject. Chứng minh KHÔNG bỏ qua
-  // được reserve_meter (chống bypass rate-limit — block #2 council nêu).
+  // được reserve_draw (chống bypass rate-limit — block #2 council nêu).
   let s = fresh()
   let s2 = SupplyState { ..s, reserve_minted: 1_000_000 }
   run(ReserveDraw, build_tx(s, s2, 1_000_000, []))
@@ -458,7 +460,7 @@ test reservedraw_sig_alone_insufficient() fail {
 }
 
 test reservedraw_two_meters() fail {
-  // 2 input mang ReserveMeter NFT → count == 2 ≠ 1 → reject (chống double-meter).
+  // 2 input mang meter NFT (= reserve_thread NFT) → count == 2 ≠ 1 → reject (chống double-meter).
   let s = fresh()
   let s2 = SupplyState { ..s, reserve_minted: 1_000_000 }
   let tx =
@@ -473,7 +475,7 @@ test reservedraw_two_meters() fail {
 }
 
 test reservedraw_meter_minted_in_tx() fail {
-  // tx mint thêm ReserveMeter NFT cùng đường ReserveDraw → qty meter ≠ 0 → reject.
+  // tx mint thêm meter NFT (= reserve_thread NFT) cùng đường ReserveDraw → qty meter ≠ 0 → reject.
   let s = fresh()
   let s2 = SupplyState { ..s, reserve_minted: 1_000_000 }
   let tx =

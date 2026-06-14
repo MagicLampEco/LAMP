@@ -12,12 +12,12 @@
 //   Genesis route ReserveDraw, gửi TOÀN BỘ tới reserve_dest. drawn_oil += delta;
 //   last_epoch := t. start_epoch + total_oil GIỮ NGUYÊN (bất biến).
 //
-// Quan hệ với Genesis (tlamp_mint): Genesis route ReserveDraw đòi tx spend đúng 1 UTxO
+// Quan hệ với Genesis (lamp_mint): Genesis route ReserveDraw đòi tx spend đúng 1 UTxO
 // mang "meter" NFT (gate nhịp). reserve thread NFT của ReserveState ĐÓNG vai meter đó —
 // reserve_draw CHÍNH là gate nhịp. (Orchestrator chốt: meter_nft = reserve_thread.)
 //
 // Param:
-//   lamp_policy           — minting policy LAMP/tLAMP (Genesis tlamp_mint), đo Δ mint.
+//   lamp_policy           — minting policy LAMP/tLAMP (Genesis lamp_mint), đo Δ mint.
 //   token_name             — asset name LAMP/tLAMP (param: testnet "tLAMP" / mainnet "LAMP").
 //   reserve_thread_policy — policy reserve thread NFT one-shot (authenticity ReserveState).
 //   reserve_thread_name   — asset name reserve thread NFT.

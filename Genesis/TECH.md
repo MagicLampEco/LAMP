@@ -33,8 +33,8 @@ Phụ thuộc **tuyến tính** (không vòng): (1) chỉ biết `genesis_ref`; 
 SupplyState {
   dist_minted    : Int,   // oil đã mint qua Distribution
   reserve_minted : Int,   // oil đã mint qua Reserve
-  dist_cap       : Int,   // 34_200_000_000_000_000 (hằng qua transition)
-  reserve_cap    : Int,   // 1_800_000_000_000_000  (hằng qua transition)
+  dist_cap       : Int,   // 28_101_000_000_000_000 (hằng qua transition)
+  reserve_cap    : Int,   // 7_899_000_000_000_000  (hằng qua transition)
 }
 = Constr(0, [int, int, int, int])
 ```
@@ -94,13 +94,15 @@ validator lamp_mint(
   thread_nft_name   : ByteArray,
   dist_authority    : List<ByteArray>,   // keyhash committee (stub MVP) — đường DistributionVest
   auth_threshold    : Int,               // M-of-N (chỉ DistributionVest)
-  meter_nft_policy  : PolicyId,          // ReserveMeter thread NFT — đường ReserveDraw
+  meter_nft_policy  : PolicyId,          // meter NFT = reserve_thread NFT (Reserve) — đường ReserveDraw
   meter_nft_name    : ByteArray,
 )
 ```
 
 Gate theo đường mint: DistributionVest = pubkey-sig M-of-N (dist_authority); ReserveDraw = KHÔNG
-chữ ký, ÉP tx spend đúng 1 ReserveMeter NFT (permissionless, đi qua reserve_meter — release function).
+chữ ký, ÉP tx spend đúng 1 meter NFT (= `reserve_thread` NFT, Reserve module) → đi qua `reserve_draw`
+(gate δ ≤ E/1000 + Treasury-pull). KHÔNG có validator `reserve_meter` riêng — đó là tên khái niệm
+gate nhịp, hiện thực bởi `reserve_draw` + `reserve_thread`.
 
 Apply: `applyPolicy(tlampRaw, [threadPid, SUPPLY_NAME, [pkh], 1n, meterPid, meterNm])` (`01_deploy_lazymint.ts`).
 Self-test deploy: cả 2 authority = ví deployer, threshold 1 (1-of-1).
@@ -198,8 +200,8 @@ Vì thread NFT là **singleton on-chain** (one-shot, MATH §5.1), không thể c
 | oil/LAMP | `oil_per_lamp` (`:7`) | `OIL_PER_LAMP` (`:3`) | `1_000_000` |
 | tLAMP name | `tlamp_name` (`:10`) | `TLAMP_NAME` (`:6`) | `#"744c414d50"` ("tLAMP") |
 | SUPPLY name | `supply_name` (`:13`) | `SUPPLY_NAME` (`:9`) | `#"535550504c59"` ("SUPPLY") |
-| dist_cap | `dist_cap_oil` (`:16`) | `DIST_CAP_OIL` (`:12`) | `34_200_000_000_000_000` |
-| reserve_cap | `reserve_cap_oil` (`:19`) | `RESERVE_CAP_OIL` (`:15`) | `1_800_000_000_000_000` |
+| dist_cap | `dist_cap_oil` (`:25`) | `DIST_CAP_OIL` (`:20`) | `28_101_000_000_000_000` |
+| reserve_cap | `reserve_cap_oil` (`:28`) | `RESERVE_CAP_OIL` (`:23`) | `7_899_000_000_000_000` |
 | total_cap | `total_cap_oil` (`:22`) | `TOTAL_CAP_OIL` (`:18`) | `36_000_000_000_000_000` |
 
 Bất biến hằng kiểm tại compile-time Aiken: `caps_sum_to_total` (`constants.ak:24`),

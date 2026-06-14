@@ -24,8 +24,12 @@ Xem `/TOKENOMICS.md` cho bức tranh tổng (cung, phát hành, điều tiết, 
 | `claim_account.ak` | tài khoản Capped Drop mỗi người nhận (Claim/Redeem) |
 | `treasury.ak` | sub-pool LAMP per-channel (ReleaseForRedeem) |
 
-Công thức vested: `vested(t) = min(entitlement, drops_per_epoch · max(0, t − start_epoch))`;
-`redeemable = vested − redeemed`. Cliff = đặt lùi `start_epoch` (không cần field riêng).
+Công thức vested: `vested(t) = min(entitlement, drop_value · drops_per_epoch · max(0, t − start_epoch))`
+(drop_value = D, param validator claim_account); `redeemable = vested − redeemed`. Cliff = đặt lùi
+`start_epoch` (không cần field riêng).
+
+> ⚠️ **Engine vested là FORK từ Distribution** (math.ak đồng nhất, claim_account ~85% chung;
+> KHÔNG `use magiclamp/lampdist`). Đồng bộ **THỦ CÔNG** cho tới khi hợp nhất `magiclamp/common` (sau 18/6).
 
 ## Các kênh (allocation v3) — khởi tạo per-channel
 | Kênh (channel_id) | LAMP | Cơ chế |

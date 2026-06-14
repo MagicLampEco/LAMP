@@ -2,13 +2,13 @@
 //
 // Reserve = lớp đệm sau cùng, trần CỨNG mỗi epoch (max_per_epoch = total/1000). Mỗi epoch
 // Treasury "kéo" tối đa trần; logic sàn (parked < floor) nằm Ở TREASURY. Builder ép luật
-// onchain reserve_draw + Genesis tlamp_mint:
+// onchain reserve_draw + Genesis lamp_mint:
 //
 //   - Input:  ReserveState UTxO (mang reserve thread NFT) — redeemer Draw.
 //             SupplyState  UTxO (mang SUPPLY NFT)         — redeemer Advance (Genesis).
 //             Treasury auth UTxO (mang Treasury auth NFT) — bằng chứng Treasury-pull.
 //             ReserveState NFT đóng vai "meter" gate nhịp của Genesis ReserveDraw.
-//   - Mint:   delta oil LAMP qua policy tlamp_mint, redeemer ReserveDraw (Constr 1).
+//   - Mint:   delta oil LAMP qua policy lamp_mint, redeemer ReserveDraw (Constr 1).
 //   - Output: ReserveState' (NFT trả lại, drawn_oil += delta, last_epoch := epoch).
 //             SupplyState'  (NFT trả lại, reserve_minted += delta).
 //             delta LAMP tới reserve_dest (Treasury — TOÀN BỘ, không rò rỉ).
@@ -79,7 +79,7 @@ export interface DrawParams {
   /** Treasury validator giữ auth UTxO (đính nếu auth UTxO ở script address). */
   treasuryAuthScript?: Validator;
 
-  /** tlamp_mint minting policy + policy id (hex). */
+  /** lamp_mint minting policy + policy id (hex). */
   tlampPolicy: MintingPolicy;
   tlampPolicyId: string;
   /** redeemer mint route ReserveDraw (Genesis MINT_ROUTE.ReserveDraw = Constr(1,[])) CBOR. */

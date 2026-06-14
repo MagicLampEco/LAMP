@@ -18,10 +18,10 @@ phát biểu, và truy mỗi định lý về **dòng code thật** (file:dòng)
 | `Δ` | `quantity_of(tx.mint, lamp_policy, tLAMP_name)` — lượng tLAMP mint trong tx | `lamp_mint.ak:54` |
 | `M(S)` | `d + r` = minted_total | `supplyState.ts:20` |
 | `CAP` | `D + R = 36_000_000_000_000_000` oil | `constants.ak:22` |
-| `D₀, R₀` | `34_200_000_000_000_000`, `1_800_000_000_000_000` (95% / 5%) | `constants.ak:16,19` |
+| `D₀, R₀` | `28_101_000_000_000_000`, `7_899_000_000_000_000` (78,06% / 21,94%) | `constants.ak:25,28` |
 
-Hằng số: `D₀ + R₀ = CAP` (`constants.ak:24` test `caps_sum_to_total`); `CAP = 36e9 × 10^6`
-(`constants.ak:28` test `total_is_36b_lamp`).
+Hằng số: `D₀ + R₀ = CAP` (`constants.ak:33` test `caps_sum_to_total`); `CAP = 36e9 × 10^6`
+(`constants.ak:37` test `total_is_36b_lamp`).
 
 ---
 
@@ -58,7 +58,7 @@ Mint tầng 1 (`thread_nft.ak:22–26`): mint thread NFT hợp lệ ⟺ consume 
 > **Định lý 2.2 (Cap-bound tổng).** `M(S') = d' + r' ≤ CAP = 36e9 × 10^6` oil.
 
 *Chứng minh.* Cộng hai bất đẳng thức Định lý 2.1: `d' + r' ≤ D₀ + R₀ = CAP`
-(`constants.ak:24`). ∎
+(`constants.ak:33`). ∎
 
 > **Định lý 2.3 (Cap bất biến suốt vòng đời).** Với chuỗi transition `S₀ → S₁ → … → Sₙ` bắt đầu
 > từ genesis `S₀ = (0, 0, D₀, R₀)`, mọi `Sₖ` có `Dₖ = D₀ ∧ Rₖ = R₀`.

@@ -28,7 +28,7 @@ Bộ đếm đó = **SupplyState UTxO** (duy nhất, ghim bởi thread NFT one-s
 | asset name token | param `token_name` | testnet "tLAMP" `#"744c414d50"` / mainnet "LAMP" `#"4c414d50"` |
 | asset name thread NFT | `#"535550504c59"` | "SUPPLY" |
 | `dist_cap` | `28_101_000_000 × 10^6` oil | 78,06% — Distribution quota (mọi khoản trừ Reserve) |
-| `reserve_cap` | `7_899_000_000 × 10^6` oil | 21,94% — Reserve quota (engine linear 1001 epoch) |
+| `reserve_cap` | `7_899_000_000 × 10^6` oil | 21,94% — Reserve quota (engine trần E/1000/epoch, Treasury-pull gated, ~1001 epoch) |
 | CAP tổng | `36_000_000_000 × 10^6` oil | dist_cap + reserve_cap, BẤT BIẾN |
 
 `dist_cap` + `reserve_cap` = `36e9 × 10^6` = `36_000_000_000_000_000` oil.

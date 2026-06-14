@@ -14,7 +14,7 @@
 > **Lịch sử:** Bản review trước đánh dấu các fix là ✅ nhưng thực tế **0/5 fix
 > được integrate vào module code** — ProtocolUtils tồn tại nhưng không module nào
 > import từ đó. Bản hiện tại đã sửa: tất cả 9 module có dependency
-> `@magiclamp/protocol-utils` và thay thế phần duplicated bằng import. Toàn bộ
+> `@magiclamp/utils` và thay thế phần duplicated bằng import. Toàn bộ
 > 278/278 tests pass (10 module).
 
 ---
@@ -74,7 +74,7 @@ AppEconomics chuyển sang `export const isqrt10th = isqrt10thShared`
 | `isqrt` / `isqrt10th` | 2 |
 
 **Sau:** Single source of truth tại `ProtocolUtils/src/index.ts`. Mỗi module
-trong 9 module SDK có dependency `"@magiclamp/protocol-utils": "file:../../ProtocolUtils"`
+trong 9 module SDK có dependency `"@magiclamp/utils": "file:../../Utils"`
 và replace local impls bằng import + re-export (để giữ public API).
 
 | Module | Imports từ ProtocolUtils |

@@ -24,8 +24,12 @@ LAMP = giá trị nền + quản trị. MAGIC = tiêu dùng tầng app. Phụ th
 | Thư mục | Nội dung | Trạng thái |
 |---|---|---|
 | `Utils/` | Primitive chung (Q-format, epoch math, clamp, Merkle helper) | ✅ |
-| `Distribution/` | Cơ chế phân bổ LAMP (claim → vesting → redeem) + treasury pool | ✅ live Preview |
-| `Treasury/` | 3 kho bạc Foundation (Community / Operational / Emergency), giải ngân theo governance | 🔜 spec |
+| `Genesis/` | Phát hành tLAMP lazy-mint (bộ đếm SupplyState, cap/quota/no-burn) | ✅ live Preview |
+| `Allocation/` | Phân bổ rổ Distribution ra kênh (HARD-CAP per-channel, Capped Drop) | ✅ |
+| `Reserve/` | Đệm phát hành trần E/1000 mỗi epoch, demand-gated qua Treasury-pull | ✅ |
+| `Faucet/` | Vòi tLAMP cho dev test (testnet-only) | ✅ |
+| `Distribution/` | Engine Capped Drop (claim → vesting → redeem) + treasury pool | ✅ live Preview |
+| `Treasury/` | Kho bạc custody sổ-kế-toán đa-bucket (collect C→T / release T→C theo governance) | 🚧 đang phát triển |
 | `Governance/` | iVoteSpace, bầu cử 3 hội đồng, Voting Power, Recall | 🔜 spec |
 
 ## Distribution — đã chạy thật trên Preview
@@ -34,9 +38,9 @@ Cơ chế phân bổ fixed-supply theo thời gian (5-10 năm), chống coordina
 theo đóng góp, tự điều tiết theo cầu (P parameter). Đã deploy + chạy e2e thật trên Cardano
 Preview (claim → phân bổ → redeem). Xem `Distribution/SPEC.md` + `Distribution/README.md`.
 
-> **Đang tái thiết kế cơ chế phân bổ**: từ Drop Lottery (random) → **deterministic
-> proportional vesting** (trả thẳng giá trị kỳ vọng) — minh bạch hơn, công bằng hơn, rẻ hơn,
-> bỏ được toàn bộ máy random + Merkle. Xem `Distribution/SPEC.md` §thiết kế.
+> **Cơ chế phân bổ = Capped Drop** (tất định): từ Drop Lottery (random) → **Capped Drop**
+> (`vested = min(E, D·dpe·elapsed)`, trả thẳng giá trị kỳ vọng) — minh bạch hơn, công bằng hơn,
+> rẻ hơn, bỏ được toàn bộ máy random + Merkle. Xem `Distribution/SPEC.md` §thiết kế.
 
 ## Triết lý
 

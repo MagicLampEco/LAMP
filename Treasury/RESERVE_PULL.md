@@ -33,7 +33,7 @@ Treasury-pull thực thi trong **MỘT tx duy nhất**, 2 validator chạy đồ
                 ┌─────────────────────── 1 TX ───────────────────────┐
  INPUTS:        │  • auth UTxO (tại reserve_gate)   ── reserve_gate ──│ ép SÀN
                 │  • ReserveState UTxO (reserve NFT) ── reserve_draw ─│ ép trần epoch
-                │  • SupplyState UTxO (Genesis)      ── tlamp_mint ───│ kế toán supply
+                │  • SupplyState UTxO (Genesis)      ── lamp_mint ────│ kế toán supply
  REFERENCE:     │  • custody UTxO (custody NFT)  ←── đọc parked (CIP-31, KHÔNG tiêu)
  MINT:          │  • delta LAMP (route ReserveDraw)
  OUTPUTS:       │  • auth NFT re-output VỀ reserve_gate (tái dùng)
@@ -60,7 +60,7 @@ Off-chain: gọi `attachGateSpend(txb, gateParams)` để thêm phần gate vào
 reserve_auth.policy_id           == reserve_gate.auth_policy           == reserve_draw.treasury_auth_policy
 reserve_auth.auth_name           == reserve_gate.auth_name             == reserve_draw.treasury_auth_name
 reserve_gate.custody_nft_policy/name == custody_seed.policy_id / instance_id (custody authenticity NFT)
-reserve_gate.lamp_policy/token_name  == tlamp_mint.policy / "tLAMP"(testnet) | "LAMP"(mainnet)
+reserve_gate.lamp_policy/token_name  == lamp_mint.policy / "tLAMP"(testnet) | "LAMP"(mainnet)
 reserve_draw.reserve_dest        == địa chỉ custody Treasury (LAMP nhả về custody)
 ```
 

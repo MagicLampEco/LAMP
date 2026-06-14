@@ -70,8 +70,8 @@ Tổng: 12 + 7,899 + 5 + 4,001 + 2 + 1 (Treasury) + 1 + 1 + 1 + 1 + 0,1 = **36 t
 └───────────────────────────────┘
 ```
 
-- **Distribution/onchain** = engine Capped Drop tái dùng (đã live Preview, 33 test xanh).
-- **Allocation/onchain** = tầng phân bổ per-channel (HARD-CAP, 61 test). Offchain 63 test. (đổi tên từ Tokenomics — module này chỉ làm phân bổ, không phải toàn bộ tokenomics).
+- **Distribution/onchain** = engine Capped Drop gốc (đã live Preview, 33 test xanh).
+- **Allocation/onchain** = tầng phân bổ per-channel (HARD-CAP, 61 test). Offchain 63 test. (đổi tên từ Tokenomics — module này chỉ làm phân bổ, không phải toàn bộ tokenomics). Engine vested của Allocation là **FORK** engine Distribution (math.ak đồng nhất, claim_account ~85% chung; KHÔNG `use magiclamp/lampdist`) — đồng bộ THỦ CÔNG; kế hoạch hợp nhất `magiclamp/common` sau 18/6.
 - **Reserve/onchain** = engine trần E/1000/epoch, Treasury-pull gated (reserve_draw + reserve_thread one-shot).
 
 ---
@@ -124,7 +124,7 @@ Constr index = thứ tự khai báo, từ 0. Mọi giá trị oil.
 | `TreasuryRedeemer` | ReleaseForRedeem=Constr(0,[]) |
 
 Công thức vested:
-- Channel (Capped Drop): `vested(t) = min(entitlement, drops_per_epoch · max(0, t − start_epoch))`; `redeemable = vested − redeemed`.
+- Channel (Capped Drop): `vested(t) = min(entitlement, drop_value · drops_per_epoch · max(0, t − start_epoch))` (drop_value = D, param validator claim_account); `redeemable = vested − redeemed`.
 - Reserve (gated, trần/epoch): `max_per_epoch = total_oil / 1000`; mỗi epoch (t > last_epoch) nhả `delta ≤ min(max_per_epoch, total_oil − drawn_oil)`, đòi Treasury-pull (treasury_auth NFT input). Dư dồn về sau → ~1001 epoch.
 
 ---
@@ -145,5 +145,6 @@ Công thức vested:
 | Faucet | ✓ | ✓ 17 test | vòi tLAMP cho dev test (testnet-only) |
 | Utils | — | ✓ 26 test | thư viện helper chung (đổi tên từ protocol-utils) |
 | Treasury | ✓ | ✓ | collect/release C↔T (đang phát triển: ledger.ak) |
+| Governance | — | — | chỉ spec + VotingPower; code 27/9 (chưa có validator) |
 
 Xem `PENDING.md` cho danh sách quyết định chờ chốt.

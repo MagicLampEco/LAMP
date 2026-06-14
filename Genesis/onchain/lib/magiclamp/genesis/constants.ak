@@ -24,7 +24,7 @@ pub const supply_name: ByteArray = #"535550504c59"
 /// CAP Distribution: 28.101 tỷ LAMP × 10^6 (oil) — khớp allocation v3 (tất cả trừ Reserve).
 pub const dist_cap_oil: Int = 28_101_000_000_000_000
 
-/// CAP Reserve: 7.899 tỷ LAMP × 10^6 (oil) — khớp allocation v3 (engine linear 1001 epoch).
+/// CAP Reserve: 7.899 tỷ LAMP × 10^6 (oil) — khớp allocation v3 (engine trần E/1000/epoch, Treasury-pull gated, ~1001 epoch).
 pub const reserve_cap_oil: Int = 7_899_000_000_000_000
 
 /// CAP tổng = 36 tỷ LAMP × 10^6 — BẤT BIẾN.
