@@ -23,3 +23,31 @@ export const CLAIM_AMOUNT_OIL = CLAIM_LAMP * OIL_PER_LAMP;
 export function lampToOil(lamp: bigint): bigint {
   return lamp * OIL_PER_LAMP;
 }
+
+// ══════════════════════════════════════════════════════════════════════════
+// FAUCET v2 — self-serve, DID-gated, rate-limited, tự thu hồi.
+// Khớp onchain ledger.ak. 1 tLAMP = 10^6 oil.
+// ══════════════════════════════════════════════════════════════════════════
+
+/** Drip = 1001 tLAMP mỗi claim. */
+export const DRIP_LAMP = 1001n;
+
+/** Drip tính bằng oil = 1001 × 10^6 = 1_001_000_000. Khớp FaucetConfig.drip_oil. */
+export const DRIP_OIL = DRIP_LAMP * OIL_PER_LAMP;
+
+/** Cooldown = 36 epoch giữa 2 claim của cùng 1 DID. Khớp FaucetConfig.cooldown_epochs. */
+export const COOLDOWN = 36n;
+
+/** Reclaim = 1001 epoch idle → account bị thu hồi. Khớp FaucetConfig.reclaim_epochs
+ * và hằng reclaim_epochs_const của faucet_account.ak. */
+export const RECLAIM = 1001n;
+
+/** Asset name POOL NFT = "POOL" (504f4f4c). Khớp ledger.pool_nft_name. */
+export const POOL_NFT_NAME = "504f4f4c";
+
+/** Asset name ACCT NFT = "ACCT" (41434354). Khớp ledger.acct_nft_name. */
+export const ACCT_NFT_NAME = "41434354";
+
+/** ms mỗi epoch — Preview/Preprod = 5 ngày = 432_000_000 ms (1 epoch = 432000 slot
+ * × 1000 ms, 1 slot = 1s). Truyền vào validator faucet_pool/faucet_account làm param. */
+export const MS_PER_EPOCH_PREVIEW = 432_000_000n;
