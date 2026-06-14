@@ -6,7 +6,7 @@ import {
   airdropPoolToCbor, airdropPoolFromCbor,
   encodeProofStep, decodeProofStep,
   claimRedeemerToCbor, sweepRedeemerToCbor,
-  mintPoolRedeemerToCbor, mintClaimRedeemerToCbor,
+  mintPoolRedeemerToCbor, burnSlotRedeemerToCbor,
   addressDataToHash,
 } from "../src/datum.js";
 import { addressToPlutusData } from "../src/merkle.js";
@@ -94,9 +94,9 @@ describe("AirdropRedeemer Claim/Sweep", () => {
 });
 
 describe("AirdropNftRedeemer", () => {
-  it("MintPool=Constr0 (d87980), MintClaim=Constr1 (d87a80)", () => {
+  it("MintPool=Constr0 (d87980), BurnSlot=Constr1 (d87a80) — GIỮ index", () => {
     expect(mintPoolRedeemerToCbor()).toBe("d87980");
-    expect(mintClaimRedeemerToCbor()).toBe("d87a80");
+    expect(burnSlotRedeemerToCbor()).toBe("d87a80");
   });
 });
 

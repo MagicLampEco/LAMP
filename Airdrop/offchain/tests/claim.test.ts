@@ -75,23 +75,23 @@ describe("buildSnapshotTree + exportClaims", () => {
   });
 });
 
-describe("marker leaf consistency (chống double-claim đầu vào)", () => {
+describe("slot leaf consistency (spend-once nullifier đầu vào)", () => {
   const rows: RawSnapshotRow[] = [
     { address: ADDR_A, amount: 1000 },
     { address: ADDR_B, amount: 2000 },
   ];
 
-  it("marker unit name == leaf == leafHash(claimer, amount)", () => {
+  it("slot unit name == leaf == leafHash(claimer, amount)", () => {
     const tree = buildSnapshotTree(rows);
     const { entry, leaf } = buildProofForAddress(tree, ADDR_A);
-    const markerUnit = toUnit(NFT_POLICY, leaf);
+    const slotUnit = toUnit(NFT_POLICY, leaf);
     // unit = policyId(56 hex) + name(leaf). Tách name phải == leaf.
-    expect(markerUnit.slice(0, 56)).toBe(NFT_POLICY);
-    expect(markerUnit.slice(56)).toBe(leaf);
+    expect(slotUnit.slice(0, 56)).toBe(NFT_POLICY);
+    expect(slotUnit.slice(56)).toBe(leaf);
     expect(leaf).toBe(leafHash(entry));
   });
 
-  it("2 claimer khác leaf → 2 marker khác name (nullifier riêng)", () => {
+  it("2 claimer khác leaf → 2 slot khác name (nullifier riêng)", () => {
     const tree = buildSnapshotTree(rows);
     const la = buildProofForAddress(tree, ADDR_A).leaf;
     const lb = buildProofForAddress(tree, ADDR_B).leaf;

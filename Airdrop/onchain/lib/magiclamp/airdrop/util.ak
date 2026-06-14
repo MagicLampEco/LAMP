@@ -1,12 +1,14 @@
 // Airdrop shared helpers — NFT-beacon authenticity + double-satisfaction guards
 // theo SCRIPT HASH (không full-address). Mượn mẫu Faucet/util.ak + Allocation/util.ak.
 
+use aiken/collection/dict
 use aiken/collection/list
 use aiken/interval.{Finite, IntervalBoundType}
 use cardano/address.{Address, Inline, Script, VerificationKey}
 use cardano/assets.{AssetName, PolicyId, Value}
 use cardano/transaction.{InlineDatum, Input, NoDatum, Output, OutputReference,
   Transaction}
+use magiclamp/airdrop/ledger.{AirdropPool}
 
 // ── Own-UTxO resolution ───────────────────────────────────────────
 
@@ -14,6 +16,23 @@ use cardano/transaction.{InlineDatum, Input, NoDatum, Output, OutputReference,
 pub fn own_address(own_ref: OutputReference, inputs: List<Input>) -> Address {
   expect Some(i) = list.find(inputs, fn(x) { x.output_reference == own_ref })
   i.output.address
+}
+
+/// Output (đầy đủ value/datum) của chính UTxO đang spend (resolve own_ref).
+pub fn own_output(own_ref: OutputReference, inputs: List<Input>) -> Output {
+  expect Some(i) = list.find(inputs, fn(x) { x.output_reference == own_ref })
+  i.output
+}
+
+/// Tên (AssetName) của ĐÚNG 1 token thuộc `policy` trong value. Dùng cho claim-slot
+/// UTxO: slot mang đúng 1 NFT (policy, leaf, qty 1) → trả `leaf`. Ép qty == 1 +
+/// đúng 1 name (chống slot rác mang nhiều/0 token policy → marker không xác định).
+pub fn sole_policy_name(value: Value, policy: PolicyId) -> AssetName {
+  let toks = assets.tokens(value, policy)
+  expect dict.size(toks) == 1
+  expect [name] = dict.keys(toks)
+  expect assets.quantity_of(value, policy, name) == 1
+  name
 }
 
 /// Script hash của address đang chạy.
@@ -99,6 +118,35 @@ pub fn output_with_nft(
 ) -> Output {
   expect Some(o) = list.find(outputs, fn(x) { has_nft(x, policy, name) })
   o
+}
+
+// ── Đọc trạng thái claim của POOL (cho mint policy gate slot) ──────
+// Mint policy KHÔNG có own datum của pool → phải tự định vị UTxO mang POOL NFT
+// trong tập output (genesis: pool vừa tạo) hoặc input/reference_input (continuation:
+// pool đã tồn tại) rồi giải mã inline datum lấy claimed_count. Đây là KHOÁ trustless
+// phía CLAIMER: khi claimed_count > 0 (đã có ≥1 claim) thì cấm đúc slot → slot đã burn
+// KHÔNG BAO GIỜ tái sinh, dù kẻ tấn công cầm authority token.
+
+/// claimed_count của AirdropPool mang trong inline datum của 1 output (POOL NFT).
+/// fail nếu không phải inline datum hoặc decode sai → an toàn (mặc định reject).
+pub fn output_claimed_count(out: Output) -> Int {
+  expect InlineDatum(d) = out.datum
+  expect pool: AirdropPool = d
+  pool.claimed_count
+}
+
+/// Tìm Output mang POOL NFT trong inputs HOẶC reference_inputs (continuation: pool
+/// đã tồn tại, mint policy tham chiếu nó qua input thường hoặc reference input).
+/// fail nếu không tìm thấy → an toàn (continuation buộc phải tham chiếu pool).
+pub fn pool_from_inputs_or_refs(
+  inputs: List<Input>,
+  reference_inputs: List<Input>,
+  policy: PolicyId,
+  name: AssetName,
+) -> Output {
+  let all = list.concat(inputs, reference_inputs)
+  expect Some(i) = list.find(all, fn(x) { has_nft(x.output, policy, name) })
+  i.output
 }
 
 // ── Test-support builders (mock UTxO/tx) ──────────────────────────

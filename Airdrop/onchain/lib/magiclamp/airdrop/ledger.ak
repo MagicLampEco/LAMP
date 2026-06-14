@@ -10,35 +10,61 @@
 // ─────────────────────────────────────────────────────────────────────────
 // KIẾN TRÚC NFT-BEACON (phá vòng hash-param chéo — bài học Faucet/Allocation)
 // ─────────────────────────────────────────────────────────────────────────
-// KHÔNG truyền script-hash chéo giữa pool ↔ marker policy (gây vòng tròn không
-// deploy được). GIẢI: 1 minting policy `airdrop_nft` (param: genesis_ref) đúc 2 loại:
+// KHÔNG truyền script-hash chéo giữa pool ↔ marker (gây vòng tròn không deploy
+// được). GIẢI: 1 minting policy `airdrop_nft` (param: genesis_ref) đúc 2 loại:
 //   - POOL NFT   ("APOOL", qty 1) — one-shot, nhận diện airdrop pool UTxO.
-//   - CLAIM NFT  (name = leaf hash, qty 1) — nullifier per-leaf (chống double-claim).
+//   - CLAIM-SLOT NFT (name = leaf hash, qty 1) — 1 slot/leaf, đúc 1 lần ở SETUP,
+//     ĐẶT SẴN ở địa chỉ registry (marker_dest). Claim PHẢI tiêu + BURN slot này.
 //
-// Pool validator nhận diện chính nó qua "POOL NFT cùng airdrop_nft_policy".
-// Pool ép mỗi Claim ĐÚC đúng 1 CLAIM marker (name = leaf của claimer) → marker
-// policy ép leaf khớp. CẢ HAI chỉ tham chiếu `airdrop_nft_policy` → KHÔNG vòng.
+// Marker validator (registry) param `airdrop_nft_policy` (1 chiều, không vòng):
+// nó chỉ tham chiếu policy id, KHÔNG tham chiếu pool/treasury script-hash. Pool
+// validator tham chiếu `airdrop_nft_policy` để nhận diện POOL NFT. CẢ HAI chỉ
+// đọc 1 policy id → KHÔNG vòng tròn.
 //
 // ─────────────────────────────────────────────────────────────────────────
-// CHỐNG DOUBLE-CLAIM — CLAIM-MARKER NFT làm NULLIFIER (per-leaf)
+// CHỐNG DOUBLE-CLAIM — SPEND-ONCE per-leaf claim-slot UTxO (TRUSTLESS)
 // ─────────────────────────────────────────────────────────────────────────
-// Mỗi leaf (= hash(address|amount)) chỉ claim ĐÚNG 1 lần. Cơ chế:
-//   1. Claim ép ĐÚC 1 CLAIM NFT name == leaf của proof, gửi vào `marker_dest`
-//      (script KHÔNG có spend path → marker bị KHÓA VĨNH VIỄN → nullifier bất biến).
-//   2. Marker policy (MintClaim) ép: name == leaf, qty == +1, KHÔNG đụng POOL NFT,
-//      và pool đang được spend (có POOL NFT input) → ủy quyền pool kiểm proof.
-//   3. Lần claim 2 cho cùng leaf: ledger Cardano cấm 2 UTxO mang CÙNG (policy,name)
-//      cùng tồn tại? KHÔNG — nhưng marker đã bị khóa ở marker_dest VĨNH VIỄN; pool
-//      ép marker MỚI phải tới marker_dest. Indexer luôn thấy marker cũ → off-chain
-//      từ chối build. Onchain: pool ép `claimed_count` tăng đúng +1 và marker mint
-//      qty đúng +1 — cung LAMP bảo toàn tuyệt đối (pool chỉ nhả đúng `amount` mỗi
-//      CLAIM marker mới đúc). Xem GHI CHÚ REPLAY ở README.
+// Mỗi leaf (= hash(address|amount)) có ĐÚNG 1 "claim-slot" UTxO mang NFT
+// (airdrop_nft_policy, name=leaf, qty 1), đặt ở địa chỉ registry (marker_dest).
+// Slot được đúc 1 LẦN DUY NHẤT lúc SETUP (one-shot qua genesis_ref). Cơ chế:
+//   1. Claim PHẢI consume slot UTxO của leaf mình + BURN NFT slot
+//      (mint qty (policy, leaf) == -1). Slot tiêu rồi BIẾN MẤT khỏi registry.
+//   2. Tái sinh slot? Phải re-mint NFT cùng (policy, leaf) — nhưng MintPool
+//      one-shot đòi consume genesis_ref ĐÃ BỊ TIÊU lúc SETUP → KHÔNG thể đúc lại
+//      → slot không tái sinh được. SPEND-ONCE tuyệt đối, KHÔNG cần indexer.
+//   3. Claim 2 cho cùng leaf: slot UTxO đã biến mất ở bước 1 → KHÔNG có input để
+//      consume → tx không build được. Onchain ép có-slot-consumed → reject.
 //
-// LÝ DO CHỌN marker-NFT thay nullifier-set/accumulator:
+// KHÁC THIẾT KẾ CŨ (đúc marker tại Claim, khóa ở no-spend): thiết kế cũ DỰA vào
+// indexer off-chain để chặn re-claim (replay window). Thiết kế SPEND-ONCE này
+// TRUSTLESS hoàn toàn — bảo đảm onchain bằng tính bất khả-tái-sinh của one-shot.
+//
+// ─────────────────────────────────────────────────────────────────────────
+// MÔ HÌNH TIN CẬY (NÓI THẬT — không phóng đại trustless)
+// ─────────────────────────────────────────────────────────────────────────
+//   SETUP INTEGRITY = DEPLOYER-TRUSTED. Việc đúc ĐÚNG 1 slot/leaf, KHÔNG trùng
+//   name, đủ N slot khớp snapshot — do committee deploy (nắm quỹ LAMP) dựng tất
+//   định off-chain (deployBuilder). Onchain KHÔNG liệt kê từng leaf nên KHÔNG ép
+//   được "đủ và đúng N slot" — committee được tin Ở GIAI ĐOẠN SETUP.
+//
+//   CHỐNG DOUBLE-CLAIM phía CLAIMER = TRUSTLESS ON-CHAIN. Hai khoá độc lập:
+//     (a) SPEND-ONCE: slot đúc 1 lần, claim tiêu + burn, one-shot không tái sinh.
+//     (b) GATE claimed_count == 0: MỌI tx đúc slot (genesis VÀ continuation) phải
+//         tham chiếu POOL UTxO và ép claimed_count == 0. Burn slot CHỈ xảy ra lúc
+//         claim (claimed_count tăng ≥1). Vậy SAU khi claim mở (count>0) KHÔNG AI —
+//         kể cả kẻ cầm SETUP authority token — đúc lại được slot tên = leaf đã burn.
+//     Continuation còn ép KHÔNG re-mint authority token (chống tự cấp authority mới).
+//
+//   YÊU CẦU VẬN HÀNH: committee PHẢI BURN SETUP authority token TRƯỚC KHI MỞ CLAIM
+//   (tx cuối SETUP burn authority). Nếu không burn, authority còn sống chỉ cho phép
+//   đúc thêm slot KHI claimed_count == 0 (chưa ai claim) — vẫn không double-claim
+//   được, nhưng burn authority là kỷ luật vận hành chuẩn để đóng hẳn SETUP.
+//
+// LÝ DO CHỌN per-leaf slot UTxO thay nullifier-set/accumulator:
 //   - eUTXO: pool permissionless, NHIỀU claimer song song. Accumulator (set trong
-//     datum) → tuần tự hoá pool (1 claim/block) → nghẽn. Marker NFT cho phép claim
-//     SONG SONG (mỗi tx đúc marker riêng), KHÔNG khoá pool theo thứ tự.
-//   - Marker bất biến (no-spend script) = nullifier bền, không cần global scan
+//     datum) → tuần tự hoá pool (1 claim/block) → nghẽn. Slot UTxO riêng từng leaf
+//     cho phép claim SONG SONG (mỗi tx tiêu slot riêng), KHÔNG khoá pool theo thứ tự.
+//   - Slot bất khả-tái-sinh (one-shot mint) = nullifier bền, không cần global scan
 //     onchain (vốn bất khả thi trong eUTXO).
 //
 // ─────────────────────────────────────────────────────────────────────────
@@ -48,6 +74,11 @@ use cardano/address.{Address}
 
 /// Asset name POOL NFT = "APOOL" (#"41504f4f4c"). One-shot, đánh dấu airdrop pool.
 pub const pool_nft_name: ByteArray = #"41504f4f4c"
+
+/// Asset name SETUP authority token = "ASETUP" (#"415345545550"). Đúc cùng POOL
+/// NFT ở tx SETUP đầu; nếu N leaf vượt 1 tx, các tx đúc slot tiếp theo đòi token
+/// này làm input (ủy quyền SETUP), burn ở tx cuối. KHÁC pool_nft_name + leaf name.
+pub const setup_authority_name: ByteArray = #"415345545550"
 
 /// Datum của airdrop POOL UTxO. Giữ kho LAMP + tham số airdrop.
 ///
@@ -61,17 +92,20 @@ pub type AirdropPool {
   deadline_epoch: Int,
   /// Địa chỉ Treasury custody — Sweep hoàn LAMP dư về đây sau deadline.
   treasury_dest: Address,
-  /// Địa chỉ marker script (no-spend) — CLAIM marker NFT bị khóa vĩnh viễn ở đây.
+  /// Địa chỉ REGISTRY (marker validator) — nơi chứa toàn bộ claim-slot UTxO.
+  /// (ĐỔI NGỮ NGHĨA so với bản cũ "đích đúc marker": nay là địa chỉ slot ngụ.)
+  /// Cùng kiểu Address, cùng vị trí field → KHÔNG phá datum schema.
   marker_dest: Address,
   /// Số leaf đã claim (sổ kế toán; tăng +1 mỗi Claim). KHÔNG dùng làm nullifier
-  /// (marker NFT mới là nullifier) — chỉ để báo cáo + bất biến hoá pool flow.
+  /// (slot UTxO bị tiêu mới là nullifier) — chỉ để báo cáo + bất biến hoá pool flow.
   claimed_count: Int,
 }
 
 /// Redeemer của airdrop pool (spend).
 pub type AirdropRedeemer {
   /// Claimer present Merkle proof (address, amount, proof) → nhận `amount` LAMP,
-  /// đúc CLAIM marker name=leaf. Permissionless (ai cũng build hộ, LAMP về đúng addr).
+  /// tiêu + BURN claim-slot UTxO name=leaf. Permissionless (ai cũng build hộ,
+  /// LAMP về đúng addr).
   Claim {
     /// Address của claimer (khớp leaf + khớp output nhận LAMP).
     claimer: Address,
@@ -96,8 +130,12 @@ pub type ProofStep {
 
 /// Redeemer của airdrop_nft minting policy.
 pub type AirdropNftRedeemer {
-  /// Đúc POOL NFT one-shot (deploy pool). Bắt buộc consume genesis_ref.
+  /// SETUP one-shot: đúc POOL NFT + toàn bộ claim-slot (name = leaf). Tx ĐẦU phải
+  /// consume genesis_ref; nếu N lớn vượt 1 tx → đúc kèm SETUP authority token, tx
+  /// đúc slot tiếp theo đòi authority input, burn authority ở tx cuối. Constr 0.
   MintPool
-  /// Đúc CLAIM marker (lúc Claim). name == leaf; bắt buộc tx có POOL NFT input.
-  MintClaim
+  /// BurnSlot (GIỮ Constr index 1 để codec offchain không lệch): tiêu + BURN slot
+  /// lúc Claim/Sweep. Ép quantity_of(mint, policy, name) == -1, có POOL input,
+  /// KHÔNG đụng POOL NFT. (Tên cũ MintClaim đổi ngữ nghĩa: đúc → burn.)
+  BurnSlot
 }

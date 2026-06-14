@@ -5,5 +5,6 @@ export * from "./types.js";
 export * from "./merkle.js";
 export * from "./datum.js";
 export * from "./snapshotTool.js";
+export * from "./deployBuilder.js";
 export * from "./claimBuilder.js";
 export * from "./sweepBuilder.js";

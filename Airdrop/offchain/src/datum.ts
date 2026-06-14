@@ -6,7 +6,7 @@
 //   ProofStep{is_left, hash}        = Constr(0, [bool, bytes])
 //   AirdropRedeemer: Claim{claimer, amount, proof} = Constr(0, [Address, int, [ProofStep]])
 //                    Sweep                          = Constr(1, [])
-//   AirdropNftRedeemer: MintPool=Constr0, MintClaim=Constr1.
+//   AirdropNftRedeemer: MintPool=Constr0, BurnSlot=Constr1 (GIỮ index — codec không lệch).
 
 import { Constr, Data, getAddressDetails } from "@lucid-evolution/lucid";
 import { addressToPlutusData } from "./merkle.js";
@@ -149,12 +149,16 @@ export function sweepRedeemerToCbor(): string {
   return Data.to(new Constr(1, []));
 }
 
-/** AirdropNftRedeemer: MintPool = Constr(0,[]). */
+/** AirdropNftRedeemer: MintPool = Constr(0,[]). SETUP one-shot (POOL + N slot). */
 export function mintPoolRedeemerToCbor(): string {
   return Data.to(new Constr(0, []));
 }
 
-/** AirdropNftRedeemer: MintClaim = Constr(1,[]). */
-export function mintClaimRedeemerToCbor(): string {
+/** AirdropNftRedeemer: BurnSlot = Constr(1,[]). Tiêu + burn slot lúc Claim/Sweep.
+ *  (GIỮ Constr index 1 — đổi tên từ MintClaim, codec không lệch.) */
+export function burnSlotRedeemerToCbor(): string {
   return Data.to(new Constr(1, []));
 }
+
+/** @deprecated Đổi ngữ nghĩa: đúc marker → burn slot. Dùng burnSlotRedeemerToCbor. */
+export const mintClaimRedeemerToCbor = burnSlotRedeemerToCbor;

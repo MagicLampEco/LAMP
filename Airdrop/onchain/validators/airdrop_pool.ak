@@ -2,7 +2,7 @@
 //
 // ─────────────────────────────────────────────────────────────────────────
 // PARAM (KHÔNG hash-param chéo)
-//   airdrop_nft_policy : policy id đúc POOL + CLAIM NFT (nhận diện pool + marker).
+//   airdrop_nft_policy : policy id đúc POOL + SLOT NFT (nhận diện pool + slot).
 //   lamp_policy        : policy id LAMP.
 //   lamp_name          : asset name LAMP.
 //   ms_per_epoch       : ms mỗi epoch (network-specific) → quy đổi epoch.
@@ -15,14 +15,19 @@
 //   - claimer NHẬN đúng `amount` LAMP (output tại địa chỉ claimer, ≥ amount LAMP).
 //   - pool.value = pool_in − amount LAMP (giữ POOL NFT + ADA + asset khác).
 //   - datum pool bảo toàn TRỪ claimed_count += 1; merkle_root/deadline/dest bất biến.
-//   - CHỐNG DOUBLE-CLAIM: ép đúc 1 CLAIM marker NFT name = leaf(claimer,amount),
-//     marker đi vào marker_dest (script no-spend → khóa vĩnh viễn = nullifier).
+//   - CHỐNG DOUBLE-CLAIM (SPEND-ONCE): ép consume ĐÚNG claim-slot UTxO mang
+//     (airdrop_nft_policy, leaf=leaf(claimer,amount)) từ địa chỉ REGISTRY
+//     (== pool.marker_dest), VÀ burn NFT slot đó (net mint leaf == -1). Slot tiêu
+//     rồi biến mất + bất khả-tái-sinh (one-shot) → claim lần 2 không có slot → fail.
 //
 // SWEEP (permissionless, sau deadline):
 //   - now (cận DƯỚI) ≥ deadline_epoch → hết hạn claim.
 //   - TOÀN BỘ LAMP còn lại trong pool → treasury_dest (≥ pool LAMP).
 //   - POOL NFT có thể burn/về treasury — onchain chỉ ép LAMP về Treasury (bảo toàn
 //     cung; phần dư hoàn Treasury đúng yêu cầu TOKENOMICS).
+//   - Slot UTxO CHƯA claim có thể quét cùng (mỗi slot burn qua BurnSlot, marker
+//     validator cho tiêu khi có POOL input). min-ADA slot → tự do (builder gom về
+//     Treasury); onchain pool chỉ ép LAMP → Treasury (slot không chứa LAMP).
 
 use aiken/collection/list
 use aiken/interval
@@ -118,21 +123,31 @@ validator airdrop_pool(
           )
         expect to_claimer >= amount
 
-        // CHỐNG DOUBLE-CLAIM: đúc đúng 1 CLAIM marker NFT name = leaf, vào marker_dest.
+        // CHỐNG DOUBLE-CLAIM (SPEND-ONCE): consume ĐÚNG claim-slot UTxO của leaf này.
         let leaf = merkle.leaf_hash(claimer, amount)
-        expect assets.quantity_of(tx.mint, airdrop_nft_policy, leaf) == 1
-        // marker NFT phải tới marker_dest (script no-spend → khóa = nullifier).
-        expect
-          list.any(
-            tx.outputs,
-            fn(o: Output) {
-              o.address == pool.marker_dest && util.has_nft(
-                o,
+        // (1) ĐÚNG 1 slot input mang (policy, leaf) Ở SCRIPT REGISTRY (marker).
+        //     So PAYMENT-CREDENTIAL script-hash (không full-address) — mẫu ISPO
+        //     util.is_at_script: bỏ qua stake credential (slot hợp lệ vẫn được nhận
+        //     dù khác stake), nhưng ép phải ngụ tại đúng marker validator → slot
+        //     phải từ registry hợp lệ, không phải UTxO giả mang NFT cùng name nơi
+        //     khác. marker_sh dẫn xuất từ payment-credential của pool.marker_dest.
+        let marker_sh = util.own_script_hash(pool.marker_dest)
+        let slot_inputs =
+          list.filter(
+            tx.inputs,
+            fn(i) {
+              util.is_at_script(i.output.address, marker_sh) && util.has_nft(
+                i.output,
                 airdrop_nft_policy,
                 leaf,
               )
             },
           )
+        expect list.length(slot_inputs) == 1
+        // (2) Slot NFT leaf này bị BURN (net -1) → biến mất khỏi registry, không
+        //     tái sinh (one-shot) → spend-once. (Marker validator cũng ép burn;
+        //     pool ép thêm để chốt bất biến cung + chống slot "đi vòng" nơi khác.)
+        expect assets.quantity_of(tx.mint, airdrop_nft_policy, leaf) == -1
         True
       }
 
@@ -269,10 +284,14 @@ fn ap_claimer_output(addr: Address, lamp: Int) -> Output {
   )
 }
 
-fn ap_marker_output(leaf: ByteArray) -> Output {
-  util.mk_output_no_datum(
-    ap_marker_addr(),
-    assets.from_lovelace(2_000_000) |> assets.add(ap_nft_policy, leaf, 1),
+/// Claim-slot UTxO ở registry (marker_dest) mang (policy, leaf, 1) + min-ADA.
+fn ap_slot_input(ref_ix: Int, addr: Address, leaf: ByteArray) {
+  util.mk_input(
+    util.mk_ref(ref_ix),
+    util.mk_output_no_datum(
+      addr,
+      assets.from_lovelace(2_000_000) |> assets.add(ap_nft_policy, leaf, 1),
+    ),
   )
 }
 
@@ -304,25 +323,52 @@ fn aiken_interval_after(ms: Int) {
 }
 
 // ── CLAIM happy + amount ─────────────────────────────────────────
+//
+// Cơ chế SPEND-ONCE: Claim consume slot UTxO của leaf A (mang (policy, leaf_a) ở
+// marker_dest) + burn slot (mint leaf_a = -1). Pool input mk_ref(0); slot mk_ref(3).
 
-/// Dựng tx Claim cho A: proof sibling L_B phải.
-fn ap_claim_tx_a(now_epoch: Int, lamp_to_a: Int, mint_leaf: ByteArray) -> Transaction {
+/// Dựng tx Claim cho A. slot_leaf/slot_addr/burn_leaf cho phép tinh chỉnh test.
+fn ap_claim_tx_full(
+  now_epoch: Int,
+  pool_out_lamp: Int,
+  count_out: Int,
+  lamp_to_a: Int,
+  slot_addr: Address,
+  slot_leaf: ByteArray,
+  burn_leaf: ByteArray,
+  burn_qty: Int,
+) -> Transaction {
   let base =
     Transaction {
       ..placeholder,
-      inputs: [ap_pool_input(10_000_000, 100_000_000, 0)],
-      outputs: [
-        ap_pool_output(10_000_000, 100_000_000 - ap_amount_a, 1),
-        ap_claimer_output(ap_claimer_a(), lamp_to_a),
-        ap_marker_output(mint_leaf),
+      inputs: [
+        ap_pool_input(10_000_000, 100_000_000, 0),
+        ap_slot_input(3, slot_addr, slot_leaf),
       ],
-      mint: assets.zero |> assets.add(ap_nft_policy, mint_leaf, 1),
+      outputs: [
+        ap_pool_output(10_000_000, pool_out_lamp, count_out),
+        ap_claimer_output(ap_claimer_a(), lamp_to_a),
+      ],
+      mint: assets.zero |> assets.add(ap_nft_policy, burn_leaf, burn_qty),
     }
   ap_tx_before(now_epoch, base)
 }
 
-fn ap_run_claim(now_epoch: Int, lamp_to_a: Int, mint_leaf: ByteArray) -> Bool {
-  let tx = ap_claim_tx_a(now_epoch, lamp_to_a, mint_leaf)
+/// Happy-path tx cho A: slot leaf_a ở marker_dest, burn leaf_a (-1).
+fn ap_claim_tx_a(now_epoch: Int, lamp_to_a: Int) -> Transaction {
+  ap_claim_tx_full(
+    now_epoch,
+    100_000_000 - ap_amount_a,
+    1,
+    lamp_to_a,
+    ap_marker_addr(),
+    ap_leaf_a(),
+    ap_leaf_a(),
+    -1,
+  )
+}
+
+fn ap_run_claim_tx(tx: Transaction) -> Bool {
   airdrop_pool.spend(
     ap_nft_policy,
     ap_lamp_policy,
@@ -339,31 +385,23 @@ fn ap_run_claim(now_epoch: Int, lamp_to_a: Int, mint_leaf: ByteArray) -> Bool {
   )
 }
 
+fn ap_run_claim(now_epoch: Int, lamp_to_a: Int) -> Bool {
+  ap_run_claim_tx(ap_claim_tx_a(now_epoch, lamp_to_a))
+}
+
 test claim_happy_with_proof() {
-  // now=100 < deadline=500; proof đúng; A nhận đúng 1 LAMP; marker name=leaf_a.
-  ap_run_claim(100, ap_amount_a, ap_leaf_a())
+  // now=100 < deadline=500; proof đúng; A nhận đúng 1 LAMP; slot leaf_a bị burn.
+  ap_run_claim(100, ap_amount_a)
 }
 
 test claim_correct_amount_to_claimer() {
   // A nhận nhiều hơn amount (gộp đổi) vẫn pass (to_claimer ≥ amount); pool nhả đúng amount.
-  ap_run_claim(100, ap_amount_a, ap_leaf_a())
+  ap_run_claim(100, ap_amount_a + 500_000)
 }
 
 test claim_reject_wrong_proof() fail {
   // proof sibling sai (#"dead") → verify_proof False → reject.
-  let leaf_a = ap_leaf_a()
-  let base =
-    Transaction {
-      ..placeholder,
-      inputs: [ap_pool_input(10_000_000, 100_000_000, 0)],
-      outputs: [
-        ap_pool_output(10_000_000, 100_000_000 - ap_amount_a, 1),
-        ap_claimer_output(ap_claimer_a(), ap_amount_a),
-        ap_marker_output(leaf_a),
-      ],
-      mint: assets.zero |> assets.add(ap_nft_policy, leaf_a, 1),
-    }
-  let tx = ap_tx_before(100, base)
+  let tx = ap_claim_tx_a(100, ap_amount_a)
   airdrop_pool.spend(
     ap_nft_policy,
     ap_lamp_policy,
@@ -382,7 +420,7 @@ test claim_reject_wrong_proof() fail {
 
 test claim_reject_wrong_amount() fail {
   // claimer khai amount sai (999) — leaf khác root → verify_proof False → reject.
-  let tx = ap_claim_tx_a(100, ap_amount_a, ap_leaf_a())
+  let tx = ap_claim_tx_a(100, ap_amount_a)
   airdrop_pool.spend(
     ap_nft_policy,
     ap_lamp_policy,
@@ -401,38 +439,22 @@ test claim_reject_wrong_amount() fail {
 
 test claim_reject_pool_overdraw() fail {
   // pool nhả nhiều hơn amount (out LAMP = in − 2×amount) → value-eq lệch → reject.
-  let leaf_a = ap_leaf_a()
-  let base =
-    Transaction {
-      ..placeholder,
-      inputs: [ap_pool_input(10_000_000, 100_000_000, 0)],
-      outputs: [
-        ap_pool_output(10_000_000, 100_000_000 - 2 * ap_amount_a, 1),
-        ap_claimer_output(ap_claimer_a(), ap_amount_a),
-        ap_marker_output(leaf_a),
-      ],
-      mint: assets.zero |> assets.add(ap_nft_policy, leaf_a, 1),
-    }
-  let tx = ap_tx_before(100, base)
-  airdrop_pool.spend(
-    ap_nft_policy,
-    ap_lamp_policy,
-    ap_lamp_name,
-    ap_ms_per_epoch,
-    Some(ap_datum(0)),
-    Claim {
-      claimer: ap_claimer_a(),
-      amount: ap_amount_a,
-      proof: [ledger_proof_step(False, ap_leaf_b())],
-    },
-    util.mk_ref(0),
-    tx,
-  )
+  let tx =
+    ap_claim_tx_full(
+      100,
+      100_000_000 - 2 * ap_amount_a,
+      1,
+      ap_amount_a,
+      ap_marker_addr(),
+      ap_leaf_a(),
+      ap_leaf_a(),
+      -1,
+    )
+  ap_run_claim_tx(tx)
 }
 
-test claim_reject_no_marker_minted() fail {
-  // KHÔNG đúc CLAIM marker → quantity_of(mint, leaf) == 0 → reject (chống bỏ nullifier).
-  let leaf_a = ap_leaf_a()
+test claim_reject_no_slot_consumed() fail {
+  // KHÔNG consume slot UTxO nào (chỉ pool input) → slot_inputs == 0 → reject.
   let base =
     Transaction {
       ..placeholder,
@@ -440,116 +462,125 @@ test claim_reject_no_marker_minted() fail {
       outputs: [
         ap_pool_output(10_000_000, 100_000_000 - ap_amount_a, 1),
         ap_claimer_output(ap_claimer_a(), ap_amount_a),
-        ap_marker_output(leaf_a),
+      ],
+      // burn vẫn khai -1 nhưng không có slot input → vẫn reject ở bước slot_inputs.
+      mint: assets.zero |> assets.add(ap_nft_policy, ap_leaf_a(), -1),
+    }
+  let tx = ap_tx_before(100, base)
+  ap_run_claim_tx(tx)
+}
+
+test claim_reject_slot_wrong_leaf() fail {
+  // slot consume mang leaf KHÁC (leaf_b) thay vì leaf_a → slot_inputs leaf_a == 0 → reject.
+  let tx =
+    ap_claim_tx_full(
+      100,
+      100_000_000 - ap_amount_a,
+      1,
+      ap_amount_a,
+      ap_marker_addr(),
+      ap_leaf_b(),
+      ap_leaf_b(),
+      -1,
+    )
+  ap_run_claim_tx(tx)
+}
+
+test claim_reject_slot_not_from_registry() fail {
+  // slot mang đúng leaf_a NHƯNG từ địa chỉ KHÁC (ví claimer, không phải marker_dest)
+  // → slot_inputs (lọc theo marker_dest) == 0 → reject (chống slot giả tự đặt).
+  let tx =
+    ap_claim_tx_full(
+      100,
+      100_000_000 - ap_amount_a,
+      1,
+      ap_amount_a,
+      ap_claimer_a(),
+      ap_leaf_a(),
+      ap_leaf_a(),
+      -1,
+    )
+  ap_run_claim_tx(tx)
+}
+
+test claim_reject_slot_wrong_script() fail {
+  // slot mang đúng leaf_a, ở 1 SCRIPT ADDRESS nhưng KHÁC marker script-hash
+  // (#"deadbeef" thay vì marker_sh) → is_at_script False → slot_inputs == 0 →
+  // reject. Chống slot giả ngụ ở script khác mang NFT cùng name.
+  let wrong_script_addr = util.script_address(#"deadbeef")
+  let tx =
+    ap_claim_tx_full(
+      100,
+      100_000_000 - ap_amount_a,
+      1,
+      ap_amount_a,
+      wrong_script_addr,
+      ap_leaf_a(),
+      ap_leaf_a(),
+      -1,
+    )
+  ap_run_claim_tx(tx)
+}
+
+test claim_reject_slot_not_burned() fail {
+  // slot leaf_a consume ĐÚNG nhưng KHÔNG burn (mint leaf_a == 0) → reject
+  // (slot không tiêu khỏi cung → có thể tái đặt registry → double-claim).
+  let tx =
+    ap_claim_tx_full(
+      100,
+      100_000_000 - ap_amount_a,
+      1,
+      ap_amount_a,
+      ap_marker_addr(),
+      ap_leaf_a(),
+      ap_leaf_a(),
+      0,
+    )
+  ap_run_claim_tx(tx)
+}
+
+test claim_reject_double_claim_same_leaf() fail {
+  // Claim lần 2 cho leaf_a: slot leaf_a ĐÃ BỊ TIÊU lần đầu → registry KHÔNG còn slot
+  // → builder không có slot input. Mô phỏng: tx claim leaf_a mà KHÔNG có slot input
+  // nào (slot đã biến mất) → slot_inputs == 0 → reject. (Re-mint slot bất khả: one-shot.)
+  let base =
+    Transaction {
+      ..placeholder,
+      inputs: [ap_pool_input(10_000_000, 100_000_000, 0)],
+      outputs: [
+        ap_pool_output(10_000_000, 100_000_000 - ap_amount_a, 1),
+        ap_claimer_output(ap_claimer_a(), ap_amount_a),
       ],
       mint: assets.zero,
     }
   let tx = ap_tx_before(100, base)
-  airdrop_pool.spend(
-    ap_nft_policy,
-    ap_lamp_policy,
-    ap_lamp_name,
-    ap_ms_per_epoch,
-    Some(ap_datum(0)),
-    Claim {
-      claimer: ap_claimer_a(),
-      amount: ap_amount_a,
-      proof: [ledger_proof_step(False, ap_leaf_b())],
-    },
-    util.mk_ref(0),
-    tx,
-  )
-}
-
-test claim_reject_marker_not_to_dest() fail {
-  // marker đúc nhưng KHÔNG vào marker_dest (vào ví claimer) → nullifier không khóa → reject.
-  let leaf_a = ap_leaf_a()
-  let bad_marker =
-    util.mk_output_no_datum(
-      ap_claimer_a(),
-      assets.from_lovelace(2_000_000) |> assets.add(ap_nft_policy, leaf_a, 1),
-    )
-  let base =
-    Transaction {
-      ..placeholder,
-      inputs: [ap_pool_input(10_000_000, 100_000_000, 0)],
-      outputs: [
-        ap_pool_output(10_000_000, 100_000_000 - ap_amount_a, 1),
-        ap_claimer_output(ap_claimer_a(), ap_amount_a),
-        bad_marker,
-      ],
-      mint: assets.zero |> assets.add(ap_nft_policy, leaf_a, 1),
-    }
-  let tx = ap_tx_before(100, base)
-  airdrop_pool.spend(
-    ap_nft_policy,
-    ap_lamp_policy,
-    ap_lamp_name,
-    ap_ms_per_epoch,
-    Some(ap_datum(0)),
-    Claim {
-      claimer: ap_claimer_a(),
-      amount: ap_amount_a,
-      proof: [ledger_proof_step(False, ap_leaf_b())],
-    },
-    util.mk_ref(0),
-    tx,
-  )
+  ap_run_claim_tx(tx)
 }
 
 test claim_reject_after_deadline() fail {
   // now_upper=500 = deadline → KHÔNG < deadline → reject (claim đã đóng cửa).
-  let tx = ap_claim_tx_a(500, ap_amount_a, ap_leaf_a())
-  airdrop_pool.spend(
-    ap_nft_policy,
-    ap_lamp_policy,
-    ap_lamp_name,
-    ap_ms_per_epoch,
-    Some(ap_datum(0)),
-    Claim {
-      claimer: ap_claimer_a(),
-      amount: ap_amount_a,
-      proof: [ledger_proof_step(False, ap_leaf_b())],
-    },
-    util.mk_ref(0),
-    tx,
-  )
+  let tx = ap_claim_tx_a(500, ap_amount_a)
+  ap_run_claim_tx(tx)
 }
 
 test claim_reject_count_not_incremented() fail {
   // pool_out.claimed_count giữ nguyên 0 (không +1) → datum sai → reject.
-  let leaf_a = ap_leaf_a()
-  let base =
-    Transaction {
-      ..placeholder,
-      inputs: [ap_pool_input(10_000_000, 100_000_000, 0)],
-      outputs: [
-        ap_pool_output(10_000_000, 100_000_000 - ap_amount_a, 0),
-        ap_claimer_output(ap_claimer_a(), ap_amount_a),
-        ap_marker_output(leaf_a),
-      ],
-      mint: assets.zero |> assets.add(ap_nft_policy, leaf_a, 1),
-    }
-  let tx = ap_tx_before(100, base)
-  airdrop_pool.spend(
-    ap_nft_policy,
-    ap_lamp_policy,
-    ap_lamp_name,
-    ap_ms_per_epoch,
-    Some(ap_datum(0)),
-    Claim {
-      claimer: ap_claimer_a(),
-      amount: ap_amount_a,
-      proof: [ledger_proof_step(False, ap_leaf_b())],
-    },
-    util.mk_ref(0),
-    tx,
-  )
+  let tx =
+    ap_claim_tx_full(
+      100,
+      100_000_000 - ap_amount_a,
+      0,
+      ap_amount_a,
+      ap_marker_addr(),
+      ap_leaf_a(),
+      ap_leaf_a(),
+      -1,
+    )
+  ap_run_claim_tx(tx)
 }
 
 test claim_reject_two_pool_inputs() fail {
   // 2 POOL NFT input (cùng hash khác stake) → count == 2 → reject (double-satisfaction).
-  let leaf_a = ap_leaf_a()
   let pool_addr2 = util.script_address_staked(ap_pool_sh, #"99")
   let pool_in2 =
     util.mk_input(
@@ -559,34 +590,24 @@ test claim_reject_two_pool_inputs() fail {
   let base =
     Transaction {
       ..placeholder,
-      inputs: [ap_pool_input(10_000_000, 100_000_000, 0), pool_in2],
+      inputs: [
+        ap_pool_input(10_000_000, 100_000_000, 0),
+        pool_in2,
+        ap_slot_input(3, ap_marker_addr(), ap_leaf_a()),
+      ],
       outputs: [
         ap_pool_output(10_000_000, 100_000_000 - ap_amount_a, 1),
         ap_claimer_output(ap_claimer_a(), ap_amount_a),
-        ap_marker_output(leaf_a),
       ],
-      mint: assets.zero |> assets.add(ap_nft_policy, leaf_a, 1),
+      mint: assets.zero |> assets.add(ap_nft_policy, ap_leaf_a(), -1),
     }
   let tx = ap_tx_before(100, base)
-  airdrop_pool.spend(
-    ap_nft_policy,
-    ap_lamp_policy,
-    ap_lamp_name,
-    ap_ms_per_epoch,
-    Some(ap_datum(0)),
-    Claim {
-      claimer: ap_claimer_a(),
-      amount: ap_amount_a,
-      proof: [ledger_proof_step(False, ap_leaf_b())],
-    },
-    util.mk_ref(0),
-    tx,
-  )
+  ap_run_claim_tx(tx)
 }
 
 test claim_reject_claimer_underpaid() fail {
   // A chỉ nhận 0 LAMP (output không có LAMP) → to_claimer < amount → reject.
-  ap_run_claim(100, 0, ap_leaf_a())
+  ap_run_claim(100, 0)
 }
 
 // ── SWEEP ────────────────────────────────────────────────────────
