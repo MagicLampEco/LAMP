@@ -97,6 +97,17 @@ pub fn is_at_script(addr: Address, script_hash: ByteArray) -> Bool {
   }
 }
 
+/// payment credential của address có phải Script(_) KHÔNG (chỉ kiểm LOẠI, KHÔNG ép hash).
+/// Biến thể của is_at_script: không cần script-hash param → KHÔNG tạo phụ thuộc chéo
+/// (tránh tái sinh vòng DAG). Dùng ở genesis hardening: ép output ra Script credential
+/// bất kỳ (chặn ví thường vk_address), để committee tự đặt đúng script lúc setup.
+pub fn is_at_script_cred(addr: Address) -> Bool {
+  when addr.payment_credential is {
+    Script(_) -> True
+    _ -> False
+  }
+}
+
 /// Tổng LAMP (oil) các output trả về cho owner PKH.
 pub fn lamp_to_owner(
   outputs    : List<Output>,

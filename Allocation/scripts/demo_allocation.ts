@@ -1,10 +1,10 @@
 // Allocation demo trên Preview — Setup (tạo ClaimAccount + Treasury con) → Redeem.
 //
-// LƯU Ý PHẠM VI: flow Claim qua co-spend ChannelBudget beacon BỊ KẸT vì vòng phụ thuộc
-// hash compile-time: channel_budget(claim_account_hash) ↔ claim_account(channel_budget_hash).
-// Không giải được bằng applyParamsToScript thuần (vòng tròn toán học) → cần tái thiết kế
-// onchain (vượt phạm vi deploy demo). Nhánh Redeem của claim_account KHÔNG dùng
-// channel_budget_hash → apply placeholder 0×28 cho param đó, tính đúng Redeem KHÔNG đổi.
+// PHÁ VÒNG (đã xong): đồ thị param nay là DAG — claim_account CHỈ dep budget_nft_policy,
+// channel_budget dep (budget_nft_policy, claim_account_hash) MỘT chiều. Không còn vòng
+// channel_budget ↔ claim_account. Xem scripts/verify_acyclic.ts (apply-param 4 script trót lọt).
+// Demo này tập trung nhánh Redeem (vesting), không cần budget beacon → apply claim_account
+// với budget_nft_policy placeholder 0×28 (Redeem KHÔNG đọc budget_nft_policy, tính KHÔNG đổi).
 //
 // Demo này chứng minh LÕI giá trị Allocation: vesting tất định (Capped Drop) + treasury
 // con nhả LAMP đúng phần vested. 2 tx thật:
@@ -69,12 +69,12 @@ async function main() {
 
   // ── Apply params ────────────────────────────────────────────────────
   // claim_account(committee, threshold, ms_per_epoch, lamp_policy, lamp_name, drop_value,
-  //               budget_nft_policy, channel_budget_hash) — 2 hash cuối = placeholder
-  //   (Redeem KHÔNG dùng channel_budget_hash; budget_nft_policy chỉ ở Claim).
+  //               budget_nft_policy) — phá vòng: BỎ channel_budget_hash. budget_nft_policy
+  //   = placeholder 0×28 (Redeem KHÔNG đọc nó; chỉ Claim dùng để khoá chéo budget beacon).
   const claimScript: Validator = {
     type: "PlutusV3",
     script: applyParamsToScript(await rawCompiled("claim_account.claim_account.spend"), [
-      [pkh], 1n, MS_PER_EPOCH, LAMP_POLICY, LAMP_NAME, DROP_VALUE, ZERO28, ZERO28,
+      [pkh], 1n, MS_PER_EPOCH, LAMP_POLICY, LAMP_NAME, DROP_VALUE, ZERO28,
     ] as never),
   };
   const claimHash = validatorToScriptHash(claimScript);

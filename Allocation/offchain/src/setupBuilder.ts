@@ -8,12 +8,15 @@
 //   OUT   Treasury con           → treasury script, value = min-ADA + budgetOil LAMP,
 //         datum {committee_hash, channel_id} (Lớp B vật lý, value = ĐÚNG budget kênh).
 //
-// budget_nft.ak ÉP NFT genesis ra ĐÚNG channel_budget script (count_outputs_at_script_with_nft
-// == 1) → NFT khoá vĩnh viễn ở beacon. Builder PHẢI trả NFT vào budgetAddress, không ví thường.
+// budget_nft.ak (sau PHÁ VÒNG) ÉP: ĐÚNG 1 output mang NFT genesis + ChannelBudgetDatum
+// (beacon), VÀ ĐÚNG 1 treasury con output cùng channel_id với LAMP == remaining_oil (VIỆC 2:
+// Lớp A == Lớp B tại genesis). Builder PHẢI trả NFT + beacon datum vào budgetAddress (channel_budget
+// script) và nạp treasury con LAMP = budgetOil. budget_nft KHÔNG còn tham số channel_budget_hash
+// (đã phá vòng) — nhận diện beacon = output mang NFT, treasury = output mang TreasuryDatum cùng kênh.
 //
 // Caller chuẩn bị:
-//   - budgetNftPolicy: MintingPolicy đã apply (genesis_ref, channel_id, channel_budget_hash)
-//     + policy id hex tương ứng.
+//   - budgetNftPolicy: MintingPolicy đã apply (genesis_ref, channel_id, lamp_policy, lamp_name)
+//     + policy id hex tương ứng. (KHÔNG còn channel_budget_hash — phá vòng.)
 //   - genesisUtxo: UTxO chính xác đã bake làm genesis_ref (builder collectFrom nó).
 //     Builder assert genesisUtxo == genesisRef trước build (F3 fail-fast).
 //   - LAMP funding: ví caller cung cấp budgetOil LAMP để nạp treasury (Lucid auto-select input).
@@ -55,7 +58,7 @@ export interface SetupChannelParams {
   /** committee_hash hex (TreasuryDatum). */
   committeeHash: string;
 
-  /** budget_nft minting policy đã apply (genesis_ref, channel_id, channel_budget_hash) + policy id. */
+  /** budget_nft minting policy đã apply (genesis_ref, channel_id, lamp_policy, lamp_name) + policy id. */
   budgetNftPolicy:   MintingPolicy;
   budgetNftPolicyId: string;
 

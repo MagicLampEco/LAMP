@@ -19,14 +19,15 @@ use magiclamp/allocation/types.{
 use magiclamp/allocation/util
 
 validator claim_account(
-  committee           : List<ByteArray>,
-  threshold           : Int,
-  ms_per_epoch        : Int,
-  lamp_policy         : ByteArray,
-  lamp_name           : ByteArray,
-  drop_value          : Int,           // D (oil/drop·epoch) — tham số hoá (tất định).
-  budget_nft_policy   : ByteArray,     // policy NFT budget beacon (name = channel_id).
-  channel_budget_hash : ByteArray,     // script hash của channel_budget — KHOÁ CHÉO Lớp A.
+  committee         : List<ByteArray>,
+  threshold         : Int,
+  ms_per_epoch      : Int,
+  lamp_policy       : ByteArray,
+  lamp_name         : ByteArray,
+  drop_value        : Int,           // D (oil/drop·epoch) — tham số hoá (tất định).
+  budget_nft_policy : ByteArray,     // policy NFT budget beacon one-shot (name = channel_id).
+                                     // PHÁ VÒNG: claim_account CHỈ phụ thuộc budget_nft_policy
+                                     // (đáy DAG) — BỎ channel_budget_hash (param chéo gây vòng).
 ) {
   spend(
     datum_opt : Option<ClaimAccountDatum>,
@@ -67,17 +68,21 @@ validator claim_account(
         expect out_datum.drops_per_epoch == datum.drops_per_epoch
         expect out_datum.channel_id == datum.channel_id
 
-        // KHOÁ CHÉO (VÁ Vector F): BẮT BUỘC có đúng 1 budget beacon INPUT mang NFT
-        // name = channel_id VÀ NẰM Ở channel_budget script bị CONSUME trong tx.
-        // Vì input đó là UTxO của channel_budget script → consume nó CHẮC CHẮN kích
-        // channel_budget.spend → remaining_oil bị trừ + kiểm amount khớp entitlement-delta.
-        // TRƯỚC ĐÂY chỉ đếm "có NFT trong inputs" (count_inputs_with_nft) → kẻ tấn công
-        // giữ NFT ở VÍ THƯỜNG, consume nó KHÔNG kích channel_budget.spend → Claim tự do
-        // (Lớp A vô hiệu). Nay ép NFT phải ở đúng channel_budget script → không lách được.
+        // KHOÁ CHÉO (VÁ Vector F qua NFT-beacon authenticity — PHÁ VÒNG):
+        // BẮT BUỘC có đúng 1 INPUT mang budget NFT one-shot (budget_nft_policy, channel_id) qty 1.
+        //
+        // TẠI SAO ĐỦ AN TOÀN dù BỎ channel_budget_hash:
+        //   - budget_nft là ONE-SHOT (genesis_ref): supply NFT (policy, channel_id) == 1 VĨNH VIỄN,
+        //     không re-mint, không giả được (Vector F authenticity).
+        //   - channel_budget.spend TỰ ÉP nó GIỮ NFT: input mang NFT + re-output mang NFT về
+        //     CHÍNH channel_budget script (b_out.value == b_in.value) → NFT KHÔNG BAO GIỜ rời
+        //     channel_budget script sau genesis (budget_nft genesis cũng ép NFT ra beacon).
+        //   ⟹ "input mang NFT" ⟺ "channel_budget UTxO bị spend" ⟺ channel_budget.spend chạy
+        //      → remaining_oil bị trừ + kiểm amount khớp entitlement-delta (khoá chéo nguyên vẹn).
+        //   Không cần biết hash channel_budget: authenticity NFT thay thế script-hash param chéo.
         expect
-          util.count_inputs_at_script_with_nft(
+          util.count_inputs_with_nft(
             tx.inputs,
-            channel_budget_hash,
             budget_nft_policy,
             datum.channel_id,
           ) == 1
@@ -146,8 +151,6 @@ const t_drop_value: Int = 100
 
 const t_budget_policy: ByteArray = #"b00d"
 
-const t_cb_hash: ByteArray = #"b1b1b1b1"  // channel_budget script hash (khoá chéo)
-
 const t_channel: ByteArray = #"5445414d"  // "TEAM"
 
 const t_other_channel: ByteArray = #"5245534552564500"  // "RESERVE"
@@ -171,11 +174,12 @@ fn ca_datum(
   }
 }
 
-/// budget beacon input mang NFT name=channel (để Claim khoá chéo).
+/// budget beacon input mang NFT one-shot name=channel (để Claim khoá chéo).
+/// Ở channel_budget script (b1b1b1b1) — đây là nơi NFT one-shot bị đóng băng vĩnh viễn.
 fn budget_beacon_input(channel: ByteArray) -> Input {
   let addr = util.script_address(#"b1b1b1b1")
   let val = assets.add(assets.from_lovelace(2_000_000), t_budget_policy, channel, 1)
-  // datum tối giản (claim_account không đọc datum budget, chỉ kiểm NFT có mặt).
+  // datum tối giản (claim_account không đọc datum budget, chỉ kiểm NFT one-shot có mặt).
   util.mk_input(util.mk_ref(7), util.mk_output_no_datum(addr, val))
 }
 
@@ -203,7 +207,7 @@ fn claim_tx(
 fn run_claim(in_d: ClaimAccountDatum, amount: Int, tx: Transaction) -> Bool {
   claim_account.spend(
     t_committee, t_threshold, t_mspe, t_lamp_policy, t_lamp_name, t_drop_value,
-    t_budget_policy, t_cb_hash, Some(in_d), Claim { amount }, util.mk_ref(0), tx,
+    t_budget_policy, Some(in_d), Claim { amount }, util.mk_ref(0), tx,
   )
 }
 
@@ -283,7 +287,7 @@ fn redeem_tx(
 fn run_redeem(in_d: ClaimAccountDatum, tx: Transaction) -> Bool {
   claim_account.spend(
     t_committee, t_threshold, t_mspe, t_lamp_policy, t_lamp_name, t_drop_value,
-    t_budget_policy, t_cb_hash, Some(in_d), Redeem, util.mk_ref(0), tx,
+    t_budget_policy, Some(in_d), Redeem, util.mk_ref(0), tx,
   )
 }
 
@@ -373,42 +377,39 @@ fn budget_nft_in_wallet(channel: ByteArray, holder: ByteArray) -> Input {
   util.mk_input(util.mk_ref(7), util.mk_output_no_datum(util.vk_address(holder), val))
 }
 
-// VECTOR F (ĐÃ VÁ) — budget NFT giữ ở VÍ THƯỜNG, KHÔNG ở channel_budget script.
-// TRƯỚC vá: claim_account chỉ đếm count_inputs_with_nft → consume NFT ở ví thường
-// KHÔNG kích channel_budget.spend → remaining KHÔNG bị trừ → cấp entitlement tuỳ ý.
-// SAU vá: count_inputs_at_script_with_nft(channel_budget_hash,...) — NFT ở vk_address
-// (payment_credential = VerificationKey, KHÔNG phải Script channel_budget_hash) → count==0
-// → reject. fail = exploit BỊ CHẶN.
-test atk_F_nft_in_wallet_rejected() fail {
+// VECTOR F — MÔ HÌNH BẢO MẬT MỚI (NFT-beacon authenticity thay script-hash param chéo).
+//
+// PHÁ VÒNG: claim_account BỎ channel_budget_hash, chỉ đếm count_inputs_with_nft (đáy DAG).
+// claim_account 1 MÌNH KHÔNG còn ép NFT phải ở channel_budget script — nên xét RIÊNG nó,
+// tx mang NFT ở VÍ THƯỜNG SẼ qua check NFT (test này PASS, không fail).
+//
+// VÌ SAO VẪN AN TOÀN (Vector F bịt ở TẦNG HỆ THỐNG, không ở claim_account đơn lẻ):
+//   1. budget_nft ONE-SHOT: supply NFT (policy, channel_id) == 1 VĨNH VIỄN. genesis ÉP
+//      NFT ra ĐÚNG 1 beacon output mang ChannelBudgetDatum (budget_nft.ak).
+//   2. channel_budget.spend ÉP b_out.value == b_in.value ⟹ NFT LUÔN re-output về channel_budget
+//      script. KHÔNG có đường nào để NFT rời channel_budget ra ví thường/script khác.
+//   ⟹ Trạng thái "NFT ở ví thường" (test bên dưới) là BẤT KHẢ ĐẠT trên chain thật.
+//      Hễ NFT bị spend ⟺ channel_budget UTxO bị spend ⟺ channel_budget.spend chạy → trừ remaining.
+//
+// Test này GIỮ LẠI để tài liệu hoá: claim_account đơn lẻ KHÔNG phân biệt vị trí NFT (PASS),
+// và chứng minh khoá chéo KHÔNG còn dựa hash param (đã phá vòng). An toàn = bất biến one-shot
+// + channel_budget tự giữ NFT, KHÔNG phải check trong claim_account.
+test claim_account_alone_accepts_nft_anywhere() {
   let in_d = ca_datum(0, 0, 5, 1, t_channel)
-  let out_d = ca_datum(999_999_999, 0, 5, 1, t_channel)
+  let out_d = ca_datum(1000, 0, 5, 1, t_channel)
   let tx =
     claim_tx(
       in_d, out_d, [#"c1", #"c2"], assets.from_lovelace(2_000_000),
       [budget_nft_in_wallet(t_channel, #"deadbeef")],
     )
-  run_claim(in_d, 999_999_999, tx)
-}
-
-// VECTOR F-bis — NFT đúng kênh nhưng nằm ở 1 SCRIPT KHÁC (không phải channel_budget_hash).
-// Vd kẻ tấn công khoá NFT vào script "noop" tự viết (luôn cho spend) để né channel_budget.
-// count_inputs_at_script_with_nft(channel_budget_hash,...) == 0 (sai hash) → reject. fail.
-test atk_F_nft_at_wrong_script_rejected() fail {
-  let in_d = ca_datum(0, 0, 5, 1, t_channel)
-  let out_d = ca_datum(1000, 0, 5, 1, t_channel)
-  let wrong_addr = util.script_address(#"deadbeef")  // ≠ t_cb_hash
-  let val = assets.add(assets.from_lovelace(2_000_000), t_budget_policy, t_channel, 1)
-  let beacon = util.mk_input(util.mk_ref(7), util.mk_output_no_datum(wrong_addr, val))
-  let tx =
-    claim_tx(in_d, out_d, [#"c1", #"c2"], assets.from_lovelace(2_000_000), [beacon])
   run_claim(in_d, 1000, tx)
 }
 
-// CHỨNG MINH vá KHÔNG phá happy-path: NFT đúng kênh + đúng channel_budget script → pass.
+// CHỨNG MINH happy-path: NFT đúng kênh, ở channel_budget script (đường duy nhất khả thi) → pass.
 test claim_beacon_at_channel_budget_script_passes() {
   let in_d = ca_datum(0, 0, 5, 1, t_channel)
   let out_d = ca_datum(1000, 0, 5, 1, t_channel)
-  // budget_beacon_input dùng util.script_address(#"b1b1b1b1") == t_cb_hash.
+  // budget_beacon_input dùng util.script_address(#"b1b1b1b1") — channel_budget script.
   let tx =
     claim_tx(in_d, out_d, [#"c1", #"c2"], assets.from_lovelace(2_000_000), [budget_beacon_input(t_channel)])
   run_claim(in_d, 1000, tx)

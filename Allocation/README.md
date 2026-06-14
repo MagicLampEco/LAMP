@@ -53,5 +53,11 @@ Công thức vested: `vested(t) = min(entitlement, drop_value · drops_per_epoch
 - `redeemBuilder` — user rút LAMP đã vested (permissionless; tự suy epoch từ validFromMs/msPerEpoch).
 - `datum`/`math`/`committee` — codec Constr byte-perfect + vested + M-of-N.
 
+## Giả định bảo mật
+Setup kênh là thao tác committee tin-cậy (one-shot, nắm `genesis_ref` + chữ ký). `budget_nft`
+ép beacon + treasury con ở **Script credential** (chặn ví thường), nhưng **KHÔNG** pin
+script-hash cụ thể (tránh vòng phụ thuộc). Committee chịu trách nhiệm đặt đúng
+`channel_budget`/`treasury` script khi setup.
+
 ## Test
-onchain `aiken check` 61 · offchain vitest 63. Xem `tests/` + `offchain/src/`.
+onchain `aiken check` 67 · offchain vitest 63. Xem `tests/` + `offchain/src/`.
