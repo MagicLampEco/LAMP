@@ -1,8 +1,8 @@
-// LAMP Genesis mintBuilder — dựng tx LAZY-MINT tLAMP (CONTRACT §5; tlamp_mint.ak).
+// LAMP Genesis mintBuilder — dựng tx LAZY-MINT LAMP (CONTRACT §5; lamp_mint.ak).
 //
 // Flow (khớp luật onchain):
 //   - Input:  SupplyState UTxO (mang thread NFT) — spend redeemer Advance.
-//   - Mint:   Δ oil tLAMP qua policy tlamp_mint, redeemer DistributionVest|ReserveDraw.
+//   - Mint:   Δ oil LAMP qua policy lamp_mint, redeemer DistributionVest|ReserveDraw.
 //   - Output: SupplyState' tại CÙNG script address, mang lại thread NFT, datum cập nhật
 //             (dist_minted hoặc reserve_minted += Δ); + Δ tLAMP trả `recipient`.
 //   - Sign:   authority đúng đường mint (extra_signatories) — caller bảo đảm ví ký.
@@ -24,7 +24,7 @@ import {
   type UTxO, type Validator,
 } from "@lucid-evolution/lucid";
 
-import { SUPPLY_NAME, TLAMP_NAME } from "./constants.js";
+import { SUPPLY_NAME } from "./constants.js";
 import {
   decodeSupplyState, supplyStateToCbor, mintRouteToCbor, supplyStateRedeemerToCbor,
 } from "./datum.js";
@@ -42,9 +42,13 @@ export interface MintParams {
   /** script address giữ SupplyState (nơi recreate output). */
   supplyStateAddress: string;
 
-  /** tlamp_mint minting policy + policy id (hex). */
+  /** lamp_mint minting policy + policy id (hex). */
   tlampPolicy: MintingPolicy;
   tlampPolicyId: string;
+
+  /** asset name LAMP (hex) — khớp param token_name của lamp_mint khi apply-param:
+   *  TLAMP_NAME ("744c414d50") cho testnet, LAMP_NAME ("4c414d50") cho mainnet. */
+  tokenName: string;
 
   /** policy id thread NFT (hex) — để định vị NFT trong value. */
   threadPolicyId: string;
@@ -92,7 +96,7 @@ export async function buildMintTx(p: MintParams): Promise<{
   // Fail-fast offchain: ép đúng luật onchain TRƯỚC khi tốn phí.
   const sOut = applyMint(sIn, p.route, p.amount);
 
-  const tlampUnit = toUnit(p.tlampPolicyId, TLAMP_NAME);
+  const tlampUnit = toUnit(p.tlampPolicyId, p.tokenName);
   const mintAssets: Assets = { [tlampUnit]: p.amount };
 
   const supplyOutValue = threadNftAssets(p.threadPolicyId, minAda);

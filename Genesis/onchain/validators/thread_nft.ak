@@ -31,9 +31,9 @@ validator thread_nft(genesis_ref: OutputReference) {
     //
     // An toàn vẫn đủ qua 2 lớp tuyến tính tầng-2:
     //   • Neo NFT one-shot: SUPPLY NFT duy nhất ⟺ SupplyState chính danh (count==1).
-    //   • D7-#1 (tlamp_mint): cap == hằng genesis. SupplyState khởi tạo cap-phình /
+    //   • D7-#1 (lamp_mint): cap == hằng genesis. SupplyState khởi tạo cap-phình /
     //     counter≠0 sẽ KHÔNG mint nổi tLAMP → vô dụng. Không cần ép datum tại lượt mint
-    //     thread. Một nguồn sự thật cho cap nằm ở tlamp_mint, không trùng lặp.
+    //     thread. Một nguồn sự thật cho cap nằm ở lamp_mint, không trùng lặp.
     True
   }
 
@@ -66,7 +66,7 @@ fn mint_supply(qty: Int) {
 
 test thread_oneshot_happy() {
   // consume genesis_ref + mint đúng 1 SUPPLY NFT → hợp lệ. Định danh genesis (cap/counter)
-  // KHÔNG còn ép tại đây — đã ủy cho neo-NFT + D7-#1 (tlamp_mint). Không cần output datum.
+  // KHÔNG còn ép tại đây — đã ủy cho neo-NFT + D7-#1 (lamp_mint). Không cần output datum.
   let tx =
     Transaction {
       ..placeholder,

@@ -1,0 +1,11 @@
+node_modules/
+dist/
+package-lock.json
+# Aiken build artifacts (regenerated bằng `aiken build`)
+onchain/build/
+onchain/plutus.json
+# Deploy state (env-specific, có thể chứa địa chỉ ví)
+scripts/deployed-faucet.json
+# Secrets
+.env
+*.env

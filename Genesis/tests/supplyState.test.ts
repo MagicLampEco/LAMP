@@ -1,4 +1,4 @@
-// Genesis SupplyState cap math — mirror onchain tlamp_mint luật 4-7.
+// Genesis SupplyState cap math — mirror onchain lamp_mint luật 4-7.
 // Happy (2 đường, biên cap) + NEGATIVE (mọi vector A1/A4/A5/A6/A9 offchain).
 
 import { describe, it, expect } from "vitest";

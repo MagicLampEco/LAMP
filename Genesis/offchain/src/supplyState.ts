@@ -1,7 +1,7 @@
-// LAMP Genesis — SupplyState cap math (offchain mirror onchain tlamp_mint luật 4-7).
+// LAMP Genesis — SupplyState cap math (offchain mirror onchain lamp_mint luật 4-7).
 //
 // Pure BigInt. Tính transition + kiểm bất biến TRƯỚC khi build tx (fail-fast offchain,
-// tránh tốn phí tx chắc chắn reject onchain). Logic PHẢI khớp tlamp_mint.ak.
+// tránh tốn phí tx chắc chắn reject onchain). Logic PHẢI khớp lamp_mint.ak.
 
 import { DIST_CAP_OIL, RESERVE_CAP_OIL } from "./constants.js";
 import type { MintRoute, SupplyState } from "./types.js";

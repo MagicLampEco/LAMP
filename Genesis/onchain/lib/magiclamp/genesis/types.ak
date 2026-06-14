@@ -27,7 +27,7 @@ pub type ThreadNftRedeemer {
 }
 
 /// Redeemer spend SupplyState — chỉ Advance (cho phép tx mint tLAMP đẩy state tiến).
-/// Spend hợp lệ ⟺ có mint tLAMP trong tx (luật 5b). Transition ủy quyền tlamp_mint.
+/// Spend hợp lệ ⟺ có mint LAMP trong tx (luật 5b). Transition ủy quyền lamp_mint.
 pub type SupplyStateRedeemer {
   Advance
 }

@@ -2,8 +2,16 @@
 
 export const OIL_PER_LAMP = 1_000_000n;
 
-/** asset name tLAMP — "tLAMP" (hex). */
+// Asset name LAMP = PARAM của lamp_mint (apply-param lúc deploy), KHÔNG hardcode 1 cái
+// vào builder. testnet truyền TLAMP_NAME, mainnet truyền LAMP_NAME. Token = PolicyID +
+// AssetName → token_name là param ⇒ policyId KHÁC nhau giữa tLAMP và LAMP (đúng: 2 token
+// độc lập). AssetName chỉ là NHÃN; tính DUY NHẤT nằm ở PolicyID (neo bởi genesis_ref).
+
+/** asset name LAMP testnet — "tLAMP" (hex). */
 export const TLAMP_NAME = "744c414d50";
+
+/** asset name LAMP mainnet — "LAMP" (hex). */
+export const LAMP_NAME = "4c414d50";
 
 /** asset name thread NFT SupplyState — "SUPPLY" (hex). */
 export const SUPPLY_NAME = "535550504c59";

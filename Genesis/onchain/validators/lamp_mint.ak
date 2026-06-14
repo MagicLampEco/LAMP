@@ -1,34 +1,43 @@
-// tlamp_mint — minting policy LAZY-MINT tLAMP, gated bởi SupplyState (CONTRACT §5).
+// lamp_mint — minting policy LAZY-MINT token LAMP, gated bởi SupplyState (CONTRACT §5).
 //
 // FIRST-PRINCIPLES — fixed-supply không cần mint sẵn:
 //   "Fixed-supply" KHÔNG đòi 36 tỷ token nằm sẵn on-chain. Nó đòi TỔNG phát hành
 //   lịch sử ≤ CAP. Một bộ đếm đơn điệu (SupplyState) chặn tại CAP thỏa mạnh hơn:
 //   token chưa mint = không tồn tại = không bị tấn công, không khóa min-ADA.
 //
-//   Mọi tx mint tLAMP PHẢI consume + recreate SupplyState (nhận diện qua thread NFT
+//   Mọi tx mint LAMP PHẢI consume + recreate SupplyState (nhận diện qua thread NFT
 //   one-shot DUY NHẤT). Δ = lượng mint trong tx; transition datum ép Δ vào ĐÚNG
 //   quota (Distribution HOẶC Reserve) theo redeemer, ≤ cap, đơn điệu, KHÔNG burn.
 //
-// Param: thread_nft_policy + thread_nft_name (tầng 1) + dist_authority (keyhash stub
-// MVP đường Distribution) + auth_threshold + meter_nft_policy/meter_nft_name (định danh
-// ReserveMeter thread NFT). KHÔNG tham chiếu ngược tầng 3 (không vòng lặp).
+// ASSET NAME LAMP = PARAM (token_name), KHÔNG hằng:
+//   token_name truyền lúc apply-param khi deploy → testnet truyền "tLAMP"
+//   (#"744c414d50"), mainnet truyền "LAMP" (#"4c414d50"). Cùng 1 code deploy được cả
+//   2 network mà KHÔNG mint nhầm nhãn. Token = PolicyID + AssetName → token_name là
+//   param ⇒ policyId KHÁC nhau giữa tLAMP và LAMP (đúng: 2 token độc lập). AssetName
+//   chỉ là NHÃN; tính DUY NHẤT của token nằm ở PolicyID (neo bởi genesis_ref one-shot
+//   của thread_nft, tuyến tính apply-param). Đổi token_name ⇒ đổi policyId ⇒ token mới.
+//
+// Param: thread_nft_policy + thread_nft_name (tầng 1) + token_name (asset name LAMP) +
+// dist_authority (keyhash stub MVP đường Distribution) + auth_threshold +
+// meter_nft_policy/meter_nft_name (định danh ReserveMeter thread NFT). KHÔNG tham chiếu
+// ngược tầng 3 (không vòng lặp).
 //
 // GATE NHẢ RESERVE = HÀM, KHÔNG CHỮ KÝ (permissionless thật). Nhánh ReserveDraw KHÔNG
 // đòi pubkey-sig nữa: nó ÉP tx phải spend đúng 1 UTxO mang ReserveMeter NFT. ReserveMeter
 // là validator GATE NHỊP (reserve_meter) ép δ ≤ max_draw_per_epoch + reserve_minted_out ≤
 // approved_cumulative(epoch) — release function tất định. ⟹ MỌI ReserveDraw BẮT BUỘC đi
 // qua reserve_meter; không ai (kể cả keyholder cũ) rút tay được. meter_nft là one-shot độc
-// lập (mint trước khi apply-param tlamp_mint) → KHÔNG vòng phụ thuộc apply-param.
+// lập (mint trước khi apply-param lamp_mint) → KHÔNG vòng phụ thuộc apply-param.
 //
 // NEO ĐỊNH DANH SupplyState = qua SUPPLY NFT one-shot (KHÔNG qua script-hash). Thread NFT
 // được mint đúng MỘT lần (thread_nft one-shot, param genesis_ref) → tồn tại DUY NHẤT 1 bản
 // trên chain → "UTxO mang đúng 1 SUPPLY NFT" ⟺ "SupplyState chính danh". Không cần ghim
 // payment_credential == Script(supply_state_hash): ghim đó tạo VÒNG (supply_state_hash phụ
-// thuộc tlamp_policy phụ thuộc lại supply_state_hash) — không apply-param được khi deploy.
+// thuộc lamp_policy phụ thuộc lại supply_state_hash) — không apply-param được khi deploy.
 //
 // LƯU Ý: validator này KHÔNG tự đọc supply_state spend (nó là MINT policy). Nó tìm
 // SupplyState input/output qua SUPPLY NFT. supply_state.ak (tầng 3) chỉ ép "có mint
-// tLAMP" rồi ủy quyền toàn bộ transition cho ĐÂY → một nguồn sự thật cho cap.
+// LAMP" rồi ủy quyền toàn bộ transition cho ĐÂY → một nguồn sự thật cho cap.
 
 use aiken/collection/list
 use cardano/assets.{PolicyId}
@@ -39,9 +48,10 @@ use magiclamp/genesis/types.{
 }
 use magiclamp/genesis/util
 
-validator tlamp_mint(
+validator lamp_mint(
   thread_nft_policy : PolicyId,
   thread_nft_name   : ByteArray,
+  token_name        : ByteArray,
   dist_authority    : List<ByteArray>,
   auth_threshold    : Int,
   meter_nft_policy  : PolicyId,
@@ -61,7 +71,7 @@ validator tlamp_mint(
 
     // ── D8-#1 (neo NFT, không ghim hash): định danh SupplyState bằng SUPPLY NFT ──
     // KHÔNG ghim payment_credential == Script(supply_state_hash) — ghim đó tạo VÒNG
-    // (supply_state_hash phụ thuộc tlamp_policy phụ thuộc lại nó). Thay vào: SUPPLY NFT
+    // (supply_state_hash phụ thuộc lamp_policy phụ thuộc lại nó). Thay vào: SUPPLY NFT
     // là one-shot DUY NHẤT (thread_nft param genesis_ref) → "mang đúng 1 SUPPLY NFT"
     // ⟺ SupplyState chính danh. Kẻ tấn công KHÔNG đúc nổi NFT thứ 2 để dựng SupplyState
     // giả. Cap-phình ở UTxO giả vô dụng: D7-#1 dưới ép cap == hằng genesis (sai cap →
@@ -84,9 +94,10 @@ validator tlamp_mint(
     expect s.dist_minted >= 0
     expect s.reserve_minted >= 0
 
-    // ── Luật 2 + 3: Δ>0 và policy chỉ mint đúng 1 name = tLAMP ─────────────
-    // Δ = lượng tLAMP mint trong tx (cùng biến dùng cho transition → A8 không lệch).
-    let delta = util.minted_qty(tx.mint, policy_id, constants.tlamp_name)
+    // ── Luật 2 + 3: Δ>0 và policy chỉ mint đúng 1 name = token_name (param) ──
+    // Δ = lượng LAMP mint trong tx (cùng biến dùng cho transition → A8 không lệch).
+    // Đo theo token_name (param apply lúc deploy): tLAMP trên testnet, LAMP trên mainnet.
+    let delta = util.minted_qty(tx.mint, policy_id, token_name)
     expect delta > 0                                                   // A6 (no burn / no-op)
     expect util.policy_name_count(tx.mint, policy_id) == 1             // A11 (đúng 1 name)
 
@@ -122,9 +133,9 @@ validator tlamp_mint(
     expect s2.dist_minted + s2.reserve_minted <= constants.total_cap_oil
 
     // ── D3-#1 + D3-#3: KHÓA continuing output (SupplyState UTxO sạch) ──────
-    // SupplyState UTxO KHÔNG được chứa tLAMP (chống nhồi tLAMP vào state để né
-    // recipient / làm nhiễu kế toán circulating).
-    expect assets.quantity_of(s_out.value, policy_id, constants.tlamp_name) == 0
+    // SupplyState UTxO KHÔNG được chứa LAMP (chống nhồi LAMP vào state để né
+    // recipient / làm nhiễu kế toán circulating). Đo theo token_name (param).
+    expect assets.quantity_of(s_out.value, policy_id, token_name) == 0
     // KHÔNG đính reference_script (chống biến SupplyState thành script-carrier rác).
     expect s_out.reference_script == None
     // Lý tưởng: continuing output chỉ gồm 1 thread NFT + lovelace (không token lạ).
@@ -171,7 +182,10 @@ validator tlamp_mint(
 // Tests — happy (2 đường, biên cap) + NEGATIVE (mọi vector A1..A11)
 // ══════════════════════════════════════════════════════════════
 
-const tlamp_pol: PolicyId = #"7717"
+const lamp_pol: PolicyId = #"7717"
+
+/// token_name dùng cho test = default_token_name ("tLAMP"). Validator nhận qua param.
+const tk_name: ByteArray = constants.default_token_name
 
 const thr_pol: PolicyId = #"5544"
 
@@ -208,8 +222,8 @@ fn ss_output(s2: SupplyState) -> Output {
   util.mk_output(util.script_address(sscript), v, s2)
 }
 
-fn mint_tlamp(qty: Int) {
-  assets.zero |> assets.add(tlamp_pol, constants.tlamp_name, qty)
+fn mint_lamp(qty: Int) {
+  assets.zero |> assets.add(lamp_pol, constants.default_token_name, qty)
 }
 
 /// Dựng tx DistributionVest đầy đủ (gate pubkey-sig). sigs = extra_signatories.
@@ -223,7 +237,7 @@ fn build_tx(
     ..placeholder,
     inputs: [ss_input(s)],
     outputs: [ss_output(s2)],
-    mint: mint_tlamp(mint_qty),
+    mint: mint_lamp(mint_qty),
     extra_signatories: sigs,
   }
 }
@@ -234,16 +248,16 @@ fn build_tx_reserve(s: SupplyState, s2: SupplyState, mint_qty: Int) -> Transacti
     ..placeholder,
     inputs: [ss_input(s), meter_input()],
     outputs: [ss_output(s2)],
-    mint: mint_tlamp(mint_qty),
+    mint: mint_lamp(mint_qty),
     extra_signatories: [],
   }
 }
 
 fn run(r: TLampMintRedeemer, tx: Transaction) -> Bool {
-  tlamp_mint.mint(
-    thr_pol, constants.supply_name,
+  lamp_mint.mint(
+    thr_pol, constants.supply_name, tk_name,
     [auth_a, auth_b], 1, meter_pol, meter_nm,
-    r, tlamp_pol, tx,
+    r, lamp_pol, tx,
   )
 }
 
@@ -254,10 +268,10 @@ fn run_thr(
   dist_auth: List<ByteArray>,
   threshold: Int,
 ) -> Bool {
-  tlamp_mint.mint(
-    thr_pol, constants.supply_name,
+  lamp_mint.mint(
+    thr_pol, constants.supply_name, tk_name,
     dist_auth, threshold, meter_pol, meter_nm,
-    r, tlamp_pol, tx,
+    r, lamp_pol, tx,
   )
 }
 
@@ -331,7 +345,7 @@ test mint_no_supplystate() fail {
           util.mk_output_no_datum(util.vk_address(#"a0"), assets.from_lovelace(2_000_000))),
       ],
       outputs: [],
-      mint: mint_tlamp(1_000_000),
+      mint: mint_lamp(1_000_000),
       extra_signatories: [auth_a],
     }
   run(DistributionVest, tx)
@@ -388,7 +402,7 @@ test two_supplystate_inputs() fail {
       ..placeholder,
       inputs: [ss_input(s), ss_input(s)],
       outputs: [ss_output(s2)],
-      mint: mint_tlamp(1_000_000),
+      mint: mint_lamp(1_000_000),
       extra_signatories: [auth_a],
     }
   run(DistributionVest, tx)
@@ -452,7 +466,7 @@ test reservedraw_two_meters() fail {
       ..placeholder,
       inputs: [ss_input(s), meter_input(), meter_input()],
       outputs: [ss_output(s2)],
-      mint: mint_tlamp(1_000_000),
+      mint: mint_lamp(1_000_000),
       extra_signatories: [],
     }
   run(ReserveDraw, tx)
@@ -467,7 +481,7 @@ test reservedraw_meter_minted_in_tx() fail {
       ..placeholder,
       inputs: [ss_input(s), meter_input()],
       outputs: [ss_output(s2)],
-      mint: mint_tlamp(1_000_000) |> assets.add(meter_pol, meter_nm, 1),
+      mint: mint_lamp(1_000_000) |> assets.add(meter_pol, meter_nm, 1),
       extra_signatories: [],
     }
   run(ReserveDraw, tx)
@@ -483,7 +497,7 @@ test mint_extra_name() fail {
       ..placeholder,
       inputs: [ss_input(s)],
       outputs: [ss_output(s2)],
-      mint: mint_tlamp(1_000_000) |> assets.add(tlamp_pol, #"9999", 1),
+      mint: mint_lamp(1_000_000) |> assets.add(lamp_pol, #"9999", 1),
       extra_signatories: [auth_a],
     }
   run(DistributionVest, tx)
@@ -500,7 +514,7 @@ test thread_minted_in_tx() fail {
       ..placeholder,
       inputs: [ss_input(s)],
       outputs: [ss_output(s2)],
-      mint: mint_tlamp(1_000_000) |> assets.add(thr_pol, constants.supply_name, 1),
+      mint: mint_lamp(1_000_000) |> assets.add(thr_pol, constants.supply_name, 1),
       extra_signatories: [auth_a],
     }
   run(DistributionVest, tx)
@@ -523,7 +537,7 @@ test supplystate_moved_address() fail {
       ..placeholder,
       inputs: [ss_input(s)],
       outputs: [moved],
-      mint: mint_tlamp(1_000_000),
+      mint: mint_lamp(1_000_000),
       extra_signatories: [auth_a],
     }
   run(DistributionVest, tx)
@@ -541,7 +555,7 @@ test no_supplystate_output() fail {
       outputs: [
         util.mk_output_no_datum(util.vk_address(#"a0"), assets.from_lovelace(2_000_000)),
       ],
-      mint: mint_tlamp(1_000_000),
+      mint: mint_lamp(1_000_000),
       extra_signatories: [auth_a],
     }
   run(DistributionVest, tx)
@@ -563,7 +577,7 @@ test garbage_output_datum() fail {
       ..placeholder,
       inputs: [ss_input(s)],
       outputs: [garbage],
-      mint: mint_tlamp(1_000_000),
+      mint: mint_lamp(1_000_000),
       extra_signatories: [auth_a],
     }
   run(DistributionVest, tx)
@@ -620,7 +634,7 @@ test input_no_supply_nft() fail {
       ..placeholder,
       inputs: [ss_input_no_nft(s)],
       outputs: [ss_output(s2)],
-      mint: mint_tlamp(1_000_000),
+      mint: mint_lamp(1_000_000),
       extra_signatories: [auth_a],
     }
   run(DistributionVest, tx)
@@ -651,7 +665,7 @@ test state_output_holds_tlamp() fail {
       util.script_address(sscript),
       assets.from_lovelace(2_000_000)
         |> assets.add(thr_pol, constants.supply_name, 1)
-        |> assets.add(tlamp_pol, constants.tlamp_name, 500_000),
+        |> assets.add(lamp_pol, constants.default_token_name, 500_000),
       s2,
     )
   let tx =
@@ -659,7 +673,7 @@ test state_output_holds_tlamp() fail {
       ..placeholder,
       inputs: [ss_input(s)],
       outputs: [dirty],
-      mint: mint_tlamp(1_000_000),
+      mint: mint_lamp(1_000_000),
       extra_signatories: [auth_a],
     }
   run(DistributionVest, tx)
@@ -683,7 +697,7 @@ test state_output_foreign_token() fail {
       ..placeholder,
       inputs: [ss_input(s)],
       outputs: [dirty],
-      mint: mint_tlamp(1_000_000),
+      mint: mint_lamp(1_000_000),
       extra_signatories: [auth_a],
     }
   run(DistributionVest, tx)
@@ -707,7 +721,7 @@ test state_output_has_reference_script() fail {
       ..placeholder,
       inputs: [ss_input(s)],
       outputs: [with_ref],
-      mint: mint_tlamp(1_000_000),
+      mint: mint_lamp(1_000_000),
       extra_signatories: [auth_a],
     }
   run(DistributionVest, tx)

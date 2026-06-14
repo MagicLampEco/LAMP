@@ -27,6 +27,28 @@ export const WALLET_SEED = (process.env.WALLET_SEED ?? "").trim().replace(/\s+/g
 /** SUBMIT=false (mặc định) → chỉ build tx + in CBOR, KHÔNG gửi chain. */
 export const SUBMIT = (process.env.SUBMIT ?? "false").toLowerCase() === "true";
 
+// ── Asset name LAMP theo network (param token_name của lamp_mint) ──────────
+// Mainnet → "LAMP" (#"4c414d50"); mọi testnet (Preview/Preprod) → "tLAMP"
+// (#"744c414d50"). Token = PolicyID + AssetName → token_name là param ⇒ policyId KHÁC
+// nhau giữa tLAMP và LAMP (đúng: 2 token độc lập); tính DUY NHẤT nằm ở PolicyID (neo bởi
+// genesis_ref one-shot). Cho phép override qua env TOKEN_NAME (hex) khi cần đặc biệt.
+
+/** asset name LAMP testnet — "tLAMP" (hex). */
+export const TLAMP_NAME = "744c414d50";
+
+/** asset name LAMP mainnet — "LAMP" (hex). */
+export const LAMP_NAME = "4c414d50";
+
+/** Chọn token_name theo network: Mainnet → LAMP, còn lại (testnet) → tLAMP. */
+export function tokenNameFor(network: Network): string {
+  const override = (process.env.TOKEN_NAME ?? "").trim();
+  if (override) return override;
+  return network === "Mainnet" ? LAMP_NAME : TLAMP_NAME;
+}
+
+/** asset name LAMP áp dụng cho deploy hiện tại (theo NETWORK). */
+export const TOKEN_NAME = tokenNameFor(NETWORK);
+
 export function assertEnv(): void {
   if (!BLOCKFROST_KEY) {
     throw new Error("thiếu BLOCKFROST_KEY trong .env — lấy từ https://blockfrost.io (Preview).");
