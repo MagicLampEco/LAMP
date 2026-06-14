@@ -1,0 +1,30 @@
+{
+  "name": "@magiclamp/airdrop-sdk",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "TIGER Airdrop off-chain SDK — Merkle-airdrop retro cho delegator TIGER pool (LAMP)",
+  "main":  "dist/offchain/src/index.js",
+  "types": "dist/offchain/src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/offchain/src/index.d.ts",
+      "import": "./dist/offchain/src/index.js"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build":      "tsc",
+    "test":       "vitest run",
+    "test:watch": "vitest",
+    "typecheck":  "tsc --noEmit"
+  },
+  "dependencies": {
+    "@lucid-evolution/lucid": "^0.4.0",
+    "@noble/hashes": "^1.4.0",
+    "@magiclamp/utils": "file:../../Utils"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0",
+    "vitest":     "^1.6.0"
+  }
+}
