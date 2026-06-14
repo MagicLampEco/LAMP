@@ -7,7 +7,7 @@ import {
   encodeMerkleStep, decodeMerkleStep,
   encodeClaimProof, decodeClaimProof,
   setRootRedeemerToCbor, claimRedeemerToCbor, sweepRedeemerToCbor,
-  mintPoolRedeemerToCbor, mintMarkerRedeemerToCbor,
+  mintPoolRedeemerToCbor, mintSlotsRedeemerToCbor, burnSlotRedeemerToCbor,
 } from "../src/datum.js";
 import { END_EPOCH, MS_PER_EPOCH_MAINNET } from "../src/constants.js";
 import type { IspoDatum, ClaimProof, MerkleStep } from "../src/types.js";
@@ -95,7 +95,10 @@ describe("redeemers — Constr index khớp onchain", () => {
   it("MintPool = Constr(0, []) = d87980", () => {
     expect(mintPoolRedeemerToCbor()).toBe("d87980");
   });
-  it("MintMarker = Constr(1, []) = d87a80", () => {
-    expect(mintMarkerRedeemerToCbor()).toBe("d87a80");
+  it("MintSlots = Constr(1, []) = d87a80", () => {
+    expect(mintSlotsRedeemerToCbor()).toBe("d87a80");
+  });
+  it("BurnSlot = Constr(2, []) = d87b80", () => {
+    expect(burnSlotRedeemerToCbor()).toBe("d87b80");
   });
 });

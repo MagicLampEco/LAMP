@@ -1,16 +1,18 @@
 // claimBuilder — ISPO Claim: delegator nhận LAMP epoch e qua Merkle proof.
 //
-// FLOW (permissionless — ai có proof + nhận đúng owner đều claim được):
+// FLOW TRUSTLESS (permissionless — ai có proof + slot đều claim được):
 //   1. Spend POOL UTxO (redeemer IspoRedeemer::Claim{ClaimProof}).
-//   2. Mint 1 MARKER NFT name=blake2b_256(epoch||owner) (redeemer MintMarker).
-//      Hợp lệ vì tx có POOL NFT input (ispo_nft ủy quyền). CHỐNG DOUBLE-CLAIM.
-//   3. Output:
+//   2. Spend CLAIM-SLOT UTxO từ registry (ispo_marker) — slot name =
+//      blake2b_256(epoch||owner). Marker validator ép: có POOL input + slot burn.
+//   3. BURN slot NFT (redeemer BurnSlot, qty −1). Hợp lệ vì tx có POOL NFT input.
+//      CHỐNG DOUBLE-CLAIM: slot tiêu 1 lần là HẾT (spend-once eUTxO).
+//   4. Output:
 //      - pool' = pool − amount LAMP (POOL NFT + ADA + epoch_roots bảo toàn;
 //        distributed_total += amount).
-//      - owner: amount LAMP + 1 MARKER NFT (biên-lai per (epoch,owner)).
+//      - owner: amount LAMP (KHÔNG còn marker NFT — slot đã burn).
 //
-// onchain ép: Merkle verify (epoch,owner,amount) ∈ epoch_roots[epoch]; marker đúng
-// tên + qty 1 tới owner; value pool bảo toàn trừ −amount LAMP.
+// onchain ép: Merkle verify (epoch,owner,amount) ∈ epoch_roots[epoch]; slot đúng
+// tên consume TỪ registry + burn −1; value pool bảo toàn trừ −amount LAMP.
 
 import {
   toUnit,
@@ -22,7 +24,7 @@ import {
 import type { Network } from "@magiclamp/utils";
 
 import { POOL_NFT_NAME } from "./constants.js";
-import { decodeIspoDatum, ispoDatumToCbor, claimRedeemerToCbor, mintMarkerRedeemerToCbor } from "./datum.js";
+import { decodeIspoDatum, ispoDatumToCbor, claimRedeemerToCbor, burnSlotRedeemerToCbor } from "./datum.js";
 import { markerName } from "./merkle.js";
 import type { ClaimProof, IspoDatum } from "./types.js";
 
@@ -32,9 +34,13 @@ export interface ClaimParams {
 
   /** POOL UTxO (inline IspoDatum, mang POOL NFT). */
   poolUtxo: UTxO;
+  /** CLAIM-SLOT UTxO ở registry — mang slot NFT name=blake2b_256(epoch||owner). */
+  slotUtxo: UTxO;
   /** Applied ispo_pool spend validator. */
   ispoPoolScript: Validator;
-  /** Applied ispo_nft minting policy (POOL+MARKER). */
+  /** Applied ispo_marker spend validator (registry GIỮ slot). */
+  ispoMarkerScript: Validator;
+  /** Applied ispo_nft minting policy (POOL+SLOT). */
   ispoNftPolicy: MintingPolicy;
   /** policyId của ispoNftPolicy. */
   ispoNftPolicyId: string;
@@ -54,7 +60,7 @@ export interface ClaimResult {
   tx: TxSignBuilder;
   amount: bigint;
   poolAfter: bigint;
-  markerUnit: string;
+  slotUnit: string;
   ownerAddress: string;
   datumAfter: IspoDatum;
   summary: string;
@@ -62,8 +68,8 @@ export interface ClaimResult {
 
 export async function buildClaimTx(params: ClaimParams): Promise<ClaimResult> {
   const {
-    lucid, network, poolUtxo, ispoPoolScript, ispoNftPolicy, ispoNftPolicyId,
-    lampPolicyId, lampAssetName, claim,
+    lucid, network, poolUtxo, slotUtxo, ispoPoolScript, ispoMarkerScript,
+    ispoNftPolicy, ispoNftPolicyId, lampPolicyId, lampAssetName, claim,
   } = params;
 
   const ownerLovelace = params.ownerLovelace ?? 2_000_000n;
@@ -87,9 +93,12 @@ export async function buildClaimTx(params: ClaimParams): Promise<ClaimResult> {
     throw new Error(`ISPO-CLAIM-005: pool còn ${poolLamp} oil < amount ${amount}. Quỹ epoch cạn.`);
   }
 
-  // marker NFT name = blake2b_256(epoch || owner).
-  const mName = markerName(epoch, owner);
-  const markerUnit = toUnit(ispoNftPolicyId, mName);
+  // slot NFT name = blake2b_256(epoch || owner). slotUtxo PHẢI mang đúng slot này.
+  const sName = markerName(epoch, owner);
+  const slotUnit = toUnit(ispoNftPolicyId, sName);
+  if ((slotUtxo.assets[slotUnit] ?? 0n) < 1n) {
+    throw new Error(`ISPO-CLAIM-006: slotUtxo không mang slot NFT (epoch=${epoch}, owner=${owner})`);
+  }
 
   const poolAddress = credentialToAddress(
     network, scriptHashToCredential(validatorToScriptHash(ispoPoolScript)),
@@ -108,18 +117,21 @@ export async function buildClaimTx(params: ClaimParams): Promise<ClaimResult> {
     distributed_total: datum.distributed_total + amount,
   };
 
-  // ── owner output: amount LAMP + MARKER NFT ──────────────────────────────
+  // ── owner output: amount LAMP (KHÔNG marker — slot đã burn) ──────────────
   const ownerAssets: Record<string, bigint> = {
     lovelace: ownerLovelace,
     [lampUnit]: amount,
-    [markerUnit]: 1n,
   };
 
   const txb = lucid
     .newTx()
+    // POOL input (Claim) + SLOT input (registry, marker validator).
     .collectFrom([poolUtxo], claimRedeemerToCbor(claim))
+    .collectFrom([slotUtxo], Data.void())
     .attach.SpendingValidator(ispoPoolScript)
-    .mintAssets({ [markerUnit]: 1n }, mintMarkerRedeemerToCbor())
+    .attach.SpendingValidator(ispoMarkerScript)
+    // BURN slot NFT (−1) → spend-once.
+    .mintAssets({ [slotUnit]: -1n }, burnSlotRedeemerToCbor())
     .attach.MintingPolicy(ispoNftPolicy)
     .pay.ToAddressWithData(
       poolAddress,
@@ -131,14 +143,14 @@ export async function buildClaimTx(params: ClaimParams): Promise<ClaimResult> {
   const tx = await txb.complete();
 
   const summary = [
-    `═══ ISPO Claim ═══`,
+    `═══ ISPO Claim (slot spend-once) ═══`,
     `Epoch:        ${epoch}`,
     `Owner (pkh):  ${owner}`,
     `Amount:       ${amount / 1_000_000n} LAMP (${amount} oil)`,
     `Pool LAMP:    ${poolLamp} → ${poolAfter} oil`,
-    `Marker NFT:   ${markerUnit}`,
+    `Slot NFT:     ${slotUnit} (BURN −1)`,
     `Proof steps:  ${proof.length}`,
   ].join("\n");
 
-  return { tx, amount, poolAfter, markerUnit, ownerAddress, datumAfter, summary };
+  return { tx, amount, poolAfter, slotUnit, ownerAddress, datumAfter, summary };
 }

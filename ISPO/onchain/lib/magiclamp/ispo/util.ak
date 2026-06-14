@@ -91,6 +91,70 @@ pub fn output_with_nft(
   o
 }
 
+/// Đếm input mang NFT (policy,name) ĐỒNG THỜI ở địa chỉ Script(script_hash).
+/// Dùng ép slot phải đến TỪ registry (chống slot tự chế ở ví bất kỳ).
+pub fn count_inputs_with_nft_at_script(
+  inputs: List<Input>,
+  policy: PolicyId,
+  name: AssetName,
+  script_hash: ByteArray,
+) -> Int {
+  list.count(
+    inputs,
+    fn(x) { has_nft(x.output, policy, name) && is_at_script(x.output.address, script_hash) },
+  )
+}
+
+/// Đếm output mang NFT (policy,name) ĐỒNG THỜI ở địa chỉ Script(script_hash).
+/// Dùng ép bộ slot lúc SetRoot phải gửi vào registry.
+pub fn count_outputs_with_nft_at_script(
+  outputs: List<Output>,
+  policy: PolicyId,
+  name: AssetName,
+  script_hash: ByteArray,
+) -> Int {
+  list.count(
+    outputs,
+    fn(x) { has_nft(x, policy, name) && is_at_script(x.address, script_hash) },
+  )
+}
+
+/// Tổng qty token (policy) trong 1 output (mọi name của policy đó).
+pub fn policy_qty_in_output(out: Output, policy: PolicyId) -> Int {
+  list.foldl(
+    assets.flatten(out.value),
+    0,
+    fn(t, acc) {
+      let (p, _n, q) = t
+      if p == policy {
+        acc + q
+      } else {
+        acc
+      }
+    },
+  )
+}
+
+/// Tổng qty token (policy) ở MỌI output KHÔNG thuộc Script(script_hash).
+/// SetRoot dùng ép slot KHÔNG rò rỉ ra ngoài registry (= 0 ngoài registry).
+pub fn policy_qty_outside_script(
+  outputs: List<Output>,
+  policy: PolicyId,
+  script_hash: ByteArray,
+) -> Int {
+  list.foldl(
+    outputs,
+    0,
+    fn(o, acc) {
+      if is_at_script(o.address, script_hash) {
+        acc
+      } else {
+        acc + policy_qty_in_output(o, policy)
+      }
+    },
+  )
+}
+
 /// LAMP (oil) tới owner (VerificationKey(pkh)) — cộng dồn mọi output của owner.
 pub fn lamp_to_owner(
   outputs: List<Output>,

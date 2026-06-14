@@ -5,7 +5,7 @@
 //   MerkleStep = Constr(0, [bytes, bool])        // bool: False=Constr0, True=Constr1
 //   ClaimProof = Constr(0, [int, bytes, int, list<MerkleStep>])
 //   IspoRedeemer:    SetRoot=Constr(0,[bytes]), Claim=Constr(1,[ClaimProof]), Sweep=Constr(2,[])
-//   IspoNftRedeemer: MintPool=Constr(0,[]),     MintMarker=Constr(1,[])
+//   IspoNftRedeemer: MintPool=Constr(0,[]), MintSlots=Constr(1,[]), BurnSlot=Constr(2,[])
 
 import { Constr, Data } from "@lucid-evolution/lucid";
 import type { IspoDatum, ClaimProof, MerkleStep } from "./types.js";
@@ -133,6 +133,12 @@ export function mintPoolRedeemerToCbor(): string {
   return Data.to(new Constr(0, []));
 }
 
-export function mintMarkerRedeemerToCbor(): string {
+/** MintSlots = Constr(1, []) — đúc bộ claim-slot lúc SetRoot. */
+export function mintSlotsRedeemerToCbor(): string {
   return Data.to(new Constr(1, []));
+}
+
+/** BurnSlot = Constr(2, []) — burn 1 claim-slot lúc Claim. */
+export function burnSlotRedeemerToCbor(): string {
+  return Data.to(new Constr(2, []));
 }

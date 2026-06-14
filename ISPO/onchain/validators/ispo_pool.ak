@@ -2,40 +2,66 @@
 //
 // ─────────────────────────────────────────────────────────────────────────
 // PARAM (KHÔNG hash-param chéo — xem types.ak)
-//   ispo_nft_policy : policy id đúc POOL + MARKER NFT (nhận diện pool + đánh dấu
-//                     claim). Tính từ genesis_ref ở deploy. Pool 1 mình tham
-//                     chiếu param này → KHÔNG vòng tròn với ispo_nft.
-//   lamp_policy     : policy id LAMP.
-//   lamp_name       : asset name LAMP.
-//   admin           : List pkh admin (SetRoot cần ngưỡng admin_threshold).
-//   admin_threshold : số chữ ký admin tối thiểu để SetRoot.
+//   ispo_nft_policy   : policy id đúc POOL + SLOT NFT. Tính từ genesis_ref ở
+//                       deploy. Pool tham chiếu param này → KHÔNG vòng tròn.
+//   lamp_policy       : policy id LAMP.
+//   lamp_name         : asset name LAMP.
+//   admin             : List pkh admin (SetRoot cần ngưỡng admin_threshold).
+//   admin_threshold   : số chữ ký admin tối thiểu để SetRoot.
+//   slot_registry_hash: script hash của ispo_marker (registry GIỮ claim-slot).
+//                       PARAM MỚI (≠ datum → KHÔNG phá interface contract; chấp
+//                       nhận đổi địa chỉ deploy pool). Pool ép Claim consume slot
+//                       TỪ registry này; SetRoot ép gửi bộ slot VÀO registry này.
 //
 // ─────────────────────────────────────────────────────────────────────────
 // 3 REDEEMER
-//   SetRoot{root} — admin nạp Merkle root cho epoch KẾ TIẾP (append epoch_roots).
+//   SetRoot{root} — admin nạp Merkle root cho epoch KẾ TIẾP (append epoch_roots)
+//                   + đúc BỘ SLOT (1 slot/owner của root mới) gửi vào registry.
 //                   pool.value bảo toàn TUYỆT ĐỐI (không rút LAMP). Chỉ epoch_roots
 //                   tăng đúng 1 phần tử; field khác bất biến.
 //   Claim{claim}  — delegator chứng minh (epoch, owner, amount) ∈ root[epoch] qua
 //                   Merkle proof → owner nhận đúng `amount` LAMP. CHỐNG DOUBLE-CLAIM
-//                   per (epoch,owner): ép đúc đúng 1 MARKER NFT name=H(epoch||owner)
-//                   gửi owner. distributed_total += amount. pool.value = in − amount LAMP.
+//                   phía claimer: consume + BURN slot (epoch,owner) TỪ registry
+//                   (spend-once). distributed_total += amount. pool.value = in − amount LAMP.
 //   Sweep         — sau end_epoch: quét LAMP dư về Treasury (treasury_dest). POOL NFT
 //                   + epoch_roots + sổ bất biến (pool đóng băng); LAMP còn lại → Treasury.
 //
 // ─────────────────────────────────────────────────────────────────────────
-// CHỐNG DOUBLE-CLAIM per (epoch, owner) — MARKER NFT
-//   marker_name = blake2b_256(epoch_be8 || owner) (merkle.marker_name).
-//   Claim ép: đúc ĐÚNG 1 (ispo_nft_policy, marker_name) qty 1, gửi tới owner.
-//   Marker là biên-lai per (epoch,owner): off-chain indexer + ví KHÔNG re-present.
-//   Tầng on-chain ép: name đúng (gắn chặt epoch+owner), qty=1, recipient=owner.
-//   (Ghi chú soundness ở README: marker = mẫu airdrop chuẩn; chốt chặn double-claim
-//    toàn cục = indexer off-chain từ chối ký-lại + marker hiện diện ở ví owner.)
+// CHỐNG DOUBLE-CLAIM per (epoch, owner) — CLAIM-SLOT spend-once
+//   marker_name = blake2b_256(epoch_be8 || owner) (merkle.marker_name) = tên slot.
+//   SetRoot epoch e đúc bộ slot {(ispo_nft_policy, marker_name(e,owner)) : owner ∈ e}
+//   gửi vào Script(slot_registry_hash). Claim ép: consume ĐÚNG slot (epoch,owner)
+//   từ registry + BURN nó (mint qty −1).
+//
+//   TRUSTLESS phía CLAIMER (mạnh): với bộ slot CHO TRƯỚC, slot tiêu 1 lần là HẾT
+//   → claimer KHÔNG claim lại được cặp (epoch,owner) đã burn. Tính duy-nhất này
+//   dựa SPEND-ONCE của ledger eUTxO — ĐỘC LẬP indexer off-chain.
+//
+// ─────────────────────────────────────────────────────────────────────────
+// §GIỚI HẠN — slot-set integrity là ADMIN-THRESHOLD-TRUSTED, KHÔNG trustless tuyệt đối
+//   On-chain SetRoot CHỈ ép: slot không rò ra ngoài registry (policy_qty_outside
+//   _script == 1) + không đụng POOL NFT. KHÔNG ép tên slot mã hoá đúng `epoch`
+//   đang append, cũng KHÔNG ép bộ slot khớp đúng leaf của root.
+//
+//   HỆ QUẢ: admin đủ ngưỡng, NẾU cấu kết, tại SetRoot epoch sau CÓ THỂ đúc lại
+//   slot tên = marker_name(epoch_cũ, owner) đã burn (MintSlots chỉ đòi POOL input
+//   + qty>0; pool chỉ đòi slot vào registry). → tái tạo nullifier đã cháy → mở lại
+//   double-claim epoch cũ. Vậy double-claim KHÔNG bị chặn TUYỆT ĐỐI; nó bị chặn
+//   Ở MỨC tin cậy admin-threshold — CÙNG mức tin cậy vốn đã cần để nạp root đúng.
+//
+//   VÌ SAO KHÔNG SIẾT RẺ ON-CHAIN: tên slot = blake2b_256(epoch||owner) là HASH;
+//   validator KHÔNG có preimage (epoch, owner) ⇒ không kiểm được rẻ "tên này thuộc
+//   epoch đang append". Truyền danh sách owner qua redeemer thì phải re-hash mọi
+//   owner trên-chain (đắt ExUnit) MÀ vẫn không chứng minh được danh sách khớp leaf
+//   của root (leaf còn nhúng amount). Không có đại lượng rẻ để neo bộ slot vào
+//   epoch. Mọi siết "giả" chỉ tạo ảo giác an toàn → KHÔNG làm. Test
+//   `setroot_remint_burned_slot_admin_trusted` minh hoạ giả định này.
 
 use aiken/collection/list
 use aiken/interval
 use cardano/assets
-use cardano/transaction.{InlineDatum, Output, OutputReference, Transaction,
-  placeholder}
+use cardano/transaction.{InlineDatum, Input, Output, OutputReference,
+  Transaction, placeholder}
 use magiclamp/ispo/merkle
 use magiclamp/ispo/types.{
   Claim, ClaimProof, IspoDatum, IspoRedeemer, MerkleStep, SetRoot, Sweep,
@@ -49,6 +75,7 @@ validator ispo_pool(
   lamp_name: ByteArray,
   admin: List<ByteArray>,
   admin_threshold: Int,
+  slot_registry_hash: ByteArray,
 ) {
   spend(
     datum_opt: Option<IspoDatum>,
@@ -93,6 +120,23 @@ validator ispo_pool(
 
         // Không vượt 36 epoch (0..end_epoch) → tối đa end_epoch+1 root.
         expect list.length(out_d.epoch_roots) <= d.end_epoch + 1
+
+        // ── ĐÚC BỘ SLOT cho epoch mới, gửi VÀO registry ──────────────────
+        // KHÔNG đúc/burn POOL NFT (POOL bất biến — chỉ luân chuyển ở pool_out).
+        expect assets.quantity_of(tx.mint, ispo_nft_policy, pool_nft_name) == 0
+        // Slot KHÔNG được rò rỉ ra ngoài registry: tổng token ispo_nft_policy ở
+        // mọi output NGOÀI registry == ĐÚNG 1 (= POOL NFT ở pool_out, đã chốt
+        // pool_out.value == pool_in.value ⇒ chứa đúng 1 POOL NFT). Mọi slot mới
+        // PHẢI nằm ở Script(slot_registry_hash) → admin không thể tuồn slot ra ví.
+        //
+        // GIỚI HẠN (xem header §GIỚI HẠN): on-chain KHÔNG kiểm tên slot khớp epoch
+        // đang append (tên là hash, không có preimage). Việc bộ slot đúng leaf của
+        // root + KHÔNG re-mint slot epoch cũ đã burn = TIN CẬY admin-threshold (ép
+        // bởi `count_committee_sigs >= admin_threshold` ở trên), KHÔNG ép on-chain.
+        expect
+          util.policy_qty_outside_script(
+            tx.outputs, ispo_nft_policy, slot_registry_hash,
+          ) == 1
         True
       }
 
@@ -127,15 +171,21 @@ validator ispo_pool(
         expect out_d.treasury_dest == d.treasury_dest
         expect out_d.ms_per_epoch == d.ms_per_epoch
 
-        // CHỐNG DOUBLE-CLAIM (epoch,owner): đúc ĐÚNG 1 MARKER NFT name=H(epoch||owner).
-        let mname = merkle.marker_name(epoch, owner)
-        expect assets.quantity_of(tx.mint, ispo_nft_policy, mname) == 1
-        // Marker phải tới ví owner (biên-lai per claim). Đúng 1 marker output.
-        expect util.count_outputs_with_nft(tx.outputs, ispo_nft_policy, mname) == 1
-        let marker_out = util.output_with_nft(tx.outputs, ispo_nft_policy, mname)
-        expect util.is_owned_by(marker_out.address, owner)
+        // CHỐNG DOUBLE-CLAIM phía claimer (epoch,owner): consume + BURN claim-slot.
+        // slot name = marker_name(epoch,owner) — ĐÚNG cặp này, chống dùng slot
+        // owner/epoch khác. Slot PHẢI đến từ registry (Script(slot_registry_hash))
+        // → chống slot tự chế ở ví bất kỳ. ĐÚNG 1 slot consume. (Tính duy-nhất chỉ
+        // mạnh khi bộ slot KHÔNG bị admin re-mint — xem header §GIỚI HẠN.)
+        let sname = merkle.marker_name(epoch, owner)
+        expect
+          util.count_inputs_with_nft_at_script(
+            tx.inputs, ispo_nft_policy, sname, slot_registry_hash,
+          ) == 1
+        // BURN slot (qty −1) → spend-once: claim-2 KHÔNG còn slot (trừ khi admin
+        // re-mint, §GIỚI HẠN). KHÔNG tái đúc trong tx này.
+        expect assets.quantity_of(tx.mint, ispo_nft_policy, sname) == -1
 
-        // KHÔNG đúc POOL NFT thêm (POOL bất biến). Marker là token DUY NHẤT được đúc.
+        // KHÔNG đúc/burn POOL NFT (POOL bất biến). Slot là token DUY NHẤT chạm tx.mint.
         expect assets.quantity_of(tx.mint, ispo_nft_policy, pool_nft_name) == 0
         True
       }
@@ -171,6 +221,8 @@ const ip_lamp_policy: ByteArray = #"1a3b"
 const ip_lamp_name: ByteArray = #"4c414d50"
 
 const ip_pool_sh: ByteArray = #"facade"
+
+const ip_registry_sh: ByteArray = #"5e9157"
 
 const ip_admin: List<ByteArray> = [#"ad01", #"ad02", #"ad03"]
 
@@ -221,49 +273,83 @@ fn ip_pool_val(lovelace: Int, lamp: Int) -> assets.Value {
 }
 
 // ── CLAIM tests ───────────────────────────────────────────────────
+//
+// Mô hình MỚI (slot spend-once): Claim consume + BURN claim-slot từ registry.
+// claim_tx dựng: pool in/out + slot input (registry, mang slot NFT) + owner nhận
+// LAMP (KHÔNG marker NFT) + mint = burn slot (−1).
 
-fn marker_mint(epoch: Int, owner: ByteArray, qty: Int) -> assets.Value {
+/// burn slot NFT (epoch,owner) trong tx.mint với qty (mặc định −1 = burn).
+fn slot_burn(epoch: Int, owner: ByteArray, qty: Int) -> assets.Value {
   assets.zero |> assets.add(ip_nft_policy, merkle.marker_name(epoch, owner), qty)
 }
 
-/// Dựng tx Claim: pool in/out + owner nhận LAMP + marker tới owner.
-fn claim_tx(
+/// Slot UTxO ở 1 địa chỉ, mang đúng 1 slot NFT (epoch,owner).
+fn slot_input(addr_hash: ByteArray, slot_name: ByteArray) -> Input {
+  let v = assets.from_lovelace(2_000_000) |> assets.add(ip_nft_policy, slot_name, 1)
+  util.mk_input(util.mk_ref(7), util.mk_output_no_datum(util.script_address(addr_hash), v))
+}
+
+/// Dựng tx Claim đầy đủ (slot từ registry, burn slot, owner nhận LAMP).
+/// Tham số mở để test negative: slot_addr (đổi nguồn slot), slot_name (đổi tên
+/// slot), burn_qty (đổi qty burn). consume_slot=False → bỏ hẳn slot input.
+fn claim_tx_full(
   in_roots: List<ByteArray>,
   in_dist: Int,
   out_dist: Int,
-  epoch: Int,
-  owner: ByteArray,
-  _amount: Int,
   pool_lamp_in: Int,
   pool_lamp_out: Int,
+  owner: ByteArray,
   owner_lamp_out: Int,
-  marker_qty: Int,
-  marker_to: ByteArray,
-  extra_outs: List<Output>,
+  slot_addr: ByteArray,
+  slot_name: ByteArray,
+  consume_slot: Bool,
+  burn_qty: Int,
 ) -> Transaction {
   let pool_addr = util.script_address(ip_pool_sh)
   let pool_in =
     util.mk_input(util.mk_ref(0), util.mk_output(pool_addr, ip_pool_val(10_000_000, pool_lamp_in), ip_datum(in_roots, in_dist)))
   let pool_out =
     util.mk_output(pool_addr, ip_pool_val(10_000_000, pool_lamp_out), ip_datum(in_roots, out_dist))
-  let mname = merkle.marker_name(epoch, owner)
   let owner_val =
     assets.from_lovelace(2_000_000)
       |> assets.add(ip_lamp_policy, ip_lamp_name, owner_lamp_out)
-      |> assets.add(ip_nft_policy, mname, 1)
-  let owner_out = util.mk_output(util.vk_address(marker_to), owner_val, leaf_a())
+  let owner_out = util.mk_output(util.vk_address(owner), owner_val, leaf_a())
+  let inputs =
+    if consume_slot {
+      [pool_in, slot_input(slot_addr, slot_name)]
+    } else {
+      [pool_in]
+    }
   Transaction {
     ..placeholder,
-    inputs: [pool_in],
-    outputs: list.concat([pool_out, owner_out], extra_outs),
-    mint: marker_mint(epoch, owner, marker_qty),
+    inputs: inputs,
+    outputs: [pool_out, owner_out],
+    mint: slot_burn(0, owner, 0) |> assets.add(ip_nft_policy, slot_name, burn_qty),
   }
+}
+
+/// Dựng tx Claim HỢP LỆ chuẩn (slot đúng từ registry, burn −1).
+fn claim_tx(
+  in_roots: List<ByteArray>,
+  in_dist: Int,
+  out_dist: Int,
+  epoch: Int,
+  owner: ByteArray,
+  pool_lamp_in: Int,
+  pool_lamp_out: Int,
+  owner_lamp_out: Int,
+) -> Transaction {
+  let sname = merkle.marker_name(epoch, owner)
+  claim_tx_full(
+    in_roots, in_dist, out_dist, pool_lamp_in, pool_lamp_out, owner,
+    owner_lamp_out, ip_registry_sh, sname, True, -1,
+  )
 }
 
 fn run_claim(in_d: IspoDatum, claim: ClaimProof, tx: Transaction) -> Bool {
   ispo_pool.spend(
     ip_nft_policy, ip_lamp_policy, ip_lamp_name, ip_admin, ip_admin_threshold,
-    Some(in_d), Claim { claim }, util.mk_ref(0), tx,
+    ip_registry_sh, Some(in_d), Claim { claim }, util.mk_ref(0), tx,
   )
 }
 
@@ -277,31 +363,28 @@ fn proof_a() -> ClaimProof {
 }
 
 test claim_happy_epoch0() {
-  // owner_a claim 1000 LAMP epoch 0.
+  // owner_a claim 1000 LAMP epoch 0 (slot từ registry, burn −1).
   let roots = [root0()]
   let in_d = ip_datum(roots, 0)
-  let tx = claim_tx(roots, 0, 1000, 0, owner_a, 1000, 100_000, 99_000, 1000, 1, owner_a, [])
+  let tx = claim_tx(roots, 0, 1000, 0, owner_a, 100_000, 99_000, 1000)
   run_claim(in_d, proof_a(), tx)
 }
 
 test claim_multi_epoch() {
-  // Cùng owner_a claim ở 2 epoch khác nhau (0 và 1). Mỗi epoch root riêng →
-  // entitlement riêng. epoch 1 = cây 1-leaf (root = leaf, proof rỗng), amount 500.
+  // Cùng owner_a claim ở 2 epoch khác nhau (0 và 1). Mỗi epoch slot riêng.
   let root1 = merkle.leaf_hash(1, owner_a, 500)
   let roots = [root0(), root1]
   let in_d = ip_datum(roots, 0)
-  // claim epoch 0 (amount 1000).
   let r0 =
-    run_claim(in_d, proof_a(), claim_tx(roots, 0, 1000, 0, owner_a, 1000, 100_000, 99_000, 1000, 1, owner_a, []))
-  // claim epoch 1 (amount 500, proof rỗng).
+    run_claim(in_d, proof_a(), claim_tx(roots, 0, 1000, 0, owner_a, 100_000, 99_000, 1000))
   let claim1 = ClaimProof { epoch: 1, owner: owner_a, amount: 500, proof: [] }
   let r1 =
-    run_claim(in_d, claim1, claim_tx(roots, 0, 500, 1, owner_a, 500, 100_000, 99_500, 500, 1, owner_a, []))
+    run_claim(in_d, claim1, claim_tx(roots, 0, 500, 1, owner_a, 100_000, 99_500, 500))
   r0 && r1
 }
 
 test claim_owner_b() {
-  // owner_b claim 2000 LAMP epoch 0 (proof khác hướng).
+  // owner_b claim 2000 LAMP epoch 0 (proof khác hướng, slot của B).
   let roots = [root0()]
   let in_d = ip_datum(roots, 0)
   let proof_b =
@@ -309,13 +392,12 @@ test claim_owner_b() {
       epoch: 0, owner: owner_b, amount: 2000,
       proof: [MerkleStep { hash: leaf_a(), left: True }],
     }
-  let tx = claim_tx(roots, 0, 2000, 0, owner_b, 2000, 100_000, 98_000, 2000, 1, owner_b, [])
+  let tx = claim_tx(roots, 0, 2000, 0, owner_b, 100_000, 98_000, 2000)
   run_claim(in_d, proof_b, tx)
 }
 
 test claim_amount_proportional() {
-  // amount đúng tỷ lệ stake: A có entitlement 1000, B có 2000 (tỷ lệ 1:2 khớp
-  // stake snapshot off-chain). Cả 2 claim đúng amount của mình → cùng pass.
+  // A có entitlement 1000, B có 2000 (tỷ lệ 1:2). Cả 2 claim đúng amount → pass.
   let roots = [root0()]
   let in_d = ip_datum(roots, 0)
   let proof_b =
@@ -323,13 +405,13 @@ test claim_amount_proportional() {
       epoch: 0, owner: owner_b, amount: 2000,
       proof: [MerkleStep { hash: leaf_a(), left: True }],
     }
-  let ra = run_claim(in_d, proof_a(), claim_tx(roots, 0, 1000, 0, owner_a, 1000, 100_000, 99_000, 1000, 1, owner_a, []))
-  let rb = run_claim(in_d, proof_b, claim_tx(roots, 0, 2000, 0, owner_b, 2000, 100_000, 98_000, 2000, 1, owner_b, []))
+  let ra = run_claim(in_d, proof_a(), claim_tx(roots, 0, 1000, 0, owner_a, 100_000, 99_000, 1000))
+  let rb = run_claim(in_d, proof_b, claim_tx(roots, 0, 2000, 0, owner_b, 100_000, 98_000, 2000))
   ra && rb
 }
 
 test claim_wrong_amount_rejected() fail {
-  // sai amount (claim 1500 thay 1000) → leaf khác → root mismatch → reject (crash).
+  // sai amount (claim 1500 thay 1000) → leaf khác → root mismatch → reject.
   let roots = [root0()]
   let in_d = ip_datum(roots, 0)
   let bad =
@@ -337,7 +419,7 @@ test claim_wrong_amount_rejected() fail {
       epoch: 0, owner: owner_a, amount: 1500,
       proof: [MerkleStep { hash: leaf_b(), left: False }],
     }
-  let tx = claim_tx(roots, 0, 1500, 0, owner_a, 1500, 100_000, 98_500, 1500, 1, owner_a, [])
+  let tx = claim_tx(roots, 0, 1500, 0, owner_a, 100_000, 98_500, 1500)
   run_claim(in_d, bad, tx)
 }
 
@@ -350,39 +432,87 @@ test claim_wrong_proof_rejected() fail {
       epoch: 0, owner: owner_a, amount: 1000,
       proof: [MerkleStep { hash: #"deadbeef", left: False }],
     }
-  let tx = claim_tx(roots, 0, 1000, 0, owner_a, 1000, 100_000, 99_000, 1000, 1, owner_a, [])
+  let tx = claim_tx(roots, 0, 1000, 0, owner_a, 100_000, 99_000, 1000)
   run_claim(in_d, bad, tx)
 }
 
-test claim_no_marker_rejected() fail {
-  // KHÔNG đúc marker (qty 0) → reject (double-claim guard).
+test claim_reject_no_slot_consumed() fail {
+  // KHÔNG consume slot (chỉ pool input, không slot input) → reject.
   let roots = [root0()]
   let in_d = ip_datum(roots, 0)
-  let tx = claim_tx(roots, 0, 1000, 0, owner_a, 1000, 100_000, 99_000, 1000, 0, owner_a, [])
+  let sname = merkle.marker_name(0, owner_a)
+  let tx =
+    claim_tx_full(roots, 0, 1000, 100_000, 99_000, owner_a, 1000, ip_registry_sh, sname, False, -1)
   run_claim(in_d, proof_a(), tx)
 }
 
-test claim_double_marker_rejected() fail {
-  // đúc 2 marker (mưu toan double-claim trong 1 tx) → qty 2 ≠ 1 → reject.
+test claim_reject_slot_wrong_owner_epoch() fail {
+  // slot consume là của (epoch,owner) KHÁC (owner_b) → name ≠ marker_name(0,A)
+  // → count slot đúng tên == 0 → reject. (burn cũng theo tên sai.)
   let roots = [root0()]
   let in_d = ip_datum(roots, 0)
-  let tx = claim_tx(roots, 0, 1000, 0, owner_a, 1000, 100_000, 99_000, 1000, 2, owner_a, [])
+  let wrong_name = merkle.marker_name(0, owner_b)
+  let tx =
+    claim_tx_full(roots, 0, 1000, 100_000, 99_000, owner_a, 1000, ip_registry_sh, wrong_name, True, -1)
   run_claim(in_d, proof_a(), tx)
 }
 
-test claim_marker_wrong_recipient() fail {
-  // marker gửi ví khác (không phải owner) → reject.
+test claim_reject_slot_not_from_registry() fail {
+  // slot đúng tên nhưng đến từ địa chỉ KHÁC registry (ví/script lạ) → reject.
   let roots = [root0()]
   let in_d = ip_datum(roots, 0)
-  let tx = claim_tx(roots, 0, 1000, 0, owner_a, 1000, 100_000, 99_000, 1000, 1, #"cccc", [])
+  let sname = merkle.marker_name(0, owner_a)
+  let tx =
+    claim_tx_full(roots, 0, 1000, 100_000, 99_000, owner_a, 1000, #"badd00", sname, True, -1)
+  run_claim(in_d, proof_a(), tx)
+}
+
+test claim_reject_slot_not_burned() fail {
+  // slot consume từ registry nhưng KHÔNG burn (qty 0) → reject (spend-once
+  // không thực thi: slot có thể bị tái tạo).
+  let roots = [root0()]
+  let in_d = ip_datum(roots, 0)
+  let sname = merkle.marker_name(0, owner_a)
+  let tx =
+    claim_tx_full(roots, 0, 1000, 100_000, 99_000, owner_a, 1000, ip_registry_sh, sname, True, 0)
+  run_claim(in_d, proof_a(), tx)
+}
+
+test claim_reject_redeem_same_epoch_owner_twice() fail {
+  // Mưu toan double-claim TRONG 1 tx: 2 slot input cùng (epoch,owner) từ
+  // registry → count_inputs_with_nft_at_script == 2 ≠ 1 → reject. (Spend-once
+  // chặn double Ở 2 tx; đây chặn double trong cùng tx.)
+  let roots = [root0()]
+  let in_d = ip_datum(roots, 0)
+  let sname = merkle.marker_name(0, owner_a)
+  let pool_addr = util.script_address(ip_pool_sh)
+  let pool_in =
+    util.mk_input(util.mk_ref(0), util.mk_output(pool_addr, ip_pool_val(10_000_000, 100_000), ip_datum(roots, 0)))
+  let pool_out =
+    util.mk_output(pool_addr, ip_pool_val(10_000_000, 99_000), ip_datum(roots, 1000))
+  let owner_val =
+    assets.from_lovelace(2_000_000) |> assets.add(ip_lamp_policy, ip_lamp_name, 1000)
+  let owner_out = util.mk_output(util.vk_address(owner_a), owner_val, leaf_a())
+  // 2 slot input cùng tên (mưu toan), ref khác nhau.
+  let slot1 =
+    util.mk_input(util.mk_ref(7), util.mk_output_no_datum(util.script_address(ip_registry_sh), assets.from_lovelace(2_000_000) |> assets.add(ip_nft_policy, sname, 1)))
+  let slot2 =
+    util.mk_input(util.mk_ref(8), util.mk_output_no_datum(util.script_address(ip_registry_sh), assets.from_lovelace(2_000_000) |> assets.add(ip_nft_policy, sname, 1)))
+  let tx =
+    Transaction {
+      ..placeholder,
+      inputs: [pool_in, slot1, slot2],
+      outputs: [pool_out, owner_out],
+      mint: assets.zero |> assets.add(ip_nft_policy, sname, -2),
+    }
   run_claim(in_d, proof_a(), tx)
 }
 
 test claim_pool_overdrain_rejected() fail {
-  // pool nhả nhiều hơn amount (pool_out LAMP thấp hơn in − amount) → value-eq lệch.
+  // pool nhả nhiều hơn amount → value-eq lệch.
   let roots = [root0()]
   let in_d = ip_datum(roots, 0)
-  let tx = claim_tx(roots, 0, 1000, 0, owner_a, 1000, 100_000, 98_000, 1000, 1, owner_a, [])
+  let tx = claim_tx(roots, 0, 1000, 0, owner_a, 100_000, 98_000, 1000)
   run_claim(in_d, proof_a(), tx)
 }
 
@@ -390,7 +520,7 @@ test claim_dist_total_tamper() fail {
   // distributed_total không tăng đúng amount → reject.
   let roots = [root0()]
   let in_d = ip_datum(roots, 0)
-  let tx = claim_tx(roots, 0, 0, 0, owner_a, 1000, 100_000, 99_000, 1000, 1, owner_a, [])
+  let tx = claim_tx(roots, 0, 0, 0, owner_a, 100_000, 99_000, 1000)
   run_claim(in_d, proof_a(), tx)
 }
 
@@ -403,7 +533,7 @@ test claim_epoch_no_root() fail {
       epoch: 1, owner: owner_a, amount: 1000,
       proof: [MerkleStep { hash: leaf_b(), left: False }],
     }
-  let tx = claim_tx(roots, 0, 1000, 1, owner_a, 1000, 100_000, 99_000, 1000, 1, owner_a, [])
+  let tx = claim_tx(roots, 0, 1000, 1, owner_a, 100_000, 99_000, 1000)
   run_claim(in_d, bad, tx)
 }
 
@@ -418,18 +548,18 @@ test claim_double_satisfaction() fail {
     util.mk_input(util.mk_ref(1), util.mk_output(util.script_address_staked(ip_pool_sh, #"99"), ip_pool_val(10_000_000, 100_000), ip_datum(roots, 0)))
   let pool_out =
     util.mk_output(pool_addr, ip_pool_val(10_000_000, 99_000), ip_datum(roots, 1000))
-  let mname = merkle.marker_name(0, owner_a)
+  let sname = merkle.marker_name(0, owner_a)
   let owner_val =
-    assets.from_lovelace(2_000_000)
-      |> assets.add(ip_lamp_policy, ip_lamp_name, 1000)
-      |> assets.add(ip_nft_policy, mname, 1)
+    assets.from_lovelace(2_000_000) |> assets.add(ip_lamp_policy, ip_lamp_name, 1000)
   let owner_out = util.mk_output(util.vk_address(owner_a), owner_val, leaf_a())
+  let slot =
+    slot_input(ip_registry_sh, sname)
   let tx =
     Transaction {
       ..placeholder,
-      inputs: [pool_in, pool_in2],
+      inputs: [pool_in, pool_in2, slot],
       outputs: [pool_out, owner_out],
-      mint: marker_mint(0, owner_a, 1),
+      mint: assets.zero |> assets.add(ip_nft_policy, sname, -1),
     }
   run_claim(in_d, proof_a(), tx)
 }
@@ -442,14 +572,48 @@ fn setroot_tx(
   sigs: List<ByteArray>,
   pool_val_out: assets.Value,
 ) -> Transaction {
+  setroot_tx_slots(in_roots, out_roots, sigs, pool_val_out, [])
+}
+
+/// SetRoot tx kèm danh sách output slot (mỗi (addr_hash, slot_name) → 1 slot NFT).
+fn setroot_tx_slots(
+  in_roots: List<ByteArray>,
+  out_roots: List<ByteArray>,
+  sigs: List<ByteArray>,
+  pool_val_out: assets.Value,
+  slot_outs: List<(ByteArray, ByteArray)>,
+) -> Transaction {
   let pool_addr = util.script_address(ip_pool_sh)
   let pool_in =
     util.mk_input(util.mk_ref(0), util.mk_output(pool_addr, ip_pool_val(10_000_000, 100_000), ip_datum(in_roots, 0)))
   let pool_out = util.mk_output(pool_addr, pool_val_out, ip_datum(out_roots, 0))
+  let extra =
+    list.map(
+      slot_outs,
+      fn(s) {
+        let (addr_hash, sname) = s
+        util.mk_output_no_datum(
+          util.script_address(addr_hash),
+          assets.from_lovelace(2_000_000) |> assets.add(ip_nft_policy, sname, 1),
+        )
+      },
+    )
+  // mint = bộ slot (mỗi name +1) để khớp đúc thực tế (pool không kiểm mint slot
+  // chi tiết ở SetRoot, nhưng dựng tx thực để gần thật).
+  let mint =
+    list.foldl(
+      slot_outs,
+      assets.zero,
+      fn(s, acc) {
+        let (_a, sname) = s
+        assets.add(acc, ip_nft_policy, sname, 1)
+      },
+    )
   Transaction {
     ..placeholder,
     inputs: [pool_in],
-    outputs: [pool_out],
+    outputs: list.concat([pool_out], extra),
+    mint: mint,
     extra_signatories: sigs,
   }
 }
@@ -457,7 +621,7 @@ fn setroot_tx(
 fn run_setroot(in_d: IspoDatum, root: ByteArray, tx: Transaction) -> Bool {
   ispo_pool.spend(
     ip_nft_policy, ip_lamp_policy, ip_lamp_name, ip_admin, ip_admin_threshold,
-    Some(in_d), SetRoot { root }, util.mk_ref(0), tx,
+    ip_registry_sh, Some(in_d), SetRoot { root }, util.mk_ref(0), tx,
   )
 }
 
@@ -489,6 +653,53 @@ test setroot_wrong_append() fail {
   run_setroot(in_d, root0(), tx)
 }
 
+test setroot_mints_slot_set_to_registry() {
+  // SetRoot epoch 0 + đúc bộ slot (A, B) gửi VÀO registry → pass (slot không rò rỉ
+  // ra ngoài registry; chỉ POOL NFT ở pool_out ngoài registry).
+  let in_d = ip_datum([], 0)
+  let slot_a = merkle.marker_name(0, owner_a)
+  let slot_b = merkle.marker_name(0, owner_b)
+  let tx =
+    setroot_tx_slots(
+      [], [root0()], [#"ad01", #"ad02"], ip_pool_val(10_000_000, 100_000),
+      [(ip_registry_sh, slot_a), (ip_registry_sh, slot_b)],
+    )
+  run_setroot(in_d, root0(), tx)
+}
+
+test setroot_reject_slot_to_wrong_dest() fail {
+  // 1 slot gửi tới địa chỉ KHÁC registry (ví/script lạ) → rò rỉ slot → reject.
+  let in_d = ip_datum([], 0)
+  let slot_a = merkle.marker_name(0, owner_a)
+  let tx =
+    setroot_tx_slots(
+      [], [root0()], [#"ad01", #"ad02"], ip_pool_val(10_000_000, 100_000),
+      [(#"badd00", slot_a)],
+    )
+  run_setroot(in_d, root0(), tx)
+}
+
+test setroot_remint_burned_slot_admin_trusted() {
+  // ── MINH HOẠ GIỚI HẠN (audit MEDIUM): on-chain KHÔNG chặn admin re-mint slot
+  // của EPOCH CŨ đã burn. SetRoot epoch 1 (đã có root0 ở epoch 0) append root1,
+  // NHƯNG admin đúc slot tên = marker_name(0, owner_a) (epoch 0!) gửi vào registry.
+  // Pool chỉ ép: slot không rò ngoài registry + không đụng POOL NFT → tx PASS.
+  // ⇒ slot epoch-0 (đã claim+burn) được TÁI TẠO → owner_a có thể claim lại epoch 0.
+  // Test PASS = bằng chứng việc chặn double-claim ở đây dựa TIN CẬY admin-threshold,
+  // KHÔNG phải trustless tuyệt đối. (Nếu một bản vá tương lai siết được tên slot
+  // theo epoch trên-chain, test này phải đổi sang `fail`.)
+  let in_d = ip_datum([root0()], 0)
+  let stale_slot = merkle.marker_name(0, owner_a)
+  let root1 = merkle.leaf_hash(1, owner_a, 500)
+  let tx =
+    setroot_tx_slots(
+      [root0()], [root0(), root1], [#"ad01", #"ad02"],
+      ip_pool_val(10_000_000, 100_000),
+      [(ip_registry_sh, stale_slot)],
+    )
+  run_setroot(in_d, root1, tx)
+}
+
 // ── SWEEP tests ───────────────────────────────────────────────────
 
 fn sweep_tx(now_epoch: Int, lamp_in: Int, lamp_to_treasury: Int) -> Transaction {
@@ -510,7 +721,7 @@ fn sweep_tx(now_epoch: Int, lamp_in: Int, lamp_to_treasury: Int) -> Transaction 
 fn run_sweep(in_d: IspoDatum, tx: Transaction) -> Bool {
   ispo_pool.spend(
     ip_nft_policy, ip_lamp_policy, ip_lamp_name, ip_admin, ip_admin_threshold,
-    Some(in_d), Sweep, util.mk_ref(0), tx,
+    ip_registry_sh, Some(in_d), Sweep, util.mk_ref(0), tx,
   )
 }
 
