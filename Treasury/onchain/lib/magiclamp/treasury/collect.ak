@@ -13,8 +13,9 @@
 // đụng giữ nguyên (Σout=Σin). Residual amount−cut do CALLER trả thẳng provider ngoài custody.
 
 use aiken/collection/list
-use cardano/assets.{Value}
+use cardano/assets.{PolicyId, Value}
 use magiclamp/treasury/types.{AssetKey, CollectItem, LedgerEntry}
+use magiclamp/treasury/util
 
 /// cut của 1 item = floor(amount × cut_bps / 10000). amount ≥ 0, cut_bps ∈ [0,10000].
 pub fn item_cut(amount: Int, cut_bps: Int) -> Int {
@@ -209,14 +210,24 @@ pub fn ledger_value(ledger: List<LedgerEntry>) -> Value {
   )
 }
 
-/// Seed custody hợp lệ ⇔ value == ledger_value(ledger) ⊕ reserved_min_ada (lovelace).
+/// Seed custody hợp lệ ⇔ value (ĐÃ LOẠI custody NFT) == ledger_value(ledger) ⊕ reserved.
 /// reserved_min_ada ≥ 0 = phần ADA giữ cho min-UTxO, không ghi sổ.
+///
+/// FIX (audit major): custody UTxO BẮT BUỘC mang custody NFT one-shot (custody_seed
+/// policy = custody_nft_policy). NFT là token XÁC THỰC instance, KHÔNG phải tài sản
+/// kế toán → KHÔNG được tính vào sổ. Phải TRỪ NFT khỏi value trước khi đối chiếu sổ,
+/// nếu không đẳng thức value==sổ KHÔNG BAO GIỜ đúng on-chain (value luôn dư đúng 1 NFT).
+/// Hệ quả: ai book NFT thành 1 dòng sổ (để né) cũng FAIL — accounted_value không có NFT
+/// nhưng ledger_value lại có → lệch.
 pub fn seed_value_ok(
-  value           : Value,
-  ledger          : List<LedgerEntry>,
-  reserved_min_ada: Int,
+  value             : Value,
+  ledger            : List<LedgerEntry>,
+  reserved_min_ada  : Int,
+  custody_nft_policy: PolicyId,
 ) -> Bool {
+  // value đối chiếu = custody.value LOẠI BỎ custody NFT (authenticity token, không kế toán).
+  let accounted_value = util.value_without_policy(value, custody_nft_policy)
   let expected =
     assets.merge(ledger_value(ledger), assets.from_lovelace(reserved_min_ada))
-  value == expected
+  accounted_value == expected
 }

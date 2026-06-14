@@ -5,7 +5,7 @@
 use aiken/collection/list
 use aiken/interval.{Finite, IntervalBound, IntervalBoundType}
 use cardano/address.{Address, Inline, Script, VerificationKey}
-use cardano/assets.{Value}
+use cardano/assets.{PolicyId, Value}
 use cardano/transaction.{InlineDatum, Input, NoDatum, Output, OutputReference,
   Transaction}
 
@@ -56,6 +56,16 @@ pub fn input_at_script(inputs: List<Input>, script_hash: ByteArray) -> Output {
 pub fn output_at_script(outputs: List<Output>, script_hash: ByteArray) -> Output {
   expect Some(o) = list.find(outputs, fn(x) { is_at_script(x.address, script_hash) })
   o
+}
+
+// ── Loại bỏ mọi asset của 1 policy khỏi Value (NFT authenticity ≠ tài sản kế toán) ──
+// Custody UTxO BẮT BUỘC mang custody NFT one-shot (custody_seed policy). NFT là token
+// xác thực instance — KHÔNG phải tài sản booked vào sổ. Khi đối chiếu value↔sổ (seed),
+// PHẢI trừ NFT của chính policy đó ra trước, nếu không đẳng thức value==sổ KHÔNG BAO GIỜ
+// đúng on-chain (value luôn dư đúng 1 NFT). Cách rẻ ExUnit: merge với negate phần bị giữ
+// lại bởi mask=[policy] → triệt tiêu đúng các asset của policy đó, giữ nguyên phần còn lại.
+pub fn value_without_policy(v: Value, policy: PolicyId) -> Value {
+  assets.merge(v, assets.negate(assets.restricted_to(v, [policy])))
 }
 
 // ── Epoch từ validity_range (time-lock C-REL-8 — mirror Distribution util.get_epoch) ──

@@ -4,9 +4,11 @@
 //      booked thiếu value (fail); dòng sổ trùng khóa (fail); asset không accepted
 //      (fail); NFT name ≠ instance_id (fail); 2 custody output (fail); burn (fail).
 
+use aiken/collection/list
 use cardano/assets
 use cardano/transaction.{Input, Output, OutputReference, Transaction, placeholder}
 use custody_seed.{SeedGenesis}
+use magiclamp/treasury/collect
 use magiclamp/treasury/types.{AssetKey, CustodyDatum, LedgerEntry}
 use magiclamp/treasury/util
 
@@ -63,8 +65,19 @@ fn seed_mint(name: ByteArray, qty: Int) -> assets.Value {
   assets.add(assets.zero, seed_policy, name, qty)
 }
 
+// Custody NFT one-shot (authenticity) — BẮT BUỘC nằm trong custody.value on-chain.
+fn custody_nft() -> assets.Value {
+  assets.add(assets.zero, seed_policy, instance_id, 1)
+}
+
+// custody output TRUNG THỰC: value KÈM custody NFT (đúng như on-chain). seed_value_ok
+// PHẢI trừ NFT trước khi đối chiếu sổ → các test value (sổ/reserved) vẫn đúng ngữ nghĩa.
 fn cust_output(value: assets.Value, ledger: List<LedgerEntry>) -> Output {
-  util.mk_output(util.script_address(cust_sh), value, seed_datum(ledger))
+  util.mk_output(
+    util.script_address(cust_sh),
+    assets.merge(value, custody_nft()),
+    seed_datum(ledger),
+  )
 }
 
 // Dựng tx genesis: inputs (genesis + other), mint NFT, 1 output custody.
@@ -279,7 +292,13 @@ test seed_negative_reserved() fail {
 test seed_consumed_not_empty() fail {
   let bad_datum =
     CustodyDatum { ..seed_datum(happy_ledger()), consumed_proposals: [#"beef"] }
-  let bad_out = util.mk_output(util.script_address(cust_sh), happy_value(), bad_datum)
+  // value KÈM NFT (trung thực) — chỉ fail vì consumed_proposals, không vì NFT.
+  let bad_out =
+    util.mk_output(
+      util.script_address(cust_sh),
+      assets.merge(happy_value(), custody_nft()),
+      bad_datum,
+    )
   let tx = seed_tx([genesis_input()], seed_mint(instance_id, 1), [bad_out])
   run(tx, reserved)
 }
@@ -294,4 +313,58 @@ test seed_no_custody_output() fail {
     util.mk_output_no_datum(util.vk_address(#"a0"), happy_value() |> assets.add(seed_policy, instance_id, 1))
   let tx = seed_tx([genesis_input()], seed_mint(instance_id, 1), [wallet_out])
   run(tx, reserved)
+}
+
+// ════════════════════════════════════════════════════════════
+// 13. NFT TRONG VALUE + SỔ ĐÚNG (pass) — chứng minh fix: seed_value_ok TRỪ custody NFT.
+//     custody.value = happy_value ⊕ custody NFT (đúng on-chain). Sổ KHÔNG ghi NFT.
+//     accounted_value (đã trừ NFT) == ledger_value ⊕ reserved → pass.
+//     NẾU seed_value_ok KHÔNG trừ NFT, accounted dư 1 NFT ≠ sổ → test này (và seed_happy)
+//     sẽ FAIL. Đó là bằng chứng fix cần thiết.
+// ════════════════════════════════════════════════════════════
+test seed_with_nft_in_value_ok() {
+  // value tường minh CÓ NFT (không qua cust_output để rõ ý đồ): happy_value ⊕ NFT.
+  let value_with_nft = assets.merge(happy_value(), custody_nft())
+  let out =
+    util.mk_output(util.script_address(cust_sh), value_with_nft, seed_datum(happy_ledger()))
+  let tx = seed_tx([other_input(), genesis_input()], seed_mint(instance_id, 1), [out])
+  run(tx, reserved)
+}
+
+// ════════════════════════════════════════════════════════════
+// 14. BOOK NFT THÀNH 1 DÒNG SỔ (fail) — reject_nft_counted_as_asset.
+//     Ai đó cố "né" bằng cách ghi custody NFT (seed_policy, instance_id, 1) thành 1 dòng
+//     sổ để đẳng thức value==sổ thô khớp. Sau fix: accounted_value đã TRỪ NFT (=happy_value)
+//     nhưng ledger_value lại CỘNG thêm NFT → lệch đúng 1 NFT → FAIL.
+//     (NFT cũng KHÔNG thuộc accepted_assets → S-ACC-0 cũng chặn — phòng thủ kép.)
+// ════════════════════════════════════════════════════════════
+test reject_nft_counted_as_asset() fail {
+  let ledger_with_nft =
+    list.push(
+      happy_ledger(),
+      LedgerEntry { bucket_id: bucket_ops, policy: seed_policy, name: instance_id, amount: 1 },
+    )
+  // value = happy_value ⊕ NFT (đúng on-chain). Sổ ghi cả NFT (bẩn ngữ nghĩa kế toán).
+  let value_with_nft = assets.merge(happy_value(), custody_nft())
+  let out =
+    util.mk_output(util.script_address(cust_sh), value_with_nft, seed_datum(ledger_with_nft))
+  let tx = seed_tx([genesis_input()], seed_mint(instance_id, 1), [out])
+  run(tx, reserved)
+}
+
+// ════════════════════════════════════════════════════════════
+// 15. seed_value_ok CHỈ TRỪ ĐÚNG POLICY NFT (pass) — chốt ngữ nghĩa helper.
+//     value = happy_value ⊕ custody NFT. Sau khi trừ seed_policy, phần còn lại == sổ ⊕
+//     reserved → true. Khẳng định value_without_policy không đụng LAMP/ADA (chỉ bỏ NFT).
+// ════════════════════════════════════════════════════════════
+test seed_value_ok_strips_only_nft_policy() {
+  let value_with_nft = assets.merge(happy_value(), custody_nft())
+  collect.seed_value_ok(value_with_nft, happy_ledger(), reserved, seed_policy)
+}
+
+// Đối ngẫu: nếu trừ NHẦM policy LAMP (không phải NFT) thì sổ sẽ thiếu LAMP → false.
+test seed_value_ok_wrong_policy_strip_fails() fail {
+  let value_with_nft = assets.merge(happy_value(), custody_nft())
+  // trừ lamp_policy thay vì seed_policy → accounted mất LAMP nhưng vẫn dư NFT → lệch.
+  expect collect.seed_value_ok(value_with_nft, happy_ledger(), reserved, lamp_policy)
 }

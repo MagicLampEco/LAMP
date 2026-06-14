@@ -186,6 +186,25 @@ export function valueOk(
 
 const LOVELACE_KEY = assetKey("", "");
 
+/**
+ * Loại bỏ mọi asset của 1 policy khỏi AssetMap (mirror util.value_without_policy onchain).
+ *
+ * Custody UTxO BẮT BUỘC mang custody NFT one-shot (custody_seed policy). NFT là token
+ * XÁC THỰC instance, KHÔNG phải tài sản kế toán → không tính vào sổ. Khi đối chiếu
+ * value↔sổ phải TRỪ NFT trước, nếu không đẳng thức value==sổ KHÔNG BAO GIỜ đúng
+ * (value luôn dư đúng 1 NFT). policy "" (rỗng) = no-op (không trừ lovelace).
+ */
+export function valueWithoutPolicy(value: AssetMap, policy: string): AssetMap {
+  if (policy === "") return { ...value };
+  const p = policy.toLowerCase();
+  const out: AssetMap = {};
+  for (const [k, amt] of Object.entries(value)) {
+    if (k.split("|")[0] === p) continue;   // bỏ mọi asset của policy NFT
+    out[k] = amt;
+  }
+  return out;
+}
+
 /** Value gồm toàn bộ số dư sổ (per-asset, gộp mọi bucket cùng asset). */
 export function ledgerValue(ledger: LedgerEntry[]): AssetMap {
   const out: AssetMap = {};
@@ -205,15 +224,25 @@ export function seedValue(ledger: LedgerEntry[], reservedMinAda: bigint): AssetM
   return out;
 }
 
-/** seed_value_ok on-chain: value == ledgerValue(ledger) ⊕ reserved_min_ada. */
+/**
+ * seed_value_ok on-chain: accounted_value == ledgerValue(ledger) ⊕ reserved_min_ada,
+ * trong đó accounted_value = value ĐÃ LOẠI custody NFT (custodyNftPolicy).
+ *
+ * custodyNftPolicy = policy id của custody_seed NFT one-shot (== custody script-mint
+ * policy). NFT authenticity nằm trong custody.value PHẢI bị trừ trước khi đối chiếu sổ
+ * — nếu không đẳng thức KHÔNG BAO GIỜ đúng on-chain. Mặc định "" để tương thích gọi cũ
+ * (value đã không chứa NFT), nhưng caller dựng genesis tx thật PHẢI truyền policy NFT.
+ */
 export function seedValueOk(
   value: AssetMap, ledger: LedgerEntry[], reservedMinAda: bigint,
+  custodyNftPolicy: string = "",
 ): boolean {
   if (reservedMinAda < 0n) return false;
+  const accounted = valueWithoutPolicy(value, custodyNftPolicy);
   const want = seedValue(ledger, reservedMinAda);
-  const keys = new Set([...Object.keys(value), ...Object.keys(want)]);
+  const keys = new Set([...Object.keys(accounted), ...Object.keys(want)]);
   for (const k of keys) {
-    if ((value[k] ?? 0n) !== (want[k] ?? 0n)) return false;
+    if ((accounted[k] ?? 0n) !== (want[k] ?? 0n)) return false;
   }
   return true;
 }
@@ -234,8 +263,9 @@ export function allLinesAccepted(
  */
 export function seedDatumOk(
   value: AssetMap, datum: CustodyDatum, reservedMinAda: bigint,
+  custodyNftPolicy: string = "",
 ): boolean {
-  return seedValueOk(value, datum.ledger, reservedMinAda)
+  return seedValueOk(value, datum.ledger, reservedMinAda, custodyNftPolicy)
     && noDupLines(datum.ledger)
     && allLinesAccepted(datum.ledger, datum.accepted_assets);
 }

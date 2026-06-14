@@ -85,8 +85,15 @@ validator custody_seed(
     expect assets.quantity_of(tx.mint, policy_id, seed_datum.instance_id) == 1
 
     // ── S-SEED-0: ÉP bất biến nền sổ↔value tại seed ─────────────────────────
+    // custody_nft_policy = policy_id của chính custody_seed (khi mint). NFT one-shot
+    // mang trong custody.value PHẢI bị TRỪ trước khi đối chiếu sổ (authenticity ≠ kế toán).
     expect
-      collect.seed_value_ok(cust_out.value, seed_datum.ledger, reserved_min_ada)
+      collect.seed_value_ok(
+        cust_out.value,
+        seed_datum.ledger,
+        reserved_min_ada,
+        policy_id,
+      )
 
     // ── S-LEDGER-0: sổ không dòng trùng khóa (chống né incremental về sau) ──
     expect collect.no_dup_lines(seed_datum.ledger)
