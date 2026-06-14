@@ -1,20 +1,23 @@
-// LAMP Reserve drawBuilder — dựng tx DRAW (nhả linear 1001 epoch; reserve_draw.ak).
+// LAMP Reserve drawBuilder — dựng tx DRAW (demand-gated qua Treasury-pull; reserve_draw.ak).
 //
-// Permissionless: KHÔNG chữ ký. Ai dựng tx đúng lịch cũng trigger được; con số nhả do
-// hàm vested(t) quyết. Flow (khớp luật onchain reserve_draw + Genesis tlamp_mint):
+// Reserve = lớp đệm sau cùng, trần CỨNG mỗi epoch (max_per_epoch = total/1000). Mỗi epoch
+// Treasury "kéo" tối đa trần; logic sàn (parked < floor) nằm Ở TREASURY. Builder ép luật
+// onchain reserve_draw + Genesis tlamp_mint:
 //
 //   - Input:  ReserveState UTxO (mang reserve thread NFT) — redeemer Draw.
-//             SupplyState UTxO (mang SUPPLY NFT)          — redeemer Advance.
+//             SupplyState  UTxO (mang SUPPLY NFT)         — redeemer Advance (Genesis).
+//             Treasury auth UTxO (mang Treasury auth NFT) — bằng chứng Treasury-pull.
 //             ReserveState NFT đóng vai "meter" gate nhịp của Genesis ReserveDraw.
-//   - Mint:   draw oil tLAMP qua policy tlamp_mint, redeemer ReserveDraw (Constr 1).
-//   - Output: ReserveState' tại CÙNG script (NFT trả lại, drawn_oil += draw).
-//             SupplyState'  tại CÙNG script (NFT trả lại, reserve_minted += draw).
-//             draw tLAMP tới reserve_dest (TOÀN BỘ, không rò rỉ).
+//   - Mint:   delta oil LAMP qua policy tlamp_mint, redeemer ReserveDraw (Constr 1).
+//   - Output: ReserveState' (NFT trả lại, drawn_oil += delta, last_epoch := epoch).
+//             SupplyState'  (NFT trả lại, reserve_minted += delta).
+//             delta LAMP tới reserve_dest (Treasury — TOÀN BỘ, không rò rỉ).
 //
-// draw tính qua applyDraw(state, epoch) — fail-fast nếu chưa có gì tới hạn (epoch sai/sớm).
+// delta tính qua applyDraw(state, epoch, requested) — kẹp trần/pot, fail-fast nếu
+// t ≤ last_epoch (đã draw trong/sau epoch này) hoặc pot cạn.
 //
 // LƯU Ý: epoch phải khớp validity_range.lower_bound onchain (get_epoch lower_bound). Caller
-// truyền `validFromSlot`/`epoch` nhất quán; builder set validFrom để lower_bound = epoch.
+// truyền `validFromUnixMs`/`epoch` nhất quán; builder set validFrom để lower_bound = epoch.
 
 import {
   Data, toUnit,
@@ -26,7 +29,7 @@ import { TLAMP_NAME } from "./constants.js";
 import {
   decodeReserveState, reserveStateToCbor, drawRedeemerToCbor,
 } from "./datum.js";
-import { applyDraw } from "./math.js";
+import { applyDraw, maxPerEpoch } from "./math.js";
 import type { ReserveState } from "./types.js";
 
 export interface DrawParams {
@@ -42,16 +45,26 @@ export interface DrawParams {
   reserveThreadPolicyId: string;
   reserveThreadName: string;
 
+  /** asset name LAMP (hex) — khớp param onchain lamp_name (testnet "tLAMP"/mainnet "LAMP"). */
+  lampName?: string;
+
   /** SupplyState UTxO (Genesis) + spend validator + address + redeemer CBOR. */
   supplyUtxo: UTxO;
   supplyStateScript: Validator;
   supplyStateAddress: string;
-  /** datum CBOR của SupplyState' (đã cộng reserve_minted += draw — caller tính qua Genesis SDK). */
+  /** datum CBOR của SupplyState' (đã cộng reserve_minted += delta — caller tính qua Genesis SDK). */
   supplyStateOutDatumCbor: string;
   /** value (assets) của SupplyState output (SUPPLY NFT + min-ADA). */
   supplyStateOutValue: Assets;
   /** redeemer spend SupplyState (Genesis SupplyStateRedeemer.Advance CBOR). */
   supplyStateRedeemerCbor: string;
+
+  /** Treasury auth UTxO (mang Treasury co-spend authority NFT — bằng chứng Treasury-pull). */
+  treasuryAuthUtxo: UTxO;
+  /** redeemer spend Treasury auth UTxO (Treasury validator quản — CBOR). */
+  treasuryAuthRedeemerCbor?: string;
+  /** Treasury validator giữ auth UTxO (đính nếu auth UTxO ở script address). */
+  treasuryAuthScript?: Validator;
 
   /** tlamp_mint minting policy + policy id (hex). */
   tlampPolicy: MintingPolicy;
@@ -59,13 +72,18 @@ export interface DrawParams {
   /** redeemer mint route ReserveDraw (Genesis MINT_ROUTE.ReserveDraw = Constr(1,[])) CBOR. */
   reserveDrawRedeemerCbor: string;
 
-  /** Địa chỉ ĐÍCH nhận tLAMP nhả (Treasury hoặc thị trường — khớp param onchain reserve_dest). */
+  /** Địa chỉ ĐÍCH nhận LAMP nhả (Treasury — khớp param onchain reserve_dest). */
   reserveDest: string;
 
   /** Epoch hiện tại (khớp validity_range.lower_bound onchain). */
   epoch: bigint;
   /** Unix-time (ms) cận DƯỚI validity_range — phải nằm trong epoch trên (caller bảo đảm). */
   validFromUnixMs: number;
+  /** Unix-time (ms) cận TRÊN validity_range — phải CÙNG epoch lower (Luật 2b ghim t). */
+  validToUnixMs: number;
+
+  /** Lượng Treasury muốn kéo (oil). Mặc định = trần epoch (kéo tối đa). */
+  requestedOil?: bigint;
 
   /** min-ADA giữ ở ReserveState output (mặc định 2 tADA). */
   reserveMinAda?: bigint;
@@ -86,9 +104,10 @@ function reserveNftAssets(policyId: string, name: string, minAda: bigint): Asset
 }
 
 /**
- * Dựng tx draw. Tính ReserveState' + draw qua applyDraw (fail-fast nếu chưa tới hạn),
- * rồi build: spend ReserveState (Draw) + spend SupplyState (Advance) + mint draw tLAMP
- * (route ReserveDraw) + recreate cả 2 state + trả draw tLAMP cho reserve_dest.
+ * Dựng tx draw. Tính ReserveState' + delta qua applyDraw (kẹp trần/pot; fail-fast nếu
+ * t ≤ last_epoch hoặc pot cạn), rồi build: spend ReserveState (Draw) + spend SupplyState
+ * (Advance) + spend Treasury auth (Treasury-pull) + mint delta LAMP (route ReserveDraw)
+ * + recreate cả 2 state + trả delta LAMP cho reserve_dest (Treasury).
  */
 export async function buildDrawTx(p: DrawParams): Promise<{
   tx: TxSignBuilder;
@@ -96,46 +115,58 @@ export async function buildDrawTx(p: DrawParams): Promise<{
   drawn: bigint;
 }> {
   const minAda = p.reserveMinAda ?? 2_000_000n;
+  const lampName = p.lampName ?? TLAMP_NAME;
 
   const sIn = readReserveState(p.reserveUtxo);
-  // Fail-fast offchain: ép draw>0 + transition đúng TRƯỚC khi tốn phí.
-  const { next: sOut, drawn } = applyDraw(sIn, p.epoch);
+  const requested = p.requestedOil ?? maxPerEpoch(sIn.total_oil);
+  // Fail-fast offchain: ép t>last_epoch + delta>0 (≤trần & ≤pot) + transition đúng.
+  const { next: sOut, drawn } = applyDraw(sIn, p.epoch, requested);
 
-  const tlampUnit = toUnit(p.tlampPolicyId, TLAMP_NAME);
-  const mintAssets: Assets = { [tlampUnit]: drawn };
+  const lampUnit = toUnit(p.tlampPolicyId, lampName);
+  const mintAssets: Assets = { [lampUnit]: drawn };
 
   const reserveOutValue = reserveNftAssets(
     p.reserveThreadPolicyId, p.reserveThreadName, minAda,
   );
-  const destValue: Assets = { [tlampUnit]: drawn };
+  const destValue: Assets = { [lampUnit]: drawn };
 
-  const txb = p.lucid
+  let txb = p.lucid
     .newTx()
-    // ReserveState (Draw) — gate nhịp tất định, đóng vai meter của Genesis.
+    // ReserveState (Draw) — gate nhịp/meter của Genesis ReserveDraw.
     .collectFrom([p.reserveUtxo], drawRedeemerToCbor())
     .attach.SpendingValidator(p.reserveScript)
-    // SupplyState (Advance) — Genesis cộng reserve_minted += draw.
+    // SupplyState (Advance) — Genesis cộng reserve_minted += delta.
     .collectFrom([p.supplyUtxo], p.supplyStateRedeemerCbor)
     .attach.SpendingValidator(p.supplyStateScript)
-    // Mint draw tLAMP qua route ReserveDraw.
+    // Treasury auth UTxO — bằng chứng Treasury-pull (Treasury co-spend authority NFT).
+    .collectFrom([p.treasuryAuthUtxo], p.treasuryAuthRedeemerCbor);
+
+  // Đính Treasury validator nếu auth UTxO ở script address (co-spend authority).
+  if (p.treasuryAuthScript) {
+    txb = txb.attach.SpendingValidator(p.treasuryAuthScript);
+  }
+
+  txb = txb
+    // Mint delta LAMP qua route ReserveDraw.
     .mintAssets(mintAssets, p.reserveDrawRedeemerCbor)
     .attach.MintingPolicy(p.tlampPolicy)
-    // Recreate ReserveState' (NFT trả lại, drawn_oil += draw).
+    // Recreate ReserveState' (NFT trả lại, drawn_oil += delta, last_epoch := epoch).
     .pay.ToContract(
       p.reserveAddress,
       { kind: "inline", value: reserveStateToCbor(sOut) },
       reserveOutValue,
     )
-    // Recreate SupplyState' (NFT trả lại, reserve_minted += draw).
+    // Recreate SupplyState' (NFT trả lại, reserve_minted += delta).
     .pay.ToContract(
       p.supplyStateAddress,
       { kind: "inline", value: p.supplyStateOutDatumCbor },
       p.supplyStateOutValue,
     )
-    // TOÀN BỘ draw tLAMP tới reserve_dest (không rò rỉ).
+    // TOÀN BỘ delta LAMP tới reserve_dest (Treasury — không rò rỉ).
     .pay.ToAddress(p.reserveDest, destValue)
-    // validity_range.lower_bound → epoch onchain (get_epoch lower_bound).
-    .validFrom(p.validFromUnixMs);
+    // validity_range: lower_bound → epoch; upper_bound CÙNG epoch (Luật 2b ghim t).
+    .validFrom(p.validFromUnixMs)
+    .validTo(p.validToUnixMs);
 
   const tx = await txb.complete();
   return { tx, nextReserve: sOut, drawn };

@@ -1,37 +1,41 @@
-// LAMP Reserve math — vested/draw thuần (linear 1001 epoch, floor division).
+// LAMP Reserve math — trần CỨNG mỗi epoch (demand-gated, KHÔNG cộng dồn catch-up).
 //
-// Aiken Int = bigint vô hạn → KHÔNG tràn dù total_oil ≈ 7.9e15 × t ≈ 1e3 = 7.9e18.
-// (vẫn dưới 2^63 nhưng không cần lo: Int không có biên.)
+// FIRST-PRINCIPLES — Reserve = lớp đệm sau cùng:
+//   max_per_epoch = total / 1000 — trần CỨNG, KHÔNG phụ thuộc thời gian trôi.
+//   Mỗi epoch Treasury kéo TỐI ĐA max_per_epoch (gate sàn ở Treasury). Phần không
+//   kéo (gate / không cần) Ở LẠI pot → nhả ở epoch sau. Tối đa cạn pot trong 1000
+//   epoch nhả liên tục; bị gate càng nhiều → kéo dài càng lâu (>1000 epoch).
+//
+// Aiken Int = bigint vô hạn → KHÔNG tràn dù total ≈ 7.9e15.
 
-/// Số epoch của cửa sổ nhả tuyến tính. Hằng thiết kế (CONTRACT Reserve).
-pub const release_epochs: Int = 1001
+/// Số epoch tối thiểu để cạn pot khi nhả liên tục đúng trần. Hằng thiết kế (CONTRACT).
+/// total / max_per_epoch == 1000. Chia chẵn (E = 7_899_000_000_000_000 ⋮ 1000).
+pub const release_epochs: Int = 1000
 
-/// vested(t) = phần đã tới hạn tại epoch t (oil).
-///   t ≤ start          → 0          (chưa mở cửa)
-///   start < t < +1001  → tuyến tính, floor
-///   t ≥ start + 1001   → total_oil  (đầy, clamp bởi min)
-///
-/// Công thức: min(total_oil, total_oil * max(0, t - start) / 1001).
-/// floor division: phần dư rơi vào epoch cuối → tổng cộng dồn == total_oil tại t≥+1001.
-pub fn vested(start_epoch: Int, total_oil: Int, t: Int) -> Int {
-  let elapsed =
-    if t > start_epoch {
-      t - start_epoch
-    } else {
-      0
-    }
-  let raw = total_oil * elapsed / release_epochs
-  if raw > total_oil {
-    total_oil
-  } else {
-    raw
-  }
+/// Trần CỨNG nhả mỗi epoch = total / 1000 (chia chẵn cho E hiện hành).
+/// KHÔNG dùng /1001 — chia chẵn cho tổng kế toán sạch (dư = 0).
+pub fn max_per_epoch(total: Int) -> Int {
+  total / release_epochs
 }
 
-/// draw(t) = phần chưa nhả tới hạn tại t = vested(t) − drawn_oil.
-/// Luôn ≥ 0 vì drawn_oil ≤ vested(t_trước) ≤ vested(t) (vested đơn điệu theo t).
-pub fn draw(start_epoch: Int, total_oil: Int, drawn_oil: Int, t: Int) -> Int {
-  vested(start_epoch, total_oil, t) - drawn_oil
+/// Phần được phép nhả trong MỘT draw, given pot còn lại + lượng yêu cầu:
+///   drawable = min(requested, min(max_per_epoch(total), total − drawn))
+/// — KHÔNG vượt trần epoch, KHÔNG vượt pot còn lại, KHÔNG vượt cầu thực (requested).
+/// Dùng offchain để tính delta tối ưu; onchain ép từng vế riêng (xem reserve_draw).
+pub fn drawable(total: Int, drawn: Int, requested: Int) -> Int {
+  let cap = max_per_epoch(total)
+  let remaining = total - drawn
+  let ceil =
+    if cap < remaining {
+      cap
+    } else {
+      remaining
+    }
+  if requested < ceil {
+    requested
+  } else {
+    ceil
+  }
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -41,76 +45,54 @@ pub fn draw(start_epoch: Int, total_oil: Int, drawn_oil: Int, t: Int) -> Int {
 // E = 7.899 tỷ LAMP = 7_899_000_000_000_000 oil (cap reserve allocation v3).
 const e: Int = 7_899_000_000_000_000
 
-const s0: Int = 100
+// ── max_per_epoch ────────────────────────────────────────────
 
-// ── vested biên ──────────────────────────────────────────────
-
-test vested_before_start() {
-  // t < start → 0 (chưa mở cửa).
-  vested(s0, e, 50) == 0
+test max_per_epoch_exact_division() {
+  // E ⋮ 1000 → chia chẵn, dư == 0 (kế toán sạch).
+  max_per_epoch(e) == 7_899_000_000_000 && e % release_epochs == 0
 }
 
-test vested_at_start() {
-  // t == start → elapsed 0 → 0 (KHÔNG cliff).
-  vested(s0, e, s0) == 0
+test max_per_epoch_times_1000_eq_total() {
+  // trần × 1000 == total (nhả liên tục đúng trần cạn pot trong 1000 epoch).
+  max_per_epoch(e) * release_epochs == e
 }
 
-test vested_first_epoch() {
-  // t = start+1 → E*1/1001 (floor).
-  vested(s0, e, s0 + 1) == e / 1001
+test release_epochs_is_1000() {
+  // hằng = 1000 (KHÔNG 1001).
+  release_epochs == 1000
 }
 
-test vested_mid() {
-  // t = start+500 → E*500/1001 (floor).
-  vested(s0, e, s0 + 500) == e * 500 / 1001
+// ── drawable: trần CỨNG ──────────────────────────────────────
+
+test drawable_capped_by_max_per_epoch() {
+  // requested > trần, pot dư → kẹp về trần.
+  drawable(e, 0, e) == max_per_epoch(e)
 }
 
-test vested_one_before_full() {
-  // t = start+1000 → E*1000/1001 (chưa đầy, floor < E).
-  let v = vested(s0, e, s0 + 1000)
-  v == e * 1000 / 1001 && v < e
+test drawable_requested_below_cap() {
+  // requested < trần, pot dư → trả đúng requested (partial draw).
+  let req = max_per_epoch(e) - 1_000_000
+  drawable(e, 0, req) == req
 }
 
-test vested_exact_full() {
-  // t = start+1001 → E*1001/1001 == E (đầy chính xác).
-  vested(s0, e, s0 + 1001) == e
+test drawable_capped_by_pot_remaining() {
+  // pot còn lại < trần → kẹp về pot còn lại (epoch cuối cạn).
+  let drawn = e - 5_000_000
+  drawable(e, drawn, e) == 5_000_000
 }
 
-test vested_after_full_capped() {
-  // t > start+1001 → clamp tại E (min ép, không vượt cap).
-  vested(s0, e, s0 + 5000) == e
+test drawable_pot_empty() {
+  // pot cạn (drawn == total) → drawable 0.
+  drawable(e, e, e) == 0
 }
 
-test vested_floor_no_overshoot() {
-  // floor: tổng các phần ≤ E tại mọi t < +1001 (không phát quá cap giữa chừng).
-  vested(s0, e, s0 + 999) <= e
+test drawable_exact_cap_boundary() {
+  // requested == trần đúng → trả trần (biên ==, không kẹp oan).
+  drawable(e, 0, max_per_epoch(e)) == max_per_epoch(e)
 }
 
-// ── draw ─────────────────────────────────────────────────────
-
-test draw_fresh_mid() {
-  // chưa nhả gì (drawn 0), t giữa → draw == vested.
-  draw(s0, e, 0, s0 + 500) == vested(s0, e, s0 + 500)
-}
-
-test draw_incremental() {
-  // đã nhả tới epoch 500, nhả tiếp tới 600 → draw = vested(600) - vested(500).
-  let drawn = vested(s0, e, s0 + 500)
-  draw(s0, e, drawn, s0 + 600) == vested(s0, e, s0 + 600) - drawn
-}
-
-test draw_zero_when_caught_up() {
-  // drawn == vested(t) → draw == 0 (không còn gì tới hạn).
-  let v = vested(s0, e, s0 + 300)
-  draw(s0, e, v, s0 + 300) == 0
-}
-
-test draw_full_drain_at_end() {
-  // chưa nhả gì, t ≥ +1001 → draw == E (rút toàn bộ một lần).
-  draw(s0, e, 0, s0 + 1001) == e
-}
-
-test draw_before_start_zero() {
-  // t ≤ start, chưa nhả → draw 0.
-  draw(s0, e, 0, s0) == 0
+test drawable_pot_remaining_eq_cap() {
+  // pot còn lại == trần đúng → trả trần (biên kép).
+  let drawn = e - max_per_epoch(e)
+  drawable(e, drawn, e) == max_per_epoch(e)
 }

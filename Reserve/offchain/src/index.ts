@@ -1,4 +1,4 @@
-// LAMP Reserve offchain SDK — linear 1001-epoch release (entry point).
+// LAMP Reserve offchain SDK — demand-gated Treasury-pull release, trần CỨNG/epoch (entry point).
 
 export * from "./types.js";
 export * from "./constants.js";

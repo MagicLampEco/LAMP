@@ -14,13 +14,14 @@ const sample: ReserveState = {
   start_epoch: 100n,
   total_oil:   RESERVE_TOTAL_OIL,
   drawn_oil:   123_000_000n,
+  last_epoch:  142n,
 };
 
 describe("ReserveState codec", () => {
-  it("encode → Constr(0, [int×3])", () => {
+  it("encode → Constr(0, [int×4])", () => {
     const c = encodeReserveState(sample);
     expect(c.index).toBe(0);
-    expect(c.fields).toEqual([100n, RESERVE_TOTAL_OIL, 123_000_000n]);
+    expect(c.fields).toEqual([100n, RESERVE_TOTAL_OIL, 123_000_000n, 142n]);
   });
 
   it("round-trip object → cbor → object", () => {
@@ -29,15 +30,15 @@ describe("ReserveState codec", () => {
   });
 
   it("decode rejects wrong Constr index", () => {
-    expect(() => decodeReserveState(new Constr(1, [0n, 0n, 0n]))).toThrow(/Constr 0/);
+    expect(() => decodeReserveState(new Constr(1, [0n, 0n, 0n, 0n]))).toThrow(/Constr 0/);
   });
 
   it("decode rejects wrong field count", () => {
-    expect(() => decodeReserveState(new Constr(0, [0n, 0n]))).toThrow(/3 fields/);
+    expect(() => decodeReserveState(new Constr(0, [0n, 0n, 0n]))).toThrow(/4 fields/);
   });
 
   it("decode rejects non-int field", () => {
-    expect(() => decodeReserveState(new Constr(0, ["aa", 0n, 0n]))).toThrow(/int/);
+    expect(() => decodeReserveState(new Constr(0, ["aa", 0n, 0n, 0n]))).toThrow(/int/);
   });
 });
 

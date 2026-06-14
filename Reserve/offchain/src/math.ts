@@ -1,48 +1,56 @@
-// LAMP Reserve math — vested/draw thuần BigInt (mirror onchain math.ak).
-// Logic PHẢI khớp byte-perfect: floor division, min clamp, max(0, elapsed).
+// LAMP Reserve math — trần CỨNG mỗi epoch BigInt (mirror onchain math.ak).
+// Logic PHẢI khớp byte-perfect: floor division, min kẹp trần & pot.
 
-import { EPOCHS } from "./constants.js";
+import { RELEASE_EPOCHS } from "./constants.js";
 import type { ReserveState } from "./types.js";
 
-/**
- * vested(t) = phần đã tới hạn tại epoch t (oil).
- *   t ≤ start          → 0
- *   start < t < +1001  → total_oil * (t-start) / 1001  (floor)
- *   t ≥ start + 1001   → total_oil  (clamp bởi min)
- */
-export function vested(startEpoch: bigint, totalOil: bigint, t: bigint): bigint {
-  const elapsed = t > startEpoch ? t - startEpoch : 0n;
-  const raw = (totalOil * elapsed) / EPOCHS; // BigInt / = floor (elapsed ≥ 0)
-  return raw > totalOil ? totalOil : raw;
+/** max_per_epoch = total / 1000 — trần CỨNG nhả mỗi epoch (chia chẵn cho E hiện hành). */
+export function maxPerEpoch(totalOil: bigint): bigint {
+  return totalOil / RELEASE_EPOCHS; // BigInt / = floor; E ⋮ 1000 → dư 0
 }
 
-/** draw(t) = vested(t) − drawn_oil (≥ 0 vì vested đơn điệu theo t). */
-export function draw(
-  startEpoch: bigint,
-  totalOil: bigint,
-  drawnOil: bigint,
-  t: bigint,
-): bigint {
-  return vested(startEpoch, totalOil, t) - drawnOil;
+/**
+ * drawable = min(requested, min(max_per_epoch(total), total − drawn))
+ *   — KHÔNG vượt trần epoch, KHÔNG vượt pot còn lại, KHÔNG vượt cầu thực (requested).
+ */
+export function drawable(totalOil: bigint, drawnOil: bigint, requested: bigint): bigint {
+  const cap = maxPerEpoch(totalOil);
+  const remaining = totalOil - drawnOil;
+  const ceil = cap < remaining ? cap : remaining;
+  return requested < ceil ? requested : ceil;
 }
 
 export class ReserveDrawError extends Error {}
 
 /**
- * Tính ReserveState mới sau khi draw tại epoch t (fail-fast TRƯỚC khi tốn phí onchain).
- * Ép đúng luật validator: draw > 0; start_epoch + total_oil bất biến; drawn_oil đơn điệu.
- * Throw ReserveDrawError nếu không có gì để nhả (draw == 0) — tránh tx chắc chắn reject.
+ * Tính ReserveState mới sau khi Treasury kéo `requested` oil tại epoch t
+ * (fail-fast TRƯỚC khi tốn phí onchain). Ép đúng luật validator:
+ *   - t > last_epoch          (≤1 draw/epoch);
+ *   - delta = drawable(...) > 0 (có phần để nhả, ≤ trần & ≤ pot);
+ *   - start_epoch + total_oil bất biến; drawn_oil += delta; last_epoch := t.
+ * `requested` = lượng Treasury muốn kéo (mặc định = trần → kéo tối đa).
+ * Throw ReserveDrawError nếu t ≤ last_epoch hoặc delta == 0 (tx chắc reject).
  */
-export function applyDraw(s: ReserveState, t: bigint): { next: ReserveState; drawn: bigint } {
-  const d = draw(s.start_epoch, s.total_oil, s.drawn_oil, t);
+export function applyDraw(
+  s: ReserveState,
+  t: bigint,
+  requested: bigint = maxPerEpoch(s.total_oil),
+): { next: ReserveState; drawn: bigint } {
+  if (t <= s.last_epoch) {
+    throw new ReserveDrawError(
+      `RMATH-002: epoch ${t} ≤ last_epoch ${s.last_epoch} ` +
+        `(đã có draw trong/sau epoch này — tối đa 1 draw/epoch)`,
+    );
+  }
+  const d = drawable(s.total_oil, s.drawn_oil, requested);
   if (d <= 0n) {
     throw new ReserveDrawError(
-      `RMATH-001: không có phần tới hạn để nhả tại epoch ${t} ` +
-        `(vested ${vested(s.start_epoch, s.total_oil, t)} ≤ drawn ${s.drawn_oil})`,
+      `RMATH-001: không có phần để nhả tại epoch ${t} ` +
+        `(pot còn ${s.total_oil - s.drawn_oil}, requested ${requested})`,
     );
   }
   return {
-    next: { ...s, drawn_oil: s.drawn_oil + d },
+    next: { ...s, drawn_oil: s.drawn_oil + d, last_epoch: t },
     drawn: d,
   };
 }

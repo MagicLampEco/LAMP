@@ -1,100 +1,111 @@
-// Reserve math mirror — vested/draw BigInt khớp onchain math.ak (biên giống aiken tests).
+// Reserve math mirror — max_per_epoch/drawable BigInt khớp onchain math.ak (biên giống aiken).
 
 import { describe, it, expect } from "vitest";
-import { vested, draw, applyDraw, ReserveDrawError } from "../offchain/src/math.js";
-import { RESERVE_TOTAL_OIL, EPOCHS } from "../offchain/src/constants.js";
+import { maxPerEpoch, drawable, applyDraw, ReserveDrawError } from "../offchain/src/math.js";
+import { RESERVE_TOTAL_OIL, MAX_PER_EPOCH, RELEASE_EPOCHS } from "../offchain/src/constants.js";
 import type { ReserveState } from "../offchain/src/types.js";
 
 const E = RESERVE_TOTAL_OIL; // 7_899_000_000_000_000n
+const CAP = MAX_PER_EPOCH; // E / 1000 = 7_899_000_000_000n
 const S0 = 100n;
 
-describe("vested — biên (mirror math.ak)", () => {
-  it("t < start → 0 (chưa mở cửa)", () => {
-    expect(vested(S0, E, 50n)).toBe(0n);
+describe("maxPerEpoch — trần CỨNG (mirror math.ak)", () => {
+  it("E ⋮ 1000 → chia chẵn (dư 0)", () => {
+    expect(E % RELEASE_EPOCHS).toBe(0n);
+    expect(maxPerEpoch(E)).toBe(7_899_000_000_000n);
   });
 
-  it("t == start → 0 (KHÔNG cliff)", () => {
-    expect(vested(S0, E, S0)).toBe(0n);
+  it("trần × 1000 == total (cạn pot trong 1000 epoch)", () => {
+    expect(maxPerEpoch(E) * RELEASE_EPOCHS).toBe(E);
   });
 
-  it("t = start+1 → E/1001 (floor)", () => {
-    expect(vested(S0, E, S0 + 1n)).toBe(E / EPOCHS);
+  it("RELEASE_EPOCHS == 1000 (KHÔNG 1001)", () => {
+    expect(RELEASE_EPOCHS).toBe(1000n);
   });
 
-  it("t = start+500 → E*500/1001 (floor)", () => {
-    expect(vested(S0, E, S0 + 500n)).toBe((E * 500n) / EPOCHS);
-  });
-
-  it("t = start+1000 → chưa đầy (< E)", () => {
-    const v = vested(S0, E, S0 + 1000n);
-    expect(v).toBe((E * 1000n) / EPOCHS);
-    expect(v < E).toBe(true);
-  });
-
-  it("t = start+1001 → E (đầy chính xác)", () => {
-    expect(vested(S0, E, S0 + EPOCHS)).toBe(E);
-  });
-
-  it("t > start+1001 → clamp tại E (min ép)", () => {
-    expect(vested(S0, E, S0 + 5000n)).toBe(E);
-  });
-
-  it("floor: không vượt cap giữa chừng", () => {
-    expect(vested(S0, E, S0 + 999n) <= E).toBe(true);
+  it("MAX_PER_EPOCH hằng == maxPerEpoch(E)", () => {
+    expect(CAP).toBe(maxPerEpoch(E));
   });
 });
 
-describe("draw — vested(t) − drawn_oil", () => {
-  it("chưa nhả, t giữa → draw == vested", () => {
-    expect(draw(S0, E, 0n, S0 + 500n)).toBe(vested(S0, E, S0 + 500n));
+describe("drawable — min(requested, min(trần, pot))", () => {
+  it("requested > trần, pot dư → kẹp về trần", () => {
+    expect(drawable(E, 0n, E)).toBe(CAP);
   });
 
-  it("incremental: vested(600) − vested(500)", () => {
-    const drawn = vested(S0, E, S0 + 500n);
-    expect(draw(S0, E, drawn, S0 + 600n)).toBe(
-      vested(S0, E, S0 + 600n) - drawn,
-    );
+  it("requested < trần → trả đúng requested (partial)", () => {
+    const req = CAP - 1_000_000n;
+    expect(drawable(E, 0n, req)).toBe(req);
   });
 
-  it("đã caught up → draw 0", () => {
-    const v = vested(S0, E, S0 + 300n);
-    expect(draw(S0, E, v, S0 + 300n)).toBe(0n);
+  it("pot còn < trần → kẹp về pot còn lại", () => {
+    const drawn = E - 5_000_000n;
+    expect(drawable(E, drawn, E)).toBe(5_000_000n);
   });
 
-  it("full-drain tại t ≥ +1001 → E", () => {
-    expect(draw(S0, E, 0n, S0 + EPOCHS)).toBe(E);
+  it("pot cạn (drawn == total) → 0", () => {
+    expect(drawable(E, E, E)).toBe(0n);
   });
 
-  it("t ≤ start chưa nhả → draw 0", () => {
-    expect(draw(S0, E, 0n, S0)).toBe(0n);
+  it("requested == trần đúng → trả trần (biên ==)", () => {
+    expect(drawable(E, 0n, CAP)).toBe(CAP);
+  });
+
+  it("pot còn == trần đúng → trả trần (biên kép)", () => {
+    const drawn = E - CAP;
+    expect(drawable(E, drawn, E)).toBe(CAP);
   });
 });
 
 describe("applyDraw — transition fail-fast", () => {
-  const fresh: ReserveState = { start_epoch: S0, total_oil: E, drawn_oil: 0n };
+  const fresh: ReserveState = {
+    start_epoch: S0, total_oil: E, drawn_oil: 0n, last_epoch: S0,
+  };
 
-  it("happy: drawn_oil += draw; start/total bất biến", () => {
-    const { next, drawn } = applyDraw(fresh, S0 + 500n);
-    expect(drawn).toBe(vested(S0, E, S0 + 500n));
+  it("happy: kéo tối đa (mặc định = trần); drawn += trần; last_epoch := t", () => {
+    const { next, drawn } = applyDraw(fresh, S0 + 1n);
+    expect(drawn).toBe(CAP);
     expect(next.start_epoch).toBe(S0);
     expect(next.total_oil).toBe(E);
-    expect(next.drawn_oil).toBe(fresh.drawn_oil + drawn);
+    expect(next.drawn_oil).toBe(fresh.drawn_oil + CAP);
+    expect(next.last_epoch).toBe(S0 + 1n);
   });
 
-  it("full drain tại +1001 → drawn_oil == E", () => {
-    const { next, drawn } = applyDraw(fresh, S0 + EPOCHS);
-    expect(drawn).toBe(E);
-    expect(next.drawn_oil).toBe(E);
+  it("partial: requested < trần → kéo đúng requested", () => {
+    const req = CAP - 2_000_000n;
+    const { next, drawn } = applyDraw(fresh, S0 + 1n, req);
+    expect(drawn).toBe(req);
+    expect(next.drawn_oil).toBe(req);
   });
 
-  it("draw 0 (t == start) → throw (chống tx rỗng)", () => {
-    expect(() => applyDraw(fresh, S0)).toThrow(ReserveDrawError);
-  });
-
-  it("draw 0 (đã caught up) → throw", () => {
-    const caught: ReserveState = {
-      start_epoch: S0, total_oil: E, drawn_oil: vested(S0, E, S0 + 300n),
+  it("epoch cuối: pot còn < trần → kéo nốt remaining", () => {
+    const near: ReserveState = {
+      start_epoch: S0, total_oil: E, drawn_oil: E - 3_000_000n, last_epoch: S0 + 999n,
     };
-    expect(() => applyDraw(caught, S0 + 300n)).toThrow(/không có phần tới hạn/);
+    const { next, drawn } = applyDraw(near, S0 + 1000n, E);
+    expect(drawn).toBe(3_000_000n);
+    expect(next.drawn_oil).toBe(E);
+    expect(next.last_epoch).toBe(S0 + 1000n);
+  });
+
+  it("t == last_epoch (re-draw cùng epoch) → throw", () => {
+    const used: ReserveState = {
+      start_epoch: S0, total_oil: E, drawn_oil: CAP, last_epoch: S0 + 5n,
+    };
+    expect(() => applyDraw(used, S0 + 5n)).toThrow(ReserveDrawError);
+  });
+
+  it("t < last_epoch (tua lùi) → throw", () => {
+    const used: ReserveState = {
+      start_epoch: S0, total_oil: E, drawn_oil: CAP, last_epoch: S0 + 5n,
+    };
+    expect(() => applyDraw(used, S0 + 3n)).toThrow(/last_epoch/);
+  });
+
+  it("pot cạn → throw (không tx rỗng)", () => {
+    const empty: ReserveState = {
+      start_epoch: S0, total_oil: E, drawn_oil: E, last_epoch: S0 + 999n,
+    };
+    expect(() => applyDraw(empty, S0 + 1000n)).toThrow(/không có phần để nhả/);
   });
 });

@@ -1,24 +1,30 @@
-// reserve_draw — spend validator giữ ReserveState UTxO; nhả LINEAR 1001 epoch.
+// reserve_draw — spend validator giữ ReserveState UTxO; nhả DEMAND-GATED qua Treasury-pull.
 //
-// FIRST-PRINCIPLES — nhả tất định, permissionless, không ai tác động:
-//   Reserve = nhả đều tuyệt đối trong 1001 epoch THUẦN THUẬT TOÁN. Không committee,
-//   không demand_gate, không chữ ký. Bất kỳ ai dựng tx đúng lịch đều trigger được;
-//   con số nhả do HÀM vested(t) quyết, không người nào sửa.
+// FIRST-PRINCIPLES — Reserve = lớp đệm sau cùng, trần CỨNG mỗi epoch:
+//   Reserve KHÔNG nhả theo lịch thời gian. Mỗi epoch Treasury "kéo" (pull) tối đa
+//   max_per_epoch = total_oil / 1000 oil. Treasury co-spend authority NFT của nó để
+//   chứng "kéo"; logic sàn (parked < floor) nằm Ở TREASURY (ngoài phạm vi Reserve).
+//   Reserve chỉ đòi: (a) sự hiện diện auth NFT, (b) ≤1 draw/epoch (t > last_epoch),
+//   (c) delta ≤ trần epoch, (d) delta ≤ pot còn lại. KHÔNG cộng dồn catch-up: dư ở
+//   lại pot, nhả epoch sau → tổng kéo dài tối thiểu ~1000 epoch.
 //
-//   Mỗi "draw" = spend ReserveState (mang reserve thread NFT) + mint đúng `draw` tLAMP
-//   qua Genesis route ReserveDraw, gửi TOÀN BỘ tới reserve_dest. drawn_oil += draw.
-//   start_epoch + total_oil GIỮ NGUYÊN (bất biến). drawn_oil chỉ TĂNG (đơn điệu).
+//   Mỗi "draw" = spend ReserveState (mang reserve thread NFT) + mint delta tLAMP qua
+//   Genesis route ReserveDraw, gửi TOÀN BỘ tới reserve_dest. drawn_oil += delta;
+//   last_epoch := t. start_epoch + total_oil GIỮ NGUYÊN (bất biến).
 //
 // Quan hệ với Genesis (tlamp_mint): Genesis route ReserveDraw đòi tx spend đúng 1 UTxO
 // mang "meter" NFT (gate nhịp). reserve thread NFT của ReserveState ĐÓNG vai meter đó —
-// reserve_draw CHÍNH là gate nhịp tất định. (Orchestrator chốt: meter_nft = reserve_thread.)
+// reserve_draw CHÍNH là gate nhịp. (Orchestrator chốt: meter_nft = reserve_thread.)
 //
 // Param:
-//   tlamp_policy          — minting policy tLAMP (Genesis tlamp_mint), đo Δ mint.
+//   lamp_policy           — minting policy LAMP/tLAMP (Genesis tlamp_mint), đo Δ mint.
+//   lamp_name             — asset name LAMP/tLAMP (param: testnet "tLAMP" / mainnet "LAMP").
 //   reserve_thread_policy — policy reserve thread NFT one-shot (authenticity ReserveState).
 //   reserve_thread_name   — asset name reserve thread NFT.
 //   ms_per_epoch          — độ dài epoch (POSIX ms) theo network.
-//   reserve_dest          — địa chỉ ĐÍCH nhận tLAMP nhả (Treasury hoặc thị trường — param).
+//   reserve_dest          — địa chỉ ĐÍCH nhận LAMP nhả (Treasury — param).
+//   treasury_auth_policy  — policy NFT co-spend authority của Treasury (Treasury-pull gate).
+//   treasury_auth_name    — asset name Treasury auth NFT.
 
 use aiken/collection/list
 use aiken/interval.{Finite, Interval, IntervalBound, PositiveInfinity}
@@ -30,15 +36,15 @@ use magiclamp/reserve/math
 use magiclamp/reserve/types.{Draw, ReserveRedeemer, ReserveState}
 use magiclamp/reserve/util
 
-// tLAMP asset name — "tLAMP" (khớp Genesis constants.tlamp_name).
-const tlamp_name: ByteArray = #"744c414d50"
-
 validator reserve_draw(
-  tlamp_policy          : PolicyId,
+  lamp_policy           : PolicyId,
+  lamp_name             : ByteArray,
   reserve_thread_policy : PolicyId,
   reserve_thread_name   : ByteArray,
   ms_per_epoch          : Int,
   reserve_dest          : Address,
+  treasury_auth_policy  : PolicyId,
+  treasury_auth_name    : ByteArray,
 ) {
   spend(
     _datum: Option<ReserveState>,
@@ -68,16 +74,33 @@ validator reserve_draw(
     expect Some(hi) = util.get_finite(tx.validity_range.upper_bound.bound_type)
     expect hi / ms_per_epoch == t
 
-    // ── Luật 3: tính draw tất định = vested(t) − drawn_oil ────────────────
-    let d = math.draw(s.start_epoch, s.total_oil, s.drawn_oil, t)
+    // ── Luật 3: ≤1 draw/epoch — t > last_epoch ────────────────────────────
+    // Chống rút nhiều lần trong CÙNG epoch để vượt trần (mỗi epoch tối đa 1 draw
+    // ≤ max_per_epoch). last_epoch ghi epoch của draw trước; ép tiến nghiêm ngặt.
+    expect t > s.last_epoch
 
-    // ── Luật 4: draw > 0 (chống spam draw rỗng tiêu min-ADA) ──────────────
-    expect d > 0
+    // ── Luật 4: delta mint LAMP — > 0, ≤ trần epoch, ≤ pot còn lại ─────────
+    // delta = Δ mint LAMP (lamp_policy, lamp_name). 3 vế độc lập:
+    //   delta > 0                     — chống draw rỗng (spam min-ADA / no-burn).
+    //   delta ≤ max_per_epoch(total)  — TRẦN CỨNG mỗi epoch (= total/1000).
+    //   delta ≤ total − drawn         — KHÔNG vượt pot còn lại.
+    let delta = util.minted_qty(tx.mint, lamp_policy, lamp_name)
+    expect delta > 0
+    expect delta <= math.max_per_epoch(s.total_oil)
+    expect delta <= s.total_oil - s.drawn_oil
 
-    // ── Luật 5: tx mint ĐÚNG `draw` tLAMP (không hơn, không kém; no-burn) ──
-    // Δ == d ép: nhả đúng phần vesting tới hạn. Δ>0 ⟹ không burn (d>0 đã ép).
-    let delta = util.minted_qty(tx.mint, tlamp_policy, tlamp_name)
-    expect delta == d
+    // ── Luật 5: Treasury-pull gate — ∃ input mang treasury_auth NFT qty ≥ 1 ──
+    // Treasury co-spend authority NFT của nó để "kéo" Reserve. Reserve KHÔNG biết
+    // logic sàn (parked < floor) — đó là việc của Treasury validator (ngoài phạm vi);
+    // Reserve chỉ đòi sự HIỆN DIỆN auth NFT làm bằng chứng "Treasury chủ động kéo".
+    // qty ≥ 1 (không ép == 1 vì Treasury tự quản UTxO auth của nó).
+    expect
+      list.any(
+        tx.inputs,
+        fn(i) {
+          assets.quantity_of(i.output.value, treasury_auth_policy, treasury_auth_name) >= 1
+        },
+      )
 
     // ── Luật 6: chống double-satisfaction — đúng 1 ReserveState input/tx ───
     // Theo script-hash (bắt cả biến thể stake credential). 2 ReserveState input có
@@ -87,7 +110,8 @@ validator reserve_draw(
 
     // ── Luật 7: ReserveState' tái tạo đúng (cùng script, NFT trả lại, datum tiến) ──
     // Đúng 1 output mang reserve thread NFT; ở lại CÙNG script address; datum:
-    // start_epoch + total_oil BẤT BIẾN; drawn_oil' == drawn_oil + draw (đơn điệu tăng).
+    // start_epoch + total_oil BẤT BIẾN; drawn_oil' == drawn_oil + delta (đơn điệu);
+    // last_epoch' == t (ghi epoch draw này → chống re-draw cùng epoch ở luật 3).
     expect
       util.count_outputs_with_nft(tx.outputs, reserve_thread_policy, reserve_thread_name) == 1
     let s_out: Output =
@@ -96,24 +120,23 @@ validator reserve_draw(
     expect s2: ReserveState = util.inline_datum(s_out)
     expect s2.start_epoch == s.start_epoch
     expect s2.total_oil == s.total_oil
-    expect s2.drawn_oil == s.drawn_oil + d
-    // ReserveState' KHÔNG ôm tLAMP (chống nhồi tLAMP vào state né dest).
-    expect assets.quantity_of(s_out.value, tlamp_policy, tlamp_name) == 0
+    expect s2.drawn_oil == s.drawn_oil + delta
+    expect s2.last_epoch == t
+    // ReserveState' KHÔNG ôm LAMP (chống nhồi LAMP vào state né dest).
+    expect assets.quantity_of(s_out.value, lamp_policy, lamp_name) == 0
     // KHÔNG đính reference_script (chống biến state thành script-carrier rác).
     expect s_out.reference_script == None
 
-    // ── Luật 7b (CX-1): reserve thread NFT KHÔNG bị mint/burn trong tx này ──
+    // ── Luật 8 (CX-1): reserve thread NFT KHÔNG bị mint/burn trong tx này ──
     // Chống đúc THÊM reserve thread NFT giả cùng tx rồi giữ ở ví thường để né
-    // validator (Vector F). Nếu policy one-shot đã đúc đủ thì qty mint == 0;
-    // ép == 0 đóng kẽ "tx vừa draw vừa mint NFT thứ 2". (Test draw chỉ mint
-    // tLAMP ⟹ qty thread mint == 0 ⟹ vẫn pass.)
+    // validator (Vector F). Nếu policy one-shot đã đúc đủ thì qty mint == 0.
     expect assets.quantity_of(tx.mint, reserve_thread_policy, reserve_thread_name) == 0
 
-    // ── Luật 8: TOÀN BỘ `draw` tLAMP đi tới reserve_dest (không rò rỉ) ─────
-    // Đếm tLAMP tới credential dest ≥ draw. (== draw ngầm vì Δ mint == draw và state
-    // output không ôm tLAMP → không nguồn tLAMP nào khác để vượt.)
-    let to_dest = util.qty_to_credential(tx.outputs, reserve_dest, tlamp_policy, tlamp_name)
-    expect to_dest >= d
+    // ── Luật 9: TOÀN BỘ delta LAMP đi tới reserve_dest (không rò rỉ) ───────
+    // Đếm LAMP tới credential dest ≥ delta. (== delta ngầm vì Δ mint == delta và state
+    // output không ôm LAMP → không nguồn LAMP nào khác để vượt.)
+    let to_dest = util.qty_to_credential(tx.outputs, reserve_dest, lamp_policy, lamp_name)
+    expect to_dest >= delta
 
     True
   }
@@ -124,14 +147,22 @@ validator reserve_draw(
 }
 
 // ══════════════════════════════════════════════════════════════
-// Tests — happy + NEGATIVE (≥12)
+// Tests — happy + NEGATIVE (≥14)
 // ══════════════════════════════════════════════════════════════
 
-const tl_pol: PolicyId = #"7717"
+const lamp_pol: PolicyId = #"7717"
+
+// LAMP asset name testnet "tLAMP" (param hóa; mainnet "LAMP").
+const lamp_nm: ByteArray = #"744c414d50"
 
 const thr_pol: PolicyId = #"5544"
 
 const thr_nm: ByteArray = #"524553"
+
+// Treasury co-spend authority NFT (Treasury-pull gate).
+const tre_pol: PolicyId = #"6655"
+
+const tre_nm: ByteArray = #"545245"
 
 const rscript: ByteArray = #"5151"
 
@@ -139,8 +170,11 @@ const dest_pkh: ByteArray = #"deadbeef"
 
 const ms_epoch: Int = 432_000_000
 
-// E = 7.899 tỷ LAMP (cap reserve allocation v3).
+// E = 7.899 tỷ LAMP (cap reserve allocation v3). E ⋮ 1000 → trần chia chẵn.
 const e: Int = 7_899_000_000_000_000
+
+// Trần CỨNG mỗi epoch = E / 1000.
+const cap: Int = 7_899_000_000_000
 
 const start: Int = 100
 
@@ -167,6 +201,12 @@ fn rs_input_no_nft(s: ReserveState) -> Input {
   )
 }
 
+/// Input mang Treasury auth NFT (bằng chứng Treasury-pull).
+fn treasury_auth_input() -> Input {
+  let v = assets.from_lovelace(2_000_000) |> assets.add(tre_pol, tre_nm, 1)
+  util.mk_input(util.mk_ref(7), util.mk_output(util.script_address(#"7474"), v, 0))
+}
+
 /// ReserveState' output mang lại NFT, datum = s2 (cùng script address).
 fn rs_output(s2: ReserveState) -> Output {
   let v =
@@ -174,13 +214,13 @@ fn rs_output(s2: ReserveState) -> Output {
   util.mk_output(util.script_address(rscript), v, s2)
 }
 
-/// Output trả `qty` tLAMP tới dest.
+/// Output trả `qty` LAMP tới dest.
 fn dest_output(qty: Int) -> Output {
-  util.mk_output_no_datum(dest_addr(), assets.from_lovelace(2_000_000) |> assets.add(tl_pol, tlamp_name, qty))
+  util.mk_output_no_datum(dest_addr(), assets.from_lovelace(2_000_000) |> assets.add(lamp_pol, lamp_nm, qty))
 }
 
-fn mint_tlamp(qty: Int) {
-  assets.zero |> assets.add(tl_pol, tlamp_name, qty)
+fn mint_lamp(qty: Int) {
+  assets.zero |> assets.add(lamp_pol, lamp_nm, qty)
 }
 
 /// validity_range với lower_bound finite tại epoch `ep` (ms = ep*ms_epoch) và
@@ -198,216 +238,251 @@ fn vrange(ep: Int) -> Interval {
 
 fn run(s_in: ReserveState, tx: Transaction) -> Bool {
   reserve_draw.spend(
-    tl_pol, thr_pol, thr_nm, ms_epoch, dest_addr(),
+    lamp_pol, lamp_nm, thr_pol, thr_nm, ms_epoch, dest_addr(), tre_pol, tre_nm,
     Some(s_in), Draw, own_ref(), tx,
   )
 }
 
-/// Dựng tx draw chuẩn (happy): input s, mint=draw, dest=draw, output s2.
+/// Dựng tx draw chuẩn (happy): input s + Treasury auth, mint=delta, dest=delta, output s2.
 fn build_tx(s: ReserveState, s2: ReserveState, mint_qty: Int, dest_qty: Int, ep: Int) -> Transaction {
   Transaction {
     ..placeholder,
-    inputs: [rs_input(s)],
+    inputs: [rs_input(s), treasury_auth_input()],
     outputs: [rs_output(s2), dest_output(dest_qty)],
-    mint: mint_tlamp(mint_qty),
+    mint: mint_lamp(mint_qty),
     validity_range: vrange(ep),
   }
 }
 
+/// State khởi đầu: chưa nhả, last_epoch = start (chưa có draw nào).
 fn fresh() -> ReserveState {
-  ReserveState { start_epoch: start, total_oil: e, drawn_oil: 0 }
+  ReserveState { start_epoch: start, total_oil: e, drawn_oil: 0, last_epoch: start }
 }
 
 // ── HAPPY ────────────────────────────────────────────────────
 
-test draw_happy_mid() {
-  // t = start+500, chưa nhả → draw == vested(500).
+test draw_happy_full_cap() {
+  // nhả đúng TRẦN epoch (delta == max_per_epoch). t = start+1 > last_epoch.
   let s = fresh()
-  let d = math.vested(start, e, start + 500)
-  let s2 = ReserveState { ..s, drawn_oil: d }
-  run(s, build_tx(s, s2, d, d, start + 500))
-}
-
-test draw_correct_vesting_incremental() {
-  // đã nhả tới epoch 500, nhả tiếp tới 600 → draw = vested(600) - vested(500).
-  let drawn0 = math.vested(start, e, start + 500)
-  let s = ReserveState { ..fresh(), drawn_oil: drawn0 }
-  let d = math.vested(start, e, start + 600) - drawn0
-  let s2 = ReserveState { ..s, drawn_oil: drawn0 + d }
-  run(s, build_tx(s, s2, d, d, start + 600))
-}
-
-test draw_full_drain_at_end() {
-  // t ≥ start+1001 → draw == E toàn bộ một lần.
-  let s = fresh()
-  let s2 = ReserveState { ..s, drawn_oil: e }
-  run(s, build_tx(s, s2, e, e, start + 1001))
-}
-
-test draw_boundary_epoch_first() {
-  // biên: t = start+1 → draw == E/1001 (epoch đầu, nhả nhỏ nhất > 0).
-  let s = fresh()
-  let d = math.vested(start, e, start + 1)
-  let s2 = ReserveState { ..s, drawn_oil: d }
+  let d = cap
+  let s2 = ReserveState { ..s, drawn_oil: d, last_epoch: start + 1 }
   run(s, build_tx(s, s2, d, d, start + 1))
+}
+
+test draw_happy_partial_below_cap() {
+  // nhả PARTIAL (delta < trần) — Treasury chỉ cần kéo một phần.
+  let s = fresh()
+  let d = cap - 1_000_000
+  let s2 = ReserveState { ..s, drawn_oil: d, last_epoch: start + 5 }
+  run(s, build_tx(s, s2, d, d, start + 5))
+}
+
+test draw_happy_incremental_next_epoch() {
+  // đã nhả 1 epoch (last_epoch = start+10, drawn = cap), nhả tiếp epoch sau (start+11).
+  let drawn0 = cap
+  let s = ReserveState { ..fresh(), drawn_oil: drawn0, last_epoch: start + 10 }
+  let d = cap
+  let s2 = ReserveState { ..s, drawn_oil: drawn0 + d, last_epoch: start + 11 }
+  run(s, build_tx(s, s2, d, d, start + 11))
+}
+
+test draw_happy_last_epoch_drains_remaining() {
+  // epoch cuối: pot còn < trần → kéo nốt phần còn lại (delta = remaining < cap).
+  let drawn0 = e - 3_000_000
+  let s = ReserveState { ..fresh(), drawn_oil: drawn0, last_epoch: start + 999 }
+  let d = 3_000_000
+  let s2 = ReserveState { ..s, drawn_oil: e, last_epoch: start + 1000 }
+  run(s, build_tx(s, s2, d, d, start + 1000))
 }
 
 // ── NEGATIVE ─────────────────────────────────────────────────
 
-test reject_draw_exceeds_vesting() fail {
-  // mint nhiều hơn vesting tới hạn (draw+1) → delta ≠ d → reject.
+test reject_delta_exceeds_max_per_epoch() fail {
+  // delta = cap+1 > trần epoch → Luật 4 reject (chống vượt trần cứng).
   let s = fresh()
-  let d = math.vested(start, e, start + 500)
-  let s2 = ReserveState { ..s, drawn_oil: d + 1 }
-  run(s, build_tx(s, s2, d + 1, d + 1, start + 500))
+  let d = cap + 1
+  let s2 = ReserveState { ..s, drawn_oil: d, last_epoch: start + 1 }
+  run(s, build_tx(s, s2, d, d, start + 1))
 }
 
-test reject_missing_nft() fail {
-  // ReserveState input KHÔNG mang reserve thread NFT → reject (luật 1).
+test reject_two_draws_same_epoch() fail {
+  // draw lần 2 trong CÙNG epoch: t == last_epoch (start+5) → Luật 3 (t > last_epoch) reject.
+  let drawn0 = cap
+  let s = ReserveState { ..fresh(), drawn_oil: drawn0, last_epoch: start + 5 }
+  let d = cap
+  let s2 = ReserveState { ..s, drawn_oil: drawn0 + d, last_epoch: start + 5 }
+  run(s, build_tx(s, s2, d, d, start + 5))
+}
+
+test reject_draw_epoch_before_last() fail {
+  // t < last_epoch (tua lùi: t = start+3 nhưng last = start+5) → Luật 3 reject.
+  let s = ReserveState { ..fresh(), drawn_oil: cap, last_epoch: start + 5 }
+  let d = cap
+  let s2 = ReserveState { ..s, drawn_oil: cap + d, last_epoch: start + 3 }
+  run(s, build_tx(s, s2, d, d, start + 3))
+}
+
+test reject_missing_treasury_auth() fail {
+  // KHÔNG có input mang Treasury auth NFT → Luật 5 reject (không Treasury-pull).
   let s = fresh()
-  let d = math.vested(start, e, start + 500)
-  let s2 = ReserveState { ..s, drawn_oil: d }
+  let d = cap
+  let s2 = ReserveState { ..s, drawn_oil: d, last_epoch: start + 1 }
   let tx =
     Transaction {
       ..placeholder,
-      inputs: [rs_input_no_nft(s)],
+      inputs: [rs_input(s)],
       outputs: [rs_output(s2), dest_output(d)],
-      mint: mint_tlamp(d),
-      validity_range: vrange(start + 500),
+      mint: mint_lamp(d),
+      validity_range: vrange(start + 1),
+    }
+  run(s, tx)
+}
+
+test reject_delta_exceeds_pot_remaining() fail {
+  // pot còn 2_000_000 nhưng delta = trần (cap) > remaining → Luật 4 reject.
+  let drawn0 = e - 2_000_000
+  let s = ReserveState { ..fresh(), drawn_oil: drawn0, last_epoch: start + 998 }
+  let d = cap
+  let s2 = ReserveState { ..s, drawn_oil: drawn0 + d, last_epoch: start + 999 }
+  run(s, build_tx(s, s2, d, d, start + 999))
+}
+
+test reject_missing_nft() fail {
+  // ReserveState input KHÔNG mang reserve thread NFT → reject (Luật 1).
+  let s = fresh()
+  let d = cap
+  let s2 = ReserveState { ..s, drawn_oil: d, last_epoch: start + 1 }
+  let tx =
+    Transaction {
+      ..placeholder,
+      inputs: [rs_input_no_nft(s), treasury_auth_input()],
+      outputs: [rs_output(s2), dest_output(d)],
+      mint: mint_lamp(d),
+      validity_range: vrange(start + 1),
     }
   run(s, tx)
 }
 
 test reject_no_mint() fail {
-  // tx KHÔNG mint tLAMP (delta 0) nhưng draw>0 → delta ≠ d → reject (luật 5).
+  // tx KHÔNG mint LAMP (delta 0) → Luật 4 (delta > 0) reject.
   let s = fresh()
-  let d = math.vested(start, e, start + 500)
-  let s2 = ReserveState { ..s, drawn_oil: d }
+  let s2 = ReserveState { ..s, drawn_oil: 0, last_epoch: start + 1 }
   let tx =
     Transaction {
       ..placeholder,
-      inputs: [rs_input(s)],
-      outputs: [rs_output(s2), dest_output(d)],
+      inputs: [rs_input(s), treasury_auth_input()],
+      outputs: [rs_output(s2), dest_output(0)],
       mint: assets.zero,
-      validity_range: vrange(start + 500),
+      validity_range: vrange(start + 1),
     }
   run(s, tx)
 }
 
 test reject_burn() fail {
-  // mint âm (burn) → delta < 0 ≠ d>0 → reject (no-burn).
+  // mint âm (burn) → delta < 0 → Luật 4 (delta > 0) reject.
   let s = fresh()
-  let s2 = ReserveState { ..s, drawn_oil: 0 }
-  run(s, build_tx(s, s2, -1, 0, start + 500))
+  let s2 = ReserveState { ..s, drawn_oil: 0, last_epoch: start + 1 }
+  run(s, build_tx(s, s2, -1, 0, start + 1))
 }
 
-test reject_drawn_decrease() fail {
-  // s2.drawn_oil < s.drawn_oil + draw (đi lùi) → reject (luật 7 đơn điệu).
-  let drawn0 = math.vested(start, e, start + 500)
-  let s = ReserveState { ..fresh(), drawn_oil: drawn0 }
-  let d = math.vested(start, e, start + 600) - drawn0
-  // s2 ghi drawn giảm về 0 thay vì drawn0+d.
-  let s2 = ReserveState { ..s, drawn_oil: 0 }
-  run(s, build_tx(s, s2, d, d, start + 600))
+test reject_drawn_wrong_sum() fail {
+  // s2.drawn_oil ≠ s.drawn_oil + delta → Luật 7 reject (kế toán sai).
+  let s = fresh()
+  let d = cap
+  let s2 = ReserveState { ..s, drawn_oil: d + 1, last_epoch: start + 1 }
+  run(s, build_tx(s, s2, d, d, start + 1))
 }
 
-test reject_tlamp_leak_not_to_dest() fail {
-  // tLAMP nhả KHÔNG tới dest (tới ví lạ) → to_dest < draw → reject (luật 8).
+test reject_last_epoch_not_updated() fail {
+  // s2.last_epoch ≠ t (ghi sai, vẫn = start) → Luật 7 reject (mở re-draw cùng epoch).
   let s = fresh()
-  let d = math.vested(start, e, start + 500)
-  let s2 = ReserveState { ..s, drawn_oil: d }
+  let d = cap
+  let s2 = ReserveState { ..s, drawn_oil: d, last_epoch: start }
+  run(s, build_tx(s, s2, d, d, start + 1))
+}
+
+test reject_lamp_leak_not_to_dest() fail {
+  // LAMP nhả KHÔNG tới dest (tới ví lạ) → to_dest < delta → Luật 9 reject.
+  let s = fresh()
+  let d = cap
+  let s2 = ReserveState { ..s, drawn_oil: d, last_epoch: start + 1 }
   let leak =
     util.mk_output_no_datum(
       util.vk_address(#"baad"),
-      assets.from_lovelace(2_000_000) |> assets.add(tl_pol, tlamp_name, d),
+      assets.from_lovelace(2_000_000) |> assets.add(lamp_pol, lamp_nm, d),
     )
   let tx =
     Transaction {
       ..placeholder,
-      inputs: [rs_input(s)],
+      inputs: [rs_input(s), treasury_auth_input()],
       outputs: [rs_output(s2), leak],
-      mint: mint_tlamp(d),
-      validity_range: vrange(start + 500),
+      mint: mint_lamp(d),
+      validity_range: vrange(start + 1),
     }
   run(s, tx)
 }
 
 test reject_double_satisfaction() fail {
-  // 2 ReserveState input cùng script → count_inputs_at_script == 2 ≠ 1 → reject.
+  // 2 ReserveState input cùng script → count_inputs_at_script == 2 ≠ 1 → Luật 6 reject.
   let s = fresh()
-  let d = math.vested(start, e, start + 500)
-  let s2 = ReserveState { ..s, drawn_oil: d }
+  let d = cap
+  let s2 = ReserveState { ..s, drawn_oil: d, last_epoch: start + 1 }
   let tx =
     Transaction {
       ..placeholder,
-      inputs: [rs_input(s), rs_input(s)],
+      inputs: [rs_input(s), rs_input(s), treasury_auth_input()],
       outputs: [rs_output(s2), dest_output(d)],
-      mint: mint_tlamp(d),
-      validity_range: vrange(start + 500),
+      mint: mint_lamp(d),
+      validity_range: vrange(start + 1),
     }
   run(s, tx)
 }
 
-test reject_draw_zero_before_start() fail {
-  // t == start → vested 0 → draw 0 → reject (luật 4 ép draw>0, chống spam rỗng).
-  let s = fresh()
-  let s2 = ReserveState { ..s, drawn_oil: 0 }
-  run(s, build_tx(s, s2, 0, 0, start))
-}
-
-test reject_draw_zero_caught_up() fail {
-  // drawn == vested(t) → draw 0 → reject (đã nhả hết phần tới hạn, không spam).
-  let v = math.vested(start, e, start + 300)
-  let s = ReserveState { ..fresh(), drawn_oil: v }
-  let s2 = ReserveState { ..s, drawn_oil: v }
-  run(s, build_tx(s, s2, 0, 0, start + 300))
-}
-
 test reject_total_oil_mutated() fail {
-  // s2.total_oil ≠ s.total_oil (nới cap) → reject (luật 7 bất biến).
+  // s2.total_oil ≠ s.total_oil (nới cap) → Luật 7 bất biến reject.
   let s = fresh()
-  let d = math.vested(start, e, start + 500)
-  let s2 = ReserveState { start_epoch: start, total_oil: e * 2, drawn_oil: d }
-  run(s, build_tx(s, s2, d, d, start + 500))
+  let d = cap
+  let s2 = ReserveState { start_epoch: start, total_oil: e * 2, drawn_oil: d, last_epoch: start + 1 }
+  run(s, build_tx(s, s2, d, d, start + 1))
 }
 
 test reject_start_epoch_mutated() fail {
-  // s2.start_epoch ≠ s.start_epoch (dời mốc nhả) → reject (luật 7 bất biến).
+  // s2.start_epoch ≠ s.start_epoch (dời mốc) → Luật 7 bất biến reject.
   let s = fresh()
-  let d = math.vested(start, e, start + 500)
-  let s2 = ReserveState { start_epoch: start - 50, total_oil: e, drawn_oil: d }
-  run(s, build_tx(s, s2, d, d, start + 500))
+  let d = cap
+  let s2 = ReserveState { start_epoch: start - 50, total_oil: e, drawn_oil: d, last_epoch: start + 1 }
+  run(s, build_tx(s, s2, d, d, start + 1))
 }
 
-test reject_state_output_holds_tlamp() fail {
-  // ReserveState' ôm tLAMP (né dest) → reject (luật 7).
+test reject_state_output_holds_lamp() fail {
+  // ReserveState' ôm LAMP (né dest) → Luật 7 reject.
   let s = fresh()
-  let d = math.vested(start, e, start + 500)
-  let s2 = ReserveState { ..s, drawn_oil: d }
+  let d = cap
+  let s2 = ReserveState { ..s, drawn_oil: d, last_epoch: start + 1 }
   let dirty =
     util.mk_output(
       util.script_address(rscript),
       assets.from_lovelace(2_000_000)
         |> assets.add(thr_pol, thr_nm, 1)
-        |> assets.add(tl_pol, tlamp_name, d),
+        |> assets.add(lamp_pol, lamp_nm, d),
       s2,
     )
   let tx =
     Transaction {
       ..placeholder,
-      inputs: [rs_input(s)],
+      inputs: [rs_input(s), treasury_auth_input()],
       outputs: [dirty],
-      mint: mint_tlamp(d),
-      validity_range: vrange(start + 500),
+      mint: mint_lamp(d),
+      validity_range: vrange(start + 1),
     }
   run(s, tx)
 }
 
 test reject_state_moved_address() fail {
-  // ReserveState' rời script address (mang NFT đi nơi khác) → reject (luật 7).
+  // ReserveState' rời script address (mang NFT đi nơi khác) → Luật 7 reject.
   let s = fresh()
-  let d = math.vested(start, e, start + 500)
-  let s2 = ReserveState { ..s, drawn_oil: d }
+  let d = cap
+  let s2 = ReserveState { ..s, drawn_oil: d, last_epoch: start + 1 }
   let moved =
     util.mk_output(
       util.vk_address(#"f00d"),
@@ -417,35 +492,31 @@ test reject_state_moved_address() fail {
   let tx =
     Transaction {
       ..placeholder,
-      inputs: [rs_input(s)],
+      inputs: [rs_input(s), treasury_auth_input()],
       outputs: [moved, dest_output(d)],
-      mint: mint_tlamp(d),
-      validity_range: vrange(start + 500),
+      mint: mint_lamp(d),
+      validity_range: vrange(start + 1),
     }
   run(s, tx)
 }
 
-// ── NEGATIVE: Việc 1 (CX-1) — chống đúc reserve thread NFT giả cùng tx ─────
-
 test reject_mint_extra_reserve_thread() fail {
-  // tx draw đồng thời mint THÊM 1 reserve thread NFT (Vector F: giữ NFT ở ví
-  // thường né validator) → Luật 7b ép qty mint thread == 0 → reject.
+  // tx draw đồng thời mint THÊM 1 reserve thread NFT (Vector F) → Luật 8 reject.
   let s = fresh()
-  let d = math.vested(start, e, start + 500)
-  let s2 = ReserveState { ..s, drawn_oil: d }
+  let d = cap
+  let s2 = ReserveState { ..s, drawn_oil: d, last_epoch: start + 1 }
   let tx =
     Transaction {
       ..placeholder,
-      inputs: [rs_input(s)],
+      inputs: [rs_input(s), treasury_auth_input()],
       outputs: [rs_output(s2), dest_output(d)],
-      // mint tLAMP đúng draw, NHƯNG kèm đúc thêm 1 reserve thread NFT giả.
-      mint: mint_tlamp(d) |> assets.add(thr_pol, thr_nm, 1),
-      validity_range: vrange(start + 500),
+      mint: mint_lamp(d) |> assets.add(thr_pol, thr_nm, 1),
+      validity_range: vrange(start + 1),
     }
   run(s, tx)
 }
 
-// ── NEGATIVE: Việc 2 — ép upper_bound Finite + cùng epoch ──────────────────
+// ── NEGATIVE: ép upper_bound Finite + cùng epoch (Vector 2) ────────────────
 
 /// validity_range với upper_bound = PositiveInfinity (lower_bound finite tại ep).
 fn vrange_open_upper(ep: Int) -> Interval {
@@ -465,34 +536,49 @@ fn vrange_cross(lo_ep: Int, hi_ep: Int) -> Interval {
 
 test reject_upper_bound_infinite() fail {
   // upper_bound = PositiveInfinity → get_finite None → Luật 2b reject.
-  // Chống lệ thuộc ngầm vào ttl node (tx không ghim biên trên epoch).
   let s = fresh()
-  let d = math.vested(start, e, start + 500)
-  let s2 = ReserveState { ..s, drawn_oil: d }
+  let d = cap
+  let s2 = ReserveState { ..s, drawn_oil: d, last_epoch: start + 500 }
   let tx =
     Transaction {
       ..placeholder,
-      inputs: [rs_input(s)],
+      inputs: [rs_input(s), treasury_auth_input()],
       outputs: [rs_output(s2), dest_output(d)],
-      mint: mint_tlamp(d),
+      mint: mint_lamp(d),
       validity_range: vrange_open_upper(start + 500),
     }
   run(s, tx)
 }
 
 test reject_upper_bound_other_epoch() fail {
-  // upper_bound ở epoch KHÁC lower_bound (start+501 vs start+500) → t không ghim
-  // → Luật 2b (hi/ms_epoch == t) reject. Chống tx phủ nhiều epoch chọn nhịp nhả.
+  // upper_bound ở epoch KHÁC lower_bound → t không ghim → Luật 2b reject.
   let s = fresh()
-  let d = math.vested(start, e, start + 500)
-  let s2 = ReserveState { ..s, drawn_oil: d }
+  let d = cap
+  let s2 = ReserveState { ..s, drawn_oil: d, last_epoch: start + 500 }
   let tx =
     Transaction {
       ..placeholder,
-      inputs: [rs_input(s)],
+      inputs: [rs_input(s), treasury_auth_input()],
       outputs: [rs_output(s2), dest_output(d)],
-      mint: mint_tlamp(d),
+      mint: mint_lamp(d),
       validity_range: vrange_cross(start + 500, start + 501),
     }
   run(s, tx)
+}
+
+// ── HAPPY: full-drain nhiều epoch tới cạn (tổng kế toán đúng E) ────────────
+
+test draw_full_drain_three_epochs_chain() {
+  // Mô phỏng 3 epoch liên tiếp nhả đúng trần — kiểm transition nối tiếp đúng.
+  // Epoch A: drawn 0 → cap, last start → start+1.
+  let sa = fresh()
+  let sa2 = ReserveState { ..sa, drawn_oil: cap, last_epoch: start + 1 }
+  let ok_a = run(sa, build_tx(sa, sa2, cap, cap, start + 1))
+  // Epoch B: tiếp từ sa2 → 2*cap, last start+1 → start+2.
+  let sb2 = ReserveState { ..sa2, drawn_oil: 2 * cap, last_epoch: start + 2 }
+  let ok_b = run(sa2, build_tx(sa2, sb2, cap, cap, start + 2))
+  // Epoch C: tiếp từ sb2 → 3*cap, last start+2 → start+3.
+  let sc2 = ReserveState { ..sb2, drawn_oil: 3 * cap, last_epoch: start + 3 }
+  let ok_c = run(sb2, build_tx(sb2, sc2, cap, cap, start + 3))
+  ok_a && ok_b && ok_c
 }
