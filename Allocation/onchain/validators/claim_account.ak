@@ -12,11 +12,11 @@ use cardano/assets
 use cardano/transaction.{
   InlineDatum, Input, Output, OutputReference, Transaction, placeholder,
 }
-use magiclamp/tokenomics/math
-use magiclamp/tokenomics/types.{
+use magiclamp/allocation/math
+use magiclamp/allocation/types.{
   Claim, ClaimAccountDatum, ClaimAccountRedeemer, Redeem,
 }
-use magiclamp/tokenomics/util
+use magiclamp/allocation/util
 
 validator claim_account(
   committee           : List<ByteArray>,

@@ -1,4 +1,4 @@
-// LAMP Tokenomics claimBuilder — committee cấp/tăng entitlement (Capped Drop + hard-cap).
+// LAMP Allocation claimBuilder — committee cấp/tăng entitlement (Capped Drop + hard-cap).
 //
 // CO-SPEND 2 UTxO trong CÙNG tx (khoá chéo claim_account ↔ channel_budget):
 //   IN  ClaimAccount  (Claim{amount})     → entitlement += amount; field khác bất biến.

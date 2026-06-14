@@ -53,7 +53,7 @@ Tổng: 12 + 7,899 + 5 + 4,001 + 2 + 1 (Treasury) + 1 + 1 + 1 + 1 + 0,1 = **36 t
 └──────────────────────────────────────────────────────────────┘
       │ dist bucket                         │ reserve bucket
       ▼                                      ▼
-┌─ Tokenomics (channel layer) ──┐   ┌─ Reserve engine ──────────┐
+┌─ Allocation (channel layer) ──┐   ┌─ Reserve engine ──────────┐
 │ HARD-CAP per-channel 2 lớp:   │   │ reserve_draw + thread:    │
 │  A. ChannelBudget beacon NFT  │   │ trần E/1000 mỗi epoch,    │
 │     (remaining_oil)           │   │ Treasury-pull (gate sàn   │
@@ -71,7 +71,7 @@ Tổng: 12 + 7,899 + 5 + 4,001 + 2 + 1 (Treasury) + 1 + 1 + 1 + 1 + 0,1 = **36 t
 ```
 
 - **Distribution/onchain** = engine Capped Drop tái dùng (đã live Preview, 33 test xanh).
-- **Tokenomics/onchain** = tầng phân bổ per-channel (HARD-CAP, 61 test xanh). Offchain: nhánh (a).
+- **Allocation/onchain** = tầng phân bổ per-channel (HARD-CAP, 61 test). Offchain 63 test. (đổi tên từ Tokenomics — module này chỉ làm phân bổ, không phải toàn bộ tokenomics).
 - **Reserve/onchain** = engine trần E/1000/epoch, Treasury-pull gated (reserve_draw + reserve_thread one-shot).
 
 ---
@@ -139,7 +139,7 @@ Công thức vested:
 | Module | onchain | offchain | Ghi chú |
 |---|---|---|---|
 | Genesis | ✓ 56 test | ✓ 34 test | lazy-mint; `lamp_mint` + `token_name` param (tLAMP/LAMP); cap 28,101/7,899 |
-| Tokenomics | ✓ 61 test | ✓ 63 test | HARD-CAP per-channel |
+| Allocation | ✓ 61 test | ✓ 63 test | HARD-CAP per-channel (đổi tên từ Tokenomics) |
 | Reserve | ✓ 38 test | ✓ 22 test | trần E/1000/epoch, Treasury-pull, rollover |
 | Distribution | ✓ live Preview | ✓ 58 test | engine Capped Drop tái dùng |
 | Faucet | ✓ | ✓ 17 test | vòi tLAMP cho dev test (testnet-only) |

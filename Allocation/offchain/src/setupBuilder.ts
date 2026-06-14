@@ -1,4 +1,4 @@
-// LAMP Tokenomics setupBuilder — khởi tạo 1 kênh ngân sách (genesis, committee chạy 1 lần).
+// LAMP Allocation setupBuilder — khởi tạo 1 kênh ngân sách (genesis, committee chạy 1 lần).
 //
 // Dựng tx ONE-SHOT đặt nền hard-cap 2 lớp cho 1 kênh:
 //   CONSUME genesis_ref UTxO (one-shot: budget_nft chỉ mint hợp lệ khi tx spend đúng UTxO này).

@@ -1,4 +1,4 @@
-name    = "magiclamp/tokenomics"
+name    = "magiclamp/allocation"
 version = "0.0.1"
 plutus  = "v3"
 license = "Apache-2.0"

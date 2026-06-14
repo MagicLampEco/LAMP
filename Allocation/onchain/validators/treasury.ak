@@ -10,10 +10,10 @@ use cardano/assets
 use cardano/transaction.{
   InlineDatum, Input, Output, OutputReference, Transaction, placeholder,
 }
-use magiclamp/tokenomics/types.{
+use magiclamp/allocation/types.{
   ClaimAccountDatum, ReleaseForRedeem, TreasuryDatum, TreasuryRedeemer,
 }
-use magiclamp/tokenomics/util
+use magiclamp/allocation/util
 
 validator treasury(
   claim_account_hash : ByteArray,

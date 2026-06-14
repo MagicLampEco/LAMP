@@ -1,4 +1,4 @@
-// LAMP Tokenomics offchain types — mirror onchain lib/magiclamp/tokenomics/types.ak.
+// LAMP Allocation offchain types — mirror onchain lib/magiclamp/allocation/types.ak.
 // HARD-CAP PER-CHANNEL (Capped Drop tất định). Mọi giá trị là oil (1 LAMP = 10^6 oil).
 // PHẢI khớp byte-perfect: Constr index = thứ tự khai báo trong types.ak (Aiken từ 0).
 //

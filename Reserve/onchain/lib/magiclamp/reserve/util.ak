@@ -1,5 +1,5 @@
-// LAMP Reserve shared helpers — self-contained (KHÔNG import chéo module Tokenomics/Genesis).
-// Tái dùng MẪU helper Tokenomics/util.ak + Genesis/util.ak (epoch, NFT count, mint delta,
+// LAMP Reserve shared helpers — self-contained (KHÔNG import chéo module Allocation/Genesis).
+// Tái dùng MẪU helper Allocation/util.ak + Genesis/util.ak (epoch, NFT count, mint delta,
 // test builders). Giữ nội bộ Reserve để apply-param + audit độc lập.
 
 use aiken/collection/dict

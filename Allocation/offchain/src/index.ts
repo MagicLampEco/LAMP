@@ -1,4 +1,4 @@
-// @magiclamp/tokenomics-sdk — LAMP Tokenomics off-chain SDK.
+// @magiclamp/allocation-sdk — LAMP Allocation off-chain SDK.
 // Capped Drop tất định + HARD-CAP per-channel 2 lớp (ChannelBudget beacon + treasury con).
 
 export * from "./constants.js";

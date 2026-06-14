@@ -1,4 +1,4 @@
-// LAMP Tokenomics vested math — Capped Drop tất định. O(1), BigInt.
+// LAMP Allocation vested math — Capped Drop tất định. O(1), BigInt.
 // PHẢI khớp byte-perfect với claim_account.ak (Redeem branch) + math.ak.
 //
 //   vested(t)  = clamp( D · drops_per_epoch · max(0, t − start_epoch) , 0 , entitlement )

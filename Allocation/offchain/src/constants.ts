@@ -1,4 +1,4 @@
-// LAMP Tokenomics constants — mirror onchain (oil units). ALL arithmetic BigInt.
+// LAMP Allocation constants — mirror onchain (oil units). ALL arithmetic BigInt.
 
 /** oil mỗi LAMP. 1 LAMP = 10^6 oil. */
 export const OIL_PER_LAMP = 1_000_000n;

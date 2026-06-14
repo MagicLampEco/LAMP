@@ -1,4 +1,4 @@
-// LAMP Tokenomics shared validator helpers (HARD-CAP per-channel invariants).
+// LAMP Allocation shared validator helpers (HARD-CAP per-channel invariants).
 
 use aiken/collection/list
 use aiken/interval.{Finite, IntervalBoundType}

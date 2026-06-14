@@ -14,7 +14,7 @@ use aiken/collection/list
 use cardano/address.{Address}
 use cardano/assets.{AssetName, PolicyId}
 use cardano/transaction.{Input, Output, OutputReference, Transaction, placeholder}
-use magiclamp/tokenomics/util
+use magiclamp/allocation/util
 
 pub type BudgetNftRedeemer {
   MintGenesis

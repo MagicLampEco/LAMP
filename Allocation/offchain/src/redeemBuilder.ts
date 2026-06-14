@@ -1,4 +1,4 @@
-// LAMP Tokenomics redeemBuilder — user redeem LAMP đã vested (permissionless, tất định).
+// LAMP Allocation redeemBuilder — user redeem LAMP đã vested (permissionless, tất định).
 //
 // CO-SPEND 2 UTxO cùng kênh trong CÙNG tx (claim_account ↔ treasury con):
 //   IN  ClaimAccount (Redeem)            → redeemed += amount; field khác bất biến.

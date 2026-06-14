@@ -61,7 +61,7 @@ drop_per_DID(epoch) = floor + min(cap, base × √holding × magic_consumed[DID,
 
 **🟡 6. Tên "Scavenger"** — kiểm trademark/trùng dự án Cardano trước khi public. Hành động nhẹ, làm khi gần 27/9.
 
-**✅ 7. Lưu SPEC canonical** — ĐÃ XONG: `Tokenomics/SPEC.md`.
+**✅ 7. Lưu SPEC canonical** — ĐÃ XONG: `TOKENOMICS.md` (gốc repo, umbrella). Module phân bổ đổi tên `Tokenomics/` → `Allocation/`.
 
 ---
 

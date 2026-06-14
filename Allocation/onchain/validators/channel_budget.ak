@@ -15,10 +15,10 @@ use cardano/assets
 use cardano/transaction.{
   InlineDatum, Input, Output, OutputReference, Transaction, placeholder,
 }
-use magiclamp/tokenomics/types.{
+use magiclamp/allocation/types.{
   ChannelBudgetDatum, ChannelBudgetRedeemer, ClaimAccountDatum, Decrement,
 }
-use magiclamp/tokenomics/util
+use magiclamp/allocation/util
 
 validator channel_budget(
   committee          : List<ByteArray>,

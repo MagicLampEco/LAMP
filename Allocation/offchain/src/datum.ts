@@ -1,4 +1,4 @@
-// LAMP Tokenomics datum/redeemer codec — Plutus Data (Lucid Evolution).
+// LAMP Allocation datum/redeemer codec — Plutus Data (Lucid Evolution).
 // HARD-CAP per-channel. PHẢI khớp BYTE-PERFECT với onchain `types.ak`.
 // Constr index = thứ tự khai báo trong types.ak (Aiken đánh số constructor từ 0).
 // Field order = thứ tự khai báo trong record (sai = tx fail on-chain).

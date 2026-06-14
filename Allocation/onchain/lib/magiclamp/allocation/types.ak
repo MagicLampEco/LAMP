@@ -1,4 +1,4 @@
-// LAMP Tokenomics onchain types — HARD-CAP PER-CHANNEL (vá lỗ committee cấp vượt ngân sách).
+// LAMP Allocation onchain types — HARD-CAP PER-CHANNEL (vá lỗ committee cấp vượt ngân sách).
 //
 // Thiết kế 2 lớp phòng thủ độc lập (defense-in-depth):
 //   Lớp A (kế toán, soft): ChannelBudget beacon mang `remaining_oil`. Mỗi Claim

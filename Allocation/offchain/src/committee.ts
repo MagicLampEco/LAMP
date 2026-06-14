@@ -1,4 +1,4 @@
-// LAMP Tokenomics committee helpers — M-of-N native multisig.
+// LAMP Allocation committee helpers — M-of-N native multisig.
 //
 // Claim (cấp entitlement) + ChannelBudget Decrement đều đòi ≥ threshold chữ ký committee
 // (claim_account.ak + channel_budget.ak: count_committee_sigs ≥ threshold).
