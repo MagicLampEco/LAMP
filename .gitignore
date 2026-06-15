@@ -13,3 +13,7 @@ dist/
 # macOS junk
 .DS_Store
 **/.DS_Store
+
+# Vitest cache + runtime onboarding state
+**/.vite/
+**/scripts/onboarded-instances.json
