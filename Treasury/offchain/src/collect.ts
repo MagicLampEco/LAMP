@@ -105,7 +105,9 @@ export function planLedgerOut(
     const m = meta.get(k)!;
     out.push({ bucket_id: m.bucket, policy: m.policy, name: m.name, amount: d });
   }
-  return out;
+  // CANONICAL hoá: prune dòng 0 + sort theo khóa (khớp is_canonical on-chain).
+  // Collect chỉ cộng cut ≥ 0 nên không sinh dòng âm; canonicalizeLedger reject nếu có.
+  return canonicalizeLedger(out);
 }
 
 // ── Kiểm tra bất biến (mirror ledger_ok onchain) — dùng cho test + tự kiểm builder ──
@@ -114,9 +116,92 @@ function sameKey(a: LedgerEntry, b: LedgerEntry): boolean {
   return a.bucket_id === b.bucket_id && assetKey(a.policy, a.name) === assetKey(b.policy, b.name);
 }
 
-/** Sổ không có dòng trùng khóa (bucket,policy,name). */
+/** Sổ không có dòng trùng khóa (bucket,policy,name). (Hệ quả của strictSorted.) */
 export function noDupLines(ledger: LedgerEntry[]): boolean {
   return ledger.every((e, i) => ledger.findIndex((o) => sameKey(e, o)) === i);
+}
+
+// ── CANONICAL SỔ (hardening v1) — mirror onchain ledger.ak ──────────────────
+// is_canonical(out) = strict_sorted ∧ all_positive. Off-chain PHẢI dựng sổ canonical
+// (sort + prune dòng 0 + reject âm) trước khi ghi datum, và fail-fast nếu lệch.
+//
+// THỨ TỰ SẮP XẾP khớp on-chain key_lt:
+//   khóa = (bucket_id:Int, policy:ByteArray, name:ByteArray)
+//   bucket_id so theo Int tăng; policy/name so theo bytearray.compare = so byte
+//   lexicographic. Off-chain giữ policy/name là HEX trần (lowercase) → so từng KÝ TỰ
+//   HEX char-by-char ≡ so byte (mỗi byte = 2 hex char, 00..ff cùng thứ tự; prefix
+//   ngắn hơn = Less, khớp bytearray.compare). KHÔNG so chuỗi unicode của name đã decode.
+
+/** So 2 hex string (lowercase, even-length) như bytearray.compare on-chain:
+ *  −1 nếu a<b, 0 nếu ==, +1 nếu a>b. Lexicographic theo byte (= theo cặp hex char). */
+export function compareHexBytes(a: string, b: string): number {
+  const x = a.toLowerCase();
+  const y = b.toLowerCase();
+  // So từng cặp hex char (1 byte). Prefix ngắn hơn = Less (khớp bytearray.compare).
+  const n = Math.min(x.length, y.length);
+  for (let i = 0; i < n; i += 2) {
+    const bx = x.slice(i, i + 2);
+    const by = y.slice(i, i + 2);
+    if (bx < by) return -1;
+    if (bx > by) return 1;
+  }
+  if (x.length < y.length) return -1;
+  if (x.length > y.length) return 1;
+  return 0;
+}
+
+/** key_lt on-chain: a < b theo (bucket_id, policy, name). */
+export function keyLt(a: LedgerEntry, b: LedgerEntry): boolean {
+  if (a.bucket_id !== b.bucket_id) return a.bucket_id < b.bucket_id;
+  const cp = compareHexBytes(a.policy, b.policy);
+  if (cp !== 0) return cp < 0;
+  return compareHexBytes(a.name, b.name) < 0;
+}
+
+/** strict_sorted on-chain: mỗi cặp liền kề khóa tăng NGHIÊM NGẶT (⇒ không trùng khóa). */
+export function strictSorted(ledger: LedgerEntry[]): boolean {
+  for (let i = 1; i < ledger.length; i++) {
+    if (!keyLt(ledger[i - 1]!, ledger[i]!)) return false;
+  }
+  return true;
+}
+
+/** all_positive on-chain: mọi dòng amount > 0 (KHÔNG dòng 0, KHÔNG âm). */
+export function allPositive(ledger: LedgerEntry[]): boolean {
+  return ledger.every((e) => e.amount > 0n);
+}
+
+/** is_canonical on-chain: strict_sorted ∧ all_positive. */
+export function isCanonical(ledger: LedgerEntry[]): boolean {
+  return strictSorted(ledger) && allPositive(ledger);
+}
+
+/** Sắp xếp sổ theo khóa canonical (bucket_id, policy, name) — khớp key_lt. KHÔNG đổi amount. */
+export function sortLedger(ledger: LedgerEntry[]): LedgerEntry[] {
+  return [...ledger].sort((a, b) => {
+    if (a.bucket_id !== b.bucket_id) return a.bucket_id < b.bucket_id ? -1 : 1;
+    const cp = compareHexBytes(a.policy, b.policy);
+    if (cp !== 0) return cp;
+    return compareHexBytes(a.name, b.name);
+  });
+}
+
+/** Bỏ dòng số dư == 0 (prune) — canonical KHÔNG ghi dòng 0. */
+export function pruneZeroLines(ledger: LedgerEntry[]): LedgerEntry[] {
+  return ledger.filter((e) => e.amount !== 0n);
+}
+
+/** Dựng sổ CANONICAL từ sổ thô: prune dòng 0 → sort theo khóa.
+ *  Ném lỗi nếu sinh dòng ÂM (sổ không thể canonical hoá — phá bất biến C-POS). */
+export function canonicalizeLedger(ledger: LedgerEntry[]): LedgerEntry[] {
+  for (const e of ledger) {
+    if (e.amount < 0n) {
+      throw new Error(
+        `LEDGER-NEG: dòng âm (bucket=${e.bucket_id}, ${e.policy}|${e.name}, amount=${e.amount}) — không thể canonical hoá`,
+      );
+    }
+  }
+  return sortLedger(pruneZeroLines(ledger));
 }
 
 /** Σcut kỳ vọng cho 1 dòng (bucket=category, asset). */
@@ -148,6 +233,18 @@ export function eachInLinePresent(ledgerIn: LedgerEntry[], ledgerOut: LedgerEntr
   return ledgerIn.every((e) => ledgerOut.some((o) => sameKey(e, o)));
 }
 
+/** each_in_line_settled on-chain: mọi dòng IN còn trong OUT, TRỪ khi số dư mới == 0
+ *  (in + Δcut) thì được prune (vắng). Collect chỉ cộng cut ≥ 0 nên thực tế không prune. */
+export function eachInLineSettled(
+  ledgerIn: LedgerEntry[], ledgerOut: LedgerEntry[], items: CollectItem[], cutBps: bigint,
+): boolean {
+  return ledgerIn.every((e) => {
+    const newBal = e.amount + expectedLineDelta(items, cutBps, e.bucket_id, e.policy, e.name);
+    if (newBal === 0n) return true;
+    return ledgerOut.some((o) => sameKey(e, o));
+  });
+}
+
 /** Mọi item có dòng đích trong out (cut phải vào sổ). */
 export function eachItemHasTarget(ledgerOut: LedgerEntry[], items: CollectItem[]): boolean {
   return items.every((it) =>
@@ -157,13 +254,14 @@ export function eachItemHasTarget(ledgerOut: LedgerEntry[], items: CollectItem[]
   );
 }
 
-/** ledger_ok onchain: 4 kiểm gộp. */
+/** ledger_ok onchain: is_canonical(out) ∧ each_out_line_ok ∧ each_in_line_settled ∧
+ *  each_item_has_target. is_canonical = strict_sorted (loại trùng O(n)) ∧ mọi dòng > 0. */
 export function ledgerOk(
   ledgerIn: LedgerEntry[], ledgerOut: LedgerEntry[], items: CollectItem[], cutBps: bigint,
 ): boolean {
-  return noDupLines(ledgerOut)
+  return isCanonical(ledgerOut)
     && eachOutLineOk(ledgerIn, ledgerOut, items, cutBps)
-    && eachInLinePresent(ledgerIn, ledgerOut)
+    && eachInLineSettled(ledgerIn, ledgerOut, items, cutBps)
     && eachItemHasTarget(ledgerOut, items);
 }
 
@@ -179,10 +277,11 @@ export function valueOk(
   return true;
 }
 
-// ── GENESIS (seed custody) — mirror collect.ak seed_value_ok ──────────────
-// Bất biến nền:  ∀a  Σ_b ledger[(b,a)] == value(a) − reserved_min_ada(a)
-//   reserved_min_ada chỉ áp lovelace (key ""|""). custody_seed validator ép on-chain;
-//   các hàm dưới để off-chain DỰNG đúng seed + tự kiểm trước khi build genesis tx.
+// ── GENESIS (seed custody) — mirror collect.ak seed_value_ok (hardening v1) ─
+// Bất biến nền:  ∀a  Σ_b ledger[(b,a)] == value(a) − reserved_min_ada(a) − NFT
+//   reserved_min_ada chỉ áp lovelace (key ""|""). NFT authenticity (seed_policy,
+//   instance_id) qty 1 KHÔNG ghi sổ. custody_seed validator ép on-chain; các hàm dưới
+//   để off-chain DỰNG đúng seed + tự kiểm trước khi build genesis tx.
 
 const LOVELACE_KEY = assetKey("", "");
 
@@ -196,21 +295,31 @@ export function ledgerValue(ledger: LedgerEntry[]): AssetMap {
   return out;
 }
 
-/** Value kỳ vọng của seed = ledgerValue ⊕ reserved_min_ada (lovelace). Dùng để BUILD. */
-export function seedValue(ledger: LedgerEntry[], reservedMinAda: bigint): AssetMap {
+/** Value kỳ vọng của seed (hardening v1):
+ *    value == ledgerValue(ledger) ⊕ reserved_min_ada(lovelace) ⊕ 1 NFT (nftPolicy,nftName).
+ *  NFT authenticity (seed_policy, instance_id) qty 1 — custody_seed mint, custody.ak ép
+ *  hiện diện khi spend. Dùng để BUILD seed output. */
+export function seedValue(
+  ledger: LedgerEntry[], reservedMinAda: bigint, nftPolicy: string, nftName: string,
+): AssetMap {
   const out = ledgerValue(ledger);
   if (reservedMinAda !== 0n) {
     out[LOVELACE_KEY] = (out[LOVELACE_KEY] ?? 0n) + reservedMinAda;
   }
+  const nk = assetKey(nftPolicy, nftName);
+  out[nk] = (out[nk] ?? 0n) + 1n;
   return out;
 }
 
-/** seed_value_ok on-chain: value == ledgerValue(ledger) ⊕ reserved_min_ada. */
+/** seed_value_ok on-chain (hardening v1):
+ *    value == ledgerValue(ledger) ⊕ reserved_min_ada ⊕ 1 NFT (nftPolicy,nftName).
+ *  nftPolicy = seed_policy (PolicyId), nftName = instance_id. */
 export function seedValueOk(
   value: AssetMap, ledger: LedgerEntry[], reservedMinAda: bigint,
+  nftPolicy: string, nftName: string,
 ): boolean {
   if (reservedMinAda < 0n) return false;
-  const want = seedValue(ledger, reservedMinAda);
+  const want = seedValue(ledger, reservedMinAda, nftPolicy, nftName);
   const keys = new Set([...Object.keys(value), ...Object.keys(want)]);
   for (const k of keys) {
     if ((value[k] ?? 0n) !== (want[k] ?? 0n)) return false;
@@ -228,14 +337,27 @@ export function allLinesAccepted(
 }
 
 /**
- * Seed datum hợp lệ TOÀN PHẦN (gương đủ custody_seed validator):
- *   value == ledgerValue ⊕ reserved_min_ada  ∧  no_dup_lines  ∧  mọi dòng accepted.
- * Off-chain GỌI trước khi build genesis tx — chặn seed sổ≠value ngay từ off-chain.
+ * Seed datum hợp lệ TOÀN PHẦN (gương ĐỦ custody_seed validator — hardening v1):
+ *   S-PARAM-0   datum.instance_id == nftName (NFT name = instance_id)
+ *   S-ID-0      instance_id != ""              (định danh thật)
+ *   S-ACC-1     accepted_assets.length > 0     (không instance "câm")
+ *   S-CUT-0     0 ≤ cut_bps ≤ 10000            (chống cut âm drain / >100%)
+ *   S-SEED-0    value == ledgerValue ⊕ reserved_min_ada ⊕ 1 NFT (seed_policy,instance_id)
+ *   S-LEDGER-0  sổ CANONICAL (strict-sorted ∧ mọi dòng > 0)
+ *   S-ACC-0     mọi dòng sổ thuộc accepted_assets
+ *   S-CONSUMED-0 consumed_proposals == []
+ * Off-chain GỌI trước khi build genesis tx — chặn seed sai ngay từ off-chain.
+ * @param nftPolicy seed_policy (PolicyId của custody authenticity NFT).
  */
 export function seedDatumOk(
-  value: AssetMap, datum: CustodyDatum, reservedMinAda: bigint,
+  value: AssetMap, datum: CustodyDatum, reservedMinAda: bigint, nftPolicy: string,
 ): boolean {
-  return seedValueOk(value, datum.ledger, reservedMinAda)
-    && noDupLines(datum.ledger)
-    && allLinesAccepted(datum.ledger, datum.accepted_assets);
+  const nftName = datum.instance_id;   // NFT name = instance_id (S-PARAM-0)
+  return datum.instance_id !== ""                                    // S-ID-0
+    && datum.accepted_assets.length > 0                              // S-ACC-1
+    && datum.cut_bps >= 0n && datum.cut_bps <= 10000n               // S-CUT-0
+    && seedValueOk(value, datum.ledger, reservedMinAda, nftPolicy, nftName) // S-SEED-0
+    && isCanonical(datum.ledger)                                     // S-LEDGER-0
+    && allLinesAccepted(datum.ledger, datum.accepted_assets)         // S-ACC-0
+    && datum.consumed_proposals.length === 0;                        // S-CONSUMED-0
 }

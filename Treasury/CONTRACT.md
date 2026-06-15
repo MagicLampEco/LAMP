@@ -11,7 +11,10 @@ OriLife `animal_fee` cắt 7%; MAGIC AppEconomics). Reconcile `Foundation-Bootst
 ## 1. Mô hình đa thuê bao
 
 - Treasury = **instance** param hóa. MagicLamp = một instance; team eco khác = instance khác (open SDK).
-- Tham số instance: `(governance_ref, accepted_assets[], buckets[], protocol_cut_bps)`.
+- Tham số instance: `(governance_ref, accepted_assets[], buckets[], protocol_cut_bps)` — nằm ở **datum**
+  (DAO chỉnh không đổi script hash). Param **validator** (bất biến đời instance, hardening v1 §10 H5):
+  `(proposal_policy, seed_policy, ms_per_epoch)`. `governance_ref` là **ràng buộc cứng** ở release
+  (§10 H1A), không còn field trang trí.
 - **Custody tách accounting:** value nằm ở 1 (hoặc shard) UTxO custody; **bucket = sổ kế toán trong
   datum**, KHÔNG phải mỗi bucket một UTxO (chống bloat + min-ADA). DAO chỉnh % từng bucket.
 - **Emergency bucket tách physical** (isolation) — không gộp custody với bucket thường.
@@ -36,16 +39,27 @@ Chữ ký: `collectToTreasury(asset ∈ accepted_assets, amount, app_id, categor
 3. **Gộp theo lô:** nhiều `collect` gộp trong một settlement tx (chống bloat — KHÔNG thu từng
    micro-fee on-chain, bất khả thi vì min-ADA + phí mạng).
 4. **Receipt:** ghi `(app_id, asset, amount, cut, epoch)` vào datum/UTxO → audit + tín dụng VP/uy tín.
+   ⛔ **F8 (vá lần 2 — CHƯA thực thi):** CODE `CustodyDatum` KHÔNG có `receipt_root`; `app_id` chỉ ở
+   redeemer (vô danh, không neo on-chain). **VP/uy tín KHÔNG được tin `app_id` từ Collect** để cấp tín
+   dụng C1 cho tới khi receipt được thực thi thật (chống bịa). receipt_root là **v1.x** hoặc bỏ lời hứa.
+   (TECH §6.)
 5. **ĐỊNH GIÁ KHÔNG ở đây.** Bao nhiêu phí (bò ≠ gà) là việc của app (OriLife `animal_fee`); hàm này
    chỉ nhận `amount` đã tính. Quy đổi LAMP↔USD/ADA (oracle) cũng ở phía app/caller.
+6. **Collect là PERMISSIONLESS + có van no-op (vá lần 2 F3).** Bất kỳ ai cũng build được settlement tx
+   Collect (không cần authority/proposal). Để chặn griefing no-op (respend custody rỗng mỗi block gây
+   contention), Collect ép **`Σcut per-asset > 0`** (TECH C-COL-11): mỗi Collect phải sinh cut THẬT. Vá
+   GIẢM griefing **zero-cost** (kẻ tấn công nay tốn value), NHƯNG contention gốc 1-UTxO vẫn cần **shard
+   custody (T4)** đóng hẳn — van rẻ trước, shard khi đo thấy nghẽn.
 
 ## 4. Bucket release — chi ra (nhóm B)
 
-- Release **chỉ khi** một proposal Governance đã pass (đọc kết quả qua reference input / beacon).
+- Release **chỉ khi** một proposal Governance đã pass (đọc kết quả qua reference input / beacon),
+  và proposal UTxO PHẢI ở đúng `Script(governance_ref)` (§10 H1A — binding cứng).
 - Ngưỡng theo loại bucket, viết dạng **"≥"** (tham số DAO): vd community ≥2/3, ops ≥1/2, emergency ≥2/3.
 - Multi-sig council + **time-lock** giải ngân.
 - **Chống double-satisfaction:** đếm theo **payment script hash** (bài học audit C1/C2/M1 Distribution),
-  bảo toàn value, không drain.
+  bảo toàn value, không drain. Thêm (§10 H5): custody spend ép **seed NFT authenticity hiện diện**
+  (in+out) — chỉ custody "thật" mới chi được.
 
 ## 5. Giảm lưu hành — KHÔNG BAO GIỜ BURN (chỉ chuyển trạng thái)
 
@@ -105,3 +119,59 @@ Sau rà soát đối kháng, ghim cứng. Đồng bộ với Governance CONTRACT
 - **T5 — MATH §6.1 bỏ tự-kiểm ngưỡng.** Chỉ giữ vị từ boolean `pass(P)` đọc từ Governance (đã clamp,
   khớp §0.2 + T1). Nếu mô tả ngữ nghĩa thì ghi rõ `approval = Σ VP_eff(thuận)` (đã clamp),
   `total = ΣVP-tham-gia GỐC` — cross-ref VotingPower MATH §8B + D1, để không implement nhầm power thô.
+
+## 10. Hardening v1 (2026-06-13 — interface KHÓA, mọi spec phải khớp)
+
+Đợt vá an toàn sau audit. Đụng interface ⇒ ghim ở đây để TECH/EXEC/MATH/FEAT khớp. Chưa deploy gì lên
+testnet → đổi param/script hash KHÔNG cần migrate (lý do làm ngay bây giờ).
+
+- **H1A — `governance_ref` là ràng buộc cứng (binding proposal↔governance).** Release ÉP proposal UTxO
+  nằm ở **đúng** `Script(governance_ref)` (`payment_credential == Script(governance_ref)`). `governance_ref`
+  từ field trang trí → ràng buộc cứng. Chặn (a) NFT proposal bị dời sang UTxO datum giả ở script lạ,
+  (b) replay chéo instance khác `governance_ref`. (TECH C-REL-1.)
+- **H1A-interface — Proposal NFT = MỘT policy chung per-governance** (asset name = `proposal_id`),
+  **KHÔNG one-shot-by-seed per-proposal**. Custody param `proposal_policy` là policy id đơn → chỉ đúng
+  khi policy ổn định per-DAO. **Mâu thuẫn phải chốt với Governance** trước khi code Release thật.
+- **H1B — ĐÓNG (vá lần 2 F10).** `spend_spec_hash` NAY gồm `instance_id`
+  (`= blake2b(0x02 ‖ blake2b(instance_id) ‖ blake2b(cbor(draws)))`) → hai instance Treasury CÙNG
+  `governance_ref` KHÔNG còn replay chéo (hash khác instance ⇒ release reject). Known-gap #1B chuyển
+  **MỞ → ĐÓNG**. ⛔ **YÊU CẦU INTERFACE thay thế (Governance build-side):** khi tạo proposal, Governance
+  PHẢI tính `spend_spec_hash` với ĐÚNG `instance_id` đích (commit target instance). Tính sai ⇒ proposal
+  không chi được ở instance nào. Đây là ràng buộc đúng-đắn của Governance, KHÔNG còn lỗ hổng on-chain.
+- **H5 — custody ĐÒI NFT authenticity khi spend.** Param custody → `(proposal_policy, seed_policy,
+  ms_per_epoch)` (bỏ `lamp_policy/lamp_name`). Mọi spend (Collect/Release) ép
+  `quantity_of(value, seed_policy, instance_id) == 1` cho custody_in **và** custody_out. `custody_seed`
+  param → chỉ `genesis_ref` (bỏ `custody_script_hash`), chọn output custody bằng **self-reference NFT**
+  → phá vòng phụ thuộc seed↔custody. NFT mint sẵn ở genesis mà không dùng khi spend là sai gốc; mất
+  NFT-gate biến lỗ cut_bps từ mis-seed BỊ ĐỘNG thành tấn công CHỦ ĐỘNG. (TECH §2/§10 C-NFT-1, EXEC §16.)
+- **H2 — seed guards (ép tại `custody_seed`).** `S-CUT-0` `0 ≤ cut_bps ≤ 10000`; `S-LEDGER-1` mọi dòng
+  sổ `amount > 0` (chặn âm + zero); `S-ID-0` `instance_id ≠ #""`; `S-ACC-1` `accepted_assets ≠ []`.
+  `cut_bps` bất biến đời instance → ép một lần tại seed; v1.x thêm nhánh đổi cut_bps PHẢI lặp kiểm range
+  (cut_bps<0 hở drain). (TECH §11, EXEC §16.)
+- **H3 — canonical sổ.** Mọi dòng `amount > 0` (C-POS) + strict-sorted theo `(bucket_id, policy, name)`
+  (C-SORT, thay `no_dup_lines` O(n²)→O(n)) + cho prune dòng khi số dư mới == 0 (C-PRUNE). T3 (sổ↔value)
+  giữ nguyên (dòng 0 đóng góp 0). Vá gốc (v1.x): đưa `consumed_proposals` ra khỏi custody datum (cần
+  Governance trạng thái `Spent`); van tạm = trần `N_max` đo-thực trước Mainnet. (TECH §3.)
+- **H4 — epoch neo chain.** `epoch_out == get_epoch(tx) ∧ get_epoch(tx) >= epoch_in` (thay chỉ `>=`).
+  Field `epoch` thành audit thật. **Vá lần 2 (F4): dùng `get_epoch_bounded`** — validity_range hữu hạn
+  CẢ HAI biên + gọn 1 epoch (chống đóng băng: kẻ đặt lower epoch cũ submit muộn). (TECH C-EPOCH.)
+- **H6 — Rebalance/MigrateIn hoãn v1.x** (`_ -> fail`). Giữ Constr trong types (index ổn định). Nạp
+  generators v1 dùng adapter off-chain b-ii qua `Collect` (không cần MigrateIn). (TECH §8/§9, EXEC §4.)
+
+## 11. Vá audit lần 2 (2026-06-15 — interface KHÓA, mọi spec phải khớp)
+
+Đợt vá thứ hai: 6 lỗ on-chain + reconcile + known-gap. Chỉ phần đụng interface ghim ở đây.
+
+- **F1 — replay-marker khóa vào DANH TÍNH NFT.** `read_proposal` ép `nft_name == proposal_id`. Marker
+  single-use (C-REL-9) neo vào asset name của Proposal NFT, KHÔNG field datum tự-khai. (TECH C-REL-1.)
+- **F10 + H1B-ĐÓNG — `spend_spec_hash` gồm `instance_id`** (xem §10 H1B). Đóng replay chéo cùng
+  `governance_ref`. ⛔ Governance build-side PHẢI commit đúng `instance_id` đích khi tạo proposal.
+- **F2 — Release ép `draws != []`** (TECH C-REL-13). **F3 — Collect ép `Σcut > 0`** (§3.6, TECH C-COL-11).
+  **F4 — epoch neo gọn 1 epoch** `get_epoch_bounded` (chống đóng băng, TECH C-COL-7/C-REL-11). **F5 —
+  `custody_seed` ép mint đúng 1 policy** (least-authority, TECH S-MINT-2).
+- **F9 — đồng bộ MATH:** MATH chiều collect đổi `≥` → `==` (code dùng đẳng thức, an toàn hơn — loại tip
+  làm vỡ sổ). (MATH §2.3/§3.3.)
+- **Known-gap còn lại:** **F11** `proposal_id` đơn-nhất-vĩnh-viễn do Governance đảm bảo (policy chung
+  per-governance KHÔNG ép unique asset-name); **F12** authority/committee 1-of-1 → multisig M-of-N TRƯỚC
+  mainnet (lộ key = drain mọi custody của gov đó); **F13** (PlatformKit) `verifyEntryAgainstCustody`+dedup
+  chỉ là van SDK — người tích hợp PHẢI gọi trước khi route phí.

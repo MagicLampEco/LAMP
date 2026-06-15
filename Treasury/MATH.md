@@ -20,7 +20,7 @@ suy ra mã từ định lý chứ không từ trực giác. Cụ thể chứng m
 3. **Số học split** của `collectToTreasury`: `cut = ⌊amount × cut_bps / 10000⌋`, tái dùng họ số nguyên
    BigInt của `protocol-utils`. Chốt chủ đích làm tròn: **floor cut = ưu ái người nộp/provider** (treasury
    giữ ≤ phần lý thuyết, crumb <1 oil nghiêng về phía RA). An toàn của hệ KHÔNG đến từ hướng làm tròn mà từ
-   **bảo toàn value** (`≥` + TOTAL-CONSERVE) — xem §3.1.
+   **bảo toàn value** (`==` đẳng thức + TOTAL-CONSERVE — vá lần 2 F9; trước là `≥`) — xem §2.3, §3.1.
 4. **Bất biến theo lô (batch):** gộp N lệnh `collect` trong một settlement tx vẫn bảo toàn tổng và đúng
    tổng cut.
 5. **Cổng release = vị từ boolean `pass(P)`** đọc từ Governance (Treasury KHÔNG tự kiểm ngưỡng — T5/T1/D3;
@@ -128,18 +128,28 @@ CONTRACT §3.2 nâng cấp bất biến `treasury_receives_lamp ≥ lamp_paid` (
 mọi asset `a` được thu trong tx,
 
 ```
-Σ_{o ∈ OUT_I} o.value(a)  ≥  Σ_{i ∈ IN_I} i.value(a)  +  cut(a)       (INV-COLLECT)
+Σ_{o ∈ OUT_I} o.value(a)  ==  Σ_{i ∈ IN_I} i.value(a)  +  cut(a)       (INV-COLLECT — đẳng thức, vá lần 2 F9)
 ```
 
-tức `Δ_I(a) ≥ cut(a) ≥ 0`. Đây là bất biến **một phía** (≥) — cho phép caller nộp **dư** (ví dụ kèm min-ADA
-cho UTxO mới) nhưng **cấm thiếu**. Kết hợp Định lý 1 (TOTAL-CONSERVE bảo đảm phần dư đến từ ví người gửi,
-không từ hư không), INV-COLLECT là **đủ + an toàn**: hệ thống thu **đúng hoặc nhiều hơn** `cut`, không bao
-giờ ít hơn.
+tức `Δ_I(a) == cut(a) ≥ 0`. **Vá lần 2 (F9) — đổi `≥` → `==` cho khớp code an toàn hơn.** `collect.value_ok`
+thực tế ép **đẳng thức TUYỆT ĐỐI** `custody_out.value == merge(custody_in.value, cut_value(items))` cho MỌI
+asset (`collect.ak` L177-179): custody nhận ĐÚNG `Σcut`, không dư không thiếu. Đẳng thức an toàn HƠN `≥`:
+nó loại **"tip"** (nộp dư asset thu — vd tip LAMP) vốn làm `custody.value(a) > Σ Δsổ` ⇒ vỡ vế phải bất biến
+sổ↔value (TECH §3). Phần `rest = amount − cut` (kể cả min-ADA của UTxO mới do CALLER trả) định tuyến RA
+provider/ví caller NGOÀI custody trong cùng tx — KHÔNG cộng vào custody.value, nên đẳng thức không cấm caller
+trả min-ADA (nó nằm ở output khác, không phải output custody). Kết hợp Định lý 1 (TOTAL-CONSERVE), thu
+**đúng** `cut`.
 
-> Đối chiếu code thật (Distribution `treasury.ak` dòng 61): chiều **release** dùng đẳng thức chặt
-> `tre_out.value == add(tre_in.value, lamp_policy, lamp_name, −released)` — bảo toàn TUYỆT ĐỐI mọi asset
-> khác ADA/token (chống drain M1). Chiều **collect** dùng `≥` cho asset thu (cho phép nộp dư). Hai chiều
-> khác dấu là **có chủ đích**, không mâu thuẫn.
+> Đối chiếu code thật: chiều **release** dùng đẳng thức `custody_out.value == merge(custody_in.value,
+> negate(drawn_value(draws)))` (`release.ak value_ok`) — bảo toàn TUYỆT ĐỐI mọi asset (chống drain M1).
+> Chiều **collect** NAY cũng dùng đẳng thức `==` (vá lần 2 F9), KHÔNG `≥`: hai chiều cùng dấu đẳng thức,
+> nhất quán, đều khóa cả hai đầu (asset thu tăng đúng cut, asset không đụng giữ nguyên).
+>
+> **Đối chiếu TECH §4.2 C-COL-2 (ghi rõ mâu thuẫn cũ):** C-COL-2 mô tả `≥` cho riêng ADA (min-ADA overhead).
+> Code `value_ok` thực tế dùng `==` cho MỌI asset kể cả ADA — chặt hơn — vì min-ADA của UTxO custody mới
+> được hạch toán qua bucket ADA reserved trong sổ (`seed_value_ok`/`reserved_min_ada`), KHÔNG để value vượt
+> sổ. MATH (tài liệu chứng minh) đồng bộ về `==` theo CODE; TECH C-COL-2 nên đọc theo `==` thực thi (nếu một
+> instance thật cần ADA dư ngoài sổ thì phải hạch toán reserved tương ứng để giữ đẳng thức).
 
 ---
 
@@ -163,9 +173,9 @@ cut  =  ⌊ amount × cut_bps / 10000 ⌋            (SPLIT)
 "cut" (collect) và kết luận sai "floor cut ⟹ an toàn cho hệ". Phân rạch ròi:
 
 **(1) An toàn THỰC của chiều collect KHÔNG đến từ hướng làm tròn.** Nó đến từ **bảo toàn value**:
-INV-COLLECT dùng `≥` (§2.3) kết hợp TOTAL-CONSERVE (Định lý 1) ⟹ không oil nào sinh ra hay biến mất; crumb
-làm tròn chỉ **dịch chỗ** giữa custody và provider trong cùng tx, **hệ không mất gì**. Đây là nguồn an toàn,
-không phụ thuộc floor hay ceil.
+INV-COLLECT dùng `==` (§2.3 — vá lần 2 F9; trước là `≥`) kết hợp TOTAL-CONSERVE (Định lý 1) ⟹ không oil nào
+sinh ra hay biến mất; crumb làm tròn chỉ **dịch chỗ** giữa custody và provider trong cùng tx, **hệ không mất
+gì**. Đây là nguồn an toàn, không phụ thuộc floor hay ceil.
 
 **(2) Hướng làm tròn là một CHỦ ĐÍCH KINH TẾ, phải chốt rõ — không suy ra "an toàn hệ".**
 - `cut` = phần protocol GIỮ LẠI vào bucket; `rest = amount − cut` định tuyến **RA** app/provider.
@@ -244,12 +254,13 @@ Validator collect kiểm 3 điều, tất cả là so sánh số nguyên:
 ```
 (C1)  cut          == amount × cut_bps / 10000        // floor, đúng SPLIT
 (C2)  Δ_bucket(category) == cut                        // dạng chính đơn-bucket, PARTITION-SINGLE (§3.2.1)
-(C3)  Σ_{o∈OUT_I} o.value(a)  ≥  Σ_{i∈IN_I} i.value(a) + cut    // INV-COLLECT, §2.3
+(C3)  Σ_{o∈OUT_I} o.value(a)  ==  Σ_{i∈IN_I} i.value(a) + cut   // INV-COLLECT đẳng thức, §2.3 (vá lần 2 F9)
 ```
 
 `C2` thao tác trên **sổ trong datum** (bucket = field, KHÔNG phải UTxO riêng — CONTRACT §1, chống bloat),
 nên không tạo UTxO mới mỗi collect. Dạng mặc định: `cut` vào đúng một bucket = `item.category`, đẳng thức
-chính xác ⟹ bất biến sổ↔value của TECH §3 KHÔNG vỡ. `C3` thao tác trên **value vật lý** của custody UTxO.
+chính xác ⟹ bất biến sổ↔value của TECH §3 KHÔNG vỡ. `C3` thao tác trên **value vật lý** của custody UTxO,
+**đẳng thức `==`** (vá lần 2 F9 — loại tip làm `value > Σ sổ`; mirror chiều release).
 
 > **Tùy chọn đa-bucket (chỉ khi instance bật `split_table`):** C2 thay bằng PARTITION-MULTI (§3.2.1):
 > `Δ_bucket(b_i) == part_i  ∀i=1…m` với `Σ_i part_i == cut` (`part_m = cut − Σ_{i<m} part_i`, bucket cuối
@@ -287,13 +298,13 @@ KHÔNG tính một lần trên tổng `amount` rồi gán.
 
 ```
 (B1)  Σ_{outputs} o.value(a) = Σ_{inputs} i.value(a)              ∀a     (TOTAL-CONSERVE toàn lô)
-(B2)  Δ_I(a)  ≥  CUT_batch(a)  =  Σ_j cut_j(a)                            (INV-COLLECT cộng dồn)
+(B2)  Δ_I(a)  ==  CUT_batch(a)  =  Σ_j cut_j(a)                           (INV-COLLECT cộng dồn — đẳng thức, F9)
 (B3)  Δ_bucket(b)  =  Σ_j part_{j,b}   ∀ bucket b                          (PARTITION cộng dồn)
         với  Σ_b Δ_bucket(b)  =  Σ_j cut_j  =  CUT_batch                   (tổng các bucket = tổng cut)
 ```
 
-*Chứng minh.* (B1) là Định lý 1 áp cho tx lô (POV không phụ thuộc N). (B2): áp INV-COLLECT cho từng lệnh rồi
-cộng `N` bất đẳng thức cùng chiều `≥` → tổng vẫn `≥`. (B3): dạng mặc định **đơn-bucket** (§3.2.1
+*Chứng minh.* (B1) là Định lý 1 áp cho tx lô (POV không phụ thuộc N). (B2): áp INV-COLLECT (đẳng thức, vá
+lần 2 F9) cho từng lệnh rồi cộng `N` đẳng thức → tổng vẫn đẳng thức `Δ_I(a) == Σ_j cut_j(a)`. (B3): dạng mặc định **đơn-bucket** (§3.2.1
 PARTITION-SINGLE) — mỗi lệnh `j` đóng toàn bộ `cut_j` vào đúng bucket `category_j`, tức `part_{j,b} = cut_j`
 nếu `b = category_j` và `0` ngược lại; cộng theo lệnh ⟹ mỗi bucket nhận đúng tổng các `cut_j` cùng category,
 và `Σ_b Δ_bucket(b) = Σ_j cut_j = CUT_batch`. (Nếu instance bật tùy chọn **đa-bucket**, thay bằng
@@ -460,7 +471,7 @@ tách biệt mọi ví caller.
 |---|---|---|---|
 | BIV-1 | Không nhánh burn/mint asset accepted | `mint(a)=0` | CONTRACT §5; treasury.ak C-MINT-0 |
 | TOTAL-CONSERVE | `Σ_out(a) = Σ_in(a)` ∀a | đẳng thức | Định lý 1; POV ledger |
-| INV-COLLECT | `Δ_I(a) ≥ cut(a)` | bất đẳng thức ≥ | §2.3; generators |
+| INV-COLLECT | `Δ_I(a) == cut(a)` | đẳng thức (vá lần 2 F9 — code `value_ok`) | §2.3; collect.ak |
 | SPLIT | `cut = ⌊amount·bps/10000⌋` | floor số nguyên | §3.1 |
 | PARTITION | `cut + rest = amount` | đẳng thức (rest = amount−cut) | §3.2 |
 | PARTITION-SINGLE | `Δ_bucket(category) = cut` | đẳng thức, cut → 1 bucket (mặc định) | §3.2.1 |
@@ -547,6 +558,15 @@ Không bịa số cuối — đây là **dạng + miền**:
 
 > **Lưu ý:** finding 2 (chốt đa-bucket) + finding 7 (THRESHOLD-k + sàn BFT ở Treasury) ở bảng trên **đã bị
 > ĐẢO** bởi vòng reconcile §12 (T2, T5). Đọc §12 là trạng thái mới nhất.
+
+### 11.1 Vá audit lần 2 (2026-06-15)
+
+| # | Mức | Tóm tắt | Xử lý |
+|---|---|---|---|
+| **F9** | doc-drift | MATH ghi `≥` cho chiều collect (INV-COLLECT), nhưng CODE `collect.value_ok` dùng `==` (đẳng thức tuyệt đối, an toàn hơn — loại tip làm vỡ sổ) | **Nhận — đồng bộ MATH về `==`.** §2.3 INV-COLLECT đổi `≥`→`==` + giải thích loại tip + min-ADA định tuyến ngoài custody; §3.3 C3 `==`; §4.2 B2 `==` (cộng N đẳng thức) + proof; §0.1(3) sửa `≥`→`==`; bảng §7 INV-COLLECT `Δ_I(a)==cut(a)` nguồn `collect.ak`. Ghi rõ đối chiếu TECH §4.2 C-COL-2 (`≥` cho ADA) — code chặt hơn dùng `==` mọi asset, min-ADA hạch toán qua bucket reserved. |
+
+> Các lỗ F1–F5, F10 của vá lần 2 là **on-chain validator** (TECH §11.1) — không đụng MATH. F9 là lỗ duy
+> nhất chạm MATH (doc-drift dấu bất đẳng thức). Đã đồng bộ về `==` theo code.
 
 ---
 
