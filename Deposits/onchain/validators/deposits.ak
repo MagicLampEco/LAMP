@@ -149,6 +149,12 @@ validator deposits {
         // C-REF-0
         expect assets.is_zero(tx.mint)
 
+        // Defense-in-depth (đối xứng Deposit C-DEP-6): sổ IN không có dòng trùng khóa.
+        // find_line lấy dòng ĐẦU còn refund_ledger_ok (target_absent) xóa MỌI dòng khớp →
+        // nếu ledger_in dup thì lệch value/sổ. Không reachable (Deposit chặn tạo dup) nhưng
+        // khóa invariant từ đầu nhánh. Rẻ (1 lượt).
+        expect ledger.no_dup_lines(datum.ledger)
+
         // C-REF-1
         expect util.count_inputs_at_script(tx.inputs, own_hash) == 1
         expect util.count_outputs_at_script(tx.outputs, own_hash) == 1
@@ -207,6 +213,12 @@ validator deposits {
       Escheat { entity_id, depositor, policy, name } -> {
         // C-ESC-0
         expect assets.is_zero(tx.mint)
+
+        // Defense-in-depth (đối xứng Deposit C-DEP-6): sổ IN không có dòng trùng khóa.
+        // find_line lấy dòng ĐẦU còn refund_ledger_ok (target_absent) xóa MỌI dòng khớp →
+        // nếu ledger_in dup thì lệch value/sổ. Không reachable (Deposit chặn tạo dup) nhưng
+        // khóa invariant từ đầu nhánh. Rẻ (1 lượt).
+        expect ledger.no_dup_lines(datum.ledger)
 
         // C-ESC-1
         expect util.count_inputs_at_script(tx.inputs, own_hash) == 1

@@ -1608,3 +1608,33 @@ test deposit_dup_line_in_seed_fail() fail {
     tx,
   )
 }
+
+// PHÒNG-3 (fail) — REFUND với DÒNG TRÙNG KHÓA trong seed (đối xứng deposit_dup_line_in_seed_fail).
+//   Không có guard: find_line lấy dòng ĐẦU (1M) còn refund_ledger_ok xóa CẢ HAI → pot chỉ
+//   giảm 1M trong khi 1.5M claim biến mất (lệch). guard no_dup_lines(datum.ledger) đầu nhánh
+//   Refund → reject.
+test refund_dup_line_in_seed_fail() fail {
+  let ledger_in = [line(entity1, alice, 1_000_000), line(entity1, alice, 500_000)]
+  let ledger_out = []
+  let d_out =
+    PotDatum { ..datum_with(ledger_out, VerificationKey(council_pkh)), ledger: ledger_out, epoch: 11 }
+  run_refund(
+    pot_val(1_000_000), pot_val(0), ledger_in, d_out, pot_addr(),
+    [alice], assets.zero, [], [], [refund_out(alice, 1_000_000)],
+    VerificationKey(council_pkh), entity1, alice,
+  )
+}
+
+// PHÒNG-4 (fail) — ESCHEAT với DÒNG TRÙNG KHÓA trong seed (đối xứng Refund).
+//   guard no_dup_lines(datum.ledger) đầu nhánh Escheat → reject (fire trước cả check thời hạn).
+test escheat_dup_line_in_seed_fail() fail {
+  let ledger_in = [line_at(entity1, alice, 1_000_000, 10), line_at(entity1, alice, 500_000, 10)]
+  let ledger_out = []
+  let d_out =
+    PotDatum { ..datum(ledger_out), treasury_credential: VerificationKey(treasury_pkh), ledger: ledger_out, epoch: 16 }
+  run_escheat(
+    pot_val(1_000_000), pot_val(0), ledger_in, d_out, pot_addr(),
+    [bob], assets.zero, 16, [treasury_out(treasury_pkh, 1_000_000)],
+    VerificationKey(treasury_pkh), entity1, alice,
+  )
+}
