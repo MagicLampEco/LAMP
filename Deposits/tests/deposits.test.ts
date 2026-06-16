@@ -31,6 +31,8 @@ const AT_CATTLE = 0n, VT_HIGH = 2n, LC_LONG = 2n;
 const AT_PLANT = 1n, VT_LOW = 0n, LC_SHORT = 0n;
 const ESCHEAT_AFTER = 6n;
 const MS_PER_EPOCH = 86_400_000n;
+// LỖ-2 — sàn freshness beacon. beacon() demo dùng epoch 5 → min = 5 (happy qua).
+const MIN_PARAM_EPOCH = 5n;
 
 function baseDatum(over: Partial<PotDatum> = {}): PotDatum {
   return {
@@ -40,9 +42,11 @@ function baseDatum(over: Partial<PotDatum> = {}): PotDatum {
     reserved_min_ada: RESERVED,
     deposit_param_policy: "9999",
     deposit_param_name: "5041524d",
+    deposit_param_script_hash: "feed",
     treasury_credential: { kind: "VerificationKey", hash: TREASURY },
     escheat_after_epoch: ESCHEAT_AFTER,
     ms_per_epoch: MS_PER_EPOCH,
+    min_param_epoch: MIN_PARAM_EPOCH,
     ledger: [],
     epoch: 10n,
     ...over,
@@ -152,6 +156,20 @@ describe("DEPOSIT — plan động (beacon) + bất biến", () => {
   it("deposit asset không accepted ném lỗi", () => {
     const d = baseDatum();
     expect(() => planDeposit(d, potVal(0n), beacon(100n), E1, ALICE, "dead", "beef", AT_CATTLE, VT_HIGH, LC_LONG, 11n)).toThrow(/DEP-002/);
+  });
+
+  it("LỖ-2 ATK: beacon stale (epoch < min_param_epoch) → ném DEP-010", () => {
+    const d = baseDatum({ min_param_epoch: 5n });
+    // beacon epoch 4 < min 5 → bind bảng phí cũ → reject.
+    const stale: DepositParam = { ...beacon(1_000_000n), epoch: 4n };
+    expect(() => planDeposit(d, potVal(0n), stale, E1, ALICE, LAMP_POLICY, LAMP_NAME, AT_CATTLE, VT_HIGH, LC_LONG, 11n)).toThrow(/DEP-010/);
+  });
+
+  it("LỖ-2 HAPPY: beacon epoch == min_param_epoch → fresh → qua", () => {
+    const d = baseDatum({ min_param_epoch: 5n });
+    const fresh: DepositParam = { ...beacon(1_000_000n), epoch: 5n };
+    const { amount } = planDeposit(d, potVal(0n), fresh, E1, ALICE, LAMP_POLICY, LAMP_NAME, AT_CATTLE, VT_HIGH, LC_LONG, 11n);
+    expect(amount).toBe(1_000_000n);
   });
 
   it("deposit epoch lùi ném lỗi", () => {

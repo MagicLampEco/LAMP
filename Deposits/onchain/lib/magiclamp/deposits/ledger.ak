@@ -131,24 +131,73 @@ fn deposit_delta(
   }
 }
 
+/// epoch kỳ vọng cho 1 dòng out KHÔNG phải đích (giữ epoch dòng in cùng khóa).
+/// None nếu dòng out không có dòng in tương ứng (sẽ bị bắt ở chỗ khác).
+fn in_line_epoch(ledger_in: List<DepositLine>, e: DepositLine) -> Option<Int> {
+  when find_line(ledger_in, e.entity_id, e.depositor, e.policy, e.name) is {
+    Some(i) -> Some(i.epoch)
+    None -> None
+  }
+}
+
+/// F1+F2 — kiểm mỗi dòng OUT: amount, epoch, classification.
+///   amount: dòng đích = get(in)+amount; dòng khác = get(in) (giữ nguyên).
+///   F1 epoch (chống đầu độc đồng hồ escheat):
+///     - dòng đích MỚI (chưa có dòng in cùng khóa) → e.epoch == dep_epoch (đóng dấu
+///       epoch tx, KHÔNG để client mớm epoch giả để né/đẩy escheat).
+///     - dòng CỘNG DỒN (đã có dòng in) → e.epoch == in.epoch (giữ mốc cũ, KHÔNG reset
+///       clock — cộng cọc không được làm trẻ lại đồng hồ escheat).
+///     - dòng KHÁC đích → e.epoch == in.epoch (giữ nguyên).
+///   F2 classification: dòng đích → (asset_type,value_tier,lifecycle_class) khớp
+///     redeemer (khớp tier beacon đã định giá); dòng khác → khớp in.* (giữ nguyên).
 pub fn deposit_each_out_line_ok(
-  ledger_in  : List<DepositLine>,
-  ledger_out : List<DepositLine>,
-  entity_id  : ByteArray,
-  depositor  : ByteArray,
-  policy     : ByteArray,
-  name       : ByteArray,
-  amount     : Int,
+  ledger_in       : List<DepositLine>,
+  ledger_out      : List<DepositLine>,
+  entity_id       : ByteArray,
+  depositor       : ByteArray,
+  policy          : ByteArray,
+  name            : ByteArray,
+  amount          : Int,
+  dep_epoch       : Int,
+  asset_type      : Int,
+  value_tier      : Int,
+  lifecycle_class : Int,
 ) -> Bool {
   list.all(
     ledger_out,
     fn(e) {
       let base = line_amount(ledger_in, e.entity_id, e.depositor, e.policy, e.name)
       let want = base + deposit_delta(e, entity_id, depositor, policy, name, amount)
-      // dòng khác đích: want == base (delta 0) → giữ nguyên.
-      // dòng đích: want == base + amount.
-      // entity/epoch của dòng out phải khớp KHÓA (đã đảm bảo qua e.* tự thân).
-      e.amount == want
+      let is_target = line_matches(e, entity_id, depositor, policy, name)
+      // epoch kỳ vọng (F1):
+      let epoch_ok =
+        when in_line_epoch(ledger_in, e) is {
+          // có dòng in cùng khóa → giữ epoch cũ (cộng dồn / dòng khác).
+          Some(in_ep) -> e.epoch == in_ep
+          // KHÔNG có dòng in → là dòng MỚI: chỉ hợp lệ nếu là dòng đích, epoch = dep_epoch.
+          None -> is_target && e.epoch == dep_epoch
+        }
+      // classification kỳ vọng (F2):
+      let class_ok =
+        if is_target {
+          // dòng đích out PHẢI khớp redeemer (= tier beacon đã định giá amount).
+          let out_match_redeemer =
+            e.asset_type == asset_type && e.value_tier == value_tier && e.lifecycle_class == lifecycle_class
+          // CỘNG DỒN (đã có dòng in cùng khóa) → dòng in CŨ cũng PHẢI khớp redeemer
+          // (không cho đổi phân loại dòng đang tồn tại khi nạp thêm — đồng nhất).
+          when find_line(ledger_in, e.entity_id, e.depositor, e.policy, e.name) is {
+            Some(i) ->
+              out_match_redeemer && i.asset_type == asset_type && i.value_tier == value_tier && i.lifecycle_class == lifecycle_class
+            None -> out_match_redeemer
+          }
+        } else {
+          when find_line(ledger_in, e.entity_id, e.depositor, e.policy, e.name) is {
+            Some(i) ->
+              e.asset_type == i.asset_type && e.value_tier == i.value_tier && e.lifecycle_class == i.lifecycle_class
+            None -> False
+          }
+        }
+      e.amount == want && epoch_ok && class_ok
     },
   )
 }
@@ -179,13 +228,17 @@ pub fn target_line_present_once(
 }
 
 pub fn deposit_ledger_ok(
-  ledger_in  : List<DepositLine>,
-  ledger_out : List<DepositLine>,
-  entity_id  : ByteArray,
-  depositor  : ByteArray,
-  policy     : ByteArray,
-  name       : ByteArray,
-  amount     : Int,
+  ledger_in       : List<DepositLine>,
+  ledger_out      : List<DepositLine>,
+  entity_id       : ByteArray,
+  depositor       : ByteArray,
+  policy          : ByteArray,
+  name            : ByteArray,
+  amount          : Int,
+  dep_epoch       : Int,
+  asset_type      : Int,
+  value_tier      : Int,
+  lifecycle_class : Int,
 ) -> Bool {
   no_dup_lines(ledger_out) && all_lines_positive(ledger_out) && deposit_each_out_line_ok(
     ledger_in,
@@ -195,6 +248,10 @@ pub fn deposit_ledger_ok(
     policy,
     name,
     amount,
+    dep_epoch,
+    asset_type,
+    value_tier,
+    lifecycle_class,
   ) && each_in_line_present(ledger_in, ledger_out) && target_line_present_once(
     ledger_out,
     entity_id,

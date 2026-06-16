@@ -38,6 +38,9 @@ const TREASURY_KIND = (process.env.TREASURY_KIND ?? "VerificationKey").trim() as
 const TREASURY_HASH = (process.env.TREASURY_HASH ?? "").trim();
 const ESCHEAT_AFTER_EPOCH = BigInt(process.env.ESCHEAT_AFTER_EPOCH ?? "6");
 const MS_PER_EPOCH = BigInt(process.env.MS_PER_EPOCH ?? "86400000"); // Preview 1 ngày/epoch
+// LỖ-2 — sàn freshness beacon. Mặc định 0 (chấp mọi beacon lúc bootstrap); DAO nâng sau
+// mỗi lần chỉnh bảng phí để chống bind beacon cũ. Đặt = epoch beacon DepositParam hiện hành.
+const MIN_PARAM_EPOCH = BigInt(process.env.MIN_PARAM_EPOCH ?? "0");
 // beacon NFT (live: policy từ mint one-shot; build-mode: demo placeholder hex).
 const DP_NFT_POLICY = (process.env.DP_NFT_POLICY ?? "9999").trim();
 const DP_NFT_NAME   = (process.env.DP_NFT_NAME ?? "5041524d").trim();   // "PARM"
@@ -110,11 +113,14 @@ async function main(): Promise<void> {
     accepted_assets:      acceptedAssets,
     lifecycle_authority:  authority,
     reserved_min_ada:     RESERVED_MIN_ADA,
-    deposit_param_policy: DP_NFT_POLICY,
-    deposit_param_name:   DP_NFT_NAME,
-    treasury_credential:  treasury,
+    deposit_param_policy:      DP_NFT_POLICY,
+    deposit_param_name:        DP_NFT_NAME,
+    // F3 — địa chỉ beacon hợp lệ = script hash validator deposit_param (đã apply param).
+    deposit_param_script_hash: paramHash,
+    treasury_credential:       treasury,
     escheat_after_epoch:  ESCHEAT_AFTER_EPOCH,
     ms_per_epoch:         MS_PER_EPOCH,
+    min_param_epoch:      MIN_PARAM_EPOCH,
     ledger:               [],
     epoch:                0n,
   };
