@@ -111,7 +111,7 @@ export interface ClaimResult {
   newDatum:         ClaimAccountDatum;
   mode:             "create" | "update";
   /** Treasury datum mới (cumulative_entitlement += amount) — chỉ khi co-spend treasury. */
-  newTreasuryDatum?: TreasuryDatum;
+  newTreasuryDatum?: TreasuryDatum | undefined;
   summary:          string;
 }
 
