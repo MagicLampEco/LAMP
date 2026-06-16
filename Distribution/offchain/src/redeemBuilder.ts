@@ -31,7 +31,7 @@ import {
   credentialToAddress, scriptHashToCredential, validatorToScriptHash,
   type LucidEvolution, type UTxO, type Validator, type TxSignBuilder,
 } from "@lucid-evolution/lucid";
-import type { Network } from "@magiclamp/utils";
+import type { Network } from "@lucid-evolution/lucid";
 
 import type { ClaimAccountDatum, TreasuryDatum } from "./types.js";
 import {
@@ -41,7 +41,10 @@ import {
 } from "./datum.js";
 import { vested } from "./vested.js";
 
-const DEFAULT_LAMP_ASSET_NAME = "4c414d50"; // "LAMP"
+// Fallback testnet (tLAMP) khi caller KHÔNG truyền lampAssetName. Giá trị chân lý
+// đến từ config network-switched (testnet tLAMP / mainnet LAMP) — mọi script/builder
+// THỰC luôn truyền params.lampAssetName tường minh. Mainnet PHẢI truyền "4c414d50".
+const DEFAULT_LAMP_ASSET_NAME = "744c414d50"; // "tLAMP" — chỉ là default testnet
 
 /** Strip leading 0x + lowercase. */
 function normHex(hex: string): string {
@@ -159,8 +162,12 @@ export async function buildRedeemTx(params: RedeemParams): Promise<RedeemResult>
     start_epoch:     claim.start_epoch,
     drops_per_epoch: claim.drops_per_epoch,
   };
-  // Treasury': datum bảo toàn (C-TRE-2).
-  const newTreasuryDatum: TreasuryDatum = { committee_hash: treasury.committee_hash };
+  // Treasury': committee_hash + cumulative_entitlement bảo toàn (C-TRE-2 / C-SOLV-3).
+  // Redeem CHỈ giảm pool LAMP — sổ cái cumulative_entitlement BẤT BIẾN.
+  const newTreasuryDatum: TreasuryDatum = {
+    committee_hash:         treasury.committee_hash,
+    cumulative_entitlement: treasury.cumulative_entitlement,
+  };
 
   // ── Output assets: bảo toàn TẤT CẢ (audit dust lesson, C-VAL-0) ────
   // ClaimAccount: chỉ datum đổi → clone toàn bộ assets.
