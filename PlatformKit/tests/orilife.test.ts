@@ -3,9 +3,9 @@
 import { describe, it, expect } from "vitest";
 import {
   estimateFeeUsd, usdToOil, makeOriLifePriceFn, oriLifeConfig, ORILIFE_BUCKETS,
-} from "../platforms/orilife.js";
+} from "../examples/orilife.js";
 import { eventToCollectItem } from "../offchain/src/collectAdapter.js";
-import { asciiToHex } from "../platforms/_common.js";
+import { asciiToHex } from "../offchain/src/encoding.js";
 
 // Ca tham chiếu tính từ animal_fee.estimate_fee (lifecycle=1, batch_daily, demand=1.0):
 //   cattle declared 0     → 0.14   (theo SÀN 400 USD)

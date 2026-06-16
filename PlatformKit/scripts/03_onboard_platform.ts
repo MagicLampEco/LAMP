@@ -31,8 +31,10 @@ import type { PlatformConfig } from "../offchain/src/types.js";
 import type { OutputReference } from "../../Treasury/offchain/src/types.js";
 import { buildSeedTx } from "../../Treasury/offchain/src/seedBuilder.js";
 import { custodyDatumToCbor } from "../../Treasury/offchain/src/datum.js";
-import { phoenixKeyConfig } from "../platforms/phoenixkey.js";
-import { oriLifeConfig } from "../platforms/orilife.js";
+// Config platform là VÍ DỤ THAM CHIẾU (examples/) — không phải lõi framework.
+// Mỗi platform tự viết config tương tự (copy examples/_template.ts).
+import { phoenixKeyConfig } from "../examples/phoenixkey.js";
+import { oriLifeConfig } from "../examples/orilife.js";
 
 // ── chọn platform từ argv ──────────────────────────────────────
 type PlatformName = "phoenixkey" | "orilife";

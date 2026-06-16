@@ -1,10 +1,16 @@
-// @magiclamp/platform-kit — PlatformKit off-chain SDK.
+// @magiclamp/platform-kit — PlatformKit off-chain SDK (FRAMEWORK dùng chung).
 //
-// Onboarding cho mỗi Platform (PhoenixKey, OriLife, ...): bootstrap Treasury custody
-// instance + đăng ký entry vào Registry on-chain (registry_beacon + registry validator).
-// Tái dùng Treasury SDK (datum codec AssetKey, seedBuilder, collectBuilder) — byte-perfect.
+// Onboarding cho MỖI platform Cardano bất kỳ (xem examples/ để biết mẫu config cụ thể):
+// bootstrap Treasury custody instance + đăng ký entry vào Registry on-chain
+// (registry_beacon + registry validator). Tái dùng Treasury SDK (datum codec AssetKey,
+// seedBuilder, collectBuilder) — byte-perfect.
+//
+// Framework cấp: schema (types) + codec datum/redeemer + builder (register/update/onboard)
+// + adapter-interface (collectAdapter) + query (discover/verify). Platform TỰ quyết pricing/
+// tokenomics của mình — framework trung lập với chính sách giá (xem examples/_template.ts).
 
 export * from "./types.js";
+export * from "./encoding.js";
 export * from "./registryDatum.js";
 export * from "./registrationBuilder.js";
 export * from "./onboard.js";

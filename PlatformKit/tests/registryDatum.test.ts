@@ -10,7 +10,7 @@ import {
   PLATFORM_STATUS,
 } from "../offchain/src/registryDatum.js";
 import type { PlatformEntry } from "../offchain/src/types.js";
-import { asciiToHex } from "../platforms/_common.js";
+import { asciiToHex } from "../offchain/src/encoding.js";
 
 const sampleEntry = (): PlatformEntry => ({
   platform_id:    asciiToHex("PhoenixKey"),

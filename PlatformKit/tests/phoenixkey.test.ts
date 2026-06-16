@@ -3,10 +3,10 @@
 import { describe, it, expect } from "vitest";
 import {
   phoenixKeyConfig, makePhoenixKeyPriceFn, PHOENIXKEY_BUCKETS,
-} from "../platforms/phoenixkey.js";
+} from "../examples/phoenixkey.js";
 import { entryWellFormed, planRegister } from "../offchain/src/registrationBuilder.js";
 import { eventToCollectItem } from "../offchain/src/collectAdapter.js";
-import { asciiToHex } from "../platforms/_common.js";
+import { asciiToHex } from "../offchain/src/encoding.js";
 
 const opts = {
   lampPolicy: "ab".repeat(28),

@@ -1,4 +1,10 @@
-// PlatformKit · Platform config: OriLife (truy xuất nguồn gốc sinh vật/cây/quả).
+// ╔══════════════════════════════════════════════════════════════════════════╗
+// ║ VÍ DỤ THAM CHIẾU — KHÔNG phải lõi framework.                                ║
+// ║ Mỗi platform tự viết config + pricing của mình TƯƠNG TỰ file này.           ║
+// ║ Số liệu/giá ở đây là MINH HOẠ (stub) — KHÔNG phải tham số production.        ║
+// ╚══════════════════════════════════════════════════════════════════════════╝
+//
+// Ví dụ: OriLife (truy xuất nguồn gốc sinh vật/cây/quả).
 //
 // OriLife thu phí value-based theo loài/giá trị (mirror OriLifeTrace/field-reid/animal_fee.py
 // + orilife-fee/src/tasks.ts). Treasury custody của OriLife nhận phí (LAMP + ADA), chia về 3
@@ -13,7 +19,7 @@
 
 import type { PlatformConfig } from "../offchain/src/types.js";
 import type { FeeEvent, PriceFn, PricedItem } from "../offchain/src/collectAdapter.js";
-import { ADA, asciiToHex, padHash28 } from "./_common.js";
+import { ADA, asciiToHex, padHash28 } from "../offchain/src/encoding.js";
 
 // ── Bucket map (mirror hệ 3-bucket OriLife) ──────────────────────────────────
 export const ORILIFE_BUCKETS = {

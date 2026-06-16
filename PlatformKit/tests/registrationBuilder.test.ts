@@ -8,7 +8,7 @@ import {
 import { decodePlatformEntry } from "../offchain/src/registryDatum.js";
 import { Data } from "@lucid-evolution/lucid";
 import type { PlatformConfig, PlatformEntry } from "../offchain/src/types.js";
-import { asciiToHex } from "../platforms/_common.js";
+import { asciiToHex } from "../offchain/src/encoding.js";
 
 const baseConfig = (over: Partial<PlatformConfig> = {}): PlatformConfig => ({
   platformId: asciiToHex("TestPlat"),

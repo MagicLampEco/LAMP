@@ -4,9 +4,11 @@ import { describe, it, expect } from "vitest";
 import { onboardPlatform } from "../offchain/src/onboard.js";
 import { entryWellFormed } from "../offchain/src/registrationBuilder.js";
 import { seedDatumOk } from "../../Treasury/offchain/src/collect.js";
-import { phoenixKeyConfig } from "../platforms/phoenixkey.js";
-import { oriLifeConfig } from "../platforms/orilife.js";
-import { asciiToHex } from "../platforms/_common.js";
+import { phoenixKeyConfig } from "../examples/phoenixkey.js";
+import { oriLifeConfig } from "../examples/orilife.js";
+import { exampleConfig, makeExamplePriceFn } from "../examples/_template.js";
+import { eventToCollectItem } from "../offchain/src/collectAdapter.js";
+import { asciiToHex } from "../offchain/src/encoding.js";
 
 const seedPolicy = "56".repeat(28);
 const onboardArgs = (config: ReturnType<typeof phoenixKeyConfig>) => ({
@@ -84,5 +86,30 @@ describe("onboardPlatform — 2 bước plan", () => {
     expect(entryWellFormed(plan.register.entry)).toBe(true);
     expect(plan.register.entry.cut_bps).toBe(700n);
     expect(seedDatumOk(plan.seed.custodyValue, plan.seed.datum, ori.reservedMinAda, seedPolicy)).toBe(true);
+  });
+
+  // TEMPLATE (examples/_template.ts) — khung generic team copy & điền. Test này CHỨNG MINH
+  // template typecheck + dựng plan hợp lệ qua đúng SDK thật (onboardPlatform/eventToCollectItem),
+  // để team có mẫu chạy được làm mốc.
+  it("_template: exampleConfig dựng onboard plan hợp lệ + PriceFn sinh CollectItem", () => {
+    const cfg = exampleConfig({
+      registryAuthority: "ef".repeat(28),
+      msPerEpoch: 86_400_000n,
+      reservedMinAda: 2_000_000n,
+      genesisRef: { transaction_id: "dd".repeat(32), output_index: 0n },
+    });
+    const plan = onboardPlatform({
+      config: cfg, beaconPolicy: "12".repeat(28), custodyHash: "34".repeat(28),
+      seedPolicy, createdEpoch: 1n,
+    });
+    expect(entryWellFormed(plan.register.entry)).toBe(true);
+    expect(plan.register.entry.platform_id).toBe(asciiToHex("ExamplePlatform"));
+
+    // PriceFn mẫu: event hỗ trợ → CollectItem; event lạ → null.
+    const priceFn = makeExamplePriceFn({});
+    const item = eventToCollectItem({ eventType: "example.action", payer: "11".repeat(28) }, priceFn);
+    expect(item!.amount).toBe(1_000_000n);              // 1 ADA = 1 × LOVELACE.
+    expect(item!.category).toBe(0n);                    // EXAMPLE_BUCKETS.MAIN.
+    expect(eventToCollectItem({ eventType: "nope", payer: "11".repeat(28) }, priceFn)).toBeNull();
   });
 });

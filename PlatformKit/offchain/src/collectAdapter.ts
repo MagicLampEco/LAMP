@@ -6,8 +6,8 @@
 // category (bucket đích cut); (2) gói thành CollectItem; (3) gọi Treasury buildCollectTx.
 //
 // PLUGGABLE: priceFn nhận FeeEvent → PricedItem. Mỗi platform định nghĩa pricing riêng
-// (PhoenixKey: phí cố định/sự kiện; OriLife: value-based mirror animal_fee.py). Adapter
-// trung lập với chính sách giá — chỉ điều phối.
+// (xem examples/: phí cố định theo sự kiện, value-based theo giá trị, ... — tùy platform).
+// Adapter trung lập với chính sách giá — chỉ điều phối.
 
 import type { CollectItem } from "../../../Treasury/offchain/src/types.js";
 import type { AssetKey } from "./types.js";

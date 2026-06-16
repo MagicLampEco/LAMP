@@ -9,7 +9,7 @@ import {
 import { planRegister } from "../offchain/src/registrationBuilder.js";
 import { platformEntryToCbor } from "../offchain/src/registryDatum.js";
 import type { PlatformEntry } from "../offchain/src/types.js";
-import { asciiToHex } from "../platforms/_common.js";
+import { asciiToHex } from "../offchain/src/encoding.js";
 
 const BEACON = "12".repeat(28);
 const CUSTODY_HASH = "34".repeat(28);

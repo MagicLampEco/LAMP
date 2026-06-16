@@ -1,4 +1,10 @@
-// PlatformKit · Platform config: PhoenixKey (DID sinh trắc PhoenixKeyDID).
+// ╔══════════════════════════════════════════════════════════════════════════╗
+// ║ VÍ DỤ THAM CHIẾU — KHÔNG phải lõi framework.                                ║
+// ║ Mỗi platform tự viết config + pricing của mình TƯƠNG TỰ file này.           ║
+// ║ Số liệu/giá ở đây là MINH HOẠ (stub) — KHÔNG phải tham số production.        ║
+// ╚══════════════════════════════════════════════════════════════════════════╝
+//
+// Ví dụ: PhoenixKey (DID sinh trắc PhoenixKeyDID).
 //
 // PhoenixKey thu phí cho các thao tác DID: tạo DID, xoay khoá, khôi phục. Treasury custody
 // instance của PhoenixKey nhận phí (ADA + MAGIC), chia về 3 bucket: ops / community / emergency.
@@ -12,7 +18,7 @@
 
 import type { PlatformConfig } from "../offchain/src/types.js";
 import type { FeeEvent, PriceFn, PricedItem } from "../offchain/src/collectAdapter.js";
-import { ADA, asciiToHex, magicAsset, padHash28 } from "./_common.js";
+import { ADA, asciiToHex, magicAsset, padHash28, LOVELACE, NANOGIC } from "../offchain/src/encoding.js";
 
 // ── Bucket map (id ổn định — khớp CustodyDatum.ledger.category) ──────────────
 export const PHOENIXKEY_BUCKETS = {
@@ -24,8 +30,6 @@ export const PHOENIXKEY_BUCKETS = {
 // ── Tham số định giá STUB (WIRE FEE THẬT sau) ────────────────────────────────
 // Đơn vị: lovelace (ADA × 10^6) cho phần ADA; nanogic (MAGIC × 10^9) cho phần MAGIC.
 // Số dưới đây là MẪU minh hoạ — production đọc từ PhoenixKey fee schedule + oracle tỉ giá.
-const LOVELACE = 1_000_000n;       // 1 ADA
-const NANOGIC = 1_000_000_000n;    // 1 MAGIC
 
 /** Bảng phí STUB theo thao tác DID. WIRE FEE THẬT: thay bằng schedule governance thật. */
 export const PHOENIXKEY_FEES_STUB = {

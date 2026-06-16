@@ -11,6 +11,6 @@
     "noEmit":           true,
     "sourceMap":        true
   },
-  "include": ["src/**/*", "../platforms/**/*", "../tests/**/*"],
+  "include": ["src/**/*", "../examples/**/*", "../tests/**/*"],
   "exclude": ["node_modules", "dist"]
 }
