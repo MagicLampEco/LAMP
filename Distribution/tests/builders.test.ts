@@ -6,14 +6,17 @@ import { describe, it, expect } from "vitest";
 import { validatorToScriptHash, credentialToAddress, scriptHashToCredential, toUnit } from "@lucid-evolution/lucid";
 import type { UTxO, Validator } from "@lucid-evolution/lucid";
 
-import { buildClaimTx } from "../offchain/src/claimBuilder.js";
+import { buildClaimTx, assertClaimSolvency } from "../offchain/src/claimBuilder.js";
 import { buildRedeemTx } from "../offchain/src/redeemBuilder.js";
 import { buildPostBeaconTx } from "../offchain/src/beaconBuilder.js";
 import {
   claimAccountDatumToCbor, beaconDatumToCbor, treasuryDatumToCbor,
+  decodeTreasuryDatum, TREASURY_REDEEMER, grantEntitlementRedeemerToCbor,
 } from "../offchain/src/datum.js";
 import { committeeThreshold } from "../offchain/src/committee.js";
+import { TREASURY_NFT_ASSET_NAME } from "../offchain/src/constants.js";
 import { lampOil } from "./helpers.js";
+import { Data } from "@lucid-evolution/lucid";
 
 // ── Mock Lucid tx-builder ──────────────────────────────────────────────
 interface Recorded {
@@ -61,7 +64,7 @@ const FAKE_BEACON:   Validator = { type: "PlutusV3", script: "494801000022212001
 const NETWORK = "Preview" as const;
 const OWNER   = "aabbccddeeff00112233445566778899aabbccddeeff001122334455";
 const LAMP_POLICY = "ff".repeat(28);
-const LAMP_UNIT   = toUnit(LAMP_POLICY, "4c414d50");
+const LAMP_UNIT   = toUnit(LAMP_POLICY, "744c414d50"); // tLAMP canonical
 const D = lampOil(100n);
 
 // committee 3 keys, threshold 2
@@ -235,12 +238,12 @@ describe("buildRedeemTx — vested = min(E, D·dpe·Δ)", () => {
       }),
     };
   }
-  function treasuryUtxo(lamp: bigint, extra: Record<string, bigint> = {}): UTxO {
+  function treasuryUtxo(lamp: bigint, extra: Record<string, bigint> = {}, cum = 0n): UTxO {
     return {
       txHash: "22".repeat(32), outputIndex: 0,
       address: scriptAddr(FAKE_TREASURY),
       assets: { lovelace: 5_000_000n, [LAMP_UNIT]: lamp, ...extra },
-      datum: treasuryDatumToCbor({ committee_hash: "ee".repeat(28) }),
+      datum: treasuryDatumToCbor({ committee_hash: "ee".repeat(28), cumulative_entitlement: cum }),
     };
   }
   function dropBeaconUtxo(dropValue: bigint): UTxO {
@@ -284,6 +287,8 @@ describe("buildRedeemTx — vested = min(E, D·dpe·Δ)", () => {
     expect(treasuryOut.assets[LAMP_UNIT]).toBe(lampOil(850n));
     expect(treasuryOut.assets.lovelace).toBe(5_000_000n);
     expect(treasuryOut.assets[DUST]).toBe(3n);
+    // C-SOLV-3: redeem KHÔNG đổi cumulative_entitlement (sổ cái bất biến).
+    expect(decodeTreasuryDatum(Data.from(treasuryOut.datum)).cumulative_entitlement).toBe(0n);
 
     // user receives exactly amount LAMP
     expect(rec.payAddr).toHaveLength(1);
@@ -381,5 +386,83 @@ describe("buildRedeemTx — vested = min(E, D·dpe·Δ)", () => {
       treasuryUtxo: treasuryUtxo(lampOil(50n)),
       dropBeaconUtxo: dropBeaconUtxo(D),
     })).rejects.toThrow(/< amount/);
+  });
+});
+
+// ── SOLVENCY GUARD (over-collateralization, lúc cấp E) ──────────────────
+describe("assertClaimSolvency — Σ(E−redeemed) ≤ treasury", () => {
+  it("pass khi đúng bằng quỹ (over-collateral biên)", () => {
+    // treasury 1000, other 400, this 600 → tổng 1000 == 1000 → OK.
+    expect(() => assertClaimSolvency(1000n, 400n, 600n)).not.toThrow();
+  });
+
+  it("pass khi quỹ dư", () => {
+    expect(() => assertClaimSolvency(1000n, 100n, 200n)).not.toThrow();
+  });
+
+  it("reject khi Σ vượt quỹ 1 oil", () => {
+    // 400 + 601 = 1001 > 1000 → CLAIM-010.
+    expect(() => assertClaimSolvency(1000n, 400n, 601n)).toThrow(/CLAIM-010/);
+  });
+
+  it("reject khi quỹ rỗng nhưng cấp E", () => {
+    expect(() => assertClaimSolvency(0n, 0n, 1n)).toThrow(/CLAIM-010/);
+  });
+});
+
+describe("buildClaimTx — solvency guard tích hợp", () => {
+  function claimUtxoS(datum: any): UTxO {
+    return {
+      txHash: "cd".repeat(32), outputIndex: 0,
+      address: scriptAddr(FAKE_CLAIM),
+      assets: { lovelace: 2_000_000n },
+      datum: claimAccountDatumToCbor(datum),
+    };
+  }
+
+  it("CREATE: reject khi amount vượt treasury (under-collateralized)", async () => {
+    const { lucid } = mockLucid("addr_wallet");
+    await expect(buildClaimTx({
+      lucid, claimScript: FAKE_CLAIM, network: NETWORK,
+      ownerPkh: OWNER, amount: lampOil(600n), currentEpoch: 5n,
+      committeeKeyHashes: COMMITTEE,
+      solvency: { treasuryLamp: lampOil(1000n), otherOutstanding: lampOil(500n) },
+    })).rejects.toThrow(/CLAIM-010/);  // 500 + 600 = 1100 > 1000
+  });
+
+  it("CREATE: pass khi trong hạn mức quỹ", async () => {
+    const { lucid, rec } = mockLucid("addr_wallet");
+    const res = await buildClaimTx({
+      lucid, claimScript: FAKE_CLAIM, network: NETWORK,
+      ownerPkh: OWNER, amount: lampOil(400n), currentEpoch: 5n,
+      committeeKeyHashes: COMMITTEE,
+      solvency: { treasuryLamp: lampOil(1000n), otherOutstanding: lampOil(500n) },
+    });
+    expect(res.mode).toBe("create");         // 500 + 400 = 900 ≤ 1000
+    expect(rec.payData).toHaveLength(1);
+  });
+
+  it("UPDATE: dùng entitlement−redeemed sau khi tăng để tính outstanding", async () => {
+    const { lucid } = mockLucid("addr_wallet");
+    // prev: E=300, redeemed=100 → outstanding cũ 200; +amount 250 → E=550, redeemed=100
+    // → thisOutstandingAfter = 450. other 600 → 1050 > 1000 → reject.
+    const prev = { owner: OWNER, entitlement: lampOil(300n), redeemed: lampOil(100n), start_epoch: 2n, drops_per_epoch: 1n };
+    await expect(buildClaimTx({
+      lucid, claimScript: FAKE_CLAIM, network: NETWORK,
+      ownerPkh: OWNER, amount: lampOil(250n), currentEpoch: 9n,
+      claimAccountUtxo: claimUtxoS(prev), committeeKeyHashes: COMMITTEE,
+      solvency: { treasuryLamp: lampOil(1000n), otherOutstanding: lampOil(600n) },
+    })).rejects.toThrow(/CLAIM-010/);
+  });
+
+  it("không có solvency param → bỏ qua guard (không regression)", async () => {
+    const { lucid, rec } = mockLucid("addr_wallet");
+    const res = await buildClaimTx({
+      lucid, claimScript: FAKE_CLAIM, network: NETWORK,
+      ownerPkh: OWNER, amount: lampOil(999999n), currentEpoch: 5n,
+      committeeKeyHashes: COMMITTEE,
+    });
+    expect(res.mode).toBe("create");
+    expect(rec.payData).toHaveLength(1);
   });
 });

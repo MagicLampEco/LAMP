@@ -8,8 +8,9 @@
     "deploy": "tsx 01_deploy.ts",
     "mint-lamp": "tsx 02_mint_test_lamp.ts",
     "genesis": "tsx 03_genesis.ts",
+    "verify-solvency": "tsx 05_verify_solvency.ts",
     "e2e": "tsx 04_e2e.ts",
-    "all": "npm run deploy && npm run mint-lamp && npm run genesis && npm run e2e",
+    "all": "npm run deploy && npm run mint-lamp && npm run genesis && npm run verify-solvency && npm run e2e",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

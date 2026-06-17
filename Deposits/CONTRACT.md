@@ -101,6 +101,38 @@ gộp theo bucket). Deposits ledger khóa theo **`(entity_id, depositor_pkh, ass
 
 ---
 
+## 5b. Bất biến đồng hồ & beacon (v2 — chống đầu độc epoch / stale fee)
+
+Deposit ĐỘNG đọc bảng phí từ beacon `DepositParam` (reference input, CIP-31) và đóng dấu
+`epoch` lên dòng mới. 3 lỗ phải khóa:
+
+- **INV-DEPOSIT-EPOCH (LỖ-1 — cửa sổ epoch hẹp):** epoch đóng dấu dòng MỚI lấy từ
+  `validity_range`, ÉP **cả 2 cận hữu hạn** + cửa sổ **HẸP `upper − lower < ms_per_epoch`**;
+  `dep_epoch = lower / ms_per_epoch`. Ledger chỉ ép `slot ≥ lower`, nên một-cận (chỉ
+  `validFrom`) cho attacker đặt `lower = 0` (quá khứ) → `dep_epoch` giả nhỏ → dòng đóng dấu
+  epoch quá khứ → escheat SỚM (cướp cọc user). Kẹp cận trên `< 1 epoch` khiến `lower = 0`
+  chỉ hợp lệ quanh genesis, không dùng cho cọc thật → epoch ghim SÁT now. (Escheat dùng
+  one-cận `validFrom` là ĐÚNG idiom gating "đã qua mốc": đặt `lower` nhỏ không giúp attacker
+  vì điều kiện là `current_epoch ≥ mốc`.)
+- **INV-BEACON-FRESH (LỖ-2 — freshness):** Deposit ÉP `beacon.epoch ≥ min_param_epoch`
+  (param pot). Chống bind bảng phí CŨ (stale): DAO nâng phí ở epoch mới → attacker không
+  tham chiếu beacon epoch thấp để cọc ít hơn lịch hiện hành. `min_param_epoch` đơn điệu
+  tăng theo mỗi lần governance nâng (cập nhật qua nâng cấp pot params, bảo toàn mọi tx khác).
+- **INV-ESCHEAT-MIN (LỖ-3):** `escheat_after_epoch > 0` (KHÔNG `== 0`) — cọc tồn **≥ 1
+  epoch** trước khi escheat được; `== 0` cho phép escheat NGAY trong epoch gửi (cướp cọc vừa nạp).
+
+**TRUST-ROOT beacon `deposit_param` NFT — BẮT BUỘC minting policy ONE-SHOT.**
+Xác thực beacon = đúng 1 NFT `(deposit_param_policy, deposit_param_name)` ở đúng địa chỉ
+`Script(deposit_param_script_hash)` (F3). Tính an toàn của TOÀN BỘ định giá cọc dựa trên giả
+định **NFT này là duy nhất, không đúc lại được** — nếu policy cho phép mint nhiều bản, attacker
+đúc NFT thứ 2 mang datum giả (định giá cọc = 0) → né phí. Vì vậy `deposit_param_policy` PHẢI
+là **one-shot minting policy** (mint đúng 1 lần, gắn 1 UTxO seed cố định — mẫu Cardano CIP-68
+one-shot / consume-utxo). Điều này **kiểm lúc bootstrap/deploy** (off-chain xác minh policy
+script + lịch sử mint), KHÔNG kiểm lại mỗi tx Deposit (reference input chỉ thấy NFT, không
+thấy policy logic). Sai sót ở bước này phá toàn bộ trust-root → kiểm nghiêm ở deploy.
+
+---
+
 ## 6. Asset & ràng buộc
 
 - `accepted_assets`: v1 = LAMP (`policy = LAMP_POLICY`, `name = #"744c414d50"`, 6 decimals → 1 LAMP =

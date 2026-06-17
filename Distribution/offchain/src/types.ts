@@ -21,5 +21,7 @@ export interface BeaconDatum {
 }
 
 export interface TreasuryDatum {
-  committee_hash : string;  // hex
+  committee_hash         : string;  // hex
+  cumulative_entitlement : bigint;  // oil — sổ cái solvency (field MỚI ở CUỐI). Σ E cấp dồn,
+                                    // bất biến on-chain: cumulative_entitlement ≤ treasury pool.
 }

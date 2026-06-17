@@ -11,6 +11,10 @@ export * from "./releaseBuilder.js";
 export * from "./reserveAuthBuilder.js";
 export * from "./reserveGateBuilder.js";
 
+// Circulating supply — kế toán thuần off-chain (LAMP fixed 36 tỷ, KHÔNG burn).
+// circulating(asset) = total_supply − Σ custody Treasury(asset). Hỗ trợ shard.
+export * from "./circulating.js";
+
 // release.js: 5 hàm (ledgerOk/valueOk/planLedgerOut/eachOutLineOk/eachInLinePresent)
 // trùng tên với collect.js (mỗi nhánh có bản riêng). Re-export có alias `release*`
 // để barrel sạch — gọi bản nhánh Release qua `releaseLedgerOk`, v.v. Các hàm KHÔNG

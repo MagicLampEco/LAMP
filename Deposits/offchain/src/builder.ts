@@ -91,6 +91,10 @@ export function planDeposit(
   }
   // C-DEP-7: amount TÍNH từ beacon (KHÔNG tin caller).
   if (!validParam(beacon)) throw new Error("DEP-006: DepositParam beacon vi phạm bất biến (clamp/base<0)");
+  // LỖ-2: freshness — beacon.epoch ≥ min_param_epoch (chống bind bảng phí CŨ).
+  if (beacon.epoch < datum.min_param_epoch) {
+    throw new Error(`DEP-010: beacon stale (epoch ${beacon.epoch} < min_param_epoch ${datum.min_param_epoch})`);
+  }
   const amount = requiredFor(beacon, assetType, valueTier, lifecycleClass);
   if (amount === undefined) {
     throw new Error("DEP-007: phân loại (asset_type,value_tier,lifecycle_class) không có trong bảng beacon");
@@ -142,12 +146,21 @@ export async function buildDepositTx(params: DepositParams): Promise<DepositResu
     asset_type: assetType, value_tier: valueTier, lifecycle_class: lifecycleClass, deposit_ref: depositRef,
   });
 
+  // LỖ-1: cửa sổ validity HẸP < 1 epoch (cả 2 cận hữu hạn). lower = depEpoch×ms_per_epoch,
+  // upper = lower + ms_per_epoch − 1 → hi−lo < ms_per_epoch (qua get_deposit_epoch guard) +
+  // dep_epoch = lower/ms_per_epoch = newDatum.epoch (đóng dấu dòng mới SÁT now, không quá khứ).
+  const depEpoch = newDatum.epoch;
+  const lowerMs = Number(depEpoch * datum.ms_per_epoch);
+  const upperMs = Number(depEpoch * datum.ms_per_epoch + datum.ms_per_epoch - 1n);
+
   const tx = await lucid
     .newTx()
     .collectFrom([potUtxo], redeemer)
     .readFrom([paramUtxo])                 // beacon reference input (CIP-31 — không tiêu)
     .attach.SpendingValidator(potScript)
     .addSignerKey(depositor)               // C-DEP-4 depositor PHẢI ký
+    .validFrom(lowerMs)                    // LỖ-1: cận dưới cửa sổ hẹp
+    .validTo(upperMs)                      // LỖ-1: cận trên hữu hạn (chặn lower_bound quá khứ)
     .pay.ToAddressWithData(
       potAddress,
       { kind: "inline", value: potDatumToCbor(newDatum) },

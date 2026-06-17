@@ -67,6 +67,11 @@ validator deposits {
         // C-DEP-0
         expect assets.is_zero(tx.mint)
 
+        // LỖ test phòng thủ: sổ IN không có dòng trùng khóa (seed/state sạch). deposit_*
+        // logic giả định khóa duy nhất; nếu ledger_in đã dup (do bug seed) thì find/cộng
+        // dồn nhập nhằng. Rẻ (1 lượt), khóa invariant từ đầu nhánh.
+        expect ledger.no_dup_lines(datum.ledger)
+
         // C-DEP-1: đúng 1 pot input + 1 pot output theo SCRIPT HASH.
         expect util.count_inputs_at_script(tx.inputs, own_hash) == 1
         expect util.count_outputs_at_script(tx.outputs, own_hash) == 1
@@ -86,17 +91,31 @@ validator deposits {
         // C-DEP-4: depositor PHẢI ký.
         expect util.signed_by(tx.extra_signatories, depositor)
 
-        // C-DEP-7: ĐỌC DepositParam beacon qua reference input (NFT xác thực) → ÉP amount.
-        // KHÔNG tin client mớm amount: amount LẤY TỪ beacon theo phân loại 3 khóa.
+        // F4+F5: bất biến PotDatum trước khi đọc đồng hồ (ms_per_epoch chia 0 / escheat âm).
+        // LỖ-3: escheat_after_epoch > 0 (KHÔNG ==0) → cọc tồn ≥ 1 epoch trước khi escheat
+        // được; ==0 cho phép escheat NGAY trong epoch gửi (cướp cọc vừa nạp).
+        expect datum.ms_per_epoch > 0
+        expect datum.escheat_after_epoch > 0
+
+        // F1 + LỖ-1: epoch tx (đóng dấu dòng MỚI) — KẸP CỬA SỔ HẸP < 1 epoch (cả 2 cận
+        // hữu hạn). Chống đặt lower_bound=0 quá khứ → dòng đóng dấu epoch giả → escheat sớm.
+        let dep_epoch = util.get_deposit_epoch(tx, datum.ms_per_epoch)
+
+        // C-DEP-7: ĐỌC DepositParam beacon qua reference input (NFT xác thực + F3 địa chỉ)
+        // → ÉP amount. KHÔNG tin client mớm amount: amount LẤY TỪ beacon theo phân loại.
         let pp_data =
           util.read_beacon_datum(
             tx.reference_inputs,
             deposit_ref,
             datum.deposit_param_policy,
             datum.deposit_param_name,
+            datum.deposit_param_script_hash,
           )
         expect pp: DepositParam = pp_data
         expect schedule.valid_param(pp)
+        // LỖ-2: freshness beacon — beacon.epoch PHẢI ≥ min_param_epoch (chống bind bảng
+        // phí CŨ khi DAO đã nâng: attacker tham chiếu beacon epoch thấp để cọc ít hơn lịch).
+        expect pp.epoch >= datum.min_param_epoch
         // phân loại PHẢI có trong bảng (tier giả → None → fail; chống né phí).
         expect Some(amount) =
           schedule.required_for(pp, asset_type, value_tier, lifecycle_class)
@@ -104,8 +123,8 @@ validator deposits {
         // C-DEP-5: value pot tăng đúng amount (asset khác giữ nguyên). amount=0 → value giữ.
         expect ledger.deposit_value_ok(pot_in.value, pot_out.value, policy, name, amount)
 
-        // C-DEP-6: sổ. amount > 0 → ghi/cộng dồn dòng (kèm classification). amount == 0
-        // → KHÔNG ghi dòng (cọc 0: không value, không sổ → sổ giữ NGUYÊN).
+        // C-DEP-6: sổ. amount > 0 → ghi/cộng dồn dòng (kèm classification + epoch F1/F2).
+        // amount == 0 → KHÔNG ghi dòng (cọc 0: không value, không sổ → sổ giữ NGUYÊN).
         if amount > 0 {
           ledger.deposit_ledger_ok(
             datum.ledger,
@@ -115,6 +134,10 @@ validator deposits {
             policy,
             name,
             amount,
+            dep_epoch,
+            asset_type,
+            value_tier,
+            lifecycle_class,
           )
         } else {
           // cọc 0: sổ out == sổ in (không thêm dòng khống).
@@ -125,6 +148,12 @@ validator deposits {
       Refund { entity_id, depositor, policy, name } -> {
         // C-REF-0
         expect assets.is_zero(tx.mint)
+
+        // Defense-in-depth (đối xứng Deposit C-DEP-6): sổ IN không có dòng trùng khóa.
+        // find_line lấy dòng ĐẦU còn refund_ledger_ok (target_absent) xóa MỌI dòng khớp →
+        // nếu ledger_in dup thì lệch value/sổ. Không reachable (Deposit chặn tạo dup) nhưng
+        // khóa invariant từ đầu nhánh. Rẻ (1 lượt).
+        expect ledger.no_dup_lines(datum.ledger)
 
         // C-REF-1
         expect util.count_inputs_at_script(tx.inputs, own_hash) == 1
@@ -185,6 +214,12 @@ validator deposits {
         // C-ESC-0
         expect assets.is_zero(tx.mint)
 
+        // Defense-in-depth (đối xứng Deposit C-DEP-6): sổ IN không có dòng trùng khóa.
+        // find_line lấy dòng ĐẦU còn refund_ledger_ok (target_absent) xóa MỌI dòng khớp →
+        // nếu ledger_in dup thì lệch value/sổ. Không reachable (Deposit chặn tạo dup) nhưng
+        // khóa invariant từ đầu nhánh. Rẻ (1 lượt).
+        expect ledger.no_dup_lines(datum.ledger)
+
         // C-ESC-1
         expect util.count_inputs_at_script(tx.inputs, own_hash) == 1
         expect util.count_outputs_at_script(tx.outputs, own_hash) == 1
@@ -203,6 +238,11 @@ validator deposits {
           ledger.find_line(datum.ledger, entity_id, depositor, policy, name)
         let escheat_amount = line.amount
         expect escheat_amount > 0
+
+        // F4+F5: bất biến PotDatum trước khi đọc đồng hồ (ms_per_epoch chia 0 / escheat âm).
+        // LỖ-3: escheat_after_epoch > 0 (cọc tồn ≥ 1 epoch).
+        expect datum.ms_per_epoch > 0
+        expect datum.escheat_after_epoch > 0
 
         // C-ESC-4: ĐÃ tới hạn — current_epoch ≥ deposit_epoch + escheat_after.
         // current_epoch lấy từ validity_range (caller đặt); deposit_epoch = line.epoch.
@@ -256,8 +296,10 @@ fn params_preserved(d_in: PotDatum, d_out: PotDatum) -> Bool {
     d_out.reserved_min_ada == d_in.reserved_min_ada,
     d_out.deposit_param_policy == d_in.deposit_param_policy,
     d_out.deposit_param_name == d_in.deposit_param_name,
+    d_out.deposit_param_script_hash == d_in.deposit_param_script_hash,
     d_out.treasury_credential == d_in.treasury_credential,
     d_out.escheat_after_epoch == d_in.escheat_after_epoch,
     d_out.ms_per_epoch == d_in.ms_per_epoch,
+    d_out.min_param_epoch == d_in.min_param_epoch,
   }
 }
