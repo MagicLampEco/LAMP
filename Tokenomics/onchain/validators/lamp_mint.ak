@@ -8,7 +8,12 @@
 // Toàn bộ quyết định ở `phoenixkey.validate_mint` (thuần, test-được). Validator này
 // chỉ forward `policy_id` (own policy do ledger cấp) + tx.
 //
+// GIỚI HẠN: policy này gate AI mint (authority DID) + AI tên token (asset-name =
+// lamp_asset_name), KHÔNG gate BAO NHIÊU — cap 36 tỷ phải do tầng SupplyState/Genesis
+// ép, compose riêng. Xem SPEC §1.1/§QĐ-1.
+//
 // Tham số (baked tại deploy):
+//   lamp_asset_name   — asset-name HỢP LỆ DUY NHẤT dưới policy này (khoá C-1).
 //   anchor_nft_policy — policy-id state NFT của OrgDID authority (= TAAD script hash).
 //   anchor_nft_name   — asset-name state NFT (= blake2b_256(org_did)).
 //
@@ -29,10 +34,15 @@ pub type LampMintRedeemer {
   Mint
 }
 
-validator lamp_mint(anchor_nft_policy: PolicyId, anchor_nft_name: AssetName) {
+validator lamp_mint(
+  lamp_asset_name: AssetName,
+  anchor_nft_policy: PolicyId,
+  anchor_nft_name: AssetName,
+) {
   mint(_redeemer: LampMintRedeemer, policy_id: PolicyId, self: Transaction) {
     phoenixkey.validate_mint(
       policy_id,
+      lamp_asset_name,
       anchor_nft_policy,
       anchor_nft_name,
       self,
@@ -49,7 +59,8 @@ validator lamp_mint(anchor_nft_policy: PolicyId, anchor_nft_name: AssetName) {
 //   Pass:  controller ký + Active + Org
 //   Fail:  thiếu chữ ký controller; ref input KHÔNG có anchor NFT; anchor NFT
 //          policy GIẢ; status=Recovering; status=Revoked; entity_type sai (Person);
-//          burn (mint âm); 2 ref input cùng mang anchor (mơ hồ → từ chối).
+//          burn (mint âm); qty 0; 2 ref input cùng mang anchor (mơ hồ → từ chối);
+//          (C-1) asset-name KHÁC "LAMP"; (C-1) 2 asset-name trong 1 tx.
 // ════════════════════════════════════════════════════════════════════════════
 
 // ─── Hằng test ─────────────────────────────────────────────────────────────
@@ -132,7 +143,13 @@ fn base_tx() -> Transaction {
 }
 
 fn run(self: Transaction) -> Bool {
-  phoenixkey.validate_mint(lamp_policy, anchor_policy, anchor_name, self)
+  phoenixkey.validate_mint(
+    lamp_policy,
+    lamp_token_name(),
+    anchor_policy,
+    anchor_name,
+    self,
+  )
 }
 
 // ─── PASS: controller ký + Active + Org ──────────────────────────────────────
@@ -339,12 +356,50 @@ test mint_ok_after_controller_rotated() {
 
 test mint_fails_on_zero_qty() fail {
   let datum = org_datum(Active, controller_pkh)
-  // tx.mint mang LAMP với qty 0 (chỉ để policy chạy) — phải bị mint_is_pure_positive chặn.
+  // tx.mint mang LAMP với qty 0 (chỉ để policy chạy) — phải bị mint_is_exactly_lamp chặn.
   let zero_mint = assets.zero |> assets.add(lamp_policy, lamp_token_name(), 0)
   let tx =
     Transaction {
       ..base_tx(),
       mint: zero_mint,
+      reference_inputs: [ref_input(anchor_value(anchor_policy, anchor_name), datum, 0)],
+      extra_signatories: [controller_pkh],
+    }
+  run(tx)
+}
+
+// ─── FAIL (C-1): mint đúng controller nhưng asset-name KHÁC "LAMP" → token rác ─
+// Authority hợp lệ (controller ký + Active + Org) NHƯNG asset-name lạ dưới cùng
+// policy-id LAMP. Trước vá C-1 đây là lỗ hổng: token rác qua mặt. Phải bị chặn.
+
+test mint_fails_when_asset_name_not_lamp() fail {
+  let datum = org_datum(Active, controller_pkh)
+  let junk_mint =
+    assets.zero |> assets.add(lamp_policy, "JUNK", 1_000_000)
+  let tx =
+    Transaction {
+      ..base_tx(),
+      mint: junk_mint,
+      reference_inputs: [ref_input(anchor_value(anchor_policy, anchor_name), datum, 0)],
+      extra_signatories: [controller_pkh],
+    }
+  run(tx)
+}
+
+// ─── FAIL (C-1): mint 2 asset-name khác nhau trong 1 tx → từ chối ─────────────
+// Kẻ tấn công kèm "LAMP" hợp lệ với một asset-name rác cùng policy-id trong cùng
+// một tx. Khoá asset-name chỉ chấp nhận ĐÚNG MỘT entry = "LAMP" → từ chối cả tx.
+
+test mint_fails_when_two_asset_names() fail {
+  let datum = org_datum(Active, controller_pkh)
+  let multi_mint =
+    assets.zero
+      |> assets.add(lamp_policy, lamp_token_name(), 1_000_000)
+      |> assets.add(lamp_policy, "JUNK", 1)
+  let tx =
+    Transaction {
+      ..base_tx(),
+      mint: multi_mint,
       reference_inputs: [ref_input(anchor_value(anchor_policy, anchor_name), datum, 0)],
       extra_signatories: [controller_pkh],
     }

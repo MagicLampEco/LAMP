@@ -78,8 +78,10 @@ pub type TAADDatum {
 /// (anchor_nft_policy, anchor_nft_name) không?
 ///
 /// Hợp lệ ⟺ TẤT CẢ:
-///   (a) KHÔNG burn — mọi movement của LAMP trong tx.mint phải > 0 (LAMP
-///       fixed-supply 36 tỷ, KHÔNG nhánh burn — Treasury/CONTRACT.md §5).
+///   (a) tx.mint dưới own_policy mang ĐÚNG MỘT asset-name = lamp_asset_name với
+///       qty > 0 (LAMP fixed-supply, KHÔNG nhánh burn — Treasury/CONTRACT.md §5).
+///       → chặn đồng thời: burn, qty 0, asset-name lạ (token rác cùng policy-id),
+///       VÀ mint ≥2 asset-name trong cùng một tx (C-1: khoá asset-name).
 ///   (b) tồn tại ĐÚNG MỘT reference input value chứa đúng 1 token
 ///       (anchor_nft_policy, anchor_nft_name) — singleton authority anchor.
 ///   (c) inline datum của ref input đó decode được thành TAADDatum.
@@ -89,15 +91,17 @@ pub type TAADDatum {
 ///   (f) datum.entity_type == Org (chỉ OrgDID là authority phát hành LAMP).
 ///
 /// `own_policy` là policy-id của chính policy LAMP — dùng để soi tx.mint.
+/// `lamp_asset_name` là asset-name HỢP LỆ DUY NHẤT dưới own_policy.
 pub fn validate_mint(
   own_policy: PolicyId,
+  lamp_asset_name: AssetName,
   anchor_nft_policy: PolicyId,
   anchor_nft_name: AssetName,
   self: Transaction,
 ) -> Bool {
-  // (a) chặn burn: mọi movement LAMP phải dương. Empty là không thể (policy chỉ
-  //     chạy khi LAMP xuất hiện trong tx.mint), nhưng vẫn ép > 0 cho an toàn.
-  expect mint_is_pure_positive(self, own_policy)
+  // (a) khoá asset-name + chặn burn/qty0/đa-asset-name: tx.mint dưới own_policy
+  //     phải là đúng 1 asset-name = lamp_asset_name, qty > 0.
+  expect mint_is_exactly_lamp(self, own_policy, lamp_asset_name)
 
   // (b)+(c) tìm 1-pass anchor reference input + decode datum.
   expect Some(anchor) =
@@ -115,13 +119,18 @@ pub fn validate_mint(
 
 // ─── Helpers ──────────────────────────────────────────────────────────────
 
-/// Mọi movement của `policy` trong tx.mint là dương (mint thuần, không burn,
-/// không qty 0). 1-pass qua dict tokens của policy.
-fn mint_is_pure_positive(self: Transaction, policy: PolicyId) -> Bool {
+/// tx.mint dưới `policy` mang ĐÚNG MỘT asset-name = `lamp_name` với qty > 0.
+/// 1-pass qua dict tokens của policy.
+/// → chặn: burn (qty<0), qty 0, asset-name lạ, VÀ mint ≥2 asset-name một lần.
+fn mint_is_exactly_lamp(
+  self: Transaction,
+  policy: PolicyId,
+  lamp_name: AssetName,
+) -> Bool {
   let moved = dict.to_pairs(assets.tokens(self.mint, policy))
-  and {
-    list.length(moved) > 0,
-    list.all(moved, fn(p) { p.2nd > 0 }),
+  when moved is {
+    [p] -> and { p.1st == lamp_name, p.2nd > 0 }
+    _ -> False
   }
 }
 
