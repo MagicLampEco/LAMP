@@ -128,7 +128,7 @@ thật trên cardanoscan. tLAMP policy `8cfea80be7bd71c1fce45149c5f529c618300da5
 
 | Bước | Tx | Block | Kết quả |
 |---|---|---|---|
-| Deploy SupplyState (minted=0, dist_cap=34.2 tỷ, reserve_cap=1.8 tỷ — **(pre-v3)**, cap v3 nay = 28,101/7,899 tỷ) | `e21d2cb1…` | 4361134 | SupplyState UTxO + SUPPLY NFT tạo |
+| Deploy SupplyState (minted=0, dist_cap=34.2 tỷ, reserve_cap=1.8 tỷ — **(pre-v3)**, cap v17 nay = 26,370/9,630 tỷ) | `e21d2cb1…` | 4361134 | SupplyState UTxO + SUPPLY NFT tạo |
 | Lazy-mint **100 tLAMP** DistributionVest | `e8135d28…` | 4361137 | dist_minted 0 → 100e6 |
 | Mint thêm **60 tLAMP** | `ed7377fa…` | — | dist_minted 100e6 → 160e6; tLAMP total 100 → 160; **SUPPLY NFT `mint_or_burn_count` vẫn = 1** |
 

@@ -5,14 +5,14 @@ import { maxPerEpoch, drawable, applyDraw, ReserveDrawError } from "../offchain/
 import { RESERVE_TOTAL_OIL, MAX_PER_EPOCH, RELEASE_EPOCHS } from "../offchain/src/constants.js";
 import type { ReserveState } from "../offchain/src/types.js";
 
-const E = RESERVE_TOTAL_OIL; // 7_899_000_000_000_000n
-const CAP = MAX_PER_EPOCH; // E / 1000 = 7_899_000_000_000n
+const E = RESERVE_TOTAL_OIL; // 9_630_000_000_000_000n
+const CAP = MAX_PER_EPOCH; // E / 1000 = 9_630_000_000_000n
 const S0 = 100n;
 
 describe("maxPerEpoch — trần CỨNG (mirror math.ak)", () => {
   it("E ⋮ 1000 → chia chẵn (dư 0)", () => {
     expect(E % RELEASE_EPOCHS).toBe(0n);
-    expect(maxPerEpoch(E)).toBe(7_899_000_000_000n);
+    expect(maxPerEpoch(E)).toBe(9_630_000_000_000n);
   });
 
   it("trần × 1000 == total (cạn pot trong 1000 epoch)", () => {

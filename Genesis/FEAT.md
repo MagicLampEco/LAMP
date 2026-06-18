@@ -24,8 +24,8 @@ giải quyết ba nhu cầu, không trộn lẫn:
    chặn cứng tại CAP. Đây là toàn bộ ý nghĩa "fixed-supply".
 2. **KHÔNG khóa vốn chết** — token chỉ ra đời khi có người cần (lazy-mint). 35.999 tỷ tLAMP chưa
    ai dùng thì KHÔNG tồn tại on-chain → không khóa min-ADA, không phải canh giữ.
-3. **Phân tách hai đường phát hành** — Distribution (78,06%, tới tay user qua Capped Drop) và Reserve
-   (21,94%, DAO rút), mỗi đường có quota riêng, không thể "rút đường này tính vào đường kia".
+3. **Phân tách hai đường phát hành** — Distribution (73,25%, tới tay user qua Capped Drop) và Reserve
+   (26,75%, DAO rút), mỗi đường có quota riêng, không thể "rút đường này tính vào đường kia".
 
 Mục tiêu cuối của cả dự án: **làm cho LAMP có giá trị**. Genesis phục vụ mục tiêu đó bằng cách
 neo niềm tin tổng cung (36 tỷ tuyệt đối, chứng minh được on-chain) — nền tảng để mọi định giá,
@@ -57,8 +57,8 @@ Token chưa mint = không tồn tại = không bị tấn công, không khóa mi
 | Vai | Làm gì | Gate |
 |---|---|---|
 | **Deployer** (foundation) | Chạy genesis một lần: consume UTxO seed → mint thread NFT `SUPPLY` → tạo SupplyState UTxO (bộ đếm) | one-shot (UTxO seed tiêu 1 lần duy nhất) |
-| **Distribution authority** (committee stub) | Mint tLAMP qua đường `DistributionVest` (78,06% quota) → token tới user | chữ ký `dist_authority` (M-of-N stub MVP) |
-| **Bất kỳ ai (Reserve trigger)** | Mint tLAMP qua đường `ReserveDraw` (21,94% quota) — permissionless | KHÔNG chữ ký; ÉP tx spend đúng 1 `reserve_thread` NFT (meter NFT) → đi qua `reserve_draw` (Reserve module), gate δ ≤ E/1000 + Treasury-pull. (KHÔNG có validator `reserve_meter` riêng — đó là tên khái niệm, hiện thực bởi `reserve_draw` + `reserve_thread`.) |
+| **Distribution authority** (committee stub) | Mint tLAMP qua đường `DistributionVest` (73,25% quota) → token tới user | chữ ký `dist_authority` (M-of-N stub MVP) |
+| **Bất kỳ ai (Reserve trigger)** | Mint tLAMP qua đường `ReserveDraw` (26,75% quota) — permissionless | KHÔNG chữ ký; ÉP tx spend đúng 1 `reserve_thread` NFT (meter NFT) → đi qua `reserve_draw` (Reserve module), gate δ ≤ E/1000 + Treasury-pull. (KHÔNG có validator `reserve_meter` riêng — đó là tên khái niệm, hiện thực bởi `reserve_draw` + `reserve_thread`.) |
 | **Bất kỳ ai (read-only)** | Đọc SupplyState datum → biết `minted_total`, quota còn lại, `circulating` | không cần — datum công khai on-chain |
 
 **MVP/stub, v1.1:** authority hiện là **keyhash param hóa** (committee cho Distribution, DAO cho
@@ -103,8 +103,8 @@ SupplyState là một UTxO DUY NHẤT, mang thread NFT `SUPPLY`, datum bốn s�
 |---|---|---|
 | `dist_minted` | oil tLAMP đã mint qua đường Distribution | đơn điệu tăng |
 | `reserve_minted` | oil tLAMP đã mint qua đường Reserve | đơn điệu tăng |
-| `dist_cap` | trần Distribution = `28_101_000_000 × 10^6` (78,06%) | BẤT BIẾN qua transition |
-| `reserve_cap` | trần Reserve = `7_899_000_000 × 10^6` (21,94%) | BẤT BIẾN qua transition |
+| `dist_cap` | trần Distribution = `26_370_000_000 × 10^6` (73,25%) | BẤT BIẾN qua transition |
+| `reserve_cap` | trần Reserve = `9_630_000_000 × 10^6` (26,75%) | BẤT BIẾN qua transition |
 
 `minted_total = dist_minted + reserve_minted`. Bất biến nền: `minted_total ≤ dist_cap + reserve_cap
 = 36_000_000_000_000_000 oil = 36 tỷ tLAMP` (CONTRACT §2; `constants.ak:24` test `caps_sum_to_total`).
@@ -134,7 +134,7 @@ SupplyState là một UTxO DUY NHẤT, mang thread NFT `SUPPLY`, datum bốn s�
 > → KHÔNG thể tạo thread NFT thứ 2 → KHÔNG thể dựng SupplyState giả (đóng vector A3 từ gốc). Code:
 > `thread_nft.ak:22` `expect list.any(... == genesis_ref)`. Dẫn chứng: deploy `e21d2cb1…`.
 
-### 4.2 Mint qua DistributionVest (78,06% quota)
+### 4.2 Mint qua DistributionVest (73,25% quota)
 
 **Trạng thái trước:** SupplyState `S = {dist_minted, reserve_minted, dist_cap, reserve_cap}`.
 
@@ -149,7 +149,7 @@ SupplyState'.
 
 > Dẫn chứng: `e8135d28…` mint 100 tLAMP DistributionVest (dist_minted 0→100e6, block 4361137).
 
-### 4.3 Mint qua ReserveDraw (21,94% quota)
+### 4.3 Mint qua ReserveDraw (26,75% quota)
 
 Y hệt 4.2 nhưng redeemer `ReserveDraw`, cộng vào `reserve_minted`, chặn tại `reserve_cap`,
 `dist_minted` KHÔNG đổi. Gate KHÔNG dùng chữ ký: tx PHẢI spend đúng 1 meter NFT (= `reserve_thread`

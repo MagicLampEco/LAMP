@@ -1,6 +1,6 @@
 # LAMP Allocation — phân bổ per-channel (HARD-CAP 2 lớp)
 
-> Module phân bổ rổ Distribution (28,101 tỷ LAMP) ra các **kênh thưởng**, mỗi kênh
+> Module phân bổ rổ Distribution (26,370 tỷ LAMP) ra các **kênh thưởng**, mỗi kênh
 > có trần cứng độc lập + nhả nhỏ giọt (Capped Drop). KHÔNG phải toàn bộ "tokenomics"
 > (umbrella = `/TOKENOMICS.md` ở gốc repo). Đơn vị oil: 1 LAMP = 10⁶ oil.
 
@@ -41,7 +41,7 @@ Công thức vested: `vested(t) = min(entitlement, drop_value · drops_per_epoch
 | PLATFORM | 5 tỷ | Capped Drop theo MAGIC tiêu thụ (→ 27/9) |
 | NEWUSER | 4,001 tỷ | DID × 1001 + thuật toán √×MAGIC (→ 27/9) |
 
-(RESERVE 7,899 tỷ KHÔNG qua kênh này — nó ở rổ Reserve, nhả bởi `Reserve/` engine.)
+(RESERVE 9,630 tỷ KHÔNG qua kênh này — nó ở rổ Reserve, nhả bởi `Reserve/` engine.)
 
 ## Setup 1 kênh (one-shot)
 `setupBuilder.ts` → `buildSetupChannelTx()`: consume genesis_ref, mint budget NFT

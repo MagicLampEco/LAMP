@@ -18,7 +18,7 @@ phát biểu, và truy mỗi định lý về **dòng code thật** (file:dòng)
 | `Δ` | `quantity_of(tx.mint, lamp_policy, tLAMP_name)` — lượng tLAMP mint trong tx | `lamp_mint.ak:54` |
 | `M(S)` | `d + r` = minted_total | `supplyState.ts:20` |
 | `CAP` | `D + R = 36_000_000_000_000_000` oil | `constants.ak:22` |
-| `D₀, R₀` | `28_101_000_000_000_000`, `7_899_000_000_000_000` (78,06% / 21,94%) | `constants.ak:25,28` |
+| `D₀, R₀` | `26_370_000_000_000_000`, `9_630_000_000_000_000` (73,25% / 26,75%) | `constants.ak:25,28` |
 
 Hằng số: `D₀ + R₀ = CAP` (`constants.ak:33` test `caps_sum_to_total`); `CAP = 36e9 × 10^6`
 (`constants.ak:37` test `total_is_36b_lamp`).

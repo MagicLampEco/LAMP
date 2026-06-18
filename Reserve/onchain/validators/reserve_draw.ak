@@ -182,11 +182,11 @@ const dest_pkh: ByteArray = #"deadbeef"
 
 const ms_epoch: Int = 432_000_000
 
-// E = 7.899 tỷ LAMP (cap reserve allocation v3). E ⋮ 1000 → trần chia chẵn.
-const e: Int = 7_899_000_000_000_000
+// E = 9,630 tỷ LAMP (cap reserve allocation v17). E ⋮ 1000 → trần chia chẵn.
+const e: Int = 9_630_000_000_000_000
 
 // Trần CỨNG mỗi epoch = E / 1000.
-const cap: Int = 7_899_000_000_000
+const cap: Int = 9_630_000_000_000
 
 const start: Int = 100
 

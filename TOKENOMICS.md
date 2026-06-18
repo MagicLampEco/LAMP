@@ -22,6 +22,8 @@
 
 ## 2. Allocation v3 (tổng = 36 tỷ)
 
+> ⚠️ (bảng pot cũ — chờ cập nhật v17) Hàng Reserve (7,899 tỷ / 21,94%) và dòng "Tổng" bên dưới còn theo allocation cũ; cap kỹ thuật đã chuyển v17 (dist 26,370 / reserve 9,630). Chủ repo tự viết lại bảng 18-pot cho khớp.
+
 | Khoản | LAMP | % | Cơ chế | Bật 18/6? |
 |---|---:|---:|---|---|
 | Team | 12 tỷ | 33,33% | Capped Drop, D nhỏ + `start_epoch` lùi (cliff) | ✓ |
@@ -38,7 +40,7 @@
 
 Tổng: 12 + 7,899 + 5 + 4,001 + 2 + 1 (Treasury) + 1 + 1 + 1 + 1 + 0,1 = **36 tỷ** ✓.
 
-**Rổ Genesis (2 nhánh mint):** dist_cap = 28,101 tỷ (mọi khoản trừ Reserve, gồm cả Development 2 + Treasury 1) + reserve_cap = 7,899 tỷ = 36 tỷ.
+**Rổ Genesis (2 nhánh mint):** dist_cap = 26,370 tỷ (mọi khoản trừ Reserve, gồm cả Development 2 + Treasury 1) + reserve_cap = 9,630 tỷ = 36 tỷ.
 
 ---
 
@@ -48,7 +50,7 @@ Tổng: 12 + 7,899 + 5 + 4,001 + 2 + 1 (Treasury) + 1 + 1 + 1 + 1 + 0,1 = **36 t
 ┌─ Genesis (mint layer) ───────────────────────────────────────┐
 │  thread_nft (one-shot) → lamp_mint (cap/quota/no-burn) →      │
 │  supply_state (holder). SupplyState{dist_minted, reserve_     │
-│  minted, dist_cap=28,101T, reserve_cap=7,899T}. 2 route:      │
+│  minted, dist_cap=26,370T, reserve_cap=9,630T}. 2 route:      │
 │  DistributionVest (→dist) | ReserveDraw (→reserve, gate meter)│
 └──────────────────────────────────────────────────────────────┘
       │ dist bucket                         │ reserve bucket
@@ -87,7 +89,7 @@ Tổng: 12 + 7,899 + 5 + 4,001 + 2 + 1 (Treasury) + 1 + 1 + 1 + 1 + 0,1 = **36 t
 
 ### QĐ-2: Reserve = lớp đệm gated, trần E/1000 mỗi epoch, Treasury-pull
 - Reserve KHÔNG 2 chiều (no-burn) → điều tiết cung-cầu thuộc Treasury (C↔T). Reserve chỉ giảm sốc + tái phân phối tác động cá mập, KHÔNG neo giá.
-- **Trần cứng mỗi epoch = E/1000** (7,899 tỷ oil, chia chẵn) — không cục catch-up. Dư (epoch bị gate) dồn về sau → tổng kéo dài ~1001 epoch; tối đa liên tục cạn trong 1000 epoch.
+- **Trần cứng mỗi epoch = E/1000** (9,630 tỷ oil, chia chẵn) — không cục catch-up. Dư (epoch bị gate) dồn về sau → tổng kéo dài ~1001 epoch; tối đa liên tục cạn trong 1000 epoch.
 - **Treasury-pull (demand-gated):** mỗi draw đòi 1 input mang `treasury_auth` NFT — Treasury co-spend để "kéo" khi cần (parked < sàn). Logic sàn nằm ở Treasury; Reserve chỉ ép nhịp + trần + dest=Treasury. Gate dựa state on-chain tất định (KHÁC demand_gate velocity cũ đã bỏ vì lỗ H2).
 
 ### QĐ-3: 3 tỷ trích từ Reserve → Development 2 + Treasury 1 (Team giữ 12 tỷ)
@@ -138,7 +140,7 @@ Công thức vested:
 ## 9. Trạng thái module (nhánh `integrate/launch-1806`)
 | Module | onchain | offchain | Ghi chú |
 |---|---|---|---|
-| Genesis | ✓ 56 test | ✓ 34 test | lazy-mint; `lamp_mint` + `token_name` param (tLAMP/LAMP); cap 28,101/7,899 |
+| Genesis | ✓ 56 test | ✓ 34 test | lazy-mint; `lamp_mint` + `token_name` param (tLAMP/LAMP); cap 26,370/9,630 |
 | Allocation | ✓ 61 test | ✓ 63 test | HARD-CAP per-channel (đổi tên từ Tokenomics) |
 | Reserve | ✓ 38 test | ✓ 22 test | trần E/1000/epoch, Treasury-pull, rollover |
 | Distribution | ✓ live Preview | ✓ 58 test | engine Capped Drop tái dùng |

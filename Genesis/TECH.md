@@ -33,8 +33,8 @@ Phụ thuộc **tuyến tính** (không vòng): (1) chỉ biết `genesis_ref`; 
 SupplyState {
   dist_minted    : Int,   // oil đã mint qua Distribution
   reserve_minted : Int,   // oil đã mint qua Reserve
-  dist_cap       : Int,   // 28_101_000_000_000_000 (hằng qua transition)
-  reserve_cap    : Int,   // 7_899_000_000_000_000  (hằng qua transition)
+  dist_cap       : Int,   // 26_370_000_000_000_000 (hằng qua transition)
+  reserve_cap    : Int,   // 9_630_000_000_000_000  (hằng qua transition)
 }
 = Constr(0, [int, int, int, int])
 ```
@@ -200,8 +200,8 @@ Vì thread NFT là **singleton on-chain** (one-shot, MATH §5.1), không thể c
 | oil/LAMP | `oil_per_lamp` (`:7`) | `OIL_PER_LAMP` (`:3`) | `1_000_000` |
 | tLAMP name | `tlamp_name` (`:10`) | `TLAMP_NAME` (`:6`) | `#"744c414d50"` ("tLAMP") |
 | SUPPLY name | `supply_name` (`:13`) | `SUPPLY_NAME` (`:9`) | `#"535550504c59"` ("SUPPLY") |
-| dist_cap | `dist_cap_oil` (`:25`) | `DIST_CAP_OIL` (`:20`) | `28_101_000_000_000_000` |
-| reserve_cap | `reserve_cap_oil` (`:28`) | `RESERVE_CAP_OIL` (`:23`) | `7_899_000_000_000_000` |
+| dist_cap | `dist_cap_oil` (`:25`) | `DIST_CAP_OIL` (`:20`) | `26_370_000_000_000_000` |
+| reserve_cap | `reserve_cap_oil` (`:28`) | `RESERVE_CAP_OIL` (`:23`) | `9_630_000_000_000_000` |
 | total_cap | `total_cap_oil` (`:22`) | `TOTAL_CAP_OIL` (`:18`) | `36_000_000_000_000_000` |
 
 Bất biến hằng kiểm tại compile-time Aiken: `caps_sum_to_total` (`constants.ak:24`),

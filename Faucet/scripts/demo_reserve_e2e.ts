@@ -34,7 +34,7 @@ const AUTH_NAME = "5054"; // "PT" (pull-auth)
 const INSTANCE_ID = "747265732d7265736576"; // "tres-resev"
 const MS_PER_EPOCH = 432_000_000n;
 const PROPOSAL_POLICY = "00".repeat(28);
-const RESERVE_TOTAL_OIL = 7_899_000_000_000_000n;
+const RESERVE_TOTAL_OIL = 9_630_000_000_000_000n;
 const MAX_PER_EPOCH = RESERVE_TOTAL_OIL / 1000n;
 const FLOOR_OIL = 1_000_000n;       // sàn 1 tLAMP; parked custody = 0 < sàn → cho kéo
 const DRAW_OIL = 1_000_000n;        // kéo 1 tLAMP (≤ trần, ≤ pot)
@@ -137,7 +137,7 @@ const epochNow = () => BigInt(Math.floor((Date.now() - 90_000) / Number(MS_PER_E
 
 // ── G1: fresh genesis Tx A (thread NFT + SupplyState) ───────────────────
 {
-  const s0 = new Constr(0, [0n, 0n, 28101000000000000n, 7899000000000000n]); // dist,reserve,distCap,reserveCap
+  const s0 = new Constr(0, [0n, 0n, 26370000000000000n, 9630000000000000n]); // dist,reserve,distCap,reserveCap
   const tx = await lucid.newTx()
     .collectFrom([seedThread])
     .mintAssets({ [threadUnit]: 1n }, Data.to(new Constr(0, [])))

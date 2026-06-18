@@ -30,7 +30,7 @@
 1. Tạo `integrate/launch-1806` từ `feat/genesis-lazymint` (có Genesis mới nhất + Deposits chưa? — cần thêm).
 2. Merge `integrate/final-live` (lấy Deposits).
 3. Commit Tokenomics + Reserve mới (từ working tree 14/6) vào nhánh này.
-4. Sửa cap Genesis 34,2/1,8 → 28,101/7,899 (khớp v3).
+4. ✅ Sửa cap Genesis 34,2/1,8 → 26,370/9,630 (v17) — ĐÃ XONG.
 5. `aiken check` toàn bộ + offchain test toàn bộ → xanh.
 6. Đây thành nhánh deploy 18/6. main giữ nguyên tới khi ổn, rồi fast-forward.
 - *Ưu:* sạch, không phá main, có điểm lùi. *Nhược:* 1 lần merge có xung đột (Treasury sửa cả 2 bên).

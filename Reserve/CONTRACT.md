@@ -1,7 +1,7 @@
 # LAMP Reserve — Demand-Gated Draw Engine (v3, ghim)
 
 Mô hình **đệm phát hành demand-gated** (allocation v3, đông kết 2026-06-14). Reserve là
-**lớp đệm phát hành SAU CÙNG** của LAMP: 7,899 tỷ LAMP (21,94%) nhả từ U-space (chưa mint)
+**lớp đệm phát hành SAU CÙNG** của LAMP: 9,630 tỷ LAMP (26,75%) nhả từ U-space (chưa mint)
 vào Treasury theo **trần cứng E/1000 mỗi epoch**, CHỈ khi Treasury thực sự "kéo" (pull).
 
 > **Reserve KHÔNG nhả theo lịch thời gian.** Không cộng dồn catch-up. Mỗi epoch tối đa 1 draw
@@ -30,9 +30,9 @@ Bộ đếm = **ReserveState UTxO** (duy nhất, ghim bởi `reserve_thread` NFT
 | Hằng | Giá trị | Ghi chú |
 |---|---|---|
 | 1 LAMP | `1_000_000` oil | 10^6, khớp Genesis/Distribution |
-| `E` (total_oil) | `7_899_000_000_000_000` oil | 7,899 tỷ LAMP — cap Reserve allocation v3 |
+| `E` (total_oil) | `9_630_000_000_000_000` oil | 9,630 tỷ LAMP — cap Reserve allocation v17 |
 | `release_epochs` | `1000` | hằng thiết kế (`math.ak:13`); `E ⋮ 1000` → chia chẵn, dư = 0 |
-| `max_per_epoch` | `E / 1000 = 7_899_000_000_000` oil | trần CỨNG mỗi epoch (`math.ak:17`) |
+| `max_per_epoch` | `E / 1000 = 9_630_000_000_000` oil | trần CỨNG mỗi epoch (`math.ak:17`) |
 
 `max_per_epoch(E) × 1000 == E` (`math.ak:55` test). Cạn pot liên tục đúng trần ⇒ 1000 epoch.
 

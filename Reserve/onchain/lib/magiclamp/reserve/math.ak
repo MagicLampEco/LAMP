@@ -9,7 +9,7 @@
 // Aiken Int = bigint vô hạn → KHÔNG tràn dù total ≈ 7.9e15.
 
 /// Số epoch tối thiểu để cạn pot khi nhả liên tục đúng trần. Hằng thiết kế (CONTRACT).
-/// total / max_per_epoch == 1000. Chia chẵn (E = 7_899_000_000_000_000 ⋮ 1000).
+/// total / max_per_epoch == 1000. Chia chẵn (E = 9_630_000_000_000_000 ⋮ 1000).
 pub const release_epochs: Int = 1000
 
 /// Trần CỨNG nhả mỗi epoch = total / 1000 (chia chẵn cho E hiện hành).
@@ -42,14 +42,14 @@ pub fn drawable(total: Int, drawn: Int, requested: Int) -> Int {
 // Unit tests — biên (CONTRACT Reserve §math)
 // ══════════════════════════════════════════════════════════════
 
-// E = 7.899 tỷ LAMP = 7_899_000_000_000_000 oil (cap reserve allocation v3).
-const e: Int = 7_899_000_000_000_000
+// E = 9,630 tỷ LAMP = 9_630_000_000_000_000 oil (cap reserve allocation v17).
+const e: Int = 9_630_000_000_000_000
 
 // ── max_per_epoch ────────────────────────────────────────────
 
 test max_per_epoch_exact_division() {
   // E ⋮ 1000 → chia chẵn, dư == 0 (kế toán sạch).
-  max_per_epoch(e) == 7_899_000_000_000 && e % release_epochs == 0
+  max_per_epoch(e) == 9_630_000_000_000 && e % release_epochs == 0
 }
 
 test max_per_epoch_times_1000_eq_total() {

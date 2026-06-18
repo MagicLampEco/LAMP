@@ -7,7 +7,7 @@
 
 ## 🔴 1. Đích nhả Reserve — Treasury hay thị trường?
 
-**Bối cảnh:** Reserve nhả TRẦN CỨNG E/1000 mỗi epoch = **7,899 triệu LAMP/epoch** (demand-gated qua Treasury-pull, KHÔNG tự động; dư dồn ~1001 epoch). Đích nhả `reserve_dest` là param validator — phải chốt địa chỉ.
+**Bối cảnh:** Reserve nhả TRẦN CỨNG E/1000 mỗi epoch = **9,630 triệu LAMP/epoch** (demand-gated qua Treasury-pull, KHÔNG tự động; dư dồn ~1001 epoch). Đích nhả `reserve_dest` là param validator — phải chốt địa chỉ.
 
 **Phương án:**
 | | A. Nhả vào Treasury | B. Nhả thẳng thị trường (DEX/LP) |
@@ -70,4 +70,4 @@ drop_per_DID(epoch) = floor + min(cap, base × √holding × magic_consumed[DID,
 2. 🔴 Định loại LAMP → anh xác nhận có luật sư VN; em đã soạn lập luận.
 3. 🟡 √×MAGIC → duyệt thêm accumulator vào EngageDatum MAGIC (cho 27/9).
 4. 🟡 Treasury seed + Foundation (pháp nhân VN hay DAO?).
-5. 🟡 Cap Genesis sửa 34,2/1,8 → 28,101/7,899 (khớp v3) — em sẽ làm khi tích hợp, báo trước.
+5. ✅ Cap Genesis sửa 34,2/1,8 → 26,370/9,630 (v17) — ĐÃ XONG (baked on-chain + deploy Preview).
