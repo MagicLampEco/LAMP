@@ -9,3 +9,6 @@ dist/
 **/onchain/plutus.json
 # Deploy state (env-specific, có thể chứa địa chỉ ví)
 **/scripts/deployed.json
+
+# mọi biến môi trường/seed
+.env*
