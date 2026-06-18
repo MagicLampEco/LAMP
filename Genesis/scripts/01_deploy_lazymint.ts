@@ -21,6 +21,7 @@
 
 import {
   Constr, Data, toUnit,
+  credentialToAddress, scriptHashToCredential,
   type MintingPolicy, type Validator, type UTxO,
 } from "@lucid-evolution/lucid";
 import {
@@ -79,9 +80,14 @@ async function main(): Promise<void> {
   const meterPid = process.env.METER_NFT_POLICY ?? "00".repeat(28);
   const meterNm = process.env.METER_NFT_NAME ?? "4d4554"; // "MET"
   // dist_dest = script hash KHO Distribution treasury. A-DEST: DistributionVest BẮT BUỘC
-  // rót toàn bộ LAMP vào đây (2-of-3 không mint thẳng về ví). Deploy THẬT: PHẢI điền
+  // rót toàn bộ LAMP vào đây (authority không mint thẳng về ví). Deploy THẬT: PHẢI điền
   // DIST_DEST = hash treasury thật; placeholder 00*28 chỉ để harness typecheck (KHÔNG mint thật).
+  // GUARD (audit TRUNG-2): chặn submit khi chưa set → tránh kẹt LAMP vào Script(00*28) bất khả spend.
   const distDest = process.env.DIST_DEST ?? "00".repeat(28);
+  if (SUBMIT && !process.env.DIST_DEST) {
+    throw new Error("DIST_DEST chưa set: A-DEST sẽ ép LAMP vào Script(00*28) KẸT vĩnh viễn (no-burn). Set DIST_DEST=hash kho treasury trước khi SUBMIT.");
+  }
+  const distDestAddr = credentialToAddress(NETWORK, scriptHashToCredential(distDest));
   const tlampRaw = await rawValidator("lamp_mint.lamp_mint.mint");
   const tlampPolicy: MintingPolicy = applyPolicy(tlampRaw.compiledCode, [
     threadPid,            // thread_nft_policy
@@ -160,7 +166,7 @@ async function main(): Promise<void> {
         { kind: "inline", value: supplyStateToCbor(s1) },
         { lovelace: 2_000_000n, [threadUnit]: 1n },
       )
-      .pay.ToAddress(myAddr, { [tlampUnit]: TEST_MINT_OIL })
+      .pay.ToAddress(distDestAddr, { [tlampUnit]: TEST_MINT_OIL })  // A-DEST: LAMP vào KHO, không về ví
       .addSignerKey(pkh)
       .complete();
 

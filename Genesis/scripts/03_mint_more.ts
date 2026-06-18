@@ -36,7 +36,10 @@ const get = (t: string) => bp.validators.find((v: { title: string }) => v.title 
 const genesisRef = new Constr(0, [GENESIS_REF_HASH, GENESIS_REF_IDX]);
 const threadPolicy: MintingPolicy = { type: "PlutusV3", script: applyParamsToScript(get("thread_nft.thread_nft.mint"), [genesisRef]) };
 const threadPid = mintingPolicyToId(threadPolicy);
-const distDest = process.env.DIST_DEST ?? "00".repeat(28); // A-DEST: hash KHO treasury; deploy thật PHẢI điền
+// A-DEST: hash KHO treasury. 03 luôn submit thật → BẮT BUỘC set DIST_DEST (tránh kẹt LAMP vào 00*28).
+if (!process.env.DIST_DEST) throw new Error("DIST_DEST chưa set: A-DEST sẽ ép LAMP vào Script(00*28) KẸT vĩnh viễn. Set DIST_DEST=hash kho treasury.");
+const distDest = process.env.DIST_DEST;
+const distDestAddr = credentialToAddress("Preview", scriptHashToCredential(distDest));
 const tlampPolicy: MintingPolicy = { type: "PlutusV3", script: applyParamsToScript(get("lamp_mint.lamp_mint.mint"), [threadPid, SUPPLY_NAME, TOKEN_NAME, [pkh], 1n, distDest, "00".repeat(28), "4d4554"]) };
 const tlampPid = mintingPolicyToId(tlampPolicy);
 const ssScript: Validator = { type: "PlutusV3", script: applyParamsToScript(get("supply_state.supply_state.spend"), [tlampPid, threadPid, TOKEN_NAME]) };
@@ -75,7 +78,7 @@ const tx = await lucid.newTx()
   .mintAssets({ [tlampUnit]: MINT_OIL }, Data.to(new Constr(0, []))) // DistributionVest
   .attach.MintingPolicy(tlampPolicy)
   .pay.ToContract(ssAddr, { kind: "inline", value: Data.to(newDatum) }, { lovelace: 2_000_000n, [threadUnit]: 1n })
-  .pay.ToAddress(myAddr, { [tlampUnit]: MINT_OIL })
+  .pay.ToAddress(distDestAddr, { [tlampUnit]: MINT_OIL })  // A-DEST: LAMP vào KHO, không về ví
   .collectFrom([pureAda[0]])
   .addSignerKey(pkh)
   .complete({ coinSelection: true });

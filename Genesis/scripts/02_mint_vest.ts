@@ -1,6 +1,6 @@
 // Tx B độc lập: spend SupplyState (Advance) + mint 100 tLAMP DistributionVest.
 // Đọc SupplyState từ chain (Tx A đã confirm). Ép collateral pure-ADA.
-import { Constr, toUnit, type MintingPolicy, type Validator } from "@lucid-evolution/lucid";
+import { Constr, toUnit, credentialToAddress, scriptHashToCredential, type MintingPolicy, type Validator } from "@lucid-evolution/lucid";
 import {
   NETWORK, TOKEN_NAME, makeLucid, walletPkh,
   rawValidator, applyValidator, applyPolicy, scriptAddress, policyId, scriptHashOf, explorerTx,
@@ -24,7 +24,9 @@ const threadPolicy: MintingPolicy = applyPolicy((await rawValidator("thread_nft.
 const threadPid = policyId(threadPolicy);
 const meterPid = process.env.METER_NFT_POLICY ?? "00".repeat(28);
 const meterNm = process.env.METER_NFT_NAME ?? "4d4554";
-const distDest = process.env.DIST_DEST ?? "00".repeat(28); // A-DEST: hash KHO treasury; deploy thật PHẢI điền
+if (!process.env.DIST_DEST) throw new Error("DIST_DEST chưa set: A-DEST sẽ ép LAMP vào Script(00*28) KẸT vĩnh viễn. Set DIST_DEST=hash kho.");
+const distDest = process.env.DIST_DEST; // A-DEST: hash KHO treasury
+const distDestAddr = credentialToAddress("Preview", scriptHashToCredential(distDest));
 const tlampPolicy: MintingPolicy = applyPolicy((await rawValidator("lamp_mint.lamp_mint.mint")).compiledCode, [
   threadPid, SUPPLY_NAME, TOKEN_NAME, [pkh], 1n, distDest, meterPid, meterNm,
 ]);
