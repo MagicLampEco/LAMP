@@ -27,7 +27,7 @@ SUBMIT=true npm run deploy       # gửi thật lên Preview
 ## Luồng (3 tầng tuyến tính — CONTRACT §3)
 
 1. `thread_nft` policy = apply(genesis_ref) — one-shot SUPPLY NFT (đảm bảo SupplyState DUY NHẤT).
-2. `lamp_mint` policy = apply(thread_pid, SUPPLY, [auth], [auth], 1) — gate cap/quota.
+2. `lamp_mint` policy = apply(thread_pid, SUPPLY, token_name, [auth], 1, dist_dest, meter_pid, meter_nm) — gate cap/quota. `dist_dest` = hash KHO Distribution treasury (A-DEST: DistributionVest rót toàn bộ LAMP vào kho, không ra ví cá nhân).
 3. `supply_state` spend = apply(tlamp_pid) — giữ SupplyState UTxO.
 
 - **Tx A**: consume genesis seed → mint 1 SUPPLY NFT → tạo SupplyState UTxO (dist_minted=0).

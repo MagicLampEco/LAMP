@@ -78,6 +78,10 @@ async function main(): Promise<void> {
   // mặc định placeholder để harness typecheck. Deploy thật: điền METER_NFT_POLICY/NAME.
   const meterPid = process.env.METER_NFT_POLICY ?? "00".repeat(28);
   const meterNm = process.env.METER_NFT_NAME ?? "4d4554"; // "MET"
+  // dist_dest = script hash KHO Distribution treasury. A-DEST: DistributionVest BẮT BUỘC
+  // rót toàn bộ LAMP vào đây (2-of-3 không mint thẳng về ví). Deploy THẬT: PHẢI điền
+  // DIST_DEST = hash treasury thật; placeholder 00*28 chỉ để harness typecheck (KHÔNG mint thật).
+  const distDest = process.env.DIST_DEST ?? "00".repeat(28);
   const tlampRaw = await rawValidator("lamp_mint.lamp_mint.mint");
   const tlampPolicy: MintingPolicy = applyPolicy(tlampRaw.compiledCode, [
     threadPid,            // thread_nft_policy
@@ -85,6 +89,7 @@ async function main(): Promise<void> {
     TOKEN_NAME,           // token_name (asset name LAMP: tLAMP testnet / LAMP mainnet)
     [pkh],                // dist_authority (List<ByteArray>)
     1n,                   // auth_threshold
+    distDest,             // dist_dest (script hash KHO Distribution treasury)
     meterPid,             // meter_nft_policy (ReserveMeter thread NFT)
     meterNm,              // meter_nft_name
   ]);

@@ -57,7 +57,11 @@ export interface MintParams {
   route: MintRoute;
   amount: bigint;
 
-  /** Người nhận tLAMP đã mint (bech32 address). */
+  /** Người nhận tLAMP đã mint (bech32 address).
+   *  A-DEST (DistributionVest): PHẢI là địa chỉ KHO Distribution treasury khớp param
+   *  `dist_dest` của lamp_mint — nếu rót về ví cá nhân, validator reject (qty_to_script < Δ).
+   *  Khi treasury cần inline datum: đổi `.pay.ToAddress` → `.pay.ToContract` ở bước wire
+   *  treasury thật (integration phase). */
   recipient: string;
 
   /** Keyhash authority phải ký (đúng đường mint) — addSigner để Lucid đòi chữ ký. */

@@ -65,6 +65,34 @@ pub fn value_only_nft_and_ada(v: Value, nft_policy: PolicyId) -> Bool {
   list.length(pols) == 2 && list.has(pols, nft_policy)
 }
 
+/// Tổng lượng (policy,name) đi tới các output có payment_credential == Script(dest_hash).
+/// A-DEST: ép DistributionVest chỉ rót LAMP vào KHO Distribution treasury (dest_hash) —
+/// 2-of-3 KHÔNG mint thẳng về ví cá nhân được (chống "cầm 2 khóa rút về cho mình").
+/// Mirror reserve_draw Luật 9 (qty_to_credential) — mẫu đã audit. So theo payment_credential
+/// (bỏ qua stake) nên kho có thể staked. Chỉ tính output là Script (ví VK → không tính).
+pub fn qty_to_script(
+  outputs: List<Output>,
+  dest_hash: ByteArray,
+  policy: PolicyId,
+  name: AssetName,
+) -> Int {
+  list.foldl(
+    outputs,
+    0,
+    fn(o, acc) {
+      when o.address.payment_credential is {
+        Script(h) ->
+          if h == dest_hash {
+            acc + assets.quantity_of(o.value, policy, name)
+          } else {
+            acc
+          }
+        _ -> acc
+      }
+    },
+  )
+}
+
 /// Đếm chữ ký authority có mặt (M-of-N stub) — ĐẾM THEO TẬP KEY PHÂN BIỆT (D2-#3).
 /// Dedupe authority trước khi đếm → key trùng trong danh sách authority chỉ tính 1 lần
 /// (chống nhồi cùng 1 key để phình N giả / vượt threshold bằng 1 chữ ký duy nhất).
@@ -137,4 +165,16 @@ test name_count_two() {
       |> assets.add(#"5050", #"744c414d50", 5)
       |> assets.add(#"5050", #"9999", 1)
   policy_name_count(v, #"5050") == 2
+}
+
+test qty_to_script_counts_only_dest() {
+  // 1 output kho (Script #"d35a") giữ 7 LAMP + 1 output ví VK giữ 3 LAMP.
+  // Chỉ tính phần tới kho → 7 (KHÔNG cộng 3 ở ví). Chứng minh rò rỉ ra ví không được tính.
+  let to_kho =
+    mk_output_no_datum(script_address(#"d35a"),
+      assets.from_lovelace(2_000_000) |> assets.add(#"5050", #"744c414d50", 7))
+  let to_wallet =
+    mk_output_no_datum(vk_address(#"baad"),
+      assets.from_lovelace(2_000_000) |> assets.add(#"5050", #"744c414d50", 3))
+  qty_to_script([to_kho, to_wallet], #"d35a", #"5050", #"744c414d50") == 7
 }

@@ -24,8 +24,9 @@ const threadPolicy: MintingPolicy = applyPolicy((await rawValidator("thread_nft.
 const threadPid = policyId(threadPolicy);
 const meterPid = process.env.METER_NFT_POLICY ?? "00".repeat(28);
 const meterNm = process.env.METER_NFT_NAME ?? "4d4554";
+const distDest = process.env.DIST_DEST ?? "00".repeat(28); // A-DEST: hash KHO treasury; deploy thật PHẢI điền
 const tlampPolicy: MintingPolicy = applyPolicy((await rawValidator("lamp_mint.lamp_mint.mint")).compiledCode, [
-  threadPid, SUPPLY_NAME, TOKEN_NAME, [pkh], 1n, meterPid, meterNm,
+  threadPid, SUPPLY_NAME, TOKEN_NAME, [pkh], 1n, distDest, meterPid, meterNm,
 ]);
 const tlampPid = policyId(tlampPolicy);
 const ssScript: Validator = applyValidator((await rawValidator("supply_state.supply_state.spend")).compiledCode, [tlampPid, threadPid, TOKEN_NAME]);

@@ -18,9 +18,10 @@
 //   của thread_nft, tuyến tính apply-param). Đổi token_name ⇒ đổi policyId ⇒ token mới.
 //
 // Param: thread_nft_policy + thread_nft_name (tầng 1) + token_name (asset name LAMP) +
-// dist_authority (keyhash stub MVP đường Distribution) + auth_threshold +
-// meter_nft_policy/meter_nft_name (định danh meter NFT = reserve_thread NFT, Reserve module).
-// KHÔNG tham chiếu ngược tầng 3 (không vòng lặp).
+// dist_authority (keyhash M-of-N đường Distribution) + auth_threshold +
+// dist_dest (script hash KHO Distribution treasury — DistributionVest BẮT BUỘC rót toàn bộ
+// LAMP vào đây, không ra ví cá nhân) + meter_nft_policy/meter_nft_name (định danh meter NFT
+// = reserve_thread NFT, Reserve module). KHÔNG tham chiếu ngược tầng 3 (không vòng lặp).
 //
 // GATE NHẢ RESERVE = HÀM, KHÔNG CHỮ KÝ (permissionless thật). Nhánh ReserveDraw KHÔNG
 // đòi pubkey-sig nữa: nó ÉP tx phải spend đúng 1 UTxO mang meter NFT (= reserve_thread NFT).
@@ -55,6 +56,7 @@ validator lamp_mint(
   token_name        : ByteArray,
   dist_authority    : List<ByteArray>,
   auth_threshold    : Int,
+  dist_dest         : ByteArray,
   meter_nft_policy  : PolicyId,
   meter_nft_name    : ByteArray,
 ) {
@@ -158,9 +160,16 @@ validator lamp_mint(
         DistributionVest -> {
           // D2-#1/#2: threshold tự vệ (1 ≤ threshold ≤ |authority distinct|).
           // threshold==0 → ai cũng mint (vô hiệu authority). threshold > N → khóa chết.
+          //
+          // A-DEST (TRUSTLESS phân phối): TOÀN BỘ delta LAMP mint ra PHẢI rót vào KHO
+          // Distribution treasury (dist_dest). Khóa M-of-N chỉ "bơm vào kho", KHÔNG mint
+          // thẳng về ví cá nhân → kẻ cầm đủ chữ ký cũng không cướp được (chỉ chuyển vào
+          // kho, từ kho nhỏ giọt công bằng qua claim_account). Mirror reserve_draw Luật 9.
+          // SupplyState output đã sạch LAMP (D3-#1) nên không nguồn LAMP nào khác để né.
           auth_threshold >= 1
             && auth_threshold <= list.length(list.unique(dist_authority))
             && util.count_sigs(dist_authority, tx.extra_signatories) >= auth_threshold
+            && util.qty_to_script(tx.outputs, dist_dest, policy_id, token_name) >= delta
         }
         ReserveDraw -> {
           // Đúng 1 input mang meter NFT (= reserve_thread NFT) → tầng gate nhịp (reserve_draw,
@@ -193,6 +202,9 @@ const thr_pol: PolicyId = #"5544"
 
 const sscript: ByteArray = #"5151"
 
+/// Kho Distribution treasury (dest) cho test — DistributionVest phải rót LAMP vào đây.
+const dist_dest_hash: ByteArray = #"d35a"
+
 const auth_a: ByteArray = #"a1"
 
 const auth_b: ByteArray = #"b2"
@@ -224,6 +236,14 @@ fn ss_output(s2: SupplyState) -> Output {
   util.mk_output(util.script_address(sscript), v, s2)
 }
 
+/// Output KHO Distribution treasury giữ `qty` LAMP (A-DEST: nơi DistributionVest phải rót).
+fn dest_output(qty: Int) -> Output {
+  let v =
+    assets.from_lovelace(2_000_000)
+      |> assets.add(lamp_pol, constants.default_token_name, qty)
+  util.mk_output_no_datum(util.script_address(dist_dest_hash), v)
+}
+
 fn mint_lamp(qty: Int) {
   assets.zero |> assets.add(lamp_pol, constants.default_token_name, qty)
 }
@@ -238,7 +258,7 @@ fn build_tx(
   Transaction {
     ..placeholder,
     inputs: [ss_input(s)],
-    outputs: [ss_output(s2)],
+    outputs: [ss_output(s2), dest_output(mint_qty)],
     mint: mint_lamp(mint_qty),
     extra_signatories: sigs,
   }
@@ -258,7 +278,7 @@ fn build_tx_reserve(s: SupplyState, s2: SupplyState, mint_qty: Int) -> Transacti
 fn run(r: TLampMintRedeemer, tx: Transaction) -> Bool {
   lamp_mint.mint(
     thr_pol, constants.supply_name, tk_name,
-    [auth_a, auth_b], 1, meter_pol, meter_nm,
+    [auth_a, auth_b], 1, dist_dest_hash, meter_pol, meter_nm,
     r, lamp_pol, tx,
   )
 }
@@ -272,7 +292,7 @@ fn run_thr(
 ) -> Bool {
   lamp_mint.mint(
     thr_pol, constants.supply_name, tk_name,
-    dist_auth, threshold, meter_pol, meter_nm,
+    dist_auth, threshold, dist_dest_hash, meter_pol, meter_nm,
     r, lamp_pol, tx,
   )
 }
@@ -440,6 +460,73 @@ test mint_no_authority() fail {
   let s = fresh()
   let s2 = SupplyState { ..s, dist_minted: 1_000_000 }
   run(DistributionVest, build_tx(s, s2, 1_000_000, [#"ff"]))
+}
+
+// ── A-DEST: DistributionVest rót LAMP ra VÍ (không vào kho) → reject ──
+test distvest_mint_not_to_dest() fail {
+  // Đủ chữ ký authority NHƯNG toàn bộ LAMP chảy về ví cá nhân (không tới dist_dest).
+  // qty_to_script(dist_dest) == 0 < delta → reject. Chứng minh 2-of-3 KHÔNG rút về cho mình.
+  let s = fresh()
+  let s2 = SupplyState { ..s, dist_minted: 1_000_000 }
+  let to_wallet =
+    util.mk_output_no_datum(
+      util.vk_address(#"beef"),
+      assets.from_lovelace(2_000_000)
+        |> assets.add(lamp_pol, constants.default_token_name, 1_000_000),
+    )
+  let tx =
+    Transaction {
+      ..placeholder,
+      inputs: [ss_input(s)],
+      outputs: [ss_output(s2), to_wallet],
+      mint: mint_lamp(1_000_000),
+      extra_signatories: [auth_a],
+    }
+  run(DistributionVest, tx)
+}
+
+// ── A-DEST: rót phần lớn vào kho nhưng TÁCH một ít ra ví → vẫn reject ──
+test distvest_split_some_to_wallet() fail {
+  // 999_999 vào kho + 1 ra ví → to_dest = 999_999 < delta 1_000_000 → reject (không tách lén).
+  let s = fresh()
+  let s2 = SupplyState { ..s, dist_minted: 1_000_000 }
+  let to_wallet =
+    util.mk_output_no_datum(
+      util.vk_address(#"beef"),
+      assets.from_lovelace(2_000_000)
+        |> assets.add(lamp_pol, constants.default_token_name, 1),
+    )
+  let tx =
+    Transaction {
+      ..placeholder,
+      inputs: [ss_input(s)],
+      outputs: [ss_output(s2), dest_output(999_999), to_wallet],
+      mint: mint_lamp(1_000_000),
+      extra_signatories: [auth_a],
+    }
+  run(DistributionVest, tx)
+}
+
+// ── A-DEST: rót vào kho qua ĐỊA CHỈ KHO CÓ STAKE (staked) vẫn nhận đúng ──
+test distvest_to_dest_staked_ok() {
+  // Kho có stake credential → so theo payment_credential vẫn khớp dist_dest → PASS.
+  let s = fresh()
+  let s2 = SupplyState { ..s, dist_minted: 1_000_000 }
+  let staked_kho =
+    util.mk_output_no_datum(
+      util.script_address_staked(dist_dest_hash, #"5742"),
+      assets.from_lovelace(2_000_000)
+        |> assets.add(lamp_pol, constants.default_token_name, 1_000_000),
+    )
+  let tx =
+    Transaction {
+      ..placeholder,
+      inputs: [ss_input(s)],
+      outputs: [ss_output(s2), staked_kho],
+      mint: mint_lamp(1_000_000),
+      extra_signatories: [auth_a],
+    }
+  run(DistributionVest, tx)
 }
 
 test reservedraw_no_meter() fail {
