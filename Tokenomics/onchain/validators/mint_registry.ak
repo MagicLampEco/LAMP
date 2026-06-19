@@ -49,6 +49,7 @@ validator mint_registry(
     registry.validate_update(
       own_policy,
       taad_policy,
+      governing_did,
       datum,
       own_input.output,
       self,

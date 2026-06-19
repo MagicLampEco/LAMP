@@ -127,16 +127,22 @@ pub fn validate_genesis(
 ///       (own_policy = own script hash; name = blake2b_256(governing_did)).
 ///   (e) governing_did BẤT BIẾN (datum_out.governing_did == datum_in...).
 ///   (f) entries_out well-formed (không trùng token_tag).
+/// Đầu hàm còn ÉP datum_in.governing_did == `governing_did` (tham số bake của
+/// validator) — biến bất biến ngầm (datum khớp param genesis) thành kiểm trực
+/// tiếp, miễn nhiễm tái cấu trúc đường genesis.
 /// KHÔNG ép status anchor: chỉ cần controller hiện tại ký là đủ quyền sửa bảng;
 /// nếu DID đang Recovering thì controller cũ vẫn quản tới khi recovery xong —
 /// quyết định bảo toàn quyền liên tục, tránh kẹt bảng giữa cửa sổ recovery.
 pub fn validate_update(
   own_policy: PolicyId,
   taad_policy: PolicyId,
+  governing_did: ByteArray,
   datum_in: RegistryDatum,
   own_input: Output,
   self: Transaction,
 ) -> Bool {
+  // (F-1) ép datum khớp DID bake — chặn spend UTxO mang datum DID khác.
+  expect datum_in.governing_did == governing_did
   let gov = datum_in.governing_did
   let did_name = blake2b_256(gov)
 
@@ -171,7 +177,10 @@ pub fn validate_update(
 ///   (a) có ĐÚNG 1 reference input mang registry NFT
 ///       (registry_nft_policy, registry_nft_name) — singleton bảng; 2 ref input
 ///       mang registry → từ chối (mơ hồ nguồn quyền).
-///   (b) datum đó decode RegistryDatum; tìm Entry có token_tag == `token_tag`.
+///   (b) datum đó decode RegistryDatum; lọc TẤT CẢ Entry có token_tag ==
+///       `token_tag` và đòi ĐÚNG 1 (fail-closed): 0 = không có quyền; ≥2 = mơ hồ
+///       → từ chối. KHÔNG dùng first-match — tự phòng thủ kể cả nếu có đường ghi
+///       datum khác trong tương lai làm vỡ bất biến no-dup do genesis+update giữ.
 ///   (c) Authority của entry đó thoả:
 ///         SinglePkh(pkh)        → pkh ∈ extra_signatories;
 ///         MultiSig{pkhs, thr}   → |pkhs ∩ extra_signatories| ≥ thr (thr ≥ 1);
@@ -193,9 +202,9 @@ pub fn validate_token_mint(
   expect Some(reg) =
     find_registry_ref(self.reference_inputs, registry_nft_policy, registry_nft_name)
 
-  // (b) tra entry theo token_tag.
-  expect Some(entry) =
-    list.find(reg.entries, fn(e) { e.token_tag == token_tag })
+  // (b) tra entry theo token_tag — đòi ĐÚNG 1 entry khớp (fail-closed):
+  // 0 = không có quyền; ≥2 = mơ hồ → từ chối. KHÔNG first-match.
+  expect [entry] = list.filter(reg.entries, fn(e) { e.token_tag == token_tag })
 
   // (c) authority thoả.
   authority_satisfied(entry.authority, self.extra_signatories)
@@ -603,7 +612,7 @@ test genesis_dup_tag_fails() fail {
 // ════════════════════════════════════════════════════════════════════════════
 
 fn run_update(datum_in: RegistryDatum, own_input: Output, tx: Transaction) -> Bool {
-  validate_update(reg_policy, taad_policy, datum_in, own_input, tx)
+  validate_update(reg_policy, taad_policy, gov_did, datum_in, own_input, tx)
 }
 
 // own_input mang registry NFT tại địa chỉ này (UTxO đang spend).
@@ -680,6 +689,23 @@ test update_change_governing_did_fails() fail {
       extra_signatories: [ctrl_a],
     }
   run_update(din, own_reg_input(din), tx)
+}
+
+// (F-1) datum_in.governing_did ≠ tham số bake → ép DID tường minh từ chối.
+// Kẻ tấn công spend UTxO mang datum DID khác qua validator bake gov_did.
+test update_datum_did_mismatches_bake_fails() fail {
+  let other_did = "did:phoenix:org:attacker"
+  let din = reg_datum(other_did, [])
+  let dout = reg_datum(other_did, [])
+  let tx =
+    Transaction {
+      ..base_tx(),
+      reference_inputs: [anchor_ref(taad_policy, anchor_datum(ctrl_a), 0)],
+      outputs: [reg_output_at(reg_policy, dout)],
+      extra_signatories: [ctrl_a],
+    }
+  // bake gov_did nhưng datum_in mang other_did → mismatch → fail.
+  validate_update(reg_policy, taad_policy, gov_did, din, own_reg_input(din), tx)
 }
 
 // Mất NFT: continuing output KHÔNG mang registry NFT → từ chối.
@@ -841,6 +867,21 @@ test token_mint_revoked_fails() fail {
 // token_tag không có trong bảng → không tìm thấy entry → từ chối.
 test token_mint_tag_not_in_registry_fails() fail {
   let reg = reg_datum(gov_did, [Entry { token_tag: tag_carbon, authority: SinglePkh(signer_x) }])
+  run_token(reg, [registry_ref(reg, 0)], [signer_x], mint_token(1_000_000))
+}
+
+// (c) read-side fail-closed: bảng có 2 entry TRÙNG token_tag → filter ra ≥2 →
+// đòi-đúng-1 từ chối (mơ hồ nguồn quyền), KHÔNG first-match entry đầu.
+test token_mint_dup_tag_in_registry_fails() fail {
+  let reg =
+    reg_datum(
+      gov_did,
+      [
+        Entry { token_tag: tag_gst, authority: SinglePkh(signer_x) },
+        Entry { token_tag: tag_gst, authority: SinglePkh(signer_y) },
+      ],
+    )
+  // signer_x ký (khớp entry đầu) nhưng vẫn PHẢI fail vì 2 entry cùng tag.
   run_token(reg, [registry_ref(reg, 0)], [signer_x], mint_token(1_000_000))
 }
 
