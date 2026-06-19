@@ -5,6 +5,7 @@
 import { describe, it, expect } from "vitest";
 import { Constr, Data } from "@lucid-evolution/lucid";
 import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 
 import {
   encodeSeedRedeemer, seedRedeemerToCbor, applyCustodySeed, seedPolicyId, planSeed,
@@ -13,7 +14,9 @@ import { assetKey, seedDatumOk, isCanonical } from "../offchain/src/collect.js";
 import type { CustodyDatum, LedgerEntry } from "../offchain/src/types.js";
 
 // vitest chạy với cwd = offchain/ → plutus.json ở ../onchain/plutus.json.
-const PLUTUS_JSON = new URL("../onchain/plutus.json", `file://${process.cwd()}/`).pathname;
+// resolve() cross-platform (POSIX + Windows) — tránh bẫy `new URL(file://${cwd})`
+// trên Windows sinh path hỏng `C:\C:\…` khiến suite không collect (Tuân review PR #10).
+const PLUTUS_JSON = resolve(process.cwd(), "../onchain/plutus.json");
 
 const LAMP_POLICY = "aabb".repeat(14);
 const LAMP_NAME = "4c414d50";
