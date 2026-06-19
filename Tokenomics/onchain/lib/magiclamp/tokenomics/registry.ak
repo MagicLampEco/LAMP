@@ -198,16 +198,66 @@ pub fn validate_token_mint(
   // (d) khoá asset-name + chặn burn/qty0/đa-asset.
   expect mint_is_positive_single(self, own_policy, token_asset_name)
 
-  // (a) reference input registry singleton + decode.
+  // (a)+(b)+(c) đọc bảng singleton → tra đúng-1 entry theo tag → ép authority.
+  // TÁI DÙNG cổng dùng-chung `authorized_by_registry` (cùng đường mà các verifier
+  // mẫu treasury_spend / device_action đi) — KHÔNG lặp lại logic tra-cứu/authority.
+  authorized_by_registry(
+    self,
+    registry_nft_policy,
+    registry_nft_name,
+    token_tag,
+  )
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// (2bis) CỔNG TỔNG QUÁT — primitive tái dùng cho MỌI verifier neo authority
+//        vào bảng registry (mint token, spend quỹ, hành-động thiết bị, …).
+// ════════════════════════════════════════════════════════════════════════════
+
+/// `authorized_by_registry(self, policy, name, action_tag)` = True ⟺:
+///   (a) có ĐÚNG 1 reference input mang registry NFT (policy, name) — singleton;
+///   (b) datum đó decode RegistryDatum, tra ĐÚNG 1 entry có token_tag ==
+///       `action_tag` (fail-closed: 0 = không quyền, ≥2 = mơ hồ → từ chối);
+///   (c) Authority của entry đó thoả `self.extra_signatories`
+///       (SinglePkh ∈ signers | MultiSig k-of-n | Revoked → False).
+/// Đây là CÙNG MỘT cổng `validate_token_mint` dùng — nên các verifier mẫu chỉ cần
+/// gọi hàm này với `action_tag` của mình, KHÔNG sao chép logic registry/authority.
+pub fn authorized_by_registry(
+  self: Transaction,
+  registry_nft_policy: PolicyId,
+  registry_nft_name: AssetName,
+  action_tag: ByteArray,
+) -> Bool {
   expect Some(reg) =
-    find_registry_ref(self.reference_inputs, registry_nft_policy, registry_nft_name)
+    read_registry_ref(self.reference_inputs, registry_nft_policy, registry_nft_name)
+  when lookup_authority(reg, action_tag) is {
+    Some(auth) -> authority_satisfied(auth, self.extra_signatories)
+    None -> False
+  }
+}
 
-  // (b) tra entry theo token_tag — đòi ĐÚNG 1 entry khớp (fail-closed):
-  // 0 = không có quyền; ≥2 = mơ hồ → từ chối. KHÔNG first-match.
-  expect [entry] = list.filter(reg.entries, fn(e) { e.token_tag == token_tag })
+/// Tra Authority của ĐÚNG 1 entry khớp `action_tag` trong bảng (fail-closed):
+/// 0 entry = None (không có quyền); ≥2 entry = None (mơ hồ → từ chối, KHÔNG
+/// first-match). Pure → test-được độc lập, dùng-chung cho mọi verifier.
+pub fn lookup_authority(
+  reg: RegistryDatum,
+  action_tag: ByteArray,
+) -> Option<Authority> {
+  when list.filter(reg.entries, fn(e) { e.token_tag == action_tag }) is {
+    [entry] -> Some(entry.authority)
+    _ -> None
+  }
+}
 
-  // (c) authority thoả.
-  authority_satisfied(entry.authority, self.extra_signatories)
+/// Reference input DUY NHẤT mang registry NFT (policy,name) → RegistryDatum.
+/// 2 ref input mang registry → None (mơ hồ nguồn quyền). Wrap public của
+/// `find_registry_ref` để các verifier mẫu tái dùng cùng cách đọc bảng.
+pub fn read_registry_ref(
+  refs: List<Input>,
+  policy: PolicyId,
+  name: AssetName,
+) -> Option<RegistryDatum> {
+  find_registry_ref(refs, policy, name)
 }
 
 // ─── Authority check (thuần) ────────────────────────────────────────────────
