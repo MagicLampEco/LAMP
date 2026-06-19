@@ -38,11 +38,20 @@ use cardano/transaction.{InlineDatum, Input, Output, Transaction}
 
 // ─── Hợp đồng datum ───────────────────────────────────────────────────────────
 
-/// State object đếm tổng-đã-đúc. Constr index 0, 1 field (HỢP ĐỒNG CBOR).
+/// State object đếm tổng-đã-đúc. Constr index 0 (HỢP ĐỒNG CBOR).
 /// `minted_total` = tổng LAMP (oil) đã phát hành lịch sử qua bộ đếm này.
 /// Genesis = 0. Đơn điệu KHÔNG giảm.
+/// `lamp_policy` / `lamp_asset_name` = token được đếm — ĐƯA VÀO DATUM (không còn
+/// là tham số validator) để PHÁ VÒNG PHỤ THUỘC HASH với did_token_mint:
+///   • supply_state hash phụ-thuộc lamp_policy (= did_token_mint hash) khi là tham số
+///   • did_token_mint hash phụ-thuộc supply_state hash (supply_state_nft_policy)
+///   → vòng → không tính được hash nào. Datum-hoá lamp_policy → supply_state hash
+///   ĐỘC LẬP did_token_mint → 1 chiều, hết vòng. Set lúc genesis, BẤT BIẾN qua spend.
+/// Thứ tự field: minted_total, lamp_policy, lamp_asset_name (2 field mới chèn CUỐI).
 pub type SupplyStateDatum {
   minted_total: Int,
+  lamp_policy: PolicyId,
+  lamp_asset_name: AssetName,
 }
 
 /// Redeemer spend SupplyState — chỉ một action (mint qua bộ đếm). CBOR xác định.
@@ -66,7 +75,11 @@ pub type SupplyStateNft {
 ///   (c) NFT đó đậu ĐÚNG 1 output tại Script(own_policy) — hard-bind vào chính
 ///       validator (Design-2: own_policy ≡ script hash). NFT ra ví → None → từ chối.
 ///   (d) output đó mang inline SupplyStateDatum parse được, minted_total == 0
-///       (KHÔNG cho seed trước số dương để "burn" sạch quota lén).
+///       (KHÔNG cho seed trước số dương để "burn" sạch quota lén). datum mới mang
+///       lamp_policy/lamp_asset_name (token được đếm) — set lúc genesis, bất biến
+///       qua spend (validate_spend ép giữ nguyên). Genesis CHỈ định nghĩa chúng;
+///       off-chain phải set datum.lamp_policy = did_token_mint hash (xem THỨ TỰ
+///       DEPLOY ở supply_state.ak).
 pub fn validate_genesis(
   own_policy: PolicyId,
   state_name: AssetName,
@@ -93,11 +106,16 @@ pub fn validate_genesis(
 ///        (kẻ tấn công nhân đôi bộ đếm để đếm thiếu).
 ///   (s3) continuing output: ĐÚNG 1 output tại Script(own) mang SupplyState NFT
 ///        (NFT thread bảo toàn ở chính validator; mất NFT / ra ví → từ chối).
-///   (s4) minted_amount = qty của (lamp_policy, lamp_asset_name) trong tx.mint.
+///   (s4) minted_amount = qty của (lamp_policy, lamp_asset_name) trong tx.mint,
+///        ĐỌC TỪ DATUM (datum_in.lamp_policy / datum_in.lamp_asset_name) — KHÔNG
+///        còn là tham số validator (phá vòng phụ-thuộc-hash với did_token_mint).
 ///        Đọc TRỰC TIẾP từ tx.mint (ledger gộp toàn-tx) → không double-count.
 ///   (s5) minted_amount ≥ 0 (no-burn ngược; bộ đếm KHÔNG được kéo lùi bằng burn).
 ///   (s6) minted_total' == minted_total + minted_amount (bộ đếm khớp đúng mint).
 ///   (s7) minted_total' ≤ cap (CHẶN TẠI TRẦN — bất biến cốt lõi).
+///   (s8) datum_out.lamp_policy == datum_in.lamp_policy VÀ
+///        datum_out.lamp_asset_name == datum_in.lamp_asset_name — token được đếm
+///        BẤT BIẾN qua spend (chống đổi mục-tiêu-đếm để né cap của token thật).
 /// Hệ quả: minted_total' ≥ minted_total (monotonic) suy ra từ (s5)+(s6).
 ///
 /// own_script = payment script hash của chính validator (own_policy ≡ own_script:
@@ -106,8 +124,6 @@ pub fn validate_spend(
   own_script: ByteArray,
   state_nft_policy: PolicyId,
   state_name: AssetName,
-  lamp_policy: PolicyId,
-  lamp_asset_name: AssetName,
   cap: Int,
   datum_in: SupplyStateDatum,
   own_ref: transaction.OutputReference,
@@ -137,7 +153,9 @@ pub fn validate_spend(
   expect Some(datum_out) = read_supply(state_out)
 
   // (s4) minted_amount = qty LAMP trong tx.mint (toàn-tx, không double-count).
-  let minted_amount = quantity_of(self.mint, lamp_policy, lamp_asset_name)
+  // Token được đếm ĐỌC TỪ DATUM (datum_in) — không còn tham số validator.
+  let minted_amount =
+    quantity_of(self.mint, datum_in.lamp_policy, datum_in.lamp_asset_name)
 
   and {
     // (s5) no-burn ngược / monotonic.
@@ -146,6 +164,9 @@ pub fn validate_spend(
     datum_out.minted_total == datum_in.minted_total + minted_amount,
     // (s7) chặn tại trần.
     datum_out.minted_total <= cap,
+    // (s8) token được đếm bất biến qua spend.
+    datum_out.lamp_policy == datum_in.lamp_policy,
+    datum_out.lamp_asset_name == datum_in.lamp_asset_name,
   }
 }
 

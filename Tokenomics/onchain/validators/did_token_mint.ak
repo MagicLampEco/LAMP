@@ -157,7 +157,13 @@ fn ss_input(policy: PolicyId, idx: Int) -> Input {
     output: Output {
       address: address.from_script(ss_policy),
       value: assets.from_lovelace(2_000_000) |> assets.add(policy, ss_name, 1),
-      datum: InlineDatum(supply.SupplyStateDatum { minted_total: 0 }),
+      datum: InlineDatum(
+        supply.SupplyStateDatum {
+          minted_total: 0,
+          lamp_policy: tok_policy,
+          lamp_asset_name: tok_name,
+        },
+      ),
       reference_script: None,
     },
   }

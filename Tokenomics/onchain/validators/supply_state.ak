@@ -15,7 +15,25 @@
 // tái dùng cho token opt-in cap khác (cap riêng) — KHÔNG hard-code hằng.
 //
 // `state_name` cố định (vd "LAMP-SUPPLY") — name của NFT thread; bake làm tham số
-// để engine tổng quát. `lamp_policy` / `lamp_asset_name` chỉ đúng token được đếm.
+// để engine tổng quát.
+//
+// ─── PHÁ VÒNG PHỤ-THUỘC-HASH (lamp_policy ĐƯA VÀO DATUM) ──────────────────────
+// TRƯỚC: validator param theo `lamp_policy` (= hash did_token_mint, vì LAMP do
+// did_token_mint đúc) → supply_state hash phụ-thuộc did_token_mint hash. NHƯNG
+// did_token_mint lại param theo supply_state_nft_policy (= supply_state hash) →
+// HAI HASH PHỤ THUỘC VÒNG → không tính được hash nào → KHÔNG DEPLOY ĐƯỢC.
+// (aiken check KHÔNG bắt vì test dùng hash hằng giả.)
+// NAY: lamp_policy / lamp_asset_name CHUYỂN VÀO SupplyStateDatum (set lúc genesis,
+// bất biến qua spend). supply_state KHÔNG còn param theo lamp_policy → hash ĐỘC LẬP
+// did_token_mint. did_token_mint vẫn param theo supply_state_nft_policy = hash này
+// → phụ thuộc 1 CHIỀU, HẾT VÒNG.
+//
+// ─── THỨ TỰ DEPLOY (offchain PHẢI làm đúng tuần tự) ──────────────────────────
+//   1. Tính supply_state hash (param: genesis_ref, state_name, cap — KHÔNG lamp_policy).
+//   2. Tính did_token_mint hash (param: ..., supply_state_nft_policy = supply_state hash).
+//   3. Genesis supply_state với datum.lamp_policy = did_token_mint hash (bước 2),
+//      datum.lamp_asset_name = asset-name LAMP, datum.minted_total = 0.
+//   Tuần tự 1→2→3, mỗi bước chỉ phụ thuộc bước trước → không còn vòng.
 //
 // Aiken 1.1.x / Plutus V3.
 
@@ -32,12 +50,11 @@ validator supply_state(
   genesis_ref: OutputReference,
   // name của SupplyState NFT thread (vd "LAMP-SUPPLY").
   state_name: AssetName,
-  // token được đếm (LAMP).
-  lamp_policy: PolicyId,
-  lamp_asset_name: AssetName,
   // trần raw-unit oil (LAMP = 36_000_000_000_000_000).
   cap: Int,
 ) {
+  // LƯU Ý: token được đếm (lamp_policy / lamp_asset_name) KHÔNG còn là tham số —
+  // đã chuyển vào SupplyStateDatum để phá vòng phụ-thuộc-hash (xem header).
   // ── GENESIS: mint NFT thread one-shot, hard-bind Script(own), total = 0 ──────
   mint(_redeemer: SupplyStateNft, own_policy: PolicyId, self: Transaction) {
     supply.validate_genesis(own_policy, state_name, genesis_ref, self)
@@ -60,8 +77,6 @@ validator supply_state(
       own_script,
       own_script,
       state_name,
-      lamp_policy,
-      lamp_asset_name,
       cap,
       datum_in,
       own_ref,
@@ -145,12 +160,21 @@ fn ss_value(policy: PolicyId) -> assets.Value {
   assets.from_lovelace(2_000_000) |> assets.add(policy, state_name_c, 1)
 }
 
+/// Datum chuẩn (token được đếm = LAMP) với minted_total = total.
+fn ss_datum(total: Int) -> SupplyStateDatum {
+  SupplyStateDatum {
+    minted_total: total,
+    lamp_policy: lamp_policy_c,
+    lamp_asset_name: lamp_name_c,
+  }
+}
+
 /// Output SupplyState tại Script(policy) mang NFT + datum.
 fn ss_output_at(policy: PolicyId, total: Int) -> transaction.Output {
   transaction.Output {
     address: address.from_script(policy),
     value: ss_value(policy),
-    datum: transaction.InlineDatum(SupplyStateDatum { minted_total: total }),
+    datum: transaction.InlineDatum(ss_datum(total)),
     reference_script: None,
   }
 }
@@ -191,8 +215,6 @@ fn run_spend(datum_in: SupplyStateDatum, own_in: transaction.Input, self: Transa
     ss_policy,
     ss_policy,
     state_name_c,
-    lamp_policy_c,
-    lamp_name_c,
     cap_c,
     datum_in,
     own_in.output_reference,
@@ -238,7 +260,7 @@ test genesis_nft_off_script_fails() fail {
     transaction.Output {
       address: address.from_verification_key(ctrl_a),
       value: ss_value(ss_policy),
-      datum: transaction.InlineDatum(SupplyStateDatum { minted_total: 0 }),
+      datum: transaction.InlineDatum(ss_datum(0)),
       reference_script: None,
     }
   let tx =
@@ -269,7 +291,7 @@ test genesis_mint_two_fails() fail {
     transaction.Output {
       address: address.from_script(ss_policy),
       value: assets.from_lovelace(2_000_000) |> assets.add(ss_policy, state_name_c, 2),
-      datum: transaction.InlineDatum(SupplyStateDatum { minted_total: 0 }),
+      datum: transaction.InlineDatum(ss_datum(0)),
       reference_script: None,
     }
   let tx =
@@ -288,7 +310,7 @@ test genesis_mint_two_fails() fail {
 
 // Mint trong cap: total 1_000_000 → mint 5_000_000 → total' 6_000_000 ≤ cap → ok.
 test spend_mint_within_cap_ok() {
-  let din = SupplyStateDatum { minted_total: 1_000_000 }
+  let din = ss_datum(1_000_000)
   let own_in = own_ss_input(ss_policy, 1_000_000)
   let tx =
     Transaction {
@@ -302,7 +324,7 @@ test spend_mint_within_cap_ok() {
 
 // Mint vừa chạm trần CAP → ok (≤, không <).
 test spend_mint_exactly_cap_ok() {
-  let din = SupplyStateDatum { minted_total: 0 }
+  let din = ss_datum(0)
   let own_in = own_ss_input(ss_policy, 0)
   let tx =
     Transaction {
@@ -316,7 +338,7 @@ test spend_mint_exactly_cap_ok() {
 
 // Mint VƯỢT cap: total' = cap + 1 > cap → từ chối.
 test spend_mint_over_cap_fails() fail {
-  let din = SupplyStateDatum { minted_total: cap_c }
+  let din = ss_datum(cap_c)
   let own_in = own_ss_input(ss_policy, cap_c)
   let tx =
     Transaction {
@@ -330,7 +352,7 @@ test spend_mint_over_cap_fails() fail {
 
 // total' ≠ total + amount: datum_out khai ít hơn thực mint (rò quota) → từ chối.
 test spend_total_not_sum_fails() fail {
-  let din = SupplyStateDatum { minted_total: 1_000_000 }
+  let din = ss_datum(1_000_000)
   let own_in = own_ss_input(ss_policy, 1_000_000)
   let tx =
     Transaction {
@@ -345,7 +367,7 @@ test spend_total_not_sum_fails() fail {
 
 // minted_total GIẢM (burn LAMP kéo lùi bộ đếm) → (s5) minted_amount ≥ 0 từ chối.
 test spend_total_decreases_fails() fail {
-  let din = SupplyStateDatum { minted_total: 10_000_000 }
+  let din = ss_datum(10_000_000)
   let own_in = own_ss_input(ss_policy, 10_000_000)
   let tx =
     Transaction {
@@ -360,13 +382,13 @@ test spend_total_decreases_fails() fail {
 
 // SupplyState NFT GIẢ (policy khác) ở continuing output → (s3) không nhận → từ chối.
 test spend_forged_nft_output_fails() fail {
-  let din = SupplyStateDatum { minted_total: 0 }
+  let din = ss_datum(0)
   let own_in = own_ss_input(ss_policy, 0)
   let forged_out =
     transaction.Output {
       address: address.from_script(ss_policy),
       value: assets.from_lovelace(2_000_000) |> assets.add(fake_policy, state_name_c, 1),
-      datum: transaction.InlineDatum(SupplyStateDatum { minted_total: 5_000_000 }),
+      datum: transaction.InlineDatum(ss_datum(5_000_000)),
       reference_script: None,
     }
   let tx =
@@ -381,13 +403,13 @@ test spend_forged_nft_output_fails() fail {
 
 // Mất NFT: continuing output KHÔNG mang SupplyState NFT → (s3) từ chối.
 test spend_loses_nft_fails() fail {
-  let din = SupplyStateDatum { minted_total: 0 }
+  let din = ss_datum(0)
   let own_in = own_ss_input(ss_policy, 0)
   let bare_out =
     transaction.Output {
       address: address.from_script(ss_policy),
       value: assets.from_lovelace(2_000_000),
-      datum: transaction.InlineDatum(SupplyStateDatum { minted_total: 5_000_000 }),
+      datum: transaction.InlineDatum(ss_datum(5_000_000)),
       reference_script: None,
     }
   let tx =
@@ -402,7 +424,7 @@ test spend_loses_nft_fails() fail {
 
 // 2 SupplyState input (nhân đôi bộ đếm để đếm thiếu) → (s2) đòi-đúng-1 từ chối.
 test spend_two_supply_states_fails() fail {
-  let din = SupplyStateDatum { minted_total: 0 }
+  let din = ss_datum(0)
   let own_in = own_ss_input(ss_policy, 0)
   // input thứ 2 cùng Script(ss_policy) mang SupplyState NFT.
   let second =
@@ -425,7 +447,7 @@ test spend_two_supply_states_fails() fail {
 
 // own_input KHÔNG mang SupplyState NFT (spend nhầm UTxO khác cùng addr) → (s1) từ chối.
 test spend_own_input_no_nft_fails() fail {
-  let din = SupplyStateDatum { minted_total: 0 }
+  let din = ss_datum(0)
   let bare_own =
     transaction.Input {
       output_reference: own_oref,
@@ -444,4 +466,59 @@ test spend_own_input_no_nft_fails() fail {
       outputs: [ss_output_at(ss_policy, 5_000_000)],
     }
   run_spend(din, bare_own, tx)
+}
+
+// datum_out ĐỔI lamp_policy (đổi mục-tiêu-đếm để né cap token thật) → (s8) từ chối.
+test spend_changes_lamp_policy_fails() fail {
+  let din = ss_datum(1_000_000)
+  let own_in = own_ss_input(ss_policy, 1_000_000)
+  // continuing output mang datum với lamp_policy GIẢ (khác datum_in) → bất biến vỡ.
+  let tampered_out =
+    transaction.Output {
+      address: address.from_script(ss_policy),
+      value: ss_value(ss_policy),
+      datum: transaction.InlineDatum(
+        SupplyStateDatum {
+          minted_total: 6_000_000,
+          lamp_policy: fake_policy,
+          lamp_asset_name: lamp_name_c,
+        },
+      ),
+      reference_script: None,
+    }
+  let tx =
+    Transaction {
+      ..base_tx(),
+      inputs: [own_in],
+      mint: mint_lamp(5_000_000),
+      outputs: [tampered_out],
+    }
+  run_spend(din, own_in, tx)
+}
+
+// datum_out ĐỔI lamp_asset_name → (s8) từ chối (bất biến token được đếm).
+test spend_changes_lamp_asset_name_fails() fail {
+  let din = ss_datum(1_000_000)
+  let own_in = own_ss_input(ss_policy, 1_000_000)
+  let tampered_out =
+    transaction.Output {
+      address: address.from_script(ss_policy),
+      value: ss_value(ss_policy),
+      datum: transaction.InlineDatum(
+        SupplyStateDatum {
+          minted_total: 6_000_000,
+          lamp_policy: lamp_policy_c,
+          lamp_asset_name: "NOT-LAMP",
+        },
+      ),
+      reference_script: None,
+    }
+  let tx =
+    Transaction {
+      ..base_tx(),
+      inputs: [own_in],
+      mint: mint_lamp(5_000_000),
+      outputs: [tampered_out],
+    }
+  run_spend(din, own_in, tx)
 }
