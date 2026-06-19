@@ -2,7 +2,7 @@
 //
 // MỤC TIÊU (chứng minh registry tổng quát + PER-ACTION THRESHOLD): một thiết bị
 // có NHIỀU hành động, mỗi hành động một `action_tag` RIÊNG trong bảng, mỗi tag
-// một Authority RIÊNG → ngưỡng KHÁC nhau theo độ nhạy. Ví dụ chính sách:
+// một Authorization RIÊNG → ngưỡng KHÁC nhau theo độ nhạy. Ví dụ chính sách:
 //   "operate"           → routine, 1-of-2  (tài-xế A HOẶC B vận hành);
 //   "transfer-ownership"→ nhạy-cảm, 2-of-2 (cả hai đồng chủ phải ký);
 //   "change-policy"     → nhạy-cảm, 2-of-2.
@@ -12,7 +12,7 @@
 //
 // action_tag nhận qua REDEEMER (không bake) → MỘT validator phục vụ MỌI hành
 // động của thiết bị; ngưỡng nằm ở bảng, không nằm ở code. Verifier đọc registry,
-// tra ĐÚNG entry của action_tag đó, ép Authority của nó.
+// tra ĐÚNG entry của action_tag đó, ép Authorization của nó.
 //
 // Fail-closed: action_tag không có trong bảng / Revoked / thiếu chữ ký /
 // thiếu-bảng / 2 bảng → False.
@@ -34,7 +34,7 @@ use cardano/transaction.{
 use magiclamp/tokenomics/registry.{Entry, MultiSig, RegistryDatum}
 
 /// Redeemer MANG action_tag — chọn hành-động muốn uỷ-quyền. Ngưỡng của tag này
-/// do bảng quyết định (Authority của entry), KHÔNG nằm ở đây.
+/// do bảng quyết định (Authorization của entry), KHÔNG nằm ở đây.
 pub type DeviceActionRedeemer {
   action_tag: ByteArray,
 }
@@ -50,7 +50,7 @@ validator device_action(
     self: Transaction,
   ) {
     // TÁI DÙNG đúng cổng dùng-chung — chỉ khác action_tag (từ redeemer). Ngưỡng
-    // per-action tự đến từ Authority của entry tag đó trong bảng.
+    // per-action tự đến từ Authorization của entry tag đó trong bảng.
     registry.authorized_by_registry(
       self,
       registry_nft_policy,
@@ -101,11 +101,11 @@ fn device_registry() -> RegistryDatum {
     governing_did: gov_did,
     entries: [
       Entry {
-        token_tag: tag_operate,
+        action_tag: tag_operate,
         authority: MultiSig { pkhs: [owner_a, owner_b], threshold: 1 },
       },
       Entry {
-        token_tag: tag_transfer,
+        action_tag: tag_transfer,
         authority: MultiSig { pkhs: [owner_a, owner_b], threshold: 2 },
       },
     ],

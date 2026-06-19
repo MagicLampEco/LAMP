@@ -6,24 +6,24 @@
 // redeploy bất kỳ policy nào. Cách làm: một BẢNG (RegistryDatum) đặt trong một
 // UTxO registry, đậu một registry NFT singleton, do DID controller hiện tại
 // quản. Mỗi token mint policy `did_token_mint` chỉ ĐỌC bảng này (reference
-// input) rồi tra cứu Authority theo `token_tag`.
+// input) rồi tra cứu Authorization theo `action_tag`.
 //
-// ─── token_tag là GÌ (quyết định first-principles) ───────────────────────────
-// token_tag = ĐỊNH DANH LOGIC ổn định của một dòng token, do GreenSun tự đặt
+// ─── action_tag là GÌ (quyết định first-principles) ───────────────────────────
+// action_tag = ĐỊNH DANH LOGIC ổn định của một dòng token, do GreenSun tự đặt
 // (vd "GST", "carbon-v1"). KHÔNG phải policy-id (policy-id của token chỉ sinh ra
-// SAU khi bake đủ tham số, trong đó CÓ token_tag → nếu token_tag = policy-id thì
+// SAU khi bake đủ tham số, trong đó CÓ action_tag → nếu action_tag = policy-id thì
 // vòng lặp tự tham chiếu, không khả thi). KHÔNG phải asset-name (đã có
 // token_asset_name riêng; tách hai để asset-name người-đọc đổi được mà khoá tra
-// cứu vẫn ổn định). token_tag là KHOÁ TRA CỨU trong bảng: bake vào params của
-// token policy + làm key của Entry. Một token_tag ↔ một Authority; xoay quyền =
-// sửa Entry đó (Single→Multi→Revoked), KHÔNG đổi token_tag, KHÔNG đổi policy-id
+// cứu vẫn ổn định). action_tag là KHOÁ TRA CỨU trong bảng: bake vào params của
+// token policy + làm key của Entry. Một action_tag ↔ một Authorization; xoay quyền =
+// sửa Entry đó (Single→Multi→Revoked), KHÔNG đổi action_tag, KHÔNG đổi policy-id
 // token, KHÔNG đẻ khoá. Đây chính là "quản nhiều token, thu hồi/multisig theo
 // từng token, không đẻ khoá theo token".
 //
 // ─── HỢP ĐỒNG INTERFACE (BẤT BIẾN — chung với Core builders + spec) ──────────
 // RegistryDatum = Constr 0 { governing_did: ByteArray, entries: List<Entry> }.
-//   Entry      = Constr 0 { token_tag: ByteArray, authority: Authority }.
-//   Authority  = SinglePkh(pkh) [constr 0]
+//   Entry      = Constr 0 { action_tag: ByteArray, authority: Authorization }.
+//   Authorization  = SinglePkh(pkh) [constr 0]
 //              | MultiSig { pkhs, threshold } [constr 1]
 //              | Revoked [constr 2].
 // Thứ tự field + constr index LÀ hợp đồng CBOR — KHÔNG đổi.
@@ -45,7 +45,7 @@ use magiclamp/tokenomics/phoenixkey.{Active, Org, TAADDatum, TAADStatus}
 // ─── Hợp đồng datum bảng ─────────────────────────────────────────────────────
 
 /// Quyền mint của MỘT dòng token. Constr index = thứ tự khai báo (HỢP ĐỒNG).
-pub type Authority {
+pub type Authorization {
   /// Một khoá đơn ký là đủ. [constr 0]
   SinglePkh(ByteArray)
   /// k-trên-n: đủ `threshold` khoá trong `pkhs` ký. [constr 1]
@@ -54,10 +54,10 @@ pub type Authority {
   Revoked
 }
 
-/// Một dòng trong bảng: ánh xạ token_tag → Authority. [constr 0]
+/// Một dòng trong bảng: ánh xạ action_tag → Authorization. [constr 0]
 pub type Entry {
-  token_tag: ByteArray,
-  authority: Authority,
+  action_tag: ByteArray,
+  authority: Authorization,
 }
 
 /// Bảng mint-authority do MỘT OrgDID quản. [constr 0]
@@ -126,7 +126,7 @@ pub fn validate_genesis(
 ///   (d) continuing output: ĐÚNG 1 output tại Script(own) mang registry NFT
 ///       (own_policy = own script hash; name = blake2b_256(governing_did)).
 ///   (e) governing_did BẤT BIẾN (datum_out.governing_did == datum_in...).
-///   (f) entries_out well-formed (không trùng token_tag).
+///   (f) entries_out well-formed (không trùng action_tag).
 /// Đầu hàm còn ÉP datum_in.governing_did == `governing_did` (tham số bake của
 /// validator) — biến bất biến ngầm (datum khớp param genesis) thành kiểm trực
 /// tiếp, miễn nhiễm tái cấu trúc đường genesis.
@@ -177,11 +177,11 @@ pub fn validate_update(
 ///   (a) có ĐÚNG 1 reference input mang registry NFT
 ///       (registry_nft_policy, registry_nft_name) — singleton bảng; 2 ref input
 ///       mang registry → từ chối (mơ hồ nguồn quyền).
-///   (b) datum đó decode RegistryDatum; lọc TẤT CẢ Entry có token_tag ==
-///       `token_tag` và đòi ĐÚNG 1 (fail-closed): 0 = không có quyền; ≥2 = mơ hồ
+///   (b) datum đó decode RegistryDatum; lọc TẤT CẢ Entry có action_tag ==
+///       `action_tag` và đòi ĐÚNG 1 (fail-closed): 0 = không có quyền; ≥2 = mơ hồ
 ///       → từ chối. KHÔNG dùng first-match — tự phòng thủ kể cả nếu có đường ghi
 ///       datum khác trong tương lai làm vỡ bất biến no-dup do genesis+update giữ.
-///   (c) Authority của entry đó thoả:
+///   (c) Authorization của entry đó thoả:
 ///         SinglePkh(pkh)        → pkh ∈ extra_signatories;
 ///         MultiSig{pkhs, thr}   → |pkhs ∩ extra_signatories| ≥ thr (thr ≥ 1);
 ///         Revoked               → fail.
@@ -191,7 +191,7 @@ pub fn validate_token_mint(
   own_policy: PolicyId,
   registry_nft_policy: PolicyId,
   registry_nft_name: AssetName,
-  token_tag: ByteArray,
+  action_tag: ByteArray,
   token_asset_name: AssetName,
   self: Transaction,
 ) -> Bool {
@@ -205,7 +205,7 @@ pub fn validate_token_mint(
     self,
     registry_nft_policy,
     registry_nft_name,
-    token_tag,
+    action_tag,
   )
 }
 
@@ -216,9 +216,9 @@ pub fn validate_token_mint(
 
 /// `authorized_by_registry(self, policy, name, action_tag)` = True ⟺:
 ///   (a) có ĐÚNG 1 reference input mang registry NFT (policy, name) — singleton;
-///   (b) datum đó decode RegistryDatum, tra ĐÚNG 1 entry có token_tag ==
+///   (b) datum đó decode RegistryDatum, tra ĐÚNG 1 entry có action_tag ==
 ///       `action_tag` (fail-closed: 0 = không quyền, ≥2 = mơ hồ → từ chối);
-///   (c) Authority của entry đó thoả `self.extra_signatories`
+///   (c) Authorization của entry đó thoả `self.extra_signatories`
 ///       (SinglePkh ∈ signers | MultiSig k-of-n | Revoked → False).
 /// Đây là CÙNG MỘT cổng `validate_token_mint` dùng — nên các verifier mẫu chỉ cần
 /// gọi hàm này với `action_tag` của mình, KHÔNG sao chép logic registry/authority.
@@ -236,14 +236,14 @@ pub fn authorized_by_registry(
   }
 }
 
-/// Tra Authority của ĐÚNG 1 entry khớp `action_tag` trong bảng (fail-closed):
+/// Tra Authorization của ĐÚNG 1 entry khớp `action_tag` trong bảng (fail-closed):
 /// 0 entry = None (không có quyền); ≥2 entry = None (mơ hồ → từ chối, KHÔNG
 /// first-match). Pure → test-được độc lập, dùng-chung cho mọi verifier.
 pub fn lookup_authority(
   reg: RegistryDatum,
   action_tag: ByteArray,
-) -> Option<Authority> {
-  when list.filter(reg.entries, fn(e) { e.token_tag == action_tag }) is {
+) -> Option<Authorization> {
+  when list.filter(reg.entries, fn(e) { e.action_tag == action_tag }) is {
     [entry] -> Some(entry.authority)
     _ -> None
   }
@@ -260,9 +260,9 @@ pub fn read_registry_ref(
   find_registry_ref(refs, policy, name)
 }
 
-// ─── Authority check (thuần) ────────────────────────────────────────────────
+// ─── Authorization check (thuần) ────────────────────────────────────────────────
 
-pub fn authority_satisfied(auth: Authority, signers: List<ByteArray>) -> Bool {
+pub fn authority_satisfied(auth: Authorization, signers: List<ByteArray>) -> Bool {
   when auth is {
     SinglePkh(pkh) -> list.has(signers, pkh)
     MultiSig { pkhs, threshold } -> and {
@@ -400,9 +400,9 @@ fn read_taad(output: Output) -> Option<TAADDatum> {
   }
 }
 
-// ─── Well-formed bảng: không trùng token_tag ─────────────────────────────────
+// ─── Well-formed bảng: không trùng action_tag ─────────────────────────────────
 
-/// entries không có hai Entry cùng token_tag (key duy nhất → tra cứu xác định;
+/// entries không có hai Entry cùng action_tag (key duy nhất → tra cứu xác định;
 /// tránh entry "bóng" qua mặt entry hợp lệ). O(n²) — bảng nhỏ, chấp nhận được.
 pub fn entries_well_formed(entries: List<Entry>) -> Bool {
   no_dup_tags(entries)
@@ -412,7 +412,7 @@ fn no_dup_tags(entries: List<Entry>) -> Bool {
   when entries is {
     [] -> True
     [h, ..t] -> and {
-        !list.any(t, fn(e) { e.token_tag == h.token_tag }),
+        !list.any(t, fn(e) { e.action_tag == h.action_tag }),
         no_dup_tags(t),
       }
   }
@@ -425,7 +425,7 @@ fn no_dup_tags(entries: List<Entry>) -> Bool {
 //   UPDATE:   controller đúng ok | sai chữ ký fail | đổi governing_did fail |
 //             mất NFT continuing-output fail | thiếu anchor ref fail
 //   TOKEN:    SinglePkh ok | thiếu sig fail | MultiSig đủ-threshold ok |
-//             thiếu threshold fail | Revoked fail | token_tag không có fail |
+//             thiếu threshold fail | Revoked fail | action_tag không có fail |
 //             asset-name sai fail | 2 registry ref fail
 // ════════════════════════════════════════════════════════════════════════════
 
@@ -568,7 +568,7 @@ fn base_tx() -> Transaction {
 // ════════════════════════════════════════════════════════════════════════════
 
 test genesis_ok() {
-  let datum = reg_datum(gov_did, [Entry { token_tag: tag_gst, authority: SinglePkh(signer_x) }])
+  let datum = reg_datum(gov_did, [Entry { action_tag: tag_gst, authority: SinglePkh(signer_x) }])
   let tx =
     Transaction {
       ..base_tx(),
@@ -637,14 +637,14 @@ test genesis_mint_two_fails() fail {
   validate_genesis(reg_policy, gov_did, genesis_oref, tx)
 }
 
-// entries trùng token_tag → not well-formed → từ chối.
+// entries trùng action_tag → not well-formed → từ chối.
 test genesis_dup_tag_fails() fail {
   let datum =
     reg_datum(
       gov_did,
       [
-        Entry { token_tag: tag_gst, authority: SinglePkh(signer_x) },
-        Entry { token_tag: tag_gst, authority: SinglePkh(signer_y) },
+        Entry { action_tag: tag_gst, authority: SinglePkh(signer_x) },
+        Entry { action_tag: tag_gst, authority: SinglePkh(signer_y) },
       ],
     )
   let tx =
@@ -671,14 +671,14 @@ fn own_reg_input(datum: RegistryDatum) -> Output {
 }
 
 test update_ok_when_controller_signs() {
-  let din = reg_datum(gov_did, [Entry { token_tag: tag_gst, authority: SinglePkh(signer_x) }])
+  let din = reg_datum(gov_did, [Entry { action_tag: tag_gst, authority: SinglePkh(signer_x) }])
   // bảng mới: thêm dòng carbon, đổi quyền GST sang multisig — controller đương nhiệm ký.
   let dout =
     reg_datum(
       gov_did,
       [
-        Entry { token_tag: tag_gst, authority: MultiSig { pkhs: [signer_x, signer_y], threshold: 2 } },
-        Entry { token_tag: tag_carbon, authority: SinglePkh(signer_z) },
+        Entry { action_tag: tag_gst, authority: MultiSig { pkhs: [signer_x, signer_y], threshold: 2 } },
+        Entry { action_tag: tag_carbon, authority: SinglePkh(signer_z) },
       ],
     )
   let tx =
@@ -694,7 +694,7 @@ test update_ok_when_controller_signs() {
 // Controller rotate: anchor giờ ghi ctrl_b; ctrl_b ký → vẫn sửa được (quyền theo DID).
 test update_ok_after_controller_rotated() {
   let din = reg_datum(gov_did, [])
-  let dout = reg_datum(gov_did, [Entry { token_tag: tag_gst, authority: SinglePkh(signer_x) }])
+  let dout = reg_datum(gov_did, [Entry { action_tag: tag_gst, authority: SinglePkh(signer_x) }])
   let tx =
     Transaction {
       ..base_tx(),
@@ -708,7 +708,7 @@ test update_ok_after_controller_rotated() {
 // Sai chữ ký: anchor ghi ctrl_a nhưng chỉ signer_x ký → từ chối.
 test update_wrong_signer_fails() fail {
   let din = reg_datum(gov_did, [])
-  let dout = reg_datum(gov_did, [Entry { token_tag: tag_gst, authority: SinglePkh(signer_x) }])
+  let dout = reg_datum(gov_did, [Entry { action_tag: tag_gst, authority: SinglePkh(signer_x) }])
   let tx =
     Transaction {
       ..base_tx(),
@@ -828,15 +828,15 @@ test update_forged_anchor_policy_fails() fail {
   run_update(din, own_reg_input(din), tx)
 }
 
-// Bảng mới trùng token_tag → not well-formed → từ chối.
+// Bảng mới trùng action_tag → not well-formed → từ chối.
 test update_dup_tag_out_fails() fail {
   let din = reg_datum(gov_did, [])
   let dout =
     reg_datum(
       gov_did,
       [
-        Entry { token_tag: tag_gst, authority: SinglePkh(signer_x) },
-        Entry { token_tag: tag_gst, authority: Revoked },
+        Entry { action_tag: tag_gst, authority: SinglePkh(signer_x) },
+        Entry { action_tag: tag_gst, authority: Revoked },
       ],
     )
   let tx =
@@ -869,12 +869,12 @@ fn run_token(reg: RegistryDatum, refs: List<Input>, signers: List<ByteArray>, mi
 }
 
 test token_mint_single_ok() {
-  let reg = reg_datum(gov_did, [Entry { token_tag: tag_gst, authority: SinglePkh(signer_x) }])
+  let reg = reg_datum(gov_did, [Entry { action_tag: tag_gst, authority: SinglePkh(signer_x) }])
   run_token(reg, [registry_ref(reg, 0)], [signer_x], mint_token(1_000_000))
 }
 
 test token_mint_single_missing_sig_fails() fail {
-  let reg = reg_datum(gov_did, [Entry { token_tag: tag_gst, authority: SinglePkh(signer_x) }])
+  let reg = reg_datum(gov_did, [Entry { action_tag: tag_gst, authority: SinglePkh(signer_x) }])
   run_token(reg, [registry_ref(reg, 0)], [signer_y], mint_token(1_000_000))
 }
 
@@ -882,7 +882,7 @@ test token_mint_multisig_threshold_ok() {
   let reg =
     reg_datum(
       gov_did,
-      [Entry { token_tag: tag_gst, authority: MultiSig { pkhs: [signer_x, signer_y, signer_z], threshold: 2 } }],
+      [Entry { action_tag: tag_gst, authority: MultiSig { pkhs: [signer_x, signer_y, signer_z], threshold: 2 } }],
     )
   // 2/3 ký → đủ.
   run_token(reg, [registry_ref(reg, 0)], [signer_x, signer_z], mint_token(500_000))
@@ -892,7 +892,7 @@ test token_mint_multisig_below_threshold_fails() fail {
   let reg =
     reg_datum(
       gov_did,
-      [Entry { token_tag: tag_gst, authority: MultiSig { pkhs: [signer_x, signer_y, signer_z], threshold: 2 } }],
+      [Entry { action_tag: tag_gst, authority: MultiSig { pkhs: [signer_x, signer_y, signer_z], threshold: 2 } }],
     )
   // chỉ 1 ký → thiếu.
   run_token(reg, [registry_ref(reg, 0)], [signer_x], mint_token(500_000))
@@ -903,32 +903,32 @@ test token_mint_multisig_dup_key_no_bypass_fails() fail {
   let reg =
     reg_datum(
       gov_did,
-      [Entry { token_tag: tag_gst, authority: MultiSig { pkhs: [signer_x, signer_x, signer_x], threshold: 2 } }],
+      [Entry { action_tag: tag_gst, authority: MultiSig { pkhs: [signer_x, signer_x, signer_x], threshold: 2 } }],
     )
   // signer_x ký một lần; pkhs nhồi 3 lần x nhưng dedup còn 1 → count 1 < 2 → fail.
   run_token(reg, [registry_ref(reg, 0)], [signer_x], mint_token(500_000))
 }
 
 test token_mint_revoked_fails() fail {
-  let reg = reg_datum(gov_did, [Entry { token_tag: tag_gst, authority: Revoked }])
+  let reg = reg_datum(gov_did, [Entry { action_tag: tag_gst, authority: Revoked }])
   run_token(reg, [registry_ref(reg, 0)], [signer_x], mint_token(1_000_000))
 }
 
-// token_tag không có trong bảng → không tìm thấy entry → từ chối.
+// action_tag không có trong bảng → không tìm thấy entry → từ chối.
 test token_mint_tag_not_in_registry_fails() fail {
-  let reg = reg_datum(gov_did, [Entry { token_tag: tag_carbon, authority: SinglePkh(signer_x) }])
+  let reg = reg_datum(gov_did, [Entry { action_tag: tag_carbon, authority: SinglePkh(signer_x) }])
   run_token(reg, [registry_ref(reg, 0)], [signer_x], mint_token(1_000_000))
 }
 
-// (c) read-side fail-closed: bảng có 2 entry TRÙNG token_tag → filter ra ≥2 →
+// (c) read-side fail-closed: bảng có 2 entry TRÙNG action_tag → filter ra ≥2 →
 // đòi-đúng-1 từ chối (mơ hồ nguồn quyền), KHÔNG first-match entry đầu.
 test token_mint_dup_tag_in_registry_fails() fail {
   let reg =
     reg_datum(
       gov_did,
       [
-        Entry { token_tag: tag_gst, authority: SinglePkh(signer_x) },
-        Entry { token_tag: tag_gst, authority: SinglePkh(signer_y) },
+        Entry { action_tag: tag_gst, authority: SinglePkh(signer_x) },
+        Entry { action_tag: tag_gst, authority: SinglePkh(signer_y) },
       ],
     )
   // signer_x ký (khớp entry đầu) nhưng vẫn PHẢI fail vì 2 entry cùng tag.
@@ -937,26 +937,26 @@ test token_mint_dup_tag_in_registry_fails() fail {
 
 // asset-name sai (token rác cùng policy-id) → khoá C-1 chặn.
 test token_mint_wrong_asset_name_fails() fail {
-  let reg = reg_datum(gov_did, [Entry { token_tag: tag_gst, authority: SinglePkh(signer_x) }])
+  let reg = reg_datum(gov_did, [Entry { action_tag: tag_gst, authority: SinglePkh(signer_x) }])
   let junk = assets.zero |> assets.add(token_policy, "JUNK", 1_000_000)
   run_token(reg, [registry_ref(reg, 0)], [signer_x], junk)
 }
 
 // burn (qty < 0) → từ chối.
 test token_mint_burn_fails() fail {
-  let reg = reg_datum(gov_did, [Entry { token_tag: tag_gst, authority: SinglePkh(signer_x) }])
+  let reg = reg_datum(gov_did, [Entry { action_tag: tag_gst, authority: SinglePkh(signer_x) }])
   run_token(reg, [registry_ref(reg, 0)], [signer_x], mint_token(-1_000_000))
 }
 
 // qty 0 → không "dương" → từ chối.
 test token_mint_zero_qty_fails() fail {
-  let reg = reg_datum(gov_did, [Entry { token_tag: tag_gst, authority: SinglePkh(signer_x) }])
+  let reg = reg_datum(gov_did, [Entry { action_tag: tag_gst, authority: SinglePkh(signer_x) }])
   run_token(reg, [registry_ref(reg, 0)], [signer_x], mint_token(0))
 }
 
 // 2 asset-name trong 1 tx → khoá asset-name chỉ nhận đúng 1 → từ chối.
 test token_mint_two_asset_names_fails() fail {
-  let reg = reg_datum(gov_did, [Entry { token_tag: tag_gst, authority: SinglePkh(signer_x) }])
+  let reg = reg_datum(gov_did, [Entry { action_tag: tag_gst, authority: SinglePkh(signer_x) }])
   let multi =
     assets.zero
       |> assets.add(token_policy, tok_name, 1_000_000)
@@ -966,10 +966,10 @@ test token_mint_two_asset_names_fails() fail {
 
 // 2 reference input cùng mang registry NFT → mơ hồ nguồn quyền → từ chối.
 test token_mint_two_registry_refs_fails() fail {
-  let reg_real = reg_datum(gov_did, [Entry { token_tag: tag_gst, authority: SinglePkh(signer_x) }])
+  let reg_real = reg_datum(gov_did, [Entry { action_tag: tag_gst, authority: SinglePkh(signer_x) }])
   // bảng GIẢ thứ 2 cùng (reg_policy, reg_name) nhưng cho signer_y quyền — nếu policy
   // chọn nhầm cái này kẻ tấn công qua mặt. Singleton-registry PHẢI từ chối cả hai.
-  let reg_fake = reg_datum(gov_did, [Entry { token_tag: tag_gst, authority: SinglePkh(signer_y) }])
+  let reg_fake = reg_datum(gov_did, [Entry { action_tag: tag_gst, authority: SinglePkh(signer_y) }])
   run_token(
     reg_real,
     [registry_ref(reg_real, 0), registry_ref(reg_fake, 1)],
@@ -980,7 +980,7 @@ test token_mint_two_registry_refs_fails() fail {
 
 // registry NFT GIẢ (policy khác) ở ref input → không nhận → từ chối.
 test token_mint_forged_registry_policy_fails() fail {
-  let reg = reg_datum(gov_did, [Entry { token_tag: tag_gst, authority: SinglePkh(signer_x) }])
+  let reg = reg_datum(gov_did, [Entry { action_tag: tag_gst, authority: SinglePkh(signer_x) }])
   let forged_ref =
     Input {
       output_reference: OutputReference {

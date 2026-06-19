@@ -4,7 +4,7 @@
 // cùng một Mint-Authority Registry mà `did_token_mint` dùng để gác AI-mint-token
 // thì cũng gác được AI-CHI-QUỸ — chỉ đổi `action_tag`. UTxO quỹ đậu tại địa chỉ
 // validator này; cho phép spend ⟺ tx có reference input mang registry NFT của
-// governing_did + entry `action_tag = "spend-treasury"` có Authority THOẢ
+// governing_did + entry `action_tag = "spend-treasury"` có Authorization THOẢ
 // (SinglePkh | MultiSig k-of-n | Revoked → cấm).
 //
 // Minh hoạ thu-hồi-không-redeploy: nhân viên nghỉ → DID controller sửa bảng đặt
@@ -133,32 +133,32 @@ fn run(refs: List<Input>, signers: List<ByteArray>) -> Bool {
 
 // Chi đúng authority (SinglePkh treasurer_a ký) → cho phép.
 test treasury_spend_single_ok() {
-  let reg = reg_datum([Entry { token_tag: spend_treasury_tag, authority: SinglePkh(treasurer_a) }])
+  let reg = reg_datum([Entry { action_tag: spend_treasury_tag, authority: SinglePkh(treasurer_a) }])
   run([registry_ref(reg_policy, reg)], [treasurer_a])
 }
 
 // Nhân viên nghỉ → controller set entry "spend-treasury" = Revoked → KHÔNG chi
 // được (không cần dời quỹ / redeploy).
 test treasury_spend_revoked_fails() fail {
-  let reg = reg_datum([Entry { token_tag: spend_treasury_tag, authority: Revoked }])
+  let reg = reg_datum([Entry { action_tag: spend_treasury_tag, authority: Revoked }])
   run([registry_ref(reg_policy, reg)], [treasurer_a])
 }
 
 // Thiếu chữ ký người được uỷ quyền → từ chối.
 test treasury_spend_missing_sig_fails() fail {
-  let reg = reg_datum([Entry { token_tag: spend_treasury_tag, authority: SinglePkh(treasurer_a) }])
+  let reg = reg_datum([Entry { action_tag: spend_treasury_tag, authority: SinglePkh(treasurer_a) }])
   run([registry_ref(reg_policy, reg)], [outsider])
 }
 
 // Registry NFT GIẢ (policy khác) ở ref input → không nhận bảng → từ chối.
 test treasury_spend_forged_registry_fails() fail {
-  let reg = reg_datum([Entry { token_tag: spend_treasury_tag, authority: SinglePkh(treasurer_a) }])
+  let reg = reg_datum([Entry { action_tag: spend_treasury_tag, authority: SinglePkh(treasurer_a) }])
   run([registry_ref(fake_policy, reg)], [treasurer_a])
 }
 
 // Bảng không có entry "spend-treasury" → fail-closed.
 test treasury_spend_no_entry_fails() fail {
-  let reg = reg_datum([Entry { token_tag: "other-action", authority: SinglePkh(treasurer_a) }])
+  let reg = reg_datum([Entry { action_tag: "other-action", authority: SinglePkh(treasurer_a) }])
   run([registry_ref(reg_policy, reg)], [treasurer_a])
 }
 
@@ -168,7 +168,7 @@ test treasury_spend_multisig_ok() {
     reg_datum(
       [
         Entry {
-          token_tag: spend_treasury_tag,
+          action_tag: spend_treasury_tag,
           authority: MultiSig { pkhs: [treasurer_a, treasurer_b], threshold: 2 },
         },
       ],
@@ -182,7 +182,7 @@ test treasury_spend_multisig_below_threshold_fails() fail {
     reg_datum(
       [
         Entry {
-          token_tag: spend_treasury_tag,
+          action_tag: spend_treasury_tag,
           authority: MultiSig { pkhs: [treasurer_a, treasurer_b], threshold: 2 },
         },
       ],
