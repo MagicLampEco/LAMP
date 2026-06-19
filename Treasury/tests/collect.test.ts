@@ -2,8 +2,10 @@ import { describe, it, expect } from "vitest";
 import {
   type AssetMap, assetKey, itemCut, cutValue, applyCut, planLedgerOut,
   ledgerGet, ledgerOk, valueOk, allItemsValid, itemAccepted,
+  compareHexBytes, keyLt, strictSorted, allPositive, isCanonical,
+  sortLedger, pruneZeroLines, canonicalizeLedger,
 } from "../offchain/src/collect.js";
-import { planCollect } from "../offchain/src/collectBuilder.js";
+import { planCollect, sameEpochValidToMs } from "../offchain/src/collectBuilder.js";
 import type { CollectItem, CustodyDatum, LedgerEntry } from "../offchain/src/types.js";
 
 // ── Fixtures ───────────────────────────────────────────────────────────
@@ -239,6 +241,113 @@ describe("item validation (C-COL-5)", () => {
   });
 });
 
+// ════════════════════════════════════════════════════════════════════════
+// CANONICAL SỔ (hardening v1) — mirror ledger.ak (key_lt / strict_sorted / all_positive)
+// ════════════════════════════════════════════════════════════════════════
+describe("compareHexBytes — mirror bytearray.compare on-chain (byte lexicographic)", () => {
+  it("'' < '00' (rỗng < non-rỗng)", () => {
+    expect(compareHexBytes("", "00")).toBe(-1);
+    expect(compareHexBytes("00", "")).toBe(1);
+  });
+  it("prefix ngắn hơn = Less ('ab' < 'abcd')", () => {
+    expect(compareHexBytes("ab", "abcd")).toBe(-1);
+    expect(compareHexBytes("abcd", "ab")).toBe(1);
+  });
+  it("so theo BYTE không unicode: 'ff' > '0000'", () => {
+    expect(compareHexBytes("ff", "0000")).toBe(1);
+  });
+  it("bằng nhau → 0; case-insensitive", () => {
+    expect(compareHexBytes("aabb", "aabb")).toBe(0);
+    expect(compareHexBytes("AABB", "aabb")).toBe(0);
+  });
+});
+
+describe("keyLt / strictSorted / allPositive / isCanonical (ledger.ak)", () => {
+  it("lovelace (policy='') sort TRƯỚC policy thật cùng bucket", () => {
+    const lov: LedgerEntry = { bucket_id: 1n, policy: "", name: "", amount: 1n };
+    const lamp: LedgerEntry = { bucket_id: 1n, policy: LAMP_POLICY, name: LAMP_NAME, amount: 1n };
+    expect(keyLt(lov, lamp)).toBe(true);
+    expect(keyLt(lamp, lov)).toBe(false);
+  });
+  it("bucket_id tăng có ưu tiên cao nhất", () => {
+    const a: LedgerEntry = { bucket_id: 1n, policy: "ffff", name: "", amount: 1n };
+    const b: LedgerEntry = { bucket_id: 2n, policy: "0000", name: "", amount: 1n };
+    expect(keyLt(a, b)).toBe(true); // bucket 1 < 2 dù policy ff > 00
+  });
+  it("strictSorted: sổ tăng nghiêm ngặt → true; trùng/đảo → false", () => {
+    const sorted = sortLedger([
+      { bucket_id: 2n, policy: LAMP_POLICY, name: LAMP_NAME, amount: 5n },
+      { bucket_id: 1n, policy: "", name: "", amount: 3n },
+      { bucket_id: 1n, policy: LAMP_POLICY, name: LAMP_NAME, amount: 7n },
+    ]);
+    expect(strictSorted(sorted)).toBe(true);
+    expect(isCanonical(sorted)).toBe(true);
+    // đảo thứ tự → false
+    expect(strictSorted([sorted[1]!, sorted[0]!, sorted[2]!])).toBe(false);
+    // trùng khóa → false (không strict)
+    const dup = [sorted[0]!, sorted[0]!];
+    expect(strictSorted(dup)).toBe(false);
+  });
+  it("allPositive: dòng 0 hoặc âm → false", () => {
+    expect(allPositive([{ bucket_id: 1n, policy: "", name: "", amount: 0n }])).toBe(false);
+    expect(allPositive([{ bucket_id: 1n, policy: "", name: "", amount: -1n }])).toBe(false);
+    expect(allPositive([{ bucket_id: 1n, policy: "", name: "", amount: 1n }])).toBe(true);
+  });
+});
+
+describe("canonicalizeLedger — prune dòng 0 + sort + reject âm (round-trip)", () => {
+  it("prune dòng 0 và sort theo khóa", () => {
+    const raw: LedgerEntry[] = [
+      { bucket_id: 2n, policy: LAMP_POLICY, name: LAMP_NAME, amount: 5n },
+      { bucket_id: 1n, policy: LAMP_POLICY, name: LAMP_NAME, amount: 0n }, // prune
+      { bucket_id: 1n, policy: "", name: "", amount: 3n },
+    ];
+    const out = canonicalizeLedger(raw);
+    expect(out).toEqual([
+      { bucket_id: 1n, policy: "", name: "", amount: 3n },
+      { bucket_id: 2n, policy: LAMP_POLICY, name: LAMP_NAME, amount: 5n },
+    ]);
+    expect(isCanonical(out)).toBe(true);
+  });
+  it("round-trip: canonical(canonical(x)) == canonical(x)", () => {
+    const raw: LedgerEntry[] = [
+      { bucket_id: 3n, policy: LAMP_POLICY, name: LAMP_NAME, amount: 9n },
+      { bucket_id: 1n, policy: "", name: "", amount: 4n },
+      { bucket_id: 2n, policy: "", name: "", amount: 7n },
+    ];
+    const once = canonicalizeLedger(raw);
+    expect(canonicalizeLedger(once)).toEqual(once);
+  });
+  it("pruneZeroLines bỏ đúng dòng 0", () => {
+    expect(pruneZeroLines([
+      { bucket_id: 1n, policy: "", name: "", amount: 0n },
+      { bucket_id: 2n, policy: "", name: "", amount: 5n },
+    ])).toEqual([{ bucket_id: 2n, policy: "", name: "", amount: 5n }]);
+  });
+  it("ném LEDGER-NEG khi có dòng âm", () => {
+    expect(() => canonicalizeLedger([
+      { bucket_id: 1n, policy: "", name: "", amount: -1n },
+    ])).toThrow(/LEDGER-NEG/);
+  });
+});
+
+describe("planLedgerOut (Collect) sinh sổ CANONICAL", () => {
+  it("dòng mới chèn ĐÚNG vị trí sort, không append cuối", () => {
+    // sổ in có bucket 2; cut vào bucket 1 → dòng mới bucket 1 phải đứng TRƯỚC.
+    const ledgerIn: LedgerEntry[] = [
+      { bucket_id: 2n, policy: LAMP_POLICY, name: LAMP_NAME, amount: 40n },
+    ];
+    const items: CollectItem[] = [
+      { app_id: "a", policy: LAMP_POLICY, name: LAMP_NAME, amount: 1000n, category: 1n },
+    ];
+    const out = planLedgerOut(ledgerIn, items, 1000n);
+    expect(out[0]!.bucket_id).toBe(1n);   // bucket 1 (mới) đứng trước bucket 2
+    expect(out[1]!.bucket_id).toBe(2n);
+    expect(isCanonical(out)).toBe(true);
+    expect(ledgerOk(ledgerIn, out, items, 1000n)).toBe(true);
+  });
+});
+
 describe("planCollect — orchestration thuần (khớp validator)", () => {
   it("dựng newDatum + custodyAfter bảo toàn value + ledger đúng", () => {
     const datum = baseDatum({
@@ -287,6 +396,23 @@ describe("planCollect — orchestration thuần (khớp validator)", () => {
     expect(() => planCollect(datum, valueIn, items)).toThrow(/COLLECT-001/);
   });
 
+  it("guard NFT (C-NFT): cust_in MANG NFT → pass; THIẾU → COLLECT-NFT", () => {
+    const SEED_POLICY = "11ee".repeat(14);
+    const datum = baseDatum({ instance_id: "01" });
+    const nftK = assetKey(SEED_POLICY, "01");
+    const items: CollectItem[] = [
+      { app_id: "a", policy: LAMP_POLICY, name: LAMP_NAME, amount: 1000n, category: 1n },
+    ];
+    // có NFT → pass, NFT bảo toàn vào custodyAfter (Σout=Σin, không đụng NFT).
+    const withNft: AssetMap = { [adaK]: 2_000_000n, [lampK]: 0n, [nftK]: 1n };
+    const r = planCollect(datum, withNft, items, undefined, SEED_POLICY);
+    expect(r.custodyAfter[nftK]).toBe(1n);
+    expect(r.custodyAfter[lampK]).toBe(100n);
+    // thiếu NFT → ném COLLECT-NFT.
+    const noNft: AssetMap = { [adaK]: 2_000_000n, [lampK]: 0n };
+    expect(() => planCollect(datum, noNft, items, undefined, SEED_POLICY)).toThrow(/COLLECT-NFT/);
+  });
+
   it("bất biến tổng cut = Σ(amount × bps / 10000) per-asset", () => {
     const datum = baseDatum({ cut_bps: 250n });
     const valueIn: AssetMap = { [adaK]: 10_000_000n, [lampK]: 0n };
@@ -300,5 +426,68 @@ describe("planCollect — orchestration thuần (khớp validator)", () => {
     expect(cut[adaK]).toBe(200_000n);       // 8_000_000*250/10000
     const expectSum = sumOverItemsAndCustody(valueIn, items, 250n);
     expect(cut).toEqual(expectSum);
+  });
+
+  it("F3: reject Σcut == 0 (items rỗng) → COLLECT-011", () => {
+    // Collect no-op: không item nào → Σcut = 0 → respend miễn phí gây contention.
+    // Mirror custody.ak `!assets.is_zero(cut_value(...))`.
+    const datum = baseDatum({ cut_bps: 1000n });
+    const valueIn: AssetMap = { [adaK]: 2_000_000n };
+    expect(() => planCollect(datum, valueIn, [])).toThrow(/COLLECT-011/);
+  });
+
+  it("F3: reject Σcut == 0 (amount nhỏ → floor cut = 0) → COLLECT-011", () => {
+    // cut_bps = 100 (1%); amount = 99 → ⌊99×100/10000⌋ = ⌊0.99⌋ = 0 → Σcut = 0.
+    const datum = baseDatum({ cut_bps: 100n });
+    const valueIn: AssetMap = { [lampK]: 0n };
+    const items: CollectItem[] = [
+      { app_id: "a", policy: LAMP_POLICY, name: LAMP_NAME, amount: 99n, category: 1n },
+    ];
+    expect(itemCut(99n, 100n)).toBe(0n);     // xác nhận floor về 0
+    expect(() => planCollect(datum, valueIn, items)).toThrow(/COLLECT-011/);
+  });
+
+  it("F3: cut > 0 (cùng items + 1 item có cut) → KHÔNG reject", () => {
+    const datum = baseDatum({ cut_bps: 100n });
+    const valueIn: AssetMap = { [lampK]: 0n };
+    const items: CollectItem[] = [
+      { app_id: "a", policy: LAMP_POLICY, name: LAMP_NAME, amount: 99n, category: 1n },   // cut 0
+      { app_id: "b", policy: LAMP_POLICY, name: LAMP_NAME, amount: 1000n, category: 1n },  // cut 10
+    ];
+    const { cut } = planCollect(datum, valueIn, items);
+    expect(cut[lampK]).toBe(10n);            // Σcut > 0 → pass
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════
+// F4: validity_range HỮU HẠN + lower&upper CÙNG epoch (mirror get_epoch_bounded)
+// ════════════════════════════════════════════════════════════════════════
+describe("F4: sameEpochValidToMs — validTo cùng epoch với validFrom", () => {
+  const MS = 432_000_000n;                   // Cardano epoch = 5 ngày
+
+  it("⌊validTo/ms⌋ == ⌊validFrom/ms⌋ (cùng epoch)", () => {
+    const validFrom = 12n * MS + 123_456n;   // epoch 12
+    const validTo = sameEpochValidToMs(validFrom, MS);
+    expect(validFrom / MS).toBe(12n);
+    expect(validTo / MS).toBe(12n);          // ⌊validTo/ms⌋ == ⌊validFrom/ms⌋
+    expect(validTo).toBeGreaterThan(validFrom);
+  });
+
+  it("validTo = ms cuối CÙNG epoch ((epoch+1)×ms − 1)", () => {
+    const validFrom = 7n * MS;               // đầu epoch 7
+    const validTo = sameEpochValidToMs(validFrom, MS);
+    expect(validTo).toBe(8n * MS - 1n);      // ms cuối epoch 7
+    expect(validTo / MS).toBe(7n);           // VẪN epoch 7 (không trải biên)
+  });
+
+  it("biên epoch: validFrom = đầu epoch → validTo vẫn cùng epoch (không tràn sang sau)", () => {
+    const validFrom = 0n;                    // epoch 0
+    const validTo = sameEpochValidToMs(validFrom, MS);
+    expect(validTo).toBe(MS - 1n);           // ms cuối epoch 0
+    expect(validTo / MS).toBe(0n);
+  });
+
+  it("reject msPerEpoch ≤ 0", () => {
+    expect(() => sameEpochValidToMs(100n, 0n)).toThrow(/EPOCH-000/);
   });
 });

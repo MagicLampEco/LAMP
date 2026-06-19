@@ -63,8 +63,20 @@ fn seed_mint(name: ByteArray, qty: Int) -> assets.Value {
   assets.add(assets.zero, seed_policy, name, qty)
 }
 
+// C-NFT: gắn authenticity NFT (seed_policy, name) qty 1 vào value custody — seed_value_ok
+// nay ÉP custody mang đúng 1 NFT này (ngoài sổ + reserved). name = NFT đã mint.
+fn with_nft(value: assets.Value, name: ByteArray) -> assets.Value {
+  assets.add(value, seed_policy, name, 1)
+}
+
+// Output custody mang NFT name = instance_id (mặc định happy: khớp định danh datum).
 fn cust_output(value: assets.Value, ledger: List<LedgerEntry>) -> Output {
-  util.mk_output(util.script_address(cust_sh), value, seed_datum(ledger))
+  util.mk_output(util.script_address(cust_sh), with_nft(value, instance_id), seed_datum(ledger))
+}
+
+// Output custody mang NFT name TÙY Ý (test name ≠ instance_id): value + NFT(name).
+fn cust_output_named(value: assets.Value, ledger: List<LedgerEntry>, name: ByteArray) -> Output {
+  util.mk_output(util.script_address(cust_sh), with_nft(value, name), seed_datum(ledger))
 }
 
 // Dựng tx genesis: inputs (genesis + other), mint NFT, 1 output custody.
@@ -77,8 +89,10 @@ fn seed_tx(
 }
 
 fn run(tx: Transaction, reserved_min_ada: Int) -> Bool {
+  // Interface MỚI: custody_seed param CHỈ genesis_ref (bỏ custody_script_hash —
+  // output custody chọn bằng self-ref NFT vừa mint).
   custody_seed.custody_seed.mint(
-    genesis_ref(), cust_sh, SeedGenesis { reserved_min_ada }, seed_policy, tx,
+    genesis_ref(), SeedGenesis { reserved_min_ada }, seed_policy, tx,
   )
 }
 
@@ -87,11 +101,13 @@ fn run(tx: Transaction, reserved_min_ada: Int) -> Bool {
 //    Sổ: ops LAMP 1000, community LAMP 500, ops ADA 3_000_000.
 //    value = LAMP 1500 + ADA (3_000_000 sổ + 2_000_000 reserved) = 5_000_000.
 // ════════════════════════════════════════════════════════════
+// CANONICAL: strict-sorted theo khóa (bucket_id, policy, name) — trong bucket_ops,
+// ADA (#"" < #"1a3b") đứng TRƯỚC LAMP; rồi mới sang bucket_community.
 fn happy_ledger() -> List<LedgerEntry> {
   [
+    LedgerEntry { bucket_id: bucket_ops, policy: #"", name: #"", amount: 3_000_000 },
     LedgerEntry { bucket_id: bucket_ops, policy: lamp_policy, name: lamp_name, amount: 1000 },
     LedgerEntry { bucket_id: bucket_community, policy: lamp_policy, name: lamp_name, amount: 500 },
-    LedgerEntry { bucket_id: bucket_ops, policy: #"", name: #"", amount: 3_000_000 },
   ]
 }
 
@@ -226,11 +242,13 @@ test seed_line_not_accepted() fail {
 // 7. NFT NAME ≠ instance_id (fail) — mint name khác định danh datum.
 // ════════════════════════════════════════════════════════════
 test seed_nft_name_mismatch() fail {
+  // NFT mint name = #"ffff" (output mang đúng nó → qua S-OUT-1) nhưng datum.instance_id
+  // = #"abcd" → S-PARAM-0 (instance_id == nft_name) fail.
   let tx =
     seed_tx(
       [genesis_input()],
       seed_mint(#"ffff", 1),
-      [cust_output(happy_value(), happy_ledger())],
+      [cust_output_named(happy_value(), happy_ledger(), #"ffff")],
     )
   run(tx, reserved)
 }
@@ -293,5 +311,159 @@ test seed_no_custody_output() fail {
   let wallet_out =
     util.mk_output_no_datum(util.vk_address(#"a0"), happy_value() |> assets.add(seed_policy, instance_id, 1))
   let tx = seed_tx([genesis_input()], seed_mint(instance_id, 1), [wallet_out])
+  run(tx, reserved)
+}
+
+// ════════════════════════════════════════════════════════════
+// 13. C-NFT — custody output THIẾU NFT authenticity (value không có (seed_policy,
+//     instance_id)). seed_value_ok nay ÉP NFT trong value → fail.
+//     (Dù NFT vẫn được mint + lạc đi đâu đó; nhưng custody không mang nó.)
+// ════════════════════════════════════════════════════════════
+test seed_custody_missing_nft() fail {
+  // output custody KHÔNG có NFT (dùng mk_output trực tiếp, không qua with_nft).
+  // NFT minted lạc sang 1 output ví khác để count_outputs_with_token vẫn == 1
+  // (cô lập nguyên nhân fail = seed_value_ok, KHÔNG phải S-OUT-1).
+  let bad_cust = util.mk_output(util.script_address(cust_sh), happy_value(), seed_datum(happy_ledger()))
+  let nft_out = util.mk_output_no_datum(util.vk_address(#"a0"), assets.add(assets.from_lovelace(2_000_000), seed_policy, instance_id, 1))
+  let tx = seed_tx([genesis_input()], seed_mint(instance_id, 1), [bad_cust, nft_out])
+  // bad_cust không mang NFT → output_with_token chọn nft_out (ví) → !is_vk fail
+  // (cũng là nhánh chống NFT lạc khỏi custody). Một trong hai chặn → reject.
+  run(tx, reserved)
+}
+
+// ── Datum với cut_bps tùy chỉnh (test S-CUT-0) ──
+fn seed_datum_cut(ledger: List<LedgerEntry>, cut_bps: Int) -> CustodyDatum {
+  CustodyDatum { ..seed_datum(ledger), cut_bps: cut_bps }
+}
+
+fn cust_output_cut(value: assets.Value, ledger: List<LedgerEntry>, cut_bps: Int) -> Output {
+  util.mk_output(util.script_address(cust_sh), with_nft(value, instance_id), seed_datum_cut(ledger, cut_bps))
+}
+
+// ════════════════════════════════════════════════════════════
+// 14. S-CUT-0 — cut_bps PHẢI ∈ [0,10000] (chống cut âm drain / cut > 100%).
+//     Bất biến đời instance, ép một lần tại seed.
+// ════════════════════════════════════════════════════════════
+test seed_cut_bps_negative() fail {
+  let tx =
+    seed_tx(
+      [genesis_input()], seed_mint(instance_id, 1),
+      [cust_output_cut(happy_value(), happy_ledger(), -1)],
+    )
+  run(tx, reserved)
+}
+
+test seed_cut_bps_over_10000() fail {
+  let tx =
+    seed_tx(
+      [genesis_input()], seed_mint(instance_id, 1),
+      [cust_output_cut(happy_value(), happy_ledger(), 10001)],
+    )
+  run(tx, reserved)
+}
+
+// Biên DƯỚI hợp lệ: cut_bps = 0 (không cắt) PHẢI pass.
+test seed_cut_bps_zero_ok() {
+  let tx =
+    seed_tx(
+      [genesis_input()], seed_mint(instance_id, 1),
+      [cust_output_cut(happy_value(), happy_ledger(), 0)],
+    )
+  run(tx, reserved)
+}
+
+// Biên TRÊN hợp lệ: cut_bps = 10000 (cắt 100%) PHẢI pass.
+test seed_cut_bps_10000_ok() {
+  let tx =
+    seed_tx(
+      [genesis_input()], seed_mint(instance_id, 1),
+      [cust_output_cut(happy_value(), happy_ledger(), 10000)],
+    )
+  run(tx, reserved)
+}
+
+// ════════════════════════════════════════════════════════════
+// 15. S-LEDGER-0 — sổ CANONICAL (mọi dòng > 0). Dòng amount = 0 lọt qua seed sẽ
+//     bloat sổ + né prune → ledger.is_canonical (all_positive) fail.
+// ════════════════════════════════════════════════════════════
+test seed_ledger_line_zero() fail {
+  // Dòng community LAMP amount=0 (canonical phải prune). value vẫn khớp (0 đóng góp 0).
+  let ledger =
+    [
+      LedgerEntry { bucket_id: bucket_ops, policy: lamp_policy, name: lamp_name, amount: 1500 },
+      LedgerEntry { bucket_id: bucket_community, policy: lamp_policy, name: lamp_name, amount: 0 },
+    ]
+  let value = assets.add(assets.from_lovelace(2_000_000), lamp_policy, lamp_name, 1500)
+  let tx = seed_tx([genesis_input()], seed_mint(instance_id, 1), [cust_output(value, ledger)])
+  run(tx, 2_000_000)
+}
+
+// Dòng ADA ÂM bù reserved (drain trá hình): sổ ADA = −1_000_000 để value khớp sau khi
+// cộng reserved cao hơn. all_positive fail (chống dòng âm rút value khỏi booked).
+test seed_ledger_line_negative_ada() fail {
+  // sổ: LAMP 1500 + ADA −1_000_000. value_of(sổ) ADA = −1_000_000.
+  // expected = −1_000_000 + reserved(3_000_000) = 2_000_000 = value ADA → seed_value_ok PASS,
+  // nhưng dòng ADA âm ⇒ all_positive fail (cô lập S-LEDGER-0).
+  let ledger =
+    [
+      LedgerEntry { bucket_id: bucket_ops, policy: #"", name: #"", amount: -1_000_000 },
+      LedgerEntry { bucket_id: bucket_ops, policy: lamp_policy, name: lamp_name, amount: 1500 },
+    ]
+  let value = assets.add(assets.from_lovelace(2_000_000), lamp_policy, lamp_name, 1500)
+  let tx = seed_tx([genesis_input()], seed_mint(instance_id, 1), [cust_output(value, ledger)])
+  run(tx, 3_000_000)
+}
+
+// Sổ KHÔNG strict-sorted (2 dòng sai thứ tự khóa) → strict_sorted fail.
+test seed_ledger_unsorted() fail {
+  // community(bucket 2) ĐỨNG TRƯỚC ops(bucket 1) — sai thứ tự khóa bucket_id.
+  let ledger =
+    [
+      LedgerEntry { bucket_id: bucket_community, policy: lamp_policy, name: lamp_name, amount: 500 },
+      LedgerEntry { bucket_id: bucket_ops, policy: lamp_policy, name: lamp_name, amount: 1000 },
+    ]
+  let value = assets.add(assets.from_lovelace(2_000_000), lamp_policy, lamp_name, 1500)
+  let tx = seed_tx([genesis_input()], seed_mint(instance_id, 1), [cust_output(value, ledger)])
+  run(tx, 2_000_000)
+}
+
+// ════════════════════════════════════════════════════════════
+// 16. S-ID-0 — instance_id == #"" (định danh rỗng = đa thuê bao giả) → fail.
+//     NFT mint name = #"" để khớp S-PARAM-0 (instance_id == nft_name), cô lập S-ID-0.
+// ════════════════════════════════════════════════════════════
+test seed_instance_id_empty() fail {
+  let bad_datum = CustodyDatum { ..seed_datum(happy_ledger()), instance_id: #"" }
+  // output mang NFT name = #"" (khớp datum.instance_id) → qua S-PARAM-0, chặn ở S-ID-0.
+  let bad_out =
+    util.mk_output(util.script_address(cust_sh), with_nft(happy_value(), #""), bad_datum)
+  let tx = seed_tx([genesis_input()], seed_mint(#"", 1), [bad_out])
+  run(tx, reserved)
+}
+
+// ════════════════════════════════════════════════════════════
+// 17. S-ACC-1 — accepted_assets == [] (instance "câm", không nhận asset nào) → fail.
+//     Sổ rỗng để qua S-ACC-0 (all_lines_accepted của [] luôn True), cô lập S-ACC-1.
+// ════════════════════════════════════════════════════════════
+test seed_accepted_empty() fail {
+  let bad_datum =
+    CustodyDatum { ..seed_datum([]), accepted_assets: [] }
+  let bad_out =
+    util.mk_output(util.script_address(cust_sh), with_nft(assets.from_lovelace(2_000_000), instance_id), bad_datum)
+  let tx = seed_tx([genesis_input()], seed_mint(instance_id, 1), [bad_out])
+  run(tx, 2_000_000)
+}
+
+// ════════════════════════════════════════════════════════════
+// 18. MINT POLICY LẠ KÈM SEED (fail) — [F5 S-MINT-2] least-authority.
+//   tx mint seed NFT (đúng 1 token policy này) + token policy NGOÀI (#"f0f0") trong CÙNG
+//   tx → policies(tx.mint) = 2 ≠ 1 → S-MINT-2 chặn. Genesis seed KHÔNG ngầm cho phép
+//   đồng-mint token lạ (chống seed "gánh" mint policy khác để né least-authority).
+//   own_tokens vẫn size 1 (qua S-MINT-1) → cô lập F5 (KHÁC seed_mint_extra_name là 2 NAME
+//   CÙNG policy chặn ở S-MINT-1; đây là 2 POLICY chặn ở S-MINT-2).
+// ════════════════════════════════════════════════════════════
+test seed_mint_foreign_policy() fail {
+  // mint = seed NFT (policy này, 1 token) + token policy lạ #"f0f0" (policy thứ 2).
+  let mint = seed_mint(instance_id, 1) |> assets.add(#"f0f0", #"00", 1)
+  let tx = seed_tx([genesis_input()], mint, [cust_output(happy_value(), happy_ledger())])
   run(tx, reserved)
 }

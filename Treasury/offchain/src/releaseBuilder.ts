@@ -12,16 +12,17 @@
 //
 // Invariants (khớp custody.ak nhánh Release — tự kiểm TRƯỚC build, fail-fast):
 //   C-REL-10  tx.mint == 0 (LAMP fixed-supply — không burn/mint).
+//   C-REL-13  draws != [] (F2 — một Release phải chi thật, không nhồi consumed rỗng).
 //   C-REL-2   proposal.status == Executed.
-//   C-REL-3   spend_spec_hash(draws) == proposal.spend_spec_hash.
+//   C-REL-3   spend_spec_hash(instance_id, draws) == proposal.spend_spec_hash (F10).
 //   C-REL-8   current_epoch ≥ proposal.execute_after_epoch (caller set validity_range).
 //   C-REL-5   value_out == value_in ⊖ Σdraw — Σout=Σin per-asset (KHÔNG drain/burn).
 //   C-REL-6   ledger_out[(b,a)] == ledger_in[(b,a)] − Σdraw(b,a) ∧ draw ≤ số dư bucket.
 //   C-REL-7   Σ output tới `to` == Σ draw(to,asset) ∧ to ≠ custody.
 
 import {
-  Data, credentialToAddress, keyHashToCredential, scriptHashToCredential,
-  validatorToScriptHash,
+  Data, credentialToAddress, getAddressDetails, keyHashToCredential,
+  scriptHashToCredential, validatorToScriptHash,
   type Credential as LucidCredential, type LucidEvolution, type Network,
   type TxSignBuilder, type UTxO, type Validator,
 } from "@lucid-evolution/lucid";
@@ -33,11 +34,11 @@ import {
   decodeCustodyDatum, custodyDatumToCbor, custodyRedeemerToCbor,
 } from "./datum.js";
 import type { OutputReference } from "./types.js";
-import { assetsToMap, mapToAssets } from "./collectBuilder.js";
-import type { AssetMap } from "./collect.js";
+import { assetsToMap, mapToAssets, sameEpochValidToMs } from "./collectBuilder.js";
+import { type AssetMap, assetKey } from "./collect.js";
 import {
-  type RecipientOutput, applyDraws, ledgerOk, planLedgerOut, planRecipientOutputs,
-  recipientsOk, spendSpecHash, toIsCustody, valueOk,
+  type RecipientOutput, applyDraws, drawsWithinBalance, ledgerOk, planLedgerOut,
+  planRecipientOutputs, recipientsOk, spendSpecHash, toIsCustody, valueOk,
 } from "./release.js";
 
 // ── Cầu Address offchain → lucid bech32 ──────────────────────────────────
@@ -67,10 +68,21 @@ export interface ReleasePlan {
   specHash:     string;             // spend_spec_hash(draws) — khớp proposal
 }
 
+/** Tùy chọn hardening v1 cho planRelease (mirror custody.ak nhánh Release). */
+export interface ReleaseGuards {
+  /** seed_policy (PolicyId NFT authenticity). Nếu set → ÉP cust_in mang NFT
+   *  (seed_policy, instance_id) qty 1 (C-NFT). */
+  seedPolicy?: string;
+  /** payment script hash của proposal reference UTxO. Nếu set → ÉP == datum.governance_ref
+   *  (C-REL-1 / read_proposal #1A: proposal Ở ĐÚNG địa chỉ Script(governance_ref)). */
+  proposalScriptHash?: string;
+}
+
 /**
  * Plan release thuần. Ném lỗi nếu vi phạm bất biến onchain (fail-fast trước submit).
  * @param custodyHash payment script hash của custody (chống to == custody, đếm double-sat).
  * @param currentEpoch epoch tx sẽ submit (so execute_after_epoch — caller set validity_range).
+ * @param guards (hardening v1) ÉP NFT authenticity ở cust_in + proposal Ở ĐÚNG governance_ref.
  */
 export function planRelease(
   datum: CustodyDatum,
@@ -80,14 +92,45 @@ export function planRelease(
   custodyHash: string,
   currentEpoch: bigint,
   newEpoch?: bigint,
+  guards: ReleaseGuards = {},
 ): ReleasePlan {
+  // C-REL-1 (#1A): proposal reference UTxO PHẢI ở ĐÚNG địa chỉ Script(governance_ref).
+  // So payment script hash của proposalUtxo == datum.governance_ref TRƯỚC khi build.
+  if (guards.proposalScriptHash !== undefined) {
+    const ph = guards.proposalScriptHash.toLowerCase();
+    if (ph !== datum.governance_ref.toLowerCase()) {
+      throw new Error(
+        `RELEASE-001: proposal sai địa chỉ — script hash(${ph}) ≠ governance_ref(${datum.governance_ref})`,
+      );
+    }
+  }
+
+  // C-NFT: cust_in PHẢI mang đúng 1 NFT authenticity (seed_policy, instance_id).
+  // Chống dựng custody-GIẢ (không NFT) tại địa chỉ script với datum bịa để spend.
+  if (guards.seedPolicy !== undefined) {
+    const nftK = assetKey(guards.seedPolicy, datum.instance_id);
+    if ((valueIn[nftK] ?? 0n) !== 1n) {
+      throw new Error(
+        `RELEASE-NFT: cust_in thiếu NFT authenticity (${guards.seedPolicy}, ${datum.instance_id}) qty 1`,
+      );
+    }
+  }
+
+  // C-REL-13 (F2): draws KHÔNG rỗng — proposal rỗng chỉ nhồi consumed_proposals
+  // (phình datum → kẹt) mà KHÔNG chi gì. Mirror custody.ak `expect draws != []`.
+  // Fail-fast TRƯỚC mọi tính toán (rẻ + thông điệp rõ).
+  if (draws.length === 0) {
+    throw new Error("RELEASE-013: draws rỗng — một Release phải chi thật (F2)");
+  }
+
   // C-REL-2: chỉ chi khi Executed.
   if (proposal.status !== "Executed") {
     throw new Error(`RELEASE-002: proposal chưa Executed (status=${proposal.status})`);
   }
 
-  // C-REL-3: hash canonical draws thực tế == spend_spec_hash đã duyệt.
-  const specHash = spendSpecHash(draws);
+  // C-REL-3: hash canonical (instance_id, draws) thực tế == spend_spec_hash đã duyệt.
+  // F10: instance_id từ custody datum → khóa proposal vào ĐÚNG instance.
+  const specHash = spendSpecHash(datum.instance_id, draws);
   if (specHash.toLowerCase() !== proposal.spend_spec_hash.toLowerCase()) {
     throw new Error(
       `RELEASE-003: spend_spec_hash lệch — draws(${specHash}) ≠ proposal(${proposal.spend_spec_hash})`,
@@ -121,9 +164,15 @@ export function planRelease(
     throw new Error(`RELEASE-009: epoch lùi (${epoch} < ${datum.epoch})`);
   }
 
+  // C-REL-6 (over-draw): Σ rút (bucket,asset) ≤ số dư bucket. Kiểm TRƯỚC planLedgerOut
+  // (canonical hoá sẽ ném LEDGER-NEG cho dòng âm) → cho thông điệp RELEASE-006 rõ ràng.
+  if (!drawsWithinBalance(datum.ledger, draws)) {
+    throw new Error("RELEASE-006: over-draw — Σdraw(bucket,asset) > số dư bucket");
+  }
+
   // C-REL-5: value custody output = value_in ⊖ Σdraw.
   const custodyAfter = applyDraws(valueIn, draws);
-  // C-REL-6: ledger output = ledger_in − Σdraw(bucket,asset).
+  // C-REL-6: ledger output = ledger_in − Σdraw(bucket,asset), canonical (prune dòng cạn 0).
   const ledgerOut = planLedgerOut(datum.ledger, draws);
   // C-REL-7: 1 output/recipient gộp Σ draw theo (to,asset).
   const recipients = planRecipientOutputs(draws);
@@ -173,13 +222,14 @@ export interface ReleaseParams {
   /** Danh sách rút thực tế (khớp spend_spec_hash của proposal). */
   draws: ReleaseDraw[];
 
-  /** Epoch hiện tại để builder kiểm time-lock + set validity_range lower bound. */
-  currentEpoch: bigint;
+  /** validity_range lower bound (POSIX ms). out_datum.epoch suy TRỰC TIẾP từ đây:
+   *  epoch = ⌊validFromMs / msPerEpoch⌋ (C-EPOCH — neo chain, không để epoch tùy ý). */
+  validFromMs: bigint;
   /** POSIX ms ↔ epoch (mirror onchain ms_per_epoch). */
-  msPerEpoch:   bigint;
+  msPerEpoch:  bigint;
 
-  /** Epoch mới cho custody output (≥ datum.epoch). Mặc định giữ epoch cũ. */
-  newEpoch?: bigint;
+  /** seed_policy (PolicyId NFT authenticity). ÉP cust_in mang NFT (seed_policy, instance_id). */
+  seedPolicy?: string;
 }
 
 export interface ReleaseResult {
@@ -194,7 +244,7 @@ export interface ReleaseResult {
 export async function buildReleaseTx(params: ReleaseParams): Promise<ReleaseResult> {
   const {
     lucid, network, custodyUtxo, custodyScript, proposalUtxo, proposal, proposalRef,
-    draws, currentEpoch, msPerEpoch,
+    draws, validFromMs, msPerEpoch, seedPolicy,
   } = params;
 
   if (!custodyUtxo.datum) throw new Error("RELEASE-000: custodyUtxo has no inline datum");
@@ -203,8 +253,23 @@ export async function buildReleaseTx(params: ReleaseParams): Promise<ReleaseResu
   const custodyHash = validatorToScriptHash(custodyScript);
   const valueIn = assetsToMap(custodyUtxo.assets);
 
+  // C-EPOCH: epoch neo TRỰC TIẾP từ validity_range lower bound (⌊validFromMs/msPerEpoch⌋).
+  const currentEpoch = validFromMs / msPerEpoch;
+
+  // C-REL-1 (#1A): lấy payment script hash của proposal reference UTxO để so governance_ref.
+  const proposalCred = getAddressDetails(proposalUtxo.address).paymentCredential;
+  if (!proposalCred || proposalCred.type !== "Script") {
+    throw new Error("RELEASE-001b: proposalUtxo không ở địa chỉ Script (cần Governance script)");
+  }
+  const proposalScriptHash = proposalCred.hash;
+
+  const guards: ReleaseGuards = { proposalScriptHash };
+  if (seedPolicy !== undefined) guards.seedPolicy = seedPolicy;
+
   const { newDatum, custodyAfter, recipients, specHash } = planRelease(
-    datum, valueIn, proposal, draws, custodyHash, currentEpoch, params.newEpoch,
+    datum, valueIn, proposal, draws, custodyHash, currentEpoch,
+    currentEpoch,                                   // out.epoch == get_epoch(tx) (neo chain)
+    guards,
   );
 
   const custodyAddress = credentialToAddress(
@@ -213,8 +278,10 @@ export async function buildReleaseTx(params: ReleaseParams): Promise<ReleaseResu
 
   const redeemer = custodyRedeemerToCbor({ kind: "Release", proposal_ref: proposalRef, draws });
 
-  // C-REL-8: validity_range lower bound = currentEpoch × ms_per_epoch (epoch chứng từ ledger).
-  const validFrom = Number(currentEpoch * msPerEpoch);
+  // C-REL-8 / C-EPOCH / F4: validity_range HỮU HẠN + lower&upper CÙNG epoch
+  // (mirror get_epoch_bounded). validFrom = validFromMs; validTo = ms cuối CÙNG epoch.
+  const validFrom = Number(validFromMs);
+  const validTo = Number(sameEpochValidToMs(validFromMs, msPerEpoch));
 
   let txb = lucid
     .newTx()
@@ -222,6 +289,7 @@ export async function buildReleaseTx(params: ReleaseParams): Promise<ReleaseResu
     .attach.SpendingValidator(custodyScript)
     .readFrom([proposalUtxo])                       // C-REL-1: proposal qua reference input
     .validFrom(validFrom)
+    .validTo(validTo)
     // Custody output: value ⊖ Σdraw, datum ledger giảm.
     .pay.ToAddressWithData(
       custodyAddress,

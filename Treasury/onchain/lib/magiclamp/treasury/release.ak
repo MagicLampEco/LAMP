@@ -4,14 +4,18 @@
 //
 // MODEL A (CHỐT T1): Treasury KHÔNG tự tính ngưỡng vote. Cổng release = ĐỌC kết
 // quả Governance qua REFERENCE INPUT mang Proposal NFT one-shot; validator chỉ ép
-// 4 cờ (status==Executed + spend_spec_hash khớp + execute_after_epoch + NFT). Mọi
-// ngưỡng (clamp BFT, sàn DID) do Governance ép TRƯỚC ở tx ExecuteProposal riêng.
+// 5 cờ (status==Executed + spend_spec_hash khớp + execute_after_epoch + NFT +
+// proposal Ở ĐÚNG địa chỉ governance_ref). Mọi ngưỡng (clamp BFT, sàn DID) do
+// Governance ép TRƯỚC ở tx ExecuteProposal riêng.
 //
 // BẤT BIẾN ÉP (TECH §7):
+//   C-REL-1  proposal Ở ĐÚNG governance_ref (payment_credential == Script(governance_ref))
+//            ∧ mang ĐÚNG 1 Proposal NFT (chống NFT dời sang datum giả / replay chéo instance)
 //   C-REL-3  hash canonical (bucket,asset,amount,to) của draws == spend_spec_hash   (khóa đích chi)
 //   C-REL-5  ∀a custody_out.value(a) == custody_in.value(a) − Σ draw(a)   (Σout=Σin, KHÔNG burn/drain)
 //   C-REL-6  ledger_out[(b,a)] == ledger_in[(b,a)] − Σ draw(b,a) ∧ draw ≤ số dư bucket  (sổ↔value)
 //   C-REL-7  Σ output tới `to` value(a) ≥ Σ draw(to,a) ∧ to ≠ custody  (tổng-khớp, chống double-sat)
+//   sổ out CANONICAL: strict-sorted ∧ mọi dòng > 0 (dòng cạn về 0 bị prune — ledger.ak)
 //
 // spend_spec_hash = blake2b_256(0x02 ‖ cbor.serialise(draws)) — canonical CBOR Plutus
 // (mẫu compute_batch_id Distribution). Proposal cam kết hash này; Release tái dựng từ
@@ -25,38 +29,56 @@ use aiken/primitive/bytearray
 use cardano/address.{Address, Script}
 use cardano/assets.{PolicyId, Value}
 use cardano/transaction.{InlineDatum, Input, Output, OutputReference}
+use magiclamp/treasury/ledger
 use magiclamp/treasury/types.{LedgerEntry, ProposalResult, ReleaseDraw}
 
 // ── C-REL-1: đọc beacon ProposalResult qua REFERENCE INPUT mang Proposal NFT ──
-// Tìm reference input tại proposal_ref; ép value chứa ĐÚNG 1 token policy
-// proposal_policy (NFT one-shot chứng thực — chống datum giả mạo địa chỉ); decode
-// ProposalResult từ inline datum. KHÔNG tiêu proposal (nhiều release/vesting đọc song song).
+// Tìm reference input tại proposal_ref; ép (a) UTxO Ở ĐÚNG địa chỉ Governance của
+// instance (payment_credential == Script(governance_ref)) — chống NFT proposal bị
+// dời sang UTxO datum giả ở script lạ + chống replay chéo instance khác governance;
+// (b) value chứa ĐÚNG 1 token policy proposal_policy (NFT one-shot chứng thực);
+// decode ProposalResult từ inline datum. KHÔNG tiêu proposal (nhiều release đọc song song).
 
-/// Tìm + xác thực + decode ProposalResult. Fail (expect) nếu thiếu ref / sai NFT / sai datum.
+/// Tìm + xác thực + decode ProposalResult. Fail (expect) nếu thiếu ref / sai địa chỉ
+/// Governance / sai NFT / sai datum.
 pub fn read_proposal(
   reference_inputs : List<Input>,
   proposal_ref     : OutputReference,
   proposal_policy  : PolicyId,
+  governance_ref   : ByteArray,
 ) -> ProposalResult {
   expect Some(ref) =
     list.find(reference_inputs, fn(i) { i.output_reference == proposal_ref })
-  // ĐÚNG 1 token của proposal_policy (NFT authenticity one-shot).
+  // (a) proposal UTxO PHẢI ở đúng Governance script của instance này (C-REL-1).
+  expect Script(ph) = ref.output.address.payment_credential
+  expect ph == governance_ref
+  // (b) ĐÚNG 1 token của proposal_policy (NFT authenticity one-shot).
   let proposal_tokens = assets.tokens(ref.output.value, proposal_policy)
   expect dict.size(proposal_tokens) == 1
-  expect [Pair(_, qty)] = dict.to_pairs(proposal_tokens)
+  expect [Pair(nft_name, qty)] = dict.to_pairs(proposal_tokens)
   expect qty == 1
   expect InlineDatum(d) = ref.output.datum
   expect result: ProposalResult = d
+  // (c) F1: tên NFT PHẢI == proposal_id — khóa replay-marker (C-REL-9) vào DANH TÍNH
+  // mật mã của NFT, KHÔNG phải field datum tự-khai. Không có vế này, một NFT có thể
+  // phơi N datum khác proposal_id (cùng spec_hash) → consumed_proposals không chặn được.
+  expect nft_name == result.proposal_id
   result
 }
 
 // ── C-REL-3: hash canonical danh sách draw == spend_spec_hash ──
 
-/// Hash canonical của danh sách draw. Khóa CHÍNH XÁC (bucket_id, policy, name,
-/// amount, to) theo thứ tự field — Plutus serialise deterministic.
-pub fn spend_spec_hash(draws: List<ReleaseDraw>) -> ByteArray {
-  let preimage = #"02" |> bytearray.concat(cbor.serialise(draws))
-  crypto.blake2b_256(preimage)
+/// Hash canonical của (instance_id, danh sách draw). Khóa đích chi (bucket,asset,amount,to)
+/// VÀ instance đích (F10/#1B — chống replay chéo giữa các instance CÙNG governance_ref).
+///
+/// Tiền ảnh = 0x02 ‖ blake2b(instance_id) ‖ blake2b(cbor(draws)). Hai thành phần đều
+/// 32 byte cố định → ghép KHÔNG nhập nhằng biên byte (dễ mirror off-chain byte-perfect,
+/// tránh bẫy P8 khi nối instance_id độ dài thay đổi với cbor thô).
+/// Governance KHI tạo proposal PHẢI tính spec_hash với ĐÚNG instance_id đích.
+pub fn spend_spec_hash(instance_id: ByteArray, draws: List<ReleaseDraw>) -> ByteArray {
+  let id_h = crypto.blake2b_256(instance_id)
+  let draws_h = crypto.blake2b_256(cbor.serialise(draws))
+  crypto.blake2b_256(#"02" |> bytearray.concat(id_h) |> bytearray.concat(draws_h))
 }
 
 // ── C-REL-5/6: Σ draw per-asset + per-(bucket,asset) ──
@@ -114,37 +136,21 @@ pub fn value_ok(v_in: Value, v_out: Value, draws: List<ReleaseDraw>) -> Bool {
   v_out == assets.merge(v_in, assets.negate(drawn_value(draws)))
 }
 
-// ── C-REL-6: sổ giảm đúng bucket + draw ≤ số dư bucket ──
-// Mọi draw.amount ≥ 0 (chống "rút âm" để bơm sổ). Mirror cấu trúc ledger_ok của collect:
-//   (1) no_dup_lines(out) — không nhồi 2 dòng cùng khóa né kiểm.
-//   (2) each_out_line_ok — mỗi dòng out == get(in) − Δrút(draws).
-//   (3) each_in_line_present — mọi dòng in còn trong out (không xóa = drain sổ ngược).
-//   (4) each_draw_target_nonneg — mọi draw amount ≥ 0 + dòng đích còn ≥ 0 (không over-draw).
+// ── C-REL-6: sổ giảm đúng bucket + draw ≤ số dư bucket, CANONICAL ──
+// Mọi draw.amount ≥ 0 (chống "rút âm" để bơm sổ). Cấu trúc mirror collect.ledger_ok:
+//   (1) all_draws_nonneg — không rút âm.
+//   (2) ledger.is_canonical(out) — strict-sorted (loại trùng) ∧ mọi dòng > 0
+//       (dòng cạn về 0 bị prune; chống nhồi/bơm/giữ dòng rác).
+//   (3) each_out_line_ok — mỗi dòng out == get(in) − Δrút(draws).
+//   (4) each_in_line_settled — mọi dòng in còn trong out, TRỪ khi số dư mới == 0 (prune).
+//   (5) draws_within_balance — Σ rút (bucket,asset) ≤ số dư bucket (không over-draw).
 
 pub fn all_draws_nonneg(draws: List<ReleaseDraw>) -> Bool {
   list.all(draws, fn(d) { d.amount >= 0 })
 }
 
-/// Tìm số dư (bucket,policy,name) trong sổ; 0 nếu chưa có dòng.
-pub fn ledger_get(
-  ledger    : List<LedgerEntry>,
-  bucket_id : Int,
-  policy    : ByteArray,
-  name      : ByteArray,
-) -> Int {
-  when
-    list.find(
-      ledger,
-      fn(e) { e.bucket_id == bucket_id && e.policy == policy && e.name == name },
-    )
-  is {
-    Some(e) -> e.amount
-    None -> 0
-  }
-}
-
-/// Mỗi dòng OUT == get(IN) − Σ draw đúng (bucket,asset). Vì draw ≤ in (kiểm riêng),
-/// amount out luôn ≥ 0 nếu IN ≥ Σdraw — đẳng thức này + draw_within_balance khóa over-draw.
+/// Mỗi dòng OUT == get(IN) − Σ draw đúng (bucket,asset). Vì draw ≤ in (kiểm riêng) +
+/// is_canonical ép out > 0 → over-draw bị chặn cả ở giá trị lẫn ở dấu.
 pub fn each_out_line_ok(
   ledger_in  : List<LedgerEntry>,
   ledger_out : List<LedgerEntry>,
@@ -154,7 +160,7 @@ pub fn each_out_line_ok(
     ledger_out,
     fn(e) {
       let want =
-        ledger_get(ledger_in, e.bucket_id, e.policy, e.name) - drawn_of_line(
+        ledger.get(ledger_in, e.bucket_id, e.policy, e.name) - drawn_of_line(
           draws,
           e.bucket_id,
           e.policy,
@@ -165,20 +171,22 @@ pub fn each_out_line_ok(
   )
 }
 
-/// Mọi dòng IN còn hiện diện trong OUT (chống xóa dòng = drain sổ ngược).
-pub fn each_in_line_present(
+/// Mọi dòng IN còn hiện diện trong OUT, TRỪ khi số dư mới (in − draw) == 0 thì prune.
+pub fn each_in_line_settled(
   ledger_in  : List<LedgerEntry>,
   ledger_out : List<LedgerEntry>,
+  draws      : List<ReleaseDraw>,
 ) -> Bool {
   list.all(
     ledger_in,
     fn(e) {
-      list.any(
-        ledger_out,
-        fn(o) {
-          o.bucket_id == e.bucket_id && o.policy == e.policy && o.name == e.name
-        },
-      )
+      let new_bal =
+        e.amount - drawn_of_line(draws, e.bucket_id, e.policy, e.name)
+      if new_bal == 0 {
+        True
+      } else {
+        ledger.line_present(ledger_out, e)
+      }
     },
   )
 }
@@ -192,7 +200,7 @@ pub fn draws_within_balance(
   list.all(
     draws,
     fn(d) {
-      drawn_of_line(draws, d.bucket_id, d.policy, d.name) <= ledger_get(
+      drawn_of_line(draws, d.bucket_id, d.policy, d.name) <= ledger.get(
         ledger_in,
         d.bucket_id,
         d.policy,
@@ -202,31 +210,16 @@ pub fn draws_within_balance(
   )
 }
 
-/// Sổ không có dòng trùng khóa (bucket,policy,name).
-pub fn no_dup_lines(ledger: List<LedgerEntry>) -> Bool {
-  list.all(
-    ledger,
-    fn(e) {
-      list.count(
-        ledger,
-        fn(o) {
-          o.bucket_id == e.bucket_id && o.policy == e.policy && o.name == e.name
-        },
-      ) == 1
-    },
-  )
-}
-
 pub fn ledger_ok(
   ledger_in  : List<LedgerEntry>,
   ledger_out : List<LedgerEntry>,
   draws      : List<ReleaseDraw>,
 ) -> Bool {
-  all_draws_nonneg(draws) && no_dup_lines(ledger_out) && each_out_line_ok(
+  all_draws_nonneg(draws) && ledger.is_canonical(ledger_out) && each_out_line_ok(
     ledger_in,
     ledger_out,
     draws,
-  ) && each_in_line_present(ledger_in, ledger_out) && draws_within_balance(
+  ) && each_in_line_settled(ledger_in, ledger_out, draws) && draws_within_balance(
     ledger_in,
     draws,
   )
@@ -295,18 +288,16 @@ pub fn recipients_ok(
 }
 
 // ── C-REL-9: SINGLE-USE proposal (chống replay / chi vượt ngưỡng duyệt) ──
-// HARD BLOCKER finding 7 (TECH §7.2 L485-489, câu treo #2). Model A đọc proposal qua
-// reference input → đọc lại được VÔ HẠN; cap duy nhất của value_ok/ledger_ok là số dư
-// bucket, KHÔNG phải lượng governance duyệt → cùng 1 proposal Executed có thể dựng N tx
-// Release liên tiếp, rút draws×N tới khi cạn bucket (két không khóa tổng). Khắc phục:
-// custody NHỚ proposal_id đã chi trong consumed_proposals; Release ép:
+// HARD BLOCKER finding 7 (TECH §7.2). Model A đọc proposal qua reference input → đọc
+// lại được VÔ HẠN; cap duy nhất của value_ok/ledger_ok là số dư bucket, KHÔNG phải
+// lượng governance duyệt → cùng 1 proposal Executed có thể dựng N tx Release liên tiếp,
+// rút draws×N tới khi cạn bucket. Khắc phục: custody NHỚ proposal_id đã chi:
 //   (1) proposal_id CHƯA có trong consumed_proposals_in   (mỗi proposal chi đúng 1 lần).
 //   (2) consumed_proposals_out == [proposal_id, ..consumed_proposals_in]   (append, monotone).
-// v1 KHÔNG vesting → "một Release dùng hết proposal": vì spend_spec_hash khóa CHÍNH XÁC
-// danh sách draw (C-REL-3), Σ draws của tx là CỐ ĐỊNH = toàn bộ lượng duyệt → released
-// ngầm = toàn bộ. Marker chặn tx thứ 2 (proposal_id đã có → (1) fail). Tách khỏi ledger
-// → bất biến sổ↔value (T3) không đổi. (Vesting v1.x: thay marker bằng released_cumulative
-// cộng dồn + spend+tái tạo proposal — Model B, ngoài scope v1.)
+// v1 KHÔNG vesting → "một Release dùng hết proposal": spend_spec_hash khóa CHÍNH XÁC
+// danh sách draw (C-REL-3) → Σ draws CỐ ĐỊNH = toàn bộ lượng duyệt. Marker chặn tx thứ 2.
+// (v1.x: đưa marker RA KHỎI custody datum — proposal beacon đổi Executed→Spent — để
+//  datum custody hằng số theo N; consumed_proposals list hiện O(N), đặt+đo trần N_max.)
 
 /// proposal_id CHƯA nằm trong danh sách đã chi (chống replay).
 pub fn proposal_is_fresh(consumed_in: List<ByteArray>, proposal_id: ByteArray) -> Bool {

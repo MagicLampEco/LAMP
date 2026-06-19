@@ -9,3 +9,11 @@ dist/
 **/onchain/plutus.json
 # Deploy state (env-specific, có thể chứa địa chỉ ví)
 **/scripts/deployed.json
+
+# macOS junk
+.DS_Store
+**/.DS_Store
+
+# Vitest cache + runtime onboarding state
+**/.vite/
+**/scripts/onboarded-instances.json
