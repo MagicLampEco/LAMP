@@ -106,6 +106,52 @@ pub fn inline_datum(o: Output) -> Data {
   d
 }
 
+// ── Own-address helpers (cho spending validator) ─────────────────────────
+
+/// payment credential của addr có phải Script(hash) không (bỏ qua stake cred).
+pub fn is_at_script(addr: Address, hash: ByteArray) -> Bool {
+  when addr.payment_credential is {
+    Script(h) -> h == hash
+    _ -> False
+  }
+}
+
+/// Output bị spend (own input) — tìm theo own OutputReference.
+pub fn own_input(own_ref: OutputReference, inputs: List<Input>) -> Output {
+  expect Some(i) = list.find(inputs, fn(x) { x.output_reference == own_ref })
+  i.output
+}
+
+/// script hash của own input (đòi payment credential là Script).
+pub fn own_script_hash(o: Output) -> ByteArray {
+  expect Script(h) = o.address.payment_credential
+  h
+}
+
+/// Đếm input tại 1 script hash (theo payment cred, bỏ qua stake cred) —
+/// chống double-satisfaction qua nhiều UTxO khác stake cred.
+pub fn count_inputs_at_script(inputs: List<Input>, hash: ByteArray) -> Int {
+  list.count(inputs, fn(i) { is_at_script(i.output.address, hash) })
+}
+
+/// script hash của UTxO mang đúng 1 NFT (policy,name) trong danh sách (reference) input.
+/// Dùng cho A-DEST ĐỊNH-DANH-KHO bằng NFT: lamp_mint bake (kho_nft_policy, kho_nft_name)
+/// — KHÔNG bake hash kho → kho (tự-bound, param theo lamp_policy) KHÔNG tạo VÒNG. Đọc
+/// hash kho ĐỘNG từ ref input mang kho NFT.
+///
+/// ⚠ AN TOÀN (audit HIGH 19/6): kho_nft_policy PHẢI là policy ONE-SHOT 1-of-1 THẬT
+/// (mẫu thread_nft/beacon_nft, mint đúng 1 lần vào địa chỉ kho). Nếu là policy tùy ý,
+/// attacker đúc token khớp đặt ở SCRIPT của hắn → route LAMP về hắn (phá A-DEST). Validator
+/// KHÔNG tự đảm bảo one-shot — đây là bất biến DEPLOY. Phòng thủ chiều sâu: ép ĐÚNG 1
+/// carrier (filter + expect [single]) chống mơ hồ ≥2 ref (first-match) ngay cả khi NFT lỗi.
+pub fn script_hash_of_holder(inputs: List<Input>, policy: PolicyId, name: AssetName) -> ByteArray {
+  let carriers =
+    list.filter(inputs, fn(x) { assets.quantity_of(x.output.value, policy, name) == 1 })
+  expect [single] = carriers
+  expect Script(h) = single.output.address.payment_credential
+  h
+}
+
 // ── Test-support builders (mock UTxO/tx) ─────────────────────────────────
 
 pub fn script_address(hash: ByteArray) -> Address {

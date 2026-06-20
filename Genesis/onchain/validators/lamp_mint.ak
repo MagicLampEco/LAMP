@@ -17,11 +17,13 @@
 //   chỉ là NHÃN; tính DUY NHẤT của token nằm ở PolicyID (neo bởi genesis_ref one-shot
 //   của thread_nft, tuyến tính apply-param). Đổi token_name ⇒ đổi policyId ⇒ token mới.
 //
-// Param: thread_nft_policy + thread_nft_name (tầng 1) + token_name (asset name LAMP) +
-// dist_authority (keyhash M-of-N đường Distribution) + auth_threshold +
-// dist_dest (script hash KHO Distribution treasury — DistributionVest BẮT BUỘC rót toàn bộ
-// LAMP vào đây, không ra ví cá nhân) + meter_nft_policy/meter_nft_name (định danh meter NFT
-// = reserve_thread NFT, Reserve module). KHÔNG tham chiếu ngược tầng 3 (không vòng lặp).
+// Param (12): thread_nft_policy + thread_nft_name (tầng 1) + token_name (asset name LAMP) +
+// dist_cap + reserve_cap (PARAM apply-time — framework dùng-chung; LAMP 26,37+9,63 tỷ oil,
+// FARM 12 tỷ, … bake vào policy-id ⇒ cap cố định bất biến từng token) +
+// registry_nft_policy/name + token_tag (WHO-gate: đọc bảng registry, authority theo tag) +
+// kho_nft_policy/name (A-DEST: đọc hash kho động, DistributionVest BẮT BUỘC rót LAMP vào kho,
+// không ra ví) + meter_nft_policy/name (định danh meter NFT = reserve_thread NFT, Reserve).
+// KHÔNG tham chiếu ngược tầng 3 (không vòng lặp apply-param).
 //
 // GATE NHẢ RESERVE = HÀM, KHÔNG CHỮ KÝ (permissionless thật). Nhánh ReserveDraw KHÔNG
 // đòi pubkey-sig nữa: nó ÉP tx phải spend đúng 1 UTxO mang meter NFT (= reserve_thread NFT).
@@ -45,20 +47,28 @@ use aiken/collection/list
 use cardano/assets.{PolicyId}
 use cardano/transaction.{InlineDatum, Input, Output, Transaction, placeholder}
 use magiclamp/genesis/constants
+use magiclamp/genesis/registry
+use magiclamp/genesis/registry.{
+  Authority, MultiSig, RegistryDatum, RegistryEntry, Revoked, SinglePkh,
+}
 use magiclamp/genesis/types.{
   DistributionVest, ReserveDraw, SupplyState, TLampMintRedeemer,
 }
 use magiclamp/genesis/util
 
 validator lamp_mint(
-  thread_nft_policy : PolicyId,
-  thread_nft_name   : ByteArray,
-  token_name        : ByteArray,
-  dist_authority    : List<ByteArray>,
-  auth_threshold    : Int,
-  dist_dest         : ByteArray,
-  meter_nft_policy  : PolicyId,
-  meter_nft_name    : ByteArray,
+  thread_nft_policy   : PolicyId,
+  thread_nft_name     : ByteArray,
+  token_name          : ByteArray,
+  dist_cap            : Int,
+  reserve_cap         : Int,
+  registry_nft_policy : PolicyId,
+  registry_nft_name   : ByteArray,
+  token_tag           : ByteArray,
+  kho_nft_policy      : PolicyId,
+  kho_nft_name        : ByteArray,
+  meter_nft_policy    : PolicyId,
+  meter_nft_name      : ByteArray,
 ) {
   mint(r: TLampMintRedeemer, policy_id: PolicyId, tx: Transaction) {
     // ── Luật 1: consume + recreate SupplyState (thread NFT) ───────────────
@@ -87,11 +97,17 @@ validator lamp_mint(
     expect s: SupplyState = util.inline_datum(s_in)
     expect s2: SupplyState = util.inline_datum(s_out)
 
-    // ── D7-#1: NEO CAP vào HẰNG SỐ (chống cap phình → mint vượt 36 tỷ) ─────
-    // Cap không chỉ "bất biến qua transition" (luật 4) mà phải ĐÚNG hằng genesis.
-    // Nếu UTxO vào mang cap bịa (lớn hơn), luật 4 vẫn pass vì chỉ so s2==s.
-    expect s.dist_cap == constants.dist_cap_oil
-    expect s.reserve_cap == constants.reserve_cap_oil
+    // ── D7-#1: NEO CAP vào PARAM apply-time (chống cap phình → mint vượt cap) ─
+    // Cap không chỉ "bất biến qua transition" (luật 4) mà phải ĐÚNG cap bake vào
+    // policy. Nếu UTxO vào mang cap bịa (lớn hơn), luật 4 vẫn pass vì chỉ so s2==s.
+    //
+    // FRAMEWORK (dùng-chung mọi token hệ sinh thái): dist_cap/reserve_cap là PARAM
+    // apply-time, KHÔNG hằng. LAMP bake 26,37 tỷ / 9,63 tỷ (tổng 36 tỷ); FARM bake
+    // 12 tỷ; … từ CÙNG source. Bake vào params ⇒ vào policy-id ⇒ cap CỐ ĐỊNH bất
+    // biến cho từng token, verify-được từ policy-id (không cần tin datum). "Cố định"
+    // (mỗi token) và "param" (tái dùng source) KHÔNG mâu thuẫn.
+    expect s.dist_cap == dist_cap
+    expect s.reserve_cap == reserve_cap
 
     // ── D7-#10: counter KHÔNG âm (chống dist_minted/reserve_minted âm → cap ảo) ──
     expect s.dist_minted >= 0
@@ -131,9 +147,10 @@ validator lamp_mint(
     expect s2.dist_minted <= s2.dist_cap                             // A1
     expect s2.reserve_minted <= s2.reserve_cap
 
-    // ── D7-#2: TRẦN TỔNG (defense-in-depth, chống mint vượt 36 tỷ) ─────────
-    // Dù cap đã neo hằng, ép thêm trần tổng tuyệt đối: tổng phát hành ≤ 36 tỷ oil.
-    expect s2.dist_minted + s2.reserve_minted <= constants.total_cap_oil
+    // ── D7-#2: TRẦN TỔNG (defense-in-depth) ───────────────────────────────
+    // Dù cap đã neo param, ép thêm trần tổng tuyệt đối = dist_cap + reserve_cap
+    // (tổng phát hành lịch sử ≤ tổng cap bake — LAMP 36 tỷ oil, token khác theo param).
+    expect s2.dist_minted + s2.reserve_minted <= dist_cap + reserve_cap
 
     // ── D3-#1 + D3-#3: KHÓA continuing output (SupplyState UTxO sạch) ──────
     // SupplyState UTxO KHÔNG được chứa LAMP (chống nhồi LAMP vào state để né
@@ -158,18 +175,31 @@ validator lamp_mint(
     let gate_ok =
       when r is {
         DistributionVest -> {
-          // D2-#1/#2: threshold tự vệ (1 ≤ threshold ≤ |authority distinct|).
-          // threshold==0 → ai cũng mint (vô hiệu authority). threshold > N → khóa chết.
+          // ── WHO: authority đọc từ REGISTRY do OrgDID quản (token-mint v2) ──
+          // KHÔNG đọc anchor TAAD trực tiếp, KHÔNG bake pkh tĩnh. registry.validate_mint ép:
+          // (a) mint đúng 1 asset-name = token_name qty>0 [C-1]; (b) đúng 1 registry ref
+          // input; (c) tìm entry token_tag; (d) authority thoả (SinglePkh 1 sig / MultiSig
+          // M-of-N / Revoked→fail). Rotate khoá vận hành = sửa entry registry (do controller
+          // DID hiện tại ký, tầng Registry validator) → KHÔNG redeploy. Least-privilege/token,
+          // token đối tác MultiSig, thu hồi 1 token (Revoked) — không đẻ sub-DID/khoá.
           //
-          // A-DEST (TRUSTLESS phân phối): TOÀN BỘ delta LAMP mint ra PHẢI rót vào KHO
-          // Distribution treasury (dist_dest). Khóa M-of-N chỉ "bơm vào kho", KHÔNG mint
-          // thẳng về ví cá nhân → kẻ cầm đủ chữ ký cũng không cướp được (chỉ chuyển vào
-          // kho, từ kho nhỏ giọt công bằng qua claim_account). Mirror reserve_draw Luật 9.
-          // SupplyState output đã sạch LAMP (D3-#1) nên không nguồn LAMP nào khác để né.
-          auth_threshold >= 1
-            && auth_threshold <= list.length(list.unique(dist_authority))
-            && util.count_sigs(dist_authority, tx.extra_signatories) >= auth_threshold
-            && util.qty_to_script(tx.outputs, dist_dest, policy_id, token_name) >= delta
+          // ── WHERE: A-DEST — TOÀN BỘ delta LAMP PHẢI rót vào KHO ──
+          // Kho ĐỊNH-DANH bằng NFT (kho_nft), KHÔNG bake hash kho → kho tự-bound (treasury,
+          // param theo lamp_policy) KHÔNG tạo VÒNG. Đọc hash kho ĐỘNG từ ref input mang kho NFT
+          // (one-shot, không giả được). authority chỉ "bơm vào kho", KHÔNG mint thẳng về ví →
+          // lộ khoá vận hành cũng không cướp được (kho nhả-theo-vesting). HOW MUCH = cap, trực giao.
+          registry.validate_mint(
+            policy_id,
+            token_name,
+            registry_nft_policy,
+            registry_nft_name,
+            token_tag,
+            tx,
+          ) && {
+            let kho_hash =
+              util.script_hash_of_holder(tx.reference_inputs, kho_nft_policy, kho_nft_name)
+            util.qty_to_script(tx.outputs, kho_hash, policy_id, token_name) >= delta
+          }
         }
         ReserveDraw -> {
           // Đúng 1 input mang meter NFT (= reserve_thread NFT) → tầng gate nhịp (reserve_draw,
@@ -205,9 +235,24 @@ const sscript: ByteArray = #"5151"
 /// Kho Distribution treasury (dest) cho test — DistributionVest phải rót LAMP vào đây.
 const dist_dest_hash: ByteArray = #"d35a"
 
-const auth_a: ByteArray = #"a1"
+// Registry NFT (bảng token_tag→authority do OrgDID quản). LAMP đọc cái này.
+const registry_pol: PolicyId = #"a9c0"
 
-const auth_b: ByteArray = #"b2"
+const registry_nm: ByteArray = #"0b0b"
+
+// token_tag mà policy LAMP này được phép mint (param bake).
+const lamp_tag: ByteArray = #"4c414d50746167"
+
+// khoá vận hành được uỷ quyền mint (SinglePkh authority trong entry) — người PHẢI ký.
+const ctrl_pkh: ByteArray = #"c07401"
+
+// kẻ lạ (không có trong authority) — dùng test reject.
+const stranger: ByteArray = #"ba0bad"
+
+// 2 khoá đối tác (test MultiSig).
+const partner_a: ByteArray = #"9a"
+
+const partner_b: ByteArray = #"9b"
 
 // meter NFT = reserve_thread NFT (Reserve module — định danh đường ReserveDraw permissionless).
 const meter_pol: PolicyId = #"6655"
@@ -248,7 +293,38 @@ fn mint_lamp(qty: Int) {
   assets.zero |> assets.add(lamp_pol, constants.default_token_name, qty)
 }
 
-/// Dựng tx DistributionVest đầy đủ (gate pubkey-sig). sigs = extra_signatories.
+/// RegistryDatum 1 entry: tag → authority.
+fn reg_datum(tag: ByteArray, auth: Authority) -> RegistryDatum {
+  RegistryDatum {
+    governing_did: "did:phoenix:org:greensun",
+    entries: [RegistryEntry { token_tag: tag, authority: auth }],
+  }
+}
+
+/// Reference input mang Registry NFT (1 đơn vị) + RegistryDatum inline.
+fn registry_ref(d: RegistryDatum) -> Input {
+  let v = assets.from_lovelace(2_000_000) |> assets.add(registry_pol, registry_nm, 1)
+  util.mk_input(util.mk_ref(7), util.mk_output(util.script_address(#"a9c0"), v, d))
+}
+
+/// Registry ref hợp lệ mặc định: entry lamp_tag → SinglePkh{ctrl_pkh}.
+fn registry_ok() -> Input {
+  registry_ref(reg_datum(lamp_tag, SinglePkh { pkh: ctrl_pkh }))
+}
+
+// kho NFT đánh dấu địa chỉ KHO (= dist_dest_hash). A-DEST đọc hash kho từ đây.
+const kho_pol: PolicyId = #"7a17"
+
+const kho_nm: ByteArray = #"4b484f"
+
+/// Reference input mang kho NFT, đặt tại địa chỉ kho (dist_dest_hash).
+fn kho_ref() -> Input {
+  let v = assets.from_lovelace(2_000_000) |> assets.add(kho_pol, kho_nm, 1)
+  util.mk_input(util.mk_ref(6), util.mk_output(util.script_address(dist_dest_hash), v, 0))
+}
+
+/// Dựng tx DistributionVest đầy đủ (gate anchor). Kèm anchor ref hợp lệ mặc định
+/// (Active/Org/ctrl) + rót toàn bộ LAMP vào kho (A-DEST). sigs = extra_signatories.
 fn build_tx(
   s: SupplyState,
   s2: SupplyState,
@@ -258,6 +334,25 @@ fn build_tx(
   Transaction {
     ..placeholder,
     inputs: [ss_input(s)],
+    reference_inputs: [registry_ok(), kho_ref()],
+    outputs: [ss_output(s2), dest_output(mint_qty)],
+    mint: mint_lamp(mint_qty),
+    extra_signatories: sigs,
+  }
+}
+
+/// build_tx với registry ref tùy biến (test authority khác). kho_ref tự thêm cho A-DEST.
+fn build_tx_anchor(
+  s: SupplyState,
+  s2: SupplyState,
+  mint_qty: Int,
+  sigs: List<ByteArray>,
+  refs: List<Input>,
+) -> Transaction {
+  Transaction {
+    ..placeholder,
+    inputs: [ss_input(s)],
+    reference_inputs: list.concat(refs, [kho_ref()]),
     outputs: [ss_output(s2), dest_output(mint_qty)],
     mint: mint_lamp(mint_qty),
     extra_signatories: sigs,
@@ -278,21 +373,8 @@ fn build_tx_reserve(s: SupplyState, s2: SupplyState, mint_qty: Int) -> Transacti
 fn run(r: TLampMintRedeemer, tx: Transaction) -> Bool {
   lamp_mint.mint(
     thr_pol, constants.supply_name, tk_name,
-    [auth_a, auth_b], 1, dist_dest_hash, meter_pol, meter_nm,
-    r, lamp_pol, tx,
-  )
-}
-
-/// run với threshold tùy chỉnh (test D2-#1/#2).
-fn run_thr(
-  r: TLampMintRedeemer,
-  tx: Transaction,
-  dist_auth: List<ByteArray>,
-  threshold: Int,
-) -> Bool {
-  lamp_mint.mint(
-    thr_pol, constants.supply_name, tk_name,
-    dist_auth, threshold, dist_dest_hash, meter_pol, meter_nm,
+    constants.dist_cap_oil, constants.reserve_cap_oil,
+    registry_pol, registry_nm, lamp_tag, kho_pol, kho_nm, meter_pol, meter_nm,
     r, lamp_pol, tx,
   )
 }
@@ -311,7 +393,7 @@ fn fresh() -> SupplyState {
 test distvest_happy() {
   let s = fresh()
   let s2 = SupplyState { ..s, dist_minted: 1_000_000 }
-  run(DistributionVest, build_tx(s, s2, 1_000_000, [auth_a]))
+  run(DistributionVest, build_tx(s, s2, 1_000_000, [ctrl_pkh]))
 }
 
 test reservedraw_happy() {
@@ -325,14 +407,14 @@ test distvest_incremental() {
   // mint dần: state đã có 100 tLAMP dist, mint thêm 50.
   let s = SupplyState { ..fresh(), dist_minted: 100_000_000 }
   let s2 = SupplyState { ..s, dist_minted: 150_000_000 }
-  run(DistributionVest, build_tx(s, s2, 50_000_000, [auth_a]))
+  run(DistributionVest, build_tx(s, s2, 50_000_000, [ctrl_pkh]))
 }
 
 test distvest_exact_cap_boundary() {
   // mint tới ĐÚNG dist_cap (biên dưới-bằng được phép).
   let s = SupplyState { ..fresh(), dist_minted: constants.dist_cap_oil - 7 }
   let s2 = SupplyState { ..s, dist_minted: constants.dist_cap_oil }
-  run(DistributionVest, build_tx(s, s2, 7, [auth_a]))
+  run(DistributionVest, build_tx(s, s2, 7, [ctrl_pkh]))
 }
 
 test reservedraw_exact_cap_boundary() {
@@ -346,7 +428,7 @@ test reservedraw_exact_cap_boundary() {
 test mint_exceed_dist_cap() fail {
   let s = SupplyState { ..fresh(), dist_minted: constants.dist_cap_oil - 5 }
   let s2 = SupplyState { ..s, dist_minted: constants.dist_cap_oil + 1 }
-  run(DistributionVest, build_tx(s, s2, 6, [auth_a]))
+  run(DistributionVest, build_tx(s, s2, 6, [ctrl_pkh]))
 }
 
 test mint_exceed_reserve_cap() fail {
@@ -368,7 +450,7 @@ test mint_no_supplystate() fail {
       ],
       outputs: [],
       mint: mint_lamp(1_000_000),
-      extra_signatories: [auth_a],
+      extra_signatories: [ctrl_pkh],
     }
   run(DistributionVest, tx)
 }
@@ -379,7 +461,7 @@ test mint_rollback_dist() fail {
   // s2.dist_minted < s.dist_minted → vi phạm monotonic + quota.
   let s = SupplyState { ..fresh(), dist_minted: 100_000_000 }
   let s2 = SupplyState { ..s, dist_minted: 50_000_000 }
-  run(DistributionVest, build_tx(s, s2, 1_000_000, [auth_a]))
+  run(DistributionVest, build_tx(s, s2, 1_000_000, [ctrl_pkh]))
 }
 
 // ── A5: mint sai quota (Distribution đụng Reserve) ───────────
@@ -388,7 +470,7 @@ test distvest_touches_reserve() fail {
   // DistributionVest nhưng lại tăng reserve_minted → reject.
   let s = fresh()
   let s2 = SupplyState { ..s, dist_minted: 1_000_000, reserve_minted: 1_000_000 }
-  run(DistributionVest, build_tx(s, s2, 1_000_000, [auth_a]))
+  run(DistributionVest, build_tx(s, s2, 1_000_000, [ctrl_pkh]))
 }
 
 test reservedraw_touches_dist() fail {
@@ -403,14 +485,14 @@ test mint_negative() fail {
   // Δ = -1 (burn) → reject.
   let s = fresh()
   let s2 = SupplyState { ..s, dist_minted: 0 }
-  run(DistributionVest, build_tx(s, s2, -1, [auth_a]))
+  run(DistributionVest, build_tx(s, s2, -1, [ctrl_pkh]))
 }
 
 test mint_zero() fail {
   // Δ = 0 (no-op) → reject (delta > 0).
   let s = fresh()
   let s2 = fresh()
-  run(DistributionVest, build_tx(s, s2, 0, [auth_a]))
+  run(DistributionVest, build_tx(s, s2, 0, [ctrl_pkh]))
 }
 
 // ── A7: double-satisfaction (2 SupplyState input) ────────────
@@ -425,7 +507,7 @@ test two_supplystate_inputs() fail {
       inputs: [ss_input(s), ss_input(s)],
       outputs: [ss_output(s2)],
       mint: mint_lamp(1_000_000),
-      extra_signatories: [auth_a],
+      extra_signatories: [ctrl_pkh],
     }
   run(DistributionVest, tx)
 }
@@ -436,7 +518,7 @@ test delta_mismatch() fail {
   // mint 1_000_000 tLAMP nhưng datum chỉ cộng 1 → s2.dist_minted ≠ s+Δ → reject.
   let s = fresh()
   let s2 = SupplyState { ..s, dist_minted: 1 }
-  run(DistributionVest, build_tx(s, s2, 1_000_000, [auth_a]))
+  run(DistributionVest, build_tx(s, s2, 1_000_000, [ctrl_pkh]))
 }
 
 // ── A9: nới cap qua transition ───────────────────────────────
@@ -444,7 +526,7 @@ test delta_mismatch() fail {
 test widen_dist_cap() fail {
   let s = fresh()
   let s2 = SupplyState { ..s, dist_minted: 1_000_000, dist_cap: constants.dist_cap_oil + 1 }
-  run(DistributionVest, build_tx(s, s2, 1_000_000, [auth_a]))
+  run(DistributionVest, build_tx(s, s2, 1_000_000, [ctrl_pkh]))
 }
 
 test widen_reserve_cap() fail {
@@ -453,10 +535,20 @@ test widen_reserve_cap() fail {
   run(ReserveDraw, build_tx_reserve(s, s2, 1_000_000))
 }
 
+// ── D7-#1: input datum khai cap-BỊA (≠ param bake) → reject ────
+// Khoá framework-param: cap PHẢI khớp param apply-time, không tin datum tự khai.
+// Kẻ tấn công dựng SupplyState với dist_cap phình → s.dist_cap ≠ dist_cap (param) → fail.
+test input_cap_mismatch_param() fail {
+  let s = SupplyState { ..fresh(), dist_cap: constants.dist_cap_oil + 1_000_000 }
+  let s2 = SupplyState { ..s, dist_minted: 1_000_000 }
+  run(DistributionVest, build_tx(s, s2, 1_000_000, [ctrl_pkh]))
+}
+
 // ── A10: thiếu chữ ký authority ──────────────────────────────
 
-test mint_no_authority() fail {
-  // DistributionVest nhưng không ai trong dist_authority ký → reject.
+test mint_non_controller_signer() fail {
+  // Registry entry authority = SinglePkh{ctrl_pkh} nhưng người ký là #"ff" (không phải
+  // authority) → registry.validate_mint (d) authority_satisfied fail → reject.
   let s = fresh()
   let s2 = SupplyState { ..s, dist_minted: 1_000_000 }
   run(DistributionVest, build_tx(s, s2, 1_000_000, [#"ff"]))
@@ -478,9 +570,10 @@ test distvest_mint_not_to_dest() fail {
     Transaction {
       ..placeholder,
       inputs: [ss_input(s)],
+      reference_inputs: [registry_ok(), kho_ref()],
       outputs: [ss_output(s2), to_wallet],
       mint: mint_lamp(1_000_000),
-      extra_signatories: [auth_a],
+      extra_signatories: [ctrl_pkh],
     }
   run(DistributionVest, tx)
 }
@@ -500,9 +593,10 @@ test distvest_split_some_to_wallet() fail {
     Transaction {
       ..placeholder,
       inputs: [ss_input(s)],
+      reference_inputs: [registry_ok(), kho_ref()],
       outputs: [ss_output(s2), dest_output(999_999), to_wallet],
       mint: mint_lamp(1_000_000),
-      extra_signatories: [auth_a],
+      extra_signatories: [ctrl_pkh],
     }
   run(DistributionVest, tx)
 }
@@ -522,9 +616,10 @@ test distvest_to_dest_staked_ok() {
     Transaction {
       ..placeholder,
       inputs: [ss_input(s)],
+      reference_inputs: [registry_ok(), kho_ref()],
       outputs: [ss_output(s2), staked_kho],
       mint: mint_lamp(1_000_000),
-      extra_signatories: [auth_a],
+      extra_signatories: [ctrl_pkh],
     }
   run(DistributionVest, tx)
 }
@@ -543,7 +638,7 @@ test reservedraw_sig_alone_insufficient() fail {
   // gate KHÔNG nhận chữ ký thay cho meter. Chứng minh "không ai rút tay".
   let s = fresh()
   let s2 = SupplyState { ..s, reserve_minted: 1_000_000 }
-  run(ReserveDraw, build_tx(s, s2, 1_000_000, [auth_a, auth_b]))
+  run(ReserveDraw, build_tx(s, s2, 1_000_000, [ctrl_pkh, stranger]))
 }
 
 test reservedraw_two_meters() fail {
@@ -587,7 +682,7 @@ test mint_extra_name() fail {
       inputs: [ss_input(s)],
       outputs: [ss_output(s2)],
       mint: mint_lamp(1_000_000) |> assets.add(lamp_pol, #"9999", 1),
-      extra_signatories: [auth_a],
+      extra_signatories: [ctrl_pkh],
     }
   run(DistributionVest, tx)
 }
@@ -604,7 +699,7 @@ test thread_minted_in_tx() fail {
       inputs: [ss_input(s)],
       outputs: [ss_output(s2)],
       mint: mint_lamp(1_000_000) |> assets.add(thr_pol, constants.supply_name, 1),
-      extra_signatories: [auth_a],
+      extra_signatories: [ctrl_pkh],
     }
   run(DistributionVest, tx)
 }
@@ -627,7 +722,7 @@ test supplystate_moved_address() fail {
       inputs: [ss_input(s)],
       outputs: [moved],
       mint: mint_lamp(1_000_000),
-      extra_signatories: [auth_a],
+      extra_signatories: [ctrl_pkh],
     }
   run(DistributionVest, tx)
 }
@@ -645,7 +740,7 @@ test no_supplystate_output() fail {
         util.mk_output_no_datum(util.vk_address(#"a0"), assets.from_lovelace(2_000_000)),
       ],
       mint: mint_lamp(1_000_000),
-      extra_signatories: [auth_a],
+      extra_signatories: [ctrl_pkh],
     }
   run(DistributionVest, tx)
 }
@@ -667,7 +762,7 @@ test garbage_output_datum() fail {
       inputs: [ss_input(s)],
       outputs: [garbage],
       mint: mint_lamp(1_000_000),
-      extra_signatories: [auth_a],
+      extra_signatories: [ctrl_pkh],
     }
   run(DistributionVest, tx)
 }
@@ -689,7 +784,7 @@ test input_cap_inflated() fail {
   // s.dist_cap > hằng genesis → reject (luật 4 cũ chỉ so s2==s, không bắt được).
   let s = SupplyState { ..fresh(), dist_cap: constants.dist_cap_oil + 1_000_000_000 }
   let s2 = SupplyState { ..s, dist_minted: 1_000_000 }
-  run(DistributionVest, build_tx(s, s2, 1_000_000, [auth_a]))
+  run(DistributionVest, build_tx(s, s2, 1_000_000, [ctrl_pkh]))
 }
 
 test input_reserve_cap_inflated() fail {
@@ -703,7 +798,7 @@ test input_counter_negative() fail {
   // s.dist_minted < 0 → reject (chống cap ảo qua counter âm).
   let s = SupplyState { ..fresh(), dist_minted: -1_000_000 }
   let s2 = SupplyState { ..s, dist_minted: 0 }
-  run(DistributionVest, build_tx(s, s2, 1_000_000, [auth_a]))
+  run(DistributionVest, build_tx(s, s2, 1_000_000, [ctrl_pkh]))
 }
 
 test input_reserve_counter_negative() fail {
@@ -724,7 +819,7 @@ test input_no_supply_nft() fail {
       inputs: [ss_input_no_nft(s)],
       outputs: [ss_output(s2)],
       mint: mint_lamp(1_000_000),
-      extra_signatories: [auth_a],
+      extra_signatories: [ctrl_pkh],
     }
   run(DistributionVest, tx)
 }
@@ -763,7 +858,7 @@ test state_output_holds_tlamp() fail {
       inputs: [ss_input(s)],
       outputs: [dirty],
       mint: mint_lamp(1_000_000),
-      extra_signatories: [auth_a],
+      extra_signatories: [ctrl_pkh],
     }
   run(DistributionVest, tx)
 }
@@ -787,7 +882,7 @@ test state_output_foreign_token() fail {
       inputs: [ss_input(s)],
       outputs: [dirty],
       mint: mint_lamp(1_000_000),
-      extra_signatories: [auth_a],
+      extra_signatories: [ctrl_pkh],
     }
   run(DistributionVest, tx)
 }
@@ -811,33 +906,115 @@ test state_output_has_reference_script() fail {
       inputs: [ss_input(s)],
       outputs: [with_ref],
       mint: mint_lamp(1_000_000),
-      extra_signatories: [auth_a],
+      extra_signatories: [ctrl_pkh],
     }
   run(DistributionVest, tx)
 }
 
-// ── D2-#1: threshold == 0 ─────────────────────────────────────
-test threshold_zero_rejected() fail {
-  // threshold 0 → vô hiệu authority (ai cũng mint) → reject (ép >= 1).
+// ══════════════════════════════════════════════════════════════
+// REGISTRY AUTHORITY (token-mint v2) — thay bộ anchor cũ
+// ══════════════════════════════════════════════════════════════
+
+// ── ROTATE khoá vận hành: registry entry trỏ khoá MỚI → khoá mới ký PASS ──
+test registry_rotated_key_ok() {
+  // Sửa entry registry sang SinglePkh{new_key} (controller DID ký ở tầng registry);
+  // khoá mới ký mint → được. KHÔNG redeploy lamp_mint (authority là DỮ LIỆU registry).
+  let new_key = #"c0ffee"
   let s = fresh()
   let s2 = SupplyState { ..s, dist_minted: 1_000_000 }
-  run_thr(DistributionVest, build_tx(s, s2, 1_000_000, [auth_a]), [auth_a, auth_b], 0)
+  let refs = [registry_ref(reg_datum(lamp_tag, SinglePkh { pkh: new_key }))]
+  run(DistributionVest, build_tx_anchor(s, s2, 1_000_000, [new_key], refs))
 }
 
-// ── D2-#2: threshold > |authority| ────────────────────────────
-test threshold_exceeds_n_rejected() fail {
-  // threshold 3 > 2 authority key → khóa chết → reject (ép <= N).
+// ── STRANGER ký (không phải authority của entry) → reject ──
+test registry_stranger_signs() fail {
   let s = fresh()
   let s2 = SupplyState { ..s, dist_minted: 1_000_000 }
-  run_thr(DistributionVest, build_tx(s, s2, 1_000_000, [auth_a, auth_b]), [auth_a, auth_b], 3)
+  run(DistributionVest, build_tx(s, s2, 1_000_000, [stranger]))
 }
 
-// ── D2-#3: key authority trùng không phình N ──────────────────
-test duplicate_authority_key_no_inflate() fail {
-  // authority = [auth_a, auth_a] (N giả = 2), threshold 2; chỉ auth_a ký.
-  // count_sigs dedupe → distinct count = 1 < 2 → reject. (Đồng thời threshold <= unique N=1
-  // cũng fail → chống nhồi key.)
+// ── REVOKED: entry token_tag bị thu hồi → mọi mint fail ──
+test registry_revoked() fail {
   let s = fresh()
   let s2 = SupplyState { ..s, dist_minted: 1_000_000 }
-  run_thr(DistributionVest, build_tx(s, s2, 1_000_000, [auth_a]), [auth_a, auth_a], 2)
+  let refs = [registry_ref(reg_datum(lamp_tag, Revoked))]
+  run(DistributionVest, build_tx_anchor(s, s2, 1_000_000, [ctrl_pkh], refs))
+}
+
+// ── MULTISIG token đối tác: 2-of-2 đủ chữ ký → PASS ──
+test registry_multisig_ok() {
+  let s = fresh()
+  let s2 = SupplyState { ..s, dist_minted: 1_000_000 }
+  let auth = MultiSig { pkhs: [partner_a, partner_b], threshold: 2 }
+  let refs = [registry_ref(reg_datum(lamp_tag, auth))]
+  run(DistributionVest, build_tx_anchor(s, s2, 1_000_000, [partner_a, partner_b], refs))
+}
+
+// ── MULTISIG thiếu 1 chữ ký (1-of-2 < threshold 2) → reject ──
+test registry_multisig_insufficient() fail {
+  let s = fresh()
+  let s2 = SupplyState { ..s, dist_minted: 1_000_000 }
+  let auth = MultiSig { pkhs: [partner_a, partner_b], threshold: 2 }
+  let refs = [registry_ref(reg_datum(lamp_tag, auth))]
+  run(DistributionVest, build_tx_anchor(s, s2, 1_000_000, [partner_a], refs))
+}
+
+// ── MULTISIG datum độc: pkhs TRÙNG phình count → reject (dedupe) ──
+test registry_multisig_dup_pkh() fail {
+  // [partner_a×3] threshold 3, chỉ partner_a ký → unique=1 < 3 → reject (không phình).
+  let s = fresh()
+  let s2 = SupplyState { ..s, dist_minted: 1_000_000 }
+  let auth = MultiSig { pkhs: [partner_a, partner_a, partner_a], threshold: 3 }
+  let refs = [registry_ref(reg_datum(lamp_tag, auth))]
+  run(DistributionVest, build_tx_anchor(s, s2, 1_000_000, [partner_a], refs))
+}
+
+// ── MULTISIG threshold 0 (datum độc) → reject (0 chữ ký KHÔNG thoả) ──
+test registry_multisig_threshold_zero() fail {
+  let s = fresh()
+  let s2 = SupplyState { ..s, dist_minted: 1_000_000 }
+  let auth = MultiSig { pkhs: [partner_a, partner_b], threshold: 0 }
+  let refs = [registry_ref(reg_datum(lamp_tag, auth))]
+  run(DistributionVest, build_tx_anchor(s, s2, 1_000_000, [], refs))
+}
+
+// ── token_tag SAI: entry không khớp tag bake → fail (không thấy entry) ──
+test registry_wrong_tag() fail {
+  let s = fresh()
+  let s2 = SupplyState { ..s, dist_minted: 1_000_000 }
+  let refs =
+    [registry_ref(reg_datum(#"deadbeef", SinglePkh { pkh: ctrl_pkh }))]
+  run(DistributionVest, build_tx_anchor(s, s2, 1_000_000, [ctrl_pkh], refs))
+}
+
+// ── KHÔNG có registry ref input → reject ──
+test registry_missing() fail {
+  let s = fresh()
+  let s2 = SupplyState { ..s, dist_minted: 1_000_000 }
+  run(DistributionVest, build_tx_anchor(s, s2, 1_000_000, [ctrl_pkh], []))
+}
+
+// ── HAI registry ref (mơ hồ authority) → reject ──
+test registry_two_refs() fail {
+  let s = fresh()
+  let s2 = SupplyState { ..s, dist_minted: 1_000_000 }
+  let refs = [registry_ok(), registry_ref(reg_datum(lamp_tag, SinglePkh { pkh: #"c0ffee" }))]
+  run(DistributionVest, build_tx_anchor(s, s2, 1_000_000, [ctrl_pkh], refs))
+}
+
+// ── READ-SIDE fail-closed: 1 datum có 2 entry TRÙNG tag → reject (KHÔNG ──
+// ── first-match). ctrl_pkh ký (khớp entry đầu) nhưng vẫn fail vì ≥2 entry. ──
+// Khớp canonical Tokenomics `token_mint_dup_tag_in_registry_fails`.
+test registry_dup_tag_in_datum() fail {
+  let s = fresh()
+  let s2 = SupplyState { ..s, dist_minted: 1_000_000 }
+  let dup =
+    RegistryDatum {
+      governing_did: "did:phoenix:org:greensun",
+      entries: [
+        RegistryEntry { token_tag: lamp_tag, authority: SinglePkh { pkh: ctrl_pkh } },
+        RegistryEntry { token_tag: lamp_tag, authority: SinglePkh { pkh: stranger } },
+      ],
+    }
+  run(DistributionVest, build_tx_anchor(s, s2, 1_000_000, [ctrl_pkh], [registry_ref(dup)]))
 }
