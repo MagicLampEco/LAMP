@@ -44,32 +44,43 @@ Distribution/Airdrop/offchain/src/
 ├── types.ts        # PoolRegistration, DelegatorStake, EpochSnapshot, AirdropEntitlement
 ├── split.ts        # splitEpoch (20:100) + bất biến ngân sách
 ├── distribute.ts   # distributeEpoch + runAirdrop (fold cumulative + Merkle mỗi epoch)
-└── merkle.ts       # canonical Merkle (root + proof + verify)
-Distribution/Airdrop/tests/   # merkle + split + distribute  (23 test)
+├── merkle.ts       # canonical Merkle (root + proof + verify)
+└── keeper.ts       # snapshot → root postable + claimed_cumulative + gói redeem
+Distribution/Airdrop/tests/   # merkle + split + distribute + keeper  (29 test)
 
 Distribution/Airdrop/onchain/                       # Aiken Plutus V3
 ├── lib/magiclamp/airdrop/merkle.ak   # Merkle verify canonical (xcheck off-chain)
-├── lib/magiclamp/airdrop/types.ak    # RegistrationDatum, RegistryRedeemer
-├── lib/magiclamp/airdrop/util.ak     # helpers (epoch, script, sig)
-└── validators/airdrop_registry.ak    # mint registration-NFT (deadline epoch, 1/pool)
+├── lib/magiclamp/airdrop/types.ak    # Registration + Claim/Beacon/Treasury datum
+├── lib/magiclamp/airdrop/util.ak     # helpers (epoch, script, sig, NFT, value)
+├── validators/airdrop_registry.ak    # mint registration-NFT (deadline epoch, 1/pool)
+├── validators/claim_account.ak       # Claim (committee) + Redeem (Merkle proof) — audited
+├── validators/beacon.ak              # committee post MerkleRoot mỗi epoch — audited
+└── validators/treasury.ak            # release LAMP đúng delta redeemed — audited
 ```
 
 ## Test
 
 ```bash
-cd Distribution/Airdrop/offchain && npm install && npm test   # 23/23 vitest pass
-cd Distribution/Airdrop/onchain && aiken check                # 17/17 aiken pass
+cd Distribution/Airdrop/offchain && npm install && npm test   # 29/29 vitest pass
+cd Distribution/Airdrop/onchain && aiken check                # 34/34 aiken pass
 ```
 
 `leaf_hash_xcheck_offchain` (aiken) pin giá trị từ `merkle.ts` ⇒ Merkle **byte-perfect**
 giữa on-chain và off-chain.
 
-## On-chain `airdrop_registry` (đã có)
+## On-chain
 
-SPO mint 1 NFT `name = pool_id` vào registry script + `RegistrationDatum{pool_id,
-reward_owner, epoch_registered}`. Luật: đúng 1 token (chặn token ẩn) · 1 output registry ·
-cửa sổ `[open, deadline]` (mở 1/7, hạn epoch 4 — từ chối sau hạn) · `epoch_registered ==
-current` · SPO ký. NFT **bất biến** (không spend handler → `else fail`) ⇒ keeper đọc ref input.
+**`airdrop_registry`** — SPO mint 1 NFT `name = pool_id` vào registry script +
+`RegistrationDatum{pool_id, reward_owner, epoch_registered}`. Luật: đúng 1 token (chặn
+token ẩn) · 1 output registry · cửa sổ `[open, deadline]` (mở 1/7, hạn epoch 4 — từ chối
+sau hạn) · `epoch_registered == current` · SPO ký. NFT **bất biến** (`else fail`).
+
+**Claim stack** (`claim_account` + `beacon` + `treasury`) — TÁI DÙNG nguyên cơ chế lottery
+**đã audit** (single in/out theo script-hash chống double-satisfaction C1/C2; value bảo
+toàn C-VAL-0; ADA-drain M1). Luồng: committee `Claim` đặt trần `claimed_cumulative` (=
+entitlement snapshot) + post `MerkleRoot` lên `beacon` mỗi epoch → owner `Redeem`
+**permissionless** (Merkle proof của `won_cumulative` đối chiếu root) → `treasury` release
+đúng delta `redeemed_cumulative`. `redeemed_cumulative` cộng dồn chống double-redeem.
 
 ## Tham số đổi được (tầng vận hành, không strand LAMP)
 
@@ -78,7 +89,8 @@ tham số keeper/committee, đổi được; entitlement tính lại + post root
 
 ## Còn lại (PR kế)
 
-- Claim permissionless: tái dùng `claim_account` (Merkle redeem) + `beacon` (MerkleRoot)
-  từ stack lottery đã audit (trên `main`) — đưa về nhánh + wire keeper post root mỗi epoch.
-- Keeper off-chain: đọc registration ref-inputs + snapshot stake → `runAirdrop` → post root.
-- Script deploy/e2e Preview (1 SPO + 1 delegator claim thật) lấy evidence tx.
+- Builder Lucid + script deploy/e2e Preview: apply params 4 validator → genesis (mint
+  beacon NFT + treasury fund) → keeper post root → committee Claim → 1 SPO + 1 delegator
+  Redeem thật → lấy evidence tx (cần `.env`: BLOCKFROST_KEY + ví Preview).
+- Keeper đọc stake snapshot THẬT từ Blockfrost/Koios (hiện `EpochSnapshot` nhận từ caller).
+- Datum/redeemer codec off-chain (mirror types.ak) cho builder.

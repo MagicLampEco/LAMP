@@ -4,3 +4,4 @@ export * from "./types.js";
 export * from "./merkle.js";
 export * from "./split.js";
 export * from "./distribute.js";
+export * from "./keeper.js";

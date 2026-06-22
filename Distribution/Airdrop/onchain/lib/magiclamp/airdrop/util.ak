@@ -2,9 +2,11 @@
 
 use aiken/collection/list
 use aiken/interval.{Finite, IntervalBoundType}
-use cardano/address.{Address, Script, VerificationKey}
-use cardano/assets.{Value}
+use cardano/address.{Address, Inline, Script, VerificationKey}
+use cardano/assets.{AssetName, PolicyId, Value}
+use cardano/assets
 use cardano/transaction.{InlineDatum, Input, NoDatum, Output, OutputReference, Transaction, placeholder}
+use magiclamp/airdrop/types.{BeaconKind, MerkleRoot}
 
 /// Epoch từ validity_range lower_bound (POSIX ms). ms_per_epoch network-specific.
 pub fn get_epoch(tx: Transaction, ms_per_epoch: Int) -> Int {
@@ -36,9 +38,80 @@ pub fn count_outputs_at_script(outputs: List<Output>, script_hash: ByteArray) ->
   list.count(outputs, fn(x) { is_at_script(x.address, script_hash) })
 }
 
+pub fn count_inputs_at_script(inputs: List<Input>, script_hash: ByteArray) -> Int {
+  list.count(inputs, fn(x) { is_at_script(x.output.address, script_hash) })
+}
+
+pub fn count_inputs_at(inputs: List<Input>, addr: Address) -> Int {
+  list.count(inputs, fn(x) { x.output.address == addr })
+}
+
 pub fn output_at_script(outputs: List<Output>, script_hash: ByteArray) -> Output {
   expect Some(o) = list.find(outputs, fn(x) { is_at_script(x.address, script_hash) })
   o
+}
+
+pub fn input_at_script(inputs: List<Input>, script_hash: ByteArray) -> Output {
+  expect Some(i) = list.find(inputs, fn(x) { is_at_script(x.output.address, script_hash) })
+  i.output
+}
+
+/// Address của chính UTxO đang spend.
+pub fn own_address(own_ref: OutputReference, inputs: List<Input>) -> Address {
+  expect Some(i) = list.find(inputs, fn(x) { x.output_reference == own_ref })
+  i.output.address
+}
+
+/// Script hash của chính validator đang chạy.
+pub fn own_script_hash(own_addr: Address) -> ByteArray {
+  expect Script(h) = own_addr.payment_credential
+  h
+}
+
+/// Đếm chữ ký committee có mặt (Byzantine M-of-N).
+pub fn count_committee_sigs(committee: List<ByteArray>, signatories: List<ByteArray>) -> Int {
+  list.count(committee, fn(k) { list.has(signatories, k) })
+}
+
+/// payment credential == VerificationKey(pkh)?
+pub fn is_owned_by(addr: Address, pkh: ByteArray) -> Bool {
+  when addr.payment_credential is {
+    VerificationKey(h) -> h == pkh
+    _ -> False
+  }
+}
+
+/// Tổng LAMP (oil) các output trả về cho owner PKH.
+pub fn lamp_to_owner(
+  outputs    : List<Output>,
+  owner      : ByteArray,
+  lamp_policy: PolicyId,
+  lamp_name  : AssetName,
+) -> Int {
+  list.foldl(
+    outputs, 0,
+    fn(o, acc) {
+      if is_owned_by(o.address, owner) {
+        acc + assets.quantity_of(o.value, lamp_policy, lamp_name)
+      } else {
+        acc
+      }
+    },
+  )
+}
+
+/// Asset name beacon NFT theo kind (airdrop: chỉ MerkleRoot).
+pub fn beacon_name(kind: BeaconKind) -> AssetName {
+  when kind is {
+    MerkleRoot -> #"4d524f4f54" // "MROOT"
+  }
+}
+
+pub fn script_address_staked(hash: ByteArray, stake_pkh: ByteArray) -> Address {
+  Address {
+    payment_credential: Script(hash),
+    stake_credential: Some(Inline(VerificationKey(stake_pkh))),
+  }
 }
 
 // ── Test-support builders (mock UTxO/tx) ──────────────────────
