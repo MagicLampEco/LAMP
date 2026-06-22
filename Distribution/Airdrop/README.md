@@ -46,13 +46,30 @@ Distribution/Airdrop/offchain/src/
 ├── distribute.ts   # distributeEpoch + runAirdrop (fold cumulative + Merkle mỗi epoch)
 └── merkle.ts       # canonical Merkle (root + proof + verify)
 Distribution/Airdrop/tests/   # merkle + split + distribute  (23 test)
+
+Distribution/Airdrop/onchain/                       # Aiken Plutus V3
+├── lib/magiclamp/airdrop/merkle.ak   # Merkle verify canonical (xcheck off-chain)
+├── lib/magiclamp/airdrop/types.ak    # RegistrationDatum, RegistryRedeemer
+├── lib/magiclamp/airdrop/util.ak     # helpers (epoch, script, sig)
+└── validators/airdrop_registry.ak    # mint registration-NFT (deadline epoch, 1/pool)
 ```
 
 ## Test
 
 ```bash
-cd Distribution/Airdrop/offchain && npm install && npm test   # 23/23 pass
+cd Distribution/Airdrop/offchain && npm install && npm test   # 23/23 vitest pass
+cd Distribution/Airdrop/onchain && aiken check                # 17/17 aiken pass
 ```
+
+`leaf_hash_xcheck_offchain` (aiken) pin giá trị từ `merkle.ts` ⇒ Merkle **byte-perfect**
+giữa on-chain và off-chain.
+
+## On-chain `airdrop_registry` (đã có)
+
+SPO mint 1 NFT `name = pool_id` vào registry script + `RegistrationDatum{pool_id,
+reward_owner, epoch_registered}`. Luật: đúng 1 token (chặn token ẩn) · 1 output registry ·
+cửa sổ `[open, deadline]` (mở 1/7, hạn epoch 4 — từ chối sau hạn) · `epoch_registered ==
+current` · SPO ký. NFT **bất biến** (không spend handler → `else fail`) ⇒ keeper đọc ref input.
 
 ## Tham số đổi được (tầng vận hành, không strand LAMP)
 
@@ -61,7 +78,7 @@ tham số keeper/committee, đổi được; entitlement tính lại + post root
 
 ## Còn lại (PR kế)
 
-- On-chain `airdrop_registry` (mint registration-NFT `{pool_id, reward_stake_address,
-  epoch_registered}`, mở 1/7, hạn epoch 4) + keeper post root lên beacon.
-- Claim validator permissionless (Merkle proof + marker spend-once) — tái dùng `claim_account`.
-- Test negative chống Sybil (sàn stake + yêu cầu block) ở tầng on-chain.
+- Claim permissionless: tái dùng `claim_account` (Merkle redeem) + `beacon` (MerkleRoot)
+  từ stack lottery đã audit (trên `main`) — đưa về nhánh + wire keeper post root mỗi epoch.
+- Keeper off-chain: đọc registration ref-inputs + snapshot stake → `runAirdrop` → post root.
+- Script deploy/e2e Preview (1 SPO + 1 delegator claim thật) lấy evidence tx.
