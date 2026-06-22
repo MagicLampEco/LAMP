@@ -43,7 +43,25 @@ npm run genesis     # 03: mint 3 beacon NFT + tạo beacon/treasury/2 claim-acco
 npm run e2e         # 04: claim → beacon → lottery → redeem → verify on-chain
 # hoặc gộp:
 npm run all
+
+npm run tiger-redeem # 05: ETD (Early TIGER Delegation) — drip kiểu B trên claim_account
 ```
+
+### ETD redeem (`05_tiger_redeem.ts`)
+
+Demo redeem ETD THẬT trên Preview, **tái dùng** `claim_account`/`treasury`/`beacon` đã
+audit (KHÔNG validator mới). Chạy sau `01→02→03`. Flow: snapshot → `computeEntitlements`
+→ post beacon **D=1** (ASSERT) → Claim CREATE account ETD-shaped (`drops_per_epoch =
+ceil(E/N)`, `start_epoch = cliff`) → redeem → verify **on-chain `redeemed` == off-chain
+`vested(t)`** + bất biến **Σ E_i + leftover == 12.000 nghìn LAMP**.
+
+> ⚠ **PREMISE (audit HIGH):** drip kiểu B bit-identical với `claim_account` CHỈ khi beacon
+> `drop_value == 1`. Script post D=1 rồi ASSERT trước khi redeem. Logic ETD: `Distribution/ETD/`.
+
+| Key | Ý nghĩa | Mặc định |
+|---|---|---|
+| `TIGER_DRIP_EPOCHS` | N — số epoch nhỏ giọt kiểu B | 36 |
+| `TIGER_CLIFF_EPOCHS_AGO` | đặt cliff lùi N epoch để redeem được ngay (elapsed ≥ 1) | 1 |
 
 State giữa các bước nằm ở `deployed.json` (tự sinh, gitignore).
 

@@ -13,6 +13,6 @@
     "allowJs":          false,
     "esModuleInterop":  true
   },
-  "include": ["*.ts", "../offchain/src/**/*.ts"],
+  "include": ["*.ts", "../offchain/src/**/*.ts", "../ETD/offchain/src/**/*.ts"],
   "exclude": ["node_modules", "deployed.json"]
 }
