@@ -19,7 +19,7 @@ suy ra mã từ định lý chứ không từ trực giác. Cụ thể chứng m
    (undistributed, còn trong Distribution). "Giảm lưu hành" là **đại lượng kế toán**, không phải đốt on-chain.
 3. **Số học split** của `collectToTreasury`: `cut = ⌊amount × cut_bps / 10000⌋`, tái dùng họ số nguyên
    BigInt của `protocol-utils`. Chốt chủ đích làm tròn: **floor cut = ưu ái người nộp/provider** (treasury
-   giữ ≤ phần lý thuyết, crumb <1 oil nghiêng về phía RA). An toàn của hệ KHÔNG đến từ hướng làm tròn mà từ
+   giữ ≤ phần lý thuyết, crumb <1 oildrop nghiêng về phía RA). An toàn của hệ KHÔNG đến từ hướng làm tròn mà từ
    **bảo toàn value** (`≥` + TOTAL-CONSERVE) — xem §3.1.
 4. **Bất biến theo lô (batch):** gộp N lệnh `collect` trong một settlement tx vẫn bảo toàn tổng và đúng
    tổng cut.
@@ -43,16 +43,16 @@ suy ra mã từ định lý chứ không từ trực giác. Cụ thể chứng m
 
 ## 1. Ký hiệu + miền giá trị
 
-Mọi đại lượng value là **số nguyên không âm**, đơn vị nhỏ nhất on-chain (lovelace cho ADA; **oil** cho
-LAMP, `1 LAMP = 10^6 oil` — `protocol-utils`: `OIL_PER_LAMP = 1_000_000`). KHÔNG dùng số thực ở mọi nơi
-ảnh hưởng value (nguyên tắc `protocol-utils`: "ALL arithmetic BigInt. No Number for oil/nanogic/Q values").
+Mọi đại lượng value là **số nguyên không âm**, đơn vị nhỏ nhất on-chain (lovelace cho ADA; **oildrop** cho
+LAMP, `1 LAMP = 10^6 oildrop` — `protocol-utils`: `OILDROP_PER_LAMP = 1_000_000`). KHÔNG dùng số thực ở mọi nơi
+ảnh hưởng value (nguyên tắc `protocol-utils`: "ALL arithmetic BigInt. No Number for oildrop/nanogic/Q values").
 
 | Ký hiệu | Nghĩa |
 |---|---|
 | `A` | tập asset (mỗi asset = cặp `(policy_id, asset_name)`; ADA = `(∅, ∅)` / lovelace) |
 | `Value` | hàm `A → ℤ≥0` (multiset); cộng theo từng asset (Cardano `cardano/assets.Value`) |
 | `v(a)` | lượng asset `a` trong `Value v` |
-| `S_total(a)` | tổng cung cố định của asset `a`. LAMP: `S_LAMP_TOTAL = 36×10^15 oil` (cố định **tuyệt đối**) |
+| `S_total(a)` | tổng cung cố định của asset `a`. LAMP: `S_LAMP_TOTAL = 36×10^15 oildrop` (cố định **tuyệt đối**) |
 | `T` | tập **instance** Treasury (đa thuê bao). MagicLamp = một phần tử |
 | `bal_I(a)` | tổng lượng asset `a` đang nằm trong custody của instance `I ∈ T` |
 | `cut_bps` | tỷ lệ cắt protocol, đơn vị **basis point** (1 bp = 1/10000). Tham số mở |
@@ -151,7 +151,7 @@ giờ ít hơn.
 cut  =  ⌊ amount × cut_bps / 10000 ⌋            (SPLIT)
 ```
 
-- `amount`, `cut_bps`, `cut` đều **số nguyên** (oil cho LAMP). `cut_bps ∈ [0, 10000]` (0% … 100%) —
+- `amount`, `cut_bps`, `cut` đều **số nguyên** (oildrop cho LAMP). `cut_bps ∈ [0, 10000]` (0% … 100%) —
   **tham số mở (DAO định)**.
 - Phép chia là **chia nguyên cắt sàn** (floor). Cùng họ floor-division số nguyên BigInt với
   `protocol-utils.mulQ(a,b)=a*b/Q` — chỉ **khác mẫu số**: bps dùng `10000`, không phải `Q=10^9`.
@@ -163,19 +163,19 @@ cut  =  ⌊ amount × cut_bps / 10000 ⌋            (SPLIT)
 "cut" (collect) và kết luận sai "floor cut ⟹ an toàn cho hệ". Phân rạch ròi:
 
 **(1) An toàn THỰC của chiều collect KHÔNG đến từ hướng làm tròn.** Nó đến từ **bảo toàn value**:
-INV-COLLECT dùng `≥` (§2.3) kết hợp TOTAL-CONSERVE (Định lý 1) ⟹ không oil nào sinh ra hay biến mất; crumb
+INV-COLLECT dùng `≥` (§2.3) kết hợp TOTAL-CONSERVE (Định lý 1) ⟹ không oildrop nào sinh ra hay biến mất; crumb
 làm tròn chỉ **dịch chỗ** giữa custody và provider trong cùng tx, **hệ không mất gì**. Đây là nguồn an toàn,
 không phụ thuộc floor hay ceil.
 
 **(2) Hướng làm tròn là một CHỦ ĐÍCH KINH TẾ, phải chốt rõ — không suy ra "an toàn hệ".**
 - `cut` = phần protocol GIỮ LẠI vào bucket; `rest = amount − cut` định tuyến **RA** app/provider.
-- **Floor `cut`** (lựa chọn hiện tại) ⟹ treasury giữ phần ≤ lý thuyết, crumb `<1 oil` rơi về phía **RA**
-  (provider). Tức floor cut **ưu ái người nộp/provider**, và **bất lợi nhẹ cho HỆ** (treasury thu hụt `<1 oil`
+- **Floor `cut`** (lựa chọn hiện tại) ⟹ treasury giữ phần ≤ lý thuyết, crumb `<1 oildrop` rơi về phía **RA**
+  (provider). Tức floor cut **ưu ái người nộp/provider**, và **bất lợi nhẹ cho HỆ** (treasury thu hụt `<1 oildrop`
   so với mục tiêu thu lý thuyết). KHÔNG được gọi đây là "an toàn cho hệ" — đó là mệnh đề SAI cho chiều collect.
 - **Ceil `cut`** (`cut = ⌈amount·bps/10000⌉`, dùng `ceil_div` đã có ở Distribution `math.ak`) ⟹ ngược hẳn:
-  treasury KHÔNG bao giờ thu hụt, crumb `<1 oil` rơi về phía người nộp.
+  treasury KHÔNG bao giờ thu hụt, crumb `<1 oildrop` rơi về phía người nộp.
 - **Chốt (4 trục — lợi ích người dùng + đơn giản):** giữ **floor cut** (ưu ái payer). Lý do: (a) sai lệch ≤
-  `1 oil = 10^{-6} LAMP` mỗi item — không đáng kể về kinh tế; (b) ưu ái người nộp hợp định hướng "lợi ích
+  `1 oildrop = 10^{-6} LAMP` mỗi item — không đáng kể về kinh tế; (b) ưu ái người nộp hợp định hướng "lợi ích
   người dùng"; (c) bảo toàn value (lập luận 1) đã bảo đảm hệ không mất gì, nên không cần ceil để "chống hụt".
   Nếu một instance cần **đảm bảo treasury không hụt** (vd phí sàn tối thiểu), đổi sang `ceil_div` — đây là
   lựa chọn của instance đó, KHÔNG phải mặc định.
@@ -185,13 +185,13 @@ không phụ thuộc floor hay ceil.
 Đặt `rest = amount − cut`. Vì `cut = ⌊amount·bps/10000⌋ ≤ amount` (do `bps ≤ 10000`), nên `rest ≥ 0` và:
 
 ```
-cut + rest  =  amount        (PARTITION, đẳng thức số nguyên chính xác — KHÔNG mất oil nào)
+cut + rest  =  amount        (PARTITION, đẳng thức số nguyên chính xác — KHÔNG mất oildrop nào)
 ```
 
 `cut` → bucket(s) (xem §3.2.1); `rest` → tuyến app (provider/node — caller chỉ định, NGOÀI Treasury). Vì
-`cut + rest = amount` đúng tuyệt đối (không phải xấp xỉ), **không có oil rơi rớt** trong split. Đây là điểm
+`cut + rest = amount` đúng tuyệt đối (không phải xấp xỉ), **không có oildrop rơi rớt** trong split. Đây là điểm
 mấu chốt: ta định nghĩa `rest` bằng **phép trừ** (`amount − cut`), KHÔNG bằng `⌊amount·(10000−bps)/10000⌋`
-độc lập — cách thứ hai có thể lệch `1 oil` so với `amount` (lỗi double-rounding). **Luôn lấy một phần bằng
+độc lập — cách thứ hai có thể lệch `1 oildrop` so với `amount` (lỗi double-rounding). **Luôn lấy một phần bằng
 floor rồi phần kia bằng phép trừ.**
 
 ### 3.2.1 Phân `cut` về bucket — dạng CHÍNH đơn-bucket; PARTITION-MULTI là tùy chọn
@@ -214,7 +214,7 @@ sổ datum, không chia nhỏ.
 **Tùy chọn đa-bucket (chỉ khi instance bật `split_table`).** Một instance CÓ THỂ khai báo
 `split_table = [(b_1, w_1), …, (b_m, w_m)]` với `Σ_{i=1}^{m} w_i = 10000` bps để chia `cut` về `m` bucket
 theo trọng số `w_i`. Khi đó phải tránh **double-floor**: cách ngây thơ `part_i = ⌊cut · w_i / 10000⌋` cho
-mỗi bucket khiến `Σ part_i = cut − k` với `0 ≤ k ≤ m−1` — **mất tới `m−1` oil** mỗi item, phá bất biến
+mỗi bucket khiến `Σ part_i = cut − k` với `0 ≤ k ≤ m−1` — **mất tới `m−1` oildrop** mỗi item, phá bất biến
 sổ↔value (TECH §3). Khắc phục bằng "phần cuối = phép trừ":
 
 ```
@@ -223,7 +223,7 @@ part_m  =  cut  −  Σ_{i=1}^{m−1} part_i      (phần dư — KHÔNG floor) 
 ```
 
 **Định lý 2′ (PARTITION-MULTI — khi bật tùy chọn đa-bucket).** Với định nghĩa trên,
-**Σ_{i=1}^{m} part_i = cut** đúng tuyệt đối (số nguyên), KHÔNG mất oil nào.
+**Σ_{i=1}^{m} part_i = cut** đúng tuyệt đối (số nguyên), KHÔNG mất oildrop nào.
 
 *Chứng minh.* `Σ_{i=1}^{m} part_i = (Σ_{i=1}^{m−1} part_i) + part_m = (Σ_{i=1}^{m−1} part_i) + cut −
 (Σ_{i=1}^{m−1} part_i) = cut`. ∎ Mỗi `part_i` (i<m) là floor nên `≥ 0`; `part_m = cut − Σ part_i ≥ 0` vì
@@ -233,7 +233,7 @@ mọi phần không âm và tổng đúng `cut`. Đây là **cùng kỹ thuật*
 nhiên đúng.
 
 > **Lưu ý thứ tự xác định (chỉ áp khi bật đa-bucket):** `part_m` (bucket cuối theo thứ tự `split_table`) hấp
-> thụ toàn bộ crumb làm tròn `≤ m−1` oil. Off-chain + on-chain phải dùng **cùng thứ tự** `split_table` để
+> thụ toàn bộ crumb làm tròn `≤ m−1` oildrop. Off-chain + on-chain phải dùng **cùng thứ tự** `split_table` để
 > byte-perfect (TECH chốt thứ tự canonical). Crumb dồn vào một bucket xác định ⟹ vẫn audit được, không
 > "bốc hơi". Dạng đơn-bucket mặc định không có crumb nên không gặp vấn đề này.
 
@@ -277,7 +277,7 @@ CUT_batch  =  Σ_{j=1}^{N} cut_j  =  Σ_j ⌊amount_j · bps / 10000⌋        (
 
 **Lưu ý (không phân phối được qua floor):** nói chung
 `Σ_j ⌊amount_j·bps/10000⌋  ≤  ⌊(Σ_j amount_j)·bps/10000⌋`. Cận lệch (finding 5): hiệu hai vế
-`= ⌊Σ_j frac_j⌋` với `frac_j = (amount_j·bps mod 10000)/10000 < 1` là phần lẻ mỗi hạng ⟹ **tối đa `N−1` oil**.
+`= ⌊Σ_j frac_j⌋` với `frac_j = (amount_j·bps mod 10000)/10000 < 1` là phần lẻ mỗi hạng ⟹ **tối đa `N−1` oildrop**.
 **Cận `N−1` là TỐI ĐA, đạt khi mọi `(amount_j·bps mod 10000)` lớn nhất** (gần `10000−1`); thực tế thường nhỏ
 hơn nhiều. Điểm cốt lõi KHÔNG phải độ lớn lệch mà là: tính gộp trên tổng `amount` thì phần lệch **không quy
 được về từng receipt** → phá audit. Vì vậy **bất biến lô phải tính cut PER-LỆNH rồi cộng** (`BATCH-CUT`),
@@ -319,7 +319,7 @@ circulating(a)  :=  S_total(a)  −  Σ_{I ∈ T} bal_I(a)  −  undistributed(a
 ```
 
 với:
-- `S_total(LAMP) = 36×10^15 oil` **cố định tuyệt đối** (`protocol-utils.S_LAMP_TOTAL`).
+- `S_total(LAMP) = 36×10^15 oildrop` **cố định tuyệt đối** (`protocol-utils.S_LAMP_TOTAL`).
 - `bal_I(a)` = tổng value asset `a` trong toàn bộ UTxO custody của instance `I` (custody chính + shard +
   emergency bucket tách physical — CONTRACT §1).
 - `undistributed(a)` = LAMP **chưa phát hành / chưa redeem** còn nằm trong các validator Distribution (genesis
@@ -498,7 +498,7 @@ Không bịa số cuối — đây là **dạng + miền**:
   C-MINT-0, M1) — TECH mở rộng từ đây.
 - **`Distribution/onchain/lib/magiclamp/lampdist/math.ak`** — `ceil_div`, `clamp` (tái dùng cho làm tròn an
   toàn-hệ-thống).
-- **`protocol-utils` (`src/index.ts`)** — `Q=10^9`, `mulQ`, `clamp`, `S_LAMP_TOTAL`, `OIL_PER_LAMP`,
+- **`protocol-utils` (`src/index.ts`)** — `Q=10^9`, `mulQ`, `clamp`, `S_LAMP_TOTAL`, `OILDROP_PER_LAMP`,
   nguyên tắc BigInt-only. Off-chain mirror của số học on-chain. **Chưa có `mulBps`** — cut theo bps cần bổ
   sung `mulBps(a,bps)=a*bps/10000` (finding 8).
 - **Distribution** — cung cấp `undistributed(LAMP)` (genesis pool chưa redeem) cho công thức CIRC §5.1.
@@ -540,7 +540,7 @@ Không bịa số cuối — đây là **dạng + miền**:
 | 2 | major | MATH §3.3 (`Δ_bucket==cut`, 1 bucket) ≠ TECH §4.2 (cut chia đa-bucket theo split_table) → double-floor phá bất biến sổ | **Nhận.** Chốt **đa-bucket** (TECH là authority kiến trúc). Thêm §3.2.1 + Định lý 2′ PARTITION-MULTI (phần cuối = cut − Σ trước, không lệch floor). Sửa C2 (§3.3) + B3 (§4.2) + bảng §7. "1 bucket" = trường hợp đặc biệt. §10.2 hết treo. |
 | 3 | major | §6.2 R2/R3 phạm vi Σ-toàn-tx ≠ §2.2 (`IN_I/OUT_I`); im lặng nguồn fee/min-ADA | **Nhận.** R2 viết lại trên `IN_I/OUT_I` (= custody bảo toàn − chi). Thêm mệnh đề rõ: fee+min-ADA trả từ ví council, KHÔNG từ custody; R2/R3 = delta nội bộ. Cập nhật proof Định lý 4 + bảng CAP. |
 | 4 | minor | §5.1 CIRC bỏ sót LAMP chưa redeem trong Distribution → đếm thừa lưu hành | **Nhận.** CIRC = `S_total − Σ bal_I − undistributed`. Cập nhật §0.1(2), §5.1/5.2/5.3, bảng §7, phụ thuộc Distribution. Đánh dấu `[cần verify]` cách đọc `undistributed`. |
-| 5 | minor | §4.2 cận N−1 oil chưa chặt (chưa nêu điều kiện đạt) | **Nhận.** Thêm: cận N−1 là TỐI ĐA, đạt khi mọi `(amount_j·bps mod 10000)` lớn nhất; thực tế nhỏ hơn; điểm cốt lõi là lệch không quy được về receipt → buộc per-lệnh. |
+| 5 | minor | §4.2 cận N−1 oildrop chưa chặt (chưa nêu điều kiện đạt) | **Nhận.** Thêm: cận N−1 là TỐI ĐA, đạt khi mọi `(amount_j·bps mod 10000)` lớn nhất; thực tế nhỏ hơn; điểm cốt lõi là lệch không quy được về receipt → buộc per-lệnh. |
 | 6 | minor | §2.1 gắn CIP-1694 sai cho mệnh đề fee (đúng nguồn là Shelley monetary) | **Nhận.** Đổi nguồn fee sang Shelley ledger/monetary policy; giữ CIP-1694 cho treasury donation §5.2. |
 | 7 | nit | §6.1 THRESHOLD-k biên `total=0` → `0≥0` pass-rỗng; thiếu sàn BFT của EXEC | **Nhận.** Thêm `total(P)>0` ∧ `approval(P)≥BFT_FLOOR` (mặc định 21, đồng bộ EXEC §6.1 + VotingPower). Cập nhật bảng + §8. |
 | 8 | nit | §3.1 ngụ ý `mulQ` dùng được cho bps; thực tế chưa có `mulBps` | **Nhận.** Ghi chú: `protocol-utils` chỉ có `mulQ` (mẫu Q); bps cần `mulBps(a,bps)=a*bps/10000` mới — off-chain bổ sung. Thêm vào §3.1, §8, phụ thuộc. |

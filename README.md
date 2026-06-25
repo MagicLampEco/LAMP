@@ -9,7 +9,7 @@ app SDK sinh/tiêu MAGIC từ LAMP).
 ```
    LAMP (repo này)                         MAGIC (repo kia)
    ─────────────────                       ─────────────────
-   • Fixed supply 36×10^15 oil             • 4 generators (Snapshot/Instant/Vacuum/Schedule)
+   • Fixed supply 36×10^15 oildrop             • 4 generators (Snapshot/Instant/Vacuum/Schedule)
    • Phân bổ (Distribution)                • Vault sinh MAGIC từ LAMP
    • Kho bạc (Treasury)                    • AppEconomics / ConsumeMAGIC
    • Quản trị (Governance)                 • Integrator SDK (DID-agnostic)
@@ -41,4 +41,4 @@ Preview (claim → phân bổ → redeem). Xem `Distribution/SPEC.md` + `Distrib
 ## Triết lý
 
 LAMP **kiếm qua đóng góp, không mua** (không ICO/IDO). Người nhận LAMP là co-owner của
-protocol. Tổng cung cố định tuyệt đối 36×10^15 oil = 36 tỷ LAMP.
+protocol. Tổng cung cố định tuyệt đối 36×10^15 oildrop = 36 tỷ LAMP.

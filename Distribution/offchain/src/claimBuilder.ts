@@ -34,7 +34,7 @@ export interface ClaimParams {
 
   /** PKH chủ ví (hex 28-byte) được committee xác nhận. */
   ownerPkh:     string;
-  /** Số oil entitlement cấp thêm lần này (> 0). */
+  /** Số oildrop entitlement cấp thêm lần này (> 0). */
   amount:       bigint;
   /** Epoch hiện tại (committee tính off-chain từ validity range). */
   currentEpoch: bigint;
@@ -161,9 +161,9 @@ export async function buildClaimTx(params: ClaimParams): Promise<ClaimResult> {
   const summary = [
     `═══ Claim (${mode}) ═══`,
     `Owner:        ${owner}`,
-    `Amount:       ${amount / 1_000_000n} LAMP (${amount} oil)`,
-    `Entitlement:  ${newDatum.entitlement} oil`,
-    `Redeemed:     ${newDatum.redeemed} oil`,
+    `Amount:       ${amount / 1_000_000n} LAMP (${amount} oildrop)`,
+    `Entitlement:  ${newDatum.entitlement} oildrop`,
+    `Redeemed:     ${newDatum.redeemed} oildrop`,
     `Start epoch:  ${newDatum.start_epoch}  · drops/epoch ${newDatum.drops_per_epoch}`,
     `Committee:    ${signers.length}/${committeeKeyHashes.length} signers (need ${threshold})`,
     `Claim addr:   ${claimAddress}`,

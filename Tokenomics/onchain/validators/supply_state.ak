@@ -1,7 +1,7 @@
 // supply_state — SPEND validator của bộ đếm tổng-cung LAMP (vá lỗ C-2).
 //
 // Một state UTxO đậu SupplyState NFT one-shot (mint bởi NHÁNH genesis dưới đây),
-// datum giữ `minted_total` (oil). MỖI lần mint LAMP, tx PHẢI spend + tái-tạo
+// datum giữ `minted_total` (oildrop). MỖI lần mint LAMP, tx PHẢI spend + tái-tạo
 // UTxO này; spend ép minted_total' = minted_total + minted_amount ≤ CAP. Bộ đếm
 // đơn điệu không giảm → tổng phát hành lịch sử LAMP ≤ CAP vĩnh viễn.
 //
@@ -10,8 +10,8 @@
 //   • spend(...) — đếm mint LAMP qua bộ đếm, ép cap.
 //
 // ─── CAP = THAM SỐ BAKE ───────────────────────────────────────────────────────
-// `cap` (Int, oil) bake tại deploy. LAMP: 36 tỷ × 10⁶ oil/LAMP = 36_000_000_000_000_000
-// (decimals = 6, SPEC dòng đầu "1 LAMP = 10⁶ oil"). Tham số hoá để cùng engine
+// `cap` (Int, oildrop) bake tại deploy. LAMP: 36 tỷ × 10⁶ oildrop/LAMP = 36_000_000_000_000_000
+// (decimals = 6, SPEC dòng đầu "1 LAMP = 10⁶ oildrop"). Tham số hoá để cùng engine
 // tái dùng cho token opt-in cap khác (cap riêng) — KHÔNG hard-code hằng.
 //
 // `state_name` cố định (vd "LAMP-SUPPLY") — name của NFT thread; bake làm tham số
@@ -50,7 +50,7 @@ validator supply_state(
   genesis_ref: OutputReference,
   // name của SupplyState NFT thread (vd "LAMP-SUPPLY").
   state_name: AssetName,
-  // trần raw-unit oil (LAMP = 36_000_000_000_000_000).
+  // trần raw-unit oildrop (LAMP = 36_000_000_000_000_000).
   cap: Int,
 ) {
   // LƯU Ý: token được đếm (lamp_policy / lamp_asset_name) KHÔNG còn là tham số —
@@ -132,7 +132,7 @@ const state_name_c: AssetName = "LAMP-SUPPLY"
 
 const lamp_name_c: AssetName = "LAMP"
 
-// CAP LAMP = 36 tỷ × 10⁶ oil = 36_000_000_000_000_000.
+// CAP LAMP = 36 tỷ × 10⁶ oildrop = 36_000_000_000_000_000.
 const cap_c: Int = 36_000_000_000_000_000
 
 const genesis_oref: OutputReference =

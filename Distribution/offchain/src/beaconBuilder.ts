@@ -125,7 +125,7 @@ export async function buildPostBeaconTx(params: PostBeaconParams): Promise<PostB
     `═══ PostBeacon (DropParam) ═══`,
     `Beacon in:    ${beaconUtxo.txHash}#${beaconUtxo.outputIndex}`,
     `Epoch:        ${newBeacon.epoch}`,
-    `Drop value D: ${newBeacon.drop_value} oil`,
+    `Drop value D: ${newBeacon.drop_value} oildrop`,
     `NFT:          ${nftUnit}`,
     `Committee:    ${signers.length}/${committeeKeyHashes.length} signers (need ${threshold})`,
     `Beacon addr:  ${beaconAddress}`,

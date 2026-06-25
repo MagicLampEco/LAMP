@@ -39,7 +39,7 @@ on-chain, không cần proof, không cần committee chọn ai thắng, không b
 | Redeemed | `redeemed` | Tổng đã rút ra ví (tích lũy). |
 | Redeemable | `vested − redeemed` | Phần rút được ngay lúc này. |
 
-Mọi giá trị LAMP là số nguyên oil (1 LAMP = 10^6 oil, theo `ProtocolUtils.S_LAMP_TOTAL`).
+Mọi giá trị LAMP là số nguyên oildrop (1 LAMP = 10^6 oildrop, theo `ProtocolUtils.S_LAMP_TOTAL`).
 
 ---
 

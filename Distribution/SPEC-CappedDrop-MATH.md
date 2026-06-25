@@ -8,7 +8,7 @@
 
 Chứng minh các bất biến của Capped Drop: vested **đơn điệu** + **bị chặn** (cap `E`); số
 epoch để hết = `⌈E/D⌉`; **đa-claim cộng dồn** đúng; **entitlement bảo toàn** (bỏ lỡ epoch
-không mất quyền). Mọi đại lượng là số nguyên không âm (oil), trừ khi nói khác.
+không mất quyền). Mọi đại lượng là số nguyên không âm (oildrop), trừ khi nói khác.
 
 ---
 

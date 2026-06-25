@@ -41,7 +41,7 @@ redeemable = vested(t) − redeemed
 type ClaimAccountDatum {
   owner            : ByteArray,   // PKH chủ ví
   entitlement      : Int,         // E — tổng LAMP được phân bổ (cố định khi genesis/claim)
-  redeemed         : Int,         // đã nhận tích lũy (oil)
+  redeemed         : Int,         // đã nhận tích lũy (oildrop)
   start_epoch      : Int,         // t0
   drops_per_epoch  : Int,         // MVP = 1 (DAO chỉnh per-DID ở v.sau)
 }

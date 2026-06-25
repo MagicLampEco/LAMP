@@ -18,9 +18,9 @@
 //     NFT thread bảo toàn ở Script(own)               (state machine continuity)
 //
 // ─── CAP raw-unit ─────────────────────────────────────────────────────────────
-// SPEC §dòng đầu + §types: 1 LAMP = 10⁶ oil (decimals = 6). Tổng cung cố định
-// 36 tỷ LAMP = 36_000_000_000 × 10⁶ = 36_000_000_000_000_000 oil (= 36×10¹⁵).
-// CAP là tham số BAKE (Int, raw-unit oil) — neo vào tham số validator, KHÔNG hằng
+// SPEC §dòng đầu + §types: 1 LAMP = 10⁶ oildrop (decimals = 6). Tổng cung cố định
+// 36 tỷ LAMP = 36_000_000_000 × 10⁶ = 36_000_000_000_000_000 oildrop (= 36×10¹⁵).
+// CAP là tham số BAKE (Int, raw-unit oildrop) — neo vào tham số validator, KHÔNG hằng
 // hard-code, để cùng engine tái dùng cho token opt-in cap khác (cap khác nhau).
 //
 // ─── BINDING (chống double-count / bypass) — xem supply_state.ak + did_token_mint ─
@@ -39,7 +39,7 @@ use cardano/transaction.{InlineDatum, Input, Output, Transaction}
 // ─── Hợp đồng datum ───────────────────────────────────────────────────────────
 
 /// State object đếm tổng-đã-đúc. Constr index 0 (HỢP ĐỒNG CBOR).
-/// `minted_total` = tổng LAMP (oil) đã phát hành lịch sử qua bộ đếm này.
+/// `minted_total` = tổng LAMP (oildrop) đã phát hành lịch sử qua bộ đếm này.
 /// Genesis = 0. Đơn điệu KHÔNG giảm.
 /// `lamp_policy` / `lamp_asset_name` = token được đếm — ĐƯA VÀO DATUM (không còn
 /// là tham số validator) để PHÁ VÒNG PHỤ THUỘC HASH với did_token_mint:
