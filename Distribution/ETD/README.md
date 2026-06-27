@@ -70,6 +70,43 @@ cd Distribution/ETD/offchain && npm install && npm test     # 34/34 pass
 Preview e2e (rút thật): script redeem (tái dùng `Distribution` builders) — create account
 ETD-shaped → committee Claim E_i → redeem → verify `on-chain redeemed == off-chain vested`.
 
+## Công cụ delegator TỰ KIỂM (per-epoch breakdown)
+
+Delegator nhập ĐỊA CHỈ VÍ → thấy LAMP nhận được **mỗi epoch** suốt lịch sử delegate
++ TỔNG. Không cần tin operator: chạy lại tất định trên snapshot công khai.
+
+```
+attribution.ts  — phân rã E_i ra từng epoch:
+    potOil_e     ∝ totalStake_e   → Σ potOil = distributed   (tổng pot epoch e)
+    ownerShare_e ∝ stake_{i,e}    → Σ ownerShare = E_i        (phần ví i epoch e)
+  Chia số nguyên Hamilton (dư-lớn-nhất) → bảo toàn tuyệt đối, KHÔNG tạo/huỷ oil.
+  ownerShare chia từ E_i THẬT (đã gồm cap+dư) ⇒ bảng cộng đúng số redeem on-chain.
+snapshot-io.ts   — định dạng PublishedSnapshot (JSON thô, verifiable) + kiểm toàn vẹn.
+```
+
+Quy trình minh bạch:
+
+```bash
+# operator (1 lần): dựng snapshot thô từ Blockfrost (xem 2 input vận hành trong file)
+cd Distribution/scripts
+TIGER_POOL_IDS=pool1... TIGER_CUTOFF_EPOCH=560 npm run build-tiger-snapshot   # → tiger-snapshot.json (công bố)
+
+# delegator: nhập địa chỉ → bảng per-epoch + tổng (OFFLINE, chỉ cần snapshot)
+npm run tiger-check -- addr_test1... --snapshot tiger-snapshot.json
+npm run tiger-check -- addr_test1... --snapshot tiger-snapshot.json --verify   # đối chiếu stake với Blockfrost
+npm run tiger-check -- --pkh <hex>   --snapshot tiger-snapshot.json --json     # cho UI tái dùng
+```
+
+Bảng ví dụ (demo 3 delegator, budget 12M LAMP):
+
+```
+  │ Epoch  │ Stake mình (ADA) │ Tổng stake (ADA) │ Tỷ lệ   │ Pot epoch (LAMP)   │ Mình nhận (LAMP)   │
+  │    550 │           10.000 │           15.000 │  66.66% │          2.250.000 │          1.500.000 │
+  │    551 │           10.000 │           30.000 │  33.33% │          4.500.000 │          1.500.000 │
+  │    552 │           10.000 │           35.000 │  28.57% │          5.250.000 │          1.500.000 │
+  ➤ TỔNG entitlement: 4.500.000 LAMP   (Σ pot mọi epoch = 12M = budget)
+```
+
 ## Trạng thái audit
 
 Kiểm toán đối nghịch (5.000 ca fuzz entitlement + 3.000 ca fuzz drip + bit-identity
