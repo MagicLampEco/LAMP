@@ -1,0 +1,132 @@
+[
+  {
+    "id": "srcl-1",
+    "project": "MagicLamp",
+    "slug": "srcl-1",
+    "title": "SRCL Đợt 1 — GreenSun",
+    "tagline": "Đóng phần thưởng staking 36 epoch, nhận 360 triệu LAMP",
+    "mechanism": "SRCL",
+    "status": "upcoming",
+    "registration_open_epoch": 590,
+    "start_epoch": 595,
+    "end_epoch": 631,
+    "claim_deadline_epoch": 991,
+    "pot_lamp": "360000000000000",
+    "lamp_source": "ISPO_POT",
+    "summary_md": "Đóng phần thưởng staking ADA của bạn trong 36 epoch để nhận LAMP từ pot 360 triệu. Vốn ADA gốc không rời ví. Chỉ cần ký một lần — hệ thống tự ghi nhận mỗi epoch.",
+    "description_md": "## SRCL Đợt 1 — GreenSun\n\nSRCL (Staking Reward Contribution Launch) là cơ chế ra mắt LAMP: bạn đóng góp **phần thưởng staking** ADA (không phải vốn gốc) và nhận lại LAMP tương ứng.\n\n### Cách hoạt động\n\n1. Kết nối ví Cardano của bạn (Eternl, Lace, Vespr)\n2. Ký một lần để nối phần ủy thác → script phần thưởng của đợt\n3. Mỗi epoch, hệ ghi nhận phần thưởng bạn đóng góp tự động\n4. Cuối đợt, nhận LAMP theo tỉ lệ đóng góp\n\n### Vốn gốc an toàn\n\nScript chỉ điều khiển phần ủy thác (phần thưởng), không bao giờ chạm phần chi tiêu (vốn gốc ADA). Bảo đảm bởi Cardano protocol.\n\n### Phân bổ\n\n- **Pot**: 360.000.000 LAMP (từ ISPO Pot)\n- **Thời gian**: 36 epoch (~36 ngày Preview / ~180 ngày Mainnet)\n- **Beneficiary**: pool GST (GreenSun Technology)\n- **Phân bổ**: ∝ ADA phần thưởng đóng góp, tất định, bảo toàn",
+    "docs_url": "https://magiclamp.network/launch/srcl-1",
+    "chat_url": "superapp://chat/launch-srcl-1",
+    "participate_url": "https://affiso.net/launch/MagicLamp/srcl-1",
+    "phases": [
+      {
+        "id": "srcl-1-reg",
+        "title": "Đăng ký",
+        "status": "upcoming",
+        "start_epoch": 590,
+        "end_epoch": 594,
+        "lamp_amount": "0",
+        "description_md": "Mở đăng ký và kết nối ví. Ký một lần để tham gia đợt.",
+        "eligibility": "Bất kỳ ai có ví Cardano và PhoenixKey DID"
+      },
+      {
+        "id": "srcl-1-active",
+        "title": "Đóng góp & tích lũy",
+        "status": "upcoming",
+        "start_epoch": 595,
+        "end_epoch": 631,
+        "lamp_amount": "360000000000000",
+        "description_md": "36 epoch đóng góp phần thưởng staking. Hệ thống ghi nhận tự động mỗi epoch.",
+        "eligibility": "Người đã đăng ký trong giai đoạn đăng ký"
+      },
+      {
+        "id": "srcl-1-claim",
+        "title": "Nhận LAMP",
+        "status": "upcoming",
+        "start_epoch": 632,
+        "end_epoch": 991,
+        "lamp_amount": "360000000000000",
+        "description_md": "Claim LAMP theo tỉ lệ đóng góp. Có thể claim bất kỳ lúc nào trong 360 epoch.",
+        "eligibility": "Người đã tham gia đợt đóng góp"
+      }
+    ],
+    "stats": {
+      "participants": 0,
+      "total_contribution_lovelace": "0",
+      "lamp_distributed": "0",
+      "current_epoch": 590,
+      "last_updated_epoch": 590
+    },
+    "geofence": null,
+    "requires_did": true,
+    "requires_wallet_connect": true,
+    "push_targets": [],
+    "created_at": "2026-06-29T00:00:00Z",
+    "updated_at": "2026-06-29T00:00:00Z"
+  },
+  {
+    "id": "tiger-airdrop",
+    "project": "MagicLamp",
+    "slug": "tiger-airdrop",
+    "title": "TIGER Airdrop",
+    "tagline": "Retroactive LAMP cho delegator pool TIGER — snapshot on-chain, claim trong 360 epoch",
+    "mechanism": "Airdrop",
+    "status": "upcoming",
+    "registration_open_epoch": 0,
+    "start_epoch": 600,
+    "end_epoch": 960,
+    "claim_deadline_epoch": 960,
+    "pot_lamp": "120000000000000",
+    "lamp_source": "AIRDROP_POT",
+    "summary_md": "120 triệu LAMP phân bổ cho những người đã delegate ADA vào pool TIGER trong các epoch snapshot. Delegator nhận 100M, pool operator nhận 20M. Không cần làm gì trước — snapshot đã chốt dựa trên dữ liệu on-chain.",
+    "description_md": "## TIGER Airdrop\n\nAirdrop retroactive ghi nhận những người đã tin tưởng và ủng hộ pool TIGER ngay từ đầu.\n\n### Ai nhận được?\n\n- **Delegator (100M LAMP)**: Bất kỳ ai delegate ADA vào pool TIGER trong các epoch snapshot\n- **Pool Operator (20M LAMP)**: Operator vận hành pool TIGER trong các epoch snapshot\n\n### Cách tính\n\n- Phần của bạn = (ADA × số epoch có mặt của bạn) / (tổng ADA × epoch toàn pool) × 100M\n- Tỉ lệ tất định, bảo toàn, ai cũng kiểm tra được\n\n### Cách claim\n\n1. Kết nối ví Cardano + PhoenixKey DID\n2. Hệ thống tự nhận diện phần của bạn từ snapshot\n3. Ký giao dịch claim (~0.2 ADA phí)\n4. LAMP về ví ngay (1 block)\n\n### Deadline\n\n360 epoch từ ngày SETUP. Phần chưa claim sau deadline về Treasury.",
+    "docs_url": "https://magiclamp.network/launch/tiger-airdrop",
+    "chat_url": "superapp://chat/launch-tiger-airdrop",
+    "participate_url": "https://affiso.net/launch/MagicLamp/tiger-airdrop",
+    "phases": [
+      {
+        "id": "airdrop-snapshot",
+        "title": "Snapshot",
+        "status": "ended",
+        "start_epoch": 580,
+        "end_epoch": 585,
+        "lamp_amount": "0",
+        "description_md": "Snapshot dữ liệu từ Blockfrost. Epoch 580–585 làm cơ sở phân bổ.",
+        "eligibility": "Tự động — không cần đăng ký"
+      },
+      {
+        "id": "airdrop-setup",
+        "title": "Triển khai on-chain",
+        "status": "upcoming",
+        "start_epoch": 598,
+        "end_epoch": 600,
+        "lamp_amount": "120000000000000",
+        "description_md": "MagicLamp Foundation deploy Airdrop contract lên Mainnet.",
+        "eligibility": "Tự động (operator)"
+      },
+      {
+        "id": "airdrop-claim",
+        "title": "Claim mở",
+        "status": "upcoming",
+        "start_epoch": 600,
+        "end_epoch": 960,
+        "lamp_amount": "120000000000000",
+        "description_md": "Delegator và SPO claim LAMP trong 360 epoch.",
+        "eligibility": "Có địa chỉ trong snapshot + PhoenixKey DID"
+      }
+    ],
+    "stats": {
+      "participants": 0,
+      "total_contribution_lovelace": "0",
+      "lamp_distributed": "0",
+      "current_epoch": 590,
+      "last_updated_epoch": 590
+    },
+    "geofence": null,
+    "requires_did": true,
+    "requires_wallet_connect": true,
+    "push_targets": [],
+    "created_at": "2026-06-29T00:00:00Z",
+    "updated_at": "2026-06-29T00:00:00Z"
+  }
+]
