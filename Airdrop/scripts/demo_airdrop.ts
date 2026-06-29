@@ -15,9 +15,10 @@ import {
   Constr, getAddressDetails, toUnit,
   type MintingPolicy, type Validator,
 } from "@lucid-evolution/lucid";
-import { resolve } from "node:path";
+import { resolve, dirname } from "node:path";
 import { readFile, writeFile } from "node:fs/promises";
 import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 
 import { buildTree } from "../offchain/src/merkle.js";
 import { buildDeployTx } from "../offchain/src/deployBuilder.js";
@@ -25,7 +26,18 @@ import { buildClaimTx } from "../offchain/src/claimBuilder.js";
 import type { AirdropPool, SnapshotEntry } from "../offchain/src/types.js";
 import { MS_PER_EPOCH_BY_NETWORK } from "../offchain/src/constants.js";
 
-const ENV_PATH = "/Users/ductiger/Projects/LAMP-launch-wt/.env";
+// Tìm .env: ưu tiên scripts/.env, fallback repo root
+const __dir = dirname(fileURLToPath(import.meta.url));
+const ENV_CANDIDATES = [
+  resolve(__dir, ".env"),
+  resolve(__dir, "../../.env"),
+  resolve(__dir, "../../../.env"),
+];
+let ENV_PATH = "";
+for (const p of ENV_CANDIDATES) {
+  try { readFileSync(p); ENV_PATH = p; break; } catch { /* thử tiếp */ }
+}
+if (!ENV_PATH) throw new Error("Không tìm thấy .env — tạo Airdrop/scripts/.env");
 // loader .env tối giản (tránh phụ thuộc dotenv). KHÔNG in giá trị.
 for (const line of readFileSync(ENV_PATH, "utf8").split("\n")) {
   const m = line.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)\s*$/);
