@@ -2,133 +2,154 @@
 
 Phần phân bổ SPO: **20,000,000 LAMP** (từ tổng 120M Airdrop pot #14).
 
-> Phần delegator (100M) được phân bổ tự động dựa trên snapshot Blockfrost — delegator KHÔNG cần đăng ký.
-> Phần SPO (20M) dành riêng cho operator(s) đã vận hành pool TIGER trong các epoch snapshot. Đăng ký để nhận.
+> Phần delegator (100M) được phân bổ tự động theo snapshot Blockfrost — delegator KHÔNG cần đăng ký.
+> Phần SPO (20M) dành riêng cho operator(s) đã vận hành pool TIGER. Phải đăng ký và ký xác nhận đồng ý luật chơi.
 
 ---
 
-## 1. Điều kiện nhận
+## Không cần lấy key từ AirGap
 
-Bạn nhận phần SPO khi TẤT CẢ 3 điều kiện dưới đây đều đúng:
+Cardano SPO có 4 loại key. Quy trình này **chỉ dùng reward stake key** — loại mà SPO dùng hàng epoch để rút thưởng:
 
-| # | Điều kiện |
-|---|---|
-| 1 | Pool của bạn là **pool TIGER** (pool ID sẽ được công bố bởi MagicLamp Foundation) trong ít nhất 1 epoch snapshot |
-| 2 | Bạn là **cold key owner** (có khả năng ký bằng pool cold key hoặc reward stake key của pool) |
-| 3 | Đăng ký trước **deadline đăng ký SPO** (xem website MagicLamp) |
+| Key | Dùng để | Nằm ở đâu | Cần cho đăng ký? |
+|---|---|---|---|
+| `pool.cold.skey` | Đăng ký/thoát pool | **AirGap** | **KHÔNG** |
+| `kes.skey` | Ký block | Server nóng (rotate 90 ngày) | **KHÔNG** |
+| `vrf.skey` | Tính slot leader | Server nóng | **KHÔNG** |
+| **`stake.skey`** | **Rút thưởng pool** | **Ví thường, hỗ trợ Ledger** | **CHỈ KEY NÀY** |
+
+**Tại sao reward stake key đủ để chứng minh quyền sở hữu pool?**
+Pool của bạn có trường `reward_account` được ghi trên chain khi đăng ký pool (dùng cold key). Trường này là địa chỉ stake do `stake.skey` kiểm soát. Nếu bạn ký được bằng `stake.skey` → chứng minh bạn là operator mà không cần cold key.
 
 ---
 
-## 2. Thông tin cần cung cấp
+## Quy trình đăng ký (3 bước, 5 phút)
 
-Tạo file `spo_registration.json` theo mẫu dưới:
+### Bước 1: Xem thống kê pool của bạn
 
-```json
-{
-  "pool_id": "pool1xs2yx...",
-  "reward_stake_address": "stake1...",
-  "payment_address": "addr1...",
-  "operator_name": "Tên pool / tên tổ chức (tùy chọn)",
-  "contact": "email hoặc Telegram (tùy chọn)",
-  "signed_message": "<xem bước 3>",
-  "signature_pubkey": "<xem bước 3>"
-}
+```bash
+cd Airdrop/scripts
+npm install
+
+# Xem stake 6 epoch gần nhất + tham gia từ đợt nào
+npx tsx spo_stats.ts --pool pool1xs2yx...
 ```
 
-| Trường | Mô tả |
-|---|---|
-| `pool_id` | Pool ID (bech32, bắt đầu bằng `pool1`) |
-| `reward_stake_address` | Stake address nhận reward của pool (bech32) |
-| `payment_address` | Địa chỉ Cardano để nhận 20M LAMP — đây là địa chỉ **thanh toán**, không nhất thiết trùng reward address |
-| `signed_message` | Chữ ký xác thực quyền sở hữu pool (bước 3) |
-| `signature_pubkey` | Public key tương ứng với chữ ký |
+Output mẫu:
+```
+═══════════════════════════════════════════════════════════════════════
+TIGER AIRDROP — Thống kê Pool
+Pool ID:     pool1xs2yx67vxuygadnjflj5u5dv6cqf6t0u6jke9z9jzj2svfuxmqq
+Tên pool:    TIGER Pool [TIGER]
+Reward acct: stake1uxyz...
+Tham gia từ: Epoch 578
+Network:     Preview
+
+Epoch  Active Stake           Delegators  Blocks  Pool %
+───────────────────────────────────────────────────────────────
+  578  5,234,001 ADA               127       3   0.52%  ← lần đầu
+  579  5,891,230 ADA               134       5   0.59%
+  580  6,102,441 ADA               139       4   0.61%
+  581  6,045,112 ADA               137       6   0.60%
+  582  5,998,334 ADA               135       3   0.60%
+  583  6,234,001 ADA               142       7   0.62%
+───────────────────────────────────────────────────────────────
+Tổng stake × 6 epoch: 35,504,119 ADA·epoch
+```
+
+### Bước 2: Chạy đăng ký interactive
+
+```bash
+npx tsx spo_register.ts \
+  --pool pool1xs2yx... \
+  --payment addr1qx...   # địa chỉ ví nhận LAMP (payment addr, không phải stake)
+```
+
+Script sẽ:
+1. Hiển thị stats và luật chơi
+2. Hỏi xác nhận đồng ý
+3. Tạo message cần ký
+4. Hướng dẫn ký với reward stake key
+5. Nhận chữ ký → xuất `spo_registration.json`
+
+### Bước 3: Ký với reward stake key
+
+Script sẽ in ra message hex cần ký. Chọn một trong hai phương thức:
+
+#### Phương thức A: cardano-signer (khuyến nghị)
+
+```bash
+# Chỉ cần stake.skey (reward stake key) — KHÔNG phải cold.skey
+cardano-signer sign \
+  --data-hex "<message_hex_từ_script>" \
+  --signing-key /path/to/stake.skey \
+  --out-file sig.json
+
+cat sig.json
+# → { "signature": "4a3b...", "publicKey": "8f4e..." }
+```
+
+Sau đó dán `signature` và `publicKey` vào prompt của `spo_register.ts`.
+
+#### Phương thức B: Eternl/Vespr wallet + Ledger
+
+1. Mở Eternl → wallet có reward address = `stake1uxyz...` (pool reward account)
+2. Settings → Sign Data
+3. Address: `stake1uxyz...` (reward stake address của pool)
+4. Payload: dán message hex
+5. Ký (Ledger confirm) → copy JSON output
+6. Trích xuất `signature` (64 bytes) và `pubkey` (32 bytes) từ JSON
 
 ---
 
-## 3. Ký xác thực quyền sở hữu pool
+## Sau khi đăng ký
 
-Mục đích: chứng minh bạn kiểm soát pool cold key (không ai giả mạo SPO để ăn cắp phần SPO).
+File `spo_registration.json` chứa:
+- Pool ID + reward address
+- Payment address nhận LAMP
+- Epochs active + tổng stake
+- Message đã ký + chữ ký + public key
 
-### Nội dung cần ký (không thay đổi):
+**Nộp file này qua:**
+- Discord: `#spo-registration` (link trên magiclamp.network)
+- Email: spo@magiclamp.network
+
+MagicLamp Foundation sẽ **verify tự động** bằng:
+```bash
+npx tsx verify_registration.ts --file spo_registration.json
+```
+
+Kết quả VALID → payment address được thêm vào Merkle tree SPO share.
+
+---
+
+## Phân bổ SPO share (20M LAMP)
+
+Nếu nhiều operator đã vận hành pool TIGER trong các epoch snapshot:
 
 ```
-TIGER-AIRDROP-SPO-REGISTRATION:pool_id:<pool_id>:payment_address:<payment_address>
+Phần SPO của bạn = (stake × epoch của bạn) / (tổng stake × epoch tất cả SPO) × 20M LAMP
 ```
 
 Ví dụ:
-```
-TIGER-AIRDROP-SPO-REGISTRATION:pool_id:pool1xs2yx67vxuygadnjflj5u5dv6cqf6t0u6jke9z9jzj2svfuxmqq:payment_address:addr1qx...
-```
-
-### Cách ký với cardano-cli:
-
-```bash
-# 1. Tạo message file
-echo -n "TIGER-AIRDROP-SPO-REGISTRATION:pool_id:<POOL_ID>:payment_address:<PAYMENT_ADDR>" > message.txt
-
-# 2. Ký bằng stake key của pool (reward address key)
-cardano-cli stake-address key-gen \
-  --verification-key-file stake.vkey \
-  --signing-key-file stake.skey
-# (bỏ qua bước trên nếu bạn đã có stake.skey)
-
-cardano-cli stake-address build \
-  --stake-verification-key-file stake.vkey \
-  --testnet-magic 2 > stake_addr.txt
-
-# Ký
-cardano-cli key sign \
-  --signing-key-file stake.skey \
-  --tx-body-file message.txt \
-  --out-file signature.json
-```
-
-### Hoặc ký bằng Eternl / Flint / cardano-signer:
-
-```bash
-# cardano-signer (https://github.com/gitmachtl/cardano-signer)
-cardano-signer sign --data-file message.txt \
-  --signing-key stake.skey \
-  --out-json signature.json
-```
-
-Kết quả `signature.json` chứa `signature` và `publicKey` — điền vào `signed_message` và `signature_pubkey`.
+- SPO A (3 epoch × 6M ADA = 18M ADA·epoch): 18/30 × 20M = 12M LAMP
+- SPO B (2 epoch × 6M ADA = 12M ADA·epoch): 12/30 × 20M = 8M LAMP
 
 ---
 
-## 4. Nộp đăng ký
+## Câu hỏi thường gặp
 
-Gửi file `spo_registration.json` đến MagicLamp Foundation qua một trong hai kênh:
+**Q: Tôi không có cardano-signer và không dùng Eternl, có cách nào khác?**
+A: Liên hệ MagicLamp Foundation — sẽ hỗ trợ cách ký riêng (Daedalus, Nami, v.v.)
 
-- **Discord:** `#spo-registration` channel (link trên website)
-- **Email:** spo@magiclamp.network
+**Q: Payment address có thể là địa chỉ hardware wallet (Ledger) không?**
+A: Có. Điền địa chỉ bất kỳ bạn kiểm soát — LAMP sẽ gửi về đó.
 
-Nhân viên sẽ xác minh chữ ký và phản hồi trong vòng 48h. Sau khi xác minh, địa chỉ `payment_address` của bạn sẽ được thêm vào Merkle tree SPO share và nhận 20M LAMP khi SETUP Airdrop hoàn tất.
-
----
-
-## 5. Cơ chế phân bổ SPO share
-
-Nếu có nhiều SPO đã vận hành pool TIGER trong các epoch snapshot (pool đổi tay), phần 20M được chia theo **số epoch active** của từng operator.
-
-Ví dụ:
-- SPO A: active 3 epoch → 3/5 × 20M = 12M LAMP
-- SPO B: active 2 epoch → 2/5 × 20M = 8M LAMP
-
-MagicLamp Foundation xác minh bằng on-chain pool registration history.
-
----
-
-## 6. Câu hỏi thường gặp
-
-**Q: Tôi có thể dùng địa chỉ ví hardware (Ledger/Trezor) không?**
-A: Có. Điền `payment_address` = địa chỉ ví hardware. LAMP sẽ gửi về đó.
-
-**Q: Tôi không còn private key của pool cold key cũ?**
-A: Chỉ cần stake key của reward address pool. Nếu không còn cả stake key, liên hệ MagicLamp Foundation với bằng chứng ownership khác.
+**Q: Tôi đã bàn giao pool cho người khác, ai đăng ký?**
+A: Operator TẠI THỜI ĐIỂM epoch snapshot là người có quyền đăng ký. Nếu có tranh chấp, liên hệ Foundation với bằng chứng lịch sử on-chain.
 
 **Q: Deadline đăng ký SPO là khi nào?**
-A: Được thông báo chính thức trước ít nhất 2 tuần trên website và Discord.
+A: Thông báo trước ít nhất 2 tuần trên website và Discord. Phần không đăng ký đúng hạn → Treasury.
 
-**Q: Nếu không đăng ký trước deadline?**
-A: Phần SPO chưa đăng ký được chuyển về Treasury — KHÔNG giữ lại vô thời hạn.
+**Q: Phần thưởng SPO được claim thế nào?**
+A: Operator KHÔNG cần làm thêm gì sau khi đăng ký được duyệt — MagicLamp Foundation bao gồm payment address của bạn vào Merkle tree SPO và gửi LAMP trực tiếp.
