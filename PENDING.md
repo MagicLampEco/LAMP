@@ -57,7 +57,7 @@ drop_per_DID(epoch) = floor + min(cap, base × √holding × magic_consumed[DID,
 
 **✅ 4. Treasury seed — ĐÃ CHỐT:** Development 3 tỷ → **Development 2 tỷ + Treasury 1 tỷ** (anh chốt). Treasury 1 tỷ = vốn mồi điều tiết C↔T + khuyến khích bầu hội đồng/MagicLamp Foundation. **Còn chờ anh:** Foundation là pháp nhân VN hay DAO on-chain? (ảnh hưởng cách quản Treasury seed, KHÔNG chặn allocation).
 
-**🟡 5. TIGER Airdrop retro vs tiếp diễn** — state chốt retro (cố định snapshot tới 29/7, claim 360 epoch, dư hoàn Treasury). Kiến nghị: GIỮ retro — đơn giản, không cạnh tranh ISPO. Đã rõ, coi như chốt trừ khi anh đổi.
+**🟡 5. TIGER Airdrop retro vs tiếp diễn** — state chốt retro (cố định snapshot tới 29/7, claim 360 epoch, dư hoàn Treasury). Kiến nghị: GIỮ retro — đơn giản, không cạnh tranh SRCL. Đã rõ, coi như chốt trừ khi anh đổi.
 
 **🟡 6. Tên "Scavenger"** — kiểm trademark/trùng dự án Cardano trước khi public. Hành động nhẹ, làm khi gần 27/9.
 

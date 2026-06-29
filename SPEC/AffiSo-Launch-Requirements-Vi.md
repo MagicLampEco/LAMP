@@ -25,7 +25,7 @@ AffiSo cung cấp **nền tảng + cơ chế xác định phần thưởng + đo
 
 | Mã | Yêu cầu |
 |---|---|
-| FR-S1 | Hướng dẫn người tham gia **ký một lần** trên ví hiện có (Lace, Eternl) để nối phần ủy thác tới script reward-only của đợt + uỷ quyền PhoenixKey. Giao diện ký phải **đọc được rõ** (không ký mù): nêu rõ chỉ nối phần thưởng staking, không chuyển vốn gốc. |
+| FR-S1 | Hướng dẫn người tham gia **ký một lần** trên ví hiện có (Lace, Eternl, ...) để nối phần ủy thác tới script reward-only của đợt + uỷ quyền PhoenixKey. Giao diện ký phải **đọc được rõ** (không ký mù): nêu rõ chỉ nối phần thưởng staking, không chuyển vốn gốc. |
 | FR-S2 | Mỗi epoch: thu thập số ADA phần-thưởng mỗi người đóng góp (đo on-chain), kết xuất thành snapshot đóng góp chuẩn để token-side phân bổ LAMP. |
 | FR-S3 | Hỗ trợ **nhiều đợt SRCL song song / nối tiếp**, mỗi đợt khác `pot_lamp` / `lamp_source` / `duration_epochs` / `beneficiary` / `operator` / `rules` (xem 2 ví dụ §5 SRCL-Spec). |
 | FR-S4 | Hiển thị cho mỗi người: phần thưởng đã đóng góp mỗi epoch + LAMP nhận được mỗi epoch + tổng — tự kiểm được, tất định. |

@@ -62,7 +62,7 @@ PhoenixKey DID (sinh trắc — một người thật, một danh tính). Sức 
 
 ## 2. Bảng 18 pot (v17)
 
-> Tổng = 36.000 triệu LAMP = 36 tỷ. Phần lẻ (PhoenixKey .857 + TGE .143 = 1 triệu)
+> Tổng = 36.000 triệu LAMP = 36 tỷ. Phần lẻ (PhoenixKey .857 + RedBack .143 = 1 triệu)
 > là cố ý, để các con số "hằng số" còn lại tròn đẹp. Thứ tự dưới đây là thứ tự chuẩn.
 
 | # | Pot | Triệu LAMP | % | Ý nghĩa con số | Cơ chế nhả |
@@ -81,9 +81,9 @@ PhoenixKey DID (sinh trắc — một người thật, một danh tính). Sức 
 | 12 | Partnership | 284 | 0,79% | amicable (220–284) | CappedDrop, theo thoả thuận |
 | 13 | Early TIGER Deleg | 12 | 0,03% | — | retroactive snapshot |
 | 14 | Airdrop | 120 | 0,33% | — | retroactive snapshot |
-| 15 | ISPO | 360 | 1,00% | tròn 1% | reward-redirect qua SPO |
+| 15 | SRCL | 360 | 1,00% | tròn 1% | reward-redirect qua SPO |
 | 16 | Joinnet | 1.461 | 4,06% | = Sothic 1461 | CappedDrop |
-| 17 | TGE | 21,143 | 0,06% | = 1/7 (bù lẻ với PhoenixKey) | mở thanh khoản ban đầu |
+| 17 | RedBack | 21,143 | 0,06% | = 1/7 (bù lẻ với PhoenixKey) | mở thanh khoản ban đầu |
 | 18 | Liquidity | 888 | 2,47% | — | LP incentive theo TVL LAMP/ADA |
 
 **Kiểm chứng số học:**
@@ -92,7 +92,7 @@ PhoenixKey DID (sinh trắc — một người thật, một danh tính). Sức 
 - Reserve = **9.630 triệu** = 9,63 tỷ = `reserve_cap` ✓
 
 **Motif "hằng số vũ trụ":** π (Platform), e (Development), φ (App), 7³ (Referrer),
-6⁴=36² (Foundation), 1/7 (PhoenixKey + TGE), Sothic 1461 (Joinnet), amicable
+6⁴=36² (Foundation), 1/7 (PhoenixKey + RedBack), Sothic 1461 (Joinnet), amicable
 220–284 (Partnership). Đây là lựa chọn thẩm mỹ/Schelling-point, **không phải lời hứa
 về giá hay lợi nhuận**.
 
@@ -121,10 +121,10 @@ về giá hay lợi nhuận**.
 - **Early TIGER Deleg (12)** — ghi nhận người delegate sớm cho TIGER pool. *(Pool
   TIGER đã rút khỏi nhóm sáng lập; chỉ còn hiện diện qua pot ghi nhận này.)*
 - **Airdrop (120)** — phân phối ghi nhận cộng đồng sớm, qua snapshot hồi tố.
-- **ISPO (360)** — Initial Stake Pool Offering: người stake ADA chuyển hướng phần
+- **SRCL (360)** — Staking Reward Contribution Launch: người stake ADA chuyển hướng phần
   thưởng để nhận LAMP, không bán token trực tiếp.
 - **Joinnet (1.461)** — khuyến khích tham gia mạng lưới.
-- **TGE (21,143)** — token mở thanh khoản ban đầu khi niêm yết. *(Xem lằn đỏ §5.)*
+- **RedBack (21,143)** — token mở thanh khoản ban đầu khi niêm yết. *(Xem lằn đỏ §5.)*
 - **Liquidity (888)** — khuyến khích cung cấp thanh khoản cặp LAMP/ADA.
 
 ---
@@ -166,7 +166,7 @@ Văn bản này KHÔNG phải tài liệu chào bán. Để minh bạch:
   sản ảo") **chưa chốt** — cần ý kiến luật sư trước khi mở bán. Mọi mô tả trong bản
   này về quyền lợi token KHÔNG cấu thành lời mời đầu tư.
 - **Không bán LAMP để gây quỹ.** Nguồn thu của hai công ty đến từ vận hành SPO hợp
-  pháp (margin ISPO pool, fee TIGER pool) và dịch vụ B2B (gói MAGIC) — KHÔNG từ bán
+  pháp (margin SRCL pool, fee TIGER pool) và dịch vụ B2B (gói MAGIC) — KHÔNG từ bán
   token trên sàn.
 - **Không hứa giá.** Không có cam kết về giá, lợi nhuận, hay "to the moon". Các con
   số "hằng số vũ trụ" là thẩm mỹ thiết kế, không phải dự phóng tài chính.

@@ -44,7 +44,7 @@ Ví dụ:
 ### 3.1 Thông qua giao diện web (khuyến nghị)
 
 1. Truy cập **magiclamp.network/airdrop**
-2. Kết nối ví Cardano (Eternl, Nami, Flint, Vespr)
+2. Kết nối ví Cardano (Lace, Eternl, ...)
 3. Hệ thống tự nhận diện stake address và hiển thị phần LAMP của bạn
 4. Nhấn **"Claim LAMP"** → ký giao dịch
 5. LAMP sẽ về ví của bạn trong vài giây (1 block confirmation)

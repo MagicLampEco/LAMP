@@ -165,7 +165,7 @@ aiken build
 
 ```bash
 # Lấy danh sách UTxO của ví operator
-npx tsx _balcheck.ts   # (hoặc xem ví trong Eternl)
+npx tsx _balcheck.ts   # (hoặc xem ví trong Lace/Eternl)
 # Chọn 1 UTxO bất kỳ làm genesis_ref (sẽ bị tiêu trong SETUP)
 ```
 

@@ -65,9 +65,9 @@ SRCL chạy **nhiều đợt**, mỗi đợt một pot riêng. Tuy cùng một c
 - Người tham gia đóng phần thưởng staking trong 36 epoch → nhận LAMP từ pot 360 triệu ∝ đóng góp.
 
 **Đợt 2 — kế tiếp:**
-- `pot_lamp` = hơn 21.000.000 LAMP, nguồn từ TGE
+- `pot_lamp` = hơn 21.000.000 LAMP, nguồn từ pot **RedBack** (pot #17)
 - `beneficiary` = pot **RedBack** (quỹ phòng-thủ-peg của MAGIC); `operator` = tự động, không ai rút
-- ADA phần-thưởng vào thẳng quỹ phòng-thủ chung.
+- ADA phần-thưởng vào thẳng quỹ phòng-thủ chung. (Nguồn LAMP và bên hưởng thụ cùng là RedBack — kho RedBack cấp LAMP mở thanh khoản, ADA thưởng quay về nuôi quỹ.)
 
 Hai đợt cùng cơ chế, khác pot / nguồn LAMP / bên hưởng thụ / quy chế.
 
@@ -76,7 +76,7 @@ Hai đợt cùng cơ chế, khác pot / nguồn LAMP / bên hưởng thụ / quy
 ## 6. Người tham gia làm gì
 
 1. Vào trang đợt Launch tại `affiso.net/launch/<đợt>` — đọc tài liệu, vào kênh chat (nhóm Launch trên Chat của SuperApp).
-2. **Ký một lần** trên ví hiện có (Lace, Eternl) để uỷ quyền: nối phần ủy thác của mình tới script của đợt, và uỷ quyền cho PhoenixKey ký các bước sau. Vốn gốc không chuyển đi đâu.
+2. **Ký một lần** trên ví hiện có (Lace, Eternl, ...) để uỷ quyền: nối phần ủy thác của mình tới script của đợt, và uỷ quyền cho PhoenixKey ký các bước sau. Vốn gốc không chuyển đi đâu.
 3. Mỗi epoch, hệ tự ghi nhận phần thưởng đóng góp. Không cần thao tác thêm.
 4. Nhận LAMP theo lịch — PhoenixKey ký claim. Số dư hiển thị trong Chat SuperApp; thông báo trên AffiSo.
 

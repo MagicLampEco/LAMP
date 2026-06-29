@@ -2,7 +2,7 @@
 // Single source of truth cho 3 consumer: affiso.net, magiclamp.network, SuperApp.
 
 export type LaunchStatus = "upcoming" | "active" | "ended" | "paused";
-export type LaunchMechanism = "SRCL" | "Airdrop" | "ISPO" | "TGE" | "Direct";
+export type LaunchMechanism = "SRCL" | "Airdrop" | "RedBack" | "Direct";
 export type PhaseStatus = "upcoming" | "active" | "ended";
 
 export interface LaunchPhase {
@@ -42,7 +42,7 @@ export interface LaunchCampaign {
 
   // Token
   pot_lamp: string;          // tổng LAMP của đợt (bigint string)
-  lamp_source: string;       // nguồn: "ISPO_POT" | "TGE_RESERVE" | ...
+  lamp_source: string;       // nguồn: "SRCL_POT" | "REDBACK_POT" | "AIRDROP_POT" | ...
 
   // Content (Markdown)
   summary_md: string;        // tóm tắt ngắn (~200 chữ)

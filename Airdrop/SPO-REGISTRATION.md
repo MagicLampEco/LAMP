@@ -91,9 +91,9 @@ cat sig.json
 
 Sau đó dán `signature` và `publicKey` vào prompt của `spo_register.ts`.
 
-#### Phương thức B: Eternl/Vespr wallet + Ledger
+#### Phương thức B: Lace/Eternl wallet + Ledger
 
-1. Mở Eternl → wallet có reward address = `stake1uxyz...` (pool reward account)
+1. Mở Lace hoặc Eternl → wallet có reward address = `stake1uxyz...` (pool reward account)
 2. Settings → Sign Data
 3. Address: `stake1uxyz...` (reward stake address của pool)
 4. Payload: dán message hex
@@ -139,8 +139,8 @@ Ví dụ:
 
 ## Câu hỏi thường gặp
 
-**Q: Tôi không có cardano-signer và không dùng Eternl, có cách nào khác?**
-A: Liên hệ MagicLamp Foundation — sẽ hỗ trợ cách ký riêng (Daedalus, Nami, v.v.)
+**Q: Tôi không có cardano-signer và không dùng Lace/Eternl, có cách nào khác?**
+A: Liên hệ MagicLamp Foundation — sẽ hỗ trợ cách ký khác.
 
 **Q: Payment address có thể là địa chỉ hardware wallet (Ledger) không?**
 A: Có. Điền địa chỉ bất kỳ bạn kiểm soát — LAMP sẽ gửi về đó.

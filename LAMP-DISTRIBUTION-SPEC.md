@@ -25,9 +25,9 @@ Xem bảng đầy đủ ở `LAMP-POT-CATALOG.md §1`. Tóm tắt theo **cơ ch�
 | Cơ chế nhả | Pot | Tổng (nghìn) |
 |---|---|---:|
 | **CappedDrop** (vesting/epoch) | Development, Platform, App, User, Referrer, PhoenixKey, Aladin, GreenSun, Partnership, Joinnet | **22.708.857** |
-| **Snapshot-Merkle** (claim permissionless) | ETD, Airdrop, ISPO | 492.000 |
+| **Snapshot-Merkle** (claim permissionless) | ETD, Airdrop, SRCL | 492.000 |
 | **Engine gate-Treasury** | Reserve | 9.630.000 |
-| **Kế toán / LP / mở-thanh-khoản** | Treasury, Liquidity, TGE | 1.873.143 |
+| **Kế toán / LP / mở-thanh-khoản** | Treasury, Liquidity, RedBack | 1.873.143 |
 | **Khoá vĩnh viễn (chưa-mint tới khi lập pháp nhân)** | Foundation | 1.296.000 |
 
 Tổng = 22.708.857 + 492.000 + 9.630.000 + 1.873.143 + 1.296.000 = **36.000.000 nghìn** ✓.
@@ -47,16 +47,16 @@ redeemable = vested − redeemed         (rút từ treasury con cùng tx, treas
 - Mỗi pot CappedDrop = 1 channel (ChannelBudget HARD-CAP 2 lớp: beacon remaining_oil + treasury con = budget).
 - Founder (Aladin/GreenSun) dùng **đúng engine + nhịp** cộng đồng (minh bạch, không đường tắt).
 
-### 3.2 Snapshot-Merkle (ETD / Airdrop / ISPO) — §6
+### 3.2 Snapshot-Merkle (ETD / Airdrop / SRCL) — §6
 Keeper/committee dựng cây Merkle `(owner, amount, epoch)` → post root vào beacon → claim permissionless bằng proof.
 Chống double-claim = marker-NFT nullifier (name = leaf) ở script no-spend. Dư sau hạn → Sweep về Treasury.
 
 ### 3.3 Reserve — gate theo mức Treasury (§7)
 KHÔNG theo epoch. Nhả khi Treasury parked tụt dưới trần, tối đa ở sàn (2%/1% lưu hành).
 
-### 3.4 Chưa-mint / LP / TGE
+### 3.4 Chưa-mint / LP / RedBack
 - **Chưa-mint** (Reserve, Foundation trước lập pháp nhân): token không tồn tại → không di chuyển/đánh cắp.
-- **Liquidity / TGE:** bơm vào LP/DEX khi niêm yết (chờ pháp nhân + pháp lý).
+- **Liquidity / RedBack:** bơm vào LP/DEX khi niêm yết (chờ pháp nhân + pháp lý).
 
 ---
 
@@ -70,7 +70,7 @@ Một pot gen MAGIC ⟺ LAMP của nó **đã nằm trong một vault-DID**. Lu�
 |---|---|---|
 | 🏛️ **Tổ chức/Platform** | Foundation, Aladin, GreenSun, Platform, App, Joinnet→LampNet, Referrer→AffiSo, PhoenixKey→PhoenixKey-DID | vault **OrgDID / Platform-DID** (giữ/khoá ở đó → gen, kể cả phần khoá) |
 | 👤 **User** | Development, User, Partnership | kênh phân phối (KHÔNG phải vault-DID) → CHỈ gen khi **claim về vault DID người dùng** |
-| ❌ **Không** | Reserve, Treasury, ETD, Airdrop, ISPO, TGE, Liquidity | không ở vault-DID nào (chưa-mint LAMP / parked / LP / hết sớm) |
+| ❌ **Không** | Reserve, Treasury, ETD, Airdrop, SRCL, RedBack, Liquidity | không ở vault-DID nào (chưa-mint LAMP / parked / LP / hết sớm) |
 
 **Triết lý tầng tổ chức:** Foundation khoá vĩnh viễn → LAMP ở Foundation-DID gen MAGIC = năng lượng nuôi DAO
 (ban chuyên môn tiêu thụ / tái uỷ quyền / bán fiat / uỷ thác thu LAMP); founder khoá dài hạn cần nguồn thu R&D →
@@ -154,7 +154,7 @@ Chi tiết ở spec Governance riêng. Điểm giao với phân phối: **gen-MA
 - **Mục đích:** ghi nhận delegator sớm pool TIGER. **Redeem TRƯỚC làm test toàn cầu** (chủ repo test ví mình trước).
 - **Cơ chế:** snapshot hồi tố stake tích luỹ qua mọi snapshot → entitlement per địa chỉ → CappedDrop/claim_account
   (hoặc Merkle 1-lần). Rút **permissionless** giống claim_account. Dư hoàn Treasury.
-- Đây là **bài test sống** cho toàn hệ claim trước khi mở Airdrop/ISPO.
+- Đây là **bài test sống** cho toàn hệ claim trước khi mở Airdrop/SRCL.
 
 ### 6.2 Airdrop (120.000 nghìn) — 20:100, 5 epoch
 - **Tổng:** 120.000 nghìn = 5 epoch × **24.000 nghìn/epoch**.
@@ -168,7 +168,7 @@ Chi tiết ở spec Governance riêng. Điểm giao với phân phối: **gen-MA
 - **Claim:** sau snapshot đầu, delegator+SPO claim **permissionless** bằng Merkle proof, validator đối chiếu root beacon.
 - **Edge:** đăng ký muộn → nhận từ epoch đăng ký; stake đổi → tính lại mỗi epoch; delegator đổi pool (đã đăng ký) → vẫn nhận theo snapshot epoch đó.
 
-### 6.3 ISPO (360.000 nghìn) — redirect, 36 epoch, DECOUPLED
+### 6.3 SRCL (360.000 nghìn) — redirect, 36 epoch, DECOUPLED
 - **Tổng:** 360.000 nghìn = 36 epoch × **10.000 nghìn/epoch**.
 - **Bản chất:** delegator **tự nguyện góp một phần staking-reward ADA** (tự chọn 0–100%) đổi lấy LAMP. Chủ repo **thu ADA**.
 - **Phá bottleneck "SPO ký mỗi epoch" (decouple):** SPO **KHÔNG** phải claim mỗi epoch. Tỷ lệ chỉ phụ thuộc
@@ -204,7 +204,7 @@ Dư floor → dồn ví lớn nhất (tất định). SPO bonus + mọi delegato
 - Ràng buộc ledger: rút reward là **rút TOÀN BỘ một lần** → validator tự tách tỷ lệ trong cùng tx.
 - Tham khảo: Cardano Addresses (payment⊕stake độc lập, mỗi cái key/script) · Plutonomicon stake-scripts
   (rút reward kích hoạt stake validator; reward-account tách UTXO) · CIP-112.
-- *Rút từ VỐN GỐC (stake) = pool riêng, thiết kế sau khi cầu cao — KHÔNG nằm trong ISPO này.*
+- *Rút từ VỐN GỐC (stake) = pool riêng, thiết kế sau khi cầu cao — KHÔNG nằm trong SRCL này.*
 - **Phân biệt với phát biểu cũ:** "Cardano không auto-debit" chỉ đúng cho **vốn gốc**; **reward** redirect được
   tự động qua Franken/script-staking — đây mới là đường chuẩn.
 
@@ -224,12 +224,12 @@ của hệ (PhoenixKey / widget GetMAGIC) tự dựng tx** — bỏ qua giới h
 - Lập Franken = 1 tx mang **stake registration cert + delegation cert** cho `ispo_stake_script`. App tự dựng, user ký bằng khóa payment (PhoenixKey đã giữ khóa cho DID).
 - → Tham khảo: [Delegation — Cardano Docs](https://docs.cardano.org/about-cardano/learn/delegation) · [Stake registration+delegation cert (cardano-c)](https://cardano-c.readthedocs.io/en/latest/api/certs/stake_registration_delegation_cert.html).
 
-**Luồng UX 1-chạm:** trong PhoenixKey/GetMAGIC, user chọn "Tham gia ISPO — redirect X% reward" → app dựng Franken
+**Luồng UX 1-chạm:** trong PhoenixKey/GetMAGIC, user chọn "Tham gia SRCL — redirect X% reward" → app dựng Franken
 address + 2 cert + đặt `redirect_bp=X` → user ký 1 lần → xong. Reward auto-redirect mỗi epoch (keeper trigger), KHÔNG ký lại.
 - `redirect_bp` đặt bằng **param script** (đổi tỷ lệ = re-delegate) HOẶC đọc từ **reference config-UTxO của user** (đổi tỷ lệ không re-delegate) — dev chọn; bản đầu dùng param cho đơn giản.
 - **Fallback** cho user không dùng app hệ: lối đẩy-tay (withdraw reward + gửi ADA vào `ispo_pot`), app hướng dẫn.
 - **Đánh giá:** KHẢ THI trên PhoenixKey vì là **app của mình** (dựng tx trực tiếp qua SDK, không phụ thuộc UX ví ngoài).
-  Việc cần làm: PhoenixKey/GetMAGIC thêm màn "ISPO redirect" + builder Franken. Rủi ro = công sức tích hợp, không phải bất khả thi.
+  Việc cần làm: PhoenixKey/GetMAGIC thêm màn "SRCL redirect" + builder Franken. Rủi ro = công sức tích hợp, không phải bất khả thi.
 
 ---
 
@@ -255,8 +255,8 @@ T ≤ 1%·C           →  nhả TỐI ĐA
 
 | Cơ chế | Điểm tin-cậy | Giảm thiểu |
 |---|---|---|
-| Snapshot-Merkle (Airdrop/ISPO/ETD) | keeper/committee tính root đúng | dữ liệu vào **on-chain công khai** → ai cũng tái dựng root + tố cáo; committee multisig (3/5); challenge window |
-| ISPO SPO rate | đọc-được on-chain | rate là datum công khai, cap MAX_RATE, cooldown chống đổi giật |
+| Snapshot-Merkle (Airdrop/SRCL/ETD) | keeper/committee tính root đúng | dữ liệu vào **on-chain công khai** → ai cũng tái dựng root + tố cáo; committee multisig (3/5); challenge window |
+| SRCL SPO rate | đọc-được on-chain | rate là datum công khai, cap MAX_RATE, cooldown chống đổi giật |
 | CappedDrop entitlement | committee cấp E | E tăng-chỉ, redeem permissionless ai cũng giám sát |
 | Reserve | gate state on-chain tất định | không có velocity-oracle (đã bỏ vì lỗ H2); chỉ mức Treasury parked |
 
@@ -279,16 +279,16 @@ Mọi tham số dưới đọc từ **config-UTxO** do **Aladin Contract đặt 
 | Airdrop epoch ×budget | **5 × 24.000 nghìn** | tổng 120.000 |
 | Airdrop hạn đăng ký | **epoch 4** | mở từ 1/7 |
 | Airdrop sàn đủ-điều-kiện SPO | **pledge thật + ≥1 block/epoch** | chống Sybil tách pool |
-| ISPO epoch ×budget | **36 × 10.000 nghìn** | tổng 360.000 |
-| ISPO `MAX_RATE` (bonus SPO) | **10% (1000 bp)** | SPO tự đặt ≤ mức này |
-| ISPO rate `cooldown` | **2 epoch** | rate mới chỉ áp sau cooldown |
-| ISPO `redirect_bp` (delegator) | **0–100%** | delegator tự chọn |
-| ISPO committee | **3/5 multisig** | post Merkle root |
+| SRCL epoch ×budget | **36 × 10.000 nghìn** | tổng 360.000 |
+| SRCL `MAX_RATE` (bonus SPO) | **10% (1000 bp)** | SPO tự đặt ≤ mức này |
+| SRCL rate `cooldown` | **2 epoch** | rate mới chỉ áp sau cooldown |
+| SRCL `redirect_bp` (delegator) | **0–100%** | delegator tự chọn |
+| SRCL committee | **3/5 multisig** | post Merkle root |
 
 ### 9.2 Trạng thái + giao dev
-- **Có code (cần cập nhật v17 + cơ chế mới):** claim_account/treasury/beacon (live Preview); Airdrop/ISPO (số cũ → sửa v17 + cơ chế mới); Reserve (E/1000 → viết lại gate-Treasury).
-- **Đã chốt thiết kế:** allocation 18-pot; gen MAGIC trong vault-DID + `μ_pot` Aladin chỉnh; Airdrop 20:100; ISPO Franken reward-only (xác minh mã nguồn); Reserve gate-Treasury; UX delegator qua PhoenixKey (§6.4).
-- **Giao dev:** validator `ispo_stake_script`(Franken)/`ispo_pot`/`spo_registry`; cập nhật Airdrop/ISPO/Reserve; config-UTxO tham số; màn "ISPO redirect" trong PhoenixKey/GetMAGIC; spec Reserve riêng.
+- **Có code (cần cập nhật v17 + cơ chế mới):** claim_account/treasury/beacon (live Preview); Airdrop/SRCL (số cũ → sửa v17 + cơ chế mới); Reserve (E/1000 → viết lại gate-Treasury).
+- **Đã chốt thiết kế:** allocation 18-pot; gen MAGIC trong vault-DID + `μ_pot` Aladin chỉnh; Airdrop 20:100; SRCL Franken reward-only (xác minh mã nguồn); Reserve gate-Treasury; UX delegator qua PhoenixKey (§6.4).
+- **Giao dev:** validator `ispo_stake_script`(Franken)/`ispo_pot`/`spo_registry`; cập nhật Airdrop/SRCL/Reserve; config-UTxO tham số; màn "SRCL redirect" trong PhoenixKey/GetMAGIC; spec Reserve riêng.
 
 ---
 

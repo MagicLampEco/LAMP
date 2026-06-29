@@ -28,7 +28,7 @@ Mình gửi yêu cầu xây dựng trang **`affiso.net/launch/MagicLamp`** — t
 ### Mô tả tổng quan
 
 Trang liệt kê **tất cả các đợt ra mắt** của MagicLamp. Mỗi đợt có:
-- Tên + cơ chế (SRCL / Airdrop / TGE / ...)
+- Tên + cơ chế (SRCL / Airdrop / RedBack / ...)
 - Trạng thái (upcoming / active / ended)
 - Số tiền LAMP phân bổ
 - Thời gian (epoch bắt đầu / kết thúc)
@@ -95,7 +95,7 @@ Dưới đây là những gì AffiSo cần tích hợp cho trang này và cho m�
 | # | Chức năng | Mô tả |
 |---|---|---|
 | B1 | Nội dung đợt | Render `description_md` (Markdown → HTML), hiển thị phases timeline |
-| B2 | Kết nối ví | Nút "Kết nối ví Cardano" → Eternl / Lace / Vespr (CIP-0030 standard) |
+| B2 | Kết nối ví | Nút "Kết nối ví Cardano" → Lace, Eternl, ... (CIP-0030 standard) |
 | B3 | Tạo / liên kết PhoenixKey DID | Nếu user chưa có DID → hướng dẫn tạo PhoenixKey. Nếu có → link DID vào tài khoản AffiSo |
 | B4 | Đăng ký tham gia | Form xác nhận + ký một lần (SRCL: ký nối phần ủy thác; Airdrop: verify địa chỉ trong snapshot) |
 | B5 | Theo dõi phần thưởng | Bảng cá nhân: mỗi epoch — đóng góp của tôi / LAMP nhận được / tổng tích lũy |

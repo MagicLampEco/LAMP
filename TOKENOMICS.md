@@ -34,7 +34,7 @@
 | Treasury (seed) | 1 tỷ | 2,78% | Vốn mồi điều tiết C↔T + khuyến khích bầu hội đồng/MagicLamp Foundation. Nguồn = trích từ Reserve | ✓ |
 | Affiliate | 1 tỷ | 2,78% | Capped Drop, committee/DID | ✗ → 27/9 |
 | Scavenger | 1 tỷ | 2,78% | Thưởng node lưu/phát tán dữ liệu | ✗ → 27/9 |
-| ISPO | 1 tỷ | 2,78% | reward-redirect 1 tỷ/36 epoch, 2 cty toàn quyền ADA thu | một phần |
+| SRCL | 1 tỷ | 2,78% | reward-redirect 1 tỷ/36 epoch, 2 cty toàn quyền ADA thu | một phần |
 | Thanh khoản | 1 tỷ | 2,78% | LP incentive theo TVL LAMP/ADA | ✗ |
 | TIGER Airdrop | 0,1 tỷ | 0,28% | retro snapshot delegator TIGER pool, claim 360 epoch sau 29/7, dư hoàn Treasury | ✓ |
 
@@ -98,9 +98,9 @@ Tổng: 12 + 7,899 + 5 + 4,001 + 2 + 1 (Treasury) + 1 + 1 + 1 + 1 + 0,1 = **36 t
 ---
 
 ## 5. Doanh thu công ty (KHÔNG bán token gây quỹ)
-- ADA reward từ ISPO pool (margin) + TIGER pool (fee 1%) — vận hành SPO hợp pháp.
+- ADA reward từ SRCL pool (margin) + TIGER pool (fee 1%) — vận hành SPO hợp pháp.
 - Bán gói MAGIC dạng dịch vụ = doanh thu B2B sạch nhất.
-- KHÔNG bán LAMP trên DEX (nếu cần → ISPO đợt 2).
+- KHÔNG bán LAMP trên DEX (nếu cần → SRCL đợt 2).
 
 ---
 

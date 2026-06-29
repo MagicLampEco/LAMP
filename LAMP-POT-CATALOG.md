@@ -3,7 +3,7 @@
 > **DRAFT — chủ repo sẽ còn thay đổi.** Mục đích: để mọi người hiểu **mỗi pot là gì,
 > dùng làm gì, bị khoá hay nhỏ-giọt thế nào, và có sinh MAGIC hay không.**
 > Số liệu bám `TOKENOMICS-v17`. **Đơn vị: NGHÌN LAMP** (tổng 36.000.000 nghìn = 36 tỷ).
-> Dùng nghìn LAMP để PhoenixKey (142.857) và TGE (21.143) thành SỐ NGUYÊN, hết lẻ.
+> Dùng nghìn LAMP để PhoenixKey (142.857) và RedBack (21.143) thành SỐ NGUYÊN, hết lẻ.
 
 ---
 
@@ -12,7 +12,7 @@
 1. **Mục đích** — pot này để làm gì.
 2. **Cách ra:** **Nhỏ-giọt (CappedDrop)** `vested(t)=min(E, D·dpe·max(0,t−start))` · **Chưa-mint**
    (token chưa tồn tại, khoá tự nhiên) · **Snapshot** (chia theo ảnh chụp, claim Merkle permissionless)
-   · **Engine riêng** (Reserve gate-Treasury / LP / TGE).
+   · **Engine riêng** (Reserve gate-Treasury / LP / RedBack).
 3. **Gen MAGIC?** — **NGUYÊN TẮC CỐT LÕI: MAGIC CHỈ gen trong VAULT của một DID, KHÔNG bao giờ gen "trong pot".**
    Một pot chỉ gen MAGIC khi **LAMP của nó đã nằm trong một vault-DID** (cá nhân / OrgDID / Platform-DID).
    3 mức = LAMP nằm ở **vault-DID nào**:
@@ -46,12 +46,12 @@
 | 12 | **Partnership** | 284.000 | 0,79% | Đối tác chiến lược | Nhỏ-giọt | 👤 khi partner claim về DID |
 | 13 | **Early TIGER Deleg (ETD)** | 12.000 | 0,03% | Delegate sớm TIGER (redeem TRƯỚC = test) | Snapshot hồi tố | ❌ hết sớm |
 | 14 | **Airdrop** | 120.000 | 0,33% | Cộng đồng sớm (SPO+Delegator đăng ký) | Snapshot, 5 epoch ×24.000, 20:100 | ❌ hết sớm |
-| 15 | **ISPO** | 360.000 | 1,00% | Redirect staking-reward ADA ↔ LAMP | Snapshot/epoch theo ADA góp; SPO bonus tự đặt | ❌ hết sớm |
+| 15 | **SRCL** | 360.000 | 1,00% | Redirect staking-reward ADA ↔ LAMP | Snapshot/epoch theo ADA góp; SPO bonus tự đặt | ❌ hết sớm |
 | 16 | **Joinnet** | 1.461.000 | 4,06% | Khuyến khích tham gia mạng lưới | Nhỏ-giọt | 🏛️ uỷ thác Platform **LampNet** DID |
-| 17 | **TGE** | 21.143 | 0,06% | Mở thanh khoản ban đầu khi niêm yết | Mở thanh khoản | ❌ trong DEX |
+| 17 | **RedBack** | 21.143 | 0,06% | Mở thanh khoản ban đầu khi niêm yết | Mở thanh khoản | ❌ trong DEX |
 | 18 | **Liquidity** | 888.000 | 2,47% | Khuyến khích thanh khoản LAMP/ADA | Engine LP theo TVL | ❌ trong LP |
 
-**Kiểm chứng:** tổng = 36.000.000 nghìn ✓ · mọi pot trừ Reserve = 26.370.000 (= `dist_cap`) ✓ · Reserve = 9.630.000 (= `reserve_cap`) ✓ · PhoenixKey 142.857 + TGE 21.143 = 164.000 (bù lẻ tròn).
+**Kiểm chứng:** tổng = 36.000.000 nghìn ✓ · mọi pot trừ Reserve = 26.370.000 (= `dist_cap`) ✓ · Reserve = 9.630.000 (= `reserve_cap`) ✓ · PhoenixKey 142.857 + RedBack 21.143 = 164.000 (bù lẻ tròn).
 
 ---
 
@@ -60,7 +60,7 @@
 - **🏛️ Tổ chức/Platform — LAMP nằm trong vault OrgDID/Platform-DID, gen kể cả khi khoá (~20.001.857 ≈ 20 tỷ):**
   Foundation, Aladin, GreenSun, Platform, App, Joinnet→LampNet, Referrer→AffiSo, PhoenixKey→PhoenixKey-DID.
 - **👤 User — chỉ gen khi claim về DID (~4.003.000 ≈ 4 tỷ):** Development, User, Partnership.
-- **❌ Không gen (~11.995.143 ≈ 12 tỷ):** Reserve, Treasury, ETD, Airdrop, ISPO, TGE, Liquidity.
+- **❌ Không gen (~11.995.143 ≈ 12 tỷ):** Reserve, Treasury, ETD, Airdrop, SRCL, RedBack, Liquidity.
 
 ---
 
@@ -104,10 +104,10 @@
 **Nhóm phân phối sớm (snapshot, hết trong thời gian đầu)**
 - **13. ETD (12.000)** — ghi nhận **delegator sớm pool TIGER**; redeem TRƯỚC làm **bài test toàn cầu** cho hệ claim.
 - **14. Airdrop (120.000)** — ghi nhận **cộng đồng sớm** (SPO + Delegator của pool đăng ký), 5 epoch ×24.000, 20:100.
-- **15. ISPO (360.000)** — **redirect staking-reward ADA ↔ LAMP** (delegator tự nguyện đổi % reward), 36 epoch.
+- **15. SRCL (360.000)** — **redirect staking-reward ADA ↔ LAMP** (delegator tự nguyện đổi % reward), 36 epoch.
 
 **Nhóm thanh khoản**
-- **17. TGE (21.143)** — token **mở thanh khoản ban đầu** khi niêm yết.
+- **17. RedBack (21.143)** — token **mở thanh khoản ban đầu** khi niêm yết.
 - **18. Liquidity (888.000)** — khuyến khích **cung cấp thanh khoản** cặp LAMP/ADA (theo TVL).
 
 ---
@@ -141,7 +141,7 @@ governance đầy đủ chưa lên → giao DAO sau.
 
 - **ETD (12.000 nghìn)** — delegator sớm pool TIGER redeem TRƯỚC làm test toàn cầu. Rút theo claim_account vesting permissionless.
 - **Airdrop (120.000 nghìn)** — 5 epoch ×24.000 nghìn, chia **20:100** (SPO:Delegator) theo stake pool đăng ký (cổng từ 1/7, hạn epoch 4). Claim Merkle sau snapshot đầu.
-- **ISPO (360.000 nghìn)** — 36 epoch ×10.000 nghìn. Delegator tự nguyện góp staking-reward ADA → LAMP ∝ ADA góp; LAMP/pool ∝ tổng ADA pool; **SPO tự đặt bonus rate**. SPO chỉ đăng-ký + đặt-rate 1 lần (decouple, không ký mỗi epoch). Chủ dự án thu ADA.
+- **SRCL (360.000 nghìn)** — 36 epoch ×10.000 nghìn. Delegator tự nguyện góp staking-reward ADA → LAMP ∝ ADA góp; LAMP/pool ∝ tổng ADA pool; **SPO tự đặt bonus rate**. SPO chỉ đăng-ký + đặt-rate 1 lần (decouple, không ký mỗi epoch). Chủ dự án thu ADA.
 
 ---
 

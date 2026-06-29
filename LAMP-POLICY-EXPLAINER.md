@@ -143,9 +143,9 @@ LAMP mint ra theo đường phân phối **bắt buộc chảy vào một kho c�
 54. **"Nhỏ giọt ngang cộng đồng" nghĩa là gì?** Đội ngũ và cộng đồng cùng cơ chế giải phóng dần, không đặc quyền xả sớm.
 55. **Pot Foundation là gì?** Quỹ vận hành dài hạn; dự kiến khóa principal vĩnh viễn (không rút gốc) nhưng vẫn dùng MAGIC.
 56. **Có vesting/cliff cho đội ngũ không?** Cơ chế nhỏ giọt theo tham số (tốc độ/cliff) công bố công khai.
-57. **Cộng đồng nhận LAMP bằng cách nào?** Qua các pot cộng đồng (Airdrop, ISPO, delegator…) theo tiêu chí công khai.
+57. **Cộng đồng nhận LAMP bằng cách nào?** Qua các pot cộng đồng (Airdrop, SRCL, delegator…) theo tiêu chí công khai.
 58. **Airdrop cho ai?** Theo danh sách/tiêu chí công bố; nhỏ giọt theo epoch.
-59. **ISPO là gì?** Cơ chế phân phối qua reward-redirect staking; chi tiết theo chương trình.
+59. **SRCL là gì?** Cơ chế phân phối qua reward-redirect staking (Staking Reward Contribution Launch); chi tiết theo chương trình.
 60. **Phân bổ có thể đổi không?** Ngân sách từng pot điều chỉnh được trong cap 36 tỷ (off-chain), tổng không đổi.
 61. **Pot nào "khóa", pot nào "nhỏ giọt"?** Mỗi pot cấu hình riêng (tốc độ/khóa/lịch) ở tầng phân phối.
 62. **Có pre-sale/ICO không?** Không mở bán cho tới khi có pháp nhân phù hợp; định vị tiện ích.
