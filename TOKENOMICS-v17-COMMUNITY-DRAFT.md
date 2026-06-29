@@ -67,7 +67,7 @@ PhoenixKey DID (sinh trắc — một người thật, một danh tính). Sức 
 
 | # | Pot | Triệu LAMP | % | Ý nghĩa con số | Cơ chế nhả |
 |---|---|---:|---:|---|---|
-| 1 | **Reserve** | 9.630 | 26,75% | đệm phát hành sau cùng | Reserve engine: E/1000/epoch, demand-gated, permissionless |
+| 1 | **Reserve** | 9.630 | 26,75% | đệm phát hành sau cùng | Reserve engine: tối đa 9.630.000 LAMP/epoch (1/1000 quỹ), demand-gated, không giới hạn số epoch |
 | 2 | Treasury | 964 | 2,68% | — | điều tiết C↔T (sổ kế toán) |
 | 3 | Development | 2.718 | 7,55% | ≈ e×1000 | CappedDrop |
 | 4 | Platform | 3.141 | 8,73% | ≈ π×1000 | CappedDrop theo MAGIC tiêu thụ |
@@ -83,8 +83,8 @@ PhoenixKey DID (sinh trắc — một người thật, một danh tính). Sức 
 | 14 | Airdrop | 120 | 0,33% | — | retroactive snapshot |
 | 15 | SRCL | 360 | 1,00% | tròn 1% | reward-redirect qua SPO |
 | 16 | Joinnet | 1.461 | 4,06% | = Sothic 1461 | CappedDrop |
-| 17 | RedBack | 21,143 | 0,06% | = 1/7 (bù lẻ với PhoenixKey) | mở thanh khoản ban đầu |
-| 18 | Liquidity | 888 | 2,47% | — | LP incentive theo TVL LAMP/ADA |
+| 17 | RedBack | 21,143 | 0,06% | = 1/7 (bù lẻ với PhoenixKey) | quỹ phòng-thủ neo giá MAGIC |
+| 18 | Liquidity | 888 | 2,47% | — | LP incentive sàn nội bộ (MAGIC/LAMP·ADA·NIGHT) |
 
 **Kiểm chứng số học:**
 - Tổng 18 pot = **36.000 triệu** = 36 tỷ ✓
@@ -100,18 +100,22 @@ về giá hay lợi nhuận**.
 
 ## 3. Giải thích từng pot (ngắn gọn)
 
-- **Reserve (9.630)** — lớp đệm phát hành cuối cùng. Nhả tối đa `E/1000` mỗi epoch
-  (≈ 1000 epoch mới cạn liên tục), và chỉ nhả khi **có cầu thật** (demand-gated:
-  cần Treasury "kéo" khi lưu thông xuống dưới sàn). Vì no-burn, Reserve nhả ra là
-  **một chiều** — không quay ngược về trạng thái chưa-mint. Kích hoạt permissionless.
+- **Reserve (9.630)** — lớp đệm phát hành cuối cùng. Nhả **tối đa 9.630.000 LAMP mỗi epoch**
+  (= 1/1000 quỹ Reserve), và **chỉ nhả khi có cầu thật** (demand-gated: cần Treasury "kéo"
+  khi lưu thông xuống dưới sàn). **KHÔNG giới hạn số epoch** — quỹ co-giãn theo nhu cầu, không
+  phải nhả hết trong một số epoch cố định; không cầu thì không nhả. Vì no-burn, Reserve nhả ra
+  là **một chiều** — không quay ngược về trạng thái chưa-mint. Kích hoạt permissionless.
 - **Treasury (964)** — sổ điều tiết hai chiều giữa "đang lưu hành" (C) và "đỗ"
   (T). Đây là nơi "giảm lưu hành" thực hiện bằng kế toán, không đốt.
-- **Development (2.718)** — quỹ vận hành hai công ty: R&D, M&A, BD, pháp lý, marketing.
+- **Development (2.718)** — quỹ **duy trì & vận hành giao thức mạng lưới**: R&D công nghệ lõi mới + mua app
+  truyền thống để tích hợp. **Do DAO quyết, bất kỳ thành viên DAO nào cũng có thể đề xuất tài trợ.** Đây là
+  quỹ CHUNG của giao thức, **KHÔNG phải tiền của hai công ty sáng lập**.
 - **Platform (3.141)** — thưởng cho nền tảng dùng LAMP, nhả theo MAGIC tiêu thụ.
 - **App (1.618)** — khuyến khích ứng dụng xây trên hệ sinh thái.
 - **User (1.001)** — thưởng người dùng cuối (1 triệu DID + phần đệm).
 - **Referrer (343)** — thưởng giới thiệu.
-- **PhoenixKey (142,857)** — gắn với hạ tầng định danh PhoenixKey DID. Pot lẻ duy nhất.
+- **PhoenixKey (142,857)** — **quỹ tài trợ phí giao dịch (ADA, DUST) trên mạng lưới**: người dùng được
+  **tạo mới và ký giao dịch miễn phí, không cần có ADA**. Gắn hạ tầng định danh PhoenixKey DID. Pot lẻ duy nhất.
 - **MagicLamp Foundation (1.296)** — dành cho **pháp nhân chủ tương lai**. Quỹ này
   **giữ ở dạng CHƯA-MINT** (một dạng khoá tự nhiên) cho tới khi pháp nhân được lập —
   chưa tồn tại on-chain, không thể di chuyển.
@@ -120,12 +124,16 @@ về giá hay lợi nhuận**.
 - **Partnership (284)** — đối tác chiến lược, theo thoả thuận.
 - **Early TIGER Deleg (12)** — ghi nhận người delegate sớm cho TIGER pool. *(Pool
   TIGER đã rút khỏi nhóm sáng lập; chỉ còn hiện diện qua pot ghi nhận này.)*
-- **Airdrop (120)** — phân phối ghi nhận cộng đồng sớm, qua snapshot hồi tố.
+- **Airdrop (120)** — **dành tặng cộng đồng SPO và Delegator** dựa trên stake + sự hỗ trợ; **ghi nhận đóng góp
+  vào cơ chế bền vững của mạng blockchain Cardano**. Qua snapshot hồi tố.
 - **SRCL (360)** — Staking Reward Contribution Launch: người stake ADA chuyển hướng phần
   thưởng để nhận LAMP, không bán token trực tiếp.
-- **Joinnet (1.461)** — khuyến khích tham gia mạng lưới.
-- **RedBack (21,143)** — token mở thanh khoản ban đầu khi niêm yết. *(Xem lằn đỏ §5.)*
-- **Liquidity (888)** — khuyến khích cung cấp thanh khoản cặp LAMP/ADA.
+- **Joinnet (1.461)** — thưởng **người đóng góp tài nguyên thiết bị** (tính toán, lưu trữ, băng thông) vào
+  **hạ tầng thiết bị phân tán LampNet**.
+- **RedBack (21,143)** — **quỹ hỗ trợ neo giá MAGIC**: hy sinh khi Peg chuyển sang đỏ, lớn lên khi tỷ lệ thế chấp
+  vượt quá trần. Vốn vô chủ, không ai rút tay.
+- **Liquidity (888)** — **cấp thanh khoản cho sàn giao dịch nội bộ hệ sinh thái**, bắt đầu với cặp
+  **MAGIC/LAMP, MAGIC/ADA, MAGIC/NIGHT**. MAGIC chỉ trao đổi nội bộ — không niêm yết sàn ngoài.
 
 ---
 
@@ -180,7 +188,7 @@ Văn bản này KHÔNG phải tài liệu chào bán. Để minh bạch:
 | Genesis lazy-mint + cap 26,37 / 9,63 tỷ | **Đã code + test** (56 on-chain, 34 off-chain) | trần baked on-chain |
 | CappedDrop (claim_account) | **Đã code + test**; engine gốc đã **live Preview** | công thức vested đã chạy |
 | Phân bổ per-channel HARD-CAP (Allocation) | **Đã code + test** (61 on-chain, 63 off-chain) | trần 2 lớp mỗi kênh |
-| Reserve engine (E/1000, demand-gated) | **Đã code + test** (38 on-chain, 22 off-chain) | rollover ~1001 epoch |
+| Reserve engine (≤ 9.630.000 LAMP/epoch, demand-gated) | **Đã code + test** (38 on-chain, 22 off-chain) | trần/epoch, không giới hạn số epoch |
 | Treasury (C↔T) | **Đang phát triển** | phần collect/release |
 | Governance / VotingPower (cá nhân, ≥4 tham số) | **Chỉ có spec, CHƯA có validator** | code dự kiến giai đoạn sau |
 | Niêm yết DEX / thanh khoản | **Chưa thực hiện** | chờ pháp nhân + pháp lý |
