@@ -83,8 +83,8 @@ PhoenixKey DID (sinh trắc — một người thật, một danh tính). Sức 
 | 14 | Airdrop | 120 | 0,33% | — | retroactive snapshot |
 | 15 | SRCL | 360 | 1,00% | tròn 1% | reward-redirect qua SPO |
 | 16 | Joinnet | 1.461 | 4,06% | = Sothic 1461 | CappedDrop |
-| 17 | RedBack | 21,143 | 0,06% | = 1/7 (bù lẻ với PhoenixKey) | quỹ phòng-thủ neo giá MAGIC |
-| 18 | Liquidity | 888 | 2,47% | — | LP incentive sàn nội bộ (MAGIC/LAMP·ADA·NIGHT) |
+| 17 | RedBack | 21,143 | 0,06% | = 1/7 (bù lẻ với PhoenixKey) | quỹ phòng-thủ neo giá (peg CARP↔MAGIC) |
+| 18 | Liquidity | 888 | 2,47% | — | LP incentive sàn nội bộ (CARP/LAMP·ADA·NIGHT) |
 
 **Kiểm chứng số học:**
 - Tổng 18 pot = **36.000 triệu** = 36 tỷ ✓
@@ -130,10 +130,10 @@ về giá hay lợi nhuận**.
   thưởng để nhận LAMP, không bán token trực tiếp.
 - **Joinnet (1.461)** — thưởng **người đóng góp tài nguyên thiết bị** (tính toán, lưu trữ, băng thông) vào
   **hạ tầng thiết bị phân tán LampNet**.
-- **RedBack (21,143)** — **quỹ hỗ trợ neo giá MAGIC**: hy sinh khi Peg chuyển sang đỏ, lớn lên khi tỷ lệ thế chấp
-  vượt quá trần. Vốn vô chủ, không ai rút tay.
-- **Liquidity (888)** — **cấp thanh khoản cho sàn giao dịch nội bộ hệ sinh thái**, bắt đầu với cặp
-  **MAGIC/LAMP, MAGIC/ADA, MAGIC/NIGHT**. MAGIC chỉ trao đổi nội bộ — không niêm yết sàn ngoài.
+- **RedBack (21,143)** — **quỹ hỗ trợ neo giá đồng ổn định** (peg CARP↔MAGIC): hy sinh khi Peg chuyển sang đỏ, lớn
+  lên khi tỷ lệ thế chấp vượt quá trần. Vốn vô chủ, không ai rút tay.
+- **Liquidity (888)** — **cấp thanh khoản cho sàn giao dịch nội bộ hệ sinh thái** (MagicSwap), bắt đầu với cặp
+  **CARP/LAMP, CARP/ADA, CARP/NIGHT**. CARP là đồng chuyển-nhượng duy nhất giao dịch nội bộ; MAGIC KHÔNG chuyển nhượng.
 
 ---
 

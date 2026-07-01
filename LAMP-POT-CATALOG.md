@@ -5,10 +5,11 @@
 > Số liệu bám `TOKENOMICS-v17`. **Đơn vị: NGHÌN LAMP** (tổng 36.000.000 nghìn = 36 tỷ).
 > Dùng nghìn LAMP để PhoenixKey (142.857) và RedBack (21.143) thành SỐ NGUYÊN, hết lẻ.
 
-> **MAGIC là native token (sau hợp nhất CARP → MAGIC).** Một policy-id, **chuyển nhượng được**, 9 decimals;
-> đúc qua hai đường (CDP khoá LAMP ≥ 200% · SnapshotMint hoàn-tiền-trung-thành trong thặng dư backing).
-> MAGIC **chỉ trao đổi trong nội bộ hệ sinh thái MagicLamp** (sàn nội bộ — cặp MAGIC/LAMP · MAGIC/ADA · MAGIC/NIGHT),
-> **KHÔNG niêm yết sàn ngoài**. Chi tiết cơ chế đúc/đốt + bình ổn: `MAGIC-Token-HopNhat`.
+> **Hệ 3 token — CHỐT: KHÔNG hợp nhất CARP vào MAGIC** (đảo lại quyết-định gộp-1-token; nguồn `/CARP` SESSION-STATE §30/6-b).
+> **LAMP** = tài sản nền 36 tỷ (tài liệu này mô tả). **MAGIC** = thuần **Consumable**: **KHÔNG chuyển nhượng**, không tiêu
+> thì mất (decay), neo sức-mua-dịch-vụ nội sinh, **chỉ chuộc-ra-DỊCH-VỤ** (không chuộc tiền); sinh từ nắm LAMP
+> (SnapshotMint) / tiêu định kỳ (ScheduleMint). **CARP** = đồng **Exchangeable** (lưu hành, chuyển nhượng, ổn định
+> đa-tầng, policy riêng) — đồng DUY NHẤT giao dịch trên sàn nội bộ (MagicSwap). MAGIC & CARP **không niêm yết sàn ngoài**.
 
 ---
 
@@ -53,8 +54,8 @@
 | 14 | **Airdrop** | 120.000 | 0,33% | Tặng cộng đồng SPO & Delegator theo stake + hỗ trợ; ghi nhận đóng góp cơ chế bền vững mạng Cardano | Snapshot, 5 epoch ×24.000, 20:100 | ❌ hết sớm |
 | 15 | **SRCL** | 360.000 | 1,00% | Redirect staking-reward ADA ↔ LAMP | Snapshot/epoch theo ADA góp; SPO bonus tự đặt | ❌ hết sớm |
 | 16 | **Joinnet** | 1.461.000 | 4,06% | Thưởng người góp tài nguyên thiết bị vào hạ tầng phân tán LampNet | Nhỏ-giọt | 🏛️ uỷ thác Platform **LampNet** DID |
-| 17 | **RedBack** | 21.143 | 0,06% | Quỹ phòng-thủ neo giá MAGIC: hy sinh khi peg đỏ, lớn lên khi tỷ lệ thế chấp vượt trần | Engine phòng thủ peg (vốn vô chủ) | ❌ quỹ peg |
-| 18 | **Liquidity** | 888.000 | 2,47% | Cấp thanh khoản cho **sàn nội bộ hệ sinh thái** (cặp MAGIC/LAMP, MAGIC/ADA, MAGIC/NIGHT) | Engine LP theo TVL | ❌ trong LP |
+| 17 | **RedBack** | 21.143 | 0,06% | Quỹ phòng-thủ neo giá đồng ổn định (peg CARP↔MAGIC): hy sinh khi peg đỏ, lớn lên khi thế chấp vượt trần | Engine phòng thủ peg (vốn vô chủ) | ❌ quỹ peg |
+| 18 | **Liquidity** | 888.000 | 2,47% | Cấp thanh khoản cho **sàn nội bộ hệ sinh thái** (cặp CARP/LAMP, CARP/ADA, CARP/NIGHT) | Engine LP theo TVL | ❌ trong LP |
 
 **Kiểm chứng:** tổng = 36.000.000 nghìn ✓ · mọi pot trừ Reserve = 26.370.000 (= `dist_cap`) ✓ · Reserve = 9.630.000 (= `reserve_cap`) ✓ · PhoenixKey 142.857 + RedBack 21.143 = 164.000 (bù lẻ tròn).
 
@@ -118,11 +119,12 @@
 - **15. SRCL (360.000)** — **redirect staking-reward ADA ↔ LAMP** (delegator tự nguyện đổi % reward), 36 epoch.
 
 **Nhóm thanh khoản & bình ổn peg**
-- **17. RedBack (21.143)** — **quỹ hỗ trợ neo giá MAGIC**. **Hy sinh khi Peg chuyển sang đỏ** (dùng vốn vô chủ
-  mua/đỡ MAGIC kéo giá về neo) và **lớn lên khi tỷ lệ thế chấp (br) vượt quá trần** (thặng dư backing chảy vào quỹ).
-  Vốn vô chủ, không ai rút tay. Chi tiết: `MAGIC-Token-HopNhat` §7–§8.
-- **18. Liquidity (888.000)** — **cấp thanh khoản cho sàn giao dịch nội bộ hệ sinh thái**, bắt đầu với các cặp
-  **MAGIC/LAMP, MAGIC/ADA, MAGIC/NIGHT** (theo TVL). MAGIC chỉ trao đổi nội bộ hệ — không niêm yết sàn ngoài.
+- **17. RedBack (21.143)** — **quỹ hỗ trợ neo giá đồng ổn định** (peg CARP↔MAGIC). **Hy sinh khi Peg chuyển sang đỏ**
+  (dùng vốn vô chủ mua/đỡ kéo giá về neo) và **lớn lên khi tỷ lệ thế chấp (br) vượt quá trần** (thặng dư backing chảy
+  vào quỹ). Vốn vô chủ, không ai rút tay. Chi tiết cơ chế bình ổn: `/CARP` (Stabilization).
+- **18. Liquidity (888.000)** — **cấp thanh khoản cho sàn giao dịch nội bộ hệ sinh thái** (MagicSwap), bắt đầu với các
+  cặp **CARP/LAMP, CARP/ADA, CARP/NIGHT** (theo TVL). CARP là đồng chuyển-nhượng duy nhất giao dịch nội bộ; MAGIC KHÔNG
+  chuyển nhượng. Không niêm yết sàn ngoài.
 
 ---
 
