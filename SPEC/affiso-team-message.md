@@ -14,7 +14,7 @@ Mình gửi yêu cầu xây dựng trang **`affiso.net/launch/MagicLamp`** — t
 |---|---|---|
 | Launch Framework | Khung ra mắt dùng chung, nguyên lý, vòng đời, vai trò | [Launch-Framework](https://github.com/MagicLampNetwork/LAMP/blob/feat/lamp-mint-compose-anchor-cap/SPEC/Launch-Framework-Vi.md) |
 | SRCL Spec | Cơ chế SRCL (staking reward → LAMP) đầy đủ | [SRCL-Spec](https://github.com/MagicLampNetwork/LAMP/blob/feat/lamp-mint-compose-anchor-cap/SPEC/SRCL-Spec-Vi.md) |
-| AffiSo Requirements | Yêu cầu chức năng FR-L1..L6 và FR-S1..S5 | [AffiSo-Requirements](https://github.com/MagicLampNetwork/LAMP/blob/feat/lamp-mint-compose-anchor-camp/SPEC/AffiSo-Launch-Requirements-Vi.md) |
+| AffiSo Requirements | Yêu cầu chức năng FR-L1..L6 và FR-S1..S5 | [AffiSo-Requirements](https://github.com/MagicLampNetwork/LAMP/blob/feat/lamp-mint-compose-anchor-cap/SPEC/AffiSo-Launch-Requirements-Vi.md) |
 | Launch API | Backend API đã viết sẵn (source of truth nội dung) | [LaunchAPI/](https://github.com/MagicLampNetwork/LAMP/tree/feat/lamp-mint-compose-anchor-cap/LaunchAPI) |
 | Data Model | Types cho LaunchCampaign, Phase, Stats | [types.ts](https://github.com/MagicLampNetwork/LAMP/blob/feat/lamp-mint-compose-anchor-cap/LaunchAPI/src/types.ts) |
 | Campaigns hiện tại | 2 đợt khởi đầu: SRCL-1 + TIGER Airdrop | [campaigns.json](https://github.com/MagicLampNetwork/LAMP/blob/feat/lamp-mint-compose-anchor-cap/LaunchAPI/data/campaigns.json) |
