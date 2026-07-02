@@ -51,24 +51,51 @@ sớm hơn N; ví thực (E_i ≥ N) xong đúng N.
 
 ```
 TIGER/offchain/src/
-├── constants.ts     # budget 12M LAMP, N=36, D=1, OIL_PER_LAMP
+├── constants.ts     # budget 12M LAMP, N=36, D=1, OIL_PER_LAMP, CUTOFF_EPOCH
 ├── types.ts         # StakeEntry, SnapshotSet, TigerEntitlement, ClaimAccountDatum
 ├── entitlement.ts   # accumulate + computeEntitlements (cap water-filling)
-└── dripB.ts         # dripBParams, tigerDatum, vested (bit-identical on-chain), vestedIdealB
-TIGER/tests/         # entitlement.test.ts + dripB.test.ts  (34 test)
+├── dripB.ts         # dripBParams, tigerDatum, vested (bit-identical on-chain), vestedIdealB
+└── snapshot.ts      # LÕI THUẦN dựng SnapshotSet từ rows Blockfrost (test-được, không I/O)
+TIGER/scripts/
+├── config.ts               # Blockfrost helpers (bf/bfAll/currentEpoch) — chỉ đọc chain
+└── build_tiger_snapshot.ts # CLI fetch /epochs/{E}/stakes → SnapshotSet JSON (chạy tsx)
+TIGER/tests/         # entitlement + dripB + snapshot  (41 test)
 ```
 
 On-chain: tái dùng `Distribution/onchain/validators/claim_account.ak` (đã audit) —
 TIGER KHÔNG thêm validator. Off-chain redeem qua `Distribution` builders.
 
+## Dựng snapshot THẬT (thay mock trong 05)
+
+```bash
+cd TIGER/offchain && npm install
+npx tsx ../scripts/build_tiger_snapshot.ts \
+  --pool <pool_id> --from <A> --to <B> --cutoff <CUTOFF> \
+  [--registry reg.json] [--exclude <sa|pkh> ...] --out tiger_snapshot.json
+```
+
+Đầu ra `SnapshotSet` (JSON-safe) → `parseSnapshotFile()` → `computeEntitlements()`.
+`--registry` map `stake_address → payment_pkh` để owner khớp `claim_account.owner`.
+
 ## Test
 
 ```bash
-cd TIGER/offchain && npm install && npm test     # 34/34 pass
+cd TIGER/offchain && npm install && npm test     # 41/41 pass
 ```
 
 Preview e2e (rút thật): `Distribution/scripts/05_tiger_redeem.ts` — create account
 TIGER-shaped → committee Claim E_i → redeem → verify `on-chain redeemed == off-chain vested`.
+(Hiện `05` dùng snapshot MOCK; thay bằng `tiger_snapshot.json` ở deploy thật — xem "Còn thiếu".)
+
+## Còn thiếu để deploy THẬT (không phải bug — là quyết định + wiring)
+
+1. **owner resolution.** `claim_account.owner` = payment pkh ký redeem, nhưng chain
+   cho `stake_address` (1 stake ↔ nhiều payment). ⇒ cần **bảng đăng-ký** (`--registry`)
+   map stake_address→pkh — **khớp mô hình Airdrop-đăng-ký** (delegator đăng ký khai pkh/DID).
+   ETD thật COUPLE với registration; không tự đoán pkh từ stake key.
+2. **Tham số chốt số:** `CUTOFF_EPOCH` (hiện `0n` placeholder) + `TIGER_POOL_ID` phải set thật.
+3. **Seed nhiều account.** `05` mới seed 1 account demo; deploy thật lặp seed ClaimAccount
+   cho MỌI owner trong snapshot + committee cấp entitlement từng người (batch).
 
 ## Trạng thái audit
 
