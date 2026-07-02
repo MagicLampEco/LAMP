@@ -27,6 +27,7 @@ import {
   pushAll, verifyWebhookSignature, registerSseClient, unregisterSseClient, broadcastSse,
 } from "./push.js";
 import type { AdminUpdateRequest, ApiResponse, LaunchCampaign, LaunchStats } from "./types.js";
+import { etdCheck } from "./etd.js";
 
 const PORT = parseInt(process.env.PORT ?? "3210", 10);
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN ?? "";
@@ -116,6 +117,19 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
       unregisterSseClient(id);
     });
     return;
+  }
+
+  // ── PUBLIC: /v1/launch/etd/check ──────────────────────────────────────────
+  // Trang ETD: dán địa chỉ → lịch sử stake + lọc epoch TIGER + LAMP sẽ nhận.
+  if (path === "/v1/launch/etd/check" && method === "GET") {
+    const address = url.searchParams.get("address") ?? "";
+    if (!address) return err(res, "thiếu ?address=", 400);
+    try {
+      const data = await etdCheck(address);
+      return json(res, { ok: true, data });
+    } catch (e) {
+      return err(res, e instanceof Error ? e.message : "etd check lỗi", 502);
+    }
   }
 
   // ── PUBLIC: /v1/campaigns ─────────────────────────────────────────────────

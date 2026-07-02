@@ -15,9 +15,14 @@ export const TIGER_TOTAL_LAMP = 12_000_000n;
 /** Ngân sách pot tính oil = 12e6 × 1e6 = 1.2e13 oil. */
 export const TIGER_TOTAL_OIL = TIGER_TOTAL_LAMP * OIL_PER_LAMP;
 
+/** Pool TIGER (bech32) — nguồn stake để lọc epoch tính entitlement.
+ *  Đây là tầng-dữ-liệu (đổi được, không strand LAMP). Có thể override qua env TIGER_POOL_ID. */
+export const TIGER_POOL_ID_DEFAULT =
+  "pool1q9kwa675j2z53jecrs6pn3fqsc9ypxrsypu5dgu6hammqkagy22";
+
 /** Mốc cắt snapshot: chỉ tính các epoch < CUTOFF_EPOCH (nửa mở, loại chính epoch cắt
  *  để khách quan trước mọi tín hiệu thưởng). Giá trị epoch THẬT điền khi vận hành
- *  (đây là tầng-dữ-liệu, đổi được, không strand LAMP). */
+ *  (đây là tầng-dữ-liệu, đổi được, không strand LAMP). CHƯA CHỐT: epoch tương ứng 18/6 UTC. */
 export const CUTOFF_EPOCH_DEFAULT = 0n;
 
 /** Số epoch nhỏ giọt kiểu B (mặc định 36 ≈ 1 năm, ngang nhịp ISPO). Tầng-tham-số,

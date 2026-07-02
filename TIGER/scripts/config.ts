@@ -33,8 +33,10 @@ export const NETWORK: Network = (process.env.NETWORK ?? "Preview") as Network;
 export const BLOCKFROST_KEY = process.env.BLOCKFROST_KEY ?? "";
 export const BLOCKFROST_URL = `https://cardano-${NETWORK.toLowerCase()}.blockfrost.io/api/v0`;
 
-/** Pool TIGER (bech32 pool1... hoặc hex). Tham số bắt buộc cho snapshot thật. */
-export const TIGER_POOL_ID = process.env.TIGER_POOL_ID ?? "";
+/** Pool TIGER (bech32 pool1... hoặc hex). Mặc định = pool TIGER chính thức; override qua env. */
+export const TIGER_POOL_ID =
+  process.env.TIGER_POOL_ID ??
+  "pool1q9kwa675j2z53jecrs6pn3fqsc9ypxrsypu5dgu6hammqkagy22";
 
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 

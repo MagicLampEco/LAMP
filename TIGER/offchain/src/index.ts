@@ -4,3 +4,4 @@ export * from "./types.js";
 export * from "./entitlement.js";
 export * from "./dripB.js";
 export * from "./snapshot.js";
+export * from "./check.js";
