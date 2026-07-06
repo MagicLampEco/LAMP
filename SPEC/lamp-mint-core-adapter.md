@@ -1,97 +1,86 @@
 # LAMP mint qua OrgDID — spec-adapter cho PhoenixKey Core (`build_mint_lamp_via_did`)
 
-> Mục tiêu: Core (rust_core) dựng tx mint LAMP khớp CHÍNH XÁC validator on-chain.
-> Nguồn sự thật on-chain: `Tokenomics/onchain/lib/magiclamp/tokenomics/phoenixkey.ak::validate_mint`
-> + `Tokenomics/onchain/validators/supply_state.ak` (+ `lib/.../supply.ak`).
-> Đơn vị: **1 LAMP = 10⁶ base (oildrop), decimals = 6.** Mọi `amount` dưới đây là **base unit**.
+> **CHỐT (2026-07-06): Model = cap-36B OrgDID lazy-mint. Validator canonical = B** (Registry-gate +
+> DistributionVest + SupplyState 4-field + A-DEST on-chain). `55d3e01b…` mainnet = placeholder bootstrap,
+> sẽ supersede. Đây là bản Core ĐÃ build (registry schema mirror `registry_mint.rs`).
+>
+> Nguồn on-chain (branch `feat/lamp-mint-compose-anchor-cap`, sẽ merge main):
+> `Genesis/onchain/validators/lamp_mint.ak`, `.../supply_state.ak`, `.../dist_treasury.ak`,
+> `lib/magiclamp/genesis/{types,registry}.ak`.
+> Đơn vị: **1 LAMP = 10⁶ base (oil), decimals = 6.** Mọi `amount`/`Δ` dưới đây là **base unit**.
 
-## 0. Bức tranh — 2 validator ghép trong 1 tx
-Mint LAMP hợp lệ = 1 tx đồng thời:
-- **`lamp_mint`** (mint policy) — gate **AI mint** (authority OrgDID) + **tên token** (asset-name).
-- **`supply_state`** (spend) — gate **BAO NHIÊU** (bộ đếm ≤ cap 36 tỷ LAMP). `lamp_mint` KHÔNG tự cap.
+## 0. Ba validator ghép trong 1 tx mint LAMP
+- **`lamp_mint`** (mint policy) — gate **AI** (Registry) + **tên token** + **route** + **A-DEST** (rót vào KHO).
+- **`supply_state`** (spend, redeemer `Advance`) — gate **BAO NHIÊU** (`dist_minted'≤dist_cap`, đơn điệu).
+- **`registry`** (ref input, KHÔNG spend) — bảng `token_tag → Authority` do OrgDID quản.
 
-`lamp_mint` KHÔNG tự đọc `supply_state`; ràng buộc cap đến từ việc tx PHẢI spend UTxO SupplyState
-(mang SUPPLY NFT) trong cùng tx → validator supply_state chạy → ép `minted_total' ≤ cap`.
+## 1. `lamp_mint` — điều kiện ÉP (đường DistributionVest, verified)
+Tx mint LAMP (phân phối) hợp lệ ⟺ TẤT CẢ:
+1. **mint:** `tx.mint` dưới `lamp_policy` = ĐÚNG 1 asset-name `token_name` (="LAMP" `4c414d50`), **qty Δ>0** (no-burn/qty0/đa-name).
+2. **redeemer** = `DistributionVest` (Constr 0). (`ReserveDraw` = Constr 1 = đường Reserve, permissionless, §5.)
+3. **WHO (Registry):** `registry.validate_mint` — có **ĐÚNG 1 reference input** mang Registry NFT
+   `(registry_nft_policy, registry_nft_name)`; decode `RegistryDatum`; tìm entry `token_tag`==param;
+   **Authority của entry thoả** (SinglePkh → pkh ∈ sigs / MultiSig → ≥ threshold / Revoked → fail).
+4. **A-DEST (WHERE):** đọc `kho_hash` động từ ref input mang `kho_nft` → **`qty_to_script(outputs, kho_hash, lamp_policy, token_name) ≥ Δ`** — TOÀN BỘ Δ rót vào KHO, KHÔNG ra ví.
+5. **cap** (qua supply_state, §2): `dist_minted' = dist_minted+Δ ≤ dist_cap`.
 
-## 1. Điều kiện `lamp_mint`/`validate_mint` ÉP (verified)
-Tx mint LAMP hợp lệ ⟺ TẤT CẢ:
-1. **(a)** `tx.mint` dưới `lamp_policy` = ĐÚNG 1 asset-name `lamp_asset_name` (`4c414d50`="LAMP"), **qty > 0** (chặn burn/qty0/đa-name).
-2. **(b)+(c)** tx có **reference input** mang **anchor NFT** của OrgDID `(anchor_nft_policy, anchor_nft_name)` — datum decode được (`TAADDatum`).
-3. **(d)** `anchor.controller_pkh` ∈ `tx.extra_signatories` — **controller hiện tại của OrgDID ký**.
-4. **(e)** `anchor.status` = **Active**.
-5. **(f)** `anchor.entity_type` = **Org**.
+## 2. `supply_state` (spend, redeemer `Advance`) — ÉP
+- **datum** `SupplyState = Constr 0 [dist_minted:Int, reserve_minted:Int, dist_cap:Int, reserve_cap:Int]`.
+- input+continuing-output ĐÚNG 1 mỗi bên tại `Script(own)`, giữ SUPPLY NFT; datum sạch (không kèm LAMP).
+- `dist_cap`/`reserve_cap` **bất biến** qua transition. Route DistributionVest chỉ đụng `dist_minted`; ReserveDraw chỉ đụng `reserve_minted`.
+- ép `dist_minted' ≤ dist_cap`, `reserve_minted' ≤ reserve_cap`, và trần tổng `dist_minted'+reserve_minted' ≤ dist_cap+reserve_cap` (= 36 tỷ × 10⁶). Đơn điệu (không rollback).
 
-> **Anchor NFT** (CIP-31 reference, KHÔNG spend): `anchor_nft_policy` = **TAAD validator script hash**;
-> `anchor_nft_name` = **`blake2b_256(org_did)`**. Controller đổi (rotate/recovery) → sửa TAAD datum,
-> `lamp_policy` BẤT BIẾN (quyền mint tự đi theo DID).
-
-## 2. Điều kiện `supply_state` (spend, redeemer `CountMint`) ÉP
-Spend UTxO SupplyState hợp lệ ⟺:
-- **(s1)** own_input mang SupplyState NFT `(state_nft_policy, state_name)` qty 1.
-- **(s2)** ĐÚNG 1 input tại `Script(own)` mang SupplyState NFT (chống nhân đôi bộ đếm).
-- **(s3)** continuing output: ĐÚNG 1 output tại `Script(own)` giữ SupplyState NFT + datum.
-- **(s4)** `minted_amount` = qty `(lamp_policy, lamp_asset_name)` trong `tx.mint` (đọc policy/name TỪ DATUM).
-- **cap:** `minted_total' = minted_total + minted_amount`, ép **`minted_total' ≤ CAP`** (đơn điệu, ≤ 36 tỷ × 10⁶ base).
-- datum bất biến trừ `minted_total`: `lamp_policy` / `lamp_asset_name` giữ nguyên.
-
-> Datum: `SupplyStateDatum { minted_total: Int, lamp_policy: PolicyId, lamp_asset_name: AssetName }`.
-
-## 3. Công thức tx Core phải dựng (`build_mint_lamp_via_did`)
+## 3. Registry schema — MIRROR BYTE-PERFECT (Core đã có ở `registry_mint.rs`)
 ```
-Inputs:
-  • (spend) UTxO SupplyState hiện tại  (mang SUPPLY NFT)  — redeemer CountMint
-  • (spend) UTxO trả phí của người dựng tx (collateral + fee)
-Reference inputs:
-  • UTxO mang anchor NFT của OrgDID (TAAD state)          — CIP-31, KHÔNG spend
+RegistryDatum = Constr 0 [ governing_did: Bytes, entries: List<RegistryEntry> ]
+RegistryEntry = Constr 0 [ token_tag: Bytes, authority: Authority ]
+Authority:  SinglePkh = Constr 0 [pkh: Bytes]
+            MultiSig  = Constr 1 [pkhs: List<Bytes>, threshold: Int]
+            Revoked   = Constr 2 []
+Registry-NFT: policy ≡ registry script hash ; name = blake2b_256(governing_did)
+```
+**Reconcile PhoenixKey:** set entry LAMP `authority = SinglePkh{controller_pkh OrgDID}` (hoặc
+`MultiSig{[controllers], m}`) → **Enclave OrgDID ký DistributionVest** qua đường registry. Không cần
+emission-authority riêng. Xoay khoá vận hành = controller DID Active sửa registry (tầng Registry validator).
+
+## 4. Công thức tx Core dựng (`build_mint_lamp_via_did`, route DistributionVest)
+```
+Inputs (spend):
+  • UTxO SupplyState hiện tại (mang SUPPLY NFT)     — redeemer Advance
+  • UTxO phí/collateral của người dựng tx
+Reference inputs (KHÔNG spend):
+  • Registry NFT UTxO  (bảng token_tag→authority)
+  • KHO NFT UTxO       (để đọc kho_hash cho A-DEST)
 Mint:
-  • +Δ (lamp_policy, "LAMP")   — redeemer lamp_mint = Mint  (Δ = số LAMP × 10⁶ base)
+  • +Δ (lamp_policy, "LAMP")                        — redeemer lamp_mint = DistributionVest
 Outputs:
-  • SupplyState continuing output tại Script(supply_state):
-      value = SUPPLY NFT + min-ADA (KHÔNG kèm LAMP)
-      datum = { minted_total + Δ, lamp_policy, lamp_asset_name }   (2 field sau giữ nguyên)
-  • Đích nhận Δ LAMP  (xem §4 A-DEST)
-Required signers (extra_signatories):
-  • controller_pkh của OrgDID   (đọc từ TAAD datum; m-of-n → xem §5)
-Scripts đính kèm:
-  • lamp_mint (mint policy)  +  supply_state (spend validator)
-Validity: đặt TTL hợp lý.
+  • SupplyState continuing @ Script(supply_state): SUPPLY NFT + minADA, datum {dist_minted+Δ, …3 field giữ}
+  • KHO @ kho_hash: ≥ Δ LAMP                         ← A-DEST bắt buộc, KHÔNG ra ví
+Required signers:
+  • authority của entry token_tag (= controller_pkh OrgDID nếu SinglePkh; hoặc ≥m nếu MultiSig)
+Scripts đính: lamp_mint (mint) + supply_state (spend). Validity TTL hợp lý.
 ```
 
-## 4. A-DEST — đích nhận Δ LAMP
-- **Bản OrgDID-anchor thuần (main):** validator KHÔNG ép đích → Core PHẢI tự gửi Δ vào **kho phân phối
-  có kiểm soát** (không ra ví vận hành) để đúng chính sách A-DEST (§8 explainer).
-- **Bản compose-cap (branch `feat/lamp-mint-compose-anchor-cap`):** A-DEST **ép on-chain** — route
-  `DistributionVest` BẮT BUỘC rót Δ vào kho `(kho_nft_policy/name)`; redeemer là `DistributionVest`
-  (không phải `Mint`), thêm route `ReserveDraw` permissionless. Nếu bản này lên main, §3 đổi:
-  redeemer route + output Δ vào kho là RÀNG BUỘC validator, không phải tùy Core.
-> **CẦN CHỐT (blocker):** Core build theo bản nào? (main OrgDID-anchor + CountMint) vs
-> (compose: DistributionVest/ReserveDraw + registry WHO-gate + A-DEST on-chain). Hai bản khác
-> redeemer + mô hình authority. Spec này mặc định **bản OrgDID-anchor** (đúng `build_mint_lamp_via_did`).
+## 5. ReserveDraw (đường Reserve — KHÔNG liên quan PhoenixKey mint)
+Permissionless: KHÔNG chữ ký; ép tx spend ĐÚNG 1 UTxO mang `meter_nft` (= reserve_thread) → `reserve_draw`
+ép δ ≤ E/1000/epoch. Core **không** dùng đường này cho mint-by-OrgDID.
 
-## 5. m-of-n
-`validate_mint` (main) kiểm **một** `controller_pkh`. Muốn m-of-n:
-- hoặc `controller_pkh` = **hash native-multisig** (tx gom đủ m vkey-witness khớp script) — khi đó
-  PhoenixKey `/sign/request` gom m chữ ký rồi mới hợp lệ;
-- hoặc TAAD hỗ trợ **threshold controller** (validator kiểm ≥ m trong danh sách) — hiện main KHÔNG có.
-> Xác nhận với LAMP: controller là single-pkh hay multisig-hash, để Core gom chữ ký đúng.
+## 6. Tham số bake `lamp_mint` (12) — LAMP cấp khi deploy
+`thread_nft_policy/name` (SUPPLY NFT) · `token_name` ("LAMP") · `dist_cap` · `reserve_cap`
+(LAMP = 26,37 tỷ + 9,63 tỷ ×10⁶) · `registry_nft_policy/name` · **`token_tag`** (đề xuất `#"4c414d50"`)
+· `kho_nft_policy/name` · `meter_nft_policy/name`.
 
-## 6. Schema phải khớp CBOR (rust_core ↔ Aiken)
-| Type | Field (đúng thứ tự = constructor index) |
-|---|---|
-| `TAADDatum` | `controller_pkh`, `status` (Active/…), `entity_type` (Org/Person), … (xem `phoenixkey.ak`) |
-| `SupplyStateDatum` | `minted_total: Int`, `lamp_policy: PolicyId`, `lamp_asset_name: AssetName` |
-| `LampMintRedeemer` | `Mint` (Constr 0, rỗng) — hoặc route `DistributionVest`/`ReserveDraw` (bản compose) |
-| `SupplyStateRedeemer` | `CountMint` (Constr 0, rỗng) |
+## 7. Đơn vị — cảnh báo 10⁶
+Explorer hiện `decimals 0` (thiếu metadata) → hiển thị raw base. Core + backend LUÔN coi 1 LAMP = 10⁶ base;
+`Δ` truyền builder là **base unit**. Không lấy số explorer làm số LAMP.
 
-## 7. Trạng thái phối hợp
+## 8. Trạng thái phối hợp
 | Phần | Trạng thái | Ai |
 |---|---|---|
-| `lamp_mint` + `supply_state` + `validate_mint` | on-chain sẵn (main) | LAMP |
-| Builder mẫu Lucid (compose lamp_mint + SupplyState) | có: `Genesis/offchain/src/mintBuilder.ts` (branch compose) | LAMP |
-| `build_mint_lamp_via_did` **compose SupplyState** | thiếu — Core bổ sung theo §3 | Core |
-| Intent `LAMP_MINT` + endpoint + gom m-of-n | thiếu | Long (Specs#8) |
-| Chốt bản canonical (main vs compose) + controller single/multisig | **BLOCKER** | anh + LAMP |
-
-## 8. Đơn vị — cảnh báo tránh lỗi 10⁶
-Explorer hiện `decimals 0` (thiếu metadata) → hiển thị raw base. Core + backend LUÔN coi **1 LAMP = 10⁶ base**;
-`amount` truyền vào builder là **base unit**. Không lấy số explorer làm số LAMP.
+| `lamp_mint`+`supply_state`+`registry`(schema mirror rs) | on-chain sẵn (branch B), **chờ merge main** | LAMP |
+| `registry_mint.rs` (schema registry) | Core đã có (mirror) | Core |
+| `build_mint_lamp_via_did` route DistributionVest + Advance + A-DEST | sửa theo §4 (thêm registry+KHO ref, output KHO) | Core |
+| Intent `LAMP_MINT` + endpoint + gom m-of-n | thiếu | Long |
+| Deploy Genesis Preview SUBMIT=true → cấp policy-id/CBOR/SUPPLY-NFT ref | chờ Preview wallet seed | LAMP (em chạy) |
+| KHO release → ETD/Airdrop (vesting claim_account) | **chưa dựng** (dist_treasury mới bootstrap authority-sig) | LAMP |
+| Signer = controller OrgDID (Enclave), set làm registry authority | **xác nhận** | anh + PhoenixKey |
