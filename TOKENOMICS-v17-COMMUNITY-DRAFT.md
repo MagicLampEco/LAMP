@@ -112,7 +112,9 @@ về giá hay lợi nhuận**.
   quỹ CHUNG của giao thức, **KHÔNG phải tiền của hai công ty sáng lập**.
 - **Platform (3.141)** — thưởng cho nền tảng dùng LAMP, nhả theo MAGIC tiêu thụ.
 - **App (1.618)** — khuyến khích ứng dụng xây trên hệ sinh thái.
-- **User (1.001)** — thưởng người dùng cuối (1 triệu DID + phần đệm).
+- **User (1.001)** — **cho mỗi PersonDID mượn ≤1001 LAMP để TIÊU dịch vụ (không tặng, không để mua-bán)**: khoá 1001
+  đêm, mở 1 LAMP/đêm; đêm không dùng → thu 1 LAMP phần chưa-mở về pot (use-it-or-lose-it). Chỉ phần đã mở mới chuyển
+  nhượng được. Cơ chế: đặc tả PhoenixKey Activation (vault-vesting + anti-idle).
 - **Referrer (343)** — thưởng giới thiệu.
 - **PhoenixKey (142,857)** — **quỹ tài trợ phí giao dịch (ADA, DUST) trên mạng lưới**: người dùng được
   **tạo mới và ký giao dịch miễn phí, không cần có ADA**. Gắn hạ tầng định danh PhoenixKey DID. Pot lẻ duy nhất.

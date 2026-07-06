@@ -43,7 +43,7 @@
 | 3 | **Development** | 2.718.000 | 7,55% | Quỹ duy trì & vận hành giao thức: R&D công nghệ lõi + mua app truyền thống tích hợp; DAO quyết, ai cũng đề xuất | Nhỏ-giọt | 👤 khi claim về DID |
 | 4 | **Platform** | 3.141.000 | 8,73% | Thưởng nền tảng dùng LAMP | Nhỏ-giọt | 🏛️ gen, chia DID theo MAGIC tiêu thụ |
 | 5 | **App** | 1.618.000 | 4,49% | Khuyến khích ứng dụng xây trên hệ | Nhỏ-giọt | 🏛️ gen, chia DID theo MAGIC tiêu thụ |
-| 6 | **User** | 1.001.000 | 2,78% | Thưởng người dùng cuối (1 triệu DID + đệm) | Nhỏ-giọt | 👤 khi claim về DID |
+| 6 | **User** | 1.001.000 | 2,78% | **Cho mượn để TIÊU dịch vụ, KHÔNG tặng, KHÔNG để mua-bán**: mỗi PersonDID ≤1001 LAMP, khoá 1001 đêm, ngày không dùng → thu 1 LAMP về pot | Vault-vesting 1 LAMP/đêm + anti-idle | 👤 vault khoá theo PersonDID |
 | 7 | **Referrer** | 343.000 | 0,95% | Thưởng giới thiệu | Nhỏ-giọt | 🏛️ uỷ thác Platform **AffiSo** DID |
 | 8 | **PhoenixKey** | 142.857 | 0,40% | Quỹ tài trợ phí giao dịch (ADA, DUST): user tạo + ký giao dịch miễn phí, không cần ADA | Nhỏ-giọt | 🏛️ uỷ thác Platform **PhoenixKey** DID |
 | 9 | **MagicLamp Foundation** | 1.296.000 | 3,60% | Năng lượng vận hành DAO | **Chưa-mint→khoá VĨNH VIỄN** sau khi lập pháp nhân | 🏛️ gen → nuôi DAO (xem §3) |
@@ -97,8 +97,14 @@
   Platform: **Platform = lớp nền (ít, hạ tầng); App = lớp xây-trên (nhiều, cộng đồng)**. Khuyến khích build app thật.
 
 **Nhóm người dùng & giới thiệu**
-- **6. User (1.001.000)** — **tặng 1 triệu user ĐẦU TIÊN kích hoạt DID qua GetMAGIC, mỗi user 1001 LAMP**. Pot này
-  **tăng dần từ Treasury, do DAO quyết**.
+- **6. User (1.001.000)** — **KHÔNG phải tặng.** Giao thức **cho mỗi PersonDID (PhoenixKey) MƯỢN tối đa 1001 LAMP với
+  MỤC ĐÍCH DUY NHẤT là TIÊU dùng dịch vụ trong hệ — KHÔNG phải để mua-bán.** Khi kích hoạt DID (GetLAMP), LAMP vào một
+  **vault khoá 1001 đêm**, mở dần **1 LAMP mỗi đêm**; **đêm nào không dùng dịch vụ → 1 LAMP phần CHƯA-MỞ bị thu về pot**
+  (use-it-or-lose-it — chỉ đòi phần chưa trao, KHÔNG chạm phần đã mở). Ai dùng-thật giữ trọn dòng mở; ai bỏ cuộc trả
+  phần chưa-mở về pot nuôi người mới. **Chỉ phần đã mở mới chuyển-nhượng được** (LAMP đã mở → sinh MAGIC để tiêu, hoặc
+  bán). Cơ chế đầy đủ: đặc tả `PhoenixKey Activation` (vault-vesting theo đồng-hồ-NGÀY slot/86400 + anti-idle thu-hồi,
+  tái dùng `lock.ak` + `dist_treasury.ak`, 9 invariant I-ACT-1..9). **Pot tự-nuôi, không cạn**: 3 nguồn nạp — phần
+  thu-hồi của người bỏ cuộc + phí user-trước (thu bằng LAMP theo giá-trị, phản-chu-kỳ) + Treasury bơm khi cần.
 - **7. Referrer (343.000)** — thưởng **giới thiệu** người dùng mới. Uỷ thác vào Platform **AffiSo** (DID riêng).
 - **8. PhoenixKey (142.857)** — **quỹ tài trợ phí giao dịch (ADA, DUST) trên mạng lưới**: người dùng được **tạo mới
   và ký giao dịch miễn phí, không cần có ADA**. **Giao thức hoàn toàn TỰ ĐỘNG, KHÔNG người kiểm soát.** Uỷ thác vào
