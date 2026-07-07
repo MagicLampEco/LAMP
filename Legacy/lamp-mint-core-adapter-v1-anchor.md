@@ -1,3 +1,9 @@
+> ⛔ **LỖI THỜI (v1/anchor) — KHÔNG dùng.** Mô tả mô hình cũ: đọc `controller_pkh` từ TAAD
+> anchor + redeemer `CountMint` + SupplyState 3-field. Quyết định canonical = **v2/registry-gate**
+> (redeemer `DistributionVest`/`ReserveDraw`, gate qua Registry NFT, SupplyState 4-field, A-DEST
+> ép on-chain). Nguồn sự thật hiện hành: `../Genesis/ALLOCATION-SPEC.md` + `../Genesis/onchain/lib/magiclamp/genesis/registry.ak`.
+> Giữ file này chỉ để tra cứu lịch sử. Xem `README.md` cùng thư mục.
+
 # LAMP mint qua OrgDID — spec-adapter cho PhoenixKey Core (`build_mint_lamp_via_did`)
 
 > Mục tiêu: Core (rust_core) dựng tx mint LAMP khớp CHÍNH XÁC validator on-chain.

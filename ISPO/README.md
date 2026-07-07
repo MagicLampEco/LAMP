@@ -1,4 +1,7 @@
-# ISPO — Reward-Redirect cho LAMP
+# SRCL — Reward-Redirect cho LAMP
+
+> Tên hiển thị canonical: **SRCL (Staking Reward Contribution Launch)**. Thư mục/code module
+> giữ tên `ISPO` (cố ý, để lịch sử git rõ) — cùng một cơ chế.
 
 Module phân phối **1 tỷ LAMP** cho delegator của pool ISPO theo **tỷ lệ stake**, đều
 trong **36 epoch** (~27,78 triệu LAMP/epoch), bằng cơ chế Merkle distribution per-epoch.
@@ -7,7 +10,7 @@ trong **36 epoch** (~27,78 triệu LAMP/epoch), bằng cơ chế Merkle distribu
 
 ## Cơ chế reward-redirect
 
-ISPO (Initial Stake Pool Offering) kiểu **reward-redirect**:
+SRCL (Staking Reward Contribution Launch) kiểu **reward-redirect**:
 
 - Delegator ủy thác ADA vào pool ISPO do **2 công ty** vận hành.
 - Reward ADA (margin) của các epoch **do 2 cty thu** (đây là "redirect").
