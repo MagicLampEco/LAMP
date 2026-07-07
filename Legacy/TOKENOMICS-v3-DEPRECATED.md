@@ -1,7 +1,7 @@
 # LAMP Tokenomics — SPEC canonical (v3)
 
 > ⛔ **LỖI THỜI (DEPRECATED) — 2026-07-01.** Bản này (v3, 14/6, đơn vị "oil" cũ nay là "oildrop", era 1-token)
-> đã bị thay bởi **`TOKENOMICS-v17-COMMUNITY-DRAFT.md`** (phân bổ hiện hành, pot SRCL/RedBack, hệ 3 token).
+> đã bị thay bởi **`../docs/TOKENOMICS-v17-COMMUNITY-DRAFT.md`** (phân bổ hiện hành, pot SRCL/RedBack, hệ 3 token).
 > Kiến trúc token: `MAGIC/SPEC/MagicLamp-3Token-DacTa-Vi.md`. Giữ file này chỉ để tham chiếu lịch sử.
 
 > Nguồn sự thật cho phân bổ + kiến trúc tiền tệ LAMP. Đông kết từ phiên thiết kế
