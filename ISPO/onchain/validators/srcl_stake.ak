@@ -31,10 +31,10 @@ use aiken/interval
 use cardano/address.{Address, Credential, Script, VerificationKey}
 use cardano/assets
 use cardano/assets.{lovelace_of}
-use cardano/certificate.{Certificate}
-use cardano/transaction.{NoDatum, Output, Transaction}
+use cardano/certificate.{Certificate, UnregisterCredential}
+use cardano/transaction.{Input, NoDatum, Output, OutputReference, Transaction}
 
-/// Σ lovelace của mọi output có payment_credential == pot_cred.
+/// Σ lovelace mọi OUTPUT có payment_credential == pot_cred.
 fn lovelace_to_cred(outputs: List<Output>, pot_cred: Credential) -> Int {
   list.foldl(
     outputs,
@@ -42,6 +42,23 @@ fn lovelace_to_cred(outputs: List<Output>, pot_cred: Credential) -> Int {
     fn(o: Output, acc: Int) {
       if o.address.payment_credential == pot_cred {
         acc + lovelace_of(o.value)
+      } else {
+        acc
+      }
+    },
+  )
+}
+
+/// Σ lovelace mọi INPUT đến TỪ pot_cred (Tuân F1: check NET, không GROSS). Nếu tx
+/// đồng-tiêu UTxO ở pot (vd ispo_pool ép value-eq) → pot-money quay-vòng làm output
+/// → GROSS pass mà net=0, reward chảy về change crank. Trừ input-từ-pot ép reward THẬT.
+fn lovelace_from_cred(inputs: List<Input>, pot_cred: Credential) -> Int {
+  list.foldl(
+    inputs,
+    0,
+    fn(i: Input, acc: Int) {
+      if i.output.address.payment_credential == pot_cred {
+        acc + lovelace_of(i.output.value)
       } else {
         acc
       }
@@ -66,15 +83,25 @@ validator srcl_stake(did_hash: ByteArray, pot_cred: Credential) {
     expect did_hash != #""
     // account này PHẢI đang được rút (có mặt trong withdrawals).
     expect Some(_reward) = pairs.get_first(self.withdrawals, account)
-    // ÉP: pot nhận ≥ TỔNG mọi reward rút trong tx (chống lỗ-batch).
-    lovelace_to_cred(self.outputs, pot_cred) >= sum_withdrawals(self.withdrawals)
+    // ÉP NET (Tuân F1): (Σ out→pot − Σ in-từ-pot) ≥ Σ reward. Trừ input-từ-pot
+    // chống pot-money-quay-vòng (đồng-tiêu ispo_pool value-eq) làm output giả-thoả.
+    // Vẫn ép Σ-withdrawals (chống lỗ-batch, đã vá trước).
+    lovelace_to_cred(self.outputs, pot_cred) - lovelace_from_cred(
+      self.inputs,
+      pot_cred,
+    ) >= sum_withdrawals(self.withdrawals)
   }
 
-  // ─── Publish cert (register/delegate/deregister) — cho phép ──────────────
+  // ─── Publish cert: register/delegate MỞ, deregister CẤM (Tuân F2) ─────────
   // Vốn gốc = payment-cred user (không thuộc script này). Reward-gate ở withdraw
-  // đã khoá đường tiền; uỷ-thác để user tự chọn pool.
-  publish(_redeemer: Data, _certificate: Certificate, _self: Transaction) {
-    True
+  // khoá đường reward; uỷ-thác register/delegate để user chọn pool. NHƯNG cấm
+  // deregister: Conway UnRegCert hoàn stake-deposit vào value-pool → crank
+  // permissionless hốt về change. Cấm hẳn (user không cần deregister trong SRCL).
+  publish(_redeemer: Data, certificate: Certificate, _self: Transaction) {
+    when certificate is {
+      UnregisterCredential { .. } -> False
+      _ -> True
+    }
   }
 
   else(_) {
@@ -142,6 +169,22 @@ fn mk_tx(reward: Int, outs: List<Output>) -> Transaction {
   }
 }
 
+// input đến TỪ pot_cred (mô phỏng đồng-tiêu UTxO ở pot, vd ispo_pool).
+fn pot_input(lovelace: Int) -> Input {
+  Input {
+    output_reference: OutputReference {
+      transaction_id: #"1111111111111111111111111111111111111111111111111111111111111111",
+      output_index: 0,
+    },
+    output: out_to(pot_cred(), lovelace),
+  }
+}
+
+// tx với inputs + 1 withdrawal + outputs.
+fn mk_tx_in(reward: Int, ins: List<Input>, outs: List<Output>) -> Transaction {
+  Transaction { ..mk_tx(reward, outs), inputs: ins }
+}
+
 // P1 — reward 5 ADA, pot nhận đúng 5 → PASS.
 test p1_reward_to_pot_ok() {
   let tx = mk_tx(5_000_000, [out_to(pot_cred(), 5_000_000)])
@@ -199,3 +242,33 @@ test n4_batch_only_max_to_pot_rejected() fail {
   let tx = mk_tx2(5_000_000, 5_000_000, [out_to(pot_cred(), 5_000_000)])
   srcl_stake.withdraw(t_did, pot_cred(), Void, stake_cred(), tx)
 }
+
+// ─── F1 (Tuân): check NET, không GROSS ──────────────────────────────────────
+
+// P4 — input pot 10 + output pot 15 (NET 5) + reward 5 → PASS.
+test p4_net_input_pot_ok() {
+  let tx =
+    mk_tx_in(
+      5_000_000,
+      [pot_input(10_000_000)],
+      [out_to(pot_cred(), 15_000_000)],
+    )
+  srcl_stake.withdraw(t_did, pot_cred(), Void, stake_cred(), tx)
+}
+
+// N5 — LỖ-F1: input pot 10 + output pot 10 (quay-vòng, NET 0) + reward 5 → REJECT.
+// GROSS cũ (10≥5) PASS sai; NET (10−10=0 ≥ 5) REJECT đúng.
+test n5_pot_cycle_gross_leak_rejected() fail {
+  let tx =
+    mk_tx_in(
+      5_000_000,
+      [pot_input(10_000_000)],
+      [out_to(pot_cred(), 10_000_000)],
+    )
+  srcl_stake.withdraw(t_did, pot_cred(), Void, stake_cred(), tx)
+}
+
+// ─── F2 (Tuân): publish cấm deregister ──────────────────────────────────────
+// LƯU Ý: KHÔNG unit-test được — `UnregisterCredential.refund : Never` (bottom-type
+// stdlib, không constructible trong test). Fix ở CODE (publish `when` match →
+// UnregisterCredential → False); verify bằng review. register/delegate qua `_ -> True`.
