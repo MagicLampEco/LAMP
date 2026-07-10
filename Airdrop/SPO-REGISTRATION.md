@@ -1,8 +1,8 @@
-# Airdrop — Hướng dẫn đăng ký SPO
+# Airdrop — Hướng dẫn đăng ký SPO (Staking Pool Operator)
 
 > **Model 3-pot (chốt 2026-07-11).** Tổng Airdrop **120.000.000 LAMP** = Delegator **100M** +
-> SPO **5M** + SC (Social/Community support) **15M**. Đăng ký SPO ở dưới mở khoá **hai pot**:
-> **SPO 5M** (tư cách pool hợp lệ) + **SC 15M** (đóng góp cộng đồng, cần DID).
+> SPO (Staking Pool Operator) **5M** + CS (Community Supporter) **15M**. Đăng ký SPO ở dưới mở khoá **hai pot**:
+> **SPO 5M** (tư cách pool hợp lệ) + **CS 15M** (đóng góp cộng đồng, cần DID).
 > Đặc tả công thức: **`SPO-CS-SPEC-Vi.md`**. Tổng quan 3 pot: **`AIRDROP-V2-SPEC-Vi.md`**.
 
 Đăng ký SPO nhắm tới **hai phần**:
@@ -10,7 +10,7 @@
 - **SPO 5.000.000 LAMP** — phần theo **tư cách SPO hợp lệ**. SPO qua cổng đủ-điều-kiện
   (đã sản xuất block, đủ tuổi pool, pledge tối thiểu, dedupe owner) nhận phần này **chia ĐỀU**,
   KHÔNG theo lượng stake.
-- **SC 15.000.000 LAMP** — Social/Community support, đo qua AffiSo/ProofChat theo đóng góp cộng
+- **CS 15.000.000 LAMP** — Community Supporter, đo qua AffiSo/ProofChat theo đóng góp cộng
   đồng (mời người thật delegate và giữ delegation…). Cần **DID sinh trắc**. KHÔNG theo lượng stake.
 
 > Phần delegator (**100M**) là pot RIÊNG: ∝stake ở bất kỳ pool Cardano, delegator tự đăng ký
@@ -134,7 +134,7 @@ Kết quả VALID → payment address được thêm vào Merkle tree SPO share.
 
 ---
 
-## Phân bổ SPO 5M + SC 15M (KHÔNG theo stake)
+## Phân bổ SPO 5M + CS 15M (KHÔNG theo stake)
 
 Model 3-pot: đăng ký SPO KHÔNG còn chia theo "stake × epoch". Hai phần tách bạch:
 
@@ -151,7 +151,7 @@ Model 3-pot: đăng ký SPO KHÔNG còn chia theo "stake × epoch". Hai phần t
 → Phần SPO của mỗi SPO qua cổng = `5.000.000 / N` LAMP (N = số SPO qua cổng). Stake lớn hay
 nhỏ nhận **như nhau**.
 
-**SC 15M — Social/Community support, đo qua AffiSo/ProofChat.** Điểm CS mỗi SPO tính từ số DID
+**CS 15M — Community Supporter, đo qua AffiSo/ProofChat.** Điểm CS mỗi SPO tính từ số DID
 sinh trắc được SPO mời thực sự delegate và giữ ≥2 epoch (costly signal, neo on-chain), hỗ trợ
 được-xác-nhận, giới thiệu bậc-2, retention — qua log-dampen + water-filling. Có **cổng kích hoạt**:
 SPO stake khổng lồ nhưng không hỗ trợ cộng đồng (CS=0) nhận **0**. Cần **DID sinh trắc**.

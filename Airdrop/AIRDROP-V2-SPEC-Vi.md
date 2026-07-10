@@ -18,13 +18,13 @@ BigInt oildrop) — chỉ khác **NGUỒN** trọng số. Mô hình cũ "CS log-
 | Pot | Ngân sách | Đối tượng | Trọng số (nguồn stake) | Đặc tả |
 |---|---|---|---|---|
 | **Delegator** | **100.000.000 LAMP** | Delegator Cardano (mọi pool) đã đăng ký | stake của **CHÍNH họ** (accStake mọi pool) | §1–§5 (bản này) |
-| **SPO** | **5.000.000 LAMP** | SPO đã đăng ký | Σ stake delegator (đã đăng ký) **CHẢY VÀO POOL** của họ | `SPO-CS-SPEC-Vi.md` |
-| **SC** (Social/Community) | **15.000.000 LAMP** | Người hỗ trợ cộng đồng (bất kỳ ai, có DID) | Σ stake của delegator đã **BÌNH CHỌN** rằng họ đã giúp | `SPO-CS-SPEC-Vi.md` |
+| **SPO** (Staking Pool Operator) | **5.000.000 LAMP** | SPO đã đăng ký | Σ stake delegator (đã đăng ký) **CHẢY VÀO POOL** của họ | `SPO-CS-SPEC-Vi.md` |
+| **CS** (Community Supporter) | **15.000.000 LAMP** | Người hỗ trợ cộng đồng (bất kỳ ai, có DID) | Σ stake của delegator đã **BÌNH CHỌN** rằng họ đã giúp | `SPO-CS-SPEC-Vi.md` |
 
-Tỷ lệ **SPO:SC = 5:15 = 25:75**. Tổng SPO+SC = 20M.
+Tỷ lệ **SPO:CS = 5:15 = 25:75**. Tổng SPO+CS = 20M.
 
 Bộ máy on-chain dùng chung: mỗi **nguồn entitlement** = một snapshot `{address, amount}` nạp
-vào cùng loại pool. SPO và SC tính trong `cs_score.ts` (`splitSpoPot` / `splitScPot`, đều gọi
+vào cùng loại pool. SPO và CS tính trong `cs_score.ts` (`splitSpoPot` / `splitCsPot`, đều gọi
 `splitByStake` — tái dùng `computeEntitlements` của TIGER). Mỗi snapshot là một cây Merkle →
 1 `merkle_root`. Claim bằng Merkle proof, marker NFT chống double-claim, phần dư Sweep về
 Treasury (README §1–§3).
@@ -133,7 +133,7 @@ Yêu cầu: "1 pot on-chain có thể nhiều nguồn entitlement nạp qua SetR
   | Cách | Mô tả | Hợp validator hiện tại? |
   |---|---|---|
   | **A. Root gộp 1 lần** | Gộp toàn bộ leaf (delegator + SPO/CS) thành **1 snapshot → 1 root** tại genesis | ✅ Không đổi gì |
-  | **B. 2 pool-instance** | Deploy **2 UTxO của cùng `airdrop_pool`** (khác genesis NFT): 1 pool 100M root-delegator, 1 pool 20M root-SPO+SC (5M base + 15M CS gộp) | ✅ Cùng validator, chỉ khác param genesis |
+  | **B. 2 pool-instance** | Deploy **2 UTxO của cùng `airdrop_pool`** (khác genesis NFT): 1 pool 100M root-delegator, 1 pool 20M root-SPO+CS (5M base + 15M CS gộp) | ✅ Cùng validator, chỉ khác param genesis |
   | **C. SetRoot per-epoch** | Cập nhật root mỗi epoch (cho SPO/CS drip 20 epoch, SPO-CS §6) | ⚠️ **Cần bổ sung redeemer `SetRoot`** — mở rộng nhỏ, KHÔNG đổi datum schema |
 
 - **Khuyến nghị cho pot Delegator (bản này):** snapshot tính **1 lần** sau `E_cut` → **1 root cố định**
@@ -144,37 +144,37 @@ Yêu cầu: "1 pot on-chain có thể nhiều nguồn entitlement nạp qua SetR
 
 ---
 
-## 3. Phân biệt ETD vs Airdrop-Delegator vs SPO+SC (đừng nhầm)
+## 3. Phân biệt ETD vs Airdrop-Delegator vs SPO+CS (đừng nhầm)
 
 Ba pot ĐỘC LẬP, dễ lẫn vì đều liên quan delegation:
 
-| Trục | **ETD** (Early-TIGER-Delegator) | **Airdrop-Delegator v2** | **Airdrop SPO+SC** |
+| Trục | **ETD** (Early-TIGER-Delegator) | **Airdrop-Delegator v2** | **Airdrop SPO+CS** |
 |---|---|---|---|
-| Module | `TIGER/` | `Airdrop/` (pot Delegator) | `Airdrop/` (pot SPO+SC) |
-| Ngân sách | **12M LAMP** | **100M LAMP** | **SPO 5M + SC 15M = 20M LAMP** |
+| Module | `TIGER/` | `Airdrop/` (pot Delegator) | `Airdrop/` (pot SPO+CS) |
+| Ngân sách | **12M LAMP** | **100M LAMP** | **SPO 5M + CS 15M = 20M LAMP** |
 | Trigger | Retroactive (nhìn về quá khứ) | Đăng ký + cửa sổ mới `[E_open,E_cut)` | Đăng ký SPO + đo delegation/vote theo đợt |
 | Nguồn stake | **Chỉ pool TIGER** | **Bất kỳ pool Cardano** | Delegation vào pool SPO / vote-stake (mọi pool) |
 | Pool nào | TIGER duy nhất | Mọi pool | Mọi pool |
 | Cần đăng ký? | **Không** (auto retro) | **Có** (ký reward stake key) | **Có** (SPO ký reward stake key) |
 | Cutoff | Mốc 18/6 UTC (`CUTOFF_EPOCH`, TIGER) | `E_cut` mới, chưa chốt | Cửa sổ theo đợt |
-| Cần DID? | **Không** | **Không** (claim bằng ví) | SPO: **Không** · SC: **Có** (SPO-CS §2) |
-| Nhả tiền | Drip kiểu B (36 epoch, cliff) | Claim Merkle 1 lần (cửa sổ 360 epoch) | SPO+SC, drip theo đợt |
-| Tính | ∝accStake, largest-remainder | ∝accStake, largest-remainder | **∝stake, largest-remainder** (SPO=stake-vào-pool · SC=stake-bình-chọn) |
+| Cần DID? | **Không** | **Không** (claim bằng ví) | SPO: **Không** · CS: **Có** (SPO-CS §2) |
+| Nhả tiền | Drip kiểu B (36 epoch, cliff) | Claim Merkle 1 lần (cửa sổ 360 epoch) | SPO+CS, drip theo đợt |
+| Tính | ∝accStake, largest-remainder | ∝accStake, largest-remainder | **∝stake, largest-remainder** (SPO=stake-vào-pool · CS=stake-bình-chọn) |
 
 Điểm dễ nhầm nhất: **ETD 12M ≠ Airdrop-Delegator 100M.** ETD = thưởng hồi tố *chỉ* cho
 delegator pool TIGER giai đoạn đầu (không đăng ký). Airdrop-Delegator = pot mới 100M, mọi pool,
 phải đăng ký, cửa sổ riêng.
 
-### 3.1. SPO vs SC — cùng stake-weighted, khác NGUỒN trọng số
+### 3.1. SPO (Staking Pool Operator) vs CS (Community Supporter) — cùng stake-weighted, khác NGUỒN trọng số
 
-| Trục | **SPO** (5M) | **SC** (15M) |
+| Trục | **SPO — Staking Pool Operator** (5M) | **CS — Community Supporter** (15M) |
 |---|---|---|
 | Vai trò | Nhà vận hành pool | Người hỗ trợ cộng đồng (**bất kỳ ai**, không cần vận hành pool) |
 | Trọng số neo vào | Stake **CHẢY VÀO POOL** (delegation đã đăng ký ủy thác vào pool họ) | Stake của người **ĐƯỢC-GIÚP** bình chọn (phiếu-stake ≤ stake mỗi người bầu) |
 | Thưởng điều gì | Thu hút & giữ được delegation | Được stakeholder công nhận đã giúp |
 | Cần DID? | Không | **Có** (dedupe danh tính người nhận) |
 | Chống sybil | Splitting pool làm loãng delegation → tự vô hiệu | Phiếu-stake ≤ stake thật → không bơm được |
-| Hàm chia (`cs_score.ts`) | `splitSpoPot` | `splitScPot` |
+| Hàm chia (`cs_score.ts`) | `splitSpoPot` | `splitCsPot` |
 
 ---
 
@@ -184,8 +184,8 @@ phải đăng ký, cửa sổ riêng.
   hành vi on-chain đã có (delegation) + đăng ký ký offline.
 - **Delegator KHÔNG cần DID** — claim bằng ví (`payment_address`), là phân phối theo hành vi
   kinh tế công khai (stake ADA), không phải bỏ phiếu.
-- **SPO KHÔNG cần DID** — reward neo delegation on-chain (đủ chữ ký pool). **SC CẦN DID** —
-  supporter có thể là bất kỳ ai, DID sinh trắc dedupe danh tính **người nhận** thưởng SC (dù
+- **SPO KHÔNG cần DID** — reward neo delegation on-chain (đủ chữ ký pool). **CS CẦN DID** —
+  supporter có thể là bất kỳ ai, DID sinh trắc dedupe danh tính **người nhận** thưởng CS (dù
   trọng số vẫn neo stake của người bình chọn). Ranh giới DID này là **có chủ đích** (SPO-CS §2).
 
 ---
@@ -198,7 +198,7 @@ Tái dùng tối đa hạ tầng sẵn có — **KHÔNG viết lại**:
 |---|---|---|
 | `delegator_register.ts` | Ký reward stake key → map `stake_address → payment_address`; kiểm ví có `active_stake` (chưa stake → hướng dẫn stake TIGER/bất kỳ pool); xuất `delegator_registration.json` | Khung + verify Ed25519 + `pubkeyToStakeAddr` từ `spo_register.ts` |
 | `build_delegator_snapshot.ts` | Đọc list registration → mỗi `stake_address` fetch account history → `active_stake` per epoch trong `[E_open,E_cut)` **qua bất kỳ pool** → áp điều kiện giữ ≥ N epoch (§1.5) → SnapshotSet (owner=`payment_address`) → `computeEntitlements(budget=100M oildrop)` → `{address, amount}` → root + exportClaims | `computeEntitlements` (`TIGER/.../entitlement.ts`), `merkle.ts`, `snapshotTool.ts`, `datum.ts` |
-| `cs_score.ts` | Chia pot SPO/SC ∝stake: `splitByStake`/`splitSpoPot`/`splitScPot` (largest-remainder + cap tuỳ chọn) | `computeEntitlements` (TIGER) — xem `SPO-CS-SPEC-Vi.md` §3 |
+| `cs_score.ts` | Chia pot SPO/CS ∝stake: `splitByStake`/`splitSpoPot`/`splitCsPot` (largest-remainder + cap tuỳ chọn) | `computeEntitlements` (TIGER) — xem `SPO-CS-SPEC-Vi.md` §3 |
 
 Đã có, dùng nguyên: `merkle.ts` (leaf byte-perfect), `snapshotTool.ts` (`{address,amount}`→root),
 `claimBuilder.ts`, `sweepBuilder.ts`, `datum.ts`. `computeEntitlements` hiện ở module TIGER —

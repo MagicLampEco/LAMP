@@ -269,13 +269,13 @@ async function main(): Promise<void> {
   console.log("  1. Đăng ký để CHỨNG MINH tư cách SPO hợp lệ (đã sản xuất block, đủ");
   console.log("     tuổi pool, pledge tối thiểu, dedupe owner) → nhận phần SPO");
   console.log("     5.000.000 LAMP chia ĐỀU cho mọi SPO qua cổng — KHÔNG theo stake.");
-  console.log("  2. Đăng ký cũng mở nhóm ProofChat để đo Social/Community support");
-  console.log("     (SC 15.000.000 LAMP) theo đóng góp cộng đồng — cần DID sinh trắc.");
+  console.log("  2. Đăng ký cũng mở nhóm ProofChat để đo Community Supporter");
+  console.log("     (CS 15.000.000 LAMP) theo đóng góp cộng đồng — cần DID sinh trắc.");
   console.log("  3. Operator phải ký xác nhận bằng reward stake key (KHÔNG cần cold key)");
   console.log("  4. Payment address đăng ký sẽ KHÔNG thay đổi sau khi nộp");
   console.log("  5. Deadline đăng ký: xem magiclamp.network/airdrop");
   console.log("  6. SPO không đăng ký / không qua cổng đúng hạn → phần dư về Treasury");
-  console.log("  Chi tiết công thức SPO 5M + SC 15M: xem SPO-CS-SPEC-Vi.md");
+  console.log("  Chi tiết công thức SPO 5M + CS 15M: xem SPO-CS-SPEC-Vi.md");
   console.log();
 
   if (!noInteract) {

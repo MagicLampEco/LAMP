@@ -139,7 +139,9 @@
   @media(min-width:560px){.vsrow{grid-template-columns:1fr 1fr}}
   .vstag{display:inline-block;font-size:11px;font-weight:700;padding:1px 7px;border-radius:5px;
     background:var(--info-soft);color:var(--info);margin-right:4px}
-  .vstag.sc{background:var(--brass-soft);color:var(--brass-ink)}
+  .vstag.cs{background:var(--brass-soft);color:var(--brass-ink)}
+  .mock{font-size:11px;color:var(--warn);background:var(--warn-soft);border:1px solid var(--line);
+    border-radius:7px;padding:7px 10px;margin:2px 0 10px;line-height:1.45}
   .vsnote{font-size:11.5px;color:var(--muted);margin-top:10px;padding-top:10px;border-top:1px solid var(--line)}
 
   .steps{list-style:none;counter-reset:s;padding:0;margin:0 0 14px}
@@ -233,22 +235,22 @@
         </div>
         <div class="pot">
           <div class="amt">5M<small> LAMP</small></div>
-          <div class="nm" data-i18n="role_spo">SPO · Vận hành pool</div>
+          <div class="nm" data-i18n="role_spo">SPO · Staking Pool Operator</div>
           <div class="ds" data-i18n="pot_spo">∝ tổng stake của delegator (đã đăng ký) ủy thác VÀO pool của bạn.</div>
         </div>
         <div class="pot">
           <div class="amt">15M<small> LAMP</small></div>
-          <div class="nm" data-i18n="role_sc">SC · Hỗ trợ cộng đồng</div>
-          <div class="ds" data-i18n="pot_sc">∝ tổng stake của delegator đã BÌNH CHỌN cho sự hỗ trợ của bạn. Không cần vận hành pool.</div>
+          <div class="nm" data-i18n="role_cs">CS · Community Supporter</div>
+          <div class="ds" data-i18n="pot_cs">∝ tổng stake của delegator đã BÌNH CHỌN cho sự hỗ trợ của bạn. Không cần vận hành pool.</div>
         </div>
       </div>
       <div class="vsbox">
-        <div class="vshead" data-i18n="vs_head">SPO khác SC ở đâu?</div>
+        <div class="vshead" data-i18n="vs_head">SPO khác CS ở đâu?</div>
         <div class="vsrow">
-          <div><span class="vstag">SPO</span> <span data-i18n="vs_spo">Đo bằng stake CHẢY VÀO pool bạn vận hành. Thưởng việc thu hút & giữ delegation.</span></div>
-          <div><span class="vstag sc">SC</span> <span data-i18n="vs_sc">Đo bằng stake của người ĐƯỢC BẠN GIÚP bình chọn. Thưởng được stakeholder công nhận đã hỗ trợ — không cần pool.</span></div>
+          <div><span class="vstag">SPO</span> <span data-i18n="vs_spo">Staking Pool Operator — đo bằng stake CHẢY VÀO pool bạn vận hành. Thưởng việc thu hút & giữ delegation.</span></div>
+          <div><span class="vstag cs">CS</span> <span data-i18n="vs_cs">Community Supporter — đo bằng stake của người ĐƯỢC BẠN GIÚP bình chọn. Thưởng được stakeholder công nhận đã hỗ trợ — không cần pool.</span></div>
         </div>
-        <div class="vsnote" data-i18n="vs_note">Cả hai đều neo theo STAKE (tốn kém, khó giả) — chỉ khác nguồn: SPO = stake vào pool · SC = stake bình chọn.</div>
+        <div class="vsnote" data-i18n="vs_note">Cả hai đều neo theo STAKE (tốn kém, khó giả) — chỉ khác nguồn: SPO = stake vào pool · CS = stake bình chọn.</div>
       </div>
       <p class="muted" data-i18n="ad_note">Chưa stake? Hãy ủy thác vào pool TIGER hoặc bất kỳ pool nào, rồi đăng ký tại affiso.net/launch. Công cụ tra cứu số LAMP dự kiến sẽ bật khi snapshot chốt.</p>
     </div>
@@ -266,21 +268,22 @@
         <li data-i18n-html="srcl_s3"><b>Ký</b> bằng 1 trong 3 cách dưới — chỉ cần copy.</li>
         <li data-i18n-html="srcl_s4">Mỗi epoch hệ tự ghi nhận reward. Nhận LAMP theo lịch, ký claim qua PhoenixKey.</li>
       </ol>
+      <div class="mock" data-i18n="srcl_mock">⚠ Mẫu minh hoạ luồng — lệnh/CBOR THẬT (cho đúng ví của bạn) chỉ sinh ra khi đợt mở, sau khi validator SRCL deploy. Cú pháp bên dưới là đại diện.</div>
       <div class="signrow">
         <div class="signopt">
           <h4>① Lace / Eternl</h4>
           <p data-i18n="sign_lace">Mở ví → duyệt giao dịch → Ký. Ví hiển thị rõ chỉ đụng phần ủy thác.</p>
-          <div class="copybox"><code id="cp1">webwallet: signTx(cbor)</code><button class="copybtn" data-cp="cp1">Copy</button></div>
+          <div class="copybox"><code id="cp1">// wallet.signTx(unsignedJoinCbor)</code><button class="copybtn" data-cp="cp1">Copy</button></div>
         </div>
         <div class="signopt">
           <h4>② CLI</h4>
           <p data-i18n="sign_cli">Ký offline bằng stake.skey (KHÔNG cần cold/KES/VRF).</p>
-          <div class="copybox"><code id="cp2">cardano-signer sign --tx-file join.tx --signing-key stake.skey</code><button class="copybtn" data-cp="cp2">Copy</button></div>
+          <div class="copybox"><code id="cp2">cardano-cli transaction sign --tx-body-file join.raw --signing-key-file stake.skey --out-file join.signed</code><button class="copybtn" data-cp="cp2">Copy</button></div>
         </div>
         <div class="signopt">
           <h4>③ dApp connector</h4>
           <p data-i18n="sign_dapp">Bất kỳ ví CIP-30 nào: kết nối → ký trong ví.</p>
-          <div class="copybox"><code id="cp3">CIP-30 enable() → signTx()</code><button class="copybtn" data-cp="cp3">Copy</button></div>
+          <div class="copybox"><code id="cp3">// api = await wallet.enable(); api.signTx(cbor)</code><button class="copybtn" data-cp="cp3">Copy</button></div>
         </div>
       </div>
       <div class="safe" data-i18n-html="srcl_safe"><b>An toàn tuyệt đối:</b> khoá riêng không rời ví; script chỉ điều khiển phần thưởng, KHÔNG chạm vốn gốc; mã nguồn validator công khai on-chain (Aiken/PlutusV3) — verify được hash CBOR.</div>
@@ -317,14 +320,15 @@ const I18N = {
     nf_t:"Không tìm thấy trong snapshot ETD.",
     nf_b:"không nằm trong danh sách từng ủy thác pool TIGER (tới epoch 636). Hãy dán đúng STAKE address (stake1…). Chưa từng stake TIGER? Đợt Airdrop (mọi pool, có đăng ký) phù hợp hơn.",
     ad_lock:"Chưa mở snapshot — cần ĐĂNG KÝ. Airdrop có 3 vai trò, đều chia theo STAKE.", ad_h:"Airdrop — 120.000.000 LAMP",
-    role_del:"Delegator · Người ủy thác", role_spo:"SPO · Vận hành pool", role_sc:"SC · Hỗ trợ cộng đồng",
+    role_del:"Delegator · Người ủy thác", role_spo:"SPO · Staking Pool Operator", role_cs:"CS · Community Supporter",
     pot_del:"∝ số stake của CHÍNH bạn, ở bất kỳ pool nào. Đăng ký, claim bằng ví.",
     pot_spo:"∝ tổng stake của delegator (đã đăng ký) ủy thác VÀO pool của bạn.",
-    pot_sc:"∝ tổng stake của delegator đã BÌNH CHỌN cho sự hỗ trợ của bạn. Không cần vận hành pool.",
-    vs_head:"SPO khác SC ở đâu?",
-    vs_spo:"Đo bằng stake CHẢY VÀO pool bạn vận hành. Thưởng việc thu hút & giữ delegation.",
-    vs_sc:"Đo bằng stake của người ĐƯỢC BẠN GIÚP bình chọn. Thưởng được stakeholder công nhận đã hỗ trợ — không cần pool.",
-    vs_note:"Cả hai đều neo theo STAKE (tốn kém, khó giả) — chỉ khác nguồn: SPO = stake vào pool · SC = stake bình chọn.",
+    pot_cs:"∝ tổng stake của delegator đã BÌNH CHỌN cho sự hỗ trợ của bạn. Không cần vận hành pool.",
+    vs_head:"SPO khác CS ở đâu?",
+    vs_spo:"Staking Pool Operator — đo bằng stake CHẢY VÀO pool bạn vận hành. Thưởng việc thu hút & giữ delegation.",
+    vs_cs:"Community Supporter — đo bằng stake của người ĐƯỢC BẠN GIÚP bình chọn. Thưởng được stakeholder công nhận đã hỗ trợ — không cần pool.",
+    vs_note:"Cả hai đều neo theo STAKE (tốn kém, khó giả) — chỉ khác nguồn: SPO = stake vào pool · CS = stake bình chọn.",
+    srcl_mock:"⚠ Mẫu minh hoạ luồng — lệnh/CBOR THẬT (cho đúng ví của bạn) chỉ sinh ra khi đợt mở, sau khi validator SRCL deploy. Cú pháp bên dưới là đại diện.",
     ad_note:"Chưa stake? Hãy ủy thác vào pool TIGER hoặc bất kỳ pool nào, rồi đăng ký tại affiso.net/launch. Công cụ tra cứu số LAMP dự kiến sẽ bật khi snapshot chốt.",
     srcl_lock:"Sắp mở — ký MỘT LẦN để tham gia. Vốn gốc luôn thuộc về bạn.", srcl_h:"SRCL — Staking Reward Contribution Launch",
     srcl_p:"Bạn đóng góp PHẦN THƯỞNG staking (không phải vốn gốc) cho một đợt Launch, nhận lại LAMP ∝ đóng góp. Chỉ phần ủy thác được nối tới một script rút-reward; phần chi tiêu (vốn gốc) bất khả xâm phạm.",
@@ -351,14 +355,15 @@ const I18N = {
     nf_t:"Not found in the ETD snapshot.",
     nf_b:"is not in the list of TIGER delegators (through epoch 636). Paste your STAKE address (stake1…). Never staked TIGER? The Airdrop (any pool, with registration) fits better.",
     ad_lock:"Snapshot not open yet — registration required. Airdrop has 3 roles, all split by STAKE.", ad_h:"Airdrop — 120,000,000 LAMP",
-    role_del:"Delegator", role_spo:"SPO · Pool operator", role_sc:"SC · Community supporter",
+    role_del:"Delegator", role_spo:"SPO · Staking Pool Operator", role_cs:"CS · Community Supporter",
     pot_del:"∝ YOUR OWN stake, at any pool. Register, claim with your wallet.",
     pot_spo:"∝ total stake of registered delegators delegating TO YOUR pool.",
-    pot_sc:"∝ total stake of delegators who VOTED for your support. No pool needed.",
-    vs_head:"How does SPO differ from SC?",
-    vs_spo:"Measured by stake FLOWING INTO the pool you operate. Rewards attracting & retaining delegation.",
-    vs_sc:"Measured by the stake of those YOU HELPED who voted for you. Rewards being recognized by stakeholders as helpful — no pool needed.",
-    vs_note:"Both are anchored to STAKE (costly, hard to fake) — only the source differs: SPO = stake into pool · SC = stake of voters.",
+    pot_cs:"∝ total stake of delegators who VOTED for your support. No pool needed.",
+    vs_head:"How does SPO differ from CS?",
+    vs_spo:"Staking Pool Operator — measured by stake FLOWING INTO the pool you operate. Rewards attracting & retaining delegation.",
+    vs_cs:"Community Supporter — measured by the stake of those YOU HELPED who voted for you. Rewards being recognized by stakeholders as helpful — no pool needed.",
+    vs_note:"Both are anchored to STAKE (costly, hard to fake) — only the source differs: SPO = stake into pool · CS = stake of voters.",
+    srcl_mock:"⚠ Illustrative flow — the REAL command/CBOR (for your specific wallet) is generated when the launch opens, after the SRCL validator is deployed. Syntax below is representative.",
     ad_note:"Not staking yet? Delegate to TIGER or any pool, then register at affiso.net/launch. The LAMP checker opens when the snapshot is finalized.",
     srcl_lock:"Opening soon — sign ONCE to join. Your principal always stays yours.", srcl_h:"SRCL — Staking Reward Contribution Launch",
     srcl_p:"You contribute your staking REWARDS (not principal) to a Launch and receive LAMP ∝ contribution. Only the delegation part links to a reward-withdraw script; the spending part (principal) is untouchable.",

@@ -1,7 +1,7 @@
 # Airdrop — Hướng dẫn Delegator (pot Delegator 100M)
 
 > **Model v2 (chốt 2026-07-11).** Đây là **pot Delegator = 100.000.000 LAMP** trong tổng Airdrop
-> 120M (2 pot còn lại: SPO 5M + SC 15M cho SPO — xem `SPO-REGISTRATION.md`). Đặc tả:
+> 120M (2 pot còn lại: SPO (Staking Pool Operator) 5M + CS (Community Supporter) 15M — xem `SPO-REGISTRATION.md`). Đặc tả:
 > `AIRDROP-V2-SPEC-Vi.md` §1. Khác v1: **mọi pool Cardano** (không chỉ TIGER) và **phải đăng ký**.
 
 Bạn delegate ADA vào **bất kỳ pool Cardano** và đăng ký? Bạn được nhận **LAMP token miễn phí** từ
@@ -114,7 +114,7 @@ A: Stake address gắn với delegation key — nếu bạn redelegate ra pool k
 | Tổng Airdrop | 120,000,000 LAMP |
 | Phần delegator (pot này) | 100,000,000 LAMP (∝stake, mọi pool) |
 | Phần SPO | 5,000,000 LAMP (tư cách hợp lệ, chia đều) |
-| Phần SC (Social/Community) | 15,000,000 LAMP (đóng góp cộng đồng, cần DID) |
+| Phần CS (Community Supporter) | 15,000,000 LAMP (đóng góp cộng đồng, cần DID) |
 | Thời hạn claim | 360 epoch sau SETUP |
 | Điều kiện (delegator) | Delegate mọi pool + đăng ký + giữ ≥ N epoch |
 | Phí claim | ~0.2 ADA |

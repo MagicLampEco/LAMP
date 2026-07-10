@@ -7,12 +7,12 @@ Hướng dẫn đầy đủ để operator deploy và vận hành TIGER Airdrop 
 ## Tổng quan
 
 > **Model 3-pot (chốt 2026-07-11):** tổng 120M LAMP = Delegator **100M** (∝stake, mọi pool) +
-> SPO **5M** (tư cách hợp lệ, chia đều) + SC **15M** (Social/Community support, đo qua AffiSo).
-> Đặc tả: `AIRDROP-V2-SPEC-Vi.md` (tổng) + `SPO-CS-SPEC-Vi.md` (SPO+SC).
+> SPO (Staking Pool Operator) **5M** (tư cách hợp lệ, chia đều) + CS (Community Supporter) **15M** (đo qua AffiSo).
+> Đặc tả: `AIRDROP-V2-SPEC-Vi.md` (tổng) + `SPO-CS-SPEC-Vi.md` (SPO+CS).
 
 ```
 Bước 1: Chọn cửa sổ snapshot → build snapshot delegator (∝stake, Blockfrost)
-Bước 2: Collect SPO registrations → cổng đủ-điều-kiện (SPO 5M) + đo CS qua AffiSo (SC 15M)
+Bước 2: Collect SPO registrations → cổng đủ-điều-kiện (SPO 5M) + đo CS qua AffiSo (CS 15M)
 Bước 3: Merge snapshot delegator + SPO/CS → final snapshot
 Bước 4: Build Merkle tree + generate slot NFTs
 Bước 5: Deploy Airdrop (compile Aiken, tạo genesis UTxO, SETUP tx)
@@ -25,7 +25,7 @@ Bước 7: Monitor claim + sweep sau deadline
 - Aiken ≥ 1.1.0 (để compile onchain)
 - Blockfrost API key (Preview hoặc Mainnet)
 - Ví operator có đủ ADA (SETUP tx tốn ~150 ADA min-ADA + phí)
-- LAMP token (100M delegator + 5M SPO + 15M SC = 120M LAMP) trong ví operator
+- LAMP token (100M delegator + 5M SPO + 15M CS = 120M LAMP) trong ví operator
 
 ---
 
@@ -82,7 +82,7 @@ npx tsx check_airdrop.ts --snapshot delegator_snapshot.json --top 20
 
 ---
 
-## Bước 2: Collect SPO registrations → SPO 5M + SC 15M
+## Bước 2: Collect SPO registrations → SPO 5M + CS 15M
 
 Xem `SPO-REGISTRATION.md` để hướng dẫn SPO operator, `SPO-CS-SPEC-Vi.md` cho công thức.
 
@@ -91,7 +91,7 @@ Model 3-pot: đăng ký SPO **không** còn chia theo stake. Hai phần:
 - **SPO 5M** — chia ĐỀU cho mọi SPO qua **cổng đủ-điều-kiện** (đã sản xuất block ≥1 trong 5
   epoch, tuổi pool ≥3 epoch, pledge ≥ ngưỡng, dedupe owner, ký reward stake key). Mỗi SPO qua
   cổng = `5.000.000 / N` LAMP.
-- **SC 15M** — theo điểm Social/Community support đo qua **AffiSo/ProofChat** (số DID được SPO
+- **CS 15M** — theo điểm Community Supporter đo qua **AffiSo/ProofChat** (số DID được SPO
   mời thực delegate và giữ ≥2 epoch, hỗ trợ được-xác-nhận, giới thiệu, retention), log-dampen +
   water-filling + cổng kích hoạt. Tính bằng `cs_score.ts`, cần **DID sinh trắc**.
 
@@ -105,7 +105,7 @@ Sau khi nhận file `spo_registration.json` từ SPO:
 
 # Áp cổng đủ-điều-kiện §3 (SPO-CS-SPEC) → danh sách N SPO hợp lệ.
 # SPO 5M: chia đều → mỗi SPO = 5_000_000 / N LAMP.
-# SC 15M: chạy cs_score.ts với metric CS xuất từ AffiSo → reward_i mỗi SPO.
+# CS 15M: chạy cs_score.ts với metric CS xuất từ AffiSo → reward_i mỗi SPO.
 # Gộp base + cs của mỗi SPO thành 1 entry {address = payment_address, amount_lamp}.
 ```
 
@@ -123,7 +123,7 @@ entry `base + cs` gộp — xuất từ `cs_score.ts`):
 node -e "
 const d = JSON.parse(require('fs').readFileSync('delegator_snapshot.json','utf8'));
 // spoCs[] xuất từ cs_score.ts: mỗi SPO qua cổng = { address: payment_address, amount_lamp: base+cs }
-// Tổng Σ amount_lamp của spoCs = 5.000.000 (SPO) + 15.000.000 (SC) = 20.000.000 LAMP.
+// Tổng Σ amount_lamp của spoCs = 5.000.000 (SPO) + 15.000.000 (CS) = 20.000.000 LAMP.
 const spoCs = JSON.parse(require('fs').readFileSync('spo_cs_snapshot.json','utf8'));
 const entries = [
   ...d.entries.map(e => ({ address: e.address, amount: BigInt(e.amount_oil).toString() })),
@@ -253,7 +253,7 @@ Phân phối qua:
 
 ## Checklist trước khi go-live
 
-- [ ] Snapshot đã verify: tổng = 100M (delegator ∝stake) + 5M (SPO chia đều) + 15M (SC) = 120M LAMP
+- [ ] Snapshot đã verify: tổng = 100M (delegator ∝stake) + 5M (SPO chia đều) + 15M (CS) = 120M LAMP
 - [ ] Merkle root đã công bố công khai trước SETUP
 - [ ] Aiken validators đã compile: `Airdrop/onchain/plutus.json` tồn tại
 - [ ] Ví operator có đủ ADA (≥ 200 ADA buffer) + đủ LAMP (120M + 10M dự phòng phí)

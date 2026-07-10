@@ -3,7 +3,7 @@
 // DEPRECATED cho phần SPO: "Tổng stake × epoch" dưới đây CHỈ là thông tin tham
 // khảo về pool, KHÔNG còn là cơ sở chia phần SPO. Model 3-pot (chốt 2026-07-11):
 //   - SPO 5M LAMP: chia ĐỀU cho SPO qua cổng đủ-điều-kiện (không theo stake).
-//   - SC 15M LAMP: theo Social/Community support đo qua AffiSo/ProofChat (cs_score.ts).
+//   - CS 15M LAMP: theo Community Supporter đo qua AffiSo/ProofChat (cs_score.ts).
 //   - Delegator 100M LAMP: ∝stake mọi pool (build_delegator_snapshot.ts / snapshot builder).
 // Xem SPO-CS-SPEC-Vi.md + AIRDROP-V2-SPEC-Vi.md.
 //
@@ -229,7 +229,7 @@ async function main(): Promise<void> {
     "[Lưu ý] Model 3-pot: phần SPO 5M LAMP chia ĐỀU cho SPO qua cổng đủ-điều-kiện",
   );
   console.log(
-    "        (không theo stake); phần SC 15M LAMP theo đóng góp cộng đồng (cần DID).",
+    "        (không theo stake); phần CS 15M LAMP theo đóng góp cộng đồng (cần DID).",
   );
   console.log("        Chi tiết: SPO-CS-SPEC-Vi.md.");
 

@@ -1,5 +1,7 @@
 // cs_score.ts — phân phối 3 pot Airdrop theo TRỌNG SỐ STAKE (stake-weighted).
 //
+// Vai trò: SPO = Staking Pool Operator · CS = Community Supporter.
+//
 // ─────────────────────────────────────────────────────────────────────────
 // MÔ HÌNH (thay hoàn toàn CS log-score cũ — xem SPO-CS-SPEC-Vi.md)
 //
@@ -8,13 +10,13 @@
 //
 //   • Pot SPO (5M)  — trọng số SPO(i) = Σ stake các delegator (đã đăng ký) ủy
 //     thác VÀO POOL của SPO i (delegation chảy vào pool).
-//   • Pot SC  (15M) — trọng số SC(j)  = Σ stake các delegator đã BÌNH CHỌN
+//   • Pot CS  (15M) — trọng số CS(j)  = Σ stake các delegator đã BÌNH CHỌN
 //     rằng j đã hỗ trợ họ (stake của người-được-giúp công nhận).
 //   • Pot Delegator (100M) — GIỮ nguyên `delegator_entitlement.ts`
 //     (trọng số = stake của CHÍNH delegator).
 //
 //   Cả 3 đều neo STAKE (đại lượng tốn kém, không ngụy tạo được) → chống sybil.
-//   Khác nhau ở NGUỒN trọng số: SPO = stake-vào-pool · SC = stake-bình-chọn.
+//   Khác nhau ở NGUỒN trọng số: SPO = stake-vào-pool · CS = stake-bình-chọn.
 //
 // ─────────────────────────────────────────────────────────────────────────
 // RANH GIỚI BIGINT (đọc kỹ trước khi sửa)
@@ -24,10 +26,10 @@
 //   nhận (như ETD `capOil`) qua water-filling; mặc định null (không cap).
 //
 //   Đơn vị: 1 LAMP = 10^6 oildrop (OIL_PER_LAMP).
-//   Pot SPO = 5.000.000 LAMP · Pot SC = 15.000.000 LAMP (constants.ts).
+//   Pot SPO = 5.000.000 LAMP · Pot CS = 15.000.000 LAMP (constants.ts).
 // ─────────────────────────────────────────────────────────────────────────
 
-import { SPO_POT_OIL, SC_POT_OIL } from "./constants.js";
+import { SPO_POT_OIL, CS_POT_OIL } from "./constants.js";
 import { computeEntitlements } from "../../../TIGER/offchain/src/entitlement.js";
 import { buildSnapshotSet } from "../../../TIGER/offchain/src/snapshot.js";
 
@@ -35,7 +37,7 @@ import { buildSnapshotSet } from "../../../TIGER/offchain/src/snapshot.js";
 
 /** 1 trọng số stake của người nhận.
  *  - Pot SPO: id = spo_id, stake = Σ stake delegator ủy thác vào pool đó.
- *  - Pot SC : id = supporter_id, stake = weight_stake (Σ stake người bình chọn). */
+ *  - Pot CS : id = supporter_id, stake = weight_stake (Σ stake người bình chọn). */
 export interface StakeWeight {
   id: string;
   /** Trọng số stake (lovelace tích luỹ) — BigInt, không âm. */
@@ -98,17 +100,17 @@ export function splitSpoPot(
   return splitByStake(spoWeights, potOil, capOil);
 }
 
-// ── Pot SC — trọng số = stake của người BÌNH CHỌN ───────────────────────────
+// ── Pot CS (Community Supporter) — trọng số = stake của người BÌNH CHỌN ──────
 
-/** Chia pot SC ∝ tổng "phiếu-stake" bình chọn cho mỗi supporter.
- *  `scWeights[j].stake` = Σ stake của các delegator đã bình chọn rằng supporter j
+/** Chia pot CS ∝ tổng "phiếu-stake" bình chọn cho mỗi supporter.
+ *  `csWeights[j].stake` = Σ stake của các delegator đã bình chọn rằng supporter j
  *  đã hỗ trợ họ (mỗi delegator có phiếu-stake = stake của mình, tổng phân bổ ≤ stake
  *  của họ — quy tắc chống double-count, xem SPO-CS-SPEC §Quy tắc bình chọn).
  *  Supporter KHÔNG cần là SPO — chỉ cần được stakeholder công nhận đã giúp. */
-export function splitScPot(
-  scWeights: StakeWeight[],
-  potOil: bigint = SC_POT_OIL,
+export function splitCsPot(
+  csWeights: StakeWeight[],
+  potOil: bigint = CS_POT_OIL,
   capOil: bigint | null = null,
 ): StakeReward[] {
-  return splitByStake(scWeights, potOil, capOil);
+  return splitByStake(csWeights, potOil, capOil);
 }

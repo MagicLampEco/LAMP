@@ -5,10 +5,10 @@ import { describe, it, expect } from "vitest";
 import {
   splitByStake,
   splitSpoPot,
-  splitScPot,
+  splitCsPot,
   type StakeWeight,
 } from "../src/cs_score.js";
-import { OIL_PER_LAMP, SPO_POT_OIL, SC_POT_OIL } from "../src/constants.js";
+import { OIL_PER_LAMP, SPO_POT_OIL, CS_POT_OIL } from "../src/constants.js";
 
 const LAMP = OIL_PER_LAMP;
 const sum = (rs: { oil: bigint }[]) => rs.reduce((s, r) => s + r.oil, 0n);
@@ -143,17 +143,17 @@ describe("splitSpoPot — trọng số = stake chảy vào pool (mặc định 5
   });
 });
 
-describe("splitScPot — trọng số = stake người bình chọn (mặc định 15M LAMP)", () => {
+describe("splitCsPot — trọng số = stake người bình chọn (mặc định 15M LAMP)", () => {
   // supporter KHÔNG cần là SPO. weight_stake = Σ stake người bình chọn cho họ.
-  const scWeights: StakeWeight[] = [
+  const csWeights: StakeWeight[] = [
     { id: "sup1", stake: 200n },
     { id: "sup2", stake: 300n },
   ];
-  const rs = splitScPot(scWeights);
+  const rs = splitCsPot(csWeights);
   const by = Object.fromEntries(rs.map((r) => [r.id, r.oil]));
 
-  it("mặc định potOil = SC_POT_OIL = 15.000.000 LAMP", () => {
-    expect(SC_POT_OIL).toBe(15_000_000n * LAMP);
+  it("mặc định potOil = CS_POT_OIL = 15.000.000 LAMP", () => {
+    expect(CS_POT_OIL).toBe(15_000_000n * LAMP);
   });
 
   it("reward ∝ stake-bình-chọn: sup1:sup2 = 2:3", () => {
@@ -161,7 +161,7 @@ describe("splitScPot — trọng số = stake người bình chọn (mặc đị
     expect(by.sup2! / LAMP).toBe(9_000_000n); // 15M × 3/5
   });
 
-  it("bảo toàn: Σ = SC_POT_OIL = 15.000.000 LAMP", () => {
-    expect(sum(rs)).toBe(SC_POT_OIL);
+  it("bảo toàn: Σ = CS_POT_OIL = 15.000.000 LAMP", () => {
+    expect(sum(rs)).toBe(CS_POT_OIL);
   });
 });

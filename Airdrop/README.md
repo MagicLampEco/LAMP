@@ -4,8 +4,9 @@
 > Airdrop v2 = **120 triệu LAMP**, chia 2 pot dưới **cùng** bộ máy Merkle-airdrop dưới đây:
 > - **Pot Delegator = 100M LAMP** — delegator **PHẢI ĐĂNG KÝ** (ký reward stake key), thưởng
 >   **∝stake ở bất kỳ pool Cardano**, cửa sổ snapshot mới, giữ ≥ N epoch. Xem `AIRDROP-V2-SPEC-Vi.md` §1.
-> - **Pot SPO/CS = 20M LAMP** = **SPO 5M** (tư cách pool hợp lệ, chia đều) + **SC 15M**
->   (Social/Community support, đo qua AffiSo, cần DID) — KHÔNG theo stake. Xem `SPO-CS-SPEC-Vi.md`.
+> - **Pot SPO/CS = 20M LAMP** = **SPO (Staking Pool Operator) 5M** (tư cách pool hợp lệ, chia
+>   đều) + **CS (Community Supporter) 15M** (đo qua AffiSo, cần DID) — KHÔNG theo stake. Xem
+>   `SPO-CS-SPEC-Vi.md`.
 >
 > **ĐỪNG NHẦM với ETD** (module `TIGER/`): ETD = pot RIÊNG 12M, hồi tố, **chỉ pool TIGER**,
 > KHÔNG đăng ký. Bảng phân biệt: `AIRDROP-V2-SPEC-Vi.md` §3.
