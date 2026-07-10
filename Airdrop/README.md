@@ -1,11 +1,26 @@
-# TIGER Airdrop — Merkle-airdrop retro cho delegator TIGER pool
+# Airdrop — Merkle-airdrop (bộ máy on-chain dùng chung)
 
-Module airdrop **0,1 tỷ LAMP** (100_000_000 LAMP = 100_000_000 × 10⁶ oil) cho
+> **MODEL HIỆN HÀNH = v2 (chốt 2026-07-10).** Đặc tả tổng: **`AIRDROP-V2-SPEC-Vi.md`**.
+> Airdrop v2 = **120 triệu LAMP**, chia 2 pot dưới **cùng** bộ máy Merkle-airdrop dưới đây:
+> - **Pot Delegator = 100M LAMP** — delegator **PHẢI ĐĂNG KÝ** (ký reward stake key), thưởng
+>   **∝stake ở bất kỳ pool Cardano**, cửa sổ snapshot mới, giữ ≥ N epoch. Xem `AIRDROP-V2-SPEC-Vi.md` §1.
+> - **Pot SPO/CS = 20M LAMP** = **SPO 5M** (tư cách pool hợp lệ, chia đều) + **SC 15M**
+>   (Social/Community support, đo qua AffiSo, cần DID) — KHÔNG theo stake. Xem `SPO-CS-SPEC-Vi.md`.
+>
+> **ĐỪNG NHẦM với ETD** (module `TIGER/`): ETD = pot RIÊNG 12M, hồi tố, **chỉ pool TIGER**,
+> KHÔNG đăng ký. Bảng phân biệt: `AIRDROP-V2-SPEC-Vi.md` §3.
+>
+> Phần dưới mô tả **cơ chế on-chain dùng chung** (pool NFT + CLAIM marker nullifier +
+> Sweep→Treasury + leaf encoding byte-perfect). v2 tái dùng nguyên, KHÔNG viết validator mới.
+> Ghi chú lịch sử: đoạn văn dưới nêu con số 100M/pool TIGER là mô tả bản v1 gốc; số/đối tượng
+> hiệu lực lấy theo `AIRDROP-V2-SPEC-Vi.md`.
+
+Module airdrop **0,1 tỷ LAMP** (100_000_000 LAMP = 100_000_000 × 10⁶ oildrop) cho
 delegator pool TIGER theo **snapshot**. Claim mở **360 epoch sau 29/7**; phần DƯ
 (không ai claim) hoàn về **Treasury**. Mỗi địa chỉ/DID claim đúng phần snapshot,
 KHÔNG double-claim.
 
-Nguồn allocation: `TOKENOMICS.md §TIGER Airdrop`. Đơn vị: **1 LAMP = 10⁶ oil**.
+Nguồn allocation: `TOKENOMICS.md §TIGER Airdrop`. Đơn vị: **1 LAMP = 10⁶ oildrop**.
 
 ---
 

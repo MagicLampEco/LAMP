@@ -23,7 +23,7 @@ import { createInterface } from "node:readline";
 import { writeFile } from "node:fs/promises";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createVerify, createPublicKey, randomBytes } from "node:crypto";
+import { verify as edVerify, createPublicKey, randomBytes } from "node:crypto";
 import { blake2b } from "@noble/hashes/blake2b";
 import { bech32 } from "@scure/base";
 import { bf, bfAll, BLOCKFROST_KEY, BLOCKFROST_URL, NETWORK } from "./config.js";
@@ -148,9 +148,9 @@ function verifyEd25519(messageHex: string, signatureHex: string, pubkeyHex: stri
     if (pubkeyBytes.length !== 32) return false;
     const derKey = Buffer.concat([DER_PREFIX, pubkeyBytes]);
     const publicKey = createPublicKey({ key: derKey, format: "der", type: "spki" });
-    const verify = createVerify("Ed25519");
-    verify.update(Buffer.from(messageHex, "hex"));
-    return verify.verify(publicKey, Buffer.from(signatureHex, "hex"));
+    // Ed25519 KHÔNG dùng createVerify (streaming digest) — ném "Invalid digest".
+    // Phải dùng one-shot crypto.verify(null, ...). Bug cũ luôn trả false → chặn đăng ký SPO.
+    return edVerify(null, Buffer.from(messageHex, "hex"), publicKey, Buffer.from(signatureHex, "hex"));
   } catch {
     return false;
   }
@@ -264,13 +264,18 @@ async function main(): Promise<void> {
   console.log(`Tổng stake × ${history.length} epoch: ${fmtAda(totalStakeLovelace.toString())}`);
   console.log();
 
-  // 3. Luật chơi
-  console.log("LUẬT CHƠI TIGER AIRDROP SPO REGISTRATION:");
-  console.log("  1. Phần SPO (20.000.000 LAMP) chia tỉ lệ theo stake × epoch");
-  console.log("  2. Operator phải ký xác nhận bằng reward stake key (KHÔNG cần cold key)");
-  console.log("  3. Payment address đăng ký sẽ KHÔNG thay đổi sau khi nộp");
-  console.log("  4. Deadline đăng ký: xem magiclamp.network/airdrop");
-  console.log("  5. Phần SPO không đăng ký đúng hạn → chuyển về Treasury");
+  // 3. Luật chơi (model 3-pot — chốt 2026-07-11; xem SPO-CS-SPEC-Vi.md)
+  console.log("LUẬT CHƠI AIRDROP SPO REGISTRATION (model 3-pot):");
+  console.log("  1. Đăng ký để CHỨNG MINH tư cách SPO hợp lệ (đã sản xuất block, đủ");
+  console.log("     tuổi pool, pledge tối thiểu, dedupe owner) → nhận phần SPO");
+  console.log("     5.000.000 LAMP chia ĐỀU cho mọi SPO qua cổng — KHÔNG theo stake.");
+  console.log("  2. Đăng ký cũng mở nhóm ProofChat để đo Social/Community support");
+  console.log("     (SC 15.000.000 LAMP) theo đóng góp cộng đồng — cần DID sinh trắc.");
+  console.log("  3. Operator phải ký xác nhận bằng reward stake key (KHÔNG cần cold key)");
+  console.log("  4. Payment address đăng ký sẽ KHÔNG thay đổi sau khi nộp");
+  console.log("  5. Deadline đăng ký: xem magiclamp.network/airdrop");
+  console.log("  6. SPO không đăng ký / không qua cổng đúng hạn → phần dư về Treasury");
+  console.log("  Chi tiết công thức SPO 5M + SC 15M: xem SPO-CS-SPEC-Vi.md");
   console.log();
 
   if (!noInteract) {

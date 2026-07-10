@@ -6,13 +6,17 @@ Hướng dẫn đầy đủ để operator deploy và vận hành TIGER Airdrop 
 
 ## Tổng quan
 
+> **Model 3-pot (chốt 2026-07-11):** tổng 120M LAMP = Delegator **100M** (∝stake, mọi pool) +
+> SPO **5M** (tư cách hợp lệ, chia đều) + SC **15M** (Social/Community support, đo qua AffiSo).
+> Đặc tả: `AIRDROP-V2-SPEC-Vi.md` (tổng) + `SPO-CS-SPEC-Vi.md` (SPO+SC).
+
 ```
-Bước 1: Chọn epoch snapshot → build snapshot (Blockfrost)
-Bước 2: Collect SPO registrations (20M phần SPO)
-Bước 3: Merge snapshot delegator + SPO → final snapshot
+Bước 1: Chọn cửa sổ snapshot → build snapshot delegator (∝stake, Blockfrost)
+Bước 2: Collect SPO registrations → cổng đủ-điều-kiện (SPO 5M) + đo CS qua AffiSo (SC 15M)
+Bước 3: Merge snapshot delegator + SPO/CS → final snapshot
 Bước 4: Build Merkle tree + generate slot NFTs
 Bước 5: Deploy Airdrop (compile Aiken, tạo genesis UTxO, SETUP tx)
-Bước 6: Phân phối proof file cho delegator (website/JSON API)
+Bước 6: Phân phối proof file cho người nhận (website/JSON API)
 Bước 7: Monitor claim + sweep sau deadline
 ```
 
@@ -21,7 +25,7 @@ Bước 7: Monitor claim + sweep sau deadline
 - Aiken ≥ 1.1.0 (để compile onchain)
 - Blockfrost API key (Preview hoặc Mainnet)
 - Ví operator có đủ ADA (SETUP tx tốn ~150 ADA min-ADA + phí)
-- LAMP token (100M + 20M = 120M LAMP) trong ví operator
+- LAMP token (100M delegator + 5M SPO + 15M SC = 120M LAMP) trong ví operator
 
 ---
 
@@ -78,43 +82,52 @@ npx tsx check_airdrop.ts --snapshot delegator_snapshot.json --top 20
 
 ---
 
-## Bước 2: Collect SPO registrations
+## Bước 2: Collect SPO registrations → SPO 5M + SC 15M
 
-Xem `SPO-REGISTRATION.md` để hướng dẫn SPO operator.
+Xem `SPO-REGISTRATION.md` để hướng dẫn SPO operator, `SPO-CS-SPEC-Vi.md` cho công thức.
+
+Model 3-pot: đăng ký SPO **không** còn chia theo stake. Hai phần:
+
+- **SPO 5M** — chia ĐỀU cho mọi SPO qua **cổng đủ-điều-kiện** (đã sản xuất block ≥1 trong 5
+  epoch, tuổi pool ≥3 epoch, pledge ≥ ngưỡng, dedupe owner, ký reward stake key). Mỗi SPO qua
+  cổng = `5.000.000 / N` LAMP.
+- **SC 15M** — theo điểm Social/Community support đo qua **AffiSo/ProofChat** (số DID được SPO
+  mời thực delegate và giữ ≥2 epoch, hỗ trợ được-xác-nhận, giới thiệu, retention), log-dampen +
+  water-filling + cổng kích hoạt. Tính bằng `cs_score.ts`, cần **DID sinh trắc**.
 
 Sau khi nhận file `spo_registration.json` từ SPO:
 
 ```bash
 # Xác minh chữ ký (manual với cardano-signer hoặc cardano-cli):
-# 1. Reconstruct message:
-#    TIGER-AIRDROP-SPO-REGISTRATION:pool_id:<pool_id>:payment_address:<payment_address>
+# 1. Reconstruct message (theo message trong spo_registration.json — do spo_register.ts sinh)
 # 2. Verify signature vs publicKey vs message
-# 3. Verify publicKey tương ứng stake address (bech32)
+# 3. Verify publicKey tương ứng reward stake address (bech32) của pool
 
-# Sau khi xác minh, tạo spo_snapshot.json thủ công:
-# [
-#   { "address": "addr1q... (payment_address của SPO)", "amount_lamp": "20000000" }
-# ]
+# Áp cổng đủ-điều-kiện §3 (SPO-CS-SPEC) → danh sách N SPO hợp lệ.
+# SPO 5M: chia đều → mỗi SPO = 5_000_000 / N LAMP.
+# SC 15M: chạy cs_score.ts với metric CS xuất từ AffiSo → reward_i mỗi SPO.
+# Gộp base + cs của mỗi SPO thành 1 entry {address = payment_address, amount_lamp}.
 ```
 
-Phần SPO hiện cần xử lý **thủ công** (20M LAMP). Tool tự động sẽ có ở phiên bản sau.
+Phần SPO/CS hiện cần phối hợp **AffiSo (metric CS) + cs_score.ts**. Tool gộp tự động sẽ hoàn thiện sau.
 
 ---
 
 ## Bước 3: Merge snapshot cuối
 
-Gộp `delegator_snapshot.json` + SPO entries thủ công:
+Gộp `delegator_snapshot.json` (100M ∝stake) + entries SPO/CS (base 5M + CS 15M, mỗi SPO 1
+entry `base + cs` gộp — xuất từ `cs_score.ts`):
 
 ```bash
-# Merge bằng script nhỏ (Node.js):
+# Merge bằng script nhỏ (Node.js). Mỗi SPO có amount_lamp riêng (KHÔNG phải 20M chia đều/∝stake):
 node -e "
 const d = JSON.parse(require('fs').readFileSync('delegator_snapshot.json','utf8'));
-const spo = [
-  { address: 'addr1q...spo_payment_address...', amount_lamp: '20000000' }
-];
+// spoCs[] xuất từ cs_score.ts: mỗi SPO qua cổng = { address: payment_address, amount_lamp: base+cs }
+// Tổng Σ amount_lamp của spoCs = 5.000.000 (SPO) + 15.000.000 (SC) = 20.000.000 LAMP.
+const spoCs = JSON.parse(require('fs').readFileSync('spo_cs_snapshot.json','utf8'));
 const entries = [
   ...d.entries.map(e => ({ address: e.address, amount: BigInt(e.amount_oil).toString() })),
-  ...spo.map(e => ({ address: e.address, amount: (BigInt(e.amount_lamp) * 1_000_000n).toString() }))
+  ...spoCs.map(e => ({ address: e.address, amount: (BigInt(e.amount_lamp) * 1_000_000n).toString() }))
 ];
 require('fs').writeFileSync('final_snapshot.json', JSON.stringify(entries, null, 2));
 console.log('Entries:', entries.length);
@@ -240,7 +253,7 @@ Phân phối qua:
 
 ## Checklist trước khi go-live
 
-- [ ] Snapshot đã verify: tổng phân bổ = 100M LAMP (delegator) + 20M LAMP (SPO)
+- [ ] Snapshot đã verify: tổng = 100M (delegator ∝stake) + 5M (SPO chia đều) + 15M (SC) = 120M LAMP
 - [ ] Merkle root đã công bố công khai trước SETUP
 - [ ] Aiken validators đã compile: `Airdrop/onchain/plutus.json` tồn tại
 - [ ] Ví operator có đủ ADA (≥ 200 ADA buffer) + đủ LAMP (120M + 10M dự phòng phí)

@@ -1,13 +1,20 @@
-# TIGER Airdrop — Hướng dẫn Delegator
+# Airdrop — Hướng dẫn Delegator (pot Delegator 100M)
 
-Bạn delegate ADA vào pool TIGER trong các epoch snapshot? Bạn được nhận **LAMP token miễn phí** theo tỉ lệ stake.
+> **Model v2 (chốt 2026-07-11).** Đây là **pot Delegator = 100.000.000 LAMP** trong tổng Airdrop
+> 120M (2 pot còn lại: SPO 5M + SC 15M cho SPO — xem `SPO-REGISTRATION.md`). Đặc tả:
+> `AIRDROP-V2-SPEC-Vi.md` §1. Khác v1: **mọi pool Cardano** (không chỉ TIGER) và **phải đăng ký**.
+
+Bạn delegate ADA vào **bất kỳ pool Cardano** và đăng ký? Bạn được nhận **LAMP token miễn phí** từ
+pot Delegator theo tỉ lệ stake.
 
 ---
 
 ## 1. Tôi có đủ điều kiện không?
 
 Bạn đủ điều kiện khi:
-- Bạn đã **delegate vào pool TIGER** trong ít nhất 1 epoch snapshot (danh sách epoch sẽ được công bố)
+- Bạn đã **delegate vào bất kỳ pool Cardano** (gợi ý thân thiện: pool TIGER, nhưng KHÔNG bắt buộc)
+  và **giữ delegation ≥ N epoch liên tục** trong cửa sổ snapshot `[E_open, E_cut)` (N = 2, chốt mỗi đợt)
+- Bạn đã **đăng ký** bằng cách ký reward stake key (opt-in — khác v1 auto-snapshot)
 - Phần LAMP của bạn ≥ **1 LAMP** (người stake rất nhỏ có thể dưới ngưỡng tối thiểu)
 
 ### Kiểm tra ngay:
@@ -26,16 +33,20 @@ Bạn cũng có thể kiểm tra trên trang web MagicLamp (không cần CLI).
 
 ## 2. Tính toán phần LAMP
 
-Phần LAMP của bạn tỉ lệ với **tổng ADA stake × số epoch** trong danh sách epoch snapshot:
+Phần LAMP của bạn tỉ lệ với **tổng ADA stake tích lũy qua các epoch giữ ≥ N liên tục** (mọi pool,
+trong cửa sổ `[E_open, E_cut)`) so với tổng của tất cả delegator đã đăng ký:
 
 ```
-Phần bạn nhận = (ADA của bạn × số epoch có mặt) / (tổng ADA × epoch toàn pool) × 100,000,000 LAMP
+Phần bạn nhận = (Σ ADA của bạn qua các epoch đủ điều kiện) / (Σ toàn bộ delegator đăng ký) × 100,000,000 LAMP
 ```
 
 Ví dụ:
-- Bạn stake 10,000 ADA trong 3 epoch
-- Tổng pool: 5,000,000 ADA × 3 epoch = 15,000,000 ADA-epoch
-- Bạn nhận: (10,000 × 3) / 15,000,000 × 100M = **20,000 LAMP**
+- Bạn stake 10,000 ADA, giữ liên tục 3 epoch (≥ N = 2) → accStake = 30,000 ADA-epoch
+- Tổng tất cả delegator đăng ký: 15,000,000 ADA-epoch
+- Bạn nhận: 30,000 / 15,000,000 × 100M = **200,000 LAMP**
+
+> Giữ delegation càng nhiều epoch → accStake càng lớn → phần càng nhiều (thưởng lòng trung thành).
+> Ví stake đúng 1 epoch rồi rút (không đủ chuỗi ≥ N) → accStake = 0 → loại.
 
 ---
 
@@ -101,9 +112,10 @@ A: Stake address gắn với delegation key — nếu bạn redelegate ra pool k
 | | |
 |---|---|
 | Tổng Airdrop | 120,000,000 LAMP |
-| Phần delegator | 100,000,000 LAMP |
-| Phần SPO | 20,000,000 LAMP |
+| Phần delegator (pot này) | 100,000,000 LAMP (∝stake, mọi pool) |
+| Phần SPO | 5,000,000 LAMP (tư cách hợp lệ, chia đều) |
+| Phần SC (Social/Community) | 15,000,000 LAMP (đóng góp cộng đồng, cần DID) |
 | Thời hạn claim | 360 epoch sau SETUP |
-| Điều kiện | Delegate TIGER pool trong epoch snapshot |
+| Điều kiện (delegator) | Delegate mọi pool + đăng ký + giữ ≥ N epoch |
 | Phí claim | ~0.2 ADA |
 | Double-claim | Không thể (onchain) |

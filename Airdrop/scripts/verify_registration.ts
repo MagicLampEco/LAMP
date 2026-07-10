@@ -12,7 +12,7 @@
 
 import { readFile, readdir } from "node:fs/promises";
 import { resolve, join } from "node:path";
-import { createVerify, createPublicKey } from "node:crypto";
+import { verify as edVerify, createPublicKey } from "node:crypto";
 import { blake2b } from "@noble/hashes/blake2b";
 import { bech32 } from "@scure/base";
 import { bf, bfAll, BLOCKFROST_KEY, NETWORK } from "./config.js";
@@ -28,9 +28,9 @@ function verifyEd25519(messageHex: string, sigHex: string, pubkeyHex: string): b
     if (pubkeyBytes.length !== 32) return false;
     const derKey = Buffer.concat([DER_PREFIX, pubkeyBytes]);
     const pk = createPublicKey({ key: derKey, format: "der", type: "spki" });
-    const v = createVerify("Ed25519");
-    v.update(Buffer.from(messageHex, "hex"));
-    return v.verify(pk, Buffer.from(sigHex, "hex"));
+    // Ed25519 KHÔNG dùng createVerify (streaming digest) — ném "Invalid digest".
+    // Phải dùng one-shot crypto.verify(null, ...). Bug cũ luôn trả false → chặn đăng ký.
+    return edVerify(null, Buffer.from(messageHex, "hex"), pk, Buffer.from(sigHex, "hex"));
   } catch {
     return false;
   }

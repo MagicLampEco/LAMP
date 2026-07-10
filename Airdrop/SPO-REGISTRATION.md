@@ -1,9 +1,20 @@
-# TIGER Airdrop — Hướng dẫn đăng ký SPO
+# Airdrop — Hướng dẫn đăng ký SPO
 
-Phần phân bổ SPO: **20,000,000 LAMP** (từ tổng 120M Airdrop pot #14).
+> **Model 3-pot (chốt 2026-07-11).** Tổng Airdrop **120.000.000 LAMP** = Delegator **100M** +
+> SPO **5M** + SC (Social/Community support) **15M**. Đăng ký SPO ở dưới mở khoá **hai pot**:
+> **SPO 5M** (tư cách pool hợp lệ) + **SC 15M** (đóng góp cộng đồng, cần DID).
+> Đặc tả công thức: **`SPO-CS-SPEC-Vi.md`**. Tổng quan 3 pot: **`AIRDROP-V2-SPEC-Vi.md`**.
 
-> Phần delegator (100M) được phân bổ tự động theo snapshot Blockfrost — delegator KHÔNG cần đăng ký.
-> Phần SPO (20M) dành riêng cho operator(s) đã vận hành pool TIGER. Phải đăng ký và ký xác nhận đồng ý luật chơi.
+Đăng ký SPO nhắm tới **hai phần**:
+
+- **SPO 5.000.000 LAMP** — phần theo **tư cách SPO hợp lệ**. SPO qua cổng đủ-điều-kiện
+  (đã sản xuất block, đủ tuổi pool, pledge tối thiểu, dedupe owner) nhận phần này **chia ĐỀU**,
+  KHÔNG theo lượng stake.
+- **SC 15.000.000 LAMP** — Social/Community support, đo qua AffiSo/ProofChat theo đóng góp cộng
+  đồng (mời người thật delegate và giữ delegation…). Cần **DID sinh trắc**. KHÔNG theo lượng stake.
+
+> Phần delegator (**100M**) là pot RIÊNG: ∝stake ở bất kỳ pool Cardano, delegator tự đăng ký
+> ký reward stake key (xem `DELEGATOR-GUIDE.md`). Đăng ký SPO dưới đây KHÔNG liên quan pot delegator.
 
 ---
 
@@ -123,17 +134,31 @@ Kết quả VALID → payment address được thêm vào Merkle tree SPO share.
 
 ---
 
-## Phân bổ SPO share (20M LAMP)
+## Phân bổ SPO 5M + SC 15M (KHÔNG theo stake)
 
-Nếu nhiều operator đã vận hành pool TIGER trong các epoch snapshot:
+Model 3-pot: đăng ký SPO KHÔNG còn chia theo "stake × epoch". Hai phần tách bạch:
 
-```
-Phần SPO của bạn = (stake × epoch của bạn) / (tổng stake × epoch tất cả SPO) × 20M LAMP
-```
+**SPO 5M — tư cách hợp lệ, chia ĐỀU.** Mọi SPO qua **cổng đủ-điều-kiện** (AND tất cả):
 
-Ví dụ:
-- SPO A (3 epoch × 6M ADA = 18M ADA·epoch): 18/30 × 20M = 12M LAMP
-- SPO B (2 epoch × 6M ADA = 12M ADA·epoch): 12/30 × 20M = 8M LAMP
+| Điều kiện | Ngưỡng gợi ý | Chặn |
+|---|---|---|
+| Đã sản xuất block | ≥1 block trong 5 epoch gần nhất | pool đăng-ký-rồi-chết |
+| Tuổi pool | ≥3 epoch tới snapshot | pool lập-tức-để-farm |
+| Pledge | ≥ ngưỡng nhỏ (vd 10k ADA) | "da thịt trong cuộc" |
+| Dedupe owner | 1 owner = 1 suất | multi-pool farm cùng chủ |
+| Ký đăng ký | reward stake key | mạo danh pool |
+
+→ Phần SPO của mỗi SPO qua cổng = `5.000.000 / N` LAMP (N = số SPO qua cổng). Stake lớn hay
+nhỏ nhận **như nhau**.
+
+**SC 15M — Social/Community support, đo qua AffiSo/ProofChat.** Điểm CS mỗi SPO tính từ số DID
+sinh trắc được SPO mời thực sự delegate và giữ ≥2 epoch (costly signal, neo on-chain), hỗ trợ
+được-xác-nhận, giới thiệu bậc-2, retention — qua log-dampen + water-filling. Có **cổng kích hoạt**:
+SPO stake khổng lồ nhưng không hỗ trợ cộng đồng (CS=0) nhận **0**. Cần **DID sinh trắc**.
+
+> Công thức đầy đủ (trọng số, cap κ=40%, drip T=20 epoch, largest-remainder): **`SPO-CS-SPEC-Vi.md`**.
+> "Một SPO stake tối thiểu nhưng hỗ trợ cộng đồng mạnh nhận phần lớn thưởng" — bảo đảm bằng toán,
+> không phải chia theo stake.
 
 ---
 

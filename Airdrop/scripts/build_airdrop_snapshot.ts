@@ -20,10 +20,11 @@
 //   4. Hamilton apportionment → đảm bảo tổng phân bổ = đúng BUDGET (không rò BigInt).
 //   5. Loại địa chỉ nhận < MIN_LAMP_ALLOCATION (default 1 LAMP = 1 × 10⁶ oil).
 //
-// GHI CHÚ 100M vs 120M: LAMP-POT-CATALOG quy định 120M Airdrop (20M SPO + 100M delegator).
-// Script này phân bổ phần DELEGATOR (DEFAULT_BUDGET = 100_000_000). Phần SPO (20M)
-// cần tool riêng: collect_spo_registration.ts (khi spec SPO share hoàn chỉnh).
-// Để phân bổ cả 120M không tách SPO, set --budget 120000000.
+// GHI CHÚ 100M vs 120M (model 3-pot, chốt 2026-07-11): tổng Airdrop 120M LAMP =
+//   Delegator 100M + SPO 5M + SC 15M. Script này phân bổ phần DELEGATOR
+//   (DEFAULT_BUDGET = 100_000_000) ∝stake. Hai pot còn lại KHÔNG theo stake:
+//   SPO 5M chia đều cho SPO qua cổng, SC 15M theo Social/Community support (cs_score.ts).
+//   Xem SPO-CS-SPEC-Vi.md + AIRDROP-V2-SPEC-Vi.md.
 
 import { writeFile } from "node:fs/promises";
 import { resolve, dirname } from "node:path";
@@ -297,8 +298,9 @@ async function main(): Promise<void> {
       generated_at_epoch: epochCurrent.toString(),
       excluded_below_min: excludedCount,
       note_spo_share:
-        "Phần SPO (20M LAMP theo LAMP-POT-CATALOG) chưa tính ở đây. " +
-        "Budget này = phần Delegator. Xem collect_spo_registration.ts.",
+        "Budget này = phần Delegator (100M LAMP, ∝stake). Model 3-pot: SPO 5M " +
+        "chia đều cho SPO qua cổng + SC 15M theo Social/Community support — cả hai " +
+        "KHÔNG theo stake, tính riêng (cs_score.ts). Xem SPO-CS-SPEC-Vi.md.",
     },
     entries,
   };
