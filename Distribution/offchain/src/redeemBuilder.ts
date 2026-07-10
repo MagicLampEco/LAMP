@@ -31,7 +31,7 @@ import {
   credentialToAddress, scriptHashToCredential, validatorToScriptHash,
   type LucidEvolution, type UTxO, type Validator, type TxSignBuilder,
 } from "@lucid-evolution/lucid";
-import type { Network } from "@magiclamp/protocol-utils";
+import type { Network } from "@magiclamp/utils";
 
 import type { ClaimAccountDatum, TreasuryDatum } from "./types.js";
 import {

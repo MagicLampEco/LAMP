@@ -1,0 +1,132 @@
+[
+  {
+    "id": "srcl-1",
+    "project": "MagicLamp",
+    "slug": "srcl-1",
+    "title": "SRCL Round 1 — GreenSun",
+    "tagline": "Contribute staking rewards for 36 epochs, receive 360M LAMP",
+    "mechanism": "SRCL",
+    "status": "upcoming",
+    "registration_open_epoch": 590,
+    "start_epoch": 595,
+    "end_epoch": 631,
+    "claim_deadline_epoch": 991,
+    "pot_lamp": "360000000000000",
+    "lamp_source": "SRCL_POT",
+    "summary_md": "Contribute the staking rewards of your ADA over 36 epochs and receive LAMP from a 360M pot. Your ADA principal never leaves your wallet. Sign once — the system records your contribution every epoch.",
+    "description_md": "## SRCL Round 1 — GreenSun\n\nSRCL (Staking Reward Contribution Launch) is a launch mechanism for LAMP: you contribute the **staking rewards** of your ADA (not your principal) and receive LAMP in proportion.\n\n### How it works\n\n1. Connect your Cardano wallet (Lace, Eternl, ...)\n2. Sign once to link your delegation to the round's reward script\n3. Each epoch, the system records your contributed rewards automatically\n4. At the end of the round, receive LAMP proportional to your contribution\n\n### Your principal stays safe\n\nThe script controls only the delegation part (rewards), never the spending part (your ADA principal). This is guaranteed by the Cardano protocol.\n\n### Allocation\n\n- **Pot**: 360,000,000 LAMP (from the SRCL Pot)\n- **Duration**: 36 epochs (~36 days on Preview / ~180 days on Mainnet)\n- **Beneficiary**: GST pool (GreenSun)\n- **Distribution**: proportional to contributed ADA rewards, deterministic and conservative",
+    "docs_url": "https://magiclamp.network/launch/srcl-1",
+    "chat_url": "superapp://chat/launch-srcl-1",
+    "participate_url": "https://affiso.net/launch/MagicLamp/srcl-1",
+    "phases": [
+      {
+        "id": "srcl-1-reg",
+        "title": "Registration",
+        "status": "upcoming",
+        "start_epoch": 590,
+        "end_epoch": 594,
+        "lamp_amount": "0",
+        "description_md": "Registration and wallet connection open. Sign once to join the round.",
+        "eligibility": "Anyone with a Cardano wallet and a PhoenixKey DID"
+      },
+      {
+        "id": "srcl-1-active",
+        "title": "Contribution & accrual",
+        "status": "upcoming",
+        "start_epoch": 595,
+        "end_epoch": 631,
+        "lamp_amount": "360000000000000",
+        "description_md": "36 epochs of staking-reward contribution. The system records each epoch automatically.",
+        "eligibility": "Participants who registered during the registration phase"
+      },
+      {
+        "id": "srcl-1-claim",
+        "title": "Claim LAMP",
+        "status": "upcoming",
+        "start_epoch": 632,
+        "end_epoch": 991,
+        "lamp_amount": "360000000000000",
+        "description_md": "Claim LAMP proportional to your contribution. Claimable at any time within 360 epochs.",
+        "eligibility": "Participants in the contribution phase"
+      }
+    ],
+    "stats": {
+      "participants": 0,
+      "total_contribution_lovelace": "0",
+      "lamp_distributed": "0",
+      "current_epoch": 590,
+      "last_updated_epoch": 590
+    },
+    "geofence": null,
+    "requires_did": true,
+    "requires_wallet_connect": true,
+    "push_targets": [],
+    "created_at": "2026-06-29T00:00:00Z",
+    "updated_at": "2026-06-29T00:00:00Z"
+  },
+  {
+    "id": "tiger-airdrop",
+    "project": "MagicLamp",
+    "slug": "tiger-airdrop",
+    "title": "TIGER Airdrop",
+    "tagline": "Retroactive LAMP for TIGER pool delegators — on-chain snapshot, 360-epoch claim window",
+    "mechanism": "Airdrop",
+    "status": "upcoming",
+    "registration_open_epoch": 0,
+    "start_epoch": 600,
+    "end_epoch": 960,
+    "claim_deadline_epoch": 960,
+    "pot_lamp": "120000000000000",
+    "lamp_source": "AIRDROP_POT",
+    "summary_md": "120M LAMP allocated to those who delegated ADA to the TIGER pool during the snapshot epochs. Delegators receive 100M, the pool operator receives 20M. Nothing to do in advance — the snapshot is fixed from on-chain data.",
+    "description_md": "## TIGER Airdrop\n\nA retroactive airdrop recognizing those who supported the TIGER pool from the start.\n\n### Who receives it?\n\n- **Delegators (100M LAMP)**: Anyone who delegated ADA to the TIGER pool during the snapshot epochs\n- **Pool Operator (20M LAMP)**: The operator running the TIGER pool during the snapshot epochs\n\n### How it is calculated\n\n- Your share = (your ADA x epochs present) / (total pool ADA x epochs) x 100M\n- Deterministic, conservative, independently verifiable by anyone\n\n### How to claim\n\n1. Connect your Cardano wallet (Lace, Eternl, ...) and a PhoenixKey DID\n2. The system identifies your share from the snapshot\n3. Sign the claim transaction (~0.2 ADA fee)\n4. LAMP arrives in your wallet within one block\n\n### Deadline\n\n360 epochs from setup. Any unclaimed share returns to the Treasury after the deadline.",
+    "docs_url": "https://magiclamp.network/launch/tiger-airdrop",
+    "chat_url": "superapp://chat/launch-tiger-airdrop",
+    "participate_url": "https://affiso.net/launch/MagicLamp/tiger-airdrop",
+    "phases": [
+      {
+        "id": "airdrop-snapshot",
+        "title": "Snapshot",
+        "status": "ended",
+        "start_epoch": 580,
+        "end_epoch": 585,
+        "lamp_amount": "0",
+        "description_md": "Snapshot from on-chain data. Epochs 580-585 form the basis of the allocation.",
+        "eligibility": "Automatic — no registration required"
+      },
+      {
+        "id": "airdrop-setup",
+        "title": "On-chain setup",
+        "status": "upcoming",
+        "start_epoch": 598,
+        "end_epoch": 600,
+        "lamp_amount": "120000000000000",
+        "description_md": "The Airdrop contract is deployed on-chain.",
+        "eligibility": "Automatic (operator)"
+      },
+      {
+        "id": "airdrop-claim",
+        "title": "Claim open",
+        "status": "upcoming",
+        "start_epoch": 600,
+        "end_epoch": 960,
+        "lamp_amount": "120000000000000",
+        "description_md": "Delegators and the operator claim LAMP within 360 epochs.",
+        "eligibility": "Address present in the snapshot plus a PhoenixKey DID"
+      }
+    ],
+    "stats": {
+      "participants": 0,
+      "total_contribution_lovelace": "0",
+      "lamp_distributed": "0",
+      "current_epoch": 590,
+      "last_updated_epoch": 590
+    },
+    "geofence": null,
+    "requires_did": true,
+    "requires_wallet_connect": true,
+    "push_targets": [],
+    "created_at": "2026-06-29T00:00:00Z",
+    "updated_at": "2026-06-29T00:00:00Z"
+  }
+]

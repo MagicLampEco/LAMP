@@ -1,0 +1,7 @@
+{
+  "name": "@magiclamp/ispo-scripts",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "description": "Demo deploy + setRoot + claim ISPO trên Preview (bản hardening slot spend-once)"
+}

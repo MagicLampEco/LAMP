@@ -45,7 +45,7 @@ Mục tiêu cuối của cả dự án (theo định hướng dài hạn): làm 
 | Distribution (Drop Lottery) | ✅ **live Preview**, 113 test | [`Distribution/SPEC.md`](../../Distribution/SPEC.md), commit `af115fe8`, `5cf1ae62`, `1fbd78a4` |
 | Treasury | 🔜 chỉ có `SPEC.md` outline | [`Treasury/SPEC.md`](../../Treasury/SPEC.md) |
 | Governance / Voting Power | 🔜 outline + CONTRACT đã duyệt | thư mục này |
-| protocol-utils | có code + test | [`protocol-utils/src`](../../protocol-utils/src) |
+| Utils | có code + test | [`Utils/src`](../../Utils/src) |
 
 **Hệ quả triển khai:** Distribution là **khuôn mẫu tham chiếu** đã chứng minh chạy được. Voting Power **tái dùng nguyên** bộ công cụ của nó:
 
@@ -95,7 +95,7 @@ Lý do (tối ưu eUTXO): script context không có sẵn các tổng hợp lị
 ### 2.3 Đồ thị phụ thuộc build
 
 ```
-                 protocol-utils (đã có)
+                 Utils (đã có)
                          │
           ┌──────────────┼──────────────┐
           ▼              ▼              ▼
@@ -352,7 +352,7 @@ Các tham số EXEC **cố ý KHÔNG bịa con số cuối**:
 - **PhoenixKey DID proof on-chain** — blocker tiên quyết cho **chạy thật** (M6). NGOÀI repo LAMP. Build/test (M0–M5) KHÔNG chờ nó (§2.1).
 - **repo MAGIC** — nguồn C1 (MAGIC tiêu thụ) + C2 (ScheduleGen). Đọc qua reference input; cần khoá schema beacon ở M0 (R4).
 - **repo LAMP** — C4 đọc qua **registry LAMP-holding gắn DID + lock UTxO một-LAMP-một-DID** (CONTRACT §5 D4 — KHÔNG đọc số dư ví trần); tái dùng toolchain + mẫu beacon/committee/one-shot của Distribution.
-- **protocol-utils** — tái dùng tiện ích chung.
+- **Utils** — tái dùng tiện ích chung.
 
 ---
 
