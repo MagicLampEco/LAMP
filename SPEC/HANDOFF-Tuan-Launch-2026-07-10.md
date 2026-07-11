@@ -33,34 +33,52 @@ giá trị lớn. **KHÔNG dùng 1 pkh nóng.** Ký để mint = authority trong
 
 ---
 
-## 2. VIỆC XÁC MINH #1 — ĐƯỜNG GĂNG (Tuân check on-chain trước)
+## 2. VIỆC XÁC MINH #1 — ĐÃ XÁC MINH ✓ (lazy-mint ĐÃ wired trên MAINNET)
 
-**Câu hỏi phải trả lời bằng dữ liệu on-chain, không đoán:**
+**Câu hỏi:** đường lazy-mint (supply_state counter + kho + cap-36B) đã wired trên **MAINNET**
+chưa, hay mới chỉ ở **Preview**?
 
-> Đường lazy-mint (registry NFT + supply_state counter + kho NFT) đã wired trên **MAINNET**
-> chưa, hay mới chỉ ở **Preview**?
+**KẾT QUẢ (đọc on-chain qua koios, read-only — `Genesis/scripts/verify_mainnet_supply.ts`):**
 
-Hiện trạng theo hiểu biết: mainnet mới có **1 mint tx** (`db0610c2…`, chính là genesis 1e12).
-Các mảnh còn lại của đường cap-36B (registry, supply_state, kho) **có thể chưa lên mainnet**.
+> **ĐÃ wired trên MAINNET.** Không chỉ 1 mint tx genesis — supply_state counter 4-field +
+> kho dist_treasury đều đã có mặt trên mainnet, cap tổng = **36 tỷ LAMP** đúng allocation v17.
 
-**Tuân phải:**
-1. Tra explorer mainnet: có `registry_nft` UTxO? có `supply_state` UTxO (datum 4-field)? có
-   kho NFT address? Hay tất cả mới ở Preview?
-2. Báo lại rõ: "mainnet hiện có X, thiếu Y".
+Bằng chứng (tx genesis `db0610c2…`):
 
-**Nếu THIẾU → deploy phần còn lại theo runbook phá-vòng (thứ tự bắt buộc):**
+| Thành phần | Giá trị on-chain (mainnet) |
+|---|---|
+| Policy LAMP | `55d3e01bb6c469e02665e4b6573ce65bbaf7a50ad2024e247eb180f0`, asset `4c414d50` ("LAMP") |
+| supply_state UTxO | `addr1wxz0dkz0v3rg6zeqz9c7cyxz9lg3ynkrlkqrapfkj7e5ppqexy5d3` (script hash `84f6d84f64468d0b201171ec10c22fd1124ec3fd803e853697b34084`), giữ NFT "SUPPLY" (`535550504c59`) |
+| supply_state datum | **inline**, Constr 0, 4 field oildrop: `dist_minted=1_000_000_000_000` · `reserve_minted=0` · `dist_cap=26_370_000_000_000_000` · `reserve_cap=9_630_000_000_000_000` (26,37B + 9,63B = **36B**) |
+| CBOR datum | `d8799f1b000000e8d4a51000001b005daf6012ba20001b0022366f192fe000ff` |
+| KHO (dist_treasury) | `addr1w827sry6t2y9744ndkg4ks6nct57v7tm8pz46ywsq98dhdsf76slu` (hash `d5e80c9a5a885f56b36d915b4353c2e9e6797b38455d11d0014edbb6`), giữ **1e12 LAMP** genesis (= 1.000.000 LAMP) |
 
-```
-taad_policy (nếu dùng)  →  registry_nft_policy  →  supply_state_policy
-   →  (lamp policy đã có)  →  ghi SupplyState datum 4-field  →  kho dist_treasury + kho_nft
-```
+Codec đối chiếu byte đã kết tinh: `Genesis/offchain/src/supply_state.ts` +
+test `Genesis/tests/supply_state.test.ts` — bất biến then chốt
+`encodeSupplyState(state mainnet) === CBOR mainnet` **XANH** (byte-perfect với on-chain).
 
-Mỗi bước xuất: **policy-id + CBOR + địa chỉ + UTxO điểm** để bước sau tiêu thụ. Đây là
-đường găng của **cả 3 đợt** — không có kho + SupplyState thì không route LAMP ra pot được.
+**⇒ KHÔNG phải deploy lại registry/supply_state/kho.** Runbook phá-vòng cũ (deploy từ đầu)
+KHÔNG còn cần. Đường găng thu hẹp còn 4 việc dưới.
 
-*(Còn treo cần anh chốt: registry write-side .ak ai giữ + compile CBOR + hash; giá trị byte
-`token_tag` cho LAMP; deploy Preview trước hay mainnet policy-id mới. Xem
-`SESSION-STATE-lamp-mint-canonical.md` §"Còn cần LAMP làm".)*
+**Việc CÒN LẠI chính xác (Tuân):**
+
+1. **Xác nhận cơ chế WHO-gate THẬT của `lamp_mint` đã deploy mainnet.** Tx genesis KHÔNG lộ
+   registry NFT ⇒ chưa rõ mint-more gate bằng **bootstrap authority-sig** (`[pkh]` / MultiSig
+   2/3 trong param apply — như `03_mint_more.ts` Preview dùng `[pkh],1n`) hay bằng **reference
+   registry NFT** (`token_tag` → SinglePkh/MultiSig/Revoked qua `registry.validate_mint`).
+   Tra `koios /script_info?_script_hashes=[<lamp_mint hash>]` lấy CBOR + soi param apply.
+2. **Khoá authority ai giữ** — theo HANDOFF §1: MultiSig **2/3 bootstrap** → di trú OrgDID
+   (PhoenixKey) TRƯỚC khi nạp giá trị lớn. Chốt danh tính người giữ + quy trình ký.
+3. **Hoàn thiện builder mint_release** — `Genesis/scripts/mint_release_plan.ts` (SCAFFOLD
+   DRY-RUN, đã in kế hoạch datum cũ→mới + A-DEST + redeemer cho từng đợt) → nối khoá (b) +
+   reference script (a) + registry UTxO (c nếu có) → dựng tx thật (tham chiếu `mintBuilder.ts`).
+4. **Thứ tự mint 513M LAMP** (ETD 12M + Airdrop 120M + SRCL ~381M) — tổng **513M** ≪ headroom
+   distribution còn **26,369 tỷ LAMP** (dist_cap − dist_minted). Kế hoạch từng bước:
+   `npx tsx Genesis/scripts/mint_release_plan.ts` in ra datum cũ→mới mỗi đợt.
+
+*(Còn treo cần anh chốt nếu WHO-gate dùng registry NFT: registry write-side .ak ai giữ +
+compile CBOR + hash; giá trị byte `token_tag` cho LAMP. Nếu dùng bootstrap authority-sig thì
+KHÔNG cần registry — Tuân xác nhận ở việc #1.)*
 
 ---
 

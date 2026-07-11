@@ -78,6 +78,21 @@
   @media (prefers-color-scheme:dark){.searchbar button{color:#1a140a}}
   .searchbar button:hover{filter:brightness(1.06)}
   .hint{padding:0 20px 14px;font-size:12px;color:var(--muted)}
+  .explain{margin:14px 20px 4px;border:1px solid var(--line);border-radius:11px;padding:13px 14px;background:var(--surface-2)}
+  .ex-h{font-size:12.5px;font-weight:650;margin-bottom:11px}
+  .ex-grid{display:grid;grid-template-columns:1fr auto 1fr;gap:10px;align-items:center}
+  .ex-cell{margin:0}
+  .ex-cell svg{width:100%;height:44px;display:block;border-bottom:1px solid var(--line)}
+  .ex-fill{fill:var(--muted);opacity:.22}
+  .ex-fill.win{fill:var(--brass);opacity:.30}
+  .ex-line{fill:none;stroke:var(--muted);stroke-width:1.5}
+  .ex-line.win{stroke:var(--brass);stroke-width:2}
+  .ex-cell figcaption{font-size:11px;color:var(--muted);margin-top:6px;line-height:1.35}
+  .ex-cell figcaption b{color:var(--ink)}
+  .ex-vs{font-size:16px;font-weight:700;color:var(--brass-ink);text-align:center}
+  .ex-note{font-size:11.5px;color:var(--muted);margin-top:11px;padding-top:10px;border-top:1px solid var(--line);line-height:1.5}
+  .spark-cap{font-size:11.5px;color:var(--muted);margin:-4px 0 10px;line-height:1.45}
+  .spark-cap b{color:var(--brass-ink)}
   .examples{padding:0 20px 16px;font-size:12px;color:var(--muted);display:flex;flex-wrap:wrap;gap:8px;align-items:center}
   .examples button{font-family:var(--mono);font-size:11px;background:var(--surface-2);border:1px solid var(--line);
     color:var(--brass-ink);border-radius:6px;padding:3px 8px;cursor:pointer}
@@ -128,7 +143,7 @@
 
   .pots{display:grid;grid-template-columns:1fr;gap:10px;margin-bottom:16px}
   @media(min-width:560px){.pots{grid-template-columns:repeat(3,1fr)}}
-  .pot{border:1px solid var(--line);border-radius:11px;padding:14px;background:var(--surface-2)}
+  .pot{border:1px solid var(--line);border-radius:11px;padding:14px;background:var(--surface-2);min-width:0}
   .pot .amt{font-family:var(--mono);font-size:21px;font-weight:600;color:var(--brass-ink)}
   .pot .amt small{font-size:12px;color:var(--muted);font-weight:500}
   .pot .nm{font-size:12.5px;font-weight:650;margin:6px 0 3px}
@@ -152,7 +167,7 @@
   .steps b{color:var(--ink)}
   .signrow{display:grid;grid-template-columns:1fr;gap:10px;margin:6px 0 4px}
   @media(min-width:560px){.signrow{grid-template-columns:repeat(3,1fr)}}
-  .signopt{border:1px solid var(--line);border-radius:10px;padding:12px;background:var(--surface-2)}
+  .signopt{border:1px solid var(--line);border-radius:10px;padding:12px;background:var(--surface-2);min-width:0}
   .signopt h4{margin:0 0 6px;font-size:13px}
   .signopt p{font-size:12px;color:var(--muted);margin:0 0 8px;min-height:32px}
   .copybox{display:flex;gap:6px;align-items:stretch}
@@ -206,6 +221,25 @@
     <div class="panel-head">
       <h2 data-i18n="etd_h">ETD — Early TIGER Delegator</h2>
       <p data-i18n="etd_p">Ghi nhận hồi tố cho MỌI ai đã ủy thác vào pool TIGER trước cutoff (epoch 637 · 18/6 UTC) — kể cả đã rời pool. Pot 12.000.000 LAMP, chia theo tổng stake tích lũy.</p>
+    </div>
+    <div class="explain">
+      <div class="ex-h" data-i18n="ex_h">LAMP = stake × thời gian (diện tích), không theo đỉnh ADA</div>
+      <div class="ex-grid">
+        <figure class="ex-cell">
+          <svg viewBox="0 0 120 44" preserveAspectRatio="none" aria-hidden="true">
+            <polygon points="0,44 0,10 40,10 40,44" class="ex-fill"/><polyline points="0,10 40,10" class="ex-line"/>
+          </svg>
+          <figcaption><b data-i18n="ex_a1">Nhiều ADA</b><span data-i18n="ex_a2">, 2 epoch rồi đổi pool</span></figcaption>
+        </figure>
+        <div class="ex-vs" data-i18n="ex_lt">&lt;</div>
+        <figure class="ex-cell">
+          <svg viewBox="0 0 120 44" preserveAspectRatio="none" aria-hidden="true">
+            <polygon points="0,44 0,28 120,28 120,44" class="ex-fill win"/><polyline points="0,28 120,28" class="ex-line win"/>
+          </svg>
+          <figcaption><b data-i18n="ex_b1">Ít ADA</b><span data-i18n="ex_b2">, nhưng stake lâu dài</span></figcaption>
+        </figure>
+      </div>
+      <div class="ex-note" data-i18n="ex_note">Diện tích tô = tổng stake tích lũy = phần LAMP bạn nhận. Không có trần — ai tích lũy nhiều hơn nhận nhiều hơn.</div>
     </div>
     <div class="searchbar">
       <input id="q" type="text" spellcheck="false" autocomplete="off" aria-label="address" />
@@ -317,6 +351,11 @@ const I18N = {
     r_acc:"Stake tích lũy (TIGER)", r_eps:"Số epoch tại TIGER", r_stake:"Stake address",
     r_disc:"Số LAMP = phần của bạn trong pot 12.000.000, ∝ tổng stake tích lũy qua các epoch TIGER trước cutoff 637. Tạm tính — chốt chính thức sau khi đăng ký payment address.",
     r_show:"Xem", r_epochs:"epoch tại TIGER", th_ep:"Epoch", th_st:"Stake (₳)", th_lm:"LAMP",
+    r_loyal:"trung thành", r_eps_unit:"epoch",
+    spark_cap:"Diện tích tô = <b>tổng stake tích lũy</b> qua các epoch = LAMP của bạn. Đường dài (stake lâu) cộng dồn nhiều hơn đường cao-ngắn.",
+    ex_h:"LAMP = stake × thời gian (diện tích), không theo đỉnh ADA",
+    ex_a1:"Nhiều ADA", ex_a2:", 2 epoch rồi đổi pool", ex_lt:"<", ex_b1:"Ít ADA", ex_b2:", nhưng stake lâu dài",
+    ex_note:"Diện tích tô = tổng stake tích lũy = phần LAMP bạn nhận. Không có trần — ai tích lũy nhiều hơn nhận nhiều hơn.",
     nf_t:"Không tìm thấy trong snapshot ETD.",
     nf_b:"không nằm trong danh sách từng ủy thác pool TIGER (tới epoch 636). Hãy dán đúng STAKE address (stake1…). Chưa từng stake TIGER? Đợt Airdrop (mọi pool, có đăng ký) phù hợp hơn.",
     ad_lock:"Chưa mở snapshot — cần ĐĂNG KÝ. Airdrop có 3 vai trò, đều chia theo STAKE.", ad_h:"Airdrop — 120.000.000 LAMP",
@@ -352,6 +391,11 @@ const I18N = {
     r_acc:"Cumulative stake (TIGER)", r_eps:"Epochs at TIGER", r_stake:"Stake address",
     r_disc:"LAMP = your share of the 12,000,000 pot, ∝ cumulative stake across TIGER epochs before cutoff 637. Provisional — finalized after you register a payment address.",
     r_show:"Show", r_epochs:"TIGER epochs", th_ep:"Epoch", th_st:"Stake (₳)", th_lm:"LAMP",
+    r_loyal:"loyal", r_eps_unit:"epochs",
+    spark_cap:"Filled area = <b>cumulative stake</b> across epochs = your LAMP. A long line (staked longer) accrues more than a tall-but-short one.",
+    ex_h:"LAMP = stake × time (area), not peak ADA",
+    ex_a1:"More ADA", ex_a2:", 2 epochs then switched pool", ex_lt:"<", ex_b1:"Less ADA", ex_b2:", but staked long-term",
+    ex_note:"Filled area = cumulative stake = the LAMP you receive. No cap — whoever accumulates more receives more.",
     nf_t:"Not found in the ETD snapshot.",
     nf_b:"is not in the list of TIGER delegators (through epoch 636). Paste your STAKE address (stake1…). Never staked TIGER? The Airdrop (any pool, with registration) fits better.",
     ad_lock:"Snapshot not open yet — registration required. Airdrop has 3 roles, all split by STAKE.", ad_h:"Airdrop — 120,000,000 LAMP",
@@ -411,10 +455,33 @@ document.querySelectorAll(".tab").forEach(tb=>{
     for (const k in panes) document.getElementById(panes[k]).hidden = (k!==tb.dataset.tab);
   });
 });
+function copyText(text){
+  // Artifact chạy trong iframe sandbox → navigator.clipboard thường bị chặn.
+  // Thử clipboard API trước, rồi fallback execCommand (dùng được nhiều nơi hơn).
+  try{
+    if(navigator.clipboard && window.isSecureContext){
+      return navigator.clipboard.writeText(text).then(()=>true).catch(()=>execCopy(text));
+    }
+  }catch(_){}
+  return Promise.resolve(execCopy(text));
+}
+function execCopy(text){
+  try{
+    const ta=document.createElement("textarea");
+    ta.value=text; ta.setAttribute("readonly","");
+    ta.style.position="fixed"; ta.style.top="0"; ta.style.left="0"; ta.style.opacity="0";
+    document.body.appendChild(ta); ta.focus(); ta.select();
+    const ok=document.execCommand("copy"); document.body.removeChild(ta); return ok;
+  }catch(_){ return false; }
+}
 document.addEventListener("click",(e)=>{
   const b = e.target.closest(".copybtn"); if(!b) return;
   const code = document.getElementById(b.dataset.cp)?.textContent || "";
-  navigator.clipboard?.writeText(code); const o=b.textContent; b.textContent=t("copied"); setTimeout(()=>b.textContent=o,1200);
+  const o=b.textContent;
+  Promise.resolve(copyText(code)).then((ok)=>{
+    b.textContent = ok===false ? "⚠ Ctrl+C" : t("copied");
+    setTimeout(()=>b.textContent=o,1400);
+  });
 });
 
 const q = document.getElementById("q");
@@ -441,6 +508,7 @@ function showResult(e){
     <div class="pills">
       <span class="pill good">${t("r_elig")}</span>
       <span class="pill info">${t("r_rank")} #${pos} / ${DATA.entries.length}</span>
+      <span class="pill good">${e.ep.length} ${t("r_eps_unit")} ${t("r_loyal")}</span>
       ${e.cap ? `<span class="pill warn">${t("r_capped")}</span>` : ``}
     </div>
     <dl class="kv">
@@ -453,6 +521,7 @@ function showResult(e){
       <button id="epsBtn" aria-expanded="false">${t("r_show")} ${e.ep.length} ${t("r_epochs")} <span aria-hidden="true">▾</span></button>
       <div class="eps" id="eps">
         <canvas class="spark" id="spark" width="780" height="120" aria-hidden="true"></canvas>
+        <div class="spark-cap">${t("spark_cap")}</div>
         <div class="eptable-wrap"><table>
           <thead><tr><th>${t("th_ep")}</th><th>${t("th_st")}</th><th>${t("th_lm")}</th></tr></thead>
           <tbody>${e.ep.map(([ep,ada,lm])=>`<tr><td>${ep}</td><td class="tabnum">${fmt(ada)}</td><td class="tabnum lamp">${fmt(lm)}</td></tr>`).join("")}</tbody>
