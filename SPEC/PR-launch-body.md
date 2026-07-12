@@ -1,7 +1,5 @@
 # Launch LAMP — ETD + Airdrop-v2 + SRCL (nền + checker + xác minh mainnet)
 
-> NHÁP body PR cho branch `feat/launch-etd-airdrop-srcl`. Chưa mở PR — anh duyệt trước.
-
 Bản này gom hạ tầng 3 đợt launch (ETD · Airdrop-v2 · SRCL), 2 fix bảo mật đường đăng ký
 SPO, và kết quả xác minh đường lazy-mint LAMP trên mainnet. Không đụng token đã mint, không
 mint thật, không ký gì trong CI.
@@ -86,4 +84,4 @@ verify script mainnet chạy read-only.
 5. ETD: set cutoff=637 → snapshot → seed batch → release pot. Airdrop: deploy pool NFT →
    SetRoot theo epoch. SRCL: merge #16 → pipeline đo-reward → SetRoot.
 
-Chi tiết bàn giao: `SPEC/HANDOFF-Tuan-Launch-2026-07-10.md`.
+Chi tiết bàn giao: [SPEC/HANDOFF-Tuan-Launch-2026-07-10.md](https://github.com/MagicLampNetwork/LAMP/blob/feat/launch-etd-airdrop-srcl/SPEC/HANDOFF-Tuan-Launch-2026-07-10.md).
