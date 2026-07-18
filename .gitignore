@@ -15,3 +15,10 @@ dist/
 
 # npm lockfiles — tự sinh, phình diff/token khi review (npm install/ci tái tạo được)
 **/package-lock.json
+
+# Hạ tầng agent riêng — KHÔNG push lên org repo (tránh lộ nội dung nội bộ)
+_Agents/
+CLAUDE.md
+.claude/
+.DS_Store
+**/.DS_Store

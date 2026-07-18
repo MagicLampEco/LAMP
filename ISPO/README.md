@@ -3,6 +3,14 @@
 > Tên hiển thị canonical: **SRCL (Staking Reward Contribution Launch)**. Thư mục/code module
 > giữ tên `ISPO` (cố ý, để lịch sử git rõ) — cùng một cơ chế.
 
+> ⚠️ **Cơ chế canonical = bản B** (đóng-góp-phần-thưởng, trustless). Tài liệu này mô tả **bản A**
+> (chia LAMP **∝ stake**, 2 cty thu margin OFF-CHAIN, tin-operator) — biến thể vận-hành **cũ**.
+> Nguồn sự thật cơ chế: [`SPEC/SRCL-Spec-Vi.md`](../SPEC/SRCL-Spec-Vi.md) + validator
+> `srcl_stake.ak` (bản B): vốn gốc **bất khả xâm phạm on-chain**, LAMP chia **∝ phần thưởng đã
+> đóng góp**. Phần **hạ tầng phân phối** dưới đây (`ispo_pool` — SetRoot/Claim/Sweep, Merkle,
+> chống double-claim) **DÙNG CHUNG** cho cả A và B; chỉ **nguồn entitlement** khác (∝stake → ∝reward).
+> Đọc mọi mô tả "∝ stake" / "native-margin" bên dưới như đặc tả **bản A**.
+
 Module phân phối **1 tỷ LAMP** cho delegator của pool ISPO theo **tỷ lệ stake**, đều
 trong **36 epoch** (~27,78 triệu LAMP/epoch), bằng cơ chế Merkle distribution per-epoch.
 
