@@ -124,10 +124,13 @@ async function main(): Promise<void> {
   if (!paramUtxo) throw new Error("E2E-004: không tìm thấy DepositParam beacon UTxO");
 
   console.log("── DEPOSIT bò (động — amount từ beacon) ──");
+  // currentEpoch = wall-clock now / ms_per_epoch (posixMsToEpoch) — đóng dấu dòng SÁT now, KHÔNG epoch cũ của pot.
+  const msPerEpoch = BigInt(state?.msPerEpoch ?? "86400000");
+  const curEpochNow = BigInt(Date.now()) / msPerEpoch;
   const dep = await buildDepositTx({
     lucid, network: NETWORK, potUtxo, potScript, paramUtxo,
     entityId: ENTITY_CATTLE, depositor: pkh, policy, name,
-    assetType: 0n, valueTier: 2n, lifecycleClass: 2n,
+    assetType: 0n, valueTier: 2n, lifecycleClass: 2n, currentEpoch: curEpochNow,
   });
   console.log(dep.summary);
   const sDep = await dep.tx.sign.withWallet().complete();

@@ -68,7 +68,8 @@ export interface DepositParams {
   assetType:      bigint;
   valueTier:      bigint;
   lifecycleClass: bigint;
-  newEpoch?:  bigint;
+  currentEpoch: bigint;   // caller cấp epoch hiện tại (wall-clock) — đóng dấu dòng + validity window SÁT now.
+                          // BẮT BUỘC (như buildEscheatTx): mặc định datum.epoch cũ → window quá khứ → tx hết hạn.
 }
 
 export interface DepositResult {
@@ -136,7 +137,7 @@ export async function buildDepositTx(params: DepositParams): Promise<DepositResu
   const valueIn = assetsToMap(potUtxo.assets);
   const { newDatum, potAfter, amount } = planDeposit(
     datum, valueIn, beacon, entityId, depositor, policy, name,
-    assetType, valueTier, lifecycleClass, params.newEpoch,
+    assetType, valueTier, lifecycleClass, params.currentEpoch,
   );
 
   const potAddress = credentialToAddress(network, scriptHashToCredential(validatorToScriptHash(potScript)));
