@@ -10,6 +10,17 @@
 //       (mở 1/7, hạn epoch 4 — §6.2; sau hạn KHÔNG đăng ký được).
 //   R4  datum.epoch_registered == current_epoch (không khai khống epoch).
 //   R5  SPO (datum.reward_owner) ký — chỉ chủ pool tự đăng ký.
+//
+// RANH GIỚI TIN CẬY (đọc kỹ — "1 NFT/pool" là mục tiêu, KHÔNG phải bảo đảm on-chain):
+//   • R1 chỉ kiểm TRONG-1-TX. Minting policy không thấy UTxO set / lịch sử ⇒ cùng pool_id
+//     CÓ THỂ mint lại ở tx khác (mỗi lần 1 NFT (policy, pool_id) mới, datum reward_owner
+//     khác). Không state-thread nên KHÔNG chặn được uniqueness toàn cục ở tầng validator.
+//   • R5 chỉ chứng minh người ký == reward_owner TỰ CHỌN, KHÔNG buộc pool_id thuộc SPO đó
+//     ⇒ ai cũng đăng ký pool_id người khác với reward_owner của mình (hijack tiềm năng).
+//   • Phòng thủ THẬT nằm off-chain: (a) keeper dedup TẤT ĐỊNH earliest-wins, KHÔNG throw khi
+//     trùng (distribute.ts — nếu không, 1 tx mint-trùng rẻ tiền làm sập cả epoch = DoS);
+//     (b) committee thẩm định reward_owner khớp reward account thật của pool TRƯỚC khi post
+//     Merkle root (§6.2). Committee (M-of-N ⌈2N/3⌉) là trust anchor, không phải NFT này.
 
 use aiken/collection/list
 use aiken/interval

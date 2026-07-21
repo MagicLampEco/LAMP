@@ -123,6 +123,40 @@ describe("Airdrop distribute — 1 epoch", () => {
     expect(r.distributed).toBe(0n);
     expect(r.leftover).toBe(PER_EPOCH);
   });
+
+  it("đăng ký TRÙNG pool_id: KHÔNG throw (chống DoS) + earliest wins (chống hijack muộn)", () => {
+    const ATTACKER = pkh("ee");
+    const snap = baseSnapshot(2n);
+    // attacker mint trùng P1 (epoch 2, reward_owner của mình) LIỆT KÊ TRƯỚC bản hợp lệ (epoch 1).
+    snap.registrations = [
+      { poolId: "P1", spoRewardOwner: ATTACKER, epochRegistered: 2n }, // hijack muộn
+      { poolId: "P1", spoRewardOwner: OS1, epochRegistered: 1n },      // hợp lệ, sớm hơn ⇒ thắng
+      { poolId: "P2", spoRewardOwner: OS2, epochRegistered: 1n },
+    ];
+    const r = distributeEpoch(snap, PARAMS); // KHÔNG throw (trước đây throw DIST-001 = sập epoch)
+    expect(won(r.entitlements, ATTACKER)).toBe(0n);        // attacker không cướp được
+    expect(won(r.entitlements, OS1)).toBe(spoBudgetOil / 2n); // SPO bonus về owner sớm nhất
+    expect(r.distributed + r.leftover).toBe(PER_EPOCH);
+  });
+
+  it("poolId khác hoa/thường bị dedup (normHex) — không tạo pool 'khác', delegator vẫn khớp", () => {
+    const ATTACKER = pkh("ee");
+    const snap = baseSnapshot(2n);
+    snap.registrations = [
+      { poolId: "ABCD", spoRewardOwner: OS1, epochRegistered: 1n },
+      { poolId: "abcd", spoRewardOwner: ATTACKER, epochRegistered: 2n }, // cùng pool, khác case
+      { poolId: "P2", spoRewardOwner: OS2, epochRegistered: 1n },
+    ];
+    snap.poolStatus = [{ poolId: "ABCD", producedBlock: true }, { poolId: "P2", producedBlock: true }];
+    snap.delegators = [
+      { owner: D1, poolId: "abcd", stake: 4_000n }, // delegator lowercase vẫn khớp ABCD
+      { owner: D3, poolId: "P2", stake: 4_000n },
+    ];
+    const r = distributeEpoch(snap, PARAMS);
+    expect(won(r.entitlements, D1)).toBeGreaterThan(0n);  // không bị bỏ do lệch case
+    expect(won(r.entitlements, ATTACKER)).toBe(0n);       // "abcd" không phải pool riêng
+    expect(won(r.entitlements, OS1)).toBe(spoBudgetOil / 2n);
+  });
 });
 
 describe("Airdrop distribute — đa epoch (cumulative + Merkle)", () => {

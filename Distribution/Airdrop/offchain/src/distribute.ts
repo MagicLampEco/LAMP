@@ -54,24 +54,34 @@ export function distributeEpoch(
   if (spoBudgetOil < 0n || delegatorBudgetOil < 0n) throw new Error("DIST-000: budget ≥ 0");
   if (floorStake < 0n) throw new Error("DIST-004: floorStake ≥ 0");
 
-  // pool đã đăng ký TÍNH ĐẾN epoch này
+  // pool đã đăng ký TÍNH ĐẾN epoch này — dedup pool_id TẤT ĐỊNH (KHÔNG throw).
+  // on-chain airdrop_registry R1 chỉ kiểm trong-1-tx; NFT registry bất biến, không state
+  // thread ⇒ KHÔNG chặn được mint lại cùng pool_id ở tx khác. Đăng ký TRÙNG là hợp lệ về
+  // ledger, nên throw ở đây = 1 tx mint-trùng rẻ tiền làm SẬP cả epoch cho MỌI pool (DoS).
+  // Luật dedup: earliest-registration wins (epochRegistered nhỏ nhất; hòa → giữ dòng gặp
+  // trước theo thứ tự snapshot — ổn định) ⇒ đăng ký muộn KHÔNG ghi đè được pool đã đăng ký.
+  // ponytail: dedup earliest-wins; anti-hijack đầy đủ (đối chiếu reward_owner với reward
+  // account thật của pool) thuộc bộ dựng snapshot của committee, ngoài engine tất định này.
+  // poolId chuẩn hoá normHex làm key (như owner) — chặn "ABCD" vs "abcd" lách dedup / lệch match.
   const registered = new Map<string, PoolRegistration>();
   for (const r of snapshot.registrations) {
     if (r.epochRegistered > snapshot.epoch) continue; // chưa tới hiệu lực
-    if (registered.has(r.poolId)) throw new Error(`DIST-001: pool ${r.poolId} đăng ký trùng`);
-    registered.set(r.poolId, r);
+    const pid = normHex(r.poolId);
+    const prev = registered.get(pid);
+    if (prev === undefined || r.epochRegistered < prev.epochRegistered) registered.set(pid, r);
   }
   const blockOf = new Map<string, boolean>();
-  for (const s of snapshot.poolStatus) blockOf.set(s.poolId, s.producedBlock);
+  for (const s of snapshot.poolStatus) blockOf.set(normHex(s.poolId), s.producedBlock);
 
   // S_p (chỉ pool đã đăng ký) + S_tot
   const Sp = new Map<string, bigint>();
   const delegatorRows: { owner: string; stake: bigint }[] = [];
   for (const d of snapshot.delegators) {
-    if (!registered.has(d.poolId)) continue; // pool chưa đăng ký → delegator không tính
+    const pid = normHex(d.poolId);
+    if (!registered.has(pid)) continue; // pool chưa đăng ký → delegator không tính
     if (d.stake <= 0n) continue;
     delegatorRows.push({ owner: normHex(d.owner), stake: d.stake });
-    Sp.set(d.poolId, (Sp.get(d.poolId) ?? 0n) + d.stake);
+    Sp.set(pid, (Sp.get(pid) ?? 0n) + d.stake);
   }
   let Stot = 0n;
   for (const v of Sp.values()) Stot += v;
