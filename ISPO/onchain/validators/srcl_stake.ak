@@ -31,7 +31,9 @@ use aiken/interval
 use cardano/address.{Address, Credential, Script, VerificationKey}
 use cardano/assets
 use cardano/assets.{lovelace_of}
-use cardano/certificate.{Certificate, UnregisterCredential}
+use cardano/certificate.{
+  Certificate, DelegateBlockProduction, DelegateCredential, UnregisterCredential,
+}
 use cardano/transaction.{Input, NoDatum, Output, OutputReference, Transaction}
 
 /// Σ lovelace mọi OUTPUT có payment_credential == pot_cred.
@@ -70,11 +72,19 @@ fn lovelace_from_cred(inputs: List<Input>, pot_cred: Credential) -> Int {
 /// ép pot ≥ reward-của-account-này, batch N account → pot nhận max thay vì sum → rò).
 /// Bảo thủ: tx trộn withdrawal ngoài-SRCL cũng bị đòi về pot ⟹ chỉ crank thuần SRCL
 /// (đường dùng thật) mới qua — an toàn (over-require chỉ gây REJECT, không mất tiền).
+///
+/// RÀNG BUỘC (review PR#16 — có chủ đích, KHÔNG phải bug): 1 tx = withdrawal của DUY NHẤT
+/// 1 pot_cred. Validator không phân biệt được withdrawal khác thuộc pot_cred nào (không
+/// đảo được hash script sibling) nên KHÔNG thể scope sum theo pot_cred; over-require an
+/// toàn hơn. Hệ quả: KHÔNG batch chéo nhiều đợt SRCL (pot khác nhau) trong 1 tx — crank
+/// PHẢI tách mỗi đợt/pot 1 tx. Batch cùng-pot vẫn đúng (mọi validator kiểm đủ Σ về pot).
 fn sum_withdrawals(withdrawals: Pairs<Credential, Int>) -> Int {
   list.foldl(withdrawals, 0, fn(p, acc) { acc + p.2nd })
 }
 
-validator srcl_stake(did_hash: ByteArray, pot_cred: Credential) {
+// `owner` = payment-key-hash của ví SRCL user (address = payment:VerificationKey(owner),
+// stake:Script(srcl_stake(..))). Neo uỷ-thác register/delegate về CHÍNH chủ ví.
+validator srcl_stake(did_hash: ByteArray, pot_cred: Credential, owner: ByteArray) {
   // ─── Withdraw reward → BUỘC về pot ───────────────────────────────────────
   // `account` = stake-credential đang rút (= Script(own hash) của validator này).
   // self.withdrawals mang (account → reward_lovelace). Ép reward tới pot_cred.
@@ -92,15 +102,19 @@ validator srcl_stake(did_hash: ByteArray, pot_cred: Credential) {
     ) >= sum_withdrawals(self.withdrawals)
   }
 
-  // ─── Publish cert: register/delegate MỞ, deregister CẤM (Tuân F2) ─────────
+  // ─── Publish cert: register/delegate CHỈ CHỦ VÍ, deregister CẤM ───────────
   // Vốn gốc = payment-cred user (không thuộc script này). Reward-gate ở withdraw
-  // khoá đường reward; uỷ-thác register/delegate để user chọn pool. NHƯNG cấm
-  // deregister: Conway UnRegCert hoàn stake-deposit vào value-pool → crank
-  // permissionless hốt về change. Cấm hẳn (user không cần deregister trong SRCL).
-  publish(_redeemer: Data, certificate: Certificate, _self: Transaction) {
+  // khoá đường reward; uỷ-thác register/delegate để user chọn pool. Cấm deregister:
+  // Conway UnRegCert hoàn stake-deposit vào value-pool → crank permissionless hốt về
+  // change → cấm hẳn (user không cần deregister trong SRCL).
+  // OWNER-GATE (fix review PR#16): register/delegate BUỘC owner (payment key user) ký.
+  // Nếu để `_ -> True`, bên thứ 3 (SPO đối thủ, crank) tự publish DelegateCredential
+  // re-delegate stake của MỌI user sang pool khác — reward vẫn về pot nhưng pool đích
+  // có thể không sản block ⇒ reward = 0 ⇒ pot cạn (griefing phá kinh tế SRCL).
+  publish(_redeemer: Data, certificate: Certificate, self: Transaction) {
     when certificate is {
       UnregisterCredential { .. } -> False
-      _ -> True
+      _ -> list.has(self.extra_signatories, owner)
     }
   }
 
@@ -128,6 +142,10 @@ const t_other_hash: ByteArray =
 
 const t_stake_hash: ByteArray =
   #"57ac57ac57ac57ac57ac57ac57ac57ac57ac57ac57ac57ac57ac57ac"
+
+// payment-key-hash chủ ví SRCL (owner) — ký hợp lệ cho register/delegate.
+const t_owner: ByteArray =
+  #"0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e"
 
 fn pot_cred() -> Credential {
   Script(t_pot_hash)
@@ -188,31 +206,31 @@ fn mk_tx_in(reward: Int, ins: List<Input>, outs: List<Output>) -> Transaction {
 // P1 — reward 5 ADA, pot nhận đúng 5 → PASS.
 test p1_reward_to_pot_ok() {
   let tx = mk_tx(5_000_000, [out_to(pot_cred(), 5_000_000)])
-  srcl_stake.withdraw(t_did, pot_cred(), Void, stake_cred(), tx)
+  srcl_stake.withdraw(t_did, pot_cred(), t_owner, Void, stake_cred(), tx)
 }
 
 // P2 — reward 5 ADA, pot nhận 7 (dư) → PASS (≥).
 test p2_reward_to_pot_over_ok() {
   let tx = mk_tx(5_000_000, [out_to(pot_cred(), 7_000_000)])
-  srcl_stake.withdraw(t_did, pot_cred(), Void, stake_cred(), tx)
+  srcl_stake.withdraw(t_did, pot_cred(), t_owner, Void, stake_cred(), tx)
 }
 
 // N1 — reward 5 ADA nhưng pot chỉ nhận 3 (rò 2) → REJECT.
 test n1_reward_short_to_pot_rejected() fail {
   let tx = mk_tx(5_000_000, [out_to(pot_cred(), 3_000_000)])
-  srcl_stake.withdraw(t_did, pot_cred(), Void, stake_cred(), tx)
+  srcl_stake.withdraw(t_did, pot_cred(), t_owner, Void, stake_cred(), tx)
 }
 
 // N2 — reward 5 ADA tới ví KHÁC (không pot) → REJECT.
 test n2_reward_to_other_rejected() fail {
   let tx = mk_tx(5_000_000, [out_to(Script(t_other_hash), 5_000_000)])
-  srcl_stake.withdraw(t_did, pot_cred(), Void, stake_cred(), tx)
+  srcl_stake.withdraw(t_did, pot_cred(), t_owner, Void, stake_cred(), tx)
 }
 
 // N3 — reward 5 ADA, KHÔNG output nào tới pot → REJECT.
 test n3_reward_no_pot_output_rejected() fail {
   let tx = mk_tx(5_000_000, [out_to(VerificationKey(t_other_hash), 5_000_000)])
-  srcl_stake.withdraw(t_did, pot_cred(), Void, stake_cred(), tx)
+  srcl_stake.withdraw(t_did, pot_cred(), t_owner, Void, stake_cred(), tx)
 }
 
 // ─── LỖ-BATCH: 2 account cùng rút 5 → pot phải nhận TỔNG 10 ──────────────────
@@ -234,13 +252,13 @@ fn mk_tx2(r1: Int, r2: Int, outs: List<Output>) -> Transaction {
 // P3 — batch 2×5, pot nhận đúng TỔNG 10 → PASS.
 test p3_batch_sum_to_pot_ok() {
   let tx = mk_tx2(5_000_000, 5_000_000, [out_to(pot_cred(), 10_000_000)])
-  srcl_stake.withdraw(t_did, pot_cred(), Void, stake_cred(), tx)
+  srcl_stake.withdraw(t_did, pot_cred(), t_owner, Void, stake_cred(), tx)
 }
 
 // N4 — LỖ-BATCH: 2×5 nhưng pot chỉ nhận 5 (= max, rò 5) → REJECT.
 test n4_batch_only_max_to_pot_rejected() fail {
   let tx = mk_tx2(5_000_000, 5_000_000, [out_to(pot_cred(), 5_000_000)])
-  srcl_stake.withdraw(t_did, pot_cred(), Void, stake_cred(), tx)
+  srcl_stake.withdraw(t_did, pot_cred(), t_owner, Void, stake_cred(), tx)
 }
 
 // ─── F1 (Tuân): check NET, không GROSS ──────────────────────────────────────
@@ -253,7 +271,7 @@ test p4_net_input_pot_ok() {
       [pot_input(10_000_000)],
       [out_to(pot_cred(), 15_000_000)],
     )
-  srcl_stake.withdraw(t_did, pot_cred(), Void, stake_cred(), tx)
+  srcl_stake.withdraw(t_did, pot_cred(), t_owner, Void, stake_cred(), tx)
 }
 
 // N5 — LỖ-F1: input pot 10 + output pot 10 (quay-vòng, NET 0) + reward 5 → REJECT.
@@ -265,10 +283,43 @@ test n5_pot_cycle_gross_leak_rejected() fail {
       [pot_input(10_000_000)],
       [out_to(pot_cred(), 10_000_000)],
     )
-  srcl_stake.withdraw(t_did, pot_cred(), Void, stake_cred(), tx)
+  srcl_stake.withdraw(t_did, pot_cred(), t_owner, Void, stake_cred(), tx)
 }
 
 // ─── F2 (Tuân): publish cấm deregister ──────────────────────────────────────
 // LƯU Ý: KHÔNG unit-test được — `UnregisterCredential.refund : Never` (bottom-type
 // stdlib, không constructible trong test). Fix ở CODE (publish `when` match →
-// UnregisterCredential → False); verify bằng review. register/delegate qua `_ -> True`.
+// UnregisterCredential → False); verify bằng review.
+
+// ─── OWNER-GATE (review PR#16): register/delegate BUỘC owner ký ──────────────
+// DelegateCredential construct được (delegate: DelegateBlockProduction{stake_pool}).
+
+fn delegate_cert(pool: ByteArray) -> Certificate {
+  DelegateCredential {
+    credential: stake_cred(),
+    delegate: DelegateBlockProduction { stake_pool: pool },
+  }
+}
+
+// tx publish với danh sách người ký.
+fn publish_tx(sigs: List<ByteArray>) -> Transaction {
+  Transaction { ..mk_tx(0, []), extra_signatories: sigs }
+}
+
+// P5 — delegate có owner ký → PASS (user tự chọn pool).
+test p5_publish_delegate_owner_signed_ok() {
+  let tx = publish_tx([t_owner])
+  srcl_stake.publish(t_did, pot_cred(), t_owner, Void, delegate_cert(t_other_hash), tx)
+}
+
+// N6 — delegate KHÔNG ai ký (crank permissionless) → REJECT (chống hijack delegation).
+test n6_publish_delegate_no_sig_rejected() fail {
+  let tx = publish_tx([])
+  srcl_stake.publish(t_did, pot_cred(), t_owner, Void, delegate_cert(t_other_hash), tx)
+}
+
+// N7 — delegate do BÊN THỨ 3 ký (không phải owner) → REJECT.
+test n7_publish_delegate_wrong_signer_rejected() fail {
+  let tx = publish_tx([t_other_hash])
+  srcl_stake.publish(t_did, pot_cred(), t_owner, Void, delegate_cert(t_other_hash), tx)
+}
