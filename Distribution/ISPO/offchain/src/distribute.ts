@@ -18,7 +18,7 @@
 //   Bất biến/epoch:  Σ wonThisEpoch + leftover == LAMP_e  (leftover>0 chỉ khi Σ_all=0).
 
 import type { PoolConfig, Contribution, DistributeParams, IspoEntitlement } from "./types.js";
-import { MAX_RATE_BP, BP_DENOM } from "./constants.js";
+import { MAX_RATE_BP, BP_DENOM, PER_EPOCH_OIL, ISPO_EPOCHS } from "./constants.js";
 import { buildMerkleTree, type MerkleTree } from "./merkle.js";
 
 function normHex(h: string): string {
@@ -50,6 +50,9 @@ export function distributeEpoch(
 ): EpochDistribution {
   const perEpochOil = params.perEpochOil;
   if (perEpochOil < 0n) throw new Error("ISPO-000: perEpochOil ≥ 0");
+  // trần ngân sách/epoch — chống keeper thổi phồng entitlement vượt pot ISPO thiết kế.
+  if (perEpochOil > PER_EPOCH_OIL)
+    throw new Error(`ISPO-003: perEpochOil ${perEpochOil} > trần PER_EPOCH_OIL ${PER_EPOCH_OIL} (10M LAMP/epoch)`);
   const maxContrib = params.maxContribLovelace;
   if (maxContrib !== null && maxContrib <= 0n) throw new Error("ISPO-001: maxContrib > 0 hoặc null");
 
@@ -151,6 +154,20 @@ export function runIspo(
   contributions: Contribution[],
   params: DistributeParams,
 ): IspoEpochOutput[] {
+  // distributionEpochs PHẢI tăng NGẶT: dedup + đúng thứ tự. Epoch trùng ⇒ distributeEpoch
+  // cộng cùng thisEpoch 2 lần → double-count won_cumulative (over-redeem); sai thứ tự ⇒
+  // root/epoch mang cumulative của epoch sau (vỡ monotonic on-chain).
+  for (let i = 1; i < distributionEpochs.length; i++) {
+    if (distributionEpochs[i]! <= distributionEpochs[i - 1]!)
+      throw new Error(
+        `ISPO-004: distributionEpochs phải TĂNG NGẶT — [${i - 1}]=${distributionEpochs[i - 1]} ≥ [${i}]=${distributionEpochs[i]}`,
+      );
+  }
+  // trần số epoch = ISPO_EPOCHS (36); cùng trần perEpochOil ⇒ Σ phân phối ≤ ISPO_TOTAL_OIL (360M LAMP).
+  if (BigInt(distributionEpochs.length) > ISPO_EPOCHS)
+    throw new Error(`ISPO-005: ${distributionEpochs.length} epoch > trần ISPO_EPOCHS ${ISPO_EPOCHS}`);
+  // LƯU Ý: cumulative bắt đầu RỖNG ⇒ distributionEpochs PHẢI là danh sách ĐẦY ĐỦ từ epoch phân
+  // phối đầu tiên (KHÔNG resume giữa chừng — truyền [5,6] sẽ hụt cumulative epoch 1..4 → root sai).
   const out: IspoEpochOutput[] = [];
   let cumulative: Map<string, bigint> = new Map();
   for (const e of distributionEpochs) {

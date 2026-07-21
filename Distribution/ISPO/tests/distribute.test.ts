@@ -135,4 +135,22 @@ describe("ISPO distribute — đa epoch (cumulative + Merkle)", () => {
     const last = outs[2]!.entitlements.find((e) => e.owner === D2)!;
     expect(last.wonCumulative).toBe(last.wonThisEpoch * 3n);
   });
+
+  it("epoch TRÙNG ⇒ throw ISPO-004 (chống double-count won_cumulative)", () => {
+    expect(() => runIspo([2n, 2n, 3n], POOLS, CONTRIBS, PARAMS)).toThrow(/ISPO-004/);
+  });
+
+  it("epoch SAI THỨ TỰ ⇒ throw ISPO-004", () => {
+    expect(() => runIspo([3n, 2n], POOLS, CONTRIBS, PARAMS)).toThrow(/ISPO-004/);
+  });
+
+  it("số epoch > ISPO_EPOCHS (36) ⇒ throw ISPO-005 (cap pot 360M)", () => {
+    const epochs = Array.from({ length: 37 }, (_, i) => BigInt(i + 1));
+    expect(() => runIspo(epochs, POOLS, CONTRIBS, PARAMS)).toThrow(/ISPO-005/);
+  });
+
+  it("perEpochOil > PER_EPOCH_OIL ⇒ throw ISPO-003 (cap ngân sách/epoch)", () => {
+    const over: DistributeParams = { perEpochOil: PER_EPOCH_OIL + 1n, maxContribLovelace: null };
+    expect(() => distributeEpoch(2n, POOLS, CONTRIBS, over)).toThrow(/ISPO-003/);
+  });
 });

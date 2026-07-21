@@ -3,6 +3,11 @@
 //   leaf = blake2b256( 0x00 ‖ owner_pkh ‖ won_cumulative[be8] )
 //   node = blake2b256( 0x01 ‖ min(a,b) ‖ max(a,b) )
 // SPO bonus + mọi delegator = leaf trong cùng cây ⇒ claim permissionless (§6.3).
+//
+// NỢ KỸ THUẬT (review PR#15): file này là BẢN SAO của Distribution/offchain/src/merkle.ts
+// (single-source). Base branch (lamp-allocation) chưa có bản canonical nên chưa import được;
+// KHI hội tụ vào launch/#17 PHẢI thay bằng import canonical (file:../../offchain hoặc
+// protocol-utils) — sửa 1 nơi, chạy verify.sh. Đừng để 2 bản merkle off-chain trôi lệch nhau.
 
 import { blake2b } from "@noble/hashes/blake2b";
 import { MERKLE_LEAF_PREFIX, MERKLE_NODE_PREFIX } from "./constants.js";
