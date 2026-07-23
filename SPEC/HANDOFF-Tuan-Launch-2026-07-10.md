@@ -13,7 +13,7 @@
 - PlutusV3, cap-36B lazy-mint, decimals = 6 (1 LAMP = 10⁶ oildrop).
 - Genesis đã mint **1e12 base = 1.000.000 LAMP** — nằm trong **kho script** (`addr1w827sry…`),
   chưa phân phối. Đây là lượng khởi tạo kỹ thuật (0,0028% cap), không mang ý nghĩa thiết kế.
-- Nguồn: `docs/LAMP-POLICY-EXPLAINER.md`.
+- Nguồn: `Specs/LAMP-POLICY-EXPLAINER.md`.
 
 **Model mint = cap-36B OrgDID lazy-mint, validator bản B:**
 - `Genesis/onchain/validators/lamp_mint.ak` — redeemer `DistributionVest` / `ReserveDraw`.
@@ -121,13 +121,13 @@ cửa sổ khiếu nại 1 epoch trước mint.
 
 Chi tiết đầy đủ: **[`SRCL-Feasibility-Vi.md`](./SRCL-Feasibility-Vi.md)**. Tóm:
 - Pot đợt-1 GreenSun: 360M LAMP, 36 epoch. Đợt-2 RedBack: >21M.
-- Validator `ISPO/onchain/validators/srcl_stake.ak` — 64/64 test, Tuân duyệt, **chờ anh merge**.
+- Validator `SRCL/onchain/validators/srcl_stake.ak` — 64/64 test, Tuân duyệt, **chờ anh merge**.
 - Ký-1-lần (nối stake-cred → script + uỷ quyền PhoenixKey); vốn gốc bất động; reward ép NET
   về pot (F1/F2 đã vá).
 - **Còn:** merge #16 → pipeline đo-reward→entitlement∝reward→SetRoot → deploy Preview +
   evidence → PhoenixKey claim → freeze param GreenSun → public source + verify hash.
 
-> ⚠️ **PR #15 (Tuân, T4)** = ISPO distribution ∝**ADA** (nhánh bản A cũ). Soát chồng-lấn với
+> ⚠️ **PR #15 (Tuân, T4)** = distribution ∝**ADA** (nhánh bản A cũ, khoá-ADA/tin-operator). Soát chồng-lấn với
 > #16 (∝reward bản B) TRƯỚC khi merge cả hai — bản B là canonical, đừng để bản A ghi đè.
 
 ---
@@ -183,15 +183,15 @@ Dán địa chỉ → LAMP dự kiến. **KHÔNG đụng LAMP đã mint, KHÔNG 
 - `SPEC/Launch-Framework-Vi.md`, `SPEC/AffiSo-Launch-Requirements-Vi.md` — khung Launch.
 - `Airdrop/SPO-CS-SPEC-Vi.md` — đặc tả SPO/CS (có).
 - `Airdrop/AIRDROP-V2-SPEC-Vi.md` — spec Airdrop-v2 (**đang viết**, agent khác).
-- `docs/LAMP-POLICY-EXPLAINER.md` — policy mainnet + FAQ công khai.
+- `Specs/LAMP-POLICY-EXPLAINER.md` — policy mainnet + FAQ công khai.
 - `SESSION-STATE-lamp-mint-canonical.md` — state mint canonical + ETD + SRCL.
 
 **Code on-chain:**
 - `Genesis/onchain/validators/lamp_mint.ak` + `lib/magiclamp/genesis/registry.ak` — mint bản B.
 - `Distribution/onchain/validators/claim_account.ak` — claim (ETD tái dùng).
 - `Airdrop/onchain/validators/{airdrop_pool,airdrop_nft,airdrop_marker}.ak`.
-- `ISPO/onchain/validators/srcl_stake.ak` — **PR #16, chờ merge** (chưa trong cây làm việc).
-- `ISPO/onchain/validators/ispo_pool.ak` (SetRoot/Claim/Sweep) — tầng nhả SRCL.
+- `SRCL/onchain/validators/srcl_stake.ak` — **PR #16, chờ merge** (chưa trong cây làm việc).
+- `SRCL/onchain/validators/srcl_pool.ak` (SetRoot/Claim/Sweep) — tầng nhả SRCL.
 
 **Code off-chain / scripts:**
 - `TIGER/offchain/src/` (47/47) + `TIGER/scripts/build_tiger_koios.ts` (106 delegator).

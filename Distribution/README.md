@@ -78,7 +78,7 @@ LAMP **không burn** (fixed-supply 36 tỷ bất biến); giảm lưu hành ch�
 
 | Có (build + test) | Defer (lý do trong SPEC / CONTRACT §5) |
 |---|---|
-| ClaimAccount Redeem (vested tất định) / DropParam beacon / Treasury | 7 validator riêng từng kênh (ISPO/Scavenger/…) |
+| ClaimAccount Redeem (vested tất định) / DropParam beacon / Treasury | 7 validator riêng từng kênh (SRCL/Scavenger/…) |
 | Datum codec + tx builders + test | PhoenixKey on-chain DID proof (anti-sybil ở tầng committee) |
 | Aiken mock-tx + vitest | Cơ chế DAO chỉnh `drops_per_epoch` (multi-drop/pause) — hooks chừa chỗ |
 

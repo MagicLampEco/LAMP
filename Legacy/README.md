@@ -4,7 +4,7 @@ Thư mục này chứa doc đã bị quyết định mới thay thế. **KHÔNG 
 
 | File | Là gì | Bị thay bởi | Lý do lỗi thời |
 |---|---|---|---|
-| `TOKENOMICS-v3-DEPRECATED.md` | Tokenomics v3 (14/6, đơn vị "oildrop", era 1-token, bảng 18-pot cap cũ 34,2/1,8) | `../docs/TOKENOMICS-v17-COMMUNITY-DRAFT.md` + `../docs/LAMP-POT-CATALOG.md` | Tự đánh dấu DEPRECATED ở dòng 1; số cap không khớp v17 (26,370/9,630) |
+| `TOKENOMICS-v3-DEPRECATED.md` | Tokenomics v3 (14/6, đơn vị "oildrop", era 1-token, bảng 18-pot cap cũ 34,2/1,8) | `../Specs/TOKENOMICS-v17-COMMUNITY-DRAFT.md` + `../Specs/LAMP-POT-CATALOG.md` | Tự đánh dấu DEPRECATED ở dòng 1; số cap không khớp v17 (26,370/9,630) |
 | `lamp-mint-core-adapter-v1-anchor.md` | Adapter mint LAMP qua OrgDID theo mô hình **v1/anchor**: `validate_mint` đọc `controller_pkh` từ TAAD anchor, redeemer `CountMint`, SupplyState **3-field** | `../Genesis/ALLOCATION-SPEC.md` (§7a/§7b, v2/registry) | Quyết định canonical = **v2/registry-gate** (`Genesis/onchain/lib/magiclamp/genesis/registry.ak` dòng 1-6: "v2 THAY v1, LAMP KHÔNG còn đọc anchor"). Bản v1 này đã gây nhầm builder Core (xem message PhoenixKey §0). |
 
 ## Bối cảnh quyết định canonical (chốt)

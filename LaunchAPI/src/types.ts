@@ -25,7 +25,7 @@ export interface LaunchStats {
 }
 
 export interface LaunchCampaign {
-  id: string;                // "srcl-1", "tiger-airdrop", "ispo-s1"
+  id: string;                // "srcl-1", "tiger-airdrop"
   project: "MagicLamp";     // chỉ dùng cho MagicLamp-level launch
   slug: string;              // URL slug, khớp id
   title: string;

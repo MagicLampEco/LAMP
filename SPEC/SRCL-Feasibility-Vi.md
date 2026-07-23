@@ -3,7 +3,7 @@
 > Bản đánh giá kỹ thuật, 2026-07-10. Trả lời trực tiếp các câu hỏi chủ dự án về việc
 > triển khai SRCL (Staking Reward Contribution Launch) cùng lúc với Airdrop-v2.
 > Nguồn cơ chế: [`SPEC/SRCL-Spec-Vi.md`](./SRCL-Spec-Vi.md) (bản B). Trạng thái code:
-> PR #16 `ISPO/onchain/validators/srcl_stake.ak`, 64/64 test, Tuân duyệt, **chờ merge**.
+> PR #16 `SRCL/onchain/validators/srcl_stake.ak`, 64/64 test, Tuân duyệt, **chờ merge**.
 
 ---
 
@@ -27,7 +27,7 @@ Launch, không qua tay người vận hành, không đụng vốn gốc. Để �
 | **Validator stake-withdraw** (`srcl_stake.ak`) | Nối stake credential → script; ép reward rút ra phải về pot | ✅ PR #16, 64/64 test, chờ merge |
 | **Luồng ký-1-lần** (delegate-to-script + uỷ quyền PhoenixKey) | User nối phần ủy thác tới script, uỷ quyền ký các bước sau | ⏳ luồng ký chưa dựng offchain |
 | **Pipeline đo reward → entitlement** | Đo ADA-reward mỗi người/epoch → chia LAMP ∝reward → Merkle root → SetRoot | ⏳ chưa dựng (ghi trong body #16) |
-| **Tầng nhả LAMP** (pool + claim) | Nhả LAMP theo root, chống double-claim, PhoenixKey ký claim | ✅ tái dùng `ispo_pool.ak` (SetRoot/Claim/Sweep, đã test) |
+| **Tầng nhả LAMP** (pool + claim) | Nhả LAMP theo root, chống double-claim, PhoenixKey ký claim | ✅ tái dùng `srcl_pool.ak` (SetRoot/Claim/Sweep, đã test) |
 
 Điểm mấu chốt: **script chỉ điều khiển phần ủy thác (stake), không điều khiển phần chi
 tiêu (payment)**. Mạng Cardano trả reward vào "tài khoản thưởng" gắn stake credential;
@@ -96,7 +96,7 @@ offchain đóng. Cách công khai + verify:
 
 | Bước | Việc | Bằng chứng |
 |---|---|---|
-| 1 | Public source | Link GitHub `MagicLampNetwork/LAMP` → `ISPO/onchain/validators/srcl_stake.ak` (sau merge PR #16) |
+| 1 | Public source | Link GitHub `MagicLampNetwork/LAMP` → `SRCL/onchain/validators/srcl_stake.ak` (sau merge PR #16) |
 | 2 | Reproducible build | `aiken build` → `plutus.json` chứa CBOR compiled + `hash` (script hash) |
 | 3 | Đối chiếu on-chain | Script hash trong `plutus.json` **khớp** script hash của địa chỉ SRCL trên explorer |
 | 4 | Hướng dẫn verify | README đợt: "clone repo tại commit X → `aiken build` → so `hash` với địa chỉ trên cexplorer" |
@@ -143,7 +143,7 @@ apply-param per-DID (1 DID = 1 reward-account → đo sạch, không lẫn). Kee
 **Lực hút:**
 - Delegator tham gia mà **không bỏ vốn** — chỉ góp reward tương lai. Rào cản gần 0.
 - Câu chuyện "vốn gốc bất khả xâm phạm, ký một lần" mạnh, dễ truyền thông, khác biệt rõ
-  với mọi ISPO cũ (vốn khoá ADA hoặc tin operator).
+  với mọi phương thức cũ (vốn khoá ADA hoặc tin operator).
 - Cộng hưởng Airdrop: cùng một delegator vừa nhận Airdrop ∝stake, vừa có thể góp reward
   qua SRCL → hai lý do delegate, một luồng định danh PhoenixKey.
 
@@ -163,7 +163,7 @@ apply-param per-DID (1 DID = 1 reward-account → đo sạch, không lẫn). Kee
 1. **Merge PR #16** (`srcl_stake.ak`) — Tuân đã duyệt, chờ anh bấm merge. *[GitHub — cần anh]*
 2. **Pipeline đo-reward → entitlement ∝reward → SetRoot:** offchain đo ADA-reward mỗi
    stake-cred/epoch (Blockfrost/Koios) → chia LAMP largest-remainder ∝reward → dựng Merkle
-   root → nạp `ispo_pool.ak` SetRoot mỗi epoch.
+   root → nạp `srcl_pool.ak` SetRoot mỗi epoch.
 3. **Deploy Preview + evidence:** script deploy pool + SRCL script, chạy 1 vòng
    ký→withdraw→SetRoot→claim thật, chụp tx làm bằng chứng (như ETD E2E Preview).
 4. **PhoenixKey claim integration:** user nhận LAMP nhả dần, PhoenixKey ký claim, chống
@@ -179,7 +179,7 @@ apply-param per-DID (1 DID = 1 reward-account → đo sạch, không lẫn). Kee
 | | SRCL | Airdrop-v2 |
 |---|---|---|
 | Nguồn entitlement | ∝ reward staking đã đóng | ∝ stake đăng ký (delegator) + CS (SPO) |
-| Validator on-chain | `srcl_stake.ak` (mới) + `ispo_pool.ak` (nhả) | `airdrop_pool.ak`/`nft`/`marker` (tái dùng) |
+| Validator on-chain | `srcl_stake.ak` (mới) + `srcl_pool.ak` (nhả) | `airdrop_pool.ak`/`nft`/`marker` (tái dùng) |
 | Tầng nhả LAMP | SetRoot + Claim + marker | SetRoot + Claim + marker |
 | Định danh + claim | PhoenixKey DID | PhoenixKey DID |
 | Đo lường | keeper đo reward on-chain | AffiSo/ProofChat đo stake + D/A/G/R |

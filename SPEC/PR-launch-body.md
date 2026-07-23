@@ -37,7 +37,7 @@ Mô hình STAKE-WEIGHTED (chốt 2026-07-11, thay hoàn toàn CS log-score cũ):
 
 - Đợt-1 GreenSun: 360M LAMP / 36 epoch. Đợt-2 RedBack: >21M. Chi tiết:
   `SPEC/SRCL-Feasibility-Vi.md`.
-- Validator `ISPO/onchain/validators/srcl_stake.ak` — **64/64 test**, ký-1-lần (nối stake-cred
+- Validator `SRCL/onchain/validators/srcl_stake.ak` — **64/64 test**, ký-1-lần (nối stake-cred
   → script + uỷ quyền PhoenixKey), vốn gốc bất động, reward ép NET về pot. **PR #16 chờ merge.**
 - Còn: merge #16 → pipeline đo-reward → entitlement ∝ reward → SetRoot → deploy Preview +
   evidence. Lưu ý PR #15 (∝ADA, bản A cũ) — soát chồng-lấn trước khi merge, bản B là canonical.

@@ -126,7 +126,7 @@ validator airdrop_pool(
         // CHỐNG DOUBLE-CLAIM (SPEND-ONCE): consume ĐÚNG claim-slot UTxO của leaf này.
         let leaf = merkle.leaf_hash(claimer, amount)
         // (1) ĐÚNG 1 slot input mang (policy, leaf) Ở SCRIPT REGISTRY (marker).
-        //     So PAYMENT-CREDENTIAL script-hash (không full-address) — mẫu ISPO
+        //     So PAYMENT-CREDENTIAL script-hash (không full-address) — mẫu SRCL
         //     util.is_at_script: bỏ qua stake credential (slot hợp lệ vẫn được nhận
         //     dù khác stake), nhưng ép phải ngụ tại đúng marker validator → slot
         //     phải từ registry hợp lệ, không phải UTxO giả mang NFT cùng name nơi

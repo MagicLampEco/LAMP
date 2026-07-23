@@ -6,7 +6,7 @@
 //
 // Mọi đại lượng tiền = oil (1 LAMP = 10^6 oil). BigInt tuyệt đối (C-OVERFLOW).
 
-/** 1 LAMP = 10^6 oil (decimals 6). Khớp Utils/ISPO/Distribution. */
+/** 1 LAMP = 10^6 oil (decimals 6). Khớp Utils/SRCL/Distribution. */
 export const OIL_PER_LAMP = 1_000_000n;
 
 /** Ngân sách pot = 12.000.000 LAMP. */
@@ -25,7 +25,7 @@ export const TIGER_POOL_ID_DEFAULT =
  *  (đây là tầng-dữ-liệu, đổi được, không strand LAMP). CHƯA CHỐT: epoch tương ứng 18/6 UTC. */
 export const CUTOFF_EPOCH_DEFAULT = 0n;
 
-/** Số epoch nhỏ giọt kiểu B (mặc định 36 ≈ 1 năm, ngang nhịp ISPO). Tầng-tham-số,
+/** Số epoch nhỏ giọt kiểu B (mặc định 36 ≈ 1 năm, ngang nhịp SRCL). Tầng-tham-số,
  *  DAO/committee đổi được. vested = E·min(1, (t−cliff)/N). */
 export const DRIP_EPOCHS_DEFAULT = 36n;
 
