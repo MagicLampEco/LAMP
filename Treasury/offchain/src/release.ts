@@ -8,16 +8,21 @@
 //   C-REL-6  ledger_out[(b,a)] == ledger_in[(b,a)] − Σdraw(b,a) ∧ draw ≤ số dư bucket
 //   C-REL-7  Σ output tới `to` value(a) == Σ draw(to,a) ∧ to ≠ custody  (tổng-khớp)
 //
-// spend_spec_hash = blake2b_256( 0x02 ‖ cbor.serialise(draws) ) — canonical Plutus
-// Data CBOR. Offchain dùng Data.to(encodeReleaseDraw[]) — đã xác minh BYTE-PERFECT
-// với aiken cbor.serialise (xem release.test.ts: fixture HASH_SINGLE/HASH_MULTI).
+// spend_spec_hash = blake2b_256( 0x02 ‖ blake2b_256(instance_id) ‖ blake2b_256(cbor.serialise(draws)) )
+// F10/#1B — gồm instance_id để proposal của instance A KHÔNG dùng được cho instance B
+// dù CÙNG governance_ref. Hai thành phần blake2b đều 32 byte cố định → ghép KHÔNG nhập
+// nhằng biên byte (mirror release.ak dòng 78-82). drawsCbor = Data.to(encodeReleaseDraw[])
+// — đã xác minh BYTE-PERFECT với aiken cbor.serialise + aiken spend_spec_hash
+// (xem release.test.ts: fixture HASH_SINGLE/HASH_MULTI, probe aiken probe_single/multi).
 
 import { Data } from "@lucid-evolution/lucid";
 import { blake2b } from "@noble/hashes/blake2b";
 
 import type { Address, LedgerEntry, ReleaseDraw } from "./types.js";
 import { encodeAddress, encodeReleaseDraw } from "./datum.js";
-import { type AssetMap, assetKey, ledgerGet, noDupLines } from "./collect.js";
+import {
+  type AssetMap, assetKey, ledgerGet, isCanonical, canonicalizeLedger,
+} from "./collect.js";
 
 // Domain tag 0x02 — tách khỏi merkle leaf(0x00)/node(0x01) (release.ak dòng 18).
 export const SPEND_SPEC_PREFIX = 0x02;
@@ -50,12 +55,24 @@ export function drawsCbor(draws: ReleaseDraw[]): string {
   return Data.to(draws.map(encodeReleaseDraw));
 }
 
-/** spend_spec_hash = blake2b_256( 0x02 ‖ cbor(draws) ). Trả hex (64 ký tự). */
-export function spendSpecHash(draws: ReleaseDraw[]): string {
-  const body = hexToBytes(drawsCbor(draws));
-  const pre = new Uint8Array(1 + body.length);
+/**
+ * spend_spec_hash = blake2b_256( 0x02 ‖ blake2b_256(instance_id) ‖ blake2b_256(cbor(draws)) ).
+ * F10: khóa CẢ instance đích (chống replay chéo instance cùng governance_ref) lẫn đích chi.
+ * Mirror BYTE-PERFECT release.ak spend_spec_hash(instance_id, draws):
+ *   id_h    = blake2b_256(instanceIdBytes)          — 32 byte
+ *   draws_h = blake2b_256(drawsCbor)                — 32 byte
+ *   preimage = 0x02 ‖ id_h ‖ draws_h                — 1 + 32 + 32 = 65 byte (biên cố định)
+ *   hash     = blake2b_256(preimage)
+ * instanceIdBytes = hex→bytes của instance_id (KHÔNG hash hex-string). drawsCbor giữ
+ * NGUYÊN cách cũ (Data.to(draws) — canonical Plutus CBOR). Trả hex (64 ký tự).
+ */
+export function spendSpecHash(instanceId: string, draws: ReleaseDraw[]): string {
+  const idH = blake2b(hexToBytes(instanceId), { dkLen: 32 });
+  const drawsH = blake2b(hexToBytes(drawsCbor(draws)), { dkLen: 32 });
+  const pre = new Uint8Array(1 + idH.length + drawsH.length);   // 0x02 ‖ id_h ‖ draws_h
   pre[0] = SPEND_SPEC_PREFIX;
-  pre.set(body, 1);
+  pre.set(idH, 1);
+  pre.set(drawsH, 1 + idH.length);
   return bytesToHex(blake2b(pre, { dkLen: 32 }));
 }
 
@@ -119,15 +136,17 @@ export function allDrawsNonneg(draws: ReleaseDraw[]): boolean {
 }
 
 /**
- * Dựng ledger_out từ ledger_in: trừ Σdraw tại đúng (bucket,asset). Giữ thứ tự + mọi
- * dòng cũ (không xóa dòng → each_in_line_present). Đơn-bucket incremental — chỉ dòng
- * có Δ thay đổi. Dòng draw không khớp dòng nào trong sổ ⇒ over-draw từ 0 (ledgerOk reject).
+ * Dựng ledger_out CANONICAL từ ledger_in: trừ Σdraw tại đúng (bucket,asset), PRUNE dòng
+ * cạn về 0, SORT theo khóa (khớp is_canonical on-chain — strict-sorted ∧ mọi dòng > 0).
+ * Đơn-bucket incremental. Dòng draw không khớp dòng nào ⇒ over-draw từ 0 → canonicalize
+ * sinh dòng âm → ném LEDGER-NEG (ledgerOk/over-draw reject sớm). Dòng cạn về 0 bị prune.
  */
 export function planLedgerOut(ledgerIn: LedgerEntry[], draws: ReleaseDraw[]): LedgerEntry[] {
-  return ledgerIn.map((e) => {
+  const raw = ledgerIn.map((e) => {
     const delta = drawnOfLine(draws, e.bucket_id, e.policy, e.name);
     return delta === 0n ? { ...e } : { ...e, amount: e.amount - delta };
   });
+  return canonicalizeLedger(raw);
 }
 
 /** Mọi dòng out == get(in) − Σdraw(bucket,asset). */
@@ -150,6 +169,20 @@ export function eachInLinePresent(ledgerIn: LedgerEntry[], ledgerOut: LedgerEntr
   );
 }
 
+/** each_in_line_settled on-chain: mọi dòng IN còn trong OUT, TRỪ khi số dư mới
+ *  (in − Σdraw) == 0 thì được prune (vắng). */
+export function eachInLineSettled(
+  ledgerIn: LedgerEntry[], ledgerOut: LedgerEntry[], draws: ReleaseDraw[],
+): boolean {
+  return ledgerIn.every((e) => {
+    const newBal = e.amount - drawnOfLine(draws, e.bucket_id, e.policy, e.name);
+    if (newBal === 0n) return true;
+    return ledgerOut.some(
+      (o) => o.bucket_id === e.bucket_id && assetKey(o.policy, o.name) === assetKey(e.policy, e.name),
+    );
+  });
+}
+
 /** Mọi draw rút KHÔNG quá số dư bucket: Σdraw(b,a) ≤ ledger_in[(b,a)]. */
 export function drawsWithinBalance(ledgerIn: LedgerEntry[], draws: ReleaseDraw[]): boolean {
   return draws.every(
@@ -158,14 +191,16 @@ export function drawsWithinBalance(ledgerIn: LedgerEntry[], draws: ReleaseDraw[]
   );
 }
 
-/** ledger_ok onchain: 5 kiểm gộp (nonneg + no_dup + out_line + in_present + within_balance). */
+/** ledger_ok onchain: all_draws_nonneg ∧ is_canonical(out) ∧ each_out_line_ok ∧
+ *  each_in_line_settled ∧ draws_within_balance. is_canonical = strict-sorted ∧ mọi dòng > 0
+ *  (loại trùng khóa O(n) + chống dòng 0/âm; dòng cạn về 0 bị prune). */
 export function ledgerOk(
   ledgerIn: LedgerEntry[], ledgerOut: LedgerEntry[], draws: ReleaseDraw[],
 ): boolean {
   return allDrawsNonneg(draws)
-    && noDupLines(ledgerOut)
+    && isCanonical(ledgerOut)
     && eachOutLineOk(ledgerIn, ledgerOut, draws)
-    && eachInLinePresent(ledgerIn, ledgerOut)
+    && eachInLineSettled(ledgerIn, ledgerOut, draws)
     && drawsWithinBalance(ledgerIn, draws);
 }
 

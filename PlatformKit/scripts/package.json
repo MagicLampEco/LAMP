@@ -1,0 +1,22 @@
+{
+  "name": "@magiclamp/platformkit-scripts",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "description": "Deploy registry + onboard platform (apply-params/dry-run) cho PlatformKit trên Cardano Preview",
+  "scripts": {
+    "deploy-registry": "tsx 02_deploy_registry.ts",
+    "onboard": "tsx 03_onboard_platform.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@lucid-evolution/lucid": "^0.4.0",
+    "@magiclamp/protocol-utils": "file:../../protocol-utils",
+    "dotenv": "^16.4.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.41",
+    "tsx": "^4.7.0",
+    "typescript": "^5.4.0"
+  }
+}

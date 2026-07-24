@@ -1,0 +1,22 @@
+{
+  "name": "@magiclamp/treasury-scripts",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "description": "Deploy + seed (apply-params/dry-run) runner cho Treasury custody trên Cardano Preview",
+  "scripts": {
+    "seed": "tsx 01_seed_custody.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@lucid-evolution/lucid": "^0.4.0",
+    "@magiclamp/treasury-sdk": "file:../offchain",
+    "@magiclamp/protocol-utils": "file:../../protocol-utils",
+    "dotenv": "^16.4.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.41",
+    "tsx": "^4.7.0",
+    "typescript": "^5.4.0"
+  }
+}

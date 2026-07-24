@@ -5,7 +5,7 @@
 use aiken/collection/list
 use aiken/interval.{Finite, IntervalBound, IntervalBoundType}
 use cardano/address.{Address, Inline, Script, VerificationKey}
-use cardano/assets.{PolicyId, Value}
+use cardano/assets.{Value}
 use cardano/transaction.{InlineDatum, Input, NoDatum, Output, OutputReference,
   Transaction}
 
@@ -58,14 +58,27 @@ pub fn output_at_script(outputs: List<Output>, script_hash: ByteArray) -> Output
   o
 }
 
-// ── Loại bỏ mọi asset của 1 policy khỏi Value (NFT authenticity ≠ tài sản kế toán) ──
-// Custody UTxO BẮT BUỘC mang custody NFT one-shot (custody_seed policy). NFT là token
-// xác thực instance — KHÔNG phải tài sản booked vào sổ. Khi đối chiếu value↔sổ (seed),
-// PHẢI trừ NFT của chính policy đó ra trước, nếu không đẳng thức value==sổ KHÔNG BAO GIỜ
-// đúng on-chain (value luôn dư đúng 1 NFT). Cách rẻ ExUnit: merge với negate phần bị giữ
-// lại bởi mask=[policy] → triệt tiêu đúng các asset của policy đó, giữ nguyên phần còn lại.
-pub fn value_without_policy(v: Value, policy: PolicyId) -> Value {
-  assets.merge(v, assets.negate(assets.restricted_to(v, [policy])))
+// ── Tìm output mang 1 token (policy,name) — seed self-ref NFT (custody_seed) ──
+// Genesis chọn output custody bằng CHÍNH NFT vừa mint (không cần custody_hash trong
+// param → phá vòng phụ thuộc seed↔custody). NFT bất khả phân (qty 1) ⇒ nằm trong
+// đúng 1 output.
+
+pub fn count_outputs_with_token(
+  outputs : List<Output>,
+  policy  : ByteArray,
+  name    : ByteArray,
+) -> Int {
+  list.count(outputs, fn(o) { assets.quantity_of(o.value, policy, name) >= 1 })
+}
+
+pub fn output_with_token(
+  outputs : List<Output>,
+  policy  : ByteArray,
+  name    : ByteArray,
+) -> Output {
+  expect Some(o) =
+    list.find(outputs, fn(o) { assets.quantity_of(o.value, policy, name) >= 1 })
+  o
 }
 
 // ── Epoch từ validity_range (time-lock C-REL-8 — mirror Distribution util.get_epoch) ──
@@ -83,6 +96,21 @@ pub fn get_epoch(tx: Transaction, ms_per_epoch: Int) -> Int {
   let IntervalBound { bound_type, .. } = tx.validity_range.lower_bound
   expect Some(s) = get_finite(bound_type)
   s / ms_per_epoch
+}
+
+/// F4: epoch CÓ CHẶN — ép validity_range nằm GỌN trong 1 epoch (lower & upper hữu hạn,
+/// cùng epoch). Chống "đóng băng" epoch field: nếu range trải nhiều epoch, kẻ đặt lower
+/// ở epoch cũ rồi submit muộn → epoch sổ tụt hậu thời gian thật. Ép upper hữu hạn + cùng
+/// epoch ⇒ tx chỉ hợp lệ TRONG đúng epoch đó ⇒ get_epoch == epoch submit thật (audit thật).
+pub fn get_epoch_bounded(tx: Transaction, ms_per_epoch: Int) -> Int {
+  let IntervalBound { bound_type: lo, .. } = tx.validity_range.lower_bound
+  let IntervalBound { bound_type: hi, .. } = tx.validity_range.upper_bound
+  expect Some(lo_ms) = get_finite(lo)
+  expect Some(hi_ms) = get_finite(hi)
+  let e = lo_ms / ms_per_epoch
+  // upper PHẢI cùng epoch với lower (range không trải qua biên epoch).
+  expect hi_ms / ms_per_epoch == e
+  e
 }
 
 // ── Test-support builders (mock UTxO/tx) ──

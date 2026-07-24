@@ -6,6 +6,7 @@
 //   ledger_out            = ledger_in với MỖI (category, asset) += Σ cut của item đúng (category,asset)
 //   ∀ asset a có Δ:        Σ_b Δledger[(b,a)] == Σ_{item.asset=a} cut(item) == Δvalue(a)   (C-COL-5)
 //   ∀ asset a KHÔNG đụng:  custody_out.value(a) == custody_in.value(a)                       (T3)
+//   sổ out CANONICAL:      strict-sorted ∧ mọi dòng > 0 (C-SORT/C-POS — ledger.ak)
 //
 // KHÔNG burn: value bảo toàn TUYỆT ĐỐI per-asset. Cách ép value mạnh nhất + rẻ ExUnit:
 //   custody_out.value == custody_in.value ⊕ cut_value(items)
@@ -13,11 +14,12 @@
 // đụng giữ nguyên (Σout=Σin). Residual amount−cut do CALLER trả thẳng provider ngoài custody.
 
 use aiken/collection/list
-use cardano/assets.{PolicyId, Value}
+use cardano/assets.{Value}
+use magiclamp/treasury/ledger
 use magiclamp/treasury/types.{AssetKey, CollectItem, LedgerEntry}
-use magiclamp/treasury/util
 
-/// cut của 1 item = floor(amount × cut_bps / 10000). amount ≥ 0, cut_bps ∈ [0,10000].
+/// cut của 1 item = floor(amount × cut_bps / 10000). amount ≥ 0, cut_bps ∈ [0,10000]
+/// (ÉP range tại seed S-CUT-0 — bất biến đời instance, không nhánh nào đổi ở v1).
 pub fn item_cut(amount: Int, cut_bps: Int) -> Int {
   amount * cut_bps / 10000
 }
@@ -36,24 +38,6 @@ pub fn all_items_valid(items: List<CollectItem>, accepted: List<AssetKey>) -> Bo
 }
 
 // ── Δ kỳ vọng cho sổ ──
-
-/// Tìm số dư của (bucket,policy,name) trong sổ; mặc định 0 nếu chưa có dòng.
-pub fn ledger_get(
-  ledger    : List<LedgerEntry>,
-  bucket_id : Int,
-  policy    : ByteArray,
-  name      : ByteArray,
-) -> Int {
-  when
-    list.find(
-      ledger,
-      fn(e) { e.bucket_id == bucket_id && e.policy == policy && e.name == name },
-    )
-  is {
-    Some(e) -> e.amount
-    None -> 0
-  }
-}
 
 /// Tổng cut kỳ vọng cho 1 dòng (bucket=category, asset) từ items.
 pub fn expected_line_delta(
@@ -76,12 +60,13 @@ pub fn expected_line_delta(
   )
 }
 
-// ── ÉP bất biến sổ: ledger_out == ledger_in + Σcut tại (category,asset) ──
-// Kiểm 2 chiều để chống thêm/bớt/xóa dòng lén:
-//   (1) no_dup_lines(out): không trùng khóa (chống nhồi 2 dòng cùng khóa né kiểm).
+// ── ÉP bất biến sổ: ledger_out == ledger_in + Σcut tại (category,asset), CANONICAL ──
+// Kiểm để chống thêm/bớt/xóa dòng lén:
+//   (1) ledger.is_canonical(out): strict-sorted (loại trùng O(n)) ∧ mọi dòng > 0
+//       (chống nhồi dòng trùng/0/âm để né kiểm hoặc bơm sổ).
 //   (2) each_out_line_ok: mỗi dòng out == get(in) + Δkỳvọng(items).
-//   (3) each_in_line_present: mọi dòng in còn trong out (chống xóa dòng = drain sổ).
-//   (4) each_item_has_target: mọi item có dòng đích trong out (cut phải vào sổ).
+//   (3) each_in_line_settled: mọi dòng in còn trong out, TRỪ khi số dư mới == 0 (prune).
+//   (4) each_item_has_target: mọi item có cut > 0 phải có dòng đích trong out (cut vào sổ).
 
 pub fn each_out_line_ok(
   ledger_in  : List<LedgerEntry>,
@@ -93,7 +78,7 @@ pub fn each_out_line_ok(
     ledger_out,
     fn(e) {
       let want =
-        ledger_get(ledger_in, e.bucket_id, e.policy, e.name) + expected_line_delta(
+        ledger.get(ledger_in, e.bucket_id, e.policy, e.name) + expected_line_delta(
           items,
           cut_bps,
           e.bucket_id,
@@ -105,19 +90,30 @@ pub fn each_out_line_ok(
   )
 }
 
-pub fn each_in_line_present(
+/// Mọi dòng IN còn hiện diện trong OUT, TRỪ khi số dư mới == 0 thì được prune (vắng).
+/// (Collect chỉ cộng cut ≥ 0 nên số dư chỉ tăng → thực tế không prune; giữ tổng quát.)
+pub fn each_in_line_settled(
   ledger_in  : List<LedgerEntry>,
   ledger_out : List<LedgerEntry>,
+  items      : List<CollectItem>,
+  cut_bps    : Int,
 ) -> Bool {
   list.all(
     ledger_in,
     fn(e) {
-      list.any(
-        ledger_out,
-        fn(o) {
-          o.bucket_id == e.bucket_id && o.policy == e.policy && o.name == e.name
-        },
-      )
+      let new_bal =
+        e.amount + expected_line_delta(
+          items,
+          cut_bps,
+          e.bucket_id,
+          e.policy,
+          e.name,
+        )
+      if new_bal == 0 {
+        True
+      } else {
+        ledger.line_present(ledger_out, e)
+      }
     },
   )
 }
@@ -125,31 +121,22 @@ pub fn each_in_line_present(
 pub fn each_item_has_target(
   ledger_out : List<LedgerEntry>,
   items      : List<CollectItem>,
+  cut_bps    : Int,
 ) -> Bool {
   list.all(
     items,
     fn(it) {
-      list.any(
-        ledger_out,
-        fn(o) {
-          o.bucket_id == it.category && o.policy == it.policy && o.name == it.name
-        },
-      )
-    },
-  )
-}
-
-/// Sổ không có dòng trùng khóa (bucket,policy,name).
-pub fn no_dup_lines(ledger: List<LedgerEntry>) -> Bool {
-  list.all(
-    ledger,
-    fn(e) {
-      list.count(
-        ledger,
-        fn(o) {
-          o.bucket_id == e.bucket_id && o.policy == e.policy && o.name == e.name
-        },
-      ) == 1
+      // Item cut == 0 không đổi sổ → không bắt buộc dòng đích.
+      if item_cut(it.amount, cut_bps) == 0 {
+        True
+      } else {
+        list.any(
+          ledger_out,
+          fn(o) {
+            o.bucket_id == it.category && o.policy == it.policy && o.name == it.name
+          },
+        )
+      }
     },
   )
 }
@@ -160,14 +147,15 @@ pub fn ledger_ok(
   items      : List<CollectItem>,
   cut_bps    : Int,
 ) -> Bool {
-  no_dup_lines(ledger_out) && each_out_line_ok(
+  ledger.is_canonical(ledger_out) && each_out_line_ok(
     ledger_in,
     ledger_out,
     items,
     cut_bps,
-  ) && each_in_line_present(ledger_in, ledger_out) && each_item_has_target(
+  ) && each_in_line_settled(ledger_in, ledger_out, items, cut_bps) && each_item_has_target(
     ledger_out,
     items,
+    cut_bps,
   )
 }
 
@@ -199,35 +187,21 @@ pub fn value_ok(v_in: Value, v_out: Value, items: List<CollectItem>, cut_bps: In
 // so đẳng thức TUYỆT ĐỐI với value seed. Một đẳng thức Value khóa CẢ hai chiều:
 //   (1) mọi asset booked PHẢI hiện diện đúng lượng trong custody (không thiếu);
 //   (2) KHÔNG asset nào nằm trong custody mà thiếu dòng sổ (không thừa → Release
-//       v1.x đọc sổ sẽ không over/under-draw). Lovelace = Σ sổ lovelace + reserved.
+//       đọc sổ sẽ không over/under-draw). Lovelace = Σ sổ lovelace + reserved.
 
-/// Value gồm toàn bộ số dư sổ (per-asset, gộp mọi bucket cùng asset).
-pub fn ledger_value(ledger: List<LedgerEntry>) -> Value {
-  list.foldl(
-    ledger,
-    assets.zero,
-    fn(e, acc) { assets.add(acc, e.policy, e.name, e.amount) },
-  )
-}
-
-/// Seed custody hợp lệ ⇔ value (ĐÃ LOẠI custody NFT) == ledger_value(ledger) ⊕ reserved.
-/// reserved_min_ada ≥ 0 = phần ADA giữ cho min-UTxO, không ghi sổ.
-///
-/// FIX (audit major): custody UTxO BẮT BUỘC mang custody NFT one-shot (custody_seed
-/// policy = custody_nft_policy). NFT là token XÁC THỰC instance, KHÔNG phải tài sản
-/// kế toán → KHÔNG được tính vào sổ. Phải TRỪ NFT khỏi value trước khi đối chiếu sổ,
-/// nếu không đẳng thức value==sổ KHÔNG BAO GIỜ đúng on-chain (value luôn dư đúng 1 NFT).
-/// Hệ quả: ai book NFT thành 1 dòng sổ (để né) cũng FAIL — accounted_value không có NFT
-/// nhưng ledger_value lại có → lệch.
+/// Seed custody hợp lệ ⇔ value == sổ ⊕ reserved_min_ada (lovelace) ⊕ authenticity NFT.
+/// Hai thành phần KHÔNG ghi sổ: reserved_min_ada (ADA giữ cho min-UTxO) + 1 NFT
+/// (nft_policy, nft_name) chứng thực custody (custody_seed mint, custody.ak ép hiện diện).
 pub fn seed_value_ok(
-  value             : Value,
-  ledger            : List<LedgerEntry>,
-  reserved_min_ada  : Int,
-  custody_nft_policy: PolicyId,
+  value           : Value,
+  ledger_lines    : List<LedgerEntry>,
+  reserved_min_ada: Int,
+  nft_policy      : ByteArray,
+  nft_name        : ByteArray,
 ) -> Bool {
-  // value đối chiếu = custody.value LOẠI BỎ custody NFT (authenticity token, không kế toán).
-  let accounted_value = util.value_without_policy(value, custody_nft_policy)
   let expected =
-    assets.merge(ledger_value(ledger), assets.from_lovelace(reserved_min_ada))
-  accounted_value == expected
+    ledger.value_of(ledger_lines)
+      |> assets.merge(assets.from_lovelace(reserved_min_ada))
+      |> assets.add(nft_policy, nft_name, 1)
+  value == expected
 }

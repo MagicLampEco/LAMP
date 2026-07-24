@@ -6,6 +6,7 @@ export * from "./datum.js";
 export * from "./collect.js";
 export * from "./collectBuilder.js";
 export * from "./releaseBuilder.js";
+export * from "./seedBuilder.js";
 
 // Cầu Reserve↔Treasury (Treasury-pull): mint auth one-shot + spend gate ép sàn.
 export * from "./reserveAuthBuilder.js";
