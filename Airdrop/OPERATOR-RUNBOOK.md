@@ -38,7 +38,7 @@ Tạo `Airdrop/scripts/.env` (KHÔNG commit file này):
 NETWORK=Preview
 
 # Blockfrost project ID cho network trên
-BLOCKFROST_KEY=previewXiSuNb7gzGiR3zgkC8fm07jqaPcmJR0t
+BLOCKFROST_KEY=previewXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX   # blockfrost.io — KHÔNG commit key thật
 
 # Seed phrase ví operator (15 hoặc 24 từ)
 WALLET_SEED="word1 word2 ... word15"
