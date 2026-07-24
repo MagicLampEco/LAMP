@@ -28,6 +28,8 @@ validator claim_account(
   budget_nft_policy : ByteArray,     // policy NFT budget beacon one-shot (name = channel_id).
                                      // PHÁ VÒNG: claim_account CHỈ phụ thuộc budget_nft_policy
                                      // (đáy DAG) — BỎ channel_budget_hash (param chéo gây vòng).
+  account_nft_policy : ByteArray,    // C-ACC: policy NFT xác thực per-account (committee-gated
+                                     // lúc genesis). name = blake2b_256(owner ‖ channel_id).
 ) {
   spend(
     datum_opt : Option<ClaimAccountDatum>,
@@ -51,8 +53,18 @@ validator claim_account(
     expect InlineDatum(d) = acc_out.datum
     expect out_datum: ClaimAccountDatum = d
 
-    // Account UTxO chỉ giữ min-ADA (không LAMP) — value bảo toàn tuyệt đối (C-VAL-0).
+    // Account UTxO giữ min-ADA + account NFT (không LAMP) — value bảo toàn tuyệt đối (C-VAL-0).
     expect acc_out.value == acc_in.value
+
+    // C-ACC-4: account PHẢI mang NFT xác thực committee-gated (name = blake2b(owner‖channel)).
+    // Không NFT ⇒ UTxO không qua genesis committee ⇒ giả mạo ⇒ từ chối cả Claim lẫn Redeem.
+    // Value-preservation ở trên tự mang NFT sang acc_out.
+    expect
+      assets.quantity_of(
+        acc_in.value,
+        account_nft_policy,
+        util.account_nft_name(datum.owner, datum.channel_id),
+      ) == 1
 
     when redeemer is {
       // ── CLAIM (committee cấp/tăng entitlement, khoá chéo budget beacon) ──
@@ -151,6 +163,8 @@ const t_drop_value: Int = 100
 
 const t_budget_policy: ByteArray = #"b00d"
 
+const t_account_policy: ByteArray = #"acac"
+
 const t_channel: ByteArray = #"5445414d"  // "TEAM"
 
 const t_other_channel: ByteArray = #"5245534552564500"  // "RESERVE"
@@ -183,6 +197,11 @@ fn budget_beacon_input(channel: ByteArray) -> Input {
   util.mk_input(util.mk_ref(7), util.mk_output_no_datum(addr, val))
 }
 
+/// account hợp lệ LUÔN mang NFT xác thực (name = blake2b(owner‖channel)).
+fn with_acc_nft(base: assets.Value, channel: ByteArray) -> assets.Value {
+  assets.add(base, t_account_policy, util.account_nft_name(t_owner, channel), 1)
+}
+
 // ── CLAIM tx: account in/out + committee sigs + budget beacon input ──
 fn claim_tx(
   in_d        : ClaimAccountDatum,
@@ -192,9 +211,9 @@ fn claim_tx(
   budget_ins  : List<Input>,
 ) -> Transaction {
   let acc_addr = util.script_address(t_sh)
-  let in_val = assets.from_lovelace(2_000_000)
+  let in_val = with_acc_nft(assets.from_lovelace(2_000_000), in_d.channel_id)
   let acc_in = util.mk_input(util.mk_ref(0), util.mk_output(acc_addr, in_val, in_d))
-  let acc_out = util.mk_output(acc_addr, out_value, out_d)
+  let acc_out = util.mk_output(acc_addr, with_acc_nft(out_value, in_d.channel_id), out_d)
   Transaction {
     ..placeholder,
     inputs: list.concat([acc_in], budget_ins),
@@ -207,7 +226,7 @@ fn claim_tx(
 fn run_claim(in_d: ClaimAccountDatum, amount: Int, tx: Transaction) -> Bool {
   claim_account.spend(
     t_committee, t_threshold, t_mspe, t_lamp_policy, t_lamp_name, t_drop_value,
-    t_budget_policy, Some(in_d), Claim { amount }, util.mk_ref(0), tx,
+    t_budget_policy, t_account_policy, Some(in_d), Claim { amount }, util.mk_ref(0), tx,
   )
 }
 
@@ -268,7 +287,7 @@ fn redeem_tx(
   extra_outs     : List<Output>,
 ) -> Transaction {
   let acc_addr = util.script_address(t_sh)
-  let val = assets.from_lovelace(2_000_000)
+  let val = with_acc_nft(assets.from_lovelace(2_000_000), in_d.channel_id)
   let acc_in = util.mk_input(util.mk_ref(0), util.mk_output(acc_addr, val, in_d))
   let acc_out = util.mk_output(acc_addr, val, out_d)
   let owner_val =
@@ -287,8 +306,41 @@ fn redeem_tx(
 fn run_redeem(in_d: ClaimAccountDatum, tx: Transaction) -> Bool {
   claim_account.spend(
     t_committee, t_threshold, t_mspe, t_lamp_policy, t_lamp_name, t_drop_value,
-    t_budget_policy, Some(in_d), Redeem, util.mk_ref(0), tx,
+    t_budget_policy, t_account_policy, Some(in_d), Redeem, util.mk_ref(0), tx,
   )
+}
+
+// ── REDEEM tx GIẢ MẠO: account KHÔNG mang NFT xác thực (C-ACC-4 regression) ──
+fn redeem_tx_no_nft(
+  in_d          : ClaimAccountDatum,
+  out_d         : ClaimAccountDatum,
+  owner_lamp_out: Int,
+  current_epoch : Int,
+) -> Transaction {
+  let acc_addr = util.script_address(t_sh)
+  let val = assets.from_lovelace(2_000_000)
+  let acc_in = util.mk_input(util.mk_ref(0), util.mk_output(acc_addr, val, in_d))
+  let acc_out = util.mk_output(acc_addr, val, out_d)
+  let owner_val =
+    assets.add(assets.from_lovelace(2_000_000), t_lamp_policy, t_lamp_name, owner_lamp_out)
+  let owner_out = util.mk_output(util.vk_address(t_owner), owner_val, in_d)
+  Transaction {
+    ..placeholder,
+    inputs: [acc_in],
+    outputs: [acc_out, owner_out],
+    extra_signatories: [t_owner],
+    validity_range: interval.after(current_epoch * t_mspe),
+    mint: assets.zero,
+  }
+}
+
+test redeem_forged_account_no_nft_rejected() fail {
+  // Account giả: UTxO ở script claim_account, datum entitlement fat, start lùi —
+  // NHƯNG không mang NFT committee-gated. Redeem PHẢI bị từ chối (C-ACC-4).
+  let in_d = ca_datum(1000, 0, 0, 1, t_channel)
+  let out_d = ca_datum(1000, 300, 0, 1, t_channel)
+  let tx = redeem_tx_no_nft(in_d, out_d, 300, 3)
+  run_redeem(in_d, tx)
 }
 
 test redeem_happy() {

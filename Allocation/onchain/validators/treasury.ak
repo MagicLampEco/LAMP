@@ -19,6 +19,7 @@ validator treasury(
   claim_account_hash : ByteArray,
   lamp_policy        : ByteArray,
   lamp_name          : ByteArray,
+  account_nft_policy : ByteArray,   // C-ACC-5: ép ClaimAccount input mang NFT xác thực.
 ) {
   spend(
     datum_opt : Option<TreasuryDatum>,
@@ -59,6 +60,20 @@ validator treasury(
     expect ca_in.channel_id == datum.channel_id
     expect ca_out.channel_id == datum.channel_id
 
+    // C-ACC-5: ClaimAccount input PHẢI mang NFT xác thực committee-gated (defense-in-depth —
+    // không chỉ dựa claim_account.spend chạy). Account giả (không NFT) → treasury từ chối.
+    expect Some(ca_input) =
+      list.find(
+        tx.inputs,
+        fn(i) { util.is_at_script(i.output.address, claim_account_hash) },
+      )
+    expect
+      assets.quantity_of(
+        ca_input.output.value,
+        account_nft_policy,
+        util.account_nft_name(ca_in.owner, ca_in.channel_id),
+      ) == 1
+
     // released = redeemed(out) − redeemed(in).
     let released = ca_out.redeemed - ca_in.redeemed
     expect released > 0
@@ -98,6 +113,8 @@ const tt_tre_sh: ByteArray = #"77777777"
 
 const tt_ca_sh: ByteArray = #"a1a1a1a1"
 
+const tt_account_policy: ByteArray = #"acac"
+
 const tt_lamp_policy: ByteArray = #"1a3b"
 
 const tt_lamp_name: ByteArray = #"4c414d50"
@@ -127,6 +144,16 @@ fn tt_lamp_val(lovelace: Int, lamp: Int) -> assets.Value {
   assets.add(assets.from_lovelace(lovelace), tt_lamp_policy, tt_lamp_name, lamp)
 }
 
+/// ClaimAccount value: min-ADA + account NFT (name = blake2b(owner‖channel)).
+fn tt_ca_val(channel: ByteArray) -> assets.Value {
+  assets.add(
+    assets.from_lovelace(2_000_000),
+    tt_account_policy,
+    util.account_nft_name(tt_owner, channel),
+    1,
+  )
+}
+
 fn treasury_tx(
   tre_channel  : ByteArray,
   tre_in_val   : assets.Value,
@@ -143,10 +170,10 @@ fn treasury_tx(
   let ca_in =
     util.mk_input(
       util.mk_ref(1),
-      util.mk_output(ca_addr, assets.from_lovelace(2_000_000), tt_ca_d(redeemed_in, ca_channel)),
+      util.mk_output(ca_addr, tt_ca_val(ca_channel), tt_ca_d(redeemed_in, ca_channel)),
     )
   let ca_out =
-    util.mk_output(ca_addr, assets.from_lovelace(2_000_000), tt_ca_d(redeemed_out, ca_channel))
+    util.mk_output(ca_addr, tt_ca_val(ca_channel), tt_ca_d(redeemed_out, ca_channel))
   Transaction {
     ..placeholder,
     inputs: list.concat([tre_in, ca_in], extra_tre),
@@ -157,9 +184,40 @@ fn treasury_tx(
 
 fn run_tre(channel: ByteArray, tx: Transaction) -> Bool {
   treasury.spend(
-    tt_ca_sh, tt_lamp_policy, tt_lamp_name, Some(tt_tre_d(channel)), ReleaseForRedeem,
-    util.mk_ref(0), tx,
+    tt_ca_sh, tt_lamp_policy, tt_lamp_name, tt_account_policy,
+    Some(tt_tre_d(channel)), ReleaseForRedeem, util.mk_ref(0), tx,
   )
+}
+
+// ── Release cho account GIẢ (ClaimAccount input KHÔNG mang NFT) — C-ACC-5 regression ──
+fn treasury_tx_forged_ca(
+  tre_in_val   : assets.Value,
+  tre_out_val  : assets.Value,
+  redeemed_in  : Int,
+  redeemed_out : Int,
+) -> Transaction {
+  let tre_addr = util.script_address(tt_tre_sh)
+  let ca_addr = util.script_address(tt_ca_sh)
+  let tre_in = util.mk_input(util.mk_ref(0), util.mk_output(tre_addr, tre_in_val, tt_tre_d(tt_channel)))
+  let tre_out = util.mk_output(tre_addr, tre_out_val, tt_tre_d(tt_channel))
+  // ca KHÔNG mang account NFT (chỉ min-ADA) — account giả mạo.
+  let ca_in =
+    util.mk_input(util.mk_ref(1), util.mk_output(ca_addr, assets.from_lovelace(2_000_000), tt_ca_d(redeemed_in, tt_channel)))
+  let ca_out =
+    util.mk_output(ca_addr, assets.from_lovelace(2_000_000), tt_ca_d(redeemed_out, tt_channel))
+  Transaction {
+    ..placeholder,
+    inputs: [tre_in, ca_in],
+    outputs: [tre_out, ca_out],
+    mint: assets.zero,
+  }
+}
+
+test treasury_forged_account_no_nft_rejected() fail {
+  // Account giả (không NFT committee) cố rút từ treasury → PHẢI bị từ chối (C-ACC-5).
+  let tx =
+    treasury_tx_forged_ca(tt_lamp_val(5_000_000, 1000), tt_lamp_val(5_000_000, 900), 0, 100)
+  run_tre(tt_channel, tx)
 }
 
 test treasury_happy() {
@@ -267,8 +325,8 @@ test xc2_cross_channel_donor_blocked() fail {
   let tre_out = util.mk_output(tre_addr, tt_lamp_val(5_000_000, 0), tt_tre_d(tt_channel))
   let donor_in = util.mk_input(util.mk_ref(9), util.mk_output(donor_addr, tt_lamp_val(5_000_000, 1000), tt_tre_d(tt_other_channel)))
   let donor_out = util.mk_output(donor_addr, tt_lamp_val(5_000_000, 500), tt_tre_d(tt_other_channel))
-  let ca_in = util.mk_input(util.mk_ref(1), util.mk_output(ca_addr, assets.from_lovelace(2_000_000), tt_ca_d(0, tt_channel)))
-  let ca_out = util.mk_output(ca_addr, assets.from_lovelace(2_000_000), tt_ca_d(600, tt_channel))
+  let ca_in = util.mk_input(util.mk_ref(1), util.mk_output(ca_addr, tt_ca_val(tt_channel), tt_ca_d(0, tt_channel)))
+  let ca_out = util.mk_output(ca_addr, tt_ca_val(tt_channel), tt_ca_d(600, tt_channel))
   let tx =
     Transaction {
       ..placeholder,

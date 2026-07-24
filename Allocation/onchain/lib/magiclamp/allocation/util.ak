@@ -1,11 +1,20 @@
 // LAMP Allocation shared validator helpers (HARD-CAP per-channel invariants).
 
 use aiken/collection/list
+use aiken/crypto.{blake2b_256}
 use aiken/interval.{Finite, IntervalBoundType}
+use aiken/primitive/bytearray
 use cardano/address.{Address, Inline, Script, VerificationKey}
 use cardano/assets
 use cardano/assets.{AssetName, PolicyId, Value}
 use cardano/transaction.{InlineDatum, Input, NoDatum, Output, OutputReference, Transaction}
+
+/// C-ACC-1: name NFT xác thực account = blake2b_256(owner ‖ channel_id).
+/// SINGLE SOURCE OF TRUTH — mọi validator (account_nft/claim_account/treasury) và
+/// off-chain (@noble/hashes blake2b) PHẢI dùng chung derivation này (byte-perfect).
+pub fn account_nft_name(owner: ByteArray, channel: ByteArray) -> ByteArray {
+  blake2b_256(bytearray.concat(owner, channel))
+}
 
 /// Epoch từ validity_range lower_bound (POSIX ms). ms_per_epoch network-specific.
 pub fn get_epoch(tx: Transaction, ms_per_epoch: Int) -> Int {
