@@ -8,6 +8,8 @@ export * from "./math.js";
 // ── tx builders + codec (Lucid Evolution off-chain) ──
 export * from "./datum.js";
 export * from "./committee.js";
+export * from "./accountNft.js";
 export * from "./setupBuilder.js";
+export * from "./accountGenesisBuilder.js";
 export * from "./claimBuilder.js";
 export * from "./redeemBuilder.js";

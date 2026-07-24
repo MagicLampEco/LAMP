@@ -6,10 +6,10 @@
 //   name = blake2b_256( owner_pkh ‖ channel_id )   (dkLen 32)
 
 import { blake2b } from "@noble/hashes/blake2b";
+import { hexToBytes, bytesToHex } from "@noble/hashes/utils";
 
 /** owner/channel là hex string (không 0x). Trả hex 64 ký tự (32 byte). */
 export function accountNftName(ownerHex: string, channelHex: string): string {
-  const bytes = Buffer.from(ownerHex + channelHex, "hex");
-  const h = blake2b(new Uint8Array(bytes), { dkLen: 32 });
-  return Buffer.from(h).toString("hex");
+  const bytes = hexToBytes(ownerHex + channelHex);
+  return bytesToHex(blake2b(bytes, { dkLen: 32 }));
 }

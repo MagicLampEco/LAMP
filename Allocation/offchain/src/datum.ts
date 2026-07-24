@@ -192,3 +192,12 @@ export function encodeBudgetNftRedeemer(): Constr<Data> {
 export function budgetNftRedeemerToCbor(): string {
   return Data.to(encodeBudgetNftRedeemer());
 }
+
+/** AccountNftRedeemer: MintAccount = Constr(0, []). */
+export function encodeAccountNftRedeemer(): Constr<Data> {
+  return new Constr(0, []);
+}
+
+export function accountNftRedeemerToCbor(): string {
+  return Data.to(encodeAccountNftRedeemer());
+}
