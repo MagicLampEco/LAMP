@@ -5,7 +5,7 @@
 // ─────────────────────────────────────────────────────────────────────────
 // 2 công ty vận hành pool SPO. Delegator ủy thác ADA → reward ADA (margin) do
 // 2 cty thu. ĐỔI LẠI: delegator nhận LAMP theo TỶ LỆ STAKE mỗi epoch.
-//   Tổng 1 tỷ LAMP (1_000_000_000 × 10^6 oil) chia đều 36 epoch.
+//   Tổng 360 triệu LAMP (360_000_000 × 10^6 oil) chia đều 36 epoch.
 //   entitlement_e[addr] = (1e9/36) LAMP × stake_e[addr] / Σ stake_e
 //
 // Phần OFF-CHAIN (vận hành SPO + thu reward ADA) KHÔNG on-chain — là thao tác

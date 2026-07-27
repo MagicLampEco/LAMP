@@ -14,7 +14,7 @@ import type { SrclDatum, ClaimProof, MerkleStep } from "../src/types.js";
 
 const sampleDatum: SrclDatum = {
   epoch_roots: ["aa", "bb"],
-  distributed_total: 27_777_777_777_777n,
+  distributed_total: 10_000_000_000_000n,
   end_epoch: END_EPOCH,
   treasury_dest: "7a7a7a7a",
   ms_per_epoch: MS_PER_EPOCH_MAINNET,
@@ -28,7 +28,7 @@ describe("SrclDatum codec", () => {
   it("encodes as Constr(0, [list, int, int, bytes, int])", () => {
     const back = decodeSrclDatum(Data.from(srclDatumToCbor(sampleDatum)));
     expect(back.epoch_roots).toEqual(["aa", "bb"]);
-    expect(back.distributed_total).toBe(27_777_777_777_777n);
+    expect(back.distributed_total).toBe(10_000_000_000_000n);
     expect(back.end_epoch).toBe(35n);
   });
 

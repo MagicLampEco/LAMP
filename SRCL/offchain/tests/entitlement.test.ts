@@ -11,8 +11,8 @@ import type { StakeEntry } from "../src/types.js";
 import { verifyProof } from "../src/merkle.js";
 
 describe("hằng quỹ SRCL", () => {
-  it("tổng = 1 tỷ LAMP = 1e15 oil", () => {
-    expect(SRCL_TOTAL_OIL).toBe(1_000_000_000_000_000n);
+  it("tổng = 360 triệu LAMP = 3,6e14 oil", () => {
+    expect(SRCL_TOTAL_OIL).toBe(360_000_000_000_000n);
   });
   it("36 epoch", () => {
     expect(EPOCHS).toBe(36n);
@@ -21,9 +21,10 @@ describe("hằng quỹ SRCL", () => {
   it("36 × PER_EPOCH + REMAINDER = tổng (không mất oil)", () => {
     expect(PER_EPOCH_OIL * EPOCHS + REMAINDER_OIL).toBe(SRCL_TOTAL_OIL);
   });
-  it("PER_EPOCH ≈ 27,78 triệu LAMP", () => {
-    // 1e15 / 36 = 27_777_777_777_777 oil = 27.777.777,77 LAMP.
-    expect(PER_EPOCH_OIL).toBe(27_777_777_777_777n);
+  it("PER_EPOCH = 10 triệu LAMP chẵn, dư 0", () => {
+    // 3,6e14 / 36 = 10_000_000_000_000 oil = 10.000.000 LAMP. 360M ⋮ 36.
+    expect(PER_EPOCH_OIL).toBe(10_000_000_000_000n);
+    expect(REMAINDER_OIL).toBe(0n);
   });
 });
 

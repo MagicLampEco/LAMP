@@ -13,7 +13,7 @@
 //   2 cty vận hành SPO. snapshotTool nhận sẵn list {owner(pkh), stake} của epoch.
 //
 // ENTITLEMENT (tất định, tỷ lệ stake):
-//   budget_e = PER_EPOCH_OIL (chia đều 1e15 oil / 36). epoch cuối có thể cộng dư lẻ.
+//   budget_e = PER_EPOCH_OIL (chia đều 3,6e14 oil / 36 = 10M LAMP). epoch cuối có thể cộng dư lẻ.
 //   entitlement_e[i] = floor(budget_e × stake_i / Σ stake)   (oil)
 //   Dư do floor (budget − Σ entitlement) → dồn cho ví stake lớn nhất (xác định,
 //   không mất oil). Tổng entitlement_e == budget_e CHÍNH XÁC.
