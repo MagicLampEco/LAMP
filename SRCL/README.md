@@ -12,8 +12,9 @@
 > chống double-claim) **DÙNG CHUNG** cho cả A và B; chỉ **nguồn entitlement** khác (∝stake → ∝reward).
 > Đọc mọi mô tả "∝ stake" / "native-margin" bên dưới như đặc tả **bản A**.
 
-Module phân phối **1 tỷ LAMP** cho delegator của pool SRCL theo **tỷ lệ stake**, đều
-trong **36 epoch** (~27,78 triệu LAMP/epoch), bằng cơ chế Merkle distribution per-epoch.
+Module phân phối **360 triệu LAMP** (pot SRCL trong bảng 18-pot, `Specs/LAMP-POT-CATALOG.md`)
+cho delegator của pool SRCL theo **tỷ lệ stake**, đều trong **36 epoch**
+(**10 triệu LAMP/epoch** chẵn), bằng cơ chế Merkle distribution per-epoch.
 
 ---
 
@@ -46,15 +47,16 @@ Cơ chế **phân phối LAMP cho delegator theo snapshot stake mỗi epoch**:
 ## Toán phân phối (tất định, tỷ lệ stake)
 
 ```
-TỔNG       = 1_000_000_000 LAMP × 10^6 = 1e15 oil
+TỔNG       = 360_000_000 LAMP × 10^6 = 3,6e14 oil
 EPOCHS     = 36  (epoch 0..35)
-budget_e   = floor(1e15 / 36) = 27_777_777_777_777 oil  ≈ 27.777.777,78 LAMP
+budget_e   = 3,6e14 / 36 = 10_000_000_000_000 oil = 10.000.000 LAMP  (chia hết, dư 0)
 entitlement_e[i] = floor( budget_e × stake_i / Σ stake )   (oil)
 ```
 
 - Dư do `floor` (budget − Σ entitlement) → dồn cho ví **stake lớn nhất** (xác định,
   không mất oil). Tổng entitlement mỗi epoch == `budget_e` chính xác.
-- Phần dư lẻ toàn cục `1e15 − 36 × budget_e` (= `REMAINDER_OIL`) gộp vào **epoch cuối**.
+- Phần dư lẻ toàn cục `3,6e14 − 36 × budget_e` (= `REMAINDER_OIL`) gộp vào **epoch cuối**;
+  với 360 triệu thì `REMAINDER_OIL = 0` (360M chia hết 36).
 - Đơn vị: **oil** (1 LAMP = 10^6 oil), mọi số học BigInt.
 
 ---
@@ -66,10 +68,10 @@ entitlement_e[i] = floor( budget_e × stake_i / Σ stake )   (oil)
 1 policy đúc 2 loại token (mẫu NFT-beacon như Faucet — **phá vòng hash-param chéo**):
 
 - **POOL NFT** (`"SRCL"`, one-shot, qty 1) — nhận diện SRCL pool UTxO.
-- **MARKER NFT** (name = `blake2b_256(epoch ‖ owner)`, qty 1) — biên-lai claim per
-  `(epoch, owner)`.
+- **SLOT NFT** (name = `blake2b_256(epoch ‖ owner)`, qty 1) — **claim-slot** per
+  `(epoch, owner)`: `SetRoot` đúc cả bộ và gửi vào registry, `Claim` tiêu + **đốt**.
 
-### `srcl_pool` (spend, param `srcl_nft_policy`, `lamp_policy`, `lamp_name`, `admin`, `admin_threshold`)
+### `srcl_pool` (spend, param `srcl_nft_policy`, `lamp_policy`, `lamp_name`, `admin`, `admin_threshold`, `slot_registry_hash`)
 
 UTxO mang POOL NFT + kho LAMP + `SrclDatum`:
 
@@ -87,31 +89,30 @@ SrclDatum {
 
 | Redeemer | Ai | Ràng buộc chính |
 |---|---|---|
-| `SetRoot{root}` | admin (≥ threshold) | append `root` vào `epoch_roots`; pool.value bảo toàn tuyệt đối; ≤ 36 root |
-| `Claim{ClaimProof}` | delegator (permissionless) | Merkle verify `(epoch,owner,amount) ∈ epoch_roots[epoch]`; owner nhận `amount` LAMP; đúc đúng 1 MARKER tới owner; `distributed_total += amount`; pool − `amount` LAMP |
-| `Sweep` | bất kỳ, sau `end_epoch` | `now > end_epoch`; toàn bộ LAMP dư → Treasury |
+| `SetRoot{root}` | admin (≥ threshold) | append `root` vào `epoch_roots`; pool.value bảo toàn tuyệt đối; ≤ 36 root; bộ SLOT mới KHÔNG rò khỏi registry |
+| `Claim{ClaimProof}` | delegator (permissionless) | Merkle verify `(epoch,owner,amount) ∈ epoch_roots[epoch]`; owner nhận `amount` LAMP; tiêu đúng 1 SLOT `(epoch,owner)` **từ registry** + đốt (qty −1); `distributed_total += amount`; pool − `amount` LAMP |
+| `Sweep` | bất kỳ, sau `end_epoch` | `now > end_epoch`; toàn bộ LAMP dư → Treasury — ⚠️ **đang lỗi, xem S1 dưới** |
 
 ---
 
 ## Chống double-claim per `(epoch, addr)`
 
-`marker_name = blake2b_256(epoch_be8 ‖ owner)` — **hàm thuần** của `(epoch, owner)`.
+`slot_name = blake2b_256(epoch_be8 ‖ owner)` — **hàm thuần** của `(epoch, owner)`.
 
-`Claim` ép:
-- đúc **đúng 1** `(srcl_nft_policy, marker_name)` qty 1,
-- marker gửi **tới ví owner**,
-- name gắn chặt `epoch + owner` (1 cặp → 1 name).
+Mô hình **claim-slot spend-once** (KHÔNG còn dựa indexer off-chain):
 
-Mỗi cặp `(epoch, owner)` có biên-lai marker duy nhất. Đây là **mẫu marker chuẩn của
-airdrop**: chốt chặn double-claim toàn cục dựa trên **indexer off-chain từ chối ký lại**
-khi marker `(epoch, owner)` đã tồn tại ở ví owner. Tầng on-chain ép tính toàn vẹn của
-marker (name đúng, qty 1, đúng người nhận) + bảo toàn value pool, nên không thể rút quá
-`amount` đã được Merkle root cam kết.
+- `SetRoot` epoch `e` đúc bộ slot `{(srcl_nft_policy, slot_name(e, owner)) : owner ∈ e}`
+  và ép chúng nằm ở `Script(slot_registry_hash)` — slot không rò ra ví admin.
+- `Claim` ép: tiêu **đúng 1** slot `(epoch, owner)` **từ registry** + **đốt** nó (`mint = −1`).
 
-> Lưu ý kỹ thuật eUTXO: ledger Cardano cho phép re-mint cùng một asset name, nên chốt
-> chặn "1 lần duy nhất" toàn cục là trách nhiệm của indexer off-chain (chuẩn airdrop).
-> Nếu cần bất biến on-chain tuyệt đối, nâng cấp: đưa marker vào một **registry script
-> bất tử** (spend luôn `fail`) — đã chừa đường mở rộng, không đổi interface datum.
+Slot tiêu 1 lần là hết ⇒ cặp `(epoch, owner)` không claim lại được. Tính duy-nhất dựa
+**spend-once của ledger eUTXO**, độc lập indexer.
+
+> **Giới hạn (đã ghi trong `srcl_pool.ak` §GIỚI HẠN):** on-chain KHÔNG kiểm được tên slot
+> thuộc đúng epoch đang append (tên là hash, validator không có preimage). Admin đủ ngưỡng,
+> nếu cấu kết, có thể đúc lại slot của epoch cũ đã đốt → mở lại double-claim epoch đó. Vậy
+> chống double-claim ở mức **tin cậy admin-threshold**, không tuyệt đối. Test
+> `setroot_remint_burned_slot_admin_trusted` ghim đúng giả định này.
 
 ---
 
@@ -121,8 +122,13 @@ marker (name đúng, qty 1, đúng người nhận) + bảo toàn value pool, n�
   theo full-address) → 2 pool input cùng script-hash khác stake-cred bị chặn.
 - **Spoof own_ref**: ép `own_ref` trỏ đúng pool input mang POOL NFT.
 - **Drain pool**: `pool_out.value == pool_in.value − amount LAMP` (value-eq tuyệt đối).
-- **Sweep sớm**: `now` lấy từ `validity_range.lower_bound` (cận dưới) → chỉ quét khi
-  CHẮC CHẮN `now > end_epoch`.
+- ⚠️ **S1 — Sweep sớm: CHƯA chặn được (lỗi mở).** `util.get_epoch` trả **epoch POSIX
+  tuyệt đối** (`lower_bound_ms / ms_per_epoch` ≈ **4132** ở thời điểm hiện tại), trong khi
+  `end_epoch = 35` là epoch **tương đối của chiến dịch**. `4132 > 35` ⇒ cửa Sweep **mở ngay
+  từ ngày đầu**, không cần chữ ký. Bất kỳ ai cũng đẩy sạch pot về `treasury_dest` → chiến
+  dịch chết ở epoch 0 (không mất tiền — tiền về Treasury — nhưng delegator hết claim được).
+  Test hiện có qua được chỉ vì fixture đặt `validity_range` theo epoch *tương đối*.
+  **Cần sửa trước khi nạp LAMP thật vào pot.**
 - **Cross-epoch replay**: `epoch` nhúng trong leaf + root mỗi epoch khác nhau → proof
   epoch `e` không dùng lại cho epoch khác.
 - **Second-preimage Merkle**: domain tag `0x00` (leaf) / `0x01` (node).
@@ -133,7 +139,7 @@ marker (name đúng, qty 1, đúng người nhận) + bảo toàn value pool, n�
 
 | File | Vai trò |
 |---|---|
-| `constants.ts` | `SRCL_TOTAL_OIL=1e15`, `EPOCHS=36`, `PER_EPOCH_OIL`, `POOL_NFT_NAME`, … |
+| `constants.ts` | `SRCL_TOTAL_OIL=3,6e14`, `EPOCHS=36`, `PER_EPOCH_OIL`, `POOL_NFT_NAME`, … |
 | `types.ts` | `SrclDatum`, `ClaimProof`, `MerkleStep`, `Entitlement`, `StakeEntry` |
 | `datum.ts` | codec Plutus Data **byte-perfect** với onchain |
 | `merkle.ts` | blake2b-256 (`@noble/hashes`), `MerkleTree`, proof — khớp onchain |
@@ -159,14 +165,19 @@ Sau đó **resolve** `stake_address → payment-credential hash (pkh)` của ví
 (`owner` trong leaf). Việc resolve này là **chính sách 2 cty** (ví đăng ký nhận), KHÔNG
 nằm trong contract. `snapshotTool` nhận sẵn list `{ owner(pkh), stake }` của mỗi epoch.
 
+> **Điều kiện tham gia CHƯA được cài ở đâu.** Chủ trương: delegator có **≥ 1000 ADA** trong
+> stake **và đã đăng ký** thì tham gia (KHÔNG bắt đặt cọc). Hiện `computeEntitlements` chỉ
+> lọc `stake > 0` — không có ngưỡng 1000 ADA, không có danh sách đăng ký. Đây là **bộ lọc
+> off-chain lúc snapshot**, phải cài ở tầng dựng `StakeEntry[]` trước khi vào `snapshotTool`.
+
 ---
 
 ## Chạy test
 
 ```bash
-# On-chain (Aiken) — 42 checks, 0 errors
+# On-chain (Aiken) — 55 test pass, 0 fail
 cd SRCL/onchain && aiken check
 
-# Off-chain (vitest) — 42 tests
+# Off-chain (vitest) — 43 test pass (3 file)
 cd SRCL/offchain && npm install && npx vitest run
 ```
