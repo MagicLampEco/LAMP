@@ -1,6 +1,9 @@
-# LAMP — Tài liệu thuyết minh Policy (DRAFT chờ anh duyệt, 2026-06-19)
+# LAMP — Tài liệu thuyết minh Policy
 
-> Nội dung CÔNG KHAI cho cộng đồng. Anh duyệt trước khi đăng. Viết tuân thủ: utility, không hứa giá, không "đầu tư/lợi nhuận".
+> Nội dung CÔNG KHAI cho cộng đồng. Viết tuân thủ: token tiện ích, không hứa giá, không "đầu tư/lợi nhuận".
+> Cập nhật 2026-07-29: **chốt policy `55d3e01b…180f0` là token LAMP chính thức trên mainnet** — không
+> có policy nào khác thay thế. Mọi số liệu cung ở đây đọc trực tiếp từ chuỗi, kiểm chứng được
+> (`Genesis/scripts/verify_mainnet_supply.ts`, read-only, không cần khoá).
 
 ## 0. Tra cứu nhanh (on-chain, mainnet Cardano)
 
@@ -11,8 +14,13 @@
 | Asset (LAMP) | `55d3e01b….4c414d50` |
 | Tên hiển thị / mã | **MagicLamp** / **LAMP** |
 | Tổng cung tối đa | **36.000.000.000 LAMP** (cố định, không đổi, không burn) |
-| Đơn vị con | **oil** — 1 LAMP = 1.000.000 oil (decimals = 6) |
+| Trần ghi trong chuỗi | `dist_cap` **26.370.000.000** + `reserve_cap` **9.630.000.000** = **36 tỷ** |
+| Đã mint tới nay | **1.000.000 LAMP** (nằm trong kho, chưa phân phối) |
+| Đơn vị con | **oildrop** — 1 LAMP = 1.000.000 oildrop (decimals = 6) |
 | Website | https://magiclamp.network/ |
+
+Trần 36 tỷ **không nằm trong tài liệu này** — nó nằm trong dữ liệu (datum) của một UTxO trên chuỗi
+mang thread NFT `SUPPLY`. Ai cũng đọc lại được, không cần tin lời chúng tôi.
 
 ---
 
@@ -30,10 +38,10 @@ LAMP là token chính thức của hệ sinh thái **MagicLamp** trên Cardano. 
 
 "Cố định 36 tỷ" **không** nghĩa là 36 tỷ nằm sẵn on-chain. LAMP dùng **lazy-mint**: token chỉ được tạo (mint) khi cần, tổng lịch sử luôn ≤ cap. Token chưa mint = chưa tồn tại = không khóa min-ADA, không bị tấn công. Vì vậy lúc mới ra mắt, cung lưu hành rất nhỏ và tăng dần theo cơ chế phân phối.
 
-## 4. Đơn vị "oil"
+## 4. Đơn vị "oildrop"
 
-- 1 LAMP = 1.000.000 oil (10⁶). decimals = 6.
-- "oil" tương tự lovelace của ADA, wei của ETH — đơn vị nhỏ nhất để tính toán chính xác (số nguyên, không sai số thập phân).
+- 1 LAMP = 1.000.000 oildrop (10⁶). decimals = 6.
+- "oildrop" tương tự lovelace của ADA, wei của ETH — đơn vị nhỏ nhất để tính toán chính xác (số nguyên, không sai số thập phân).
 
 ## 5. MAGIC — sinh & tiêu
 
@@ -51,23 +59,47 @@ Phân bổ chia 18 "pot" (mục đích). Đặc điểm: pot đội ngũ (Aladin
 
 ## 8. Kho & cơ chế chống lạm quyền (A-DEST)
 
-LAMP mint ra theo đường phân phối **bắt buộc chảy vào một kho có kiểm soát** (không vào ví cá nhân của người vận hành). Từ kho, LAMP được nhả theo luật từng pot (tốc độ/khóa/lịch riêng). Cơ chế này (A-DEST) đảm bảo người giữ khóa vận hành **không thể tự rút LAMP về ví mình**.
+LAMP mint ra theo đường phân phối **chảy vào một kho do script kiểm soát**, không vào ví cá nhân.
+Từ kho, LAMP được nhả theo luật từng pot (tốc độ/khóa/lịch riêng). Đây là cơ chế **A-DEST** — ép
+đích đến của token vừa mint.
 
-## 9. Khóa vận hành & lộ trình PhoenixKey
+Kiểm chứng được ngay hôm nay: toàn bộ 1.000.000 LAMP đã mint đang nằm ở địa chỉ script
+`addr1w827sry6t2y9744ndkg4ks6nct57v7tm8pz46ywsq98dhdsf76slu`, không ở ví ai cả.
 
-- Giai đoạn khởi tạo (bootstrap) dùng khóa vận hành đơn giản, **giá trị thấp**.
-- Lộ trình: chuyển quyền sang **PhoenixKey** (khóa sinh trắc, an toàn ngay cả khi lộ seed gốc) **trước khi** mở rộng người dùng / nạp giá trị lớn.
-- Tổng cung 36 tỷ, no-burn, cap, đơn vị — những thứ này **bất biến**; chỉ tầng vận hành/phân phối là nâng cấp được.
+> **Nói thẳng phần chưa xong:** mức độ ép của A-DEST trong **bản script đang chạy trên mainnet**
+> chưa được đối chiếu lại từng byte với bản thiết kế mới nhất. Trước khi mint thêm bất kỳ lượng
+> nào có giá trị thật, chúng tôi sẽ so mã script trên chuỗi với bản dựng lại từ mã nguồn và công bố
+> kết quả. Cho tới lúc đó, hãy đọc mục này là **"đã thiết kế và số liệu hiện tại khớp"**, chứ không
+> phải một bảo chứng tuyệt đối.
+
+## 9. Khóa vận hành
+
+- Khoá được quyền mint đã **nướng vào chính policy** ngay khi tạo. Đây là đặc tính của Cardano:
+  đổi tham số ⇒ đổi luôn policy ID ⇒ **thành một token khác**.
+- ⇒ **Không thể xoay khoá mà vẫn giữ nguyên token này.** Chúng tôi chọn giữ nguyên policy
+  `55d3e01b…` làm LAMP chính thức, nên chấp nhận ràng buộc đó thay vì phát hành lại token mới và
+  bắt cộng đồng đổi.
+- Bảo vệ thay thế cho việc không xoay được khoá: (a) trần 36 tỷ nằm trong chuỗi, khoá không phá
+  được trần; (b) A-DEST ép token vừa mint vào kho script, không ra ví; (c) quy trình vận hành giữ
+  khoá ngoại tuyến.
+- Tổng cung 36 tỷ, no-burn, trần, đơn vị — **bất biến**. Tầng phân phối phía trên kho thì nâng cấp được.
 
 ## 10. Pháp lý & tuân thủ
 
-- LAMP định vị là **token tiện ích**, không phải sản phẩm đầu tư. Không hứa hẹn giá/lợi nhuận.
-- **Chưa** niêm yết DEX / chưa mở bán cho tới khi có pháp nhân phát hành phù hợp.
+- LAMP là **token tiện ích** trong hệ sinh thái MagicLamp, **không phải sản phẩm đầu tư**. Không
+  hứa hẹn giá, không hứa lợi nhuận, không cam kết niêm yết.
+- **Không bán token.** LAMP không được chào bán đổi lấy tiền hay tài sản của người dùng. Token
+  được phân bổ theo công thức **ghi nhận đóng góp đã xảy ra**, công khai và ai cũng tính lại được.
+- Quyền biểu quyết **không theo số token nắm giữ** (xem §6) — nắm nhiều token không mua được quyền lực.
 - MAGIC tiêu-thụ (không chuyển nhượng) củng cố định vị tiện ích.
+- Pháp nhân phát hành: **GreenSun Tech Inc** (Việt Nam).
 
 ## 11. Genesis 1.000.000 LAMP — vì sao con số đó
 
-Đây là **lượng khởi tạo kỹ thuật** để policy hiện diện trên explorer + đính metadata (lazy-mint cần ≥1 lần mint). Nó **nằm trong kho, chưa phân phối**, bằng 0,0028% tổng cung. Không mang ý nghĩa thiết kế; sẽ được điều chỉnh theo kế hoạch phát hành thật.
+Đây là **lượng khởi tạo kỹ thuật** để policy hiện diện trên explorer + đính metadata (lazy-mint cần
+≥1 lần mint). Nó **nằm trong kho, chưa phân phối**, bằng 0,0028% tổng cung. Không mang ý nghĩa
+thiết kế và **không bị thu hồi** — phần còn lại của 36 tỷ được mint dần theo lịch phân phối, mỗi
+lần đều làm tăng `dist_minted`/`reserve_minted` trong chuỗi nên ai cũng theo dõi được.
 
 ---
 
@@ -96,10 +128,10 @@ LAMP mint ra theo đường phân phối **bắt buộc chảy vào một kho c�
 16. **LAMP có burn không?** Không bao giờ burn. Giảm lưu hành = chuyển Treasury (kế toán).
 17. **Vì sao cung hiện tại thấp?** Lazy-mint: token chỉ tạo khi cần; tổng lịch sử luôn ≤ 36 tỷ.
 18. **Lazy-mint là gì?** Mint dần khi cần thay vì đúc sẵn 36 tỷ; token chưa mint = chưa tồn tại.
-19. **Đơn vị nhỏ nhất của LAMP?** oil. 1 LAMP = 1.000.000 oil.
+19. **Đơn vị nhỏ nhất của LAMP?** oildrop. 1 LAMP = 1.000.000 oildrop.
 20. **decimals là bao nhiêu?** 6.
-21. **Vì sao gọi là "oil"?** Đơn vị con (như lovelace/wei) để tính số nguyên chính xác.
-22. **1 oil bằng bao nhiêu LAMP?** 0,000001 LAMP.
+21. **Vì sao gọi là "oildrop"?** Đơn vị con (như lovelace/wei) để tính số nguyên chính xác.
+22. **1 oildrop bằng bao nhiêu LAMP?** 0,000001 LAMP.
 23. **Cung lưu hành hiện tại?** Rất nhỏ ở giai đoạn khởi tạo; tăng dần theo phân phối. Tra on-chain để biết chính xác.
 24. **Cung tối đa có đổi được không?** Không — 36 tỷ khắc cố định on-chain.
 25. **Có cơ chế "buyback & burn" không?** Không burn. Cơ chế điều tiết là chuyển Treasury.

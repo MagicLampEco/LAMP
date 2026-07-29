@@ -1,13 +1,19 @@
 # LAMP mint qua OrgDID — spec-adapter cho PhoenixKey Core (`build_mint_lamp_via_did`)
 
-> **CHỐT (2026-07-06): Model = cap-36B OrgDID lazy-mint. Validator canonical = B** (Registry-gate +
-> DistributionVest + SupplyState 4-field + A-DEST on-chain). `55d3e01b…` mainnet = placeholder bootstrap,
-> sẽ supersede. Đây là bản Core ĐÃ build (registry schema mirror `registry_mint.rs`).
+> **CẬP NHẬT 2026-07-29 — policy mainnet đã chốt.** `55d3e01bb6c469e02665e4b6573ce65bbaf7a50ad2024e247eb180f0`
+> là **token LAMP chính thức**, KHÔNG phải placeholder và **không bị supersede**. Đã verify trên chuỗi:
+> `supply_state` mang thread NFT `SUPPLY`, datum 4 field, `dist_cap` 26,37 tỷ + `reserve_cap` 9,63 tỷ
+> = 36 tỷ, `dist_minted` = 1 triệu LAMP. (Câu cũ ở đây nói `55d3e01b…` là "placeholder bootstrap,
+> sẽ supersede" — **sai**, đã bỏ.)
 >
-> Nguồn on-chain (branch `feat/lamp-mint-compose-anchor-cap`, sẽ merge main):
-> `Genesis/onchain/validators/lamp_mint.ak`, `.../supply_state.ak`, `.../dist_treasury.ak`,
-> `lib/magiclamp/genesis/{types,registry}.ak`.
-> Đơn vị: **1 LAMP = 10⁶ base (oil), decimals = 6.** Mọi `amount`/`Δ` dưới đây là **base unit**.
+> Model = cap-36B lazy-mint, redeemer `DistributionVest` / `ReserveDraw`, SupplyState 4-field, A-DEST.
+> **CÒN PHẢI XÁC MINH:** bản script đang chạy trên mainnet dùng **8 tham số (authority khoá thường)**
+> hay **12 tham số (Registry-gate theo DID)** — chưa đối chiếu CBOR on-chain với bản dựng lại.
+> **Đừng hardcode authority/redeemer shape trước khi có kết quả đối chiếu đó.**
+>
+> Nguồn on-chain: `Genesis/onchain/validators/lamp_mint.ak`, `.../supply_state.ak`,
+> `.../dist_treasury.ak`, `lib/magiclamp/genesis/{types,registry}.ak`.
+> Đơn vị: **1 LAMP = 10⁶ oildrop, decimals = 6.** Mọi `amount`/`Δ` dưới đây là **oildrop**.
 
 ## 0. Ba validator ghép trong 1 tx mint LAMP
 - **`lamp_mint`** (mint policy) — gate **AI** (Registry) + **tên token** + **route** + **A-DEST** (rót vào KHO).

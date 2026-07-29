@@ -1,6 +1,6 @@
 # SRCL — Staking Reward Contribution Launch
 
-> Một cơ chế ra-mắt của hệ sinh thái MagicLamp: người đang ủy thác ADA trên Cardano **đóng góp phần thưởng staking** của mình cho một đợt Launch, và nhận lại **LAMP** theo tỉ lệ đóng góp. Vốn ADA gốc luôn thuộc về người tham gia. Một cơ chế của khung [Launch](./Launch-Framework-Vi.md).
+> Một cơ chế ra-mắt của hệ sinh thái MagicLamp: người đang ủy thác ADA trên Cardano **đóng góp phần thưởng staking** của mình cho một đợt Launch, và nhận lại **LAMP** theo tỉ lệ đóng góp. Vốn ADA gốc luôn thuộc về người tham gia. Một cơ chế của khung [Launch](./LAUNCH-FRAMEWORK-Vi.md).
 
 ---
 
@@ -61,8 +61,12 @@ SRCL chạy **nhiều đợt**, mỗi đợt một pot riêng. Tuy cùng một c
 **Đợt 1 — GreenSun:**
 - `pot_lamp` = 360.000.000 LAMP
 - `duration_epochs` = 36
-- `beneficiary` = pool GST; `operator` = GreenSun, **toàn quyền hưởng** ADA thu về
-- Người tham gia đóng phần thưởng staking trong 36 epoch → nhận LAMP từ pot 360 triệu ∝ đóng góp.
+- `beneficiary` = pool GST; `operator` = GreenSun Tech Inc (pháp nhân Việt Nam). ADA phần-thưởng
+  thu về là **doanh thu vận hành stake pool** của pháp nhân — hạch toán và chịu thuế như mọi
+  doanh thu khác, **tách bạch** với việc phân bổ LAMP.
+- Đóng góp phần thưởng staking trong 36 epoch được **ghi nhận** bằng LAMP từ pot 360 triệu, chia
+  theo công thức tất định ∝ đóng góp. Công thức **không phụ thuộc** doanh thu hay lãi lỗ của
+  GreenSun — nên đây không phải quan hệ góp vốn, không chia sẻ kết quả kinh doanh.
 
 **Đợt 2 — kế tiếp:**
 - `pot_lamp` = hơn 21.000.000 LAMP, nguồn từ pot **RedBack** (pot #17)
@@ -95,7 +99,13 @@ Hai đợt cùng cơ chế, khác pot / nguồn LAMP / bên hưởng thụ / quy
 ## 8. Pháp lý
 
 - Tài sản mã hoá được công nhận là **tài sản** tại Việt Nam (Luật Công nghiệp Công nghệ số, hiệu lực 01/01/2026).
-- Khi bên vận hành (ví dụ GreenSun) bán ADA thu về để lấy doanh thu: doanh nghiệp Việt Nam chịu **thuế thu nhập doanh nghiệp 20%** trên lãi, **miễn thuế giá trị gia tăng** (Thông tư 32/2026/TT-BTC). Bán tài sản của chính mình khác với vận hành sàn giao dịch (cần giấy phép riêng).
+- ADA phần-thưởng về tay bên vận hành là **doanh thu vận hành stake pool** — nghiệp vụ SPO tiêu
+  chuẩn của Cardano, tồn tại độc lập với LAMP. Khi quy đổi số ADA đó trên thị trường mở với bên
+  thứ ba, doanh nghiệp Việt Nam kê khai và nộp thuế như mọi doanh thu khác. Đây là **định đoạt tài
+  sản của chính mình**, khác hẳn với vận hành sàn giao dịch (cần giấy phép riêng).
+  > Mức thuế cụ thể và văn bản dẫn chiếu: **chưa chốt trong tài liệu này.** Bản trước ghi "TNDN
+  > 20%, miễn GTGT theo Thông tư 32/2026/TT-BTC" — đang chờ xác minh lại số hiệu và nội dung văn
+  > bản trước khi khẳng định. Không dùng con số đó để lập kế hoạch tài chính.
 - Phần thưởng staking sinh từ hành vi vận hành mạng; LAMP chia ra là **ghi nhận đóng góp theo việc đã xảy ra**, không phải bán token đổi vốn.
 - Phần phân phối LAMP áp **giới hạn theo vùng pháp lý** (geofence) tuỳ quy chế từng đợt.
 

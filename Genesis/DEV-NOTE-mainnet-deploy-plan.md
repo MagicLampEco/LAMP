@@ -1,21 +1,50 @@
-# KẾ HOẠCH TRIỂN KHAI MAINNET — mint LAMP canonical v2 vào kho
+# KẾ HOẠCH TRIỂN KHAI MAINNET — mint LAMP vào kho
 
-> Soạn 2026-07-13. Trạng thái: **CHƯA SẴN SÀNG**. Đây là việc phải làm theo thứ tự.
-> Căn cứ: verify on-chain + 4 agent (auditor kho / LAMP / SuperApp / PhoenixKey readiness).
+> Soạn 2026-07-13. **Sửa lớn 2026-07-29** sau khi anh chốt policy + verify lại on-chain.
+> Trạng thái: **CHƯA SẴN SÀNG mint giá trị thật**. Đây là việc phải làm theo thứ tự.
 
-## Sự thật cứng (đã verify on-chain)
-- Mainnet LAMP hiện tại `55d3e01b…180f0` = **1e12 base (1 triệu LAMP), `mint_or_burn_count=1`** → **CỐ ĐỊNH, không mint thêm**. Đây KHÔNG phải token 36 tỷ canonical.
-- Policy `lamp_mint` (cap 36 tỷ, mintable, registry-gate + A-DEST) **CHƯA deploy mainnet**.
-- ⇒ "Mint LAMP vào kho mainnet" = **deploy policy `lamp_mint` MỚI (policy-id mới)** + quyết token này thay/bổ sung `55d3e01b` ra sao.
+## Sự thật cứng (verify lại on-chain 2026-07-29 — `scripts/verify_mainnet_supply.ts`, Koios read-only)
 
-## A. Quyết định chiến lược (anh + đội chốt trước)
-1. **Token mainnet chính thức**: `lamp_mint` mới (pid mới, mintable, cap 36 tỷ) làm "LAMP chính thức"? `55d3e01b` (1M cố định) xử lý sao — giữ làm bootstrap / migrate / khai tử? (thương hiệu + kế toán).
-2. **token_tag = `4c414d50`** — đã phân tích, chốt (xem `DEV-NOTE-kho-A-DEST-canonical.md`).
-3. **Kho A-DEST = `treasury.ak` vesting** — đã chốt. Kho mainnet hiện tại là `dist_treasury` 1-pkh (giữ 1e12) → **phải thay bằng `treasury.ak` TRƯỚC khi mint giá trị**.
-4. **Authority entry LAMP**: `SinglePkh` hay `MultiSig` M-of-N. Spec §11 khuyến nghị **MultiSig (vd 3-of-5)** — 1 khoá lộ không mint tới cap.
+- Policy mainnet `55d3e01bb6c469e02665e4b6573ce65bbaf7a50ad2024e247eb180f0` **LÀ token LAMP
+  canonical 36 tỷ** — anh chốt 2026-07-29, không đẻ policy mới.
+- `supply_state` (`addr1wxz0dkz0v3rg6zeqz9c7cyxz9lg3ynkrlkqrapfkj7e5ppqexy5d3`) mang thread NFT
+  `SUPPLY`, inline datum constructor 0, **4 field**:
+  `dist_minted` = 1.000.000 LAMP · `reserve_minted` = 0 · `dist_cap` = 26.370.000.000 ·
+  `reserve_cap` = 9.630.000.000 → **tổng cap 36 tỷ**, còn mint được **26,369 tỷ + 9,63 tỷ**.
+- Kho (`addr1w827sry6t2y9744ndkg4ks6nct57v7tm8pz46ywsq98dhdsf76slu`) đang giữ đúng 1.000.000 LAMP.
+- ⇒ **Lazy-mint đã wired thật trên mainnet.** "Mint LAMP vào kho" = dùng đường đã có, KHÔNG phải
+  deploy policy mới.
+
+> **SỬA MỘT KHẲNG ĐỊNH SAI CỦA BẢN CŨ.** Bản 13/07 ghi: *"`55d3e01b…180f0` = 1e12 base
+> (1 triệu LAMP), `mint_or_burn_count=1` → CỐ ĐỊNH, không mint thêm. Đây KHÔNG phải token 36 tỷ
+> canonical"* và *"policy `lamp_mint` cap 36 tỷ CHƯA deploy mainnet"*. **Cả hai đều SAI.**
+> `mint_or_burn_count=1` chỉ nói policy mới mint **một lần**, không nói nó **không mint được nữa**
+> — trần thật nằm trong datum `supply_state`, và datum đó ghi 36 tỷ. Ai đọc bản cũ rồi kết luận
+> "phải làm token mới" là bị dẫn sai. Giữ đoạn này lại để không ai lặp lỗi.
+
+## A. Quyết định chiến lược
+1. ~~Token mainnet chính thức là cái nào~~ → **ĐÃ CHỐT 2026-07-29: `55d3e01b…180f0`.** Không
+   migrate, không khai tử, không phát hành token thứ hai.
+2. **token_tag = `4c414d50`** — đã chốt (xem `DEV-NOTE-kho-A-DEST-canonical.md`).
+3. **Kho A-DEST = `treasury.ak` vesting** — đã chốt. Kho mainnet hiện tại là `dist_treasury` 1-pkh
+   (đang giữ 1 triệu LAMP) → **phải thay bằng `treasury.ak` TRƯỚC khi mint giá trị**.
+4. **Authority**: hệ quả trực tiếp của quyết định A1 — tham số đã **nướng vào policy-id**, nên
+   **không xoay khoá được** mà vẫn giữ token này. Khuyến nghị MultiSig M-of-N ở spec §11 **chỉ áp
+   dụng được cho policy mới**, tức đã hết hiệu lực với lựa chọn A1. Bù lại bằng quy trình giữ khoá
+   ngoại tuyến + trần on-chain + A-DEST.
+
+## A'. VIỆC PHẢI LÀM TRƯỚC MỌI THỨ — đối chiếu script on-chain
+Chưa ai đối chiếu **CBOR script đang chạy trên mainnet** với bản dựng lại từ mã nguồn. Cần biết
+chắc nó là bản **8 tham số (authority khoá thường, threshold 1)** hay **12 tham số (registry-gate
+theo DID)**, và A-DEST có được ép on-chain thật không. Đây là **điều kiện tiên quyết** của mọi
+bước mint có giá trị, và cũng là căn cứ để chốt lại `Specs/LAMP-POLICY-EXPLAINER.md §8`.
 
 ## B. Code phải merge (hiện ở nhánh/worktree, chưa lên main)
-5. **LAMP**: merge `feat/lamp-mint-compose-anchor-cap` → main (lamp_mint 12-param + registry read-side).
+5. **LAMP**: `lamp_mint` 12-param + registry read-side đã nằm trọn trong nhánh PR #17
+   (`feat/launch-etd-airdrop-srcl`) → merge PR #17 là xong. Nhánh cũ
+   `feat/lamp-mint-compose-anchor-cap` đã ghim tag `archive/feat-lamp-mint-compose-anchor-cap`.
+   **Lưu ý:** bản 12-param này là bản THIẾT KẾ; policy đang chạy trên mainnet có thể là bản 8-param
+   — xem mục A'. Merge code không tự động đổi script đã deploy.
 6. **LAMP**: dựng script deploy 12-param **production** (hiện chỉ có demo Preview khoá cứng + bản v1 8-param) — gồm bước phá-vòng + đặt kho-NFT tại `treasury.ak`.
 7. **LAMP**: dựng **route kho→pot** (nối Genesis mint ↔ Distribution treasury) — item #9, chưa có. (Chính là pipeline đang diễn tập trên Preprod.)
 8. **PhoenixKey-Core**: merge `registry_mint.rs` (write-side, đã có 4-field) → main; build + deploy Registry NFT cho OrgDID.

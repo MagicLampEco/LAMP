@@ -8,25 +8,29 @@
 
 Launch là hành động **ra mắt một dự án hoặc một token** trong hệ sinh thái. Người tham gia đóng góp một nguồn lực mà họ đang có hoặc sẽ tạo ra (sức tính toán, dung lượng lưu trữ, dữ liệu, sức lao động, hoặc phần thưởng staking), và nhận lại token của đợt ra mắt.
 
-Mục đích của Launch **không chỉ là gọi vốn**. Một đợt Launch phục vụ bốn việc:
+Một đợt Launch phục vụ bốn việc:
 
 1. **Tiếp cận người dùng cuối** — đưa sản phẩm tới người dùng thật ngay từ đầu.
 2. **Thu hút ban quản trị** — mời người đóng góp tham gia điều hành dự án.
 3. **Mời cố vấn kỹ thuật** — mở diễn đàn đánh giá, phản biện thiết kế.
-4. **Phân bổ token** — ghi nhận đóng góp bằng token, không bán token đổi vốn.
+4. **Ghi nhận đóng góp bằng token** — theo công thức tất định, công khai.
+
+> **Launch KHÔNG phải hoạt động gọi vốn và KHÔNG bán token.** Người tham gia không nộp tiền,
+> không mua gì, không đặt cọc, không giao vốn gốc cho ai. Token được ghi nhận cho phần đóng góp
+> **đã xảy ra**, không phải vật đối ứng cho một khoản nộp vào.
 
 ---
 
 ## 2. Nguyên lý chung
 
-Người tham gia **đóng góp nguồn lực, không giao vốn gốc**. Họ giữ toàn quyền sở hữu tài sản gốc; chỉ đóng góp phần **giá trị họ tạo ra hoặc phần thưởng tương lai** của tài sản đó. Đổi lại, họ nhận token mới theo tỉ lệ đóng góp, một cách tất định và minh bạch.
+Người tham gia **đóng góp nguồn lực, không giao vốn gốc**. Họ giữ toàn quyền sở hữu tài sản gốc; chỉ đóng góp phần **giá trị họ tạo ra hoặc phần thưởng tương lai** của tài sản đó. Đóng góp đó được **ghi nhận bằng token mới** theo công thức tất định, minh bạch, ai cũng tính lại được — token là **ghi nhận việc đã xảy ra**, không phải hàng đổi hàng.
 
 Mỗi đợt Launch cấu hình theo các trục:
 
 | Trục | Ý nghĩa | Ví dụ |
 |---|---|---|
 | Nguồn đóng góp | nguồn lực người tham gia đưa vào | phần thưởng staking · sức tính toán · dữ liệu · sức lao động |
-| Phận của nguồn | nguồn đó dùng làm gì | bán lấy doanh thu · làm tài sản đảm bảo · phục vụ vận hành |
+| Phận của nguồn | nguồn đã về tay bên vận hành thì dùng làm gì | phục vụ vận hành · làm tài sản đảm bảo · quy đổi trên thị trường mở với bên thứ ba |
 | Token nhận | token người tham gia nhận lại | LAMP · MAGIC · WORK |
 | Cách đo | đo đóng góp bằng đại lượng nào | số ADA thưởng · số byte phục vụ · số bản ghi dữ liệu |
 | Phân bổ | chia token theo tỉ lệ nào | theo đóng góp · theo thời gian gắn bó |
@@ -42,7 +46,7 @@ Mỗi loại nguồn lực có một **cơ chế Launch riêng với giải phá
 
 | Cơ chế | Nguồn đóng góp | Token nhận | Trạng thái |
 |---|---|---|---|
-| **SRCL** (Staking Reward Contribution Launch) | phần thưởng staking (đo bằng ADA) | LAMP | spec riêng: `SRCL-Spec-Vi.md` |
+| **SRCL** (Staking Reward Contribution Launch) | phần thưởng staking (đo bằng ADA) | LAMP | spec riêng: `SRCL-SPEC-Vi.md` |
 | **LampNet Launch** | sức tính toán + lưu trữ thiết bị | LAMP | (sẽ thiết kế) |
 | **VeData Launch** | dữ liệu thực để kiểm thử hệ thống | LAMP | (sẽ thiết kế) |
 | **AladinWork Launch** | sức lao động / khả năng chi trả lao động | WORK / MAGIC | (sẽ thiết kế) |

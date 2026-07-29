@@ -1,5 +1,0 @@
-node_modules/
-deployed.json
-.env
-*.env
-package-lock.json

@@ -1,12 +1,16 @@
 # SRCL — Reward-Redirect cho LAMP
 
-> Tên canonical: **SRCL (Staking Reward Contribution Launch)** — phương thức launch đánh-đổi-nguồn-lực:
-> delegator tự nguyện **chuyển hướng phần thưởng staking (ADA reward)** lấy token, vốn gốc bất khả xâm phạm
-> on-chain, tuân thủ pháp lý (MiCA). Toàn module (thư mục + validator + type + NFT name) mang tên SRCL.
+> Tên canonical: **SRCL (Staking Reward Contribution Launch)** — phương thức ra mắt dựa trên
+> **ghi nhận đóng góp**: delegator tự nguyện định tuyến **phần thưởng staking phát sinh trong
+> tương lai** về pot của đợt, và được ghi nhận bằng LAMP theo một công thức tất định, công khai.
+> **Vốn gốc ADA không rời ví người tham gia** — bất biến này do script ép on-chain, không phải
+> lời hứa. Toàn module (thư mục + validator + type + NFT name) mang tên SRCL.
+>
+> Người tham gia **không nộp tiền, không mua gì, không đặt cọc**. LAMP **không được bán**.
 
 > ⚠️ **Cơ chế canonical = bản B** (đóng-góp-phần-thưởng, trustless). Tài liệu này mô tả **bản A**
-> (chia LAMP **∝ stake**, 2 cty thu margin OFF-CHAIN, tin-operator) — biến thể vận-hành **cũ**.
-> Nguồn sự thật cơ chế: [`SPEC/SRCL-Spec-Vi.md`](../SPEC/SRCL-Spec-Vi.md) + validator
+> (chia LAMP **∝ stake**, margin pool thu OFF-CHAIN, tin-operator) — biến thể vận-hành **cũ**.
+> Nguồn sự thật cơ chế: [`Specs/SRCL-SPEC-Vi.md`](../Specs/SRCL-SPEC-Vi.md) + validator
 > `srcl_stake.ak` (bản B): vốn gốc **bất khả xâm phạm on-chain**, LAMP chia **∝ phần thưởng đã
 > đóng góp**. Phần **hạ tầng phân phối** dưới đây (`srcl_pool` — SetRoot/Claim/Sweep, Merkle,
 > chống double-claim) **DÙNG CHUNG** cho cả A và B; chỉ **nguồn entitlement** khác (∝stake → ∝reward).
@@ -18,15 +22,23 @@ cho delegator của pool SRCL theo **tỷ lệ stake**, đều trong **36 epoch*
 
 ---
 
-## Cơ chế reward-redirect
+## Cơ chế
 
-SRCL (Staking Reward Contribution Launch) kiểu **reward-redirect**:
+Hai việc **tách bạch**, không phải một giao dịch trao đổi:
 
-- Delegator ủy thác ADA vào pool SRCL do **2 công ty** vận hành.
-- Reward ADA (margin) của các epoch **do 2 cty thu** (đây là "redirect").
-- ĐỔI LẠI, delegator nhận **LAMP** theo tỷ lệ stake, mỗi epoch.
+1. **Vận hành stake pool** — nghiệp vụ SPO tiêu chuẩn của Cardano. Delegator ủy thác ADA (vốn gốc
+   ở nguyên trong ví họ, rút lúc nào cũng được, không khoá, không phạt); pool thu margin theo cấu
+   hình công khai của giao thức, đúng như mọi stake pool khác trên mạng. Việc này tồn tại độc lập,
+   không cần có LAMP.
+2. **Ghi nhận đóng góp bằng LAMP** — pot 360 triệu LAMP được phân bổ theo **công thức tất định**
+   dựa trên đóng góp **đã xảy ra** của mỗi người, mỗi epoch. Công thức công khai, ai cũng tính lại
+   ra cùng kết quả, tổng bảo toàn tuyệt đối.
 
-### Phần OFF-CHAIN (thao tác 2 cty — KHÔNG nằm trong contract)
+LAMP **không phải vật đối ứng** cho một khoản người tham gia nộp vào — họ không nộp gì cả. Vốn gốc
+không bị đụng tới; thứ được ghi nhận là phần thưởng staking phát sinh trong tương lai mà họ tự
+nguyện định tuyến về pot của đợt.
+
+### Phần OFF-CHAIN (vận hành pool — KHÔNG nằm trong contract)
 
 - Vận hành node SPO, đăng ký pool, giữ pledge.
 - **Thu reward ADA** mỗi epoch (margin/fix-fee theo cấu hình pool).
@@ -162,7 +174,7 @@ Lấy từ **Blockfrost**:
 - `GET /epochs/{number}/stakes/{pool_id}` — active stake theo epoch lịch sử.
 
 Sau đó **resolve** `stake_address → payment-credential hash (pkh)` của ví nhận LAMP
-(`owner` trong leaf). Việc resolve này là **chính sách 2 cty** (ví đăng ký nhận), KHÔNG
+(`owner` trong leaf). Việc resolve này là **chính sách của bên vận hành đợt** (ví đăng ký nhận), KHÔNG
 nằm trong contract. `snapshotTool` nhận sẵn list `{ owner(pkh), stake }` của mỗi epoch.
 
 > **Điều kiện tham gia CHƯA được cài ở đâu.** Chủ trương: delegator có **≥ 1000 ADA** trong
