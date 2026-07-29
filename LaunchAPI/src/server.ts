@@ -69,6 +69,14 @@ async function readBody(req: IncomingMessage): Promise<unknown> {
   });
 }
 
+/** Bỏ `push_targets` (URL + webhook_secret riêng của từng consumer) khỏi mọi
+ *  campaign đi ra ngoài. GET đã lọc từ trước; SSE và webhook payload thì chưa —
+ *  `/events` KHÔNG có auth nên rò ở đó là rò cho bất kỳ ai. */
+export function publicCampaign<T extends { push_targets?: unknown }>(c: T): Omit<T, "push_targets"> {
+  const { push_targets: _drop, ...rest } = c;
+  return rest;
+}
+
 function requireAdmin(req: IncomingMessage, res: ServerResponse): boolean {
   if (DEV_NO_AUTH) return true; // dev: DEV_NO_AUTH=1 tường minh
   if (!ADMIN_TOKEN) {
@@ -189,7 +197,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
         if (!body?.id) return err(res, "missing id");
         const saved = await upsertCampaign({ ...body, id });
         const push = await pushAll(saved, "campaign.updated");
-        broadcastSse({ event: "campaign.updated", campaign_id: id, campaign: saved, timestamp: new Date().toISOString() });
+        broadcastSse({ event: "campaign.updated", campaign_id: id, campaign: publicCampaign(saved), timestamp: new Date().toISOString() });
         return json(res, { ok: true, data: { campaign: saved, push } });
       }
 
@@ -200,7 +208,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
         if (!updated) return err(res, "not found", 404);
         const event = body.event ?? "campaign.updated";
         const push = await pushAll(updated, event, body.changed_fields);
-        broadcastSse({ event, campaign_id: id, campaign: updated, changed_fields: body.changed_fields, timestamp: new Date().toISOString() });
+        broadcastSse({ event, campaign_id: id, campaign: publicCampaign(updated), changed_fields: body.changed_fields, timestamp: new Date().toISOString() });
         return json(res, { ok: true, data: { campaign: updated, push } });
       }
 
@@ -210,7 +218,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
         const updated = await updateStats(id, body);
         if (!updated) return err(res, "not found", 404);
         const push = await pushAll(updated, "stats.updated");
-        broadcastSse({ event: "stats.updated", campaign_id: id, campaign: updated, timestamp: new Date().toISOString() });
+        broadcastSse({ event: "stats.updated", campaign_id: id, campaign: publicCampaign(updated), timestamp: new Date().toISOString() });
         return json(res, { ok: true, data: { stats: body, push } });
       }
 
@@ -221,7 +229,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
         const body = await readBody(req) as { event?: PushPayload["event"] } | null;
         const event = (body as { event?: PushPayload["event"] } | null)?.event ?? "campaign.updated";
         const push = await pushAll(c, event);
-        broadcastSse({ event, campaign_id: id, campaign: c, timestamp: new Date().toISOString() });
+        broadcastSse({ event, campaign_id: id, campaign: publicCampaign(c), timestamp: new Date().toISOString() });
         return json(res, { ok: true, data: push });
       }
     }

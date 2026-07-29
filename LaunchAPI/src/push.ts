@@ -63,10 +63,14 @@ export async function pushAll(
 ): Promise<PushResult> {
   const targets = campaign.push_targets ?? [];
 
+  // BỎ `push_targets` khỏi payload: nó chứa URL + webhook_secret của TẤT CẢ
+  // consumer. Gửi nguyên đi thì consumer A đọc được secret của B và C, rồi ký
+  // giả `X-Launch-Signature` tới họ. Mỗi target nhận đúng phần công khai.
+  const { push_targets: _drop, ...publicCampaign } = campaign;
   const payload: PushPayload = {
     event,
     campaign_id: campaign.id,
-    campaign,
+    campaign: publicCampaign as typeof campaign,
     changed_fields: changedFields,
     timestamp: new Date().toISOString(),
   };

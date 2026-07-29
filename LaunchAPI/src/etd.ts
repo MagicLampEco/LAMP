@@ -71,6 +71,13 @@ export async function etdCheck(address: string): Promise<EtdCheckResult> {
   if (!BLOCKFROST_KEY) throw new Error("server thiếu BLOCKFROST_KEY");
   if (!address) throw new Error("thiếu tham số address");
 
+  // Địa chỉ đi thẳng vào đường dẫn Blockfrost (`/addresses/${addr}`). `fetch`/`URL`
+  // chuẩn hoá `..` TRƯỚC khi gửi, nên `address=..%2F..%2F<endpoint>` gọi được endpoint
+  // Blockfrost tuỳ ý bằng khoá của server — encodeURIComponent KHÔNG chặn được.
+  // Chặn bằng danh sách trắng ký tự: bech32 Cardano chỉ gồm chữ-số thường.
+  if (!/^(addr|addr_test|stake|stake_test)1[02-9ac-hj-np-z]+$/.test(address))
+    throw new Error("địa chỉ không đúng định dạng bech32 Cardano");
+
   const stakeAddr = await resolveStakeAddr(address);
   const history = await bfAll<HistoryEntry>(`/accounts/${stakeAddr}/history`);
   const { rows, tigerRows, tigerAccStake } = analyzeHistory(history, {
