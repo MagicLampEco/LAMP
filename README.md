@@ -9,7 +9,7 @@ Viết bằng [Aiken](https://aiken-lang.org/) (Plutus V3), off-chain bằng Typ
 | **Policy LAMP (mainnet)** | `55d3e01bb6c469e02665e4b6573ce65bbaf7a50ad2024e247eb180f0` |
 | **Asset** | `55d3e01b….4c414d50` — tên hiển thị **MagicLamp**, mã **LAMP** |
 | **Tổng cung** | 36.000.000.000 LAMP — **cố định, không đốt** |
-| **Đơn vị con** | 1 LAMP = 1.000.000 **oildrop** (decimals 6) — trong mã nguồn biến vẫn đặt tên `oildrop`, cùng một thứ, việc đổi tên trong code chưa làm |
+| **Đơn vị con** | 1 LAMP = 1.000.000 **oildrop** (decimals 6) |
 | **Tra cứu** | [cexplorer.io/policy/55d3e01b…](https://cexplorer.io/policy/55d3e01bb6c469e02665e4b6573ce65bbaf7a50ad2024e247eb180f0) |
 | **Giấy phép mã nguồn** | Apache-2.0 |
 
@@ -80,9 +80,9 @@ Repo MAGIC: <https://github.com/MagicLampNetwork/MAGIC>
 | `TIGER/` | ETD — pot hồi tố cho người đã ủy thác pool TIGER | ổn định (còn tham số placeholder) | chưa |
 | `SRCL/` | Hạ tầng phân phối cho cơ chế ra mắt SRCL | ⚠️ có lỗi mở | chưa |
 | `Faucet/` | Vòi tLAMP cho dev (chỉ testnet) | ổn định | chỉ testnet |
-| `Governance/` | iVoteSpace, bầu 3 hội đồng, Voting Power, Recall | mới có spec | chưa |
-| `PlatformKit/` | Bộ ráp cho bên tích hợp | spec | chưa |
-| `LaunchAPI/` | API + UI tham chiếu cho đợt ra mắt | spec | chưa |
+| `Governance/` | Voting Power on-chain v1 (cử tri = cá nhân, ≥4 tham số có cap). iVoteSpace · bầu 3 hội đồng · Recall mới có spec | VP: ổn định · phần còn lại: spec | chưa |
+| `PlatformKit/` | Bộ ráp cho bên tích hợp — **đang chuyển sang repo `Registry`**, xem `PlatformKit/README.md` | spec + adapter off-chain | chưa |
+| `LaunchAPI/` | API + UI tham chiếu cho đợt ra mắt (`src/server.ts`, `src/etd.ts`, `reference-ui/`) | có mã chạy, chưa ổn định | chưa |
 | `Legacy/` | Bản đã bị thay thế + tài liệu nội bộ giai đoạn đầu — **giữ để truy vết, KHÔNG dùng lại** |
 
 ## Trạng thái thật — đọc trước khi dùng

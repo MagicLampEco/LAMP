@@ -16,7 +16,8 @@
   transferable" theo LAMP §1.5 nghĩa là không có DEX pair MAGIC↔ADA — KHÔNG phải "không phải
   token". Nguồn: `ConsumeMAGIC/FEAT.md §1`, `ConsumeMAGIC/onchain/plutus.json` (validator
   `consume.consume.spend` compiled).
-- LAMP cố định 36 tỷ oildrop, KHÔNG burn. `oildrop = LAMP × 10^6`, `nanogic = MAGIC × 10^9`.
+- LAMP cố định 36 tỷ **LAMP** (= 3,6×10^16 oildrop), KHÔNG burn. `oildrop = LAMP × 10^6`,
+  `nanogic = MAGIC × 10^9`.
   Nguồn: `Treasury/CONTRACT.md §5`.
 - BigInt everywhere — KHÔNG Number cho amounts (Q = 10^9, sequential floor).
 - P8: Aiken ↔ TypeScript bit-identical.

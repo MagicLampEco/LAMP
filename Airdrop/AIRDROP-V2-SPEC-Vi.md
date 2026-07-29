@@ -1,8 +1,7 @@
 # Airdrop v2 — Đặc tả tổng (120 triệu LAMP, 3 pot, cùng bộ máy Merkle-airdrop)
 
 > Chủ dự án chốt 2026-07-10. Bản này thay model v1 (TIGER-only auto-snapshot).
-> Đơn vị: **1 LAMP = 10⁶ oildrop** (hằng số `OILDROP_PER_LAMP` trong
-> `offchain/src/constants.ts`; tên hằng còn giữ `OILDROP_*` sau lần đổi tên oildrop → oildrop).
+> Đơn vị: **1 LAMP = 10⁶ oildrop** (hằng số `OILDROP_PER_LAMP` trong `offchain/src/constants.ts`).
 > Cơ chế on-chain: xem `README.md`. Phần SPO/CS: xem `SPO-CS-SPEC-Vi.md` (KHÔNG lặp ở đây).
 
 ---
