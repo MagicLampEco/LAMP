@@ -24,7 +24,10 @@ cd Genesis/scripts && npx tsx verify_mainnet_supply.ts
 
 - **Không bán token.** Không ICO, không IDO, không presale, không nhận tiền của ai đổi lấy LAMP.
 - **Không hứa giá, không hứa lợi nhuận, không cam kết niêm yết.**
-- **Không đặt cọc, không phí tham gia.** Người tham gia không nộp gì cả.
+- **Không đặt cọc để nhận token, không phí tham gia.** Người tham gia phân phối không nộp gì cả.
+  (Cơ chế quản trị có yêu cầu **ký quỹ LAMP hoàn lại** khi khởi xướng đề xuất/recall, để chống quấy
+  rối — đó là việc nội bộ giữa các thành viên đã có LAMP, không phải điều kiện để nhận LAMP. Xem
+  [`Governance/`](Governance/).)
 - **Quản trị không theo số token nắm giữ** — cử tri là **cá nhân** định danh qua PhoenixKey DID;
   nắm nhiều token không mua được nhiều quyền.
 

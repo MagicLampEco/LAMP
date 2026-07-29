@@ -217,7 +217,7 @@ quyền release** (blast-radius nhỏ) — dùng chung KHÔNG còn rủi ro an t
 
 | Rủi ro | Giảm thiểu |
 |---|---|
-| Authority tập trung (curated) | Quyền authority CHỈ niêm yết, KHÔNG value (tách `governance_ref`); lộ trình committee → DAO (§6.1). |
+| Authority tập trung (curated) | Quyền authority CHỈ đăng bạ, KHÔNG value (tách `governance_ref`); lộ trình committee → DAO (§6.1). |
 | **Authority 1 key-hash = SPOF (audit #4)** | **PHẢI** chốt `registry_authority` là **committee multisig** (M-of-N), KHÔNG vkh đơn, trước mainnet (§6.1, G3). |
 | `platform_id` chiếm tên / trùng (audit #2) | Van quy trình (KHÔNG mật mã): authority không ký trùng (R-SIG) + SDK `discoverPlatforms.duplicate`/`findDuplicatePlatformIds`. v1.x: one-shot genesis_ref. |
 | **Entry nói dối custody (audit #6)** | **R-BIND** ép entry trỏ custody THẬT lúc đăng ký; reader route phí gọi `verifyEntryAgainstCustody` đối soát custody hậu kỳ (G6). |

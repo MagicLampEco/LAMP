@@ -4,7 +4,7 @@
 KHÔNG mâu thuẫn contract. Tham số chưa chốt đánh dấu **"tham số mở (DAO định)"**.
 
 > Spec này mô tả **hành vi nhìn thấy được** của PlatformKit: một team onboard một platform thế nào
-> (seed kho → đăng ký niêm yết → nối app thu phí), collect adapter biến sự kiện app thành `CollectItem`,
+> (seed kho → đăng ký đăng bạ → nối app thu phí), collect adapter biến sự kiện app thành `CollectItem`,
 > discover registry để tìm platform, và ai dùng SDK này. Người không-kỹ-thuật đọc cũng hiểu.
 > KHÔNG đi sâu datum/redeemer/validator (xem [TECH](./TECH.md)) hay lộ trình bootstrap (xem
 > [EXEC](./EXEC.md)).
@@ -17,11 +17,11 @@ KHÔNG mâu thuẫn contract. Tham số chưa chốt đánh dấu **"tham số m
 
 PlatformKit là **khuôn mẫu onboarding**: mỗi platform (PhoenixKey, OriLife, team eco khác) đăng ký một
 lần là có sẵn hệ thống **tương tự MagicLamp** — một **Treasury custody instance** (kho có ghi sổ) cộng
-một **entry Registry** (niêm yết discoverable). Nó giải quyết bốn nhu cầu, không trộn lẫn:
+một **entry Registry** (đăng bạ discoverable). Nó giải quyết bốn nhu cầu, không trộn lẫn:
 
 1. **Hạ rào dựng kho** — một team không phải đọc hết Treasury internals; chạy ba cửa (seed → register →
-   integrate) là có kho + được niêm yết.
-2. **Niêm yết discoverable** — mọi platform tra được bằng một lần quét policy (`registry_beacon`), không
+   integrate) là có kho + được đăng bạ.
+2. **Đăng bạ discoverable** — mọi platform tra được bằng một lần quét policy (`registry_beacon`), không
    cần danh bạ tập trung do ai đó vận hành.
 3. **Kiểm duyệt onboarding** — `registry_authority` ký mỗi đăng ký → `platform_id` duy nhất, chống chiếm
    tên + rác. Curated, không permissionless.
@@ -35,7 +35,7 @@ Mục tiêu cuối: **làm LAMP có giá trị** bằng open SDK. Mỗi platform
 - Luồng onboard một platform (PhoenixKey, OriLife làm ví dụ) — ba cửa tuần tự.
 - Collect adapter: sự kiện platform → `CollectItem`; pricing nằm ở app.
 - Discover registry: quét beacon policy ra danh sách platform + lọc theo status.
-- Vòng đời niêm yết nhìn từ ngoài: Register → Pause/Resume → Retire.
+- Vòng đời đăng bạ nhìn từ ngoài: Register → Pause/Resume → Retire.
 - Ai dùng (open SDK cho team Cardano). User stories.
 
 ### 0.3 KHÔNG thuộc spec này (thuộc spec khác)
@@ -65,7 +65,7 @@ Team chạy `custody_seed` (Treasury) một lần:
 **Nhìn từ ngoài:** team giờ có một **kho** với `instance_id`, `custody_hash`, `seed_policy`. Kho rỗng
 value nhưng kế toán đúng từ gốc. Chưa ai thấy platform này.
 
-### 1.2 Cửa 2 — Register (niêm yết)
+### 1.2 Cửa 2 — Register (đăng bạ)
 
 Team gửi yêu cầu đăng ký tới `registry_authority` (committee → DAO). Authority kiểm tham số rồi **ký**
 một tx `RegisterPlatform`:
@@ -173,7 +173,7 @@ một UTxO mới mang beacon → quét lần sau là thấy, không phải cập
 
 ### 3.3 Đối soát entry với custody (entry là chỉ-mục, custody là chuẩn)
 
-Entry niêm yết `(cut_bps, accepted_assets, governance_ref)` là **bản sao đọc nhanh**. Khi cần con số
+Entry đăng bạ `(cut_bps, accepted_assets, governance_ref)` là **bản sao đọc nhanh**. Khi cần con số
 **ràng buộc** (vd verify cut thực một platform đang dùng), SDK đọc lại **custody datum** (nguồn chân lý
 — CONTRACT §2 ghi chú, PK7). Nếu lệch (DAO đổi custody nhưng chưa cập nhật entry), custody thắng; SDK
 nên gợi ý update entry cho khớp.
@@ -207,19 +207,19 @@ custody. Người tin (ví/app gửi value tới kho của một platform) PHẢ
 
 ---
 
-## 4. Vòng đời niêm yết nhìn từ ngoài
+## 4. Vòng đời đăng bạ nhìn từ ngoài
 
 Nhìn từ người dùng registry (không phải on-chain), một platform tiến qua:
 
 - **Register → Active** — xuất hiện, được hiển thị mặc định.
 - **Active ⇄ Paused** — tạm ẩn (bảo trì/điều tra); custody vẫn còn, discover mặc định lọc ra; quay lại
   Active được.
-- **→ Retired** — ngừng hẳn niêm yết; **trạng thái CUỐI, không revive** (U-TERMINAL ép on-chain — không
+- **→ Retired** — ngừng hẳn đăng bạ; **trạng thái CUỐI, không revive** (U-TERMINAL ép on-chain — không
   Retired→Active). **entry KHÔNG biến mất** (retire = status, không xóa — CONTRACT §4). Lịch sử "platform
   này từng tồn tại, trỏ kho nào" tra mãi được. `platform_id` không tái cấp.
 
 **KHÔNG có un-register.** Registry chỉ tiến trạng thái + đổi mutable fields, không xóa bản ghi — một sổ
-niêm yết bền vững phải chỉ-thêm/đổi-trạng-thái.
+đăng bạ bền vững phải chỉ-thêm/đổi-trạng-thái.
 
 > ⛔ **F7 — `status` KHÔNG đóng quỹ (đọc kỹ — chống hiểu nhầm).** `Paused`/`Retired` chỉ đổi **cách hiển
 > thị trong discover** (ẩn entry khỏi danh sách mặc định). Chúng **KHÔNG dừng** custody: kho của platform
@@ -235,7 +235,7 @@ niêm yết bền vững phải chỉ-thêm/đổi-trạng-thái.
 
 ### 5.1 Người onboard platform (team eco)
 
-Một team Cardano bất kỳ: chạy ba cửa → có kho + được niêm yết, **không fork** Treasury, **không tự viết**
+Một team Cardano bất kỳ: chạy ba cửa → có kho + được đăng bạ, **không fork** Treasury, **không tự viết**
 logic kho bạc/split/double-satisfaction/discover. PhoenixKey + OriLife là hai platform đầu; team thứ ba
 dùng **cùng** registry + **cùng** Treasury validator.
 

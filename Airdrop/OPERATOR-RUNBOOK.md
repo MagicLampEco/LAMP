@@ -7,7 +7,8 @@ Hướng dẫn đầy đủ để operator deploy và vận hành TIGER Airdrop 
 ## Tổng quan
 
 > **Model 3-pot (chốt 2026-07-11):** tổng 120M LAMP = Delegator **100M** (∝stake, mọi pool) +
-> SPO (Staking Pool Operator) **5M** (tư cách hợp lệ, chia đều) + CS (Community Supporter) **15M** (đo qua AffiSo).
+> SPO (Staking Pool Operator) **5M** (∝ Σ stake delegator đã đăng ký chảy vào pool) + CS (Community
+> Supporter) **15M** (∝ Σ stake của delegator đã bình chọn; đo qua AffiSo). Cả hai ∝ trọng số stake.
 > Đặc tả: `AIRDROP-V2-SPEC-Vi.md` (tổng) + `SPO-CS-SPEC-Vi.md` (SPO+CS).
 
 ```
@@ -104,7 +105,7 @@ Sau khi nhận file `spo_registration.json` từ SPO:
 # 3. Verify publicKey tương ứng reward stake address (bech32) của pool
 
 # Áp cổng đủ-điều-kiện §3 (SPO-CS-SPEC) → danh sách N SPO hợp lệ.
-# SPO 5M: chia đều → mỗi SPO = 5_000_000 / N LAMP.
+# SPO 5M: chia ∝ Σ stake delegator đã đăng ký chảy vào pool (splitSpoPot → splitByStake).
 # CS 15M: chạy cs_score.ts với metric CS xuất từ AffiSo → reward_i mỗi SPO.
 # Gộp base + cs của mỗi SPO thành 1 entry {address = payment_address, amount_lamp}.
 ```
@@ -253,7 +254,7 @@ Phân phối qua:
 
 ## Checklist trước khi go-live
 
-- [ ] Snapshot đã verify: tổng = 100M (delegator ∝stake) + 5M (SPO chia đều) + 15M (CS) = 120M LAMP
+- [ ] Snapshot đã verify: tổng = 100M (Delegator) + 5M (SPO) + 15M (CS) = 120M LAMP — cả 3 ∝ trọng số stake
 - [ ] Merkle root đã công bố công khai trước SETUP
 - [ ] Aiken validators đã compile: `Airdrop/onchain/plutus.json` tồn tại
 - [ ] Ví operator có đủ ADA (≥ 200 ADA buffer) + đủ LAMP (120M + 10M dự phòng phí)

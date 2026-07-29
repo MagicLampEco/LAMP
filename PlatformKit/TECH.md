@@ -34,7 +34,7 @@ platform là Treasury (`Treasury/TECH.md`) — TECH này CHỈ đặc tả tần
 ### Bất biến cốt lõi (nhắc lại — sai là hỏng)
 - Registry KHÔNG giữ value (PK1) — entry UTxO chỉ mang **beacon NFT + min-ADA**, KHÔNG asset thu.
 - Beacon-per-platform (PK2): mỗi platform một NFT name=`platform_id` dưới **một** policy chung.
-- Authority gác **niêm yết**, KHÔNG gác **value** (PK3); value gác bởi `governance_ref` riêng (PK6).
+- Authority gác **đăng bạ**, KHÔNG gác **value** (PK3); value gác bởi `governance_ref` riêng (PK6).
 - Retire = status, NO-BURN (PK5): beacon sống suốt đời, vòng đời chỉ tiến.
 
 ---
@@ -103,7 +103,7 @@ pub type PlatformEntry {
 ```
 
 > **`accepted_assets` dùng `AssetKey`** (`Treasury/onchain/lib/magiclamp/treasury/types.ak`), KHÔNG
-> `BucketKey`. Lý do: entry niêm yết chỉ cần `(policy, name)` của asset — KHÔNG có khái niệm bucket ở
+> `BucketKey`. Lý do: entry đăng bạ chỉ cần `(policy, name)` của asset — KHÔNG có khái niệm bucket ở
 > tầng registry (bucket là chuyện kế toán nội bộ custody). Dùng `AssetKey{policy,name}` gọn + đúng tầng.
 
 **Identity (5 field bất biến — PK4):** `platform_id`(0), `instance_id`(1), `custody_hash`(2),
@@ -276,7 +276,7 @@ ES modules, Lucid Evolution (gương `Treasury/offchain`). Bốn nhóm hàm:
 `onboard(config) -> { instanceId, custodyHash, seedPolicy, platformId }`. Gọi tuần tự:
 1. **cửa 1** `seedCustody()` (tái dùng Treasury custody_seed off-chain) → `instance_id/custody_hash/
    seed_policy`;
-2. **cửa 2** `registrationBuilder()` → entry UTxO niêm yết;
+2. **cửa 2** `registrationBuilder()` → entry UTxO đăng bạ;
 3. trả handle để **cửa 3** `collectAdapter` dùng. Một hàm cho team eco chạy trọn onboard.
 
 ### 6.2 `registrationBuilder` — build tx RegisterPlatform / UpdateEntry
@@ -359,8 +359,8 @@ order §2 (9 field, status enum 0/1/2). Lệch thứ tự phá decode (cùng quy
   duy nhất id bằng kỷ luật ký (Cardano không ép unique asset-name) thay vì state trung tâm.
 - **(c) Tối ưu — no-contention:** beacon-per-platform → register/update/discover song song, O(1)/thao tác,
   không UTxO nóng tuần tự, không O(N) bloat.
-- **(d) Bền vững — authority-curated:** sổ niêm yết uy tín (chống chiếm tên/rác), no-burn (lịch sử bền),
-  quyền tách bạch (authority gác niêm yết ≠ governance gác value), lộ trình committee → DAO.
+- **(d) Bền vững — authority-curated:** sổ đăng bạ uy tín (chống chiếm tên/rác), no-burn (lịch sử bền),
+  quyền tách bạch (authority gác đăng bạ ≠ governance gác value), lộ trình committee → DAO.
 
 ### Đã đóng (đánh dấu — không còn gap)
 - **~~GAP-1 vòng đời status~~ — ĐÓNG bằng U-TERMINAL.** Cấm Retired→Active NAY ép cứng on-chain

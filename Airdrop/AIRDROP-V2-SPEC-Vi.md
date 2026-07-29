@@ -212,5 +212,3 @@ nên trích thành util dùng chung hoặc import trực tiếp (giữ 1 nguồn
 - `capOildrop` cho pot Delegator — mặc định không cap; bật nếu cần chống cá voi.
 - SetRoot cho SPO/CS drip per-epoch — chốt Cách A/B/C (§2).
 - Danh sách `excluded` ví self-dealing.
-</content>
-</invoke>

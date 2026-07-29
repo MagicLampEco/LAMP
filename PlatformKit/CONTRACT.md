@@ -11,7 +11,7 @@ Gốc: tái dùng **Treasury** đa thuê bao (`Treasury/CONTRACT.md §1` instanc
 
 > **Mục tiêu cuối (KHÔNG đổi):** làm LAMP có giá trị bằng **open SDK** cho mọi Cardano team. PlatformKit
 > hạ rào onboarding: một team không cần đọc hết Treasury internals — họ chạy 3 cửa (seed → register →
-> integrate) là có kho bạc + được niêm yết. Mỗi platform thêm vào là một caller `collectToTreasury`,
+> integrate) là có kho bạc + được đăng bạ. Mỗi platform thêm vào là một caller `collectToTreasury`,
 > một nguồn cầu LAMP.
 
 ---
@@ -54,7 +54,7 @@ param-validator = bất biến đời instance; datum = DAO chỉnh):
 | | `status` | `Active` / `Paused` / `Retired` | `PlatformEntry.status` |
 
 > **Ghi chú đối soát với custody:** `cut_bps`, `accepted_assets`, `governance_ref` cũng tồn tại trong
-> **custody datum** (nguồn chân lý cho on-chain enforcement). Entry Registry giữ **bản sao niêm yết**
+> **custody datum** (nguồn chân lý cho on-chain enforcement). Entry Registry giữ **bản sao đăng bạ**
 > để discover/đọc nhanh KHÔNG cần spend custody. Nếu hai nơi lệch (vd DAO đổi `cut_bps` ở custody nhưng
 > chưa cập nhật entry), **custody là chuẩn**; off-chain coi entry là chỉ-mục, verify lại bằng custody
 > khi cần con số ràng buộc. (Xem `TECH.md` invariant đối soát.)
@@ -99,12 +99,12 @@ mỗi thao tác, song song hóa hoàn toàn.
 - Đây là **đăng ký có kiểm duyệt** (curated), KHÔNG permissionless. Đúng mô hình platform onboarding:
   - chống **chiếm tên** (squatting `platform_id` đẹp);
   - chống **rác** (spam entry vô nghĩa làm bẩn sổ);
-  - cho phép authority kiểm tham số platform hợp lý trước khi niêm yết.
+  - cho phép authority kiểm tham số platform hợp lý trước khi đăng bạ.
 
-**Đánh đổi đã cân (4 trục):** authority-curated **bền vững** hơn permissionless cho một sổ niêm yết
+**Đánh đổi đã cân (4 trục):** authority-curated **bền vững** hơn permissionless cho một sổ đăng bạ
 (uy tín registry = uy tín các platform trong đó). Rủi ro tập trung được giảm bằng **lộ trình
 committee → DAO**: v1 authority = multisig committee bootstrap (Governance chưa thật); khi Governance
-chạy → chuyển `registry_authority` về DAO (xem `EXEC.md` known-gap). Authority CHỈ gác **niêm yết**,
+chạy → chuyển `registry_authority` về DAO (xem `EXEC.md` known-gap). Authority CHỈ gác **đăng bạ**,
 KHÔNG động được **value** (value ở custody, gác bởi `governance_ref` riêng từng platform — §5).
 
 > **Known-gap audit #2 — `platform_id` duy nhất là VAN QUY TRÌNH, KHÔNG bất biến mật mã.** `registry_beacon`
@@ -162,9 +162,9 @@ thứ tự status **on-chain** (trước đây chỉ là chính sách authority 
 
 **Ngữ nghĩa status:**
 - **`Active`** — platform đang thu/chi bình thường; được hiển thị trong discover mặc định.
-- **`Paused`** — tạm dừng niêm yết (vd đang bảo trì/điều tra); custody vẫn tồn tại, nhưng discover lọc ra.
+- **`Paused`** — tạm dừng đăng bạ (vd đang bảo trì/điều tra); custody vẫn tồn tại, nhưng discover lọc ra.
   Đảo ngược được (`Paused → Active`).
-- **`Retired`** — ngừng hẳn niêm yết; **trạng thái CUỐI, không revive** (U-TERMINAL ép on-chain: entry
+- **`Retired`** — ngừng hẳn đăng bạ; **trạng thái CUỐI, không revive** (U-TERMINAL ép on-chain: entry
   Retired không spend/update được nữa → không Retired→Active). **KHÔNG xóa entry** (retire = đổi status
   trong datum, KHÔNG spend-burn beacon). Beacon sống suốt vòng đời → lịch sử platform tra được, audit
   không mất dấu.
@@ -179,7 +179,7 @@ thứ tự status **on-chain** (trước đây chỉ là chính sách authority 
 > rõ để không ai dựa `status` làm cơ chế đóng quỹ. **Đề xuất v1.x nếu muốn Pause THẬT:** cho custody đọc
 > entry registry qua **reference input** (custody param thêm `registry_beacon_policy`; nhánh Collect/Release
 > ép `entry.status == Active`). Đánh đổi: thêm một reference input mỗi tx custody + ràng buộc vòng đời
-> custody↔registry. Hiện v1 **KHÔNG** làm — status thuần là nhãn niêm yết.
+> custody↔registry. Hiện v1 **KHÔNG** làm — status thuần là nhãn đăng bạ.
 
 > **Vì sao retire = status, KHÔNG burn beacon (first-principles):** burn beacon = mất bản ghi platform
 > từng tồn tại → đứt audit trail + một `platform_id` có thể bị tái cấp cho platform khác (lẫn lịch sử).
@@ -188,7 +188,7 @@ thứ tự status **on-chain** (trước đây chỉ là chính sách authority 
 > "no-burn" của LAMP/Treasury ở tầng registry.
 
 **KHÔNG có cửa hủy-đăng-ký (un-register).** Registry chỉ tiến trạng thái (Active⇄Paused→Retired), không
-xóa. Đây là cố ý: một sổ niêm yết phải **chỉ thêm/đổi-trạng-thái**, không được rò bản ghi.
+xóa. Đây là cố ý: một sổ đăng bạ phải **chỉ thêm/đổi-trạng-thái**, không được rò bản ghi.
 
 ---
 
@@ -219,7 +219,7 @@ giá trị **riêng per-platform** (tách quyền, không còn vì replay-chéo)
 - Hai platform khác nhau (PhoenixKey vs OriLife) **nên** hai `governance_ref` khác nhau (tách quyền).
 
 **Ranh giới quyền (KHÔNG lẫn):**
-- `registry_authority` gác **niêm yết** (register/update entry). KHÔNG động value.
+- `registry_authority` gác **đăng bạ** (register/update entry). KHÔNG động value.
 - `governance_ref` (riêng từng platform) gác **release value** ở custody của platform đó. KHÔNG động
   registry. Hai quyền **tách bạch hoàn toàn** — authority không chi được tiền, governance không niêm
   yết được platform.
@@ -236,7 +236,7 @@ tạo custody UTxO đầu (value + sổ base-case đúng, seed guards S-CUT-0/S-
 `Treasury/EXEC.md §16`). **Output:** `instance_id`, `custody_hash`, `seed_policy`. Đây là **kho** của
 platform.
 
-### Cửa 2 — Register (niêm yết vào Registry)
+### Cửa 2 — Register (đăng bạ vào Registry)
 Authority ký `RegisterPlatform` (`registry_beacon` mint): mint beacon NFT(name=`platform_id`) + tạo
 entry UTxO trỏ tới custody vừa seed (`instance_id/custody_hash/seed_policy/governance_ref/accepted/
 cut_bps`, status=`Active`). **Output:** platform **discoverable**. Đây là **con trỏ** vào kho.
@@ -253,7 +253,7 @@ App của platform gọi `collectToTreasury(asset, amount, app_id, category)` c�
 (Frontend/SDK/mobile), KHÔNG đụng backend nội bộ platform (xem `EXEC.md`).
 
 > Ba cửa **tách bạch + tuần tự**: seed (có kho) → register (được thấy) → integrate (bắt đầu thu). Một
-> team có thể dừng sau cửa 1 (kho riêng, không niêm yết) hoặc cửa 2 (niêm yết, chưa nối app). Cửa 3 là
+> team có thể dừng sau cửa 1 (kho riêng, không đăng bạ) hoặc cửa 2 (đăng bạ, chưa nối app). Cửa 3 là
 > nơi LAMP/asset thật chảy về.
 
 ---
@@ -278,7 +278,7 @@ App của platform gọi `collectToTreasury(asset, amount, app_id, category)` c�
 - **PK2 — Beacon-per-platform.** Mỗi platform một beacon NFT (name=`platform_id`) dưới policy chung;
   discover = quét policy. KHÔNG registry UTxO trung tâm (no contention, no O(N) bloat).
 - **PK3 — Authority-gated, curated.** `registry_authority` ký mọi register/update → `platform_id` duy
-  nhất + kiểm duyệt. KHÔNG permissionless. Authority gác **niêm yết**, KHÔNG gác **value**.
+  nhất + kiểm duyệt. KHÔNG permissionless. Authority gác **đăng bạ**, KHÔNG gác **value**.
 - **PK4 — Identity 5 field bất biến.** `platform_id, instance_id, custody_hash, seed_policy,
   created_epoch` khóa cứng (U-ID). Đổi = platform mới.
 - **PK5 — Retire = status, KHÔNG burn.** Beacon sống suốt đời; vòng đời chỉ tiến (Active⇄Paused→Retired),
@@ -288,7 +288,7 @@ App của platform gọi `collectToTreasury(asset, amount, app_id, category)` c�
   quyền release** (blast-radius nhỏ). Yêu cầu interface thay thế: Governance commit đúng `instance_id` khi
   tạo proposal.
 - **PK7 — custody là nguồn chân lý** cho `(cut_bps, accepted_assets, governance_ref)`; entry là bản sao
-  niêm yết, verify lại bằng custody khi cần con số ràng buộc.
+  đăng bạ, verify lại bằng custody khi cần con số ràng buộc.
 - **PK8 — Đăng ký buộc trỏ custody THẬT (R-BIND).** `RegisterPlatform` ép reference-input custody mang
   đúng 1 NFT authenticity `(seed_policy, instance_id)` Ở `Script(custody_hash)` → entry không nói dối
   custody. Custody phải seed + submit TRƯỚC register. (Vá an ninh — đóng audit #6 ở mức đăng ký.)

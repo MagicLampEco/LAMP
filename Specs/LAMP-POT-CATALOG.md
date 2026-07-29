@@ -9,7 +9,7 @@
 > **LAMP** = tài sản nền 36 tỷ (tài liệu này mô tả). **MAGIC** = thuần **Consumable**: **KHÔNG chuyển nhượng**, không tiêu
 > thì mất (decay), neo sức-mua-dịch-vụ nội sinh, **chỉ chuộc-ra-DỊCH-VỤ** (không chuộc tiền); sinh từ nắm LAMP
 > (SnapshotMint) / tiêu định kỳ (ScheduleMint). **CARP** = đồng **Exchangeable** (lưu hành, chuyển nhượng, ổn định
-> đa-tầng, policy riêng) — đồng DUY NHẤT giao dịch trên sàn nội bộ (MagicSwap). MAGIC & CARP **không niêm yết sàn ngoài**.
+> đa-tầng, policy riêng) — đồng DUY NHẤT được thiết kế để chuyển nhượng trong hệ. MAGIC & CARP **không niêm yết sàn ngoài**.
 
 ---
 
@@ -45,13 +45,13 @@
 | 5 | **App** | 1.618.000 | 4,49% | Khuyến khích ứng dụng xây trên hệ | Nhỏ-giọt | 🏛️ gen, chia DID theo MAGIC tiêu thụ |
 | 6 | **Wakeme** | 1.001.000 | 2,78% | **Cho mượn để TIÊU dịch vụ, KHÔNG tặng, KHÔNG để mua-bán**: mỗi PersonDID ≤1001 LAMP, khoá 1001 đêm, ngày không dùng → thu 1 LAMP về pot; qua 1001 đêm nhả 1 LAMP/đêm thành sở-hữu | Module PhoenixKey **Wakeme** (tên cũ Activation): vault-vesting 1 LAMP/đêm + anti-idle | 👤 vault khoá theo PersonDID |
 | 7 | **Referrer** | 343.000 | 0,95% | Thưởng giới thiệu | Nhỏ-giọt | 🏛️ uỷ thác Platform **AffiSo** DID |
-| 8 | **PhoenixKey (Phoenix Treasury)** | 142.857 | 0,40% | Quỹ **Phoenix Treasury** — nguồn tài sản cho **Feecover** (trả phí hộ user). Trích **7 triệu LAMP** qua **1 đợt SRCL 7 epoch** (1 triệu/epoch) để **thu về ADA** trả phí mạng cho user; CARP thu được mua lại ADA trên DEX (vòng tự-bồi) | Nhỏ-giọt + đợt SRCL 7 epoch | 🏛️ uỷ thác Platform **PhoenixKey** DID |
+| 8 | **PhoenixKey (Phoenix Treasury)** | 142.857 | 0,40% | Quỹ **Phoenix Treasury** — nguồn tài sản cho **Feecover** (trả phí hộ user). Cấp nguồn cho **Feecover** qua **1 đợt SRCL 7 epoch**: phần thưởng staking do người tham gia định tuyến về pot được dùng trả phí mạng, đóng góp đó được **ghi nhận** bằng 7 triệu LAMP (1 triệu/epoch). Quản lý số dư ADA của Feecover là nghiệp vụ vận hành nội bộ, không phải dịch vụ giao dịch cho bên thứ ba | Nhỏ-giọt + đợt SRCL 7 epoch | 🏛️ uỷ thác Platform **PhoenixKey** DID |
 | 9 | **MagicLamp Foundation** | 1.296.000 | 3,60% | Năng lượng vận hành DAO | **Chưa-mint→khoá VĨNH VIỄN** sau khi lập pháp nhân | 🏛️ gen → nuôi DAO (xem §3) |
 | 10 | **Aladin Contract** | 6.000.000 | 16,67% | Pháp nhân sáng lập (1/6 cung) | Nhỏ-giọt **ngang cộng đồng** | 🏛️ gen → **OrgDID Aladin** |
 | 11 | **GreenSun Tech** | 6.000.000 | 16,67% | Pháp nhân sáng lập (1/6 cung) | Nhỏ-giọt **ngang cộng đồng** | 🏛️ gen → **OrgDID GreenSun** |
 | 12 | **Partnership** | 284.000 | 0,79% | Đối tác chiến lược | Nhỏ-giọt | 👤 khi partner claim về DID |
 | 13 | **Early TIGER Deleg (ETD)** | 12.000 | 0,03% | Delegate sớm TIGER (redeem TRƯỚC = test) | Snapshot hồi tố | ❌ hết sớm |
-| 14 | **Airdrop** | 120.000 | 0,33% | Tặng cộng đồng SPO & Delegator theo stake + hỗ trợ; ghi nhận đóng góp cơ chế bền vững mạng Cardano | Snapshot, 5 epoch ×24.000, 20:100 | ❌ hết sớm |
+| 14 | **Airdrop** | 120.000 | 0,33% | Ghi nhận đóng góp vào cơ chế bền vững của mạng Cardano — 3 pot: Delegator 100M · SPO 5M · CS 15M | Snapshot, cả 3 pot ∝ trọng số stake (v2, chốt 10/7) | ❌ hết sớm |
 | 15 | **SRCL** | 360.000 | 1,00% | Redirect staking-reward ADA ↔ LAMP | Snapshot/epoch theo ADA góp; SPO bonus tự đặt | ❌ hết sớm |
 | 16 | **Joinnet** | 1.461.000 | 4,06% | Thưởng người góp tài nguyên thiết bị vào hạ tầng phân tán LampNet | Nhỏ-giọt | 🏛️ uỷ thác Platform **LampNet** DID |
 | 17 | **RedBack** | 21.143 | 0,06% | Quỹ phòng-thủ neo giá đồng ổn định (peg CARP↔MAGIC): hy sinh khi peg đỏ, lớn lên khi thế chấp vượt trần | Engine phòng thủ peg (vốn vô chủ) | ❌ quỹ peg |
@@ -101,17 +101,19 @@
   MỤC ĐÍCH DUY NHẤT là TIÊU dùng dịch vụ trong hệ — KHÔNG phải để mua-bán.** Khi kích hoạt DID (GetLAMP), LAMP vào một
   **vault khoá 1001 đêm**, mở dần **1 LAMP mỗi đêm**; **đêm nào không dùng dịch vụ → 1 LAMP phần CHƯA-MỞ bị thu về pot**
   (use-it-or-lose-it — chỉ đòi phần chưa trao, KHÔNG chạm phần đã mở). Ai dùng-thật giữ trọn dòng mở; ai bỏ cuộc trả
-  phần chưa-mở về pot nuôi người mới. **Chỉ phần đã mở mới chuyển-nhượng được** (LAMP đã mở → sinh MAGIC để tiêu, hoặc
-  bán). Cơ chế đầy đủ: đặc tả `PhoenixKey Wakeme` (tên cũ Activation; validator `activation_vault.ak`+`activation_logic.ak`,
+  phần chưa-mở về pot nuôi người mới. **Chỉ phần đã mở mới chuyển-nhượng được** (LAMP đã mở → sinh MAGIC để tiêu dùng
+  dịch vụ trong hệ; phần đã mở là tài sản thuộc sở hữu người dùng, họ toàn quyền định đoạt). Cơ chế đầy đủ: đặc tả
+  `PhoenixKey Wakeme` (tên cũ Activation; validator `activation_vault.ak`+`activation_logic.ak`,
   vault-vesting theo đồng-hồ-NGÀY slot/86400 + anti-idle thu-hồi, forfeit-1001-idle-epoch). **Pot tự-nuôi, không cạn**: 3 nguồn nạp — phần
   thu-hồi của người bỏ cuộc + phí user-trước (thu bằng LAMP theo giá-trị, phản-chu-kỳ) + Treasury bơm khi cần.
 - **7. Referrer (343.000)** — thưởng **giới thiệu** người dùng mới. Uỷ thác vào Platform **AffiSo** (DID riêng).
 - **8. PhoenixKey — Phoenix Treasury (142.857)** — **quỹ của Phoenix Treasury**, đóng vai **nguồn tài sản cho Feecover**
   (tính năng trả phí hộ người dùng). Trích một phần pot làm tài sản chi trả **phí mạng** cho user. Hai nguồn nạp cho
   Feecover: **(1)** `TxFee` user trả mỗi giao dịch — **phí cố định theo từng loại giao dịch, quy về CARP**; **(2)** chính
-  pot này — trích **7 triệu LAMP** chạy **1 đợt SRCL trong 7 epoch** (1 triệu LAMP/epoch) để **thu về ADA**, dùng trả phí
-  mạng cho user. **Vòng tự-bồi:** khi có CARP (từ TxFee), hệ thống dùng CARP **mua lại ADA trên DEX** → luôn giữ dư cả
-  ADA lẫn LAMP để tiếp tục trả phí. **Giao thức TỰ ĐỘNG, KHÔNG người kiểm soát.** Uỷ thác vào Platform **PhoenixKey** (DID riêng).
+  pot này — chạy **1 đợt SRCL trong 7 epoch**: phần thưởng staking do người tham gia định tuyến về pot được dùng trả
+  **phí mạng** cho user, và đóng góp đó được **ghi nhận** bằng **7 triệu LAMP** (1 triệu/epoch). **Vòng tự-bồi:** khi có
+  CARP (từ TxFee), hệ thống quy đổi CARP về ADA để tiếp tục có nguồn trả phí. Đây là **nghiệp vụ vận hành nội bộ** để
+  duy trì số dư trả phí, không phải dịch vụ giao dịch cung cấp cho bên thứ ba. **Giao thức TỰ ĐỘNG, KHÔNG người kiểm soát.** Uỷ thác vào Platform **PhoenixKey** (DID riêng).
   > Bản cũ ghi "quỹ tài trợ phí ADA/DUST, user không cần ADA" — mô tả sai (agent bịa), đã thay bằng mô hình Feecover
   > thực: `TxFee` cố định (CARP) + đợt SRCL 7 epoch của pot này thu ADA + CARP mua lại ADA trên DEX.
 - **16. Joinnet (1.461.000)** — thưởng **người đóng góp tài nguyên thiết bị** (sức tính toán, lưu trữ, băng thông)
@@ -119,22 +121,29 @@
 
 **Nhóm DAO & đối tác**
 - **9. MagicLamp Foundation (1.296.000)** — **năng lượng vận hành DAO**. Khoá vĩnh viễn sau khi lập pháp nhân; LAMP
-  ở Foundation-DID **sinh MAGIC** chia cho các **ban chuyên môn** tiêu thụ. Ban được **tái uỷ quyền / bán thu fiat /
-  uỷ thác thu LAMP**; phần MAGIC dư sau phân bổ cũng tái uỷ quyền nhận LAMP. Triết lý "tài sản khoá → năng lượng".
+  ở Foundation-DID **sinh MAGIC** chia cho các **ban chuyên môn** tiêu thụ. Ban được **tái uỷ quyền** phần chưa dùng
+  cho ban khác, hoặc **uỷ thác thu LAMP**; phần MAGIC dư sau phân bổ cũng tái uỷ quyền nhận LAMP. Mọi hình thức định
+  đoạt tài sản của Foundation ra ngoài hệ do quy chế Foundation quyết định **sau khi lập pháp nhân** — chưa nằm trong
+  phạm vi tài liệu này. Triết lý "tài sản khoá → năng lượng".
 - **12. Partnership (284.000)** — **đối tác chiến lược**, theo thoả thuận; claim về **DID của partner**.
 
 **Nhóm phân phối sớm (snapshot, hết trong thời gian đầu)**
 - **13. ETD (12.000)** — ghi nhận **delegator sớm pool TIGER**; redeem TRƯỚC làm **bài test toàn cầu** cho hệ claim.
 - **14. Airdrop (120.000)** — **dành tặng cộng đồng SPO và Delegator** dựa trên stake + sự hỗ trợ; **ghi nhận đóng góp
-  vào cơ chế bền vững của mạng blockchain Cardano**. Chia 5 epoch ×24.000, tỉ lệ **20:100** (SPO:Delegator).
+  vào cơ chế bền vững của mạng blockchain Cardano**. Chia **3 pot**: Delegator **100M** · SPO **5M** ·
+  CS (Community Supporter) **15M**, cả ba đều **∝ trọng số stake**. Đặc tả hiệu lực:
+  [`Airdrop/AIRDROP-V2-SPEC-Vi.md`](../Airdrop/AIRDROP-V2-SPEC-Vi.md). (Mô hình cũ 5 epoch ×24.000 tỉ lệ
+  20:100 đã bị thay ngày 2026-07-10.)
 - **15. SRCL (360.000)** — **redirect staking-reward ADA ↔ LAMP** (delegator tự nguyện đổi % reward), 36 epoch.
 
 **Nhóm thanh khoản & bình ổn peg**
 - **17. RedBack (21.143)** — **quỹ hỗ trợ neo giá đồng ổn định** (peg CARP↔MAGIC). **Hy sinh khi Peg chuyển sang đỏ**
   (dùng vốn vô chủ mua/đỡ kéo giá về neo) và **lớn lên khi tỷ lệ thế chấp (br) vượt quá trần** (thặng dư backing chảy
   vào quỹ). Vốn vô chủ, không ai rút tay. Chi tiết cơ chế bình ổn: `/CARP` (Stabilization).
-- **18. Liquidity (888.000)** — **cấp thanh khoản cho sàn giao dịch nội bộ hệ sinh thái** (MagicSwap), bắt đầu với các
-  cặp **CARP/LAMP, CARP/ADA, CARP/NIGHT** (theo TVL). CARP là đồng chuyển-nhượng duy nhất giao dịch nội bộ; MAGIC KHÔNG
+- **18. Liquidity (888.000)** — dự phòng cho nhu cầu thanh khoản trong hệ sinh thái. **Cơ chế, thời điểm và điều kiện
+  pháp lý để kích hoạt chưa được quyết định**, và chỉ triển khai trong khuôn khổ pháp luật áp dụng — vận hành một nơi
+  giao dịch tài sản mã hoá là hoạt động cần giấy phép riêng, không suy ra từ tài liệu này. CARP là đồng chuyển-nhượng
+  duy nhất trong hệ; MAGIC KHÔNG
   chuyển nhượng. Không niêm yết sàn ngoài.
 
 ---
@@ -167,8 +176,8 @@ governance đầy đủ chưa lên → giao DAO sau.
 ## 5. Ba pot phân phối cộng đồng sớm (chi tiết claim — chốt sau)
 
 - **ETD (12.000 nghìn)** — delegator sớm pool TIGER redeem TRƯỚC làm test toàn cầu. Rút theo claim_account vesting permissionless.
-- **Airdrop (120.000 nghìn)** — 5 epoch ×24.000 nghìn, chia **20:100** (SPO:Delegator) theo stake pool đăng ký (cổng từ 1/7, hạn epoch 4). Claim Merkle sau snapshot đầu.
-- **SRCL (360.000 nghìn)** — 36 epoch ×10.000 nghìn. Delegator tự nguyện góp staking-reward ADA → LAMP ∝ ADA góp; LAMP/pool ∝ tổng ADA pool; **SPO tự đặt bonus rate**. SPO chỉ đăng-ký + đặt-rate 1 lần (decouple, không ký mỗi epoch). Chủ dự án thu ADA.
+- **Airdrop (120.000 nghìn)** — **3 pot**: Delegator 100M · SPO 5M · CS 15M, cả ba ∝ trọng số stake (v2, chốt 10/7). Đăng ký bắt buộc; claim Merkle sau snapshot.
+- **SRCL (360.000 nghìn)** — 36 epoch ×10.000 nghìn. Delegator tự nguyện định tuyến phần thưởng staking về pot; LAMP được **ghi nhận** ∝ phần thưởng đã đóng góp (việc đã xảy ra), theo công thức tất định công khai; **SPO tự đặt bonus rate**. SPO chỉ đăng-ký + đặt-rate 1 lần (decouple, không ký mỗi epoch). Phần thưởng ADA thuộc doanh thu vận hành pool của bên vận hành đợt, tách bạch với phân bổ LAMP.
 
 ---
 

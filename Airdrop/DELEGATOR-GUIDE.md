@@ -4,7 +4,8 @@
 > 120M (2 pot còn lại: SPO (Staking Pool Operator) 5M + CS (Community Supporter) 15M — xem `SPO-REGISTRATION.md`). Đặc tả:
 > `AIRDROP-V2-SPEC-Vi.md` §1. Khác v1: **mọi pool Cardano** (không chỉ TIGER) và **phải đăng ký**.
 
-Bạn delegate ADA vào **bất kỳ pool Cardano** và đăng ký? Bạn được nhận **LAMP token miễn phí** từ
+Nếu bạn đã uỷ thác ADA vào một stake pool Cardano trong cửa sổ snapshot và đã đăng ký, phần đóng góp đó
+được **ghi nhận** bằng LAMP từ
 pot Delegator theo tỉ lệ stake.
 
 ---
@@ -97,7 +98,9 @@ A: Có. Snapshot đã chốt — rời pool sau epoch snapshot không ảnh hư�
 A: ~0.17–0.2 ADA (phí Cardano thông thường). Bạn cần ít nhất 2 ADA trong ví để ký tx.
 
 **Q: Tôi có thể claim nhiều lần cho cùng 1 địa chỉ?**
-A: Không. Mỗi địa chỉ trong snapshot chỉ claim được 1 lần. Cơ chế onchain (spend-once slot NFT) chặn double-claim tuyệt đối.
+A: Không. Mỗi địa chỉ trong snapshot chỉ claim được 1 lần. Cơ chế on-chain là **CLAIM marker NFT** làm nullifier: mỗi lá claim đúc một marker khoá vĩnh viễn ở script không có đường tiêu.
+
+Nói cho đủ, đừng tin quá lời tài liệu: ledger Cardano **không cấm** đúc lại một token cùng `(policy, name)`, nên lớp chặn hoàn toàn on-chain còn là khuyến nghị cho bản production, chưa cài. Bản hiện tại chặn ở tầng dựng giao dịch (indexer kiểm marker trước khi build). Chi tiết và giới hạn đã biết: [`README.md`](./README.md) mục "GHI CHÚ REPLAY".
 
 **Q: Snapshot có khớp với dữ liệu thực không?**
 A: Snapshot lấy từ Blockfrost API (on-chain data). Bạn có thể tự verify bằng `/epochs/{E}/stakes?pool_id={pool}`.
@@ -113,7 +116,7 @@ A: Stake address gắn với delegation key — nếu bạn redelegate ra pool k
 |---|---|
 | Tổng Airdrop | 120,000,000 LAMP |
 | Phần delegator (pot này) | 100,000,000 LAMP (∝stake, mọi pool) |
-| Phần SPO | 5,000,000 LAMP (tư cách hợp lệ, chia đều) |
+| Phần SPO | 5,000,000 LAMP (∝ Σ stake delegator đã đăng ký chảy vào pool) |
 | Phần CS (Community Supporter) | 15,000,000 LAMP (đóng góp cộng đồng, cần DID) |
 | Thời hạn claim | 360 epoch sau SETUP |
 | Điều kiện (delegator) | Delegate mọi pool + đăng ký + giữ ≥ N epoch |

@@ -56,7 +56,7 @@ KHÔNG theo epoch. Nhả khi Treasury parked tụt dưới trần, tối đa ở
 
 ### 3.4 Chưa-mint / LP / RedBack
 - **Chưa-mint** (Reserve, Foundation trước lập pháp nhân): token không tồn tại → không di chuyển/đánh cắp.
-- **Liquidity / RedBack:** bơm vào LP/DEX khi niêm yết (chờ pháp nhân + pháp lý).
+- **Liquidity / RedBack:** dự phòng cho nhu cầu thanh khoản trong hệ sinh thái. Cơ chế, thời điểm và điều kiện pháp lý để kích hoạt **chưa được quyết định**; dự án **không cam kết** về việc có kích hoạt hay không.
 
 ---
 
@@ -73,7 +73,8 @@ Một pot gen MAGIC ⟺ LAMP của nó **đã nằm trong một vault-DID**. Lu�
 | ❌ **Không** | Reserve, Treasury, ETD, Airdrop, SRCL, RedBack, Liquidity | không ở vault-DID nào (chưa-mint LAMP / parked / LP / hết sớm) |
 
 **Triết lý tầng tổ chức:** Foundation khoá vĩnh viễn → LAMP ở Foundation-DID gen MAGIC = năng lượng nuôi DAO
-(ban chuyên môn tiêu thụ / tái uỷ quyền / bán fiat / uỷ thác thu LAMP); founder khoá dài hạn cần nguồn thu R&D →
+(ban chuyên môn tiêu thụ / tái uỷ quyền / uỷ thác thu LAMP — định đoạt ra ngoài hệ do quy chế Foundation quyết
+định sau khi lập pháp nhân); founder khoá dài hạn cần nguồn thu R&D →
 LAMP ở OrgDID cty gen MAGIC về cty; Platform/App ở Platform-DID, MAGIC chia cho DID **theo lượng tiêu thụ**
 (khuyến khích build); Joinnet/Referrer/PhoenixKey uỷ thác toàn bộ vào Platform-DID (LampNet/AffiSo/PhoenixKey).
 
@@ -156,7 +157,13 @@ Chi tiết ở spec Governance riêng. Điểm giao với phân phối: **gen-MA
   (hoặc Merkle 1-lần). Rút **permissionless** giống claim_account. Dư hoàn Treasury.
 - Đây là **bài test sống** cho toàn hệ claim trước khi mở Airdrop/SRCL.
 
-### 6.2 Airdrop (120.000 nghìn) — 20:100, 5 epoch
+### 6.2 Airdrop (120.000 nghìn) — 3 pot, stake-weighted
+
+> ⚠️ **Mục này đã bị thay.** Chủ dự án chốt model v2 ngày 2026-07-10:
+> **Delegator 100M + SPO 5M + CS 15M**, cả ba pot đều chia **∝ trọng số stake**.
+> Đặc tả hiệu lực: [`Airdrop/AIRDROP-V2-SPEC-Vi.md`](../Airdrop/AIRDROP-V2-SPEC-Vi.md) +
+> [`Airdrop/SPO-CS-SPEC-Vi.md`](../Airdrop/SPO-CS-SPEC-Vi.md).
+> Phần dưới là mô hình v1 (tỉ lệ 20:100, SPO 20M, chưa có pot CS) — **giữ để truy vết, đừng lấy số**.
 - **Tổng:** 120.000 nghìn = 5 epoch × **24.000 nghìn/epoch**.
 - **Chia 20:100** mỗi epoch: `B_spo = 24.000 × 20/120 = 4.000` (SPO) + `B_del = 24.000 × 100/120 = 20.000` (Delegator).
 - **Cổng đăng ký pool (on-chain):** SPO mint registration-NFT `{pool_id, reward_stake_address, epoch_registered}`.
@@ -170,7 +177,7 @@ Chi tiết ở spec Governance riêng. Điểm giao với phân phối: **gen-MA
 
 ### 6.3 SRCL (360.000 nghìn) — redirect, 36 epoch, DECOUPLED
 - **Tổng:** 360.000 nghìn = 36 epoch × **10.000 nghìn/epoch**.
-- **Bản chất:** delegator **tự nguyện góp một phần staking-reward ADA** (tự chọn 0–100%) đổi lấy LAMP. Chủ repo **thu ADA**.
+- **Bản chất:** delegator tự nguyện **định tuyến** một phần phần-thưởng staking phát sinh trong tương lai (tự chọn 0–100%) về pot của đợt. Đóng góp đó được **ghi nhận** bằng LAMP theo công thức tất định. Vốn gốc không rời ví. ADA phần-thưởng về bên vận hành là **doanh thu vận hành stake pool**, hạch toán **tách bạch** với việc phân bổ LAMP — công thức chia LAMP không phụ thuộc doanh thu hay lãi lỗ của bên vận hành.
 - **Phá bottleneck "SPO ký mỗi epoch" (decouple):** SPO **KHÔNG** phải claim mỗi epoch. Tỷ lệ chỉ phụ thuộc
   **tổng ADA mỗi pool đã góp** (đo on-chain). SPO là **người nhận**, không phải **người gác cổng**.
 
@@ -215,7 +222,7 @@ Dư floor → dồn ví lớn nhất (tất định). SPO bonus + mọi delegato
 - **Sybil delegator:** vô hại (chia theo ADA, không theo đầu người). **Whale:** tuyến tính, không méo (tuỳ chọn `MAX_CONTRIB`).
 
 **Hệ quả thị trường:** thưởng theo **redirect-intensity** (không theo stake) → SPO nhỏ truyền thông tốt thắng SPO lớn ì →
-tái cơ cấu stake → **Cardano phi tập trung hơn**. SPO không mất ADA túi riêng → ủng hộ nhiệt thành; chủ repo thu ADA tỷ lệ thuận tổng góp.
+tái cơ cấu stake → **Cardano phi tập trung hơn**. SPO không mất ADA túi riêng. Phần thưởng staking được định tuyến về pot của đợt là doanh thu vận hành pool của pháp nhân, tách bạch và **không tham gia** vào công thức phân bổ LAMP.
 
 ### 6.4 UX delegator — lập Franken qua PhoenixKey (KHẢ THI)
 Vấn đề: ví phổ thông (Eternl/Lace) **không có UX** để uỷ quyền stake-cred cho script tuỳ ý. **Giải: dùng app riêng
@@ -275,7 +282,7 @@ Mọi tham số dưới đọc từ **config-UTxO** do **Aladin Contract đặt 
 | Reserve `trần` | **2% × C** (lưu hành) | trên trần → KHÔNG nhả |
 | Reserve `sàn` | **1% × C** | tại sàn → nhả tối đa |
 | Reserve hàm `f(T)` | **tuyến tính** giữa trần↔sàn | `rate = (trần−T)/(trần−sàn)` clamp [0,1] |
-| Airdrop chia | **20:100** (SPO:Delegator) | per epoch |
+| Airdrop chia | **Delegator 100M · SPO 5M · CS 15M**, cả ba ∝ trọng số stake (v2, chốt 10/7) | per snapshot |
 | Airdrop epoch ×budget | **5 × 24.000 nghìn** | tổng 120.000 |
 | Airdrop hạn đăng ký | **epoch 4** | mở từ 1/7 |
 | Airdrop sàn đủ-điều-kiện SPO | **pledge thật + ≥1 block/epoch** | chống Sybil tách pool |

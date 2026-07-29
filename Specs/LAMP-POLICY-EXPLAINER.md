@@ -192,7 +192,7 @@ lần đều làm tăng `dist_minted`/`reserve_minted` trong chuỗi nên ai cũ
 59. **SRCL là gì?** Cơ chế phân phối qua reward-redirect staking (Staking Reward Contribution Launch); chi tiết theo chương trình.
 60. **Phân bổ có thể đổi không?** Ngân sách từng pot điều chỉnh được trong cap 36 tỷ (off-chain), tổng không đổi.
 61. **Pot nào "khóa", pot nào "nhỏ giọt"?** Mỗi pot cấu hình riêng (tốc độ/khóa/lịch) ở tầng phân phối.
-62. **Có pre-sale/ICO không?** Không mở bán cho tới khi có pháp nhân phù hợp; định vị tiện ích.
+62. **Có pre-sale/ICO không?** Không. Dự án **không chào bán** LAMP đổi lấy tiền hay tài sản của người dùng, và **không có kế hoạch** chào bán. LAMP chỉ được ghi nhận cho đóng góp đã xảy ra, theo công thức công khai.
 63. **Số đã mint hiện nằm đâu?** Trong kho có kiểm soát, chưa phân phối ra cá nhân.
 
 ## F. Kỹ thuật & an toàn (64–78)
@@ -215,8 +215,8 @@ lần đều làm tăng `dist_minted`/`reserve_minted` trong chuỗi nên ai cũ
 
 ## G. Sở hữu, chuyển, giao dịch (79–88)
 
-79. **Tôi mua LAMP ở đâu?** Hiện **chưa niêm yết** sàn nào; cảnh giác token giả mạo.
-80. **Khi nào list DEX?** Khi có pháp nhân phát hành phù hợp; sẽ công bố chính thức.
+79. **Tôi nhận LAMP bằng cách nào?** LAMP **không được chào bán**. Cách duy nhất để nhận là qua các cơ chế ghi nhận đóng góp công khai. Cảnh giác với mọi lời chào mua/bán LAMP — đó không phải kênh của dự án; và cảnh giác token giả mạo, hãy đối chiếu policy id.
+80. **LAMP có được niêm yết ở đâu không?** Dự án **không niêm yết** LAMP và **không cam kết** gì về việc niêm yết trong tương lai. Nếu thấy LAMP xuất hiện ở đâu đó, hãy hiểu rằng dự án không đứng sau hoạt động đó.
 81. **LAMP có giá bao nhiêu?** Dự án không công bố/hứa hẹn giá; LAMP định vị tiện ích.
 82. **Chuyển LAMP cho người khác được không?** Được — LAMP là token chuẩn, chuyển tự do giữa ví.
 83. **Phí chuyển LAMP?** Phí mạng Cardano thông thường (ADA), không phí riêng.
@@ -229,12 +229,12 @@ lần đều làm tăng `dist_minted`/`reserve_minted` trong chuỗi nên ai cũ
 ## H. Pháp lý & tuân thủ (89–95)
 
 89. **LAMP có phải chứng khoán không?** Định vị là token **tiện ích**, không hứa lợi nhuận; MAGIC tiêu-thụ củng cố điều đó.
-90. **Mua LAMP là đầu tư?** Dự án không định vị/khuyến nghị LAMP như sản phẩm đầu tư.
+90. **LAMP có phải sản phẩm đầu tư không?** Không. Dự án không định vị, không khuyến nghị, và không mô tả LAMP như sản phẩm đầu tư.
 91. **Có whitepaper pháp lý không?** Tài liệu công bố theo lộ trình; tuân thủ quy định nơi phát hành.
 92. **Dự án ở đâu?** Pháp nhân sáng lập (Aladin Contract, GreenSun Tech); cấu trúc pháp lý đang hoàn thiện.
 93. **KYC có cần không?** Tùy chương trình/khu vực; tham gia quản trị qua DID.
 94. **LAMP hợp pháp ở nước tôi?** Tùy quy định địa phương; người dùng tự kiểm tra.
-95. **Dự án có tuân thủ chống rửa tiền không?** Tuân thủ quy định áp dụng khi có hoạt động phát hành/niêm yết chính thức.
+95. **Dự án có tuân thủ chống rửa tiền không?** Tuân thủ pháp luật Việt Nam áp dụng cho hoạt động của mình. Vì không chào bán và không nhận tiền của người dùng, các nghĩa vụ của tổ chức phát hành chứng khoán hay trung gian thanh toán không phát sinh.
 
 ## I. Lộ trình & tương lai (96–100)
 

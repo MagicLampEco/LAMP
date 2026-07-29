@@ -427,7 +427,7 @@ clamp on-chain thuộc **TECH**; chứng minh cận "k DID → tỉ lệ tối �
 ### 4.2 Bước SOẠN và ĐỆ TRÌNH proposal
 
 - Người đề xuất phải có DID hợp lệ (quyền tham gia).
-- **Có thể** đặt **điều kiện đề xuất tối thiểu** (ví dụ: VP ≥ một mức, hoặc đặt cọc LAMP
+- **Có thể** đặt **điều kiện đề xuất tối thiểu** (ví dụ: VP ≥ một mức, hoặc ký quỹ LAMP (hoàn lại)
   chống spam) — mức cụ thể là **tham số mở (DAO định)**. Đặt cọc bị tịch thu nếu proposal
   bị đánh giá spam/ác ý, hoàn lại nếu hợp lệ (chi tiết cơ chế ở TECH).
 - Proposal khai báo rõ: **loại quyết định** (§3), nội dung thực thi, tham số liên quan.
@@ -534,7 +534,7 @@ trừng phe đối lập:
 ### 6.1 Luồng recall
 
 ```
-[ Kiến nghị recall ]  ── cần số chữ ký DID tối thiểu (theo ĐẦU NGƯỜI) + đặt cọc LAMP khởi xướng
+[ Kiến nghị recall ]  ── cần số chữ ký DID tối thiểu (theo ĐẦU NGƯỜI) + ký quỹ LAMP (hoàn lại) khởi xướng
         → [ Cooldown / phản biện ]  ── nêu cáo buộc vi phạm cụ thể (§6.0)
         → [ Bỏ phiếu recall ]  ── ngưỡng ≥ 2/3 tổng VP (đã clamp) THUẬN + điều kiện kép §3.6
         → đạt? ──yes──→ [ Gỡ vai trò / khóa-giảm VP đối tượng ] + hoàn cọc người khởi xướng
@@ -595,7 +595,7 @@ sự chú ý của cộng đồng, hoặc ép đối tượng liên tục tự b
 
 - Bình có C1 cao (tiêu MAGIC đều), C2 cao (cam kết LAMP dài hạn), C3 cao (tín nhiệm cộng đồng,
   không vi phạm), C4 chạm gần cap. VP của Bình lớn.
-- Bình **soạn proposal** siêu đa số (đổi một weight VP), đặt cọc LAMP, qua cooldown.
+- Bình **soạn proposal** siêu đa số (đổi một weight VP), ký quỹ LAMP (hoàn lại), qua cooldown.
 - Nếu Bình **ngừng hoạt động** vài epoch, C1/C2 trượt khỏi cửa sổ → VP giảm. Quyền lực của
   Bình phản ánh đóng góp **đang diễn ra**, không phải quá khứ.
 - Dù VP của Bình rất lớn, khi tally nó bị **clamp về `1/21` tổng** (§3.6): một mình Bình
@@ -651,7 +651,7 @@ là mở.
   §3.3**).
 - **Con số** mẫu số TRẮNG: chọn M1 hay M2 cho từng loại (**bản chất "TRẮNG vào quorum, không
   vào THUẬN, không vào số DID THUẬN §3.6, mẫu số công khai trước và bất biến" đã chốt §3.4**).
-- Điều kiện tối thiểu để đề xuất proposal (VP tối thiểu và/hoặc đặt cọc LAMP).
+- Điều kiện tối thiểu để đề xuất proposal (VP tối thiểu và/hoặc ký quỹ LAMP (hoàn lại)).
 - Độ dài cooldown, cửa sổ bỏ phiếu, timelock thực thi; **N epoch giữa hai vòng đổi cap C4 /
   đổi `BFT_FLOOR`** (**bản chất "hai vòng" đã chốt §3.5**).
 - **Con số** các mốc snapshot (**bản chất đã chốt §4.4: C1/C2/C3 chốt mốc mở vote, C4 chốt
@@ -761,7 +761,7 @@ xử lý + chỗ cần anh/đồng đội theo tiếp:
   + thiếu C4 + thiếu weight DAO) → **đề nghị anh deprecate `SPEC.md`** (FEAT không tự sửa file
   cấp trên).
 - **F3 (grinding recall — major):** thêm **trần recall đồng thời** (theo đối tượng / theo
-  người khởi xướng / toàn hệ) + **đặt cọc LAMP khi khởi xướng** (tịch thu nếu quấy rối) +
+  người khởi xướng / toàn hệ) + **ký quỹ LAMP (hoàn lại) khi khởi xướng** (tịch thu nếu quấy rối) +
   thời gian miễn sau recall thất bại (§6.1, §6.2).
 - **F4 (quorum/TRẮNG/tập sự là bề mặt tấn công — major):** chốt **quorum hai trục** (Q_người
   theo đầu người **và** Q_VP% theo VP, đạt cả hai — §3.1, §3.3); chốt **bản chất xử lý TRẮNG**
