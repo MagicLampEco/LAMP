@@ -5,7 +5,7 @@ KHÔNG mâu thuẫn nó; nó **chứng minh hình thức** các bất biến mà
 truy được về **dòng code thật** ([`tlamp_policy.ak`](./onchain/validators/tlamp_policy.ak),
 [`faucet.ak`](./onchain/validators/faucet.ak)).
 
-> Mọi số nguyên là **BigInt thuần** (không float). Đơn vị nhỏ nhất = **oil**, `1 LAMP = 10^6 oil`
+> Mọi số nguyên là **BigInt thuần** (không float). Đơn vị nhỏ nhất = **oildrop**, `1 LAMP = 10^6 oildrop`
 > (decimals 6, khớp `Distribution/constants` — [CONTRACT §0](./CONTRACT.md),
 > [`constants.ts:4`](./offchain/src/constants.ts)).
 
@@ -15,8 +15,8 @@ truy được về **dòng code thật** ([`tlamp_policy.ak`](./onchain/validato
 
 | Ký hiệu | Nghĩa |
 |---|---|
-| `T` | tổng cung tLAMP (oil) = `36_000_000_000 × 10^6 = 36_000_000_000_000_000` = `3.6e16` |
-| `c` | `claim_amount` (oil) — lượng nhả mỗi claim; MVP = `100 × 10^6 = 1e8` |
+| `T` | tổng cung tLAMP (oildrop) = `36_000_000_000 × 10^6 = 36_000_000_000_000_000` = `3.6e16` |
+| `c` | `claim_amount` (oildrop) — lượng nhả mỗi claim; MVP = `100 × 10^6 = 1e8` |
 | `p` | policy id tLAMP; `n` = asset name = `#"744c414d50"` |
 | `V` | hàm value: `V(tx, p, n)` = số lượng asset `(p,n)` trong value |
 | `g` | `genesis_ref : OutputReference` (param one-shot) |

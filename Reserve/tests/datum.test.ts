@@ -7,13 +7,13 @@ import {
   reserveStateToCbor, reserveStateFromCbor,
   drawRedeemerToCbor,
 } from "../offchain/src/datum.js";
-import { RESERVE_TOTAL_OIL } from "../offchain/src/constants.js";
+import { RESERVE_TOTAL_OILDROP } from "../offchain/src/constants.js";
 import type { ReserveState } from "../offchain/src/types.js";
 
 const sample: ReserveState = {
   start_epoch: 100n,
-  total_oil:   RESERVE_TOTAL_OIL,
-  drawn_oil:   123_000_000n,
+  total_oildrop:   RESERVE_TOTAL_OILDROP,
+  drawn_oildrop:   123_000_000n,
   last_epoch:  142n,
 };
 
@@ -21,7 +21,7 @@ describe("ReserveState codec", () => {
   it("encode → Constr(0, [int×4])", () => {
     const c = encodeReserveState(sample);
     expect(c.index).toBe(0);
-    expect(c.fields).toEqual([100n, RESERVE_TOTAL_OIL, 123_000_000n, 142n]);
+    expect(c.fields).toEqual([100n, RESERVE_TOTAL_OILDROP, 123_000_000n, 142n]);
   });
 
   it("round-trip object → cbor → object", () => {

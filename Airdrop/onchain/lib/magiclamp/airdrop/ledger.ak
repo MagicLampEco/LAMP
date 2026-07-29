@@ -2,7 +2,7 @@
 //
 // ─────────────────────────────────────────────────────────────────────────
 // MỤC TIÊU (TOKENOMICS §TIGER Airdrop)
-//   0,1 tỷ LAMP = 100_000_000 LAMP = 100_000_000 × 10^6 oil airdrop retro cho
+//   0,1 tỷ LAMP = 100_000_000 LAMP = 100_000_000 × 10^6 oildrop airdrop retro cho
 //   delegator TIGER pool theo snapshot. Claim mở 360 epoch sau 29/7; phần DƯ
 //   (không ai claim) → hoàn về Treasury. 1 địa chỉ/DID claim đúng phần snapshot,
 //   KHÔNG double-claim.
@@ -68,7 +68,7 @@
 //     onchain (vốn bất khả thi trong eUTXO).
 //
 // ─────────────────────────────────────────────────────────────────────────
-// ĐƠN VỊ (1 LAMP = 10^6 oil) — KHỚP @magiclamp/utils OIL_PER_LAMP.
+// ĐƠN VỊ (1 LAMP = 10^6 oildrop) — KHỚP @magiclamp/utils OILDROP_PER_LAMP.
 
 use cardano/address.{Address}
 
@@ -109,7 +109,7 @@ pub type AirdropRedeemer {
   Claim {
     /// Address của claimer (khớp leaf + khớp output nhận LAMP).
     claimer: Address,
-    /// Lượng LAMP (oil) claimer được nhận (khớp leaf).
+    /// Lượng LAMP (oildrop) claimer được nhận (khớp leaf).
     amount: Int,
     /// Merkle proof: list các (is_left, sibling_hash) từ leaf → root.
     proof: List<ProofStep>,

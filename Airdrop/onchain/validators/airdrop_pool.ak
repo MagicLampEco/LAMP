@@ -204,7 +204,7 @@ const ap_ms_per_epoch: Int = 86_400_000
 
 const ap_deadline: Int = 500
 
-// claimer A: amount 1_000_000 oil (1 LAMP). claimer B: 2_000_000.
+// claimer A: amount 1_000_000 oildrop (1 LAMP). claimer B: 2_000_000.
 const ap_amount_a: Int = 1_000_000
 
 const ap_amount_b: Int = 2_000_000

@@ -39,7 +39,7 @@ types: [`lib/magiclamp/faucet/types.ak`](./onchain/lib/magiclamp/faucet/types.ak
 
 ```aiken
 pub type FaucetDatum {
-  claim_amount: Int,          // oil mỗi claim; MVP = 100_000_000
+  claim_amount: Int,          // oildrop mỗi claim; MVP = 100_000_000
 }
 pub type FaucetRedeemer {
   Claim                       // chỉ 1 action, permissionless
@@ -233,9 +233,9 @@ cạn đúng `c`, **bỏ hẳn** unit tLAMP (`delete`) để tránh entry qty 0
 
 | Hằng | Giá trị | Khớp |
 |---|---|---|
-| `OIL_PER_LAMP` | `1_000_000n` | decimals 6 (Distribution) |
-| `TOTAL_SUPPLY_OIL` | `36_000_000_000_000_000n` | `tlamp_policy total_supply` |
-| `CLAIM_AMOUNT_OIL` | `100_000_000n` | `FaucetDatum.claim_amount` MVP |
+| `OILDROP_PER_LAMP` | `1_000_000n` | decimals 6 (Distribution) |
+| `TOTAL_SUPPLY_OILDROP` | `36_000_000_000_000_000n` | `tlamp_policy total_supply` |
+| `CLAIM_AMOUNT_OILDROP` | `100_000_000n` | `FaucetDatum.claim_amount` MVP |
 | `TLAMP_ASSET_NAME` | `"744c414d50"` | `tlamp_asset_name` |
 
 Test sanity [`datum.test.ts:40-53`](./tests/datum.test.ts).

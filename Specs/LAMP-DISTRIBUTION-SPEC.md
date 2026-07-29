@@ -44,7 +44,7 @@ vested(t) = min( E , D · drops_per_epoch · max(0, t − start_epoch) )
 redeemable = vested − redeemed         (rút từ treasury con cùng tx, treasury tự-bound)
 ```
 - **Claim** (committee cấp E) / **Redeem** (permissionless, owner rút phần đã mở khoá).
-- Mỗi pot CappedDrop = 1 channel (ChannelBudget HARD-CAP 2 lớp: beacon remaining_oil + treasury con = budget).
+- Mỗi pot CappedDrop = 1 channel (ChannelBudget HARD-CAP 2 lớp: beacon remaining_oildrop + treasury con = budget).
 - Founder (Aladin/GreenSun) dùng **đúng engine + nhịp** cộng đồng (minh bạch, không đường tắt).
 
 ### 3.2 Snapshot-Merkle (ETD / Airdrop / SRCL) — §6

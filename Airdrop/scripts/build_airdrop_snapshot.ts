@@ -10,7 +10,7 @@
 //   npx tsx build_airdrop_snapshot.ts --epoch 580 --pool pool1abc... --out snapshot.json
 //
 // Mặc định: pool = TIGER_POOL_ID từ .env hoặc env.
-// Output: snapshot.json với {address, amount_lamp, amount_oil, stake_epoch}[]
+// Output: snapshot.json với {address, amount_lamp, amount_oildrop, stake_epoch}[]
 //
 // THUẬT TOÁN:
 //   1. Với mỗi epoch E: gọi /epochs/{E}/stakes?pool_id={pool} → danh sách
@@ -18,7 +18,7 @@
 //   2. Cộng dồn stake_epoch cho mỗi địa chỉ qua các epoch: S[addr] += amount
 //   3. Tổng = Σ S[addr]. Phần LAMP = floor(S[addr] × BUDGET / TOTAL_STAKE_EPOCH).
 //   4. Hamilton apportionment → đảm bảo tổng phân bổ = đúng BUDGET (không rò BigInt).
-//   5. Loại địa chỉ nhận < MIN_LAMP_ALLOCATION (default 1 LAMP = 1 × 10⁶ oil).
+//   5. Loại địa chỉ nhận < MIN_LAMP_ALLOCATION (default 1 LAMP = 1 × 10⁶ oildrop).
 //
 // GHI CHÚ 100M vs 120M (model 3-pot, chốt 2026-07-11): tổng Airdrop 120M LAMP =
 //   Delegator 100M + SPO 5M + CS 15M. Script này phân bổ phần DELEGATOR
@@ -35,7 +35,7 @@ const __dir = dirname(fileURLToPath(import.meta.url));
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
-const OIL_PER_LAMP = 1_000_000n;
+const OILDROP_PER_LAMP = 1_000_000n;
 
 // Pool TIGER mặc định (Preview testnet). Override bằng --pool hoặc TIGER_POOL_ID env.
 const DEFAULT_TIGER_POOL =
@@ -127,7 +127,7 @@ interface PoolInfo {
 export interface SnapshotRow {
   address: string;
   amount_lamp: string;  // stringified bigint (để JSON serialize an toàn)
-  amount_oil: string;
+  amount_oildrop: string;
   cumulative_lovelace: string;
   stake_epochs: number;
 }
@@ -269,7 +269,7 @@ async function main(): Promise<void> {
     entries.push({
       address: addrs[i]!,
       amount_lamp: lamp.toString(),
-      amount_oil: (lamp * OIL_PER_LAMP).toString(),
+      amount_oildrop: (lamp * OILDROP_PER_LAMP).toString(),
       cumulative_lovelace: stakes[i]!.toString(),
       stake_epochs: epochCountPerAddr.get(addrs[i]!) ?? 0,
     });

@@ -61,18 +61,18 @@ console.log(`[claim] poolAddr:   ${poolAddress}`);
 console.log(`[claim] markerAddr: ${markerAddress}`);
 console.log(`[claim] nftPid:     ${srclNftPolicyId}`);
 
-const MY_OIL = 1_000_000n;
+const MY_OILDROP = 1_000_000n;
 const sName = markerName(0n, pkh);
 const mySlotUnit = toUnit(srclNftPolicyId, sName);
 
 // cây để sinh proof (giống deploy: owner ví mình 1 LAMP + pkh giả 2 LAMP).
 const dummyOwner = "00112233445566778899aabbccddeeff00112233445566778899aabb";
 const tree = buildTree([
-  { epoch: 0n, owner: pkh, amount: MY_OIL },
+  { epoch: 0n, owner: pkh, amount: MY_OILDROP },
   { epoch: 0n, owner: dummyOwner, amount: 2_000_000n },
 ]);
 const proof = tree.proofFor(0n, pkh);
-const claim: ClaimProof = { epoch: 0n, owner: pkh, amount: MY_OIL, proof };
+const claim: ClaimProof = { epoch: 0n, owner: pkh, amount: MY_OILDROP, proof };
 
 const poolUtxos = await lucid.utxosAt(poolAddress);
 const poolUtxo = poolUtxos.find((u) => (u.assets[poolNftUnit] ?? 0n) === 1n)!;
@@ -83,10 +83,10 @@ if (!slotUtxo) throw new Error("slot UTxO (epoch0, ví) không thấy ở regist
 
 const datum: SrclDatum = decodeSrclDatum(Data.from(poolUtxo.datum!));
 const poolLamp = poolUtxo.assets[lampUnit] ?? 0n;
-const poolAfter = poolLamp - MY_OIL;
+const poolAfter = poolLamp - MY_OILDROP;
 const poolOutAssets: Record<string, bigint> = { ...poolUtxo.assets };
 if (poolAfter > 0n) poolOutAssets[lampUnit] = poolAfter; else delete poolOutAssets[lampUnit];
-const datumAfter: SrclDatum = { ...datum, distributed_total: datum.distributed_total + MY_OIL };
+const datumAfter: SrclDatum = { ...datum, distributed_total: datum.distributed_total + MY_OILDROP };
 const ownerAddress = credentialToAddress("Preview", keyHashToCredential(pkh));
 
 // ÉP collateral pure-ADA + chọn input ví TƯƠI.
@@ -105,13 +105,13 @@ const tx = await lucid.newTx()
   .mintAssets({ [mySlotUnit]: -1n }, burnSlotRedeemerToCbor())
   .attach.MintingPolicy(srclNftPolicy)
   .pay.ToAddressWithData(poolAddress, { kind: "inline", value: srclDatumToCbor(datumAfter) }, poolOutAssets)
-  .pay.ToAddress(ownerAddress, { lovelace: 2_000_000n, [lampUnit]: MY_OIL })
+  .pay.ToAddress(ownerAddress, { lovelace: 2_000_000n, [lampUnit]: MY_OILDROP })
   .collectFrom([collateral])               // ép input pure-ADA (phí + change)
   .complete({ coinSelection: true });
 
 const signed = await tx.sign.withWallet().complete();
 const h = await signed.submit();
-console.log(`[I3] CLAIM submitted ${link(h)} (amount ${MY_OIL} oil → ${ownerAddress})`);
+console.log(`[I3] CLAIM submitted ${link(h)} (amount ${MY_OILDROP} oildrop → ${ownerAddress})`);
 await lucid.awaitTx(h);
 console.log(`[I3] confirmed`);
 
@@ -123,13 +123,13 @@ const poolAfterUtxos = await lucid.utxosAt(poolAddress);
 const pu = poolAfterUtxos.find((u) => (u.assets[poolNftUnit] ?? 0n) === 1n);
 const poolLampAfter = pu ? (pu.assets[lampUnit] ?? 0n) : -1n;
 console.log(`[verify] slot còn ở registry? ${slotStill} (kỳ vọng false)`);
-console.log(`[verify] pool tLAMP sau claim: ${poolLampAfter} oil (kỳ vọng ${poolAfter})`);
+console.log(`[verify] pool tLAMP sau claim: ${poolLampAfter} oildrop (kỳ vọng ${poolAfter})`);
 
 const out = {
   network: "Preview", demo: "SRCL", step: "I3_claim_resume",
   hash: h, link: link(h), poolAddress, markerAddress, srclNftPolicyId,
-  epoch: 0, owner: pkh, amountOil: MY_OIL.toString(),
-  poolLampAfterOil: poolLampAfter.toString(), ownerAddress,
+  epoch: 0, owner: pkh, amountOildrop: MY_OILDROP.toString(),
+  poolLampAfterOildrop: poolLampAfter.toString(), ownerAddress,
   slotUnit: mySlotUnit, slotBurned: !slotStill,
 };
 await writeFile(resolve(import.meta.dirname, "demo-srcl-claim-out.json"),

@@ -16,7 +16,7 @@ describe("intToBe8 — khớp onchain merkle.int_to_be8", () => {
   it("256", () => {
     expect(bytesToHex(intToBe8(256n))).toBe("0000000000000100");
   });
-  it("27_780_000 oil (vector onchain int_to_be8_big)", () => {
+  it("27_780_000 oildrop (vector onchain int_to_be8_big)", () => {
     // onchain test khẳng định = 0x0000000001a7e3a0.
     expect(bytesToHex(intToBe8(27_780_000n))).toBe("0000000001a7e3a0");
   });

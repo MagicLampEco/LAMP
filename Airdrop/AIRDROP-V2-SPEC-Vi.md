@@ -1,8 +1,8 @@
 # Airdrop v2 — Đặc tả tổng (120 triệu LAMP, 3 pot, cùng bộ máy Merkle-airdrop)
 
 > Chủ dự án chốt 2026-07-10. Bản này thay model v1 (TIGER-only auto-snapshot).
-> Đơn vị: **1 LAMP = 10⁶ oildrop** (hằng số `OIL_PER_LAMP` trong
-> `offchain/src/constants.ts`; tên hằng còn giữ `OIL_*` sau lần đổi tên oil → oildrop).
+> Đơn vị: **1 LAMP = 10⁶ oildrop** (hằng số `OILDROP_PER_LAMP` trong
+> `offchain/src/constants.ts`; tên hằng còn giữ `OILDROP_*` sau lần đổi tên oildrop → oildrop).
 > Cơ chế on-chain: xem `README.md`. Phần SPO/CS: xem `SPO-CS-SPEC-Vi.md` (KHÔNG lặp ở đây).
 
 ---
@@ -102,11 +102,11 @@ accStake_i = Σ_{e đủ điều kiện} active_stake_i(e)      // §1.5
 E_i        = floor(budget × accStake_i / Σ accStake)   // budget = 100M LAMP (oildrop)
 ```
 
-- **budget = 100.000.000 × 10⁶ = 1×10¹⁴ oildrop** (= `AIRDROP_TOTAL_OIL` hiện có: pot Delegator
+- **budget = 100.000.000 × 10⁶ = 1×10¹⁴ oildrop** (= `AIRDROP_TOTAL_OILDROP` hiện có: pot Delegator
   giữ đúng con số 100M của `AIRDROP_TOTAL_LAMP`; 120M là **tổng 2 pot**, không phải 1 pot).
 - Largest-remainder (Hamilton) trong `computeEntitlements` → **bảo toàn tuyệt đối**:
   `Σ E_i + leftover = budget`. Dư floor gom về ví stake lớn nhất chưa cap.
-- Cap/ví tùy chọn (chống cá voi): truyền `capOil` → water-filling sẵn có. Mặc định không cap;
+- Cap/ví tùy chọn (chống cá voi): truyền `capOildrop` → water-filling sẵn có. Mặc định không cap;
   nếu cần cap là *tham số quản trị*.
 - Loại ví self-dealing (sáng lập/đối tác) qua `excluded` trước khi chia (chống tư lợi).
 
@@ -210,7 +210,7 @@ nên trích thành util dùng chung hoặc import trực tiếp (giữ 1 nguồn
 
 - `E_open`, `E_cut` — mốc cửa sổ đăng ký delegator (chưa chốt).
 - **N = 2** — số epoch giữ delegation tối thiểu (§1.5). Mặc định, đổi được.
-- `capOil` cho pot Delegator — mặc định không cap; bật nếu cần chống cá voi.
+- `capOildrop` cho pot Delegator — mặc định không cap; bật nếu cần chống cá voi.
 - SetRoot cho SPO/CS drip per-epoch — chốt Cách A/B/C (§2).
 - Danh sách `excluded` ví self-dealing.
 </content>

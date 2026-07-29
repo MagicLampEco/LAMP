@@ -352,7 +352,7 @@ C-COL-4  Split cut đúng sổ — MODEL ĐƠN-BUCKET (category rời rạc, kh�
 
          > Bỏ split_table/BucketSplit khỏi đường collect (sửa audit finding 2 + CHỐT T2 = Treasury
          > CONTRACT §9 T2): TECH trước đây rải cut đa-bucket bằng weight_bps gây lỗ hổng double-rounding
-         > `Σ_b ⌊cut·weight_b/10000⌋ ≤ cut` (lệch tới (số bucket − 1) oil) → sổ có thể cộng KHÁC cut →
+         > `Σ_b ⌊cut·weight_b/10000⌋ ≤ cut` (lệch tới (số bucket − 1) oildrop) → sổ có thể cộng KHÁC cut →
          > tạo/rớt balance ma → vỡ bất biến sổ↔value. **Dạng CHÍNH của MATH là ĐƠN-BUCKET**:
          > `Δ_bucket(category) == cut` (MATH §10 #2 — category rời rạc), TECH khớp đúng dạng này.
          > split_table/đa-bucket là **TÙY CHỌN instance**, KHÔNG phải đường mặc định; MATH hạ
@@ -363,7 +363,7 @@ C-COL-4  Split cut đúng sổ — MODEL ĐƠN-BUCKET (category rời rạc, kh�
 
 C-COL-5  Bất biến nối Δsổ ↔ cut ↔ value (sửa audit finding 2 — mắt xích nối C-COL-2 với §3):
            (a) ∀ asset a:  Σ_{bucket b} (ledger_out[(b,a)] − ledger_in[(b,a)]) == Σ_{item.asset=a} cut(item)
-               (tổng Δsổ mọi bucket KHỚP TUYỆT ĐỐI tổng cut của asset — chống cộng dư/rớt oil).
+               (tổng Δsổ mọi bucket KHỚP TUYỆT ĐỐI tổng cut của asset — chống cộng dư/rớt oildrop).
            (b) Bất biến sổ↔value (§3) giữ sau cập nhật:
                Σ_b ledger_out[(b,a)] == custody_out.value(a) − reserved_min_ada(a)  ∀a.
            Với LAMP/token (reserved_min_ada=0), (a)+(b)+C-COL-2 (==) khóa ba đầu: cut == Δsổ == Δvalue.
@@ -784,7 +784,7 @@ Nền tảng lý thuyết double-satisfaction:
 | `collect_ledger_mismatch` | sổ_out ≠ value_out | **fail** (§3 bất biến) |
 | `collect_tip_lamp` | nộp LAMP DƯ hơn Σ cut (custody.value(LAMP) > in + Σ cut) | **fail** (C-COL-2 `==` cho LAMP, finding 3) |
 | `collect_mint_lamp` | gói mint LAMP vào tx collect | **fail** (C-COL-7 per-asset, finding 4) |
-| `collect_ledger_sum_ne_cut` | Σ_b Δledger ≠ Σ cut (cộng dư/rớt oil) | **fail** (C-COL-5a, finding 2) |
+| `collect_ledger_sum_ne_cut` | Σ_b Δledger ≠ Σ cut (cộng dư/rớt oildrop) | **fail** (C-COL-5a, finding 2) |
 | `release_happy` | proposal Tallied + NFT đúng, rút đúng bucket | pass |
 | `release_no_proposal` | thiếu reference input proposal | **fail** (C-REL-1) |
 | `release_fake_nft` | proposal ref không có NFT đúng policy | **fail** (C-REL-1) |

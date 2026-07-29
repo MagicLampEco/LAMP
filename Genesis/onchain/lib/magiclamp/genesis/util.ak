@@ -8,7 +8,7 @@ use cardano/transaction.{InlineDatum, Input, NoDatum, Output, OutputReference}
 
 // ── Asset / thread helpers ───────────────────────────────────────────────
 
-/// Lượng tLAMP mint trong tx (oil). Δ trong luật mint.
+/// Lượng tLAMP mint trong tx (oildrop). Δ trong luật mint.
 pub fn minted_qty(mint: Value, policy: PolicyId, name: AssetName) -> Int {
   assets.quantity_of(mint, policy, name)
 }

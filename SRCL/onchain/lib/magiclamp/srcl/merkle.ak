@@ -31,7 +31,7 @@ fn ba(a: ByteArray, b: ByteArray) -> ByteArray {
   builtin.append_bytearray(a, b)
 }
 
-/// Mã hoá Int → big-endian 8 byte (giả định 0 ≤ n < 2^64, đủ cho oil/epoch).
+/// Mã hoá Int → big-endian 8 byte (giả định 0 ≤ n < 2^64, đủ cho oildrop/epoch).
 pub fn int_to_be8(n: Int) -> ByteArray {
   do_be(n, 8, #"")
 }
@@ -110,7 +110,7 @@ test int_to_be8_256() {
 }
 
 test int_to_be8_big() {
-  // 27_780_000 (oil) = 0x1A7E3A0
+  // 27_780_000 (oildrop) = 0x1A7E3A0
   int_to_be8(27_780_000) == #"0000000001a7e3a0"
 }
 

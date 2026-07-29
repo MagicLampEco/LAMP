@@ -15,7 +15,7 @@ import {
   analyzeHistory, projectLampFromSnapshot, type HistoryEntry,
 } from "../../TIGER/offchain/src/check.js";
 import { parseSnapshotFile, type SnapshotFile } from "../../TIGER/offchain/src/snapshot.js";
-import { TIGER_TOTAL_OIL, OIL_PER_LAMP, TIGER_POOL_ID_DEFAULT } from "../../TIGER/offchain/src/constants.js";
+import { TIGER_TOTAL_OILDROP, OILDROP_PER_LAMP, TIGER_POOL_ID_DEFAULT } from "../../TIGER/offchain/src/constants.js";
 
 const NETWORK = process.env.NETWORK ?? "Preview";
 const BLOCKFROST_KEY = process.env.BLOCKFROST_KEY ?? "";
@@ -85,9 +85,9 @@ export async function etdCheck(address: string): Promise<EtdCheckResult> {
       const snap = parseSnapshotFile(file);
       // owner khớp owner_key của snapshot (stake_address, hoặc payment pkh khi đã registry-map)
       const owner = file.meta.owner_key === "stake_address" ? stakeAddr : stakeAddr;
-      const proj = projectLampFromSnapshot(snap, owner, TIGER_TOTAL_OIL);
-      if (proj.amountOil !== null) {
-        amount_lamp = (proj.amountOil / OIL_PER_LAMP).toString();
+      const proj = projectLampFromSnapshot(snap, owner, TIGER_TOTAL_OILDROP);
+      if (proj.amountOildrop !== null) {
+        amount_lamp = (proj.amountOildrop / OILDROP_PER_LAMP).toString();
         capped = proj.capped;
       }
       provisional = false;

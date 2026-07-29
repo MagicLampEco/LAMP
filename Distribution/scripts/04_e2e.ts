@@ -32,11 +32,11 @@ import { buildRedeemTx }     from "../offchain/src/redeemBuilder.js";
 import { D_GENESIS }         from "../offchain/src/constants.js";
 import type { LucidEvolution, UTxO, TxSignBuilder } from "@lucid-evolution/lucid";
 
-const LAMP_A = 250_000_000n;   // 250 LAMP entitlement (oil)
-const LAMP_B = 1_000_000_000n; // 1000 LAMP entitlement (oil)
+const LAMP_A = 250_000_000n;   // 250 LAMP entitlement (oildrop)
+const LAMP_B = 1_000_000_000n; // 1000 LAMP entitlement (oildrop)
 
-// DropParam D (oil/drop·epoch). Khớp 03 genesis (DROP_VALUE_OIL) nếu set; else D_GENESIS.
-const DROP_VALUE = BigInt(process.env.DROP_VALUE_OIL ?? D_GENESIS.toString());
+// DropParam D (oildrop/drop·epoch). Khớp 03 genesis (DROP_VALUE_OILDROP) nếu set; else D_GENESIS.
+const DROP_VALUE = BigInt(process.env.DROP_VALUE_OILDROP ?? D_GENESIS.toString());
 
 function norm(h: string): string {
   return (h.startsWith("0x") ? h.slice(2) : h).toLowerCase();

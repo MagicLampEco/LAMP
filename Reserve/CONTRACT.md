@@ -29,10 +29,10 @@ Bộ đếm = **ReserveState UTxO** (duy nhất, ghim bởi `reserve_thread` NFT
 
 | Hằng | Giá trị | Ghi chú |
 |---|---|---|
-| 1 LAMP | `1_000_000` oil | 10^6, khớp Genesis/Distribution |
-| `E` (total_oil) | `9_630_000_000_000_000` oil | 9,630 tỷ LAMP — cap Reserve allocation v17 |
+| 1 LAMP | `1_000_000` oildrop | 10^6, khớp Genesis/Distribution |
+| `E` (total_oildrop) | `9_630_000_000_000_000` oildrop | 9,630 tỷ LAMP — cap Reserve allocation v17 |
 | `release_epochs` | `1000` | hằng thiết kế (`math.ak:13`); `E ⋮ 1000` → chia chẵn, dư = 0 |
-| `max_per_epoch` | `E / 1000 = 9_630_000_000_000` oil | trần CỨNG mỗi epoch (`math.ak:17`) |
+| `max_per_epoch` | `E / 1000 = 9_630_000_000_000` oildrop | trần CỨNG mỗi epoch (`math.ak:17`) |
 
 `max_per_epoch(E) × 1000 == E` (`math.ak:55` test). Cạn pot liên tục đúng trần ⇒ 1000 epoch.
 
@@ -43,8 +43,8 @@ Bộ đếm = **ReserveState UTxO** (duy nhất, ghim bởi `reserve_thread` NFT
 ```
 ReserveState {
   start_epoch : Int,   // epoch khởi tạo (BẤT BIẾN)
-  total_oil   : Int,   // E = tổng quota Reserve (BẤT BIẾN)
-  drawn_oil   : Int,   // oil đã nhả tích lũy (đơn điệu tăng, ≤ total_oil)
+  total_oildrop   : Int,   // E = tổng quota Reserve (BẤT BIẾN)
+  drawn_oildrop   : Int,   // oildrop đã nhả tích lũy (đơn điệu tăng, ≤ total_oildrop)
   last_epoch  : Int,   // epoch của draw gần nhất (ép ≤1 draw/epoch)
 }
 = Constr(0, [int, int, int, int])
@@ -57,8 +57,8 @@ ReserveRedeemer:      Draw              = Constr(0, [])   // nhả ≤ trần/ep
 ReserveThreadRedeemer: MintReserveThread = Constr(0, [])  // đúc reserve_thread NFT one-shot (deploy)
 ```
 
-**Bất biến:** `start_epoch` + `total_oil` GIỮ NGUYÊN qua mọi transition; `drawn_oil` đơn điệu
-tăng (≤ `total_oil`); `last_epoch` ghi epoch draw này → chống re-draw cùng epoch.
+**Bất biến:** `start_epoch` + `total_oildrop` GIỮ NGUYÊN qua mọi transition; `drawn_oildrop` đơn điệu
+tăng (≤ `total_oildrop`); `last_epoch` ghi epoch draw này → chống re-draw cùng epoch.
 
 ---
 
@@ -94,8 +94,8 @@ Gọi `s` = ReserveState input, `s2` = ReserveState output, `delta` = `Δ mint L
 6. **Chống double-satisfaction** — đúng 1 ReserveState input/tx theo own script-hash
    (`count_inputs_at_script == 1`). 2 input có thể chia chung 1 output dest → drain.
 7. **ReserveState' tái tạo đúng** — đúng 1 output mang `reserve_thread` NFT, CÙNG script address;
-   `s2.start_epoch == s.start_epoch` ∧ `s2.total_oil == s.total_oil` (bất biến) ∧
-   `s2.drawn_oil == s.drawn_oil + delta` (đơn điệu) ∧ `s2.last_epoch == t`. State' KHÔNG ôm LAMP
+   `s2.start_epoch == s.start_epoch` ∧ `s2.total_oildrop == s.total_oildrop` (bất biến) ∧
+   `s2.drawn_oildrop == s.drawn_oildrop + delta` (đơn điệu) ∧ `s2.last_epoch == t`. State' KHÔNG ôm LAMP
    (chống nhồi LAMP né dest) ∧ KHÔNG đính `reference_script`.
 8. **reserve_thread NFT không mint/burn trong tx** — `quantity_of(tx.mint, reserve_thread_*) == 0`.
    Chống đúc thêm meter NFT giả giữ ở ví thường để né validator (Vector F).
@@ -146,7 +146,7 @@ Auth NFT là **input** từ gate → thỏa Luật 5; `reserve_gate` đọc `par
 | Kế toán sai (drawn/last_epoch) | Luật 7 | `reject_drawn_wrong_sum` / `reject_last_epoch_not_updated` |
 | Rò rỉ LAMP né dest | Luật 9 | `reject_lamp_leak_not_to_dest` |
 | Double-satisfaction | Luật 6 | `reject_double_satisfaction` |
-| Nới cap / dời mốc | Luật 7 (bất biến) | `reject_total_oil_mutated` / `reject_start_epoch_mutated` |
+| Nới cap / dời mốc | Luật 7 (bất biến) | `reject_total_oildrop_mutated` / `reject_start_epoch_mutated` |
 | State' ôm LAMP / rời địa chỉ | Luật 7 | `reject_state_output_holds_lamp` / `reject_state_moved_address` |
 | Đúc thêm meter NFT (Vector F) | Luật 8 | `reject_mint_extra_reserve_thread` |
 | upper_bound vô hạn / khác epoch (Vector 2) | Luật 2 | `reject_upper_bound_infinite` / `reject_upper_bound_other_epoch` |

@@ -5,7 +5,7 @@
 // ─────────────────────────────────────────────────────────────────────────
 // 2 công ty vận hành pool SPO. Delegator ủy thác ADA → reward ADA (margin) do
 // 2 cty thu. ĐỔI LẠI: delegator nhận LAMP theo TỶ LỆ STAKE mỗi epoch.
-//   Tổng 360 triệu LAMP (360_000_000 × 10^6 oil) chia đều 36 epoch.
+//   Tổng 360 triệu LAMP (360_000_000 × 10^6 oildrop) chia đều 36 epoch.
 //   entitlement_e[addr] = (1e9/36) LAMP × stake_e[addr] / Σ stake_e
 //
 // Phần OFF-CHAIN (vận hành SPO + thu reward ADA) KHÔNG on-chain — là thao tác
@@ -60,7 +60,7 @@ pub type SrclDatum {
   /// sau khi snapshot stake epoch e (SetRoot append). Claim epoch e tra root tại
   /// vị trí e. Mỗi root cam kết toàn bộ leaf (epoch, addr, amount) của epoch đó.
   epoch_roots: List<ByteArray>,
-  /// Tổng LAMP (oil) đã phân phối khỏi pool (sổ kế toán, chỉ tăng).
+  /// Tổng LAMP (oildrop) đã phân phối khỏi pool (sổ kế toán, chỉ tăng).
   distributed_total: Int,
   /// Epoch cuối SRCL (= 35, hết 36 epoch 0..35). Sweep chỉ sau end_epoch.
   end_epoch: Int,
@@ -78,7 +78,7 @@ pub type ClaimProof {
   epoch: Int,
   /// payment-credential hash (pkh) của delegator — đích nhận LAMP.
   owner: ByteArray,
-  /// Lượng LAMP (oil) entitlement của (epoch, owner).
+  /// Lượng LAMP (oildrop) entitlement của (epoch, owner).
   amount: Int,
   /// Đường Merkle từ leaf tới root (mỗi bước = hash anh-em + bên trái/phải).
   proof: List<MerkleStep>,

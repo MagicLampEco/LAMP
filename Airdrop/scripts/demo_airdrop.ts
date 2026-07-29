@@ -90,17 +90,17 @@ console.log(`[airdrop] tLAMP unit: ${lampUnit}`);
 const dummyPkh = "00112233445566778899aabbccddeeff00112233445566778899aabb";
 const otherAddr = credentialToAddress("Preview", { type: "Key", hash: dummyPkh });
 
-const MY_CLAIM_OIL = 1_000_000n;   // 1 LAMP cho ví mình (claim được)
-const OTHER_OIL = 2_000_000n;      // 2 LAMP cho địa chỉ phụ (không claim)
+const MY_CLAIM_OILDROP = 1_000_000n;   // 1 LAMP cho ví mình (claim được)
+const OTHER_OILDROP = 2_000_000n;      // 2 LAMP cho địa chỉ phụ (không claim)
 
 const snapshot: SnapshotEntry[] = [
-  { address: myAddr, amount: MY_CLAIM_OIL },
-  { address: otherAddr, amount: OTHER_OIL },
+  { address: myAddr, amount: MY_CLAIM_OILDROP },
+  { address: otherAddr, amount: OTHER_OILDROP },
 ];
 const tree = buildTree(snapshot);
-const poolSeedOil = snapshot.reduce((s, e) => s + e.amount, 0n); // tổng = 3 LAMP
+const poolSeedOildrop = snapshot.reduce((s, e) => s + e.amount, 0n); // tổng = 3 LAMP
 console.log(`[airdrop] merkle_root: ${tree.root}`);
-console.log(`[airdrop] leaves: ${tree.leaves.length}, pool seed: ${poolSeedOil} oil`);
+console.log(`[airdrop] leaves: ${tree.leaves.length}, pool seed: ${poolSeedOildrop} oildrop`);
 
 // ── Apply validators (genesis_ref one-shot) ────────────────────────────────
 const walletUtxos0 = await lucid.wallet().getUtxos();
@@ -156,13 +156,13 @@ let a1Hash: string;
     airdropNftPolicy, airdropNftPolicyId,
     poolAddress, pool, tree,
     lamp_policy: LAMP_POLICY, lamp_name: LAMP_NAME,
-    poolLampAmount: poolSeedOil,
+    poolLampAmount: poolSeedOildrop,
   });
   console.log("\n" + summary + "\n");
   const signed = await tx.sign.withWallet().complete();
   a1Hash = await signed.submit();
   console.log(`[A1] DEPLOY submitted ${link(a1Hash)}`);
-  rec({ step: "A1_deploy", hash: a1Hash, link: link(a1Hash), poolAddress, markerAddress, slots: slotUnits.length, poolSeedOil: poolSeedOil.toString() });
+  rec({ step: "A1_deploy", hash: a1Hash, link: link(a1Hash), poolAddress, markerAddress, slots: slotUnits.length, poolSeedOildrop: poolSeedOildrop.toString() });
   await lucid.awaitTx(a1Hash);
   await waitVisible(a1Hash, poolAddress);
   await waitVisible(a1Hash, markerAddress);
@@ -195,8 +195,8 @@ let a2Hash: string;
   console.log("\n" + summary + "\n");
   const signed = await tx.sign.withWallet().complete();
   a2Hash = await signed.submit();
-  console.log(`[A2] CLAIM submitted ${link(a2Hash)} (amount ${amount} oil)`);
-  rec({ step: "A2_claim", hash: a2Hash, link: link(a2Hash), claimer: myAddr, amountOil: amount.toString(), leaf, slotUnit });
+  console.log(`[A2] CLAIM submitted ${link(a2Hash)} (amount ${amount} oildrop)`);
+  rec({ step: "A2_claim", hash: a2Hash, link: link(a2Hash), claimer: myAddr, amountOildrop: amount.toString(), leaf, slotUnit });
   await lucid.awaitTx(a2Hash);
   await waitVisible(a2Hash, poolAddress);
   console.log(`[A2] confirmed`);
@@ -211,8 +211,8 @@ let a2Hash: string;
   const poolUtxo = poolUtxos.find((u) => (u.assets[poolNftUnit] ?? 0n) === 1n);
   const poolLampAfter = poolUtxo ? (poolUtxo.assets[lampUnit] ?? 0n) : -1n;
   console.log(`[verify] slot leaf ví mình còn ở registry? ${slotStill} (kỳ vọng false = đã burn)`);
-  console.log(`[verify] pool tLAMP sau claim: ${poolLampAfter} oil (kỳ vọng ${poolSeedOil - MY_CLAIM_OIL})`);
-  rec({ step: "verify", slotBurned: !slotStill, poolLampAfterOil: poolLampAfter.toString(), expectedPoolLampOil: (poolSeedOil - MY_CLAIM_OIL).toString() });
+  console.log(`[verify] pool tLAMP sau claim: ${poolLampAfter} oildrop (kỳ vọng ${poolSeedOildrop - MY_CLAIM_OILDROP})`);
+  rec({ step: "verify", slotBurned: !slotStill, poolLampAfterOildrop: poolLampAfter.toString(), expectedPoolLampOildrop: (poolSeedOildrop - MY_CLAIM_OILDROP).toString() });
 }
 
 await writeFile(resolve(import.meta.dirname, "demo-airdrop-out.json"),

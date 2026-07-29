@@ -34,10 +34,10 @@ const AUTH_NAME = "5054"; // "PT" (pull-auth)
 const INSTANCE_ID = "747265732d7265736576"; // "tres-resev"
 const MS_PER_EPOCH = 432_000_000n;
 const PROPOSAL_POLICY = "00".repeat(28);
-const RESERVE_TOTAL_OIL = 9_630_000_000_000_000n;
-const MAX_PER_EPOCH = RESERVE_TOTAL_OIL / 1000n;
-const FLOOR_OIL = 1_000_000n;       // sàn 1 tLAMP; parked custody = 0 < sàn → cho kéo
-const DRAW_OIL = 1_000_000n;        // kéo 1 tLAMP (≤ trần, ≤ pot)
+const RESERVE_TOTAL_OILDROP = 9_630_000_000_000_000n;
+const MAX_PER_EPOCH = RESERVE_TOTAL_OILDROP / 1000n;
+const FLOOR_OILDROP = 1_000_000n;       // sàn 1 tLAMP; parked custody = 0 < sàn → cho kéo
+const DRAW_OILDROP = 1_000_000n;        // kéo 1 tLAMP (≤ trần, ≤ pot)
 const RESERVED_MIN_ADA = 2_000_000n;
 
 const lucid = await Lucid(
@@ -117,7 +117,7 @@ const custodySeedPolicy: MintingPolicy = { type: "PlutusV3", script: applyParams
 const custodySeedPid = mintingPolicyToId(custodySeedPolicy);
 const custodyNftUnit = toUnit(custodySeedPid, INSTANCE_ID);
 
-const gateScript: Validator = { type: "PlutusV3", script: applyParamsToScript(gt("reserve_gate.reserve_gate.spend"), [custodySeedPid, INSTANCE_ID, tlampPid, TOKEN_NAME, FLOOR_OIL, authPid, AUTH_NAME]) };
+const gateScript: Validator = { type: "PlutusV3", script: applyParamsToScript(gt("reserve_gate.reserve_gate.spend"), [custodySeedPid, INSTANCE_ID, tlampPid, TOKEN_NAME, FLOOR_OILDROP, authPid, AUTH_NAME]) };
 const gateHash = validatorToScriptHash(gateScript);
 const gateAddr = credentialToAddress("Preview", scriptHashToCredential(gateHash));
 
@@ -154,7 +154,7 @@ const epochNow = () => BigInt(Math.floor((Date.now() - 90_000) / Number(MS_PER_E
 // ── R1: mint reserve_thread NFT + init ReserveState → reserve_draw addr ──
 {
   const start = epochNow();
-  const rState = { start_epoch: start, total_oil: RESERVE_TOTAL_OIL, drawn_oil: 0n, last_epoch: 0n };
+  const rState = { start_epoch: start, total_oildrop: RESERVE_TOTAL_OILDROP, drawn_oildrop: 0n, last_epoch: 0n };
   const tx = await lucid.newTx()
     .collectFrom([seedReserve])
     .mintAssets({ [reserveThreadUnit]: 1n }, Data.to(new Constr(0, [])))
@@ -163,7 +163,7 @@ const epochNow = () => BigInt(Math.floor((Date.now() - 90_000) / Number(MS_PER_E
     .addSignerKey(pkh)
     .complete({ coinSelection: true });
   const h = await (await tx.sign.withWallet().complete()).submit();
-  console.log(`[R1] ReserveState init (total=${RESERVE_TOTAL_OIL}) ${link(h)}`);
+  console.log(`[R1] ReserveState init (total=${RESERVE_TOTAL_OILDROP}) ${link(h)}`);
   rec({ step: "R1_reserve_init", hash: h, link: link(h), reserveDrawAddr, start_epoch: start.toString() });
   await lucid.awaitTx(h); await waitVisible(h, reserveDrawAddr); await waitVisible(h, myAddr);
 }
@@ -184,7 +184,7 @@ const epochNow = () => BigInt(Math.floor((Date.now() - 90_000) / Number(MS_PER_E
     .addSignerKey(pkh)
     .complete({ coinSelection: true });
   const h = await (await tx.sign.withWallet().complete()).submit();
-  console.log(`[T1] custody seed (parked=0 < floor=${FLOOR_OIL}) ${link(h)}`);
+  console.log(`[T1] custody seed (parked=0 < floor=${FLOOR_OILDROP}) ${link(h)}`);
   rec({ step: "T1_custody_seed", hash: h, link: link(h), custodyAddr });
   await lucid.awaitTx(h); await waitVisible(h, custodyAddr); await waitVisible(h, myAddr);
 }
@@ -232,11 +232,11 @@ const epochNow = () => BigInt(Math.floor((Date.now() - 90_000) / Number(MS_PER_E
     hiMs = Number((t + 1n) * MS_PER_EPOCH) - 1000;
   }
   if (!(t > lastEpoch)) throw new Error(`[DRAW] t=${t} ≤ last_epoch=${lastEpoch}`);
-  const rOut = { start_epoch: start, total_oil: total, drawn_oil: drawn + DRAW_OIL, last_epoch: t };
+  const rOut = { start_epoch: start, total_oildrop: total, drawn_oildrop: drawn + DRAW_OILDROP, last_epoch: t };
 
   // SupplyState' (reserve_minted += delta).
   const sIn = Data.from(supplyUtxo.datum!) as Constr<Data>;
-  const sOut = new Constr(0, [sIn.fields[0], (sIn.fields[1] as bigint) + DRAW_OIL, sIn.fields[2], sIn.fields[3]]);
+  const sOut = new Constr(0, [sIn.fields[0], (sIn.fields[1] as bigint) + DRAW_OILDROP, sIn.fields[2], sIn.fields[3]]);
 
   // reserve_dest = custody addr → delta LAMP về custody (value thô).
   let txb = lucid.newTx()
@@ -245,14 +245,14 @@ const epochNow = () => BigInt(Math.floor((Date.now() - 90_000) / Number(MS_PER_E
     .attach.SpendingValidator(reserveDrawScript)
     .pay.ToContract(reserveDrawAddr, { kind: "inline", value: reserveStateToCbor(rOut) }, { lovelace: RESERVED_MIN_ADA, [reserveThreadUnit]: 1n })
     // lamp_mint ReserveDraw: mint delta tLAMP.
-    .mintAssets({ [lampUnit]: DRAW_OIL }, Data.to(new Constr(1, [])))
+    .mintAssets({ [lampUnit]: DRAW_OILDROP }, Data.to(new Constr(1, [])))
     .attach.MintingPolicy(tlampPolicy)
     // SupplyState advance.
     .collectFrom([supplyUtxo], Data.to(new Constr(0, [])))
     .attach.SpendingValidator(ssScript)
     .pay.ToContract(ssAddr, { kind: "inline", value: Data.to(sOut) }, { lovelace: supplyUtxo.assets.lovelace, [threadUnit]: 1n })
     // delta LAMP → reserve_dest (custody addr) value thô.
-    .pay.ToAddress(custodyAddr, { lovelace: RESERVED_MIN_ADA, [lampUnit]: DRAW_OIL })
+    .pay.ToAddress(custodyAddr, { lovelace: RESERVED_MIN_ADA, [lampUnit]: DRAW_OILDROP })
     .validFrom(loMs).validTo(hiMs)
     .addSignerKey(pkh);
 
@@ -260,13 +260,13 @@ const epochNow = () => BigInt(Math.floor((Date.now() - 90_000) / Number(MS_PER_E
   txb = attachGateSpend(txb, {
     lucid, authUtxo, gateScript, gateAddress: gateAddr,
     authPolicyId: authPid, authName: AUTH_NAME,
-    custodyUtxo, lampPolicyId: tlampPid, tokenName: TOKEN_NAME, floorOil: FLOOR_OIL,
+    custodyUtxo, lampPolicyId: tlampPid, tokenName: TOKEN_NAME, floorOildrop: FLOOR_OILDROP,
   });
 
   const tx = await txb.complete({ coinSelection: true });
   const h = await (await tx.sign.withWallet().complete()).submit();
-  console.log(`[DRAW] Reserve→Treasury pull ${DRAW_OIL} oil (t=${t}) ${link(h)}`);
-  rec({ step: "DRAW", hash: h, link: link(h), deltaOil: DRAW_OIL.toString(), epoch: t.toString(), reserveDest: custodyAddr });
+  console.log(`[DRAW] Reserve→Treasury pull ${DRAW_OILDROP} oildrop (t=${t}) ${link(h)}`);
+  rec({ step: "DRAW", hash: h, link: link(h), deltaOildrop: DRAW_OILDROP.toString(), epoch: t.toString(), reserveDest: custodyAddr });
   await lucid.awaitTx(h); await waitVisible(h, custodyAddr);
 }
 

@@ -57,7 +57,7 @@ PriceFn dịch một `FeeEvent` của bạn → `PricedItem` (asset + amount + b
 export type PriceFn = (event: FeeEvent) => PricedItem | null;
 ```
 
-- `amount` luôn **BigInt**, đơn vị nhỏ nhất (lovelace = ADA×10⁶, nanogic = MAGIC×10⁹, oil = LAMP×10⁶).
+- `amount` luôn **BigInt**, đơn vị nhỏ nhất (lovelace = ADA×10⁶, nanogic = MAGIC×10⁹, oildrop = LAMP×10⁶).
   KHÔNG dùng `Number` (chống overflow/làm tròn).
 - Trả `null` = sự kiện KHÔNG thu phí qua adapter này (bị bỏ qua).
 - **Framework trung lập với chính sách giá** — bạn tự quyết công thức (cố định / value-based / oracle).

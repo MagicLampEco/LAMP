@@ -12,10 +12,10 @@
 // CLAIM (permissionless, DID-gated):
 //   - đúng 1 POOL input + 1 POOL output (theo POOL NFT authenticity).
 //   - FaucetConfig (drip/cooldown/reclaim) bảo toàn ở pool output.
-//   - pool.value bảo toàn TUYỆT ĐỐI trừ −drip_oil tLAMP (giữ POOL NFT + ADA + dust).
+//   - pool.value bảo toàn TUYỆT ĐỐI trừ −drip_oildrop tLAMP (giữ POOL NFT + ADA + dust).
 //   - tx có input mang DID NFT (did_nft_policy, did_name) qty ≥1 → định danh DID.
 //   - đúng 1 account output (mang ACCT NFT) datum {did_name, last_epoch=now},
-//     nhận ĐÚNG drip_oil tLAMP. did_name account == did_name của DID NFT.
+//     nhận ĐÚNG drip_oildrop tLAMP. did_name account == did_name của DID NFT.
 //   - COOLDOWN: nếu tx có account INPUT cùng did_name (re-claim) → ép
 //     now ≥ old.last_epoch + cooldown_epochs. (First-claim: không có account input.)
 //   - 1 account/DID: re-claim consume account cũ, account validator burn ACCT cũ
@@ -70,7 +70,7 @@ validator faucet_pool(
     expect out_cfg == cfg
 
     // Hằng hợp lệ.
-    expect cfg.drip_oil > 0
+    expect cfg.drip_oildrop > 0
     expect cfg.cooldown_epochs >= 0
     expect cfg.reclaim_epochs > 0
 
@@ -85,7 +85,7 @@ validator faucet_pool(
             pool_in.value,
             lamp_policy,
             lamp_name,
-            -cfg.drip_oil,
+            -cfg.drip_oildrop,
           )
 
         // Đúng 1 account output mang ACCT NFT (account chính danh mới).
@@ -101,7 +101,7 @@ validator faucet_pool(
 
         // Account nhận ĐÚNG drip tLAMP (không hơn không kém → bảo toàn cung).
         expect
-          assets.quantity_of(acct_out.value, lamp_policy, lamp_name) == cfg.drip_oil
+          assets.quantity_of(acct_out.value, lamp_policy, lamp_name) == cfg.drip_oildrop
 
         // DID-gated: tx có input mang DID NFT (did_nft_policy, did_name=acct.did_name)
         // qty ≥1. did_name account PHẢI khớp DID NFT → chống claim hộ DID khác.
@@ -211,7 +211,7 @@ const fp_did_name: ByteArray = #"a11ce0"
 
 fn fp_cfg() -> FaucetConfig {
   FaucetConfig {
-    drip_oil: fp_drip,
+    drip_oildrop: fp_drip,
     cooldown_epochs: fp_cooldown,
     reclaim_epochs: fp_reclaim,
   }
@@ -407,7 +407,7 @@ test claim_before_cooldown() fail {
 test claim_config_tamper() fail {
   // pool_out config đổi drip → out_cfg ≠ cfg → reject.
   let pool_addr = util.script_address(fp_pool_sh)
-  let bad_cfg = FaucetConfig { drip_oil: 1, cooldown_epochs: 0, reclaim_epochs: 1 }
+  let bad_cfg = FaucetConfig { drip_oildrop: 1, cooldown_epochs: 0, reclaim_epochs: 1 }
   let pool_in =
     util.mk_input(util.mk_ref(0), util.mk_output(pool_addr, fp_pool_val(10_000_000, 5_000_000_000), fp_cfg()))
   let pool_out =

@@ -46,8 +46,8 @@ cộng đồng vẫn có, qua **bình chọn có-trọng-số-stake** (pot CS, �
 
 ## 3. Ba pot — công thức trọng số
 
-Ký hiệu: `Split(weights, potOil, capOil?)` = chia `potOil` cho danh sách `{id, stake}` theo
-largest-remainder (Hamilton), bảo toàn tuyệt đối `Σ = potOil` (khi `capOil = null`). Hiện
+Ký hiệu: `Split(weights, potOildrop, capOildrop?)` = chia `potOildrop` cho danh sách `{id, stake}` theo
+largest-remainder (Hamilton), bảo toàn tuyệt đối `Σ = potOildrop` (khi `capOildrop = null`). Hiện
 thực: `cs_score.ts::splitByStake` (tái dùng `computeEntitlements` của TIGER — 1 nguồn thuật
 toán, đã chạy thật trên Preview).
 
@@ -68,7 +68,7 @@ Reward SPO tỉ lệ **lượng stake-đã-đăng-ký chảy vào pool của h�
 weight_SPO(i) = Σ_{d đã đăng ký, delegate vào pool của i} accStake(d)
 reward_SPO(i) = Split({i ↦ weight_SPO(i)}, 5.000.000 LAMP)
 ```
-Hiện thực: `splitSpoPot(spoWeights, SPO_POT_OIL)`.
+Hiện thực: `splitSpoPot(spoWeights, SPO_POT_OILDROP)`.
 
 ### 3.3. Pot CS (15M) — trọng số = stake của người BÌNH CHỌN
 
@@ -78,7 +78,7 @@ Reward supporter tỉ lệ **tổng stake của các delegator đã bình chọn
 weight_CS(j) = Σ_{d bình chọn j} allocation_d(j)          (xem quy tắc §3.4)
 reward_CS(j) = Split({j ↦ weight_CS(j)}, 15.000.000 LAMP)
 ```
-Hiện thực: `splitCsPot(csWeights, CS_POT_OIL)`. `csWeights[{supporter_id, weight_stake}]` do
+Hiện thực: `splitCsPot(csWeights, CS_POT_OILDROP)`. `csWeights[{supporter_id, weight_stake}]` do
 AffiSo/ProofChat thu & xuất.
 
 ### 3.4. Quy tắc bình chọn — chống double-count
@@ -115,9 +115,9 @@ vẫn thắng lớn ở pot CS. Cả hai không mua được bằng account gi�
 
 ## 5. Cap tuỳ chọn mỗi-người (chống cá voi)
 
-`Split` nhận tham số **`capOil` tuỳ chọn** (như ETD `TIGER/offchain/src/entitlement.ts`): người chạm trần
+`Split` nhận tham số **`capOildrop` tuỳ chọn** (như ETD `TIGER/offchain/src/entitlement.ts`): người chạm trần
 ghim ở cap, phần dôi chia lại theo tỷ lệ stake cho người chưa chạm (water-filling); phần
-không chia được do cap → **leftover về Treasury**. **Mặc định `capOil = null`** (không cap).
+không chia được do cap → **leftover về Treasury**. **Mặc định `capOildrop = null`** (không cap).
 Đây là tham số quản trị, công bố mỗi đợt nếu bật.
 
 ## 6. Bảo toàn & largest-remainder
@@ -125,17 +125,17 @@ không chia được do cap → **leftover về Treasury**. **Mặc định `cap
 Mọi tiền là **BigInt oildrop**. Chia bằng **largest-remainder (Hamilton)** — trùng thuật
 toán token-side đã chạy thật trên Preview:
 
-- `cap = null` ⇒ `Σ reward = potOil` (dư floor gom về người stake lớn nhất) — **bảo toàn tuyệt đối**.
-- Không ai stake > 0 (mảng rỗng / toàn 0) ⇒ `Σ reward = 0`, **leftover = potOil** (về Treasury).
+- `cap = null` ⇒ `Σ reward = potOildrop` (dư floor gom về người stake lớn nhất) — **bảo toàn tuyệt đối**.
+- Không ai stake > 0 (mảng rỗng / toàn 0) ⇒ `Σ reward = 0`, **leftover = potOildrop** (về Treasury).
 - 1 người nhận duy nhất ⇒ nhận **toàn bộ pot**.
 - `cap > 0` ⇒ mỗi `reward ≤ cap`; phần chặn bởi cap → leftover.
 
 ## 7. Minh bạch — cộng đồng kiểm chứng lại
 
-Mỗi đợt AffiSo công bố **weights snapshot** — mỗi dòng `(pot, id, stake_weight, reward_oil)`:
+Mỗi đợt AffiSo công bố **weights snapshot** — mỗi dòng `(pot, id, stake_weight, reward_oildrop)`:
 
 - **Merkle root ghi on-chain** trong datum tx phân phối (tái dùng `airdrop_pool.ak`), lá =
-  `H(id ‖ reward_oil)`; toàn bộ dữ liệu weights đăng công khai ở magiclamp.network/forum.
+  `H(id ‖ reward_oildrop)`; toàn bộ dữ liệu weights đăng công khai ở magiclamp.network/forum.
 - Công thức **tất định + neo stake on-chain** → **bất kỳ ai tự tính lại** `weight` từ dữ liệu
   delegation/vote công khai, chạy lại `splitByStake`, dựng lại cây, đối chiếu root on-chain.
 - Với CS: dữ liệu vote (delegator → supporter, allocation) công khai; ai cũng verify được
@@ -145,7 +145,7 @@ Mỗi đợt AffiSo công bố **weights snapshot** — mỗi dòng `(pot, id, s
 ## 8. Điểm còn phải chốt (giao quản trị / đợt-1 GreenSun)
 
 - `N` (số epoch giữ delegation tối thiểu cho accStake) — mặc định 2.
-- `capOil` mỗi pot SPO/CS — mặc định null; bật nếu cần chống cá voi.
+- `capOildrop` mỗi pot SPO/CS — mặc định null; bật nếu cần chống cá voi.
 - Quy tắc allocation CS (§3.4): dồn-1 vs chia-đều — công bố mỗi đợt.
 - Số bond AffiSo + luật slash + trọng tài khiếu nại.
 - SPO/CS drip 1 root tĩnh hay per-epoch (SetRoot) — xem AIRDROP-V2 §2.

@@ -5,11 +5,11 @@
 import { describe, it, expect } from "vitest";
 import { credentialToAddress, keyHashToCredential, scriptHashToCredential, toUnit } from "@lucid-evolution/lucid";
 import {
-  parseSnapshot, buildSnapshotTree, totalOil, exportClaims,
+  parseSnapshot, buildSnapshotTree, totalOildrop, exportClaims,
   type RawSnapshotRow,
 } from "../src/snapshotTool.js";
 import { buildProofForAddress, verifyProof, leafHash } from "../src/merkle.js";
-import { lampToOil, AIRDROP_TOTAL_OIL, OIL_PER_LAMP } from "../src/constants.js";
+import { lampToOildrop, AIRDROP_TOTAL_OILDROP, OILDROP_PER_LAMP } from "../src/constants.js";
 
 function previewAddr(pkhHex: string): string {
   return credentialToAddress("Preview", keyHashToCredential(pkhHex));
@@ -21,20 +21,20 @@ const ADDR_C = previewAddr("0000000000000000000000000000000000000000000000000000
 
 const NFT_POLICY = "facade01".padEnd(56, "0");
 
-describe("parseSnapshot — đơn vị oil", () => {
+describe("parseSnapshot — đơn vị oildrop", () => {
   const rows: RawSnapshotRow[] = [
     { address: ADDR_A, amount: 100 }, // 100 LAMP
     { address: ADDR_B, amount: "250" }, // 250 LAMP
   ];
 
-  it("unit=lamp → ×10^6 ra oil", () => {
+  it("unit=lamp → ×10^6 ra oildrop", () => {
     const e = parseSnapshot(rows, { unit: "lamp" });
-    expect(e[0]!.amount).toBe(lampToOil(100n));
-    expect(e[1]!.amount).toBe(lampToOil(250n));
+    expect(e[0]!.amount).toBe(lampToOildrop(100n));
+    expect(e[1]!.amount).toBe(lampToOildrop(250n));
   });
 
-  it("unit=oil → giữ nguyên", () => {
-    const e = parseSnapshot([{ address: ADDR_A, amount: 100_000_000 }], { unit: "oil" });
+  it("unit=oildrop → giữ nguyên", () => {
+    const e = parseSnapshot([{ address: ADDR_A, amount: 100_000_000 }], { unit: "oildrop" });
     expect(e[0]!.amount).toBe(100_000_000n);
   });
 
@@ -42,9 +42,9 @@ describe("parseSnapshot — đơn vị oil", () => {
     expect(() => parseSnapshot([{ address: ADDR_A, amount: 0 }])).toThrow(/≤ 0/);
   });
 
-  it("totalOil cộng đúng", () => {
+  it("totalOildrop cộng đúng", () => {
     const e = parseSnapshot(rows, { unit: "lamp" });
-    expect(totalOil(e)).toBe(lampToOil(350n));
+    expect(totalOildrop(e)).toBe(lampToOildrop(350n));
   });
 });
 
@@ -67,11 +67,11 @@ describe("buildSnapshotTree + exportClaims", () => {
     }
   });
 
-  it("amount trong claim = oil (×10^6 từ LAMP)", () => {
+  it("amount trong claim = oildrop (×10^6 từ LAMP)", () => {
     const tree = buildSnapshotTree(rows);
     const claims = exportClaims(tree);
     const a = claims.find((c) => c.address === ADDR_A)!;
-    expect(a.amount).toBe(lampToOil(10n));
+    expect(a.amount).toBe(lampToOildrop(10n));
   });
 });
 
@@ -100,18 +100,18 @@ describe("slot leaf consistency (spend-once nullifier đầu vào)", () => {
 });
 
 describe("snapshot 0,1 tỷ LAMP — đối chiếu tổng allocation", () => {
-  it("AIRDROP_TOTAL_OIL = 100_000_000 LAMP × 10^6", () => {
-    expect(AIRDROP_TOTAL_OIL).toBe(100_000_000n * OIL_PER_LAMP);
-    expect(AIRDROP_TOTAL_OIL).toBe(100_000_000_000_000n);
+  it("AIRDROP_TOTAL_OILDROP = 100_000_000 LAMP × 10^6", () => {
+    expect(AIRDROP_TOTAL_OILDROP).toBe(100_000_000n * OILDROP_PER_LAMP);
+    expect(AIRDROP_TOTAL_OILDROP).toBe(100_000_000_000_000n);
   });
 
-  it("snapshot tổng = AIRDROP_TOTAL_OIL khi chia đủ", () => {
+  it("snapshot tổng = AIRDROP_TOTAL_OILDROP khi chia đủ", () => {
     // ví dụ 2 ví chia đôi 0,1 tỷ.
     const rows: RawSnapshotRow[] = [
       { address: ADDR_A, amount: 50_000_000 },
       { address: ADDR_B, amount: 50_000_000 },
     ];
     const e = parseSnapshot(rows, { unit: "lamp" });
-    expect(totalOil(e)).toBe(AIRDROP_TOTAL_OIL);
+    expect(totalOildrop(e)).toBe(AIRDROP_TOTAL_OILDROP);
   });
 });

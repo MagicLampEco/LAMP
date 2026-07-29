@@ -104,7 +104,7 @@ export async function buildSweepTx(params: SweepParams): Promise<SweepResult> {
   const summary = [
     `═══ TIGER Airdrop Sweep (dư → Treasury) ═══`,
     `Treasury:     ${pool.treasury_dest}`,
-    `Swept LAMP:   ${swept / 1_000_000n} LAMP (${swept} oil)`,
+    `Swept LAMP:   ${swept / 1_000_000n} LAMP (${swept} oildrop)`,
     `Slot burned:  ${unclaimedSlots.length} (chưa claim)`,
     `Deadline:     epoch ${pool.deadline_epoch} (đã qua)`,
     `Đã claim:     ${pool.claimed_count} leaf`,

@@ -6,7 +6,7 @@
 // LEAF ENCODING (đối chiếu merkle.ak::leaf_hash)
 //   cbor(address) = Data.to(addressToPlutusData(addr)) = Plutus-Data canonical
 //     CBOR của Aiken `Address` Constr → KHỚP cbor.serialise(address) onchain.
-//   amount_be_8 = amount (oil) big-endian 8 byte.
+//   amount_be_8 = amount (oildrop) big-endian 8 byte.
 //   prefix 0x00 leaf, 0x01 node → domain-separation (chống second-preimage).
 // ─────────────────────────────────────────────────────────────────────────
 
@@ -90,7 +90,7 @@ export function addressToCborBytes(address: string): Uint8Array {
   return hexToBytes(Data.to(addressToPlutusData(address)));
 }
 
-/** amount (oil) → big-endian 8 byte (u64). Khớp bytearray.from_int_big_endian(_, 8). */
+/** amount (oildrop) → big-endian 8 byte (u64). Khớp bytearray.from_int_big_endian(_, 8). */
 export function amountToBe8(amount: bigint): Uint8Array {
   if (amount < 0n) throw new Error("MERKLE-020: amount âm");
   if (amount >= 1n << 64n) throw new Error("MERKLE-021: amount vượt u64");

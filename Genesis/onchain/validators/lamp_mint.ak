@@ -18,7 +18,7 @@
 //   của thread_nft, tuyến tính apply-param). Đổi token_name ⇒ đổi policyId ⇒ token mới.
 //
 // Param (12): thread_nft_policy + thread_nft_name (tầng 1) + token_name (asset name LAMP) +
-// dist_cap + reserve_cap (PARAM apply-time — framework dùng-chung; LAMP 26,37+9,63 tỷ oil,
+// dist_cap + reserve_cap (PARAM apply-time — framework dùng-chung; LAMP 26,37+9,63 tỷ oildrop,
 // FARM 12 tỷ, … bake vào policy-id ⇒ cap cố định bất biến từng token) +
 // registry_nft_policy/name + token_tag (WHO-gate: đọc bảng registry, authority theo tag) +
 // kho_nft_policy/name (A-DEST: đọc hash kho động, DistributionVest BẮT BUỘC rót LAMP vào kho,
@@ -149,7 +149,7 @@ validator lamp_mint(
 
     // ── D7-#2: TRẦN TỔNG (defense-in-depth) ───────────────────────────────
     // Dù cap đã neo param, ép thêm trần tổng tuyệt đối = dist_cap + reserve_cap
-    // (tổng phát hành lịch sử ≤ tổng cap bake — LAMP 36 tỷ oil, token khác theo param).
+    // (tổng phát hành lịch sử ≤ tổng cap bake — LAMP 36 tỷ oildrop, token khác theo param).
     expect s2.dist_minted + s2.reserve_minted <= dist_cap + reserve_cap
 
     // ── D3-#1 + D3-#3: KHÓA continuing output (SupplyState UTxO sạch) ──────
@@ -373,7 +373,7 @@ fn build_tx_reserve(s: SupplyState, s2: SupplyState, mint_qty: Int) -> Transacti
 fn run(r: TLampMintRedeemer, tx: Transaction) -> Bool {
   lamp_mint.mint(
     thr_pol, constants.supply_name, tk_name,
-    constants.dist_cap_oil, constants.reserve_cap_oil,
+    constants.dist_cap_oildrop, constants.reserve_cap_oildrop,
     registry_pol, registry_nm, lamp_tag, kho_pol, kho_nm, meter_pol, meter_nm,
     r, lamp_pol, tx,
   )
@@ -383,8 +383,8 @@ fn fresh() -> SupplyState {
   SupplyState {
     dist_minted: 0,
     reserve_minted: 0,
-    dist_cap: constants.dist_cap_oil,
-    reserve_cap: constants.reserve_cap_oil,
+    dist_cap: constants.dist_cap_oildrop,
+    reserve_cap: constants.reserve_cap_oildrop,
   }
 }
 
@@ -412,28 +412,28 @@ test distvest_incremental() {
 
 test distvest_exact_cap_boundary() {
   // mint tới ĐÚNG dist_cap (biên dưới-bằng được phép).
-  let s = SupplyState { ..fresh(), dist_minted: constants.dist_cap_oil - 7 }
-  let s2 = SupplyState { ..s, dist_minted: constants.dist_cap_oil }
+  let s = SupplyState { ..fresh(), dist_minted: constants.dist_cap_oildrop - 7 }
+  let s2 = SupplyState { ..s, dist_minted: constants.dist_cap_oildrop }
   run(DistributionVest, build_tx(s, s2, 7, [ctrl_pkh]))
 }
 
 test reservedraw_exact_cap_boundary() {
-  let s = SupplyState { ..fresh(), reserve_minted: constants.reserve_cap_oil - 3 }
-  let s2 = SupplyState { ..s, reserve_minted: constants.reserve_cap_oil }
+  let s = SupplyState { ..fresh(), reserve_minted: constants.reserve_cap_oildrop - 3 }
+  let s2 = SupplyState { ..s, reserve_minted: constants.reserve_cap_oildrop }
   run(ReserveDraw, build_tx_reserve(s, s2, 3))
 }
 
 // ── NEGATIVE — A1: vượt cap ──────────────────────────────────
 
 test mint_exceed_dist_cap() fail {
-  let s = SupplyState { ..fresh(), dist_minted: constants.dist_cap_oil - 5 }
-  let s2 = SupplyState { ..s, dist_minted: constants.dist_cap_oil + 1 }
+  let s = SupplyState { ..fresh(), dist_minted: constants.dist_cap_oildrop - 5 }
+  let s2 = SupplyState { ..s, dist_minted: constants.dist_cap_oildrop + 1 }
   run(DistributionVest, build_tx(s, s2, 6, [ctrl_pkh]))
 }
 
 test mint_exceed_reserve_cap() fail {
-  let s = SupplyState { ..fresh(), reserve_minted: constants.reserve_cap_oil }
-  let s2 = SupplyState { ..s, reserve_minted: constants.reserve_cap_oil + 1 }
+  let s = SupplyState { ..fresh(), reserve_minted: constants.reserve_cap_oildrop }
+  let s2 = SupplyState { ..s, reserve_minted: constants.reserve_cap_oildrop + 1 }
   run(ReserveDraw, build_tx_reserve(s, s2, 1))
 }
 
@@ -525,13 +525,13 @@ test delta_mismatch() fail {
 
 test widen_dist_cap() fail {
   let s = fresh()
-  let s2 = SupplyState { ..s, dist_minted: 1_000_000, dist_cap: constants.dist_cap_oil + 1 }
+  let s2 = SupplyState { ..s, dist_minted: 1_000_000, dist_cap: constants.dist_cap_oildrop + 1 }
   run(DistributionVest, build_tx(s, s2, 1_000_000, [ctrl_pkh]))
 }
 
 test widen_reserve_cap() fail {
   let s = fresh()
-  let s2 = SupplyState { ..s, reserve_minted: 1_000_000, reserve_cap: constants.reserve_cap_oil * 2 }
+  let s2 = SupplyState { ..s, reserve_minted: 1_000_000, reserve_cap: constants.reserve_cap_oildrop * 2 }
   run(ReserveDraw, build_tx_reserve(s, s2, 1_000_000))
 }
 
@@ -539,7 +539,7 @@ test widen_reserve_cap() fail {
 // Khoá framework-param: cap PHẢI khớp param apply-time, không tin datum tự khai.
 // Kẻ tấn công dựng SupplyState với dist_cap phình → s.dist_cap ≠ dist_cap (param) → fail.
 test input_cap_mismatch_param() fail {
-  let s = SupplyState { ..fresh(), dist_cap: constants.dist_cap_oil + 1_000_000 }
+  let s = SupplyState { ..fresh(), dist_cap: constants.dist_cap_oildrop + 1_000_000 }
   let s2 = SupplyState { ..s, dist_minted: 1_000_000 }
   run(DistributionVest, build_tx(s, s2, 1_000_000, [ctrl_pkh]))
 }
@@ -782,13 +782,13 @@ fn ss_input_no_nft(s: SupplyState) -> Input {
 // ── D7-#1: cap INPUT phình (neo hằng) ─────────────────────────
 test input_cap_inflated() fail {
   // s.dist_cap > hằng genesis → reject (luật 4 cũ chỉ so s2==s, không bắt được).
-  let s = SupplyState { ..fresh(), dist_cap: constants.dist_cap_oil + 1_000_000_000 }
+  let s = SupplyState { ..fresh(), dist_cap: constants.dist_cap_oildrop + 1_000_000_000 }
   let s2 = SupplyState { ..s, dist_minted: 1_000_000 }
   run(DistributionVest, build_tx(s, s2, 1_000_000, [ctrl_pkh]))
 }
 
 test input_reserve_cap_inflated() fail {
-  let s = SupplyState { ..fresh(), reserve_cap: constants.reserve_cap_oil * 10 }
+  let s = SupplyState { ..fresh(), reserve_cap: constants.reserve_cap_oildrop * 10 }
   let s2 = SupplyState { ..s, reserve_minted: 1_000_000 }
   run(ReserveDraw, build_tx_reserve(s, s2, 1_000_000))
 }
@@ -834,8 +834,8 @@ test input_no_supply_nft() fail {
 // loại oan happy-case biên kép:
 test total_cap_double_boundary_ok() {
   // dist đầy cap, reserve mint tới đúng cap → tổng == total_cap (==, không vượt).
-  let s = SupplyState { ..fresh(), dist_minted: constants.dist_cap_oil, reserve_minted: constants.reserve_cap_oil - 1 }
-  let s2 = SupplyState { ..s, reserve_minted: constants.reserve_cap_oil }
+  let s = SupplyState { ..fresh(), dist_minted: constants.dist_cap_oildrop, reserve_minted: constants.reserve_cap_oildrop - 1 }
+  let s2 = SupplyState { ..s, reserve_minted: constants.reserve_cap_oildrop }
   run(ReserveDraw, build_tx_reserve(s, s2, 1))
 }
 

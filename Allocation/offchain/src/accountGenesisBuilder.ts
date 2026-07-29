@@ -39,7 +39,7 @@ export interface AccountGenesisParams {
   /** channel_id hex (kênh — bind với budget/treasury cùng kênh). */
   channelId: string;
 
-  /** E khởi tạo (oil) — committee bảo chứng. ≥ 0 (0 = mở tài khoản, cấp sau qua Claim). */
+  /** E khởi tạo (oildrop) — committee bảo chứng. ≥ 0 (0 = mở tài khoản, cấp sau qua Claim). */
   entitlement: bigint;
   /** t0 vesting (đặt lùi = cliff). */
   startEpoch: bigint;
@@ -127,7 +127,7 @@ export async function buildAccountGenesisTx(
     `═══ Genesis account (committee-gated) ═══`,
     `Owner:    ${owner}`,
     `Channel:  ${channelId}`,
-    `E:        ${entitlement} oil   dpe: ${dropsPerEpoch}   start: ${startEpoch}`,
+    `E:        ${entitlement} oildrop   dpe: ${dropsPerEpoch}   start: ${startEpoch}`,
     `NFT:      ${nftUnit}`,
     `Account:  ${accountAddress}  (redeemed = 0)`,
     `Signers:  ${signers.length}/${committeeKeyHashes.length} (need ${threshold})`,

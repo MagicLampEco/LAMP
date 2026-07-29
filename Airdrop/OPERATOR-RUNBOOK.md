@@ -126,7 +126,7 @@ const d = JSON.parse(require('fs').readFileSync('delegator_snapshot.json','utf8'
 // Tổng Σ amount_lamp của spoCs = 5.000.000 (SPO) + 15.000.000 (CS) = 20.000.000 LAMP.
 const spoCs = JSON.parse(require('fs').readFileSync('spo_cs_snapshot.json','utf8'));
 const entries = [
-  ...d.entries.map(e => ({ address: e.address, amount: BigInt(e.amount_oil).toString() })),
+  ...d.entries.map(e => ({ address: e.address, amount: BigInt(e.amount_oildrop).toString() })),
   ...spoCs.map(e => ({ address: e.address, amount: (BigInt(e.amount_lamp) * 1_000_000n).toString() }))
 ];
 require('fs').writeFileSync('final_snapshot.json', JSON.stringify(entries, null, 2));
@@ -152,7 +152,7 @@ import { buildSnapshotTree, exportClaims } from "../offchain/src/snapshotTool.js
 import { readFileSync, writeFileSync } from "node:fs";
 
 const rows = JSON.parse(readFileSync("final_snapshot.json", "utf8"));
-const tree = buildSnapshotTree(rows, { amountField: "amount", isOil: true });
+const tree = buildSnapshotTree(rows, { amountField: "amount", isOildrop: true });
 
 console.log("Merkle root:", tree.root);
 console.log("Entries:", tree.entries.length);

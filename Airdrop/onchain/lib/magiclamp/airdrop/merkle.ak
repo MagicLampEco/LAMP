@@ -10,7 +10,7 @@
 //   leaf = blake2b_256( cbor.serialise(address) ++ amount_be_8 )
 //     - cbor.serialise(address): mã hoá Plutus-Data của Address (Constr) — tất
 //       định, off-chain dựng cùng Data → cùng bytes.
-//     - amount_be_8: amount (oil) big-endian 8 byte (u64). Cố định độ dài →
+//     - amount_be_8: amount (oildrop) big-endian 8 byte (u64). Cố định độ dài →
 //       chống nhập nhằng (ambiguity) khi nối chuỗi.
 //   Domain-separation: leaf prefix 0x00, node prefix 0x01 → chống second-preimage
 //   (kẻ tấn công không thể trình 1 node trung gian làm leaf).
@@ -186,7 +186,7 @@ test merkle_four_leaf_inner() {
 }
 
 // PARITY (regression) — đối chiếu BYTE-PERFECT với off-chain merkle.ts::leafHash.
-// Vector cố định: address = VerificationKey(28×0xa0, no stake), amount = 100 oil.
+// Vector cố định: address = VerificationKey(28×0xa0, no stake), amount = 100 oildrop.
 // Off-chain (Lucid Data.to(addressToPlutusData) + blake2b) cho RA CHÍNH hash này
 // → khẳng định leaf encoding 2 phía khớp tuyệt đối (cbor address + amount_be8 + prefix).
 // Nếu test này gãy: leaf encoding lệch → proof off-chain KHÔNG verify on-chain.

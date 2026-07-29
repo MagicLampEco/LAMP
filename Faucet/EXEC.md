@@ -153,8 +153,8 @@ Sau `01` (SUBMIT=true): `deployed-faucet.json` chứa `tlamp.policyId`, `faucet.
 qua `explorerTx` (cardanoscan Preview, [`config.ts:128-130`](./scripts/config.ts)).
 
 **Verify on-chain sau deploy (cần làm để đóng MATH §6 CONSERVE):**
-- Pool UTxO tại `faucet.address` có `tLAMP = TOTAL_SUPPLY_OIL`, inline datum đúng.
-- Sau claim: pool giảm đúng `100 × 10^6` oil; ví dev `+100 tLAMP`; `tx.mint` rỗng.
+- Pool UTxO tại `faucet.address` có `tLAMP = TOTAL_SUPPLY_OILDROP`, inline datum đúng.
+- Sau claim: pool giảm đúng `100 × 10^6` oildrop; ví dev `+100 tLAMP`; `tx.mint` rỗng.
 - Genesis UTxO biến mất → thử mint lại phải fail (one-shot).
 
 ---

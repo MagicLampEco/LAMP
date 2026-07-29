@@ -17,8 +17,8 @@
 // deploy) — KHÔNG bên nào ôm hash của bên kia → KHÔNG vòng tròn.
 //
 // ─────────────────────────────────────────────────────────────────────────
-// ĐƠN VỊ + HẰNG (1 tLAMP = 10^6 oil)
-//   drip   = 1001 tLAMP = 1_001_000_000 oil mỗi claim.
+// ĐƠN VỊ + HẰNG (1 tLAMP = 10^6 oildrop)
+//   drip   = 1001 tLAMP = 1_001_000_000 oildrop mỗi claim.
 //   cooldown = 36 epoch giữa 2 claim của cùng 1 DID.
 //   reclaim  = 1001 epoch idle → ai cũng thu hồi account về pool.
 // Các hằng này truyền qua FaucetConfig (datum pool) để chỉnh không cần recompile.
@@ -32,10 +32,10 @@ pub const acct_nft_name: ByteArray = #"41434354"
 /// Cấu hình Faucet — đặt trên POOL UTxO (inline datum). Tham số hoá runtime:
 /// chỉnh drip/cooldown/reclaim không cần redeploy validator.
 ///
-///   FaucetConfig{drip_oil, cooldown_epochs, reclaim_epochs} = Constr(0, [int,int,int])
+///   FaucetConfig{drip_oildrop, cooldown_epochs, reclaim_epochs} = Constr(0, [int,int,int])
 pub type FaucetConfig {
-  /// tLAMP (oil) nhả mỗi claim. Chuẩn = 1_001_000_000 (1001 tLAMP).
-  drip_oil: Int,
+  /// tLAMP (oildrop) nhả mỗi claim. Chuẩn = 1_001_000_000 (1001 tLAMP).
+  drip_oildrop: Int,
   /// Số epoch tối thiểu giữa 2 claim của cùng 1 DID. Chuẩn = 36.
   cooldown_epochs: Int,
   /// Số epoch idle để account bị thu hồi (permissionless). Chuẩn = 1001.

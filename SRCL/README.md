@@ -59,17 +59,17 @@ Cơ chế **phân phối LAMP cho delegator theo snapshot stake mỗi epoch**:
 ## Toán phân phối (tất định, tỷ lệ stake)
 
 ```
-TỔNG       = 360_000_000 LAMP × 10^6 = 3,6e14 oil
+TỔNG       = 360_000_000 LAMP × 10^6 = 3,6e14 oildrop
 EPOCHS     = 36  (epoch 0..35)
-budget_e   = 3,6e14 / 36 = 10_000_000_000_000 oil = 10.000.000 LAMP  (chia hết, dư 0)
-entitlement_e[i] = floor( budget_e × stake_i / Σ stake )   (oil)
+budget_e   = 3,6e14 / 36 = 10_000_000_000_000 oildrop = 10.000.000 LAMP  (chia hết, dư 0)
+entitlement_e[i] = floor( budget_e × stake_i / Σ stake )   (oildrop)
 ```
 
 - Dư do `floor` (budget − Σ entitlement) → dồn cho ví **stake lớn nhất** (xác định,
-  không mất oil). Tổng entitlement mỗi epoch == `budget_e` chính xác.
-- Phần dư lẻ toàn cục `3,6e14 − 36 × budget_e` (= `REMAINDER_OIL`) gộp vào **epoch cuối**;
-  với 360 triệu thì `REMAINDER_OIL = 0` (360M chia hết 36).
-- Đơn vị: **oil** (1 LAMP = 10^6 oil), mọi số học BigInt.
+  không mất oildrop). Tổng entitlement mỗi epoch == `budget_e` chính xác.
+- Phần dư lẻ toàn cục `3,6e14 − 36 × budget_e` (= `REMAINDER_OILDROP`) gộp vào **epoch cuối**;
+  với 360 triệu thì `REMAINDER_OILDROP = 0` (360M chia hết 36).
+- Đơn vị: **oildrop** (1 LAMP = 10^6 oildrop), mọi số học BigInt.
 
 ---
 
@@ -90,7 +90,7 @@ UTxO mang POOL NFT + kho LAMP + `SrclDatum`:
 ```
 SrclDatum {
   epoch_roots:       List<ByteArray>,  // root_e theo epoch (index = epoch)
-  distributed_total: Int,              // oil đã phát (sổ kế toán)
+  distributed_total: Int,              // oildrop đã phát (sổ kế toán)
   end_epoch:         Int,              // = 35
   treasury_dest:     ByteArray,        // payment-cred Treasury (đích Sweep)
   ms_per_epoch:      Int,
@@ -151,7 +151,7 @@ Slot tiêu 1 lần là hết ⇒ cặp `(epoch, owner)` không claim lại đư�
 
 | File | Vai trò |
 |---|---|
-| `constants.ts` | `SRCL_TOTAL_OIL=3,6e14`, `EPOCHS=36`, `PER_EPOCH_OIL`, `POOL_NFT_NAME`, … |
+| `constants.ts` | `SRCL_TOTAL_OILDROP=3,6e14`, `EPOCHS=36`, `PER_EPOCH_OILDROP`, `POOL_NFT_NAME`, … |
 | `types.ts` | `SrclDatum`, `ClaimProof`, `MerkleStep`, `Entitlement`, `StakeEntry` |
 | `datum.ts` | codec Plutus Data **byte-perfect** với onchain |
 | `merkle.ts` | blake2b-256 (`@noble/hashes`), `MerkleTree`, proof — khớp onchain |

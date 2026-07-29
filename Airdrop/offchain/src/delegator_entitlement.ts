@@ -7,7 +7,7 @@
 //
 // Bảo toàn: cap=null ⇒ Σ amount = budget (TIGER B4 gom hết phần lẻ).
 
-import { DELEGATOR_TOTAL_OIL } from "./constants.js";
+import { DELEGATOR_TOTAL_OILDROP } from "./constants.js";
 import type { SnapshotEntry } from "./types.js";
 import { computeEntitlements } from "../../../TIGER/offchain/src/entitlement.js";
 import { buildSnapshotSet } from "../../../TIGER/offchain/src/snapshot.js";
@@ -22,11 +22,11 @@ export interface DelegatorReg {
 }
 
 export interface DelegatorEntitlementResult {
-  /** Chi tiết per-owner (accStake + oil) — minh bạch kiểm toán. */
+  /** Chi tiết per-owner (accStake + oildrop) — minh bạch kiểm toán. */
   entitlements: TigerEntitlement[];
   /** Đầu vào trực tiếp cho merkle.buildTree / snapshotTool. */
   snapshot: SnapshotEntry[];
-  /** oil chưa chia (cap=null ⇒ 0). */
+  /** oildrop chưa chia (cap=null ⇒ 0). */
   leftover: bigint;
   /** Tổng đã chia = Σ snapshot.amount. */
   distributed: bigint;
@@ -36,10 +36,10 @@ export interface DelegatorEntitlementResult {
  *  Ném lỗi nếu 2 đăng ký trùng payment_address (buildSnapshotSet bắt trùng owner). */
 export function buildDelegatorEntitlements(
   regs: DelegatorReg[],
-  opts: { budgetOil?: bigint; capOil?: bigint | null } = {},
+  opts: { budgetOildrop?: bigint; capOildrop?: bigint | null } = {},
 ): DelegatorEntitlementResult {
-  const budgetOil = opts.budgetOil ?? DELEGATOR_TOTAL_OIL;
-  const capOil = opts.capOil ?? null;
+  const budgetOildrop = opts.budgetOildrop ?? DELEGATOR_TOTAL_OILDROP;
+  const capOildrop = opts.capOildrop ?? null;
 
   // 1 "epoch" tổng hợp: rows = payment_address ↦ accStake. buildSnapshotSet bỏ stake ≤ 0
   // và ném lỗi nếu payment_address trùng (chống thổi phồng accStake).
@@ -49,7 +49,7 @@ export function buildDelegatorEntitlements(
   }));
   const snap = buildSnapshotSet([{ epoch: 0n, rows }]);
 
-  const res = computeEntitlements(snap, { budgetOil, capOil });
+  const res = computeEntitlements(snap, { budgetOildrop, capOildrop });
 
   const snapshot: SnapshotEntry[] = res.entitlements.map((e) => ({
     address: e.owner,

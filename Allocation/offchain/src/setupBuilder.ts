@@ -4,14 +4,14 @@
 //   CONSUME genesis_ref UTxO (one-shot: budget_nft chỉ mint hợp lệ khi tx spend đúng UTxO này).
 //   MINT  1 budget NFT (policy budgetNftPolicy, name = channel_id, qty +1) — redeemer MintGenesis.
 //   OUT   ChannelBudget beacon  → channel_budget script, value = min-ADA + NFT,
-//         datum {channel_id, remaining_oil = budgetOil} (Lớp A kế toán).
-//   OUT   Treasury con           → treasury script, value = min-ADA + budgetOil LAMP,
+//         datum {channel_id, remaining_oildrop = budgetOildrop} (Lớp A kế toán).
+//   OUT   Treasury con           → treasury script, value = min-ADA + budgetOildrop LAMP,
 //         datum {committee_hash, channel_id} (Lớp B vật lý, value = ĐÚNG budget kênh).
 //
 // budget_nft.ak (sau PHÁ VÒNG) ÉP: ĐÚNG 1 output mang NFT genesis + ChannelBudgetDatum
-// (beacon), VÀ ĐÚNG 1 treasury con output cùng channel_id với LAMP == remaining_oil (VIỆC 2:
+// (beacon), VÀ ĐÚNG 1 treasury con output cùng channel_id với LAMP == remaining_oildrop (VIỆC 2:
 // Lớp A == Lớp B tại genesis). Builder PHẢI trả NFT + beacon datum vào budgetAddress (channel_budget
-// script) và nạp treasury con LAMP = budgetOil. budget_nft KHÔNG còn tham số channel_budget_hash
+// script) và nạp treasury con LAMP = budgetOildrop. budget_nft KHÔNG còn tham số channel_budget_hash
 // (đã phá vòng) — nhận diện beacon = output mang NFT, treasury = output mang TreasuryDatum cùng kênh.
 //
 // Caller chuẩn bị:
@@ -19,13 +19,13 @@
 //     + policy id hex tương ứng. (KHÔNG còn channel_budget_hash — phá vòng.)
 //   - genesisUtxo: UTxO chính xác đã bake làm genesis_ref (builder collectFrom nó).
 //     Builder assert genesisUtxo == genesisRef trước build (F3 fail-fast).
-//   - LAMP funding: ví caller cung cấp budgetOil LAMP để nạp treasury (Lucid auto-select input).
+//   - LAMP funding: ví caller cung cấp budgetOildrop LAMP để nạp treasury (Lucid auto-select input).
 //
 // Invariants ép TRƯỚC build:
-//   C-SET-1  budgetOil > 0.
+//   C-SET-1  budgetOildrop > 0.
 //   C-SET-2  mint đúng 1 NFT (policy, name=channel_id).
 //   C-SET-3  NFT ra channel_budget script (cùng UTxO beacon).
-//   C-SET-4  treasury con value LAMP = budgetOil (= remaining_oil khởi tạo).
+//   C-SET-4  treasury con value LAMP = budgetOildrop (= remaining_oildrop khởi tạo).
 
 import {
   toUnit,
@@ -52,8 +52,8 @@ export interface SetupChannelParams {
   /** channel_id hex (= NFT name = budget/treasury datum channel_id). */
   channelId: string;
 
-  /** Ngân sách kênh (oil) — remaining_oil khởi tạo VÀ LAMP nạp treasury con. */
-  budgetOil: bigint;
+  /** Ngân sách kênh (oildrop) — remaining_oildrop khởi tạo VÀ LAMP nạp treasury con. */
+  budgetOildrop: bigint;
 
   /** committee_hash hex (TreasuryDatum). */
   committeeHash: string;
@@ -96,11 +96,11 @@ export interface SetupChannelResult {
 
 export async function buildSetupChannelTx(params: SetupChannelParams): Promise<SetupChannelResult> {
   const {
-    lucid, network, budgetOil, budgetNftPolicy, budgetNftPolicyId,
+    lucid, network, budgetOildrop, budgetNftPolicy, budgetNftPolicyId,
     genesisUtxo, genesisRef, budgetScript, treasuryScript, lampPolicyId,
   } = params;
 
-  if (budgetOil <= 0n) throw new Error(`SETUP-001: budgetOil must be > 0 (got ${budgetOil})`); // C-SET-1
+  if (budgetOildrop <= 0n) throw new Error(`SETUP-001: budgetOildrop must be > 0 (got ${budgetOildrop})`); // C-SET-1
 
   // F3: fail-fast — genesisUtxo PHẢI khớp genesis_ref đã bake vào budget_nft policy.
   // Lệch → policy id derive khác → NFT mint sai policy → tx fail trên chain (one-shot).
@@ -134,7 +134,7 @@ export async function buildSetupChannelTx(params: SetupChannelParams): Promise<S
   // ── Output datums ──────────────────────────────────────────────────
   const budgetDatum: ChannelBudgetDatum = {
     channel_id:    channelId,
-    remaining_oil: budgetOil,
+    remaining_oildrop: budgetOildrop,
   };
   const treasuryDatum: TreasuryDatum = {
     committee_hash: committeeHash,
@@ -144,8 +144,8 @@ export async function buildSetupChannelTx(params: SetupChannelParams): Promise<S
   // ── Output values ──────────────────────────────────────────────────
   // Beacon: min-ADA + 1 NFT (ra channel_budget script — C-SET-3).
   const budgetValue: Assets = { lovelace: minAda, [nftUnit]: 1n };
-  // Treasury con: min-ADA + budgetOil LAMP (= budget vật lý kênh — C-SET-4).
-  const treasuryValue: Assets = { lovelace: minAda, [lampUnit]: budgetOil };
+  // Treasury con: min-ADA + budgetOildrop LAMP (= budget vật lý kênh — C-SET-4).
+  const treasuryValue: Assets = { lovelace: minAda, [lampUnit]: budgetOildrop };
 
   // ── Build tx: consume genesis + mint NFT + 2 outputs ───────────────
   const txb = lucid
@@ -161,7 +161,7 @@ export async function buildSetupChannelTx(params: SetupChannelParams): Promise<S
     .pay.ToAddressWithData(
       treasuryAddress,
       { kind: "inline", value: treasuryDatumToCbor(treasuryDatum) },
-      treasuryValue,                                             // LAMP = budgetOil (C-SET-4)
+      treasuryValue,                                             // LAMP = budgetOildrop (C-SET-4)
     );
 
   const tx = await txb.complete();
@@ -169,11 +169,11 @@ export async function buildSetupChannelTx(params: SetupChannelParams): Promise<S
   const summary = [
     `═══ Setup channel (genesis · hard-cap 2 lớp) ═══`,
     `Channel:        ${channelId}`,
-    `Budget:         ${budgetOil / 1_000_000n} LAMP (${budgetOil} oil)`,
+    `Budget:         ${budgetOildrop / 1_000_000n} LAMP (${budgetOildrop} oildrop)`,
     `NFT:            ${nftUnit}`,
     `Genesis ref:    ${genesisUtxo.txHash}#${genesisUtxo.outputIndex}`,
-    `Budget addr:    ${budgetAddress}  (remaining_oil = ${budgetOil})`,
-    `Treasury addr:  ${treasuryAddress}  (LAMP = ${budgetOil})`,
+    `Budget addr:    ${budgetAddress}  (remaining_oildrop = ${budgetOildrop})`,
+    `Treasury addr:  ${treasuryAddress}  (LAMP = ${budgetOildrop})`,
   ].join("\n");
 
   return { tx, budgetAddress, treasuryAddress, nftUnit, budgetDatum, treasuryDatum, summary };

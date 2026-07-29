@@ -3,7 +3,7 @@
 
 /// SupplyState — bộ đếm phát hành đơn điệu, ghim bởi thread NFT one-shot (DUY NHẤT).
 /// minted_total = dist_minted + reserve_minted ≤ dist_cap + reserve_cap (BẤT BIẾN).
-/// dist_cap/reserve_cap KHÔNG đổi qua transition (luật 4). Đơn vị: oil.
+/// dist_cap/reserve_cap KHÔNG đổi qua transition (luật 4). Đơn vị: oildrop.
 ///
 /// = Constr(0, [int, int, int, int])
 pub type SupplyState {

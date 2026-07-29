@@ -7,14 +7,14 @@ import {
   encodeMintRoute, mintRouteToCbor, threadNftRedeemerToCbor, supplyStateRedeemerToCbor,
   MINT_ROUTE,
 } from "../offchain/src/datum.js";
-import { DIST_CAP_OIL, RESERVE_CAP_OIL } from "../offchain/src/constants.js";
+import { DIST_CAP_OILDROP, RESERVE_CAP_OILDROP } from "../offchain/src/constants.js";
 import type { SupplyState } from "../offchain/src/types.js";
 
 const sample: SupplyState = {
   dist_minted:    123_000_000n,
   reserve_minted: 7_000_000n,
-  dist_cap:       DIST_CAP_OIL,
-  reserve_cap:    RESERVE_CAP_OIL,
+  dist_cap:       DIST_CAP_OILDROP,
+  reserve_cap:    RESERVE_CAP_OILDROP,
 };
 
 describe("SupplyState codec", () => {
@@ -22,7 +22,7 @@ describe("SupplyState codec", () => {
     const c = encodeSupplyState(sample);
     expect(c.index).toBe(0);
     expect(c.fields).toEqual([
-      123_000_000n, 7_000_000n, DIST_CAP_OIL, RESERVE_CAP_OIL,
+      123_000_000n, 7_000_000n, DIST_CAP_OILDROP, RESERVE_CAP_OILDROP,
     ]);
   });
 

@@ -60,8 +60,8 @@ export function analyzeHistory(history: HistoryEntry[], opts: AnalyzeOpts): Anal
 }
 
 export interface LampProjection {
-  /** entitlement chính xác (oil) nếu tìm thấy owner trong entitlements đã tính. */
-  amountOil: bigint | null;
+  /** entitlement chính xác (oildrop) nếu tìm thấy owner trong entitlements đã tính. */
+  amountOildrop: bigint | null;
   accStake: bigint;
   capped: boolean;
   /** true nếu chưa có snapshot chốt (cutoff/registration) → con số là ước tính/thiếu. */
@@ -78,8 +78,8 @@ export function lookupLamp(
   provisional = false,
 ): LampProjection {
   const e = entitlements.find((x) => x.owner === owner);
-  if (!e) return { amountOil: null, accStake: 0n, capped: false, provisional };
-  return { amountOil: e.amount, accStake: e.accStake, capped: e.capped, provisional };
+  if (!e) return { amountOildrop: null, accStake: 0n, capped: false, provisional };
+  return { amountOildrop: e.amount, accStake: e.accStake, capped: e.capped, provisional };
 }
 
 /**
@@ -89,9 +89,9 @@ export function lookupLamp(
 export function projectLampFromSnapshot(
   snapshot: SnapshotSet,
   owner: string,
-  budgetOil: bigint,
-  capOil: bigint | null = null,
+  budgetOildrop: bigint,
+  capOildrop: bigint | null = null,
 ): LampProjection {
-  const { entitlements } = computeEntitlements(snapshot, { budgetOil, capOil });
+  const { entitlements } = computeEntitlements(snapshot, { budgetOildrop, capOildrop });
   return lookupLamp(entitlements, owner, false);
 }

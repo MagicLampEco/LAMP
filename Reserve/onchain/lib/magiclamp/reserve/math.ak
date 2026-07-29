@@ -42,7 +42,7 @@ pub fn drawable(total: Int, drawn: Int, requested: Int) -> Int {
 // Unit tests — biên (CONTRACT Reserve §math)
 // ══════════════════════════════════════════════════════════════
 
-// E = 9,630 tỷ LAMP = 9_630_000_000_000_000 oil (cap reserve allocation v17).
+// E = 9,630 tỷ LAMP = 9_630_000_000_000_000 oildrop (cap reserve allocation v17).
 const e: Int = 9_630_000_000_000_000
 
 // ── max_per_epoch ────────────────────────────────────────────

@@ -9,7 +9,7 @@
 ## Canonical tLAMP — CHUNG cả 2 mạng
 - **Policy id:** `7a1a7aed5ec47acc37b6fa82695c1219bf76895b505b01161367adf9`
 - **Unit:** `7a1a7aed5ec47acc37b6fa82695c1219bf76895b505b01161367adf9744c414d50`
-- Asset name: `744c414d50` ("tLAMP"), decimals 6 (1 tLAMP = 10^6 oil).
+- Asset name: `744c414d50` ("tLAMP"), decimals 6 (1 tLAMP = 10^6 oildrop).
 - Policy GIỐNG NHAU xuyên mạng vì `lamp_mint` neo bởi native-sig ví deploy (deterministic),
   không phải one-shot genesis-ref. ⇒ Preprod và Preview cùng 1 policy + cùng faucet address.
 - **Faucet pool address (cả 2 mạng):** `addr_test1wq5kway3ng4amxt47l2ugk7h0cvr7zyfp706uacqqmqcg7sg80hqc`

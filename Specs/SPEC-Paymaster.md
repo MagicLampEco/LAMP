@@ -16,7 +16,7 @@
   transferable" theo LAMP §1.5 nghĩa là không có DEX pair MAGIC↔ADA — KHÔNG phải "không phải
   token". Nguồn: `ConsumeMAGIC/FEAT.md §1`, `ConsumeMAGIC/onchain/plutus.json` (validator
   `consume.consume.spend` compiled).
-- LAMP cố định 36 tỷ oil, KHÔNG burn. `oil = LAMP × 10^6`, `nanogic = MAGIC × 10^9`.
+- LAMP cố định 36 tỷ oildrop, KHÔNG burn. `oildrop = LAMP × 10^6`, `nanogic = MAGIC × 10^9`.
   Nguồn: `Treasury/CONTRACT.md §5`.
 - BigInt everywhere — KHÔNG Number cho amounts (Q = 10^9, sequential floor).
 - P8: Aiken ↔ TypeScript bit-identical.
@@ -243,7 +243,7 @@ lamp_per_magic_q = 500_000_000      (0.5× Q = 0.5 LAMP / MAGIC)
 Q               = 1_000_000_000
 lamp_sponsored  = ⌊ 10_000_000 × 500_000_000 / 1_000_000_000 ⌋
                 = ⌊ 5_000_000_000_000_000 / 1_000_000_000 ⌋
-                = 5_000_000         (0.005 LAMP = 5000 oil)
+                = 5_000_000         (0.005 LAMP = 5000 oildrop)
 ```
 
 **TV-PM-PRICE-02: Tính ada_sponsored**
@@ -258,7 +258,7 @@ ada_sponsored   = ⌊ 50_000_000 × 2_000_000_000 / 1_000_000_000 ⌋
 
 **TV-PM-BUDGET-01: Per-DID cap check**
 ```
-max_per_did_per_epoch = 10_000_000_000   (10 LAMP/DID/epoch, oil unit)
+max_per_did_per_epoch = 10_000_000_000   (10 LAMP/DID/epoch, oildrop unit)
 did_sponsored_so_far  = 8_000_000_000    (8 LAMP đã sponsor)
 lamp_this_op          = 5_000_000        (0.005 LAMP mới)
 8_000_000_000 + 5_000_000 = 8_005_000_000 ≤ 10_000_000_000  → ACCEPT
@@ -290,8 +290,8 @@ lamp_this_op           = 5_000_000        (0.005 LAMP)
 pub type SponsorPolicy {
   app_id               : ByteArray,         // định danh app đăng ký
   app_authority        : ByteArray,         // VerificationKeyHash bắt buộc cosign
-  max_per_did_per_epoch: Int,               // oil — cap mỗi DID mỗi epoch
-  max_global_per_epoch : Int,               // oil — cap toàn app mỗi epoch
+  max_per_did_per_epoch: Int,               // oildrop — cap mỗi DID mỗi epoch
+  max_global_per_epoch : Int,               // oildrop — cap toàn app mỗi epoch
   lamp_per_magic_q     : Int,               // Q-format: lamp / nanogic
   ada_per_magic_q      : Int,               // Q-format: ada / nanogic
   oracle_nft_policy    : Option<ByteArray>, // None = MVP tự định; Some = CIP-31 oracle
@@ -309,7 +309,7 @@ pub type SponsorMeter {
   app_id              : ByteArray,
   epoch               : Int,               // epoch hiện hành
   did_lamp_map        : List<(ByteArray, Int)>, // (did_hash, lamp_sponsored) per DID
-  global_lamp_epoch   : Int,               // tổng oil đã sponsor trong epoch
+  global_lamp_epoch   : Int,               // tổng oildrop đã sponsor trong epoch
 }
 ```
 

@@ -6,7 +6,7 @@ import {
   leafHash, nodeHash, buildTree, buildProof, buildProofForAddress,
   verifyProof, amountToBe8, bytesToHex, addressToCborBytes,
 } from "../src/merkle.js";
-import { lampToOil } from "../src/constants.js";
+import { lampToOildrop } from "../src/constants.js";
 import type { SnapshotEntry } from "../src/types.js";
 
 // Địa chỉ Preview thật (enterprise key address) để getAddressDetails parse được.
@@ -36,7 +36,7 @@ describe("amountToBe8", () => {
 
 describe("leafHash", () => {
   it("tất định + 32 byte (64 hex)", () => {
-    const e: SnapshotEntry = { address: ADDR_A, amount: lampToOil(100n) };
+    const e: SnapshotEntry = { address: ADDR_A, amount: lampToOildrop(100n) };
     const h = leafHash(e);
     expect(h).toHaveLength(64);
     expect(leafHash(e)).toBe(h);
@@ -69,10 +69,10 @@ describe("parity với onchain merkle.ak (BYTE-PERFECT)", () => {
 
 describe("buildTree + proof round-trip", () => {
   const entries: SnapshotEntry[] = [
-    { address: ADDR_A, amount: lampToOil(10n) },
-    { address: ADDR_B, amount: lampToOil(20n) },
-    { address: ADDR_C, amount: lampToOil(30n) },
-    { address: ADDR_D, amount: lampToOil(40n) },
+    { address: ADDR_A, amount: lampToOildrop(10n) },
+    { address: ADDR_B, amount: lampToOildrop(20n) },
+    { address: ADDR_C, amount: lampToOildrop(30n) },
+    { address: ADDR_D, amount: lampToOildrop(40n) },
   ];
 
   it("root ổn định + 32 byte", () => {

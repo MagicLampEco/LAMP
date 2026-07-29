@@ -7,12 +7,12 @@ import {
   claimRedeemerToCbor, mintGenesisRedeemerToCbor,
 } from "../offchain/src/datum.js";
 import {
-  TOTAL_SUPPLY_OIL, CLAIM_AMOUNT_OIL, OIL_PER_LAMP, TLAMP_ASSET_NAME,
+  TOTAL_SUPPLY_OILDROP, CLAIM_AMOUNT_OILDROP, OILDROP_PER_LAMP, TLAMP_ASSET_NAME,
 } from "../offchain/src/constants.js";
 
 describe("FaucetDatum codec", () => {
   it("round-trips claim_amount", () => {
-    const d = { claim_amount: CLAIM_AMOUNT_OIL };
+    const d = { claim_amount: CLAIM_AMOUNT_OILDROP };
     expect(faucetDatumFromCbor(faucetDatumToCbor(d))).toEqual(d);
   });
 
@@ -38,14 +38,14 @@ describe("redeemers", () => {
 });
 
 describe("constants — decimals 6, supply 36e9", () => {
-  it("OIL_PER_LAMP = 10^6", () => {
-    expect(OIL_PER_LAMP).toBe(1_000_000n);
+  it("OILDROP_PER_LAMP = 10^6", () => {
+    expect(OILDROP_PER_LAMP).toBe(1_000_000n);
   });
-  it("total supply = 36e9 LAMP × 1e6 = 3.6e16 oil", () => {
-    expect(TOTAL_SUPPLY_OIL).toBe(36_000_000_000_000_000n);
+  it("total supply = 36e9 LAMP × 1e6 = 3.6e16 oildrop", () => {
+    expect(TOTAL_SUPPLY_OILDROP).toBe(36_000_000_000_000_000n);
   });
-  it("claim = 100 LAMP = 1e8 oil", () => {
-    expect(CLAIM_AMOUNT_OIL).toBe(100_000_000n);
+  it("claim = 100 LAMP = 1e8 oildrop", () => {
+    expect(CLAIM_AMOUNT_OILDROP).toBe(100_000_000n);
   });
   it("asset name tLAMP = 744c414d50", () => {
     expect(TLAMP_ASSET_NAME).toBe("744c414d50");

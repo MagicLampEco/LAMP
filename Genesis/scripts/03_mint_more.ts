@@ -2,7 +2,7 @@
 // Đọc dist_minted THẬT từ datum on-chain (KHÔNG reset genesis). Ép collateral pure-ADA.
 //
 // Mục đích: nạp tLAMP cho Faucet pool (drip 1001 tLAMP cần ≥ 1001 tLAMP/claim).
-// MINT_OIL (env) — lượng mint (oil). Mặc định 3000 tLAMP = 3_000_000_000.
+// MINT_OILDROP (env) — lượng mint (oildrop). Mặc định 3000 tLAMP = 3_000_000_000.
 
 import {
   Lucid, Blockfrost, applyParamsToScript, mintingPolicyToId,
@@ -16,7 +16,7 @@ import { readFile } from "node:fs/promises";
 
 dotenv.config({ path: resolve(process.cwd(), "../../.env") });
 
-const MINT_OIL = BigInt(process.env.MINT_OIL ?? "3000000000"); // 3000 tLAMP
+const MINT_OILDROP = BigInt(process.env.MINT_OILDROP ?? "3000000000"); // 3000 tLAMP
 const SUPPLY_NAME = "535550504c59";
 const TOKEN_NAME = "744c414d50"; // tLAMP
 const GENESIS_REF_HASH = "689c56e05a6c4cb97ea59c26f9b2bb271ca2cf6ae52ee3dba08fb9c7a9204973";
@@ -63,10 +63,10 @@ const distCap = d.fields[2] as bigint;
 const reserveCap = d.fields[3] as bigint;
 console.log(`SupplyState in: ${supplyUtxo.txHash}#${supplyUtxo.outputIndex} dist_minted=${distMinted}`);
 
-const newDist = distMinted + MINT_OIL;
+const newDist = distMinted + MINT_OILDROP;
 if (newDist > distCap) throw new Error(`vượt dist_cap: ${newDist} > ${distCap}`);
 const newDatum = new Constr(0, [newDist, reserveMinted, distCap, reserveCap]);
-console.log(`mint Δ=${MINT_OIL} → dist_minted ${distMinted} → ${newDist}`);
+console.log(`mint Δ=${MINT_OILDROP} → dist_minted ${distMinted} → ${newDist}`);
 
 const walletUtxos = await lucid.wallet().getUtxos();
 const pureAda = walletUtxos.filter((u) => Object.keys(u.assets).filter((k) => k !== "lovelace").length === 0);
@@ -75,10 +75,10 @@ if (pureAda.length === 0) throw new Error("không có UTxO pure-ADA cho collater
 const tx = await lucid.newTx()
   .collectFrom([supplyUtxo], Data.to(new Constr(0, [])))         // Advance
   .attach.SpendingValidator(ssScript)
-  .mintAssets({ [tlampUnit]: MINT_OIL }, Data.to(new Constr(0, []))) // DistributionVest
+  .mintAssets({ [tlampUnit]: MINT_OILDROP }, Data.to(new Constr(0, []))) // DistributionVest
   .attach.MintingPolicy(tlampPolicy)
   .pay.ToContract(ssAddr, { kind: "inline", value: Data.to(newDatum) }, { lovelace: 2_000_000n, [threadUnit]: 1n })
-  .pay.ToAddress(distDestAddr, { [tlampUnit]: MINT_OIL })  // A-DEST: LAMP vào KHO, không về ví
+  .pay.ToAddress(distDestAddr, { [tlampUnit]: MINT_OILDROP })  // A-DEST: LAMP vào KHO, không về ví
   .collectFrom([pureAda[0]])
   .addSignerKey(pkh)
   .complete({ coinSelection: true });
@@ -89,4 +89,4 @@ const h = await signed.submit();
 console.log(`SUBMITTED https://preview.cexplorer.io/tx/${h}`);
 console.log(`hash: ${h}`);
 await lucid.awaitTx(h);
-console.log(`MINTED ${MINT_OIL} oil tLAMP (${Number(MINT_OIL) / 1e6} tLAMP). tlampPid=${tlampPid}`);
+console.log(`MINTED ${MINT_OILDROP} oildrop tLAMP (${Number(MINT_OILDROP) / 1e6} tLAMP). tlampPid=${tlampPid}`);

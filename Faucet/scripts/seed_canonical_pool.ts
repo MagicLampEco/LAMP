@@ -27,9 +27,9 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const SUPPLY_NAME = "535550504c59", TLAMP_NAME = "744c414d50", TOKEN_TAG = "4c414d50";
 const DIST_CAP = 26370000000000000n, RESERVE_CAP = 9630000000000000n;
 const REG = "524547", KHO = "4b484f", MET = "4d4554";
-const CLAIM_AMOUNT_OIL = 100n * 1_000_000n;      // 100 tLAMP/claim
+const CLAIM_AMOUNT_OILDROP = 100n * 1_000_000n;      // 100 tLAMP/claim
 const POOL_LOVELACE = 5_000_000n;                // min-ADA pool
-const SEED_OIL = BigInt(process.env.SEED_OIL ?? (9_000n * 1_000_000n).toString()); // mặc định 9000 tLAMP
+const SEED_OILDROP = BigInt(process.env.SEED_OILDROP ?? (9_000n * 1_000_000n).toString()); // mặc định 9000 tLAMP
 
 async function gCode(mod: string, title: string): Promise<string> {
   const bp = JSON.parse(await readFile(resolve(__dirname, `../../${mod}/onchain/plutus.json`), "utf8"));
@@ -74,12 +74,12 @@ async function main(): Promise<void> {
   const fUtxos = await fLucid.wallet().getUtxos();
   const held = fUtxos.reduce((s, x) => s + (x.assets[lampUnit] ?? 0n), 0n);
   console.log(`FOUNDATION: ${fAddr}`);
-  console.log(`  giữ tLAMP canonical: ${held} oil = ${held / 1_000_000n} tLAMP`);
-  if (held < SEED_OIL) throw new Error(`FOUNDATION chỉ giữ ${held} oil < SEED_OIL ${SEED_OIL}. Giảm SEED_OIL hoặc mint+release thêm.`);
+  console.log(`  giữ tLAMP canonical: ${held} oildrop = ${held / 1_000_000n} tLAMP`);
+  if (held < SEED_OILDROP) throw new Error(`FOUNDATION chỉ giữ ${held} oildrop < SEED_OILDROP ${SEED_OILDROP}. Giảm SEED_OILDROP hoặc mint+release thêm.`);
 
-  const poolAssets: Record<string, bigint> = { lovelace: POOL_LOVELACE, [lampUnit]: SEED_OIL };
-  const poolDatum = Data.to(new (await import("@lucid-evolution/lucid")).Constr(0, [CLAIM_AMOUNT_OIL]));
-  console.log(`\nSeed pool: ${SEED_OIL} oil = ${SEED_OIL / 1_000_000n} tLAMP  (claim ${CLAIM_AMOUNT_OIL / 1_000_000n}/lần → ${SEED_OIL / CLAIM_AMOUNT_OIL} lượt)`);
+  const poolAssets: Record<string, bigint> = { lovelace: POOL_LOVELACE, [lampUnit]: SEED_OILDROP };
+  const poolDatum = Data.to(new (await import("@lucid-evolution/lucid")).Constr(0, [CLAIM_AMOUNT_OILDROP]));
+  console.log(`\nSeed pool: ${SEED_OILDROP} oildrop = ${SEED_OILDROP / 1_000_000n} tLAMP  (claim ${CLAIM_AMOUNT_OILDROP / 1_000_000n}/lần → ${SEED_OILDROP / CLAIM_AMOUNT_OILDROP} lượt)`);
 
   const tx = await fLucid.newTx()
     .pay.ToContract(faucetAddr, { kind: "inline", value: poolDatum }, poolAssets)
@@ -88,7 +88,7 @@ async function main(): Promise<void> {
   if (!SUBMIT) {
     console.log("\nℹ️ SUBMIT=false → chỉ build, KHÔNG gửi. Bật SUBMIT=true để nạp thật.");
     console.log(JSON.stringify({ network: NETWORK, lampPid, lampUnit, faucetHash, faucetAddr,
-      claimAmountOil: CLAIM_AMOUNT_OIL.toString(), seedOil: SEED_OIL.toString() }, null, 2));
+      claimAmountOildrop: CLAIM_AMOUNT_OILDROP.toString(), seedOildrop: SEED_OILDROP.toString() }, null, 2));
     return;
   }
   const signed = await tx.sign.withWallet().complete();
@@ -99,7 +99,7 @@ async function main(): Promise<void> {
   console.log(`\nPOOL sẵn sàng. Ghi lại:`);
   console.log(JSON.stringify({ network: NETWORK, tlampPolicyId: lampPid, tlampUnit: lampUnit,
     assetName: TLAMP_NAME, faucetHash, faucetAddr, poolUtxo: { txHash, outputIndex: 0 },
-    claimAmountOil: CLAIM_AMOUNT_OIL.toString(), seedOil: SEED_OIL.toString(), canonical: true }, null, 2));
+    claimAmountOildrop: CLAIM_AMOUNT_OILDROP.toString(), seedOildrop: SEED_OILDROP.toString(), canonical: true }, null, 2));
 }
 
 main().catch((e) => { console.error("❌", e instanceof Error ? (e.stack ?? e.message) : e); process.exit(1); });

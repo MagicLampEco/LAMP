@@ -1,10 +1,10 @@
 // TIGER Airdrop offchain types — mirror onchain ledger.ak.
 
-/** 1 bản ghi snapshot: 1 địa chỉ delegator + phần airdrop (oil). */
+/** 1 bản ghi snapshot: 1 địa chỉ delegator + phần airdrop (oildrop). */
 export interface SnapshotEntry {
   /** Địa chỉ Cardano (bech32) của delegator TIGER pool. */
   address: string;
-  /** Lượng LAMP (oil) địa chỉ này được airdrop. */
+  /** Lượng LAMP (oildrop) địa chỉ này được airdrop. */
   amount: bigint;
 }
 

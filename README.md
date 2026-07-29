@@ -9,7 +9,7 @@ Viết bằng [Aiken](https://aiken-lang.org/) (Plutus V3), off-chain bằng Typ
 | **Policy LAMP (mainnet)** | `55d3e01bb6c469e02665e4b6573ce65bbaf7a50ad2024e247eb180f0` |
 | **Asset** | `55d3e01b….4c414d50` — tên hiển thị **MagicLamp**, mã **LAMP** |
 | **Tổng cung** | 36.000.000.000 LAMP — **cố định, không đốt** |
-| **Đơn vị con** | 1 LAMP = 1.000.000 **oildrop** (decimals 6) — trong mã nguồn biến vẫn đặt tên `oil`, cùng một thứ, việc đổi tên trong code chưa làm |
+| **Đơn vị con** | 1 LAMP = 1.000.000 **oildrop** (decimals 6) — trong mã nguồn biến vẫn đặt tên `oildrop`, cùng một thứ, việc đổi tên trong code chưa làm |
 | **Tra cứu** | [cexplorer.io/policy/55d3e01b…](https://cexplorer.io/policy/55d3e01bb6c469e02665e4b6573ce65bbaf7a50ad2024e247eb180f0) |
 | **Giấy phép mã nguồn** | Apache-2.0 |
 

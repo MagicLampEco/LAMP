@@ -6,7 +6,7 @@ import {
   genesisSupplyState, applyMint, mintedTotal, distRemaining, reserveRemaining,
   assertInvariants, SupplyMintError,
 } from "../offchain/src/supplyState.js";
-import { DIST_CAP_OIL, RESERVE_CAP_OIL, TOTAL_CAP_OIL } from "../offchain/src/constants.js";
+import { DIST_CAP_OILDROP, RESERVE_CAP_OILDROP, TOTAL_CAP_OILDROP } from "../offchain/src/constants.js";
 import type { SupplyState } from "../offchain/src/types.js";
 
 describe("genesisSupplyState + caps", () => {
@@ -14,18 +14,18 @@ describe("genesisSupplyState + caps", () => {
     const s = genesisSupplyState();
     expect(s.dist_minted).toBe(0n);
     expect(s.reserve_minted).toBe(0n);
-    expect(s.dist_cap).toBe(DIST_CAP_OIL);
-    expect(s.reserve_cap).toBe(RESERVE_CAP_OIL);
+    expect(s.dist_cap).toBe(DIST_CAP_OILDROP);
+    expect(s.reserve_cap).toBe(RESERVE_CAP_OILDROP);
   });
 
   it("dist_cap + reserve_cap == 36 tỷ × 10^6", () => {
-    expect(DIST_CAP_OIL + RESERVE_CAP_OIL).toBe(TOTAL_CAP_OIL);
+    expect(DIST_CAP_OILDROP + RESERVE_CAP_OILDROP).toBe(TOTAL_CAP_OILDROP);
   });
 
   it("remaining quota tại genesis = full cap", () => {
     const s = genesisSupplyState();
-    expect(distRemaining(s)).toBe(DIST_CAP_OIL);
-    expect(reserveRemaining(s)).toBe(RESERVE_CAP_OIL);
+    expect(distRemaining(s)).toBe(DIST_CAP_OILDROP);
+    expect(reserveRemaining(s)).toBe(RESERVE_CAP_OILDROP);
   });
 });
 
@@ -53,16 +53,16 @@ describe("applyMint — HAPPY (lazy-mint dần)", () => {
   });
 
   it("mint tới ĐÚNG cap (biên dưới-bằng) hợp lệ", () => {
-    const s: SupplyState = { ...genesisSupplyState(), dist_minted: DIST_CAP_OIL - 7n };
+    const s: SupplyState = { ...genesisSupplyState(), dist_minted: DIST_CAP_OILDROP - 7n };
     const s2 = applyMint(s, "DistributionVest", 7n);
-    expect(s2.dist_minted).toBe(DIST_CAP_OIL);
+    expect(s2.dist_minted).toBe(DIST_CAP_OILDROP);
     expect(distRemaining(s2)).toBe(0n);
   });
 
   it("ReserveDraw tới ĐÚNG reserve_cap hợp lệ", () => {
-    const s: SupplyState = { ...genesisSupplyState(), reserve_minted: RESERVE_CAP_OIL - 3n };
+    const s: SupplyState = { ...genesisSupplyState(), reserve_minted: RESERVE_CAP_OILDROP - 3n };
     const s2 = applyMint(s, "ReserveDraw", 3n);
-    expect(s2.reserve_minted).toBe(RESERVE_CAP_OIL);
+    expect(s2.reserve_minted).toBe(RESERVE_CAP_OILDROP);
   });
 
   it("không mutate input (immutable transition)", () => {
@@ -74,13 +74,13 @@ describe("applyMint — HAPPY (lazy-mint dần)", () => {
 
 describe("applyMint — NEGATIVE (vector tấn công)", () => {
   it("A1 vượt dist_cap → throw", () => {
-    const s: SupplyState = { ...genesisSupplyState(), dist_minted: DIST_CAP_OIL - 5n };
+    const s: SupplyState = { ...genesisSupplyState(), dist_minted: DIST_CAP_OILDROP - 5n };
     expect(() => applyMint(s, "DistributionVest", 6n)).toThrow(SupplyMintError);
     expect(() => applyMint(s, "DistributionVest", 6n)).toThrow(/dist_cap/);
   });
 
   it("A1 vượt reserve_cap → throw", () => {
-    const s: SupplyState = { ...genesisSupplyState(), reserve_minted: RESERVE_CAP_OIL };
+    const s: SupplyState = { ...genesisSupplyState(), reserve_minted: RESERVE_CAP_OILDROP };
     expect(() => applyMint(s, "ReserveDraw", 1n)).toThrow(/reserve_cap/);
   });
 
@@ -93,7 +93,7 @@ describe("applyMint — NEGATIVE (vector tấn công)", () => {
   });
 
   it("mint vượt total qua dist alone bị chặn bởi dist_cap (không tràn sang reserve)", () => {
-    const s: SupplyState = { ...genesisSupplyState(), dist_minted: DIST_CAP_OIL };
+    const s: SupplyState = { ...genesisSupplyState(), dist_minted: DIST_CAP_OILDROP };
     // dist đã đầy; mint thêm dist → vượt cap dù total < 36 tỷ.
     expect(() => applyMint(s, "DistributionVest", 1n)).toThrow(/dist_cap/);
   });
@@ -109,12 +109,12 @@ describe("assertInvariants — audit offchain", () => {
   });
 
   it("A1 dist_minted > cap → throw", () => {
-    expect(() => assertInvariants({ ...genesisSupplyState(), dist_minted: DIST_CAP_OIL + 1n }))
+    expect(() => assertInvariants({ ...genesisSupplyState(), dist_minted: DIST_CAP_OILDROP + 1n }))
       .toThrow(/dist_cap/);
   });
 
   it("A1 reserve_minted > cap → throw", () => {
-    expect(() => assertInvariants({ ...genesisSupplyState(), reserve_minted: RESERVE_CAP_OIL + 1n }))
+    expect(() => assertInvariants({ ...genesisSupplyState(), reserve_minted: RESERVE_CAP_OILDROP + 1n }))
       .toThrow(/reserve_cap/);
   });
 });

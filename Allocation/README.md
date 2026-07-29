@@ -2,15 +2,15 @@
 
 > Module phân bổ rổ Distribution (26,370 tỷ LAMP) ra các **kênh thưởng**, mỗi kênh
 > có trần cứng độc lập + nhả nhỏ giọt (Capped Drop). KHÔNG phải toàn bộ "tokenomics"
-> (bức tranh tổng ở `Specs/LAMP-POT-CATALOG.md` + `Specs/LAMP-DISTRIBUTION-SPEC.md`). Đơn vị oil: 1 LAMP = 10⁶ oil.
+> (bức tranh tổng ở `Specs/LAMP-POT-CATALOG.md` + `Specs/LAMP-DISTRIBUTION-SPEC.md`). Đơn vị oildrop: 1 LAMP = 10⁶ oildrop.
 
 ## Vì sao tên "Allocation" (không phải "Tokenomics")
 Module này CHỈ làm phân bổ kênh. "Tokenomics" = toàn bộ thiết kế kinh tế = chính repo.
 Bức tranh tổng (cung, phát hành, điều tiết, pháp lý): `Specs/LAMP-POT-CATALOG.md`, `Specs/LAMP-DISTRIBUTION-SPEC.md`, `Specs/LAMP-POLICY-EXPLAINER.md`.
 
 ## HARD-CAP 2 lớp phòng thủ (vá lỗ committee cấp vượt ngân sách)
-- **Lớp A (kế toán, mềm):** `ChannelBudget` beacon NFT mang `remaining_oil`. Mỗi Claim
-  PHẢI consume + tái tạo beacon, trừ `remaining_oil`; reject khi amount > remaining.
+- **Lớp A (kế toán, mềm):** `ChannelBudget` beacon NFT mang `remaining_oildrop`. Mỗi Claim
+  PHẢI consume + tái tạo beacon, trừ `remaining_oildrop`; reject khi amount > remaining.
   → Σ entitlement đã cấp ≤ budget gốc (bất biến số học).
 - **Lớp B (vật lý, cứng):** treasury con PER-CHANNEL, value LAMP = ĐÚNG budget kênh.
   Cạn UTxO = hết ngân sách vật lý, bất khả vượt kể cả Lớp A lỗi.
@@ -19,7 +19,7 @@ Bức tranh tổng (cung, phát hành, điều tiết, pháp lý): `Specs/LAMP-P
 ## Validators (onchain)
 | File | Vai trò |
 |---|---|
-| `channel_budget.ak` | beacon `remaining_oil` mỗi kênh (Decrement khi Claim) |
+| `channel_budget.ak` | beacon `remaining_oildrop` mỗi kênh (Decrement khi Claim) |
 | `budget_nft.ak` | mint NFT chính danh mỗi kênh (name = channel_id) |
 | `claim_account.ak` | tài khoản Capped Drop mỗi người nhận (Claim/Redeem) |
 | `treasury.ak` | sub-pool LAMP per-channel (ReleaseForRedeem) |

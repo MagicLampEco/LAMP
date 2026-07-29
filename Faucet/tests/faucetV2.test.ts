@@ -10,7 +10,7 @@ import {
   mintPoolRedeemerToCbor, mintAccountRedeemerToCbor,
 } from "../offchain/src/datum.js";
 import {
-  DRIP_OIL, DRIP_LAMP, COOLDOWN, RECLAIM, OIL_PER_LAMP,
+  DRIP_OILDROP, DRIP_LAMP, COOLDOWN, RECLAIM, OILDROP_PER_LAMP,
   POOL_NFT_NAME, ACCT_NFT_NAME, MS_PER_EPOCH_PREVIEW,
 } from "../offchain/src/constants.js";
 
@@ -21,7 +21,7 @@ function hexToAscii(hex: string): string {
 }
 
 describe("FaucetConfig codec", () => {
-  const cfg = { drip_oil: DRIP_OIL, cooldown_epochs: COOLDOWN, reclaim_epochs: RECLAIM };
+  const cfg = { drip_oildrop: DRIP_OILDROP, cooldown_epochs: COOLDOWN, reclaim_epochs: RECLAIM };
 
   it("round-trips drip/cooldown/reclaim", () => {
     expect(faucetConfigFromCbor(faucetConfigToCbor(cfg))).toEqual(cfg);
@@ -29,7 +29,7 @@ describe("FaucetConfig codec", () => {
 
   it("encodes as Constr(0, [int,int,int])", () => {
     const back = decodeFaucetConfig(Data.from(faucetConfigToCbor(cfg)));
-    expect(back.drip_oil).toBe(1_001_000_000n);
+    expect(back.drip_oildrop).toBe(1_001_000_000n);
     expect(back.cooldown_epochs).toBe(36n);
     expect(back.reclaim_epochs).toBe(1001n);
   });
@@ -75,10 +75,10 @@ describe("redeemers (Constr index khớp onchain enum order)", () => {
 });
 
 describe("constants — drip 1001, cooldown 36, reclaim 1001", () => {
-  it("DRIP = 1001 LAMP = 1_001_000_000 oil", () => {
+  it("DRIP = 1001 LAMP = 1_001_000_000 oildrop", () => {
     expect(DRIP_LAMP).toBe(1001n);
-    expect(DRIP_OIL).toBe(1_001_000_000n);
-    expect(DRIP_OIL).toBe(DRIP_LAMP * OIL_PER_LAMP);
+    expect(DRIP_OILDROP).toBe(1_001_000_000n);
+    expect(DRIP_OILDROP).toBe(DRIP_LAMP * OILDROP_PER_LAMP);
   });
   it("COOLDOWN = 36 epoch", () => {
     expect(COOLDOWN).toBe(36n);

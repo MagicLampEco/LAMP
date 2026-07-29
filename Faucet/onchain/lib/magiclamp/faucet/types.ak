@@ -13,7 +13,7 @@
 
 /// Datum của Faucet pool UTxO.
 pub type FaucetDatum {
-  /// Lượng tLAMP (oil) mỗi lần claim. MVP = 100 × 10^6 = 100_000_000.
+  /// Lượng tLAMP (oildrop) mỗi lần claim. MVP = 100 × 10^6 = 100_000_000.
   claim_amount: Int,
 }
 

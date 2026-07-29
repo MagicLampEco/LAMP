@@ -8,7 +8,7 @@
 //
 // Chạy: tsx 01_mint_pool.ts   (SUBMIT=true tsx 01_mint_pool.ts để gửi thật)
 
-import { buildMintPoolTx, TLAMP_ASSET_NAME, TOTAL_SUPPLY_OIL, CLAIM_AMOUNT_OIL } from "@magiclamp/faucet-sdk";
+import { buildMintPoolTx, TLAMP_ASSET_NAME, TOTAL_SUPPLY_OILDROP, CLAIM_AMOUNT_OILDROP } from "@magiclamp/faucet-sdk";
 import {
   NETWORK, makeLucid, rawValidator, applyPolicy, applyValidator, policyId,
   scriptHash, scriptAddress, saveDeployed, explorerTx, SUBMIT,
@@ -37,7 +37,7 @@ async function main(): Promise<void> {
     BigInt(genesis.outputIndex),       // output_index: Int
   ]);
   const rawMint = await rawValidator("tlamp_policy.tlamp_policy.mint");
-  const tlampPolicy = applyPolicy(rawMint.compiledCode, [genesisRefData, TOTAL_SUPPLY_OIL]);
+  const tlampPolicy = applyPolicy(rawMint.compiledCode, [genesisRefData, TOTAL_SUPPLY_OILDROP]);
   const tlampPolicyId = policyId(tlampPolicy);
   console.log(`tLAMP policy id: ${tlampPolicyId}`);
 
@@ -61,11 +61,11 @@ async function main(): Promise<void> {
     tlamp: {
       policyId: tlampPolicyId,
       assetName: TLAMP_ASSET_NAME,
-      totalSupplyOil: TOTAL_SUPPLY_OIL.toString(),
+      totalSupplyOildrop: TOTAL_SUPPLY_OILDROP.toString(),
       genesisRef: { txHash: genesis.txHash, outputIndex: genesis.outputIndex },
     },
     faucet: { hash: faucetHash, address: faucetAddr },
-    claimAmountOil: CLAIM_AMOUNT_OIL.toString(),
+    claimAmountOildrop: CLAIM_AMOUNT_OILDROP.toString(),
   };
 
   if (!SUBMIT) {

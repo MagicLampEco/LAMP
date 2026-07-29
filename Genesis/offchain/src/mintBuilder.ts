@@ -2,7 +2,7 @@
 //
 // Flow (khớp luật onchain):
 //   - Input:  SupplyState UTxO (mang thread NFT) — spend redeemer Advance.
-//   - Mint:   Δ oil LAMP qua policy lamp_mint, redeemer DistributionVest|ReserveDraw.
+//   - Mint:   Δ oildrop LAMP qua policy lamp_mint, redeemer DistributionVest|ReserveDraw.
 //   - Output: SupplyState' tại CÙNG script address, mang lại thread NFT, datum cập nhật
 //             (dist_minted hoặc reserve_minted += Δ); + Δ tLAMP trả `recipient`.
 //   - Sign:   authority đúng đường mint (extra_signatories) — caller bảo đảm ví ký.
@@ -53,7 +53,7 @@ export interface MintParams {
   /** policy id thread NFT (hex) — để định vị NFT trong value. */
   threadPolicyId: string;
 
-  /** Đường mint + lượng oil. */
+  /** Đường mint + lượng oildrop. */
   route: MintRoute;
   amount: bigint;
 

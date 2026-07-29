@@ -6,7 +6,7 @@
 //   ── DATUM ──────────────────────────────────────────────────────────────
 //   ClaimAccountDatum{owner, entitlement, redeemed, start_epoch, drops_per_epoch, channel_id}
 //     = Constr(0, [bytes, int, int, int, int, bytes])    ← channel_id field CUỐI
-//   ChannelBudgetDatum{channel_id, remaining_oil}
+//   ChannelBudgetDatum{channel_id, remaining_oildrop}
 //     = Constr(0, [bytes, int])
 //   TreasuryDatum{committee_hash, channel_id}
 //     = Constr(0, [bytes, bytes])
@@ -117,10 +117,10 @@ export function redeemRedeemerToCbor(): string {
 }
 
 // ── ChannelBudgetDatum ──────────────────────────────────────────────────
-// Constr(0, [channel_id:bytes, remaining_oil:int])
+// Constr(0, [channel_id:bytes, remaining_oildrop:int])
 
 export function encodeChannelBudgetDatum(d: ChannelBudgetDatum): Constr<Data> {
-  return new Constr(0, [normHex(d.channel_id), d.remaining_oil]);
+  return new Constr(0, [normHex(d.channel_id), d.remaining_oildrop]);
 }
 
 export function decodeChannelBudgetDatum(d: Data): ChannelBudgetDatum {
@@ -129,7 +129,7 @@ export function decodeChannelBudgetDatum(d: Data): ChannelBudgetDatum {
   if (c.fields.length !== 2) throw new Error(`TDATUM-031: ChannelBudgetDatum expects 2 fields, got ${c.fields.length}`);
   return {
     channel_id:    asBytes(c.fields[0]!, "channel_id"),
-    remaining_oil: asInt(c.fields[1]!, "remaining_oil"),
+    remaining_oildrop: asInt(c.fields[1]!, "remaining_oildrop"),
   };
 }
 

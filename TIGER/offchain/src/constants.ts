@@ -4,16 +4,16 @@
 // theo stake tích lũy của delegator qua MỌI snapshot TRƯỚC mốc cắt 18/6 (UTC), rồi
 // nhỏ giọt kiểu B (đều N epoch, có cliff) — NGANG cộng đồng, không rút một cục.
 //
-// Mọi đại lượng tiền = oil (1 LAMP = 10^6 oil). BigInt tuyệt đối (C-OVERFLOW).
+// Mọi đại lượng tiền = oildrop (1 LAMP = 10^6 oildrop). BigInt tuyệt đối (C-OVERFLOW).
 
-/** 1 LAMP = 10^6 oil (decimals 6). Khớp Utils/SRCL/Distribution. */
-export const OIL_PER_LAMP = 1_000_000n;
+/** 1 LAMP = 10^6 oildrop (decimals 6). Khớp Utils/SRCL/Distribution. */
+export const OILDROP_PER_LAMP = 1_000_000n;
 
 /** Ngân sách pot = 12.000.000 LAMP. */
 export const TIGER_TOTAL_LAMP = 12_000_000n;
 
-/** Ngân sách pot tính oil = 12e6 × 1e6 = 1.2e13 oil. */
-export const TIGER_TOTAL_OIL = TIGER_TOTAL_LAMP * OIL_PER_LAMP;
+/** Ngân sách pot tính oildrop = 12e6 × 1e6 = 1.2e13 oildrop. */
+export const TIGER_TOTAL_OILDROP = TIGER_TOTAL_LAMP * OILDROP_PER_LAMP;
 
 /** Pool TIGER (bech32) — nguồn stake để lọc epoch tính entitlement.
  *  Đây là tầng-dữ-liệu (đổi được, không strand LAMP). Có thể override qua env TIGER_POOL_ID. */
@@ -29,12 +29,12 @@ export const CUTOFF_EPOCH_DEFAULT = 0n;
  *  DAO/committee đổi được. vested = E·min(1, (t−cliff)/N). */
 export const DRIP_EPOCHS_DEFAULT = 36n;
 
-/** drop_value D (oil/đơn-vị-mở) cho beacon dùng CHUNG mọi account TIGER.
- *  Đặt D = 1 oil → độ phân giải mịn nhất; mức mở mỗi epoch = D·drops_per_epoch.
+/** drop_value D (oildrop/đơn-vị-mở) cho beacon dùng CHUNG mọi account TIGER.
+ *  Đặt D = 1 oildrop → độ phân giải mịn nhất; mức mở mỗi epoch = D·drops_per_epoch.
  *  Kiểu B đạt được bằng drops_per_epoch_i = ceil(E_i / N) per-account (xem dripB.ts). */
-export const DROP_VALUE_OIL = 1n;
+export const DROP_VALUE_OILDROP = 1n;
 
-/** LAMP → oil. */
-export function lampToOil(lamp: bigint): bigint {
-  return lamp * OIL_PER_LAMP;
+/** LAMP → oildrop. */
+export function lampToOildrop(lamp: bigint): bigint {
+  return lamp * OILDROP_PER_LAMP;
 }

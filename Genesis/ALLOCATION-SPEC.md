@@ -3,7 +3,7 @@
 > **Phạm vi.** Đây là spec CHUẨN cho việc **phân bổ + phát hành** token LAMP trên Cardano
 > (PlutusV3 / Aiken). Thay v1 (`CONTRACT.md`, bản pre-registry 8-param `dist_dest`). Mọi số
 > liệu, datum, luật trong tài liệu này được trích từ code đã verify (71/71 aiken VM test) +
-> đã chạy thật trên Preview (xem §13). Đơn vị nội bộ: **oil** (1 LAMP = 10⁶ oil).
+> đã chạy thật trên Preview (xem §13). Đơn vị nội bộ: **oildrop** (1 LAMP = 10⁶ oildrop).
 
 ---
 
@@ -41,19 +41,19 @@
 
 Nguồn: `Genesis/onchain/lib/magiclamp/genesis/constants.ak`.
 
-| Hằng | Giá trị (oil) | LAMP | Ý nghĩa |
+| Hằng | Giá trị (oildrop) | LAMP | Ý nghĩa |
 |---|---|---|---|
-| `oil_per_lamp` | 1 000 000 | — | 1 LAMP = 10⁶ oil |
-| `dist_cap_oil` | 26 370 000 000 000 000 | 26,37 tỷ | quota Distribution |
-| `reserve_cap_oil` | 9 630 000 000 000 000 | 9,63 tỷ | quota Reserve |
-| `total_cap_oil` | 36 000 000 000 000 000 | 36 tỷ | **BẤT BIẾN** (= dist + reserve) |
+| `oildrop_per_lamp` | 1 000 000 | — | 1 LAMP = 10⁶ oildrop |
+| `dist_cap_oildrop` | 26 370 000 000 000 000 | 26,37 tỷ | quota Distribution |
+| `reserve_cap_oildrop` | 9 630 000 000 000 000 | 9,63 tỷ | quota Reserve |
+| `total_cap_oildrop` | 36 000 000 000 000 000 | 36 tỷ | **BẤT BIẾN** (= dist + reserve) |
 
 - Bất biến kiểm bằng test: `caps_sum_to_total`, `total_is_36b_lamp`.
 - **LƯU Ý framework:** trong validator hiện tại, `dist_cap`/`reserve_cap` là **PARAM apply-time**,
   KHÔNG đọc hằng. Các hằng trên là **giá trị bake cho LAMP**. Token khác bake giá trị khác
   (vd FARM: `dist_cap` + `reserve_cap` = 12 tỷ × 10⁶). Validator chỉ ép `s.dist_cap == <param>`.
-- **Đơn vị nội bộ = oil** để mọi số học là `Int` (Aiken Int = bigint vô hạn, KHÔNG tràn). Off-chain
-  dùng `BigInt`. Cấm `Number` cho oil/nanogic (C-OVERFLOW).
+- **Đơn vị nội bộ = oildrop** để mọi số học là `Int` (Aiken Int = bigint vô hạn, KHÔNG tràn). Off-chain
+  dùng `BigInt`. Cấm `Number` cho oildrop/nanogic (C-OVERFLOW).
 
 ---
 

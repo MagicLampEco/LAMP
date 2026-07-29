@@ -72,7 +72,7 @@ Một ví test của MagicLamp (đọc seed từ `MAGIC/.env` `VEDATA_WALLET_MNE
 [`scripts/config.ts:28-29`](./scripts/config.ts)) chạy **đúng 1 lần** để khởi tạo cả hệ:
 
 - Chọn 1 UTxO ví làm **genesis** (one-shot anchor).
-- Mint **toàn bộ** test supply = 36 tỷ tLAMP = `36_000_000_000_000_000` oil.
+- Mint **toàn bộ** test supply = 36 tỷ tLAMP = `36_000_000_000_000_000` oildrop.
 - Đổ **hết** vào 1 Faucet pool UTxO, đính `FaucetDatum{ claim_amount }`.
 
 Sau bước này policy **tự khóa**: genesis UTxO đã bị tiêu, không UTxO nào tiêu lại được → KHÔNG
@@ -86,7 +86,7 @@ committee. Mỗi claim:
 
 - Spend pool UTxO với redeemer `Claim`.
 - Tạo pool mới = pool cũ trừ đúng `claim_amount` tLAMP.
-- Ví dev nhận đúng `claim_amount` tLAMP (mặc định 100 LAMP = `100_000_000` oil).
+- Ví dev nhận đúng `claim_amount` tLAMP (mặc định 100 LAMP = `100_000_000` oildrop).
 
 Token test **vô giá trị** → permissionless là an toàn: kẻ spam chỉ tốn phí của chính nó, và pool
 cạn thì re-deploy pool mới rất rẻ ([CONTRACT §3](./CONTRACT.md), [`faucet.ak:8-10`](./onchain/validators/faucet.ak)).
@@ -110,7 +110,7 @@ Tx deploy làm đồng thời 3 việc trong **1 giao dịch**:
 1. **Consume genesis UTxO** — UTxO đã được dùng để parameterize policy
    ([`01_mint_pool.ts:35-40`](./scripts/01_mint_pool.ts), `collectFrom([genesisUtxo])` ở
    [`mintBuilder.ts:94`](./offchain/src/mintBuilder.ts)).
-2. **Mint đúng tổng cung** `(tLAMP, +TOTAL_SUPPLY_OIL)` — không hơn không kém
+2. **Mint đúng tổng cung** `(tLAMP, +TOTAL_SUPPLY_OILDROP)` — không hơn không kém
    ([`mintBuilder.ts:95`](./offchain/src/mintBuilder.ts), validator ép ở
    [`tlamp_policy.ak:49-53`](./onchain/validators/tlamp_policy.ak)).
 3. **Gửi toàn bộ tLAMP vào pool** UTxO ở địa chỉ Faucet + min-ADA + inline `FaucetDatum`
@@ -118,7 +118,7 @@ Tx deploy làm đồng thời 3 việc trong **1 giao dịch**:
 
 ### 2.3 Trạng thái sau
 
-- 1 pool UTxO tại địa chỉ Faucet: value = `{ lovelace: poolLovelace, tLAMP: TOTAL_SUPPLY_OIL }`,
+- 1 pool UTxO tại địa chỉ Faucet: value = `{ lovelace: poolLovelace, tLAMP: TOTAL_SUPPLY_OILDROP }`,
   inline datum `FaucetDatum{ claim_amount }`.
 - Genesis UTxO biến mất khỏi chain → **policy khóa vĩnh viễn** (không re-mint được).
 - Pool là **nguồn claim duy nhất** — không tLAMP nào nằm ngoài pool ([`mintBuilder.ts:18` C-POOL-1](./offchain/src/mintBuilder.ts)).
@@ -127,7 +127,7 @@ Tx deploy làm đồng thời 3 việc trong **1 giao dịch**:
 
 - Mint mà **không** consume genesis → reject (one-shot, [`tlamp_policy.ak:45`](./onchain/validators/tlamp_policy.ak),
   test `mint_without_genesis`).
-- Mint **sai tổng cung** (thừa/thiếu 1 oil) → reject ([`:53`](./onchain/validators/tlamp_policy.ak),
+- Mint **sai tổng cung** (thừa/thiếu 1 oildrop) → reject ([`:53`](./onchain/validators/tlamp_policy.ak),
   test `mint_wrong_quantity_less/more`).
 - Mint **kèm asset name lạ** cùng policy → reject (`dict.size == 1`, [`:51`](./onchain/validators/tlamp_policy.ak),
   test `mint_extra_asset_name`).

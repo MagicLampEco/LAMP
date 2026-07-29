@@ -50,7 +50,7 @@ node = blake2b_256( 0x01 ++ left ++ right )
 
 - `cbor.serialise(address)`: Plutus-Data canonical CBOR của Aiken `Address` Constr.
   Off-chain dựng cùng cây Data (`Data.to(addressToPlutusData)`) → **cùng bytes**.
-- `amount_be8`: amount (oil) big-endian 8 byte (u64) — cố định độ dài, chống nhập nhằng.
+- `amount_be8`: amount (oildrop) big-endian 8 byte (u64) — cố định độ dài, chống nhập nhằng.
 - Prefix `0x00` (leaf) / `0x01` (node): **domain-separation** chống second-preimage.
 
 > Parity được khoá bằng 1 vector regression ở **cả** `onchain/.../merkle.ak`
@@ -135,7 +135,7 @@ Airdrop/
 │       └── airdrop_pool.ak   # spend: Claim (Merkle-gated) + Sweep (sau deadline)
 └── offchain/
     ├── src/
-    │   ├── constants.ts      # AIRDROP_TOTAL_OIL, CLAIM_WINDOW_EPOCHS, names, ms/epoch
+    │   ├── constants.ts      # AIRDROP_TOTAL_OILDROP, CLAIM_WINDOW_EPOCHS, names, ms/epoch
     │   ├── types.ts          # SnapshotEntry, ProofStep, AirdropPool, MerkleTree
     │   ├── merkle.ts         # dựng cây + proof + leaf encoding (byte-perfect)
     │   ├── datum.ts          # codec datum/redeemer (Plutus Data)

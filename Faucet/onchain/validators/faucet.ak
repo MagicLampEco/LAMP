@@ -86,7 +86,7 @@ const ft_tlamp_policy: ByteArray = #"1a3b"
 
 const ft_tlamp_name: ByteArray = #"744c414d50"
 
-// 100 tLAMP = 100 × 10^6 oil.
+// 100 tLAMP = 100 × 10^6 oildrop.
 const ft_claim: Int = 100_000_000
 
 fn ft_datum() -> FaucetDatum {

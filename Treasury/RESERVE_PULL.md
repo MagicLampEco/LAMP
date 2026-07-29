@@ -8,7 +8,7 @@ mới (THÊM, không sửa custody/collect/release) + builder off-chain.
 | File | Vai trò |
 |---|---|
 | `onchain/validators/reserve_auth.ak` | Minting policy ONE-SHOT đúc 1 **Treasury-pull auth NFT** — credential "kéo" Reserve. |
-| `onchain/validators/reserve_gate.ak` | Spend validator GIỮ auth NFT; chỉ cho spend khi `parked < floor_oil`. |
+| `onchain/validators/reserve_gate.ak` | Spend validator GIỮ auth NFT; chỉ cho spend khi `parked < floor_oildrop`. |
 | `offchain/src/reserveAuthBuilder.ts` | Dựng tx mint auth one-shot (gửi tới gate). |
 | `offchain/src/reserveGateBuilder.ts` | Dựng/gộp phần GATE của tx Treasury-pull (spend auth + reference custody + re-output auth). |
 
@@ -17,7 +17,7 @@ mới (THÊM, không sửa custody/collect/release) + builder off-chain.
 - **G-AUTH-1** own input mang auth NFT `(auth_policy, auth_name)` qty == 1 — authenticity.
 - **G-CUST-1** tx có **reference input** là custody UTxO THẬT (mang custody NFT
   `(custody_nft_policy, custody_nft_name)` qty == 1). CIP-31, KHÔNG tiêu custody.
-- **G-FLOOR-1** `parked = quantity_of(custody_ref.value, lamp_policy, token_name) < floor_oil`.
+- **G-FLOOR-1** `parked = quantity_of(custody_ref.value, lamp_policy, token_name) < floor_oildrop`.
   CHỈ cho kéo khi dưới sàn (cận chặt: `parked == floor` → reject).
 - **G-REOUT-1** auth NFT **re-output về chính gate script** (cùng payment script hash), qty == 1.
 - **G-NOBURN-1** auth NFT KHÔNG mint/burn trong tx (qty mint == 0).

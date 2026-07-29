@@ -10,12 +10,12 @@
 | **ticker** | `LAMP` | mã giao dịch |
 | **asset name on-chain** | `LAMP` (#`4c414d50`) | tên kỹ thuật, KHÔNG đổi |
 | **decimals** | `6` | 1 LAMP = 10⁶ đơn-vị-con |
-| **đơn vị con** | `oil` | giống `lovelace` của ADA, `wei` của ETH. 1 LAMP = 1.000.000 oil |
+| **đơn vị con** | `oildrop` | giống `lovelace` của ADA, `wei` của ETH. 1 LAMP = 1.000.000 oildrop |
 | **url** | `https://magiclamp.network/` | |
 | **logo** | `MagicLamp Logo.jpeg` → PNG 64×64 (base64) | em chuẩn bị |
 | **description** | (chọn 1 bên dưới) | |
 
-> Lưu ý: chuẩn Cardano token registry KHÔNG có trường "đơn vị con" riêng — `oil` là quy ước
+> Lưu ý: chuẩn Cardano token registry KHÔNG có trường "đơn vị con" riêng — `oildrop` là quy ước
 > tài liệu (như lovelace/wei), em ghi vào description + docs, không phải field ví đọc.
 
 ## Description — 3 phương án (học cách NIGHT diễn đạt: điềm đạm, nói công dụng, không hứa giá)
@@ -59,5 +59,5 @@ cho metadata on-chain mutable. Cả hai cập nhật được sau, không đụn
 
 ## Chờ anh chốt
 1. Description: P1 / P2 / P3 (hay VN+EN cả hai)?
-2. decimals=6 + đơn vị con "oil" + name "MagicLamp" + ticker "LAMP" — đúng ý anh chứ?
+2. decimals=6 + đơn vị con "oildrop" + name "MagicLamp" + ticker "LAMP" — đúng ý anh chứ?
 3. Logo: dùng `MagicLamp Logo.jpeg` (em resize PNG chuẩn). Anh có bản vuông/nền trong tốt hơn không?
