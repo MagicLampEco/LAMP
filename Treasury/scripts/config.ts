@@ -16,7 +16,7 @@ import {
   scriptHashToCredential, validatorToScriptHash,
   type LucidEvolution, type Validator,
 } from "@lucid-evolution/lucid";
-import { msPerEpoch, type Network } from "@magiclamp/protocol-utils";
+import { msPerEpoch, type Network } from "@magiclamp/utils";
 // SDK Treasury: import THẲNG từ ../offchain/src (như Distribution scripts) — package
 // treasury-sdk không khai "exports", resolve theo đường dẫn nguồn .js (tsx/NodeNext).
 //

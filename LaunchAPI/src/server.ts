@@ -31,6 +31,9 @@ import { etdCheck } from "./etd.js";
 
 const PORT = parseInt(process.env.PORT ?? "3210", 10);
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN ?? "";
+// Bỏ auth admin CHỈ khi khai báo tường minh. Thiếu ADMIN_TOKEN mà không có cờ này
+// ⇒ /admin/* đóng hoàn toàn (fail-closed) — không để prod quên env thành cửa mở.
+const DEV_NO_AUTH = process.env.DEV_NO_AUTH === "1";
 const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS ?? "https://affiso.net,https://magiclamp.network")
   .split(",").map((s) => s.trim());
 
@@ -67,7 +70,11 @@ async function readBody(req: IncomingMessage): Promise<unknown> {
 }
 
 function requireAdmin(req: IncomingMessage, res: ServerResponse): boolean {
-  if (!ADMIN_TOKEN) return true; // dev mode: no auth
+  if (DEV_NO_AUTH) return true; // dev: DEV_NO_AUTH=1 tường minh
+  if (!ADMIN_TOKEN) {
+    err(res, "admin disabled (thiếu ADMIN_TOKEN)", 503);
+    return false;
+  }
   const auth = req.headers.authorization ?? "";
   if (auth !== `Bearer ${ADMIN_TOKEN}`) {
     err(res, "unauthorized", 401);
@@ -244,6 +251,6 @@ const server = createServer((req, res) => {
 server.listen(PORT, () => {
   console.log(`[launch-api] listening on port ${PORT}`);
   console.log(`  Public:  GET http://localhost:${PORT}/v1/campaigns`);
-  console.log(`  Admin:   POST http://localhost:${PORT}/admin/campaigns  (Bearer ${ADMIN_TOKEN ? "***" : "dev-no-auth"})`);
+  console.log(`  Admin:   POST http://localhost:${PORT}/admin/campaigns  (${ADMIN_TOKEN ? "Bearer ***" : DEV_NO_AUTH ? "DEV_NO_AUTH=1 — KHÔNG auth" : "TẮT (503) — thiếu ADMIN_TOKEN"})`);
   console.log(`  SSE:     GET http://localhost:${PORT}/events`);
 });

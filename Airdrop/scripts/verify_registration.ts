@@ -3,13 +3,16 @@
 // Dùng:
 //   npx tsx verify_registration.ts --file spo_registration.json
 //   npx tsx verify_registration.ts --dir ./registrations/      # xác minh hàng loạt
+//   npx tsx verify_registration.ts --selftest                  # tự kiểm (không cần mạng)
 //
 // Quy trình xác minh:
 //   1. Verify Ed25519 signature (message_hex, signature, signing_pubkey)
+//      + ép mọi trường payload nằm TRONG message đã ký (chống sửa file sau khi ký)
 //   2. Verify signing_pubkey → stake addr == pool's reward_account (Blockfrost)
 //   3. Verify pool tồn tại và active trong các epoch đã khai báo
 //   4. Output: VALID / INVALID + lý do chi tiết
 
+import assert from "node:assert/strict";
 import { readFile, readdir } from "node:fs/promises";
 import { resolve, join } from "node:path";
 import { verify as edVerify, createPublicKey } from "node:crypto";
@@ -34,6 +37,25 @@ function verifyEd25519(messageHex: string, sigHex: string, pubkeyHex: string): b
   } catch {
     return false;
   }
+}
+
+/** Đọc giá trị của dòng `Label: <value>` trong message đã ký (nhãn không chứa ký tự regex). */
+function messageField(message: string, label: string): string | null {
+  const m = message.match(new RegExp(`^${label}:\\s*(.+)$`, "m"));
+  return m ? m[1]!.trim() : null;
+}
+
+/** Trường nào của registration KHÔNG khớp message đã ký. Rỗng = chữ ký phủ trọn payload. */
+function boundFieldMismatches(reg: SpoRegistration): string[] {
+  const bound: [string, string][] = [
+    ["Pool", reg.pool_id],
+    ["Reward Address", reg.reward_stake_address],
+    ["Payment Address", reg.payment_address],
+    ["Network", reg.network],
+    ["Nonce", reg.nonce],
+    ["Epochs", `[${(reg.epochs_active ?? []).join(", ")}]`],
+  ];
+  return bound.filter(([l, v]) => messageField(reg.message, l) !== v).map(([l]) => l);
 }
 
 function pubkeyToStakeAddr(pubkeyHex: string, network: string): string {
@@ -160,6 +182,20 @@ async function verifyOne(filePath: string): Promise<VerifyResult> {
       : "Chữ ký không hợp lệ — message/sig/pubkey không khớp",
   });
 
+  // CHECK 5b: chữ ký RÀNG BUỘC payload — mọi trường pipeline dùng phải nằm TRONG
+  // message đã ký. Không có check này, chữ ký chỉ chứng minh "SPO từng ký một chuỗi
+  // nào đó": sửa payment_address trong file JSON vẫn VALID (CHECK 8 vẫn khớp vì pubkey
+  // là thật của pool) ⇒ phần LAMP SPO chảy về ví kẻ sửa file. Fail-closed: lệch 1
+  // trường ⇒ INVALID.
+  const unboundFields = boundFieldMismatches(reg);
+  checks.push({
+    name: "Chữ ký ràng buộc payload",
+    pass: unboundFields.length === 0,
+    detail: unboundFields.length === 0
+      ? "Mọi trường (pool/reward/payment/network/nonce/epochs) khớp message đã ký"
+      : `Trường KHÔNG khớp message đã ký: ${unboundFields.join(", ")}`,
+  });
+
   // CHECK 6: Pubkey → stake addr == reward_stake_address (khai báo)
   let derivedAddr = "";
   let addrSelfMatch = false;
@@ -239,6 +275,7 @@ async function verifyOne(filePath: string): Promise<VerifyResult> {
   const critical = [
     "Trường bắt buộc",
     "Ed25519 signature",
+    "Chữ ký ràng buộc payload",
     "Pubkey → stake addr khớp reward_account on-chain",
     "Epochs khai báo có trong lịch sử pool",
   ];
@@ -286,10 +323,44 @@ function printResult(r: VerifyResult): void {
 
 // ── CLI ──────────────────────────────────────────────────────────────────────
 
+/** `--selftest`: chứng minh CHECK 5b bắt được sửa-payload-sau-khi-ký. Không cần mạng. */
+function selftest(): void {
+  const msg = [
+    "TIGER AIRDROP SPO REGISTRATION v1.0",
+    "",
+    "Pool:            pool1abc",
+    "Reward Address:  stake_test1xyz",
+    "Payment Address: addr_test1honest",
+    "Network:         Preview",
+    "Nonce:           deadbeef",
+    "Epochs:          [580, 581]",
+  ].join("\n");
+  const honest = {
+    pool_id: "pool1abc", reward_stake_address: "stake_test1xyz",
+    payment_address: "addr_test1honest", network: "Preview", nonce: "deadbeef",
+    epochs_active: [580, 581], message: msg,
+  } as SpoRegistration;
+
+  assert.deepStrictEqual(boundFieldMismatches(honest), []);
+  // Kẻ tấn công đổi ví nhận trong JSON, giữ nguyên message + chữ ký thật của SPO.
+  assert.deepStrictEqual(
+    boundFieldMismatches({ ...honest, payment_address: "addr_test1attacker" }),
+    ["Payment Address"],
+  );
+  // Nhét thêm epoch để thổi phồng phần chia.
+  assert.deepStrictEqual(
+    boundFieldMismatches({ ...honest, epochs_active: [580, 581, 582] }),
+    ["Epochs"],
+  );
+  console.log("selftest OK — sửa payload sau khi ký bị bắt");
+}
+
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
   const fileArg = args.find((_, i) => args[i - 1] === "--file");
   const dirArg = args.find((_, i) => args[i - 1] === "--dir");
+
+  if (args.includes("--selftest")) { selftest(); return; }
 
   if (!BLOCKFROST_KEY) throw new Error("thiếu BLOCKFROST_KEY — cấu hình .env");
 

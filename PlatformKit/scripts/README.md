@@ -15,7 +15,7 @@ chung blueprint Treasury. Nếu plutus.json thiếu 4 validator (`custody`, `cus
 
 ```bash
 cd PlatformKit/scripts
-npm install                          # cài lucid/tsx/protocol-utils
+npm install                          # cài lucid/tsx/utils
 npm run deploy-registry              # = npx tsx 02_deploy_registry.ts → registry.json
 npm run onboard -- phoenixkey        # = npx tsx 03_onboard_platform.ts phoenixkey
 npm run onboard -- orilife           #   (chạy được cho cả 2 platform)

@@ -8,7 +8,7 @@ Apply-params + seed (bootstrap) MỘT custody instance của Treasury. Mẫu the
 - `onchain/plutus.json` phải có 4 validator (`custody`, `custody_seed`, `registry`,
   `registry_beacon`). Nếu thiếu → chạy `aiken build` trong `Treasury/onchain/` trước.
 - `node_modules` đã link `@magiclamp/treasury-sdk` (→ `../offchain`) +
-  `@magiclamp/protocol-utils`. Nếu trống → `npm install`.
+  `@magiclamp/utils`. Nếu trống → `npm install`.
 
 ## Chạy
 
