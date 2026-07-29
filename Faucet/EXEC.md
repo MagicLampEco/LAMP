@@ -43,7 +43,7 @@ trị** (open SDK: 1 policy id tLAMP chia sẻ toàn mạng test cho mọi Carda
 | `tlamp_policy.ak` | ✅ code xong + test pass | [`onchain/validators/tlamp_policy.ak`](./onchain/validators/tlamp_policy.ak) |
 | `faucet.ak` | ✅ code xong + test pass | [`onchain/validators/faucet.ak`](./onchain/validators/faucet.ak) |
 | `util.ak` / `types.ak` | ✅ code xong | [`onchain/lib/magiclamp/faucet/`](./onchain/lib/magiclamp/faucet/) |
-| Unit test Aiken | ✅ **27/27 pass** (`aiken check` exit 0) | §3.1 |
+| Unit test Aiken | ✅ **55 pass, 0 fail** (đo 2026-07-29) | §3.1 |
 | SDK offchain (datum/mint/claim builder) | ✅ code xong + test viết | [`offchain/src/`](./offchain/src/), [`tests/`](./tests/) |
 | Unit test offchain (vitest) | ⚠️ **chưa chạy được trong sandbox** (vitest chưa cài) | §3.2 |
 | Harness deploy `00/01/02` | ✅ code xong, **SUBMIT=false mặc định** | [`scripts/`](./scripts/) |
@@ -176,7 +176,7 @@ qua `explorerTx` (cardanoscan Preview, [`config.ts:128-130`](./scripts/config.ts
 ## 6. Tiêu chí "xong" (DoD)
 
 - [x] 2 validator code xong, build sạch.
-- [x] Unit Aiken **27/27 pass** (đã chạy, exit 0).
+- [x] Unit Aiken **55 pass, 0 fail** (đo 2026-07-29).
 - [x] SDK offchain + harness deploy code xong.
 - [ ] Unit offchain vitest chạy pass (G2).
 - [ ] Deploy live Preview, có tx hash mint + claim thật (G1).

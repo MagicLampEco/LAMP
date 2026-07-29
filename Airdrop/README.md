@@ -1,7 +1,7 @@
 # Airdrop — Merkle-airdrop (bộ máy on-chain dùng chung)
 
 > **MODEL HIỆN HÀNH = v2 (chốt 2026-07-10).** Đặc tả tổng: **`AIRDROP-V2-SPEC-Vi.md`**.
-> Airdrop v2 = **120 triệu LAMP**, chia 2 pot dưới **cùng** bộ máy Merkle-airdrop dưới đây:
+> Airdrop v2 = **120 triệu LAMP**, chia 3 pot (Delegator · SPO · CS) dưới **cùng** bộ máy Merkle-airdrop dưới đây:
 > - **Pot Delegator = 100M LAMP** — delegator **PHẢI ĐĂNG KÝ** (ký reward stake key), thưởng
 >   **∝stake ở bất kỳ pool Cardano**, cửa sổ snapshot mới, giữ ≥ N epoch. Xem `AIRDROP-V2-SPEC-Vi.md` §1.
 > - **Pot SPO/CS = 20M LAMP** = **SPO (Staking Pool Operator) 5M** (tư cách pool hợp lệ, chia
@@ -160,10 +160,10 @@ validator đã chạy + kiểm proof".
 ## 6. Chạy test
 
 ```bash
-# Onchain — 30 checks PASS (8 nft/merkle + 16 pool + parity)
+# Onchain — 47 checks PASS (đo 2026-07-29)
 cd Airdrop/onchain && aiken check
 
-# Offchain — 39 tests PASS
+# Offchain — 65 tests PASS (đo 2026-07-29)
 cd Airdrop/offchain && npm install && npx vitest run
 ```
 

@@ -352,7 +352,7 @@ Vòng audit đối kháng. EXEC chỉ tự sửa nội dung EXEC; các điểm c
 
 > **Phá vòng phụ thuộc seed↔custody (LỖ #5).** Cũ: `custody_seed` param `custody_script_hash` (để chọn output custody) **và** custody cần `seed_policy` (= hash của custody_seed) → mỗi cái cần hash cái kia trước khi compile (vòng). Mới: seed chọn output bằng **self-reference NFT** (output mang chính token vừa mint), không cần biết hash custody; custody side tính `seed_policy` độc lập từ `genesis_ref`. Vòng bị phá, deploy được theo một chiều.
 
-**Bằng chứng test (cập nhật khi build hardening v1):** seed test phủ thêm — cut_bps ngoài [0,10000] (S-CUT-0) / dòng sổ ≤ 0 âm+zero (S-LEDGER-1) / instance_id rỗng (S-ID-0) / accepted rỗng (S-ACC-1) / sổ không strict-sorted (C-SORT) / self-reference NFT chọn sai output. Custody spend test phủ thêm: thiếu seed NFT in/out (C-NFT-1 → reject), epoch không neo (C-EPOCH → reject), prune dòng==0 (Release pass). (Số test cũ 27/27 aiken + 57/57 vitest cập nhật theo bộ test mới — chạy `aiken check` + `vitest run` FULL trước khi tuyên bố xong.)
+**Bằng chứng test (cập nhật khi build hardening v1):** seed test phủ thêm — cut_bps ngoài [0,10000] (S-CUT-0) / dòng sổ ≤ 0 âm+zero (S-LEDGER-1) / instance_id rỗng (S-ID-0) / accepted rỗng (S-ACC-1) / sổ không strict-sorted (C-SORT) / self-reference NFT chọn sai output. Custody spend test phủ thêm: thiếu seed NFT in/out (C-NFT-1 → reject), epoch không neo (C-EPOCH → reject), prune dòng==0 (Release pass). (Đo lại 2026-07-29: aiken **137 pass**, vitest **155 pass** — 0 fail.)
 
 > ⚠️ **Đổi param `custody_seed` + `custody` ⇒ đổi script hash ⇒ đổi địa chỉ ⇒ DEPLOY LẠI.** Chưa deploy gì lên testnet (§1) nên KHÔNG phải migrate value — đây là lý do làm hardening NGAY bây giờ (rẻ nhất).
 
@@ -397,7 +397,7 @@ Bám 4 trục build mode: dài hạn (open SDK đa instance an toàn từ gốc)
 | **F5** custody_seed ép policies(tx.mint)==1 | §16, §3 M0 DoD | S-MINT-2 least-authority. M0 thêm reject "seed mint policy ngoài" (seed_mint_foreign_policy). |
 | **F8** receipt/app_id chưa thực thi | §3 M2 DoD | CustodyDatum CHƯA có receipt_root; app_id (redeemer) vô danh. M2 DoD "receipt thiếu → reject" KHÔNG áp v1 (validator không ép — không có field). VP KHÔNG tin app_id từ Collect tới khi receipt thực thi (chống bịa C1). receipt = v1.x / bỏ lời hứa (TECH §6). |
 
-`aiken check` toàn cây = **119/119 pass** (gồm test mới F1–F5). Known-gap còn lại: **F11** proposal_id
+`aiken check` toàn cây = **137 pass, 0 fail** (đo 2026-07-29) (gồm test mới F1–F5). Known-gap còn lại: **F11** proposal_id
 đơn-nhất do Governance đảm bảo; **F12** authority/committee 1-of-1 → multisig M-of-N TRƯỚC mainnet (lộ key
 = drain mọi custody của gov đó). Bám 4 trục: bền vững (đóng replay chéo + least-authority + chống bịa VP),
 first-principles (marker neo danh tính NFT, epoch neo gọn 1 epoch), tối ưu (chặn no-op/draws rỗng phình

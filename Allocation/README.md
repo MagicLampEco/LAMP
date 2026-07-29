@@ -2,11 +2,11 @@
 
 > Module phân bổ rổ Distribution (26,370 tỷ LAMP) ra các **kênh thưởng**, mỗi kênh
 > có trần cứng độc lập + nhả nhỏ giọt (Capped Drop). KHÔNG phải toàn bộ "tokenomics"
-> (umbrella = `/TOKENOMICS.md` ở gốc repo). Đơn vị oil: 1 LAMP = 10⁶ oil.
+> (bức tranh tổng ở `Specs/LAMP-POT-CATALOG.md` + `Specs/LAMP-DISTRIBUTION-SPEC.md`). Đơn vị oil: 1 LAMP = 10⁶ oil.
 
 ## Vì sao tên "Allocation" (không phải "Tokenomics")
 Module này CHỈ làm phân bổ kênh. "Tokenomics" = toàn bộ thiết kế kinh tế = chính repo.
-Xem `/TOKENOMICS.md` cho bức tranh tổng (cung, phát hành, điều tiết, pháp lý).
+Bức tranh tổng (cung, phát hành, điều tiết, pháp lý): `Specs/LAMP-POT-CATALOG.md`, `Specs/LAMP-DISTRIBUTION-SPEC.md`, `Specs/LAMP-POLICY-EXPLAINER.md`.
 
 ## HARD-CAP 2 lớp phòng thủ (vá lỗ committee cấp vượt ngân sách)
 - **Lớp A (kế toán, mềm):** `ChannelBudget` beacon NFT mang `remaining_oil`. Mỗi Claim
@@ -65,4 +65,4 @@ script-hash cụ thể (tránh vòng phụ thuộc). Committee chịu trách nhi
 `channel_budget`/`treasury` script khi setup.
 
 ## Test
-onchain `aiken check` 67 · offchain vitest 63. Xem `tests/` + `offchain/src/`.
+onchain `aiken check` **75 pass** · offchain vitest **68 pass** (đo 2026-07-29). Xem `tests/` + `offchain/src/`.

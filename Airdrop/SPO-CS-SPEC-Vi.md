@@ -115,7 +115,7 @@ vẫn thắng lớn ở pot CS. Cả hai không mua được bằng account gi�
 
 ## 5. Cap tuỳ chọn mỗi-người (chống cá voi)
 
-`Split` nhận tham số **`capOil` tuỳ chọn** (như ETD `TIGER/entitlement.ts`): người chạm trần
+`Split` nhận tham số **`capOil` tuỳ chọn** (như ETD `TIGER/offchain/src/entitlement.ts`): người chạm trần
 ghim ở cap, phần dôi chia lại theo tỷ lệ stake cho người chưa chạm (water-filling); phần
 không chia được do cap → **leftover về Treasury**. **Mặc định `capOil = null`** (không cap).
 Đây là tham số quản trị, công bố mỗi đợt nếu bật.
