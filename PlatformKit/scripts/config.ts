@@ -21,7 +21,7 @@ import {
   scriptHashToCredential, validatorToScriptHash, mintingPolicyToId,
   type LucidEvolution, type Validator,
 } from "@lucid-evolution/lucid";
-import { msPerEpoch, type Network } from "@magiclamp/protocol-utils";
+import { msPerEpoch, type Network } from "@magiclamp/utils";
 import { readFile, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";

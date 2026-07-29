@@ -37,13 +37,13 @@ Bám cách Treasury/Distribution đã làm (deploy theo bước, mỗi bước g
 ## 1. Trạng thái thật hiện tại (bám sự thật, không trí nhớ)
 - Registry on-chain **đã viết + đã có vá an ninh** cùng cây Treasury: `Treasury/onchain/lib/magiclamp/treasury/platform.ak`
   + `validators/registry_beacon.ak` (thêm **R-BIND** ref-input custody + **R-MINT-2** least-authority, F5)
-  + `validators/registry.ak` (thêm **U-TERMINAL** Retired terminal). **`aiken check` = 119/119 pass, 0 fail**
+  + `validators/registry.ak` (thêm **U-TERMINAL** Retired terminal). **`aiken check` = **137 pass, 0 fail** (đo 2026-07-29, cùng cây Treasury)**
   (toàn cây); chưa deploy testnet.
 - Treasury custody/collect/seed: đã viết, hardening v1 áp (`Treasury/EXEC.md §16/§17`); chưa deploy.
 - Governance: **chưa thật** → `registry_authority` + `governance_ref` bootstrap bằng **committee multisig**
   (known-gap §6; audit #4 — KHÔNG key đơn).
 - Off-chain SDK PlatformKit (`onboard/registrationBuilder/collectAdapter/registryQuery`): **đã viết, test
-  xanh = 71/71 pass** (gồm gương R-BIND `verifyCustodyBinding`/`verifyEntryAgainstCustody`, U-TERMINAL
+  xanh = 86 pass (đo 2026-07-29)** (gồm gương R-BIND `verifyCustodyBinding`/`verifyEntryAgainstCustody`, U-TERMINAL
   `UPD-TERMINAL`, dedup `findDuplicatePlatformIds`, `foreignScript`). **Chưa deploy/E2E Preview** (M5).
 
 > Vì chưa deploy gì → đổi param `registry_authority` ⇒ đổi script hash registry KHÔNG cần migrate (lý do
@@ -55,11 +55,11 @@ Bám cách Treasury/Distribution đã làm (deploy theo bước, mỗi bước g
 
 | Mốc | Nội dung | Phụ thuộc | DoD (bằng chứng) |
 |---|---|---|---|
-| **M0** | `aiken build` + `aiken check` xác nhận `registry_beacon` + `registry` + `platform.ak` compile cùng cây Treasury; import `util` (count_*_at_script, output_with_token, is_vk). | Treasury onchain build xanh | `aiken build` xanh; `plutus.json` ra 2 validator; **`aiken check` = 119/119 pass, 0 fail** (toàn cây Treasury + Registry); unit `entry_well_formed`/`identity_preserved`/`mutable_fields_valid` round-trip. |
+| **M0** | `aiken build` + `aiken check` xác nhận `registry_beacon` + `registry` + `platform.ak` compile cùng cây Treasury; import `util` (count_*_at_script, output_with_token, is_vk). | Treasury onchain build xanh | `aiken build` xanh; `plutus.json` ra 2 validator; **`aiken check` = **137 pass, 0 fail** (đo 2026-07-29, cùng cây Treasury)** (toàn cây Treasury + Registry); unit `entry_well_formed`/`identity_preserved`/`mutable_fields_valid` round-trip. |
 | **M1** | **Datum + redeemer test** (TECH §2): encode/decode `PlatformEntry` (9 field, Constr order) + `PlatformStatus` (0/1/2) round-trip Aiken↔off-chain. Invariant: entry register-status==Active. | M0 | datum round-trip pass; **register status≠Active → reject** (R-WF); **platform_id≠NFT name → reject** (R-NAME). |
 | **M2** | **`registry_beacon` (mint) test** (TECH §3): R-SIG/R-MINT-1/**R-MINT-2**/R-OUT-1/R-WF/R-NAME/**R-BIND** + BURN cấm. | M1 | unit: happy register pass; **không-authority-ký → reject** (R-SIG); **mint 2 token / qty>1 → reject** (R-MINT-1); **mint thêm policy ngoài → reject** (R-MINT-2, F5); **output ví thường (is_vk) → reject** (R-OUT-1); **entry malformed → reject** (R-WF); **burn beacon → reject** (else fail); **thiếu ref-input custody / custody NFT≠1 / custody ở Script khác custody_hash → reject** (R-BIND). |
 | **M3** | **`registry` (spend) test** (TECH §4): U-SIG/U-SINGLE/U-NFT/U-ID/U-MUT/U-MINT-0/**U-TERMINAL**. | M1 | unit: happy update (đổi status / mutable) pass; **không-authority → reject** (U-SIG); **đổi identity (custody_hash…) → reject** (U-ID); **2 entry input (double-sat khác stake-cred) → reject** (U-SINGLE); **mint/burn trong update → reject** (U-MINT-0); **mutable hạ governance_ref="" → reject** (U-MUT); **mất beacon NFT out → reject** (U-NFT); **spend entry status=Retired (Retired→Active / Retired→Retired) → reject** (U-TERMINAL). |
-| **M4** | **Off-chain SDK** (TECH §6): `onboard/registrationBuilder/collectAdapter/registryQuery`. `decodePlatformEntry` khớp Aiken (9 field). Tái dùng config/lucid Treasury. | M1–M3 | **vitest = 71/71 pass** (PlatformKit offchain): datum decode khớp Aiken; `planRegister`/`planUpdateEntry` dry-run hợp lệ + reject path (`REG-BIND` thiếu/sai custody, `UPD-TERMINAL` Retired); `discoverPlatforms` quét policy giả-lập trả entry + đánh dấu `duplicate`/`foreignScript`; `verifyEntryAgainstCustody` đối soát custody. |
+| **M4** | **Off-chain SDK** (TECH §6): `onboard/registrationBuilder/collectAdapter/registryQuery`. `decodePlatformEntry` khớp Aiken (9 field). Tái dùng config/lucid Treasury. | M1–M3 | **vitest = 86 pass (đo 2026-07-29)** (PlatformKit offchain): datum decode khớp Aiken; `planRegister`/`planUpdateEntry` dry-run hợp lệ + reject path (`REG-BIND` thiếu/sai custody, `UPD-TERMINAL` Retired); `discoverPlatforms` quét policy giả-lập trả entry + đánh dấu `duplicate`/`foreignScript`; `verifyEntryAgainstCustody` đối soát custody. |
 | **M5** | **E2E Preview** (harness kiểu Treasury): `01_deploy_registry` (param authority, self-ref chiều beacon→registry) → `02_onboard` PhoenixKey + OriLife (seed custody cửa 1 + register cửa 2) → `03_collect` (gộp lô cửa 3) → `04_update_status` (pause/resume/retire) → verify on-chain (tx hash + explorer). | M4, **Treasury custody/seed deploy Preview** (`Treasury/EXEC.md M6`) | record `LIVE_DEPLOY_PREVIEW.md` riêng PlatformKit với tx hash thật; discover quét policy ra đúng 2 platform Active. |
 | **M6** | **Tích hợp collect lớp touchable** (§5): PhoenixKey Frontend/SDK + OriLife mobile/SDK. KHÔNG đụng backend. | M5 | e2e: sự kiện app → CollectItem → settlement tx → custody tăng + receipt; **không touch backend Java / backend OriLife** (diff chỉ Frontend/SDK/mobile). |
 
@@ -235,10 +235,10 @@ quyền release** (blast-radius nhỏ) — dùng chung KHÔNG còn rủi ro an t
 
 ## 9. Tiêu chí "xong" (Definition of Done)
 
-- [x] `aiken build` 2 validator xanh + **`aiken check` 119/119 pass, 0 fail** (M0); unit R-*/U-* đủ reject
+- [x] `aiken build` 2 validator xanh + **`aiken check` **137 pass, 0 fail** (đo 2026-07-29)** (M0); unit R-*/U-* đủ reject
       path gồm **R-MINT-2** (least-authority, F5) + **R-BIND** (ref-input custody) + **U-TERMINAL** (Retired
       terminal) (M2/M3).
-- [x] Off-chain SDK **71/71 test xanh**: datum decode khớp Aiken; `onboard/registrationBuilder/collectAdapter/
+- [x] Off-chain SDK **86 test xanh (đo 2026-07-29)**: datum decode khớp Aiken; `onboard/registrationBuilder/collectAdapter/
       registryQuery` có test, gồm `verifyCustodyBinding`/`verifyEntryAgainstCustody` (R-BIND/audit #6),
       `UPD-TERMINAL`, `findDuplicatePlatformIds`/`duplicate` (audit #2), `foreignScript` (audit #3) (M4).
 - [ ] E2E Preview: deploy registry → onboard PhoenixKey + OriLife → collect → update status → verify

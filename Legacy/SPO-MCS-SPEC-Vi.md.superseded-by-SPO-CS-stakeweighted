@@ -1,0 +1,299 @@
+# Airdrop — SPO (5M) + MCS (15M) — Cơ chế bình-chọn-neo-stake
+
+> Chốt hướng 2026-07-11, kết tinh từ 3 agent phản biện (cơ-chế · red-team · UX/pháp-lý).
+> **Thay thế** `SPO-CS-SPEC-Vi.md` (mô hình điểm CS D/A/G/R — superseded, giữ làm lịch sử).
+> MCS = **MagicLamp Community Supporter** — người/nhóm hỗ trợ cộng đồng.
+> Đơn vị: 1 LAMP = 10⁶ oildrop. Pot: **SPO 5M** + **MCS 15M** = 20M.
+> Nguồn tổng: `AIRDROP-V2-SPEC-Vi.md`. Phần delegator (100M) không đổi.
+
+---
+
+## 0. Câu hỏi thiết kế gốc — và câu trả lời
+
+> *"Làm thế nào đo được stake TỔNG của một người? Một người có 3 ví, họ lấy ví
+> có stake thấp nhất đi vào nhóm chat thì sao?"*
+
+**Trả lời (đã chứng minh ở §2):**
+
+1. **Không cần đo stake tổng theo người.** Trọng số tuyến tính có tính
+   **bất-biến-khi-tách-ví**: 3 ví bầu cùng một MCS cho tổng trọng số y hệt 1 ví gộp.
+   Câu hỏi "3 ví" là bài toán UX (ký từng ví — §6), không phải bài toán đo lường.
+2. **Vào chat bằng ví nào không ảnh hưởng gì** — nhóm chat KHÔNG chấm điểm
+   (quyết định chốt: không đo scroll/dwell/click/reaction). Chat là nơi hỗ trợ diễn ra;
+   phiếu ký tại `affiso.net/launch/lamp` bằng từng ví mới là nơi hỗ trợ được đếm.
+   Red-team xác nhận: bất đối xứng danh-tính-chat vs ví-bầu **không có đòn bẩy on-chain**.
+3. **Nơi duy nhất tách-ví game được là gate đếm-người-bầu** → gate được định nghĩa lại
+   thành **ngưỡng chi phí kinh tế** (§4.2), không giả vờ đếm người khi không có danh tính.
+
+**Vì sao bỏ mô hình cũ (điểm CS D/A/G/R):** điểm tương tác off-chain có chi phí giả mạo
+≈ 0, phải vá bằng 5 ràng buộc sống-còn (DID toàn dân, costly-signal, bond, khiếu nại…).
+Mô hình mới neo mọi trọng số vào **stake** — đại lượng chi phí giả mạo cao nhất Cardano có —
+đồng thời giải luôn: quyền riêng tư người đọc, công bằng cho người "tàu ngầm"
+(chỉ đọc không chat vẫn bầu được với đầy đủ trọng số), và bỏ được nhu cầu SetRoot/drip
+per-epoch (§9).
+
+---
+
+## 1. Hai vai trò — SPO vs MCS
+
+| Trục | **SPO** (5M) | **MCS** (15M) |
+|---|---|---|
+| Là ai | Vận hành **hạ tầng**: chạy node, sản xuất block | Hỗ trợ **con người**: hướng dẫn, onboard, giải đáp, viết tài liệu |
+| Thực thể | Pool ID — có sẵn on-chain | Cá nhân/nhóm — cần **PhoenixKey DID** khi ứng cử |
+| Quan hệ với delegator | **Uỷ thác** — stake đang delegate vào pool (on-chain, tự động) | **Chứng thực** — delegator chủ động bầu "người này đã giúp tôi" (thu bằng chữ ký) |
+| Đo bằng | Σ accStake của delegator **đã đăng ký** delegate vào pool | Σ accStake của delegator **đã bình chọn** cho họ |
+| Delegator phải làm gì | Không gì thêm — hệ đọc pool từ account history | Phải **bầu** — một hành động ký chủ động |
+| Ý nghĩa | Thưởng người giữ mạng **chạy** | Thưởng người làm mạng **lớn lên** |
+
+Một câu cho cộng đồng: **SPO được đo bằng nơi stake ĐANG ĐỨNG; MCS được đo bằng nơi
+stake LÊN TIẾNG.** Cùng một đồng stake phát hai tín hiệu độc lập, delegator không phải chọn.
+
+---
+
+## 2. Nguyên lý: một bảng accStake, ba phép chiếu — tuyến tính là BẮT BUỘC
+
+Delegator đăng ký một lần (ký reward stake key). `accStake` của họ (Σ active_stake qua các
+epoch đủ điều kiện trong `[E_open, E_cut)`, giữ ≥ N epoch liên tiếp — y hệt pot 100M) dùng
+làm trọng số cho cả 3 pot:
+
+```
+Delegator đăng ký, accStake = S:
+├── Pot 100M:  chính họ nhận ∝ S                        (quan hệ: sở hữu)
+├── Pot 5M:    pool họ delegate nhận tín chỉ S           (quan hệ: uỷ thác)
+└── Pot 15M:   MCS họ bầu nhận tín chỉ S  (tuỳ chọn)     (quan hệ: chứng thực)
+```
+
+**Định lý bất-biến-khi-tách-ví:** với trọng số tuyến tính
+`weight_MCS(j) = Σ_{key d bầu j} accStake(d)`, một người có 3 ví accStake `a, b, c` cùng
+bầu MCS j đóng góp đúng `a+b+c` — y hệt 1 ví gộp. Tách hay gộp không đổi một oildrop.
+Hệ quả: **không cần danh tính ở tầng delegator, không cần "chống đa ví"**.
+
+**Cấm trọng số lõm** (√, ln): vì `√a+√b > √(a+b)`, lõm THƯỞNG tách ví → buộc phải gộp
+theo người → buộc DID toàn dân → phá quyết định "delegator không cần DID". Tuyến tính
+không phải lựa chọn thẩm mỹ — nó là điều kiện tương thích khuyến khích bắt buộc khi
+hệ không có danh tính người bầu. Whale nói to ∝ stake là chấp nhận có chủ đích
+(triết lý neo-đại-lượng-tốn-kém); độ to bị chặn ở phía NHẬN bằng cap κ (§4.3),
+không chặn ở phía bầu.
+
+---
+
+## 3. Phiếu bầu MCS — chữ ký stake key
+
+### 3.1. Ứng viên MCS
+
+- **PhoenixKey DID sinh trắc** (1-người-1-DID — chặn một người lập nhiều hồ sơ MCS).
+- Hồ sơ công khai tại `affiso.net/launch/lamp`: họ là ai, hỗ trợ gì. Vừa là danh sách bầu,
+  vừa là danh bạ "tìm người giúp" cho delegator mới.
+- Consent công khai hồ sơ **riêng** (tách khỏi consent DID) + dòng cảnh báo nghĩa vụ
+  thuế TNCN trong điều khoản ứng viên (§7.4).
+
+### 3.2. Schema message phiếu — KHOÁ CỨNG (chống replay, bài học red-team)
+
+Phiếu = chữ ký Ed25519 (CIP-30 `signData`, CIP-8/COSE) bằng **reward stake key** trên:
+
+```
+{
+  "action":        "mcs_vote",            // hoặc "delegator_register" khi gộp đăng ký + phiếu
+  "network_magic": <mainnet|preview...>,  // BẮT BUỘC — chống replay xuyên mạng
+  "launch_id":     <duy nhất mỗi đợt>,    // BẮT BUỘC — chống replay xuyên đợt
+  "epoch_scope":   [E_open, E_cut),       // BẮT BUỘC — chống dùng lại ngoài cửa sổ
+  "mcs_id":        <DID ứng viên>,
+  "stake_key_hash":<hash key người ký>,   // chống lẫn phiếu giữa các key
+  "payment_address": <nơi nhận LAMP>,     // chỉ khi gộp đăng ký
+  "seq":           <số thứ tự server cấp, đơn điệu tăng theo key>
+}
+```
+
+- Ký ở chế độ **hashed payload** (CIP-8 `hashPayload=true`) — Ledger giới hạn hiển thị
+  ~31 byte, Glacier Drop từng gãy vì không hash. Web hiển thị nội dung tiếng người
+  trước khi ký.
+- **1 stake key = 1 phiếu** (bầu đúng 1 MCS). Đổi phiếu được trong cửa sổ; **phiếu có
+  `seq` lớn nhất tính** (tie-break tất định — không mơ hồ "phiếu cuối theo giờ").
+  Toàn bộ lịch sử phiếu (kể cả bị thay) đều công bố để kiểm chứng.
+- Gộp được vào message đăng ký delegator: một chữ ký = đăng ký pot 100M + bầu MCS.
+
+### 3.3. Đường dự phòng — "null transaction" (kiểu Midnight Glacier Drop)
+
+Ví không ký `signData` được (Trezor, Ledger app cũ, Daedalus): dựng tx tự-gửi-về-mình có
+**withdrawal 0 từ reward account** (withdrawal ép chữ ký stake key ngay trong tx) + metadata
+label chứa cùng payload §3.2. Người dùng **ký nhưng KHÔNG submit** — server verify witness
+trong tx đã ký. **Phí = 0.** Biến thể submit thật (~0,17 ADA) cho ai muốn dấu vết on-chain.
+
+### 3.4. Loại trừ custodial — điều kiện tự-giữ-khoá (red-team V5, BẮT BUỘC)
+
+Sàn/dịch vụ custodial giữ reward stake key của khách có thể bầu bằng stake không phải của
+mình. Chặn: (a) phiếu từ stake key thuộc **pool custodial đã biết** (danh sách công bố,
+cập nhật mỗi đợt) → không tính; (b) Terms ghi rõ **chỉ self-custody đủ tư cách**;
+(c) FAQ: *"ADA trên sàn không đăng ký/bầu được — rút về ví tự giữ trước."*
+
+---
+
+## 4. Tính điểm và chia pot 15M
+
+### 4.1. Trọng số
+
+```
+weight_MCS(j) = Σ_{key d bầu j, hợp lệ} accStake(d)      // accStake nguyên từ pot 100M
+```
+
+### 4.2. Gate đủ tư cách — ngưỡng CHI PHÍ, không giả vờ đếm người
+
+Không có danh tính bắt buộc ở người bầu thì không tồn tại gate "đếm người" thật.
+Gate định nghĩa thẳng là ngưỡng chi phí kinh tế:
+
+```
+MCS j vào pot  ⇔  |{key d bầu j : accStake(d) ≥ s_min}| ≥ k
+                   VÀ  weight_MCS(j) ≥ W_min
+```
+
+| Tham số | Mặc định đợt 1 | Vai trò |
+|---|---|---|
+| `s_min` | **1.000 ADA·epoch** (≈ giữ 500 ADA suốt 2 epoch) | ví bụi không đếm vào k (vẫn được cộng trọng số) |
+| `k` | **10** key đạt s_min | chặn spam đuôi dài; giả gate tốn ≥ 10×500 ADA thật đứng yên |
+| `W_min` | **0,2%** tổng accStake đã đăng ký | chặn "10 ví tí hon hợp lệ hình thức" |
+
+### 4.3. Cap κ — tuyến phòng thủ thật chống whale-tự-bầu
+
+```
+s_j = weight_MCS(j) / Σ weight_MCS   →  cap κ = 10%/MCS, water-filling phần dư
+reward_j = 15M × ŝ_j                     (largest-remainder Hamilton → Σ = đúng pot)
+```
+
+- **κ = 10% pot = 1,5M LAMP** (siết từ 25–40% cũ theo khuyến nghị đồng thuận của cả
+  agent cơ-chế lẫn red-team): whale tách 20 ví tự bầu MCS của mình vẫn hợp lệ về vốn,
+  nhưng trần tuyệt đối 1,5M; k_min chống nhiễu, **κ chống chiếm đoạt** — hai tham số
+  hai việc.
+- Water-filling + largest-remainder tái dùng code token-side đã chạy thật trên Preview.
+- Phần không chia hết / MCS không qua gate → Sweep về Treasury (không đốt — LAMP cố định).
+
+### 4.4. Pot SPO 5M
+
+```
+weight_SPO(i) = Σ accStake(d) của delegator ĐÃ ĐĂNG KÝ đang delegate vào pool i
+reward_i      = 5M × weight_SPO(i)/Σ weight_SPO    (largest-remainder; cap tuỳ chọn)
+```
+
+- Cổng đủ-điều-kiện pool giữ nguyên spec cũ §3: ≥1 block/5 epoch gần nhất, tuổi ≥3 epoch,
+  pledge ≥ ngưỡng nhỏ (10k ADA gợi ý), dedupe owner, ký đăng ký bằng reward stake key.
+- Tách ví/tách pool **không méo** (tuyến tính bất biến; tách pool tự làm loãng delegation).
+- Self-delegation của SPO là hành vi **hợp lệ** (vốn thật, chịu chi phí cơ hội) — không loại.
+- Méo duy nhất là **opt-in**: pool có cộng đồng chịu đăng ký thắng pool "ngủ" cùng size —
+  đây là tính năng có chủ đích (thưởng pool vận động thật), ghi rõ để SPO không khiếu nại.
+
+---
+
+## 5. Bảng tấn công → phòng thủ (tóm tắt red-team)
+
+| Vector | Chi phí kẻ tấn công | Chặn | Rủi ro còn lại |
+|---|---|---|---|
+| Whale tách 20 ví tự lập MCS | ~0 (vốn sẵn có) | cap κ=10% + DID 1-người-1-hồ-sơ + s_min/k | ăn tối đa 1,5M bằng stake THẬT — chấp nhận (xem §5.1) |
+| Thuê chữ ký stake key | cao (không enforce được) | **phiếu-seq-cuối-tính** phá hợp đồng thuê: nhận tiền xong ký lại phiếu khác | thị trường mỏng, quan hệ lặp lâu dài mới chạy |
+| Mua phiếu hoàn tiền | trung | κ thấp + last-vote-wins | xem §5.1 |
+| Cartel MCS hoán phiếu vòng | ~0 | trọng số = stake người bầu (tổng cartel cố định) | chỉ giúp nhau qua gate — vô hại về tiền |
+| Sàn custodial bầu bằng stake khách | ~0 | **loại pool custodial + self-custody trong Terms** (§3.4) | danh sách custodial phải bảo trì |
+| Replay chữ ký xuyên mạng/đợt | ~0 nếu schema hở | schema khoá §3.2 (network_magic + launch_id + epoch_scope + seq) | 0 nếu khoá đúng |
+| Giả người nghèo trong chat, bầu bằng ví whale | — | chat không chấm điểm → không có đòn bẩy | chỉ rủi ro cảm xúc cộng đồng |
+| Cluster/doxx từ dữ liệu công bố | — | công bố tối thiểu + crypto-erasure (§7) | trung bình — đánh đổi minh bạch |
+| Stake 2 epoch sát cửa sổ | thấp (N=2 thấp) | N là tham số — cân nhắc N=4–6 riêng cho phiếu MCS | chốt đợt 1 |
+
+### 5.1. Đánh đổi được chấp nhận CÓ CHỦ ĐÍCH — ghi để không tranh cãi lại
+
+Mua-phiếu-hoàn-tiền (MCS chia lại % thưởng cho người bầu) không phá bảo toàn, không nhân
+bản stake — nó kéo pot MCS xích về "phân phối ∝stake trá hình". Chặn triệt để đòi đo
+"hỗ trợ thật" bằng metric off-chain → quay lại đúng mô hình cũ đã bác. Quyết định:
+**chấp nhận có kiểm soát** — κ=10% giới hạn quy mô, last-vote-wins làm cam kết hoàn tiền
+không enforce được, và thị trường tự do bầu-vì-được-giúp vs bầu-vì-được-hoàn là cạnh tranh
+công khai. Nếu đợt 1 lộ lạm dụng lớn → siết κ hoặc thêm điều kiện đa dạng cluster (tầng
+tham số, không đổi cơ chế).
+
+---
+
+## 6. UX — luồng "mã phiên bầu" (đa ví, mobile)
+
+1. Mở `affiso.net/launch/lamp` → nhận `session_id` (nhúng trong `seq`/nonce). Trang hiển thị
+   realtime "ví đã ký trong phiên" + accStake đọc từ Blockfrost (thấy ngay trọng số).
+2. Mỗi ví: connect (CIP-30) → đọc nội dung tiếng người → ký → tick xanh → disconnect →
+   ví kế. **Không reload.** UI nhắc: *"Có nhiều ví? Lặp lại với từng ví — mọi phiếu đều
+   được cộng."* — đây là toàn bộ lời giải bài toán 3-ví.
+3. Ví trên điện thoại: quét QR chứa session URL → mở trong dApp browser Vespr/Eternl mobile
+   → ký → về cùng phiên. CIP-45 (Eternl) cho connect mobile↔desktop trực tiếp.
+4. Dòng an toàn lặp tại nút ký: **"Ký message ≠ ký giao dịch — không tài sản nào rời ví."**
+5. Nhắc bầu tối đa **3 điểm chạm**: mở cửa sổ · giữa kỳ (trong nhóm Launch) · 72h trước
+   E_cut. Không DM riêng, không đếm ngược hàng ngày, đã ký thì không nhắc nữa.
+6. **Binding đa ví (xem tổng nhiều ví một chỗ): TUỲ CHỌN, chỉ tiện ích UI, lưu server-side,
+   KHÔNG BAO GIỜ công bố, KHÔNG tham gia công thức tiền hay gate.** Kết quả bầu rời từng ví
+   y hệt (định lý §2) — ai cần riêng tư cứ bầu rời. UI ghi rõ: gộp ví tạo liên kết giữa
+   các ví trên hệ thống; bầu rời cho kết quả giống hệt.
+7. Ví test bắt buộc trước launch: Eternl, Lace, Typhon, Vespr (iOS+Android), Eternl mobile,
+   Ledger (hashed payload), Trezor (đường null-tx), Daedalus (đường null-tx).
+
+---
+
+## 7. Riêng tư + pháp lý
+
+1. **Công bố:** danh sách `(stake_key_hash, mcs_id, seq, sig)` + bảng accStake **off-chain**
+   (affiso.net + forum); **on-chain chỉ Merkle root** 32 byte. Không công bố tên, DID người
+   bầu, liên kết ví↔ví, hành vi chat.
+2. **GDPR:** stake_key_hash là personal data (EDPB Guidelines 02/2025 — pseudonymous
+   on-chain identifier). Cơ sở pháp lý: **Art. 6(1)(b)** (điều khoản tham gia — công bố
+   phiếu là điều kiện vận hành của bầu-công-khai-kiểm-chứng-được), KHÔNG dựa consent thuần
+   (consent rút được giữa chừng sẽ phá tính toàn vẹn cuộc bầu). Dòng *"phiếu này sẽ được
+   công bố"* trong message ký là minh bạch Art. 13. Tiền lệ: DRep delegation + phiếu
+   CIP-1694 công khai vĩnh viễn.
+3. **Quyền xoá (Art. 17) = crypto-erasure:** xoá bản ghi khỏi bảng công bố off-chain, giữ
+   leaf hash trong cây (root không đảo ngược được) — đúng hướng EDPB khuyến nghị. Ghi vào
+   Privacy Policy TRƯỚC launch; nói thật: mirror cộng đồng đã tải thì không xoá được.
+4. **Luật VN:** DPIA nộp A05 Bộ Công an trước launch; geofence theo quy chế đợt (SRCL §8);
+   airdrop = ghi nhận, không bán token (AIRDROP-V2 §4). **AffiSo không chạm dữ liệu sinh
+   trắc** — chỉ nhận attestation DID từ PhoenixKey; ranh giới controller ghi thành hợp đồng
+   xử lý dữ liệu (GDPR Art. 26/28). MCS: consent công khai hồ sơ riêng + cảnh báo thuế TNCN.
+
+---
+
+## 8. Kiểm chứng công khai
+
+- Công thức tất định + dữ liệu §7.1 → **bất kỳ ai** tự verify từng chữ ký, đọc lại accStake
+  từ chain, cộng lại `weight_MCS`, chạy lại cap/water-filling/Hamilton, dựng cây Merkle,
+  đối chiếu root on-chain.
+- Tally đứng trên **từng phiếu độc lập** — binding (nếu có) không tham gia nên không cần
+  công bố; kiểm chứng công khai vẫn nguyên vẹn.
+- Người bầu tự chứng minh phiếu mình được đếm (inclusion proof) và phiếu cũ bị thay đúng
+  luật seq.
+- **Cửa sổ khiếu nại 1 epoch** trước khi nạp root; AffiSo đặt **bond bị slash** nếu gian lận
+  được chứng minh (giữ từ spec cũ §8).
+
+---
+
+## 9. On-chain — đơn giản hơn mô hình cũ
+
+Mô hình cũ chấm điểm per-epoch → cần drip T=20 + SetRoot per-epoch (mở rộng validator).
+Mô hình mới: phiếu chốt **một lần tại E_cut** → **1 snapshot → 1 Merkle root cố định** →
+khớp `airdrop_pool.ak` hiện tại (Claim + Sweep) **không cần SetRoot, không đổi validator**.
+
+- Cách nạp: theo AIRDROP-V2 §2 Cách A (1 root gộp 3 nguồn) hoặc B (pool-instance riêng
+  20M) — cả hai đều zero thay đổi on-chain. Khuyến nghị **B** (pool 100M và pool 20M tách
+  UTxO, dễ kế toán).
+- Nhả dần (vesting) nếu muốn là tầng **claim-schedule off-chain/CIP khác**, không phải
+  lý do giữ SetRoot.
+
+Off-chain cần viết (tái dùng tối đa):
+
+| File | Nhiệm vụ | Tái dùng |
+|---|---|---|
+| `mcs_vote.ts` | verify phiếu CIP-8/COSE + null-tx witness; luật seq; loại custodial | khung verify Ed25519 từ `spo_register.ts` |
+| `mcs_tally.ts` | weight_MCS + gate §4.2 + cap κ water-filling + Hamilton → `{address, amount}` | water-filling + largest-remainder token-side |
+| `build_spo_snapshot.ts` | weight_SPO từ registration + account history | `computeEntitlements`, `merkle.ts`, `snapshotTool.ts` |
+
+---
+
+## 10. Tham số chốt đợt 1 (quản trị công bố mỗi đợt)
+
+| Tham số | Mặc định | Ghi chú |
+|---|---|---|
+| κ (cap/MCS) | **10%** pot = 1,5M LAMP | siết từ 25–40% cũ |
+| k / s_min / W_min | **10** / **1.000 ADA·epoch** / **0,2%** | gate chi phí §4.2 |
+| N giữ delegation | **2** (chung pot 100M) | red-team đề xuất cân nhắc 4–6 riêng cho phiếu MCS |
+| Danh sách pool custodial | công bố + cập nhật mỗi đợt | §3.4 |
+| Ngưỡng pledge cổng SPO | 10k ADA (gợi ý) | giữ spec cũ |
+| Metadata label null-tx | chưa chốt | đăng ký label riêng |
+| `E_open`, `E_cut`, `launch_id` | chưa chốt | công bố khi mở đợt |

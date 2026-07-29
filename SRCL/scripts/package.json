@@ -1,0 +1,7 @@
+{
+  "name": "@magiclamp/srcl-scripts",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "description": "Demo deploy + setRoot + claim SRCL trên Preview (bản hardening slot spend-once)"
+}
