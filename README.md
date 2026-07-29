@@ -9,7 +9,7 @@ Viết bằng [Aiken](https://aiken-lang.org/) (Plutus V3), off-chain bằng Typ
 | **Policy LAMP (mainnet)** | `55d3e01bb6c469e02665e4b6573ce65bbaf7a50ad2024e247eb180f0` |
 | **Asset** | `55d3e01b….4c414d50` — tên hiển thị **MagicLamp**, mã **LAMP** |
 | **Tổng cung** | 36.000.000.000 LAMP — **cố định, không đốt** |
-| **Đơn vị con** | 1 LAMP = 1.000.000 oildrop (decimals 6) |
+| **Đơn vị con** | 1 LAMP = 1.000.000 **oildrop** (decimals 6) — trong mã nguồn biến vẫn đặt tên `oil`, cùng một thứ, việc đổi tên trong code chưa làm |
 | **Tra cứu** | [cexplorer.io/policy/55d3e01b…](https://cexplorer.io/policy/55d3e01bb6c469e02665e4b6573ce65bbaf7a50ad2024e247eb180f0) |
 | **Giấy phép mã nguồn** | Apache-2.0 |
 
@@ -64,36 +64,38 @@ Repo MAGIC: <https://github.com/MagicLampNetwork/MAGIC>
 
 | Thư mục | Nội dung |
 |---|---|
-| `Specs/` | Đặc tả dành cho công chúng — nguồn sự thật khi mô tả LAMP ra bên ngoài |
+| `Specs/` | Đặc tả dành cho công chúng. Khi mâu thuẫn với bất kỳ chỗ nào khác trong repo, **`Specs/` đúng**. Một số file còn nhãn DRAFT — số liệu có thể còn tinh chỉnh, nhãn nằm ngay đầu file |
 
 **Hợp đồng on-chain + SDK off-chain**
 
-| Thư mục | Nội dung | Trạng thái |
-|---|---|---|
-| `Utils/` | Primitive dùng chung (Q-format, epoch math, clamp, Merkle helper) | ổn định |
-| `Genesis/` | Phát hành lazy-mint: `SupplyState`, trần/quota/no-burn, A-DEST | **live mainnet** |
-| `Allocation/` | Phân bổ ra kênh (hard-cap mỗi kênh, Capped Drop, account NFT committee-gated) | ổn định |
-| `Distribution/` | Engine Capped Drop (claim → vesting → redeem) + treasury pool | live Preview |
-| `Treasury/` | Kho bạc custody sổ-kế-toán đa-bucket (collect / release theo quản trị) | đang phát triển |
-| `Reserve/` | Đệm phát hành, trần mỗi epoch, demand-gated qua Treasury-pull | ổn định |
-| `Airdrop/` | Bộ máy Merkle-airdrop dùng chung (pool NFT, nullifier, sweep) | ổn định |
-| `TIGER/` | ETD — pot hồi tố cho người đã ủy thác pool TIGER | ổn định |
-| `SRCL/` | Hạ tầng phân phối cho cơ chế ra mắt SRCL | ⚠️ **có lỗi mở, xem bên dưới** |
-| `Faucet/` | Vòi tLAMP cho dev (chỉ testnet) | ổn định |
-| `Governance/` | iVoteSpace, bầu 3 hội đồng, Voting Power, Recall | mới có spec |
-| `PlatformKit/` | Bộ ráp cho bên tích hợp | spec |
-| `LaunchAPI/` | API + UI tham chiếu cho đợt ra mắt | spec |
+| Thư mục | Nội dung | Mã nguồn | Đã deploy? |
+|---|---|---|---|
+| `Utils/` | Primitive dùng chung (Q-format, epoch math, clamp, Merkle helper) | ổn định | — |
+| `Genesis/` | Phát hành lazy-mint: `SupplyState`, trần/quota/no-burn, A-DEST | ổn định | **mainnet** |
+| `Allocation/` | Phân bổ ra kênh (hard-cap mỗi kênh, Capped Drop, account NFT committee-gated) | ổn định | chưa |
+| `Distribution/` | Engine Capped Drop (claim → vesting → redeem) + treasury pool | ổn định | Preview |
+| `Treasury/` | Kho bạc custody sổ-kế-toán đa-bucket (collect / release theo quản trị) | đang phát triển | chưa |
+| `Reserve/` | Đệm phát hành, trần mỗi epoch, demand-gated qua Treasury-pull | ổn định | chưa |
+| `Airdrop/` | Bộ máy Merkle-airdrop dùng chung (pool NFT, nullifier, sweep) | ổn định | chưa |
+| `TIGER/` | ETD — pot hồi tố cho người đã ủy thác pool TIGER | ổn định (còn tham số placeholder) | chưa |
+| `SRCL/` | Hạ tầng phân phối cho cơ chế ra mắt SRCL | ⚠️ có lỗi mở | chưa |
+| `Faucet/` | Vòi tLAMP cho dev (chỉ testnet) | ổn định | chỉ testnet |
+| `Governance/` | iVoteSpace, bầu 3 hội đồng, Voting Power, Recall | mới có spec | chưa |
+| `PlatformKit/` | Bộ ráp cho bên tích hợp | spec | chưa |
+| `LaunchAPI/` | API + UI tham chiếu cho đợt ra mắt | spec | chưa |
 | `Legacy/` | Bản đã bị thay thế + tài liệu nội bộ giai đoạn đầu — **giữ để truy vết, KHÔNG dùng lại** |
 
 ## Trạng thái thật — đọc trước khi dùng
 
 Repo này ưu tiên nói thật hơn nói đẹp:
 
-- **`SRCL/` có một lỗi CRITICAL đang mở (S1).** Cửa `Sweep` so epoch POSIX tuyệt đối với
-  `end_epoch` tương đối nên **mở sẵn từ ngày đầu** và không đòi chữ ký — bất kỳ ai cũng đẩy sạch
-  pot về treasury. **Đừng nạp LAMP thật vào SRCL pot trước khi vá.** Chi tiết + cách vá:
-  [`SRCL/README.md`](SRCL/README.md).
-- **Bản script `lamp_mint` đang chạy trên mainnet chưa được đối chiếu từng byte** với mã nguồn
+- **Kho giữ LAMP trên mainnet hiện là ví một-chữ-ký.** `dist_treasury` là script **khởi tạo**, mã
+  nguồn tự khai `BOOTSTRAP: authority = 1 pkh` — một chữ ký chuyển được LAMP ra khỏi kho. Đang giữ
+  1.000.000 LAMP (0,0028% tổng cung, chưa phân phối). **Phải thay bằng `treasury.ak` trước khi mint
+  thêm giá trị** — xem [`Genesis/DEV-NOTE-kho-A-DEST-canonical.md`](Genesis/DEV-NOTE-kho-A-DEST-canonical.md).
+- **`SRCL/` có một lỗi CRITICAL đang mở (S1)** — cửa `Sweep` mở sẵn từ ngày đầu và không đòi chữ
+  ký. **Đừng nạp LAMP thật vào SRCL pot trước khi vá.** Cơ chế + cách vá: [`SRCL/README.md`](SRCL/README.md).
+- **Mã script `lamp_mint` đang chạy trên mainnet chưa được đối chiếu từng byte** với mã nguồn
   trong repo. Việc đó phải xong trước khi mint thêm bất kỳ lượng nào có giá trị.
 - **Chưa module nào ngoài `Genesis/` chạy trên mainnet.** Những chỗ ghi "live Preview" là mạng
   thử nghiệm, token ở đó là tLAMP, không có giá trị.

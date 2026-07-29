@@ -103,9 +103,10 @@ Hai đợt cùng cơ chế, khác pot / nguồn LAMP / bên hưởng thụ / quy
   chuẩn của Cardano, tồn tại độc lập với LAMP. Khi quy đổi số ADA đó trên thị trường mở với bên
   thứ ba, doanh nghiệp Việt Nam kê khai và nộp thuế như mọi doanh thu khác. Đây là **định đoạt tài
   sản của chính mình**, khác hẳn với vận hành sàn giao dịch (cần giấy phép riêng).
-  > Mức thuế cụ thể và văn bản dẫn chiếu: **chưa chốt trong tài liệu này.** Bản trước ghi "TNDN
-  > 20%, miễn GTGT theo Thông tư 32/2026/TT-BTC" — đang chờ xác minh lại số hiệu và nội dung văn
-  > bản trước khi khẳng định. Không dùng con số đó để lập kế hoạch tài chính.
+  > Văn bản dẫn chiếu: **Thông tư 32/2026/TT-BTC** (ký 27/3/2026) hướng dẫn thuế GTGT, TNDN, TNCN
+  > với giao dịch tài sản mã hoá, và **Thông tư 15/2026/TT-BTC** (ký 04/3/2026) hướng dẫn kế toán.
+  > Hai văn bản này đã xác minh là có thật. **Mức thuế cụ thể áp cho trường hợp này thì chưa** —
+  > đừng lấy con số nào ở đây đi lập kế hoạch tài chính khi chưa hỏi kế toán/luật sư.
 - Phần thưởng staking sinh từ hành vi vận hành mạng; LAMP chia ra là **ghi nhận đóng góp theo việc đã xảy ra**, không phải bán token đổi vốn.
 - Phần phân phối LAMP áp **giới hạn theo vùng pháp lý** (geofence) tuỳ quy chế từng đợt.
 

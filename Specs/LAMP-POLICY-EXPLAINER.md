@@ -59,18 +59,30 @@ Phân bổ chia 18 "pot" (mục đích). Đặc điểm: pot đội ngũ (Aladin
 
 ## 8. Kho & cơ chế chống lạm quyền (A-DEST)
 
-LAMP mint ra theo đường phân phối **chảy vào một kho do script kiểm soát**, không vào ví cá nhân.
-Từ kho, LAMP được nhả theo luật từng pot (tốc độ/khóa/lịch riêng). Đây là cơ chế **A-DEST** — ép
-đích đến của token vừa mint.
+**Thiết kế:** LAMP mint ra bị ép chảy vào một **kho** (cơ chế **A-DEST**), không vào ví cá nhân.
+Kho đích theo thiết kế là `treasury.ak` — kho này **không có đường "người có khoá gửi đi đâu tuỳ
+ý"**: LAMP chỉ rời kho qua đúng một lối là quy trình phân phối (entitlement → Merkle → claim →
+redeem). Đó mới là thứ khiến nó không thể bị rút sạch.
 
-Kiểm chứng được ngay hôm nay: toàn bộ 1.000.000 LAMP đã mint đang nằm ở địa chỉ script
-`addr1w827sry6t2y9744ndkg4ks6nct57v7tm8pz46ywsq98dhdsf76slu`, không ở ví ai cả.
-
-> **Nói thẳng phần chưa xong:** mức độ ép của A-DEST trong **bản script đang chạy trên mainnet**
-> chưa được đối chiếu lại từng byte với bản thiết kế mới nhất. Trước khi mint thêm bất kỳ lượng
-> nào có giá trị thật, chúng tôi sẽ so mã script trên chuỗi với bản dựng lại từ mã nguồn và công bố
-> kết quả. Cho tới lúc đó, hãy đọc mục này là **"đã thiết kế và số liệu hiện tại khớp"**, chứ không
-> phải một bảo chứng tuyệt đối.
+> ### Trạng thái thật hôm nay — đọc kỹ trước khi tin mục này
+>
+> **Kho đang giữ LAMP trên mainnet CHƯA phải kho thiết kế ở trên.** Nó là
+> `dist_treasury` — một script **khởi tạo (bootstrap)** mà mã nguồn tự khai ngay dòng đầu là
+> `BOOTSTRAP: authority = 1 pkh (ví bootstrap)`. Nghĩa là: **một chữ ký duy nhất chuyển được
+> LAMP ra khỏi kho đó.** Không có trần, không có lịch, không có quy trình.
+>
+> Địa chỉ kho: `addr1w827sry6t2y9744ndkg4ks6nct57v7tm8pz46ywsq98dhdsf76slu`. Đang giữ **1.000.000
+> LAMP** = 0,0028% tổng cung — lượng khởi tạo kỹ thuật, chưa phân phối cho ai.
+>
+> Việc phải làm, đã ghi thành điều kiện bắt buộc trong `Genesis/DEV-NOTE-kho-A-DEST-canonical.md`:
+> **thay kho bằng `treasury.ak` TRƯỚC khi mint thêm bất kỳ lượng nào có giá trị.** Đổi kho không
+> phải mint lại policy (kho được trỏ động qua kho-NFT), nên đây là việc làm được, không phải bế tắc.
+>
+> Ngoài ra, mã script `lamp_mint` đang chạy trên mainnet **chưa được đối chiếu từng byte** với mã
+> nguồn trong repo. Việc đó cũng phải xong trước khi mint giá trị thật.
+>
+> Chúng tôi để nguyên đoạn này trong tài liệu công khai thay vì viết một câu nghe an toàn hơn.
+> Ai đang cân nhắc tin vào LAMP thì cần biết đúng chỗ nó chưa xong.
 
 ## 9. Khóa vận hành
 

@@ -32,6 +32,11 @@ Công thức vested: `vested(t) = min(entitlement, drop_value · drops_per_epoch
 > KHÔNG `use magiclamp/lampdist`). Đồng bộ **THỦ CÔNG** cho tới khi hợp nhất `magiclamp/common` (sau 18/6).
 
 ## Các kênh (allocation v3) — khởi tạo per-channel
+
+> ⚠️ **Bảng dưới là số liệu LỊCH SỬ của tokenomics v3, ĐÃ BỊ THAY.** Tên kênh và con số hiệu lực
+> lấy theo [`Specs/LAMP-POT-CATALOG.md`](../Specs/LAMP-POT-CATALOG.md) (bảng 18 pot) và
+> [`Specs/LAMP-DISTRIBUTION-SPEC.md`](../Specs/LAMP-DISTRIBUTION-SPEC.md). Bảng này giữ lại để hiểu
+> cấu trúc per-channel mà code đang hiện thực, **không phải để lấy số**.
 | Kênh (channel_id) | LAMP | Cơ chế |
 |---|---:|---|
 | TEAM | 12 tỷ | Capped Drop, D nhỏ + start_epoch lùi |

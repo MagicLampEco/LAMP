@@ -16,12 +16,11 @@
 > Ghi chú lịch sử: đoạn văn dưới nêu con số 100M/pool TIGER là mô tả bản v1 gốc; số/đối tượng
 > hiệu lực lấy theo `AIRDROP-V2-SPEC-Vi.md`.
 
-Module airdrop **0,1 tỷ LAMP** (100_000_000 LAMP = 100_000_000 × 10⁶ oildrop) cho
-delegator pool TIGER theo **snapshot**. Claim mở **360 epoch sau 29/7**; phần DƯ
-(không ai claim) hoàn về **Treasury**. Mỗi địa chỉ/DID claim đúng phần snapshot,
-KHÔNG double-claim.
+Bộ máy Merkle-airdrop dùng chung: mỗi địa chỉ/DID claim đúng phần snapshot của mình bằng chứng
+minh Merkle, **không double-claim**; phần dư không ai claim hoàn về **Treasury**.
 
-Nguồn allocation: `TOKENOMICS.md §TIGER Airdrop`. Đơn vị: **1 LAMP = 10⁶ oildrop**.
+Số lượng và đối tượng của từng pot lấy theo `AIRDROP-V2-SPEC-Vi.md` (Delegator 100M + SPO/CS 20M
+= **120 triệu LAMP**) và `SPO-CS-SPEC-Vi.md`. Đơn vị: **1 LAMP = 10⁶ oildrop**.
 
 ---
 
