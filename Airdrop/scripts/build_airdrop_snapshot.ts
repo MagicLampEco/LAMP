@@ -1,3 +1,9 @@
+// ⚠️ DEPRECATED (2026-07-30) — KHÔNG dùng cho pot Delegator.
+//   Bản v1 này dựng leaf từ stake_address (claim KHÔNG trả được — lỗ #1), chỉ 1 pool
+//   (--pool — lỗ #2), và THIẾU ràng buộc giữ ≥N epoch liên tiếp (§1.5). Thay bằng:
+//       build_delegator_snapshot.ts  (v2: join stake→payment, đa pool, §1.5)
+//   Giữ lại chỉ để tham chiếu lịch sử. Không chạy cho phân phối thật.
+//
 // build_airdrop_snapshot.ts — Snapshot builder cho TIGER Airdrop.
 //
 // Lấy danh sách delegator TIGER pool tại epoch snapshot từ Blockfrost,
