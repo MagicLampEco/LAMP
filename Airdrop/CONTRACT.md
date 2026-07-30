@@ -154,11 +154,20 @@ Ba pot ĐỘC LẬP, dễ lẫn vì đều liên quan delegation:
 | Trigger | Retroactive (nhìn về quá khứ) | Đăng ký + cửa sổ mới `[E_open,E_cut)` | Đăng ký SPO + đo delegation/vote theo đợt |
 | Nguồn stake | **Chỉ pool TIGER** | **Bất kỳ pool Cardano** | Delegation vào pool SPO / vote-stake (mọi pool) |
 | Pool nào | TIGER duy nhất | Mọi pool | Mọi pool |
-| Cần đăng ký? | **Không** (auto retro) | **Có** (ký reward stake key) | **Có** (SPO ký reward stake key) |
-| Cutoff | Mốc 18/6 UTC (`CUTOFF_EPOCH`, TIGER) | `E_cut` mới, chưa chốt | Cửa sổ theo đợt |
+| Cần đăng ký để **đủ tư cách**? | **Không** — hồi tố hoàn toàn | **Có** (ký reward stake key) | **Có** (SPO ký reward stake key) |
+| Cần ký để **nhận tiền về đâu**? | **Có**, SAU cutoff — xem ghi chú dưới bảng | Có (cùng lần ký đăng ký) | Có (cùng lần ký đăng ký) |
+| Cutoff | **epoch 637** (`CUTOFF_EPOCH`, TIGER) — nửa mở, xem dẫn giải trong `TIGER/offchain/src/constants.ts` | `E_cut` mới, chưa chốt | Cửa sổ theo đợt |
 | Cần DID? | **Không** | **Không** (claim bằng ví) | SPO: **Không** · CS: **Có** (SPO-CS §2) |
 | Nhả tiền | Drip kiểu B (36 epoch, cliff) | Claim Merkle 1 lần (cửa sổ 360 epoch) | SPO+CS, drip theo đợt |
 | Tính | ∝accStake, largest-remainder | ∝accStake, largest-remainder | **∝stake, largest-remainder** (SPO=stake-vào-pool · CS=stake-bình-chọn) |
+
+> **Ghi chú ETD — tư cách ≠ nơi trả.** Hai chuyện này từng bị gộp làm một nên tài liệu đọc như tự
+> mâu thuẫn. **Tư cách nhận** của ETD là hồi tố tuyệt đối: không ai làm gì để trở nên đủ điều kiện,
+> và không ai mất tư cách đã có. Nhưng **nơi trả** thì bắt buộc có một bước ký SAU cutoff, vì
+> `claim_account` ép LAMP về `vk_address(owner)` và `owner` buộc là **payment key hash**
+> (`Distribution/onchain/lib/magiclamp/lampdist/util.ak:102-114,158`), trong khi chuỗi chỉ cho
+> `stake_address` — mà stake → payment không phải một hàm. Bước ký này dùng lại nguyên cơ chế
+> `delegator_register.ts`, và vì nó diễn ra sau cutoff nên **không thể** làm ai trở nên đủ điều kiện.
 
 Điểm dễ nhầm nhất: **ETD 12M ≠ Airdrop-Delegator 100M.** ETD = thưởng hồi tố *chỉ* cho
 delegator pool TIGER giai đoạn đầu (không đăng ký). Airdrop-Delegator = pot mới 100M, mọi pool,

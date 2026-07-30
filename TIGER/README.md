@@ -89,11 +89,23 @@ TIGER-shaped → committee Claim E_i → redeem → verify `on-chain redeemed ==
 
 ## Còn thiếu để deploy THẬT (không phải bug — là quyết định + wiring)
 
-1. **owner resolution.** `claim_account.owner` = payment pkh ký redeem, nhưng chain
-   cho `stake_address` (1 stake ↔ nhiều payment). ⇒ cần **bảng đăng-ký** (`--registry`)
-   map stake_address→pkh — **khớp mô hình Airdrop-đăng-ký** (delegator đăng ký khai pkh/DID).
-   ETD thật COUPLE với registration; không tự đoán pkh từ stake key.
-2. **Tham số chốt số:** `CUTOFF_EPOCH` (hiện `0n` placeholder) + `TIGER_POOL_ID` phải set thật.
+1. **owner resolution — ĐÃ CHỐT CÁCH LÀM (2026-07-30).** `claim_account.owner` = payment pkh ký
+   redeem, nhưng chain chỉ cho `stake_address`, và 1 stake ↔ nhiều payment nên **không suy ra được**.
+   Bằng chứng ràng buộc: `Distribution/onchain/lib/magiclamp/lampdist/util.ak:102-114` ép
+   `lamp_to_owner(...) >= amount`, lọc output bằng `is_owned_by(o.address, owner)`; `util.ak:158`
+   dựng địa chỉ `VerificationKey(pkh)`. ⇒ cần **bảng đăng-ký** (`--registry`) map
+   stake_address → payment pkh, dùng lại cơ chế `delegator_register.ts`.
+
+   **Đọc cho đúng:** đây là bước **ràng buộc nơi trả**, KHÔNG phải điều kiện để đủ tư cách. Tư cách
+   ETD hồi tố tuyệt đối — bước ký diễn ra SAU cutoff nên không thể làm ai trở nên đủ điều kiện.
+   Câu cũ ở đây ("ETD thật COUPLE với registration") đọc như trái với "ETD không đăng ký" ở
+   `Airdrop/CONTRACT.md §3`; hai câu nói về hai tầng khác nhau, nay đã ghi rõ ở cả hai chỗ.
+
+   Đã bác phương án `owner` = stake key hash: về mật mã chạy được, nhưng ví chuẩn dẫn xuất payment
+   key ở `1852'/1815'/0'/0/i` và stake key ở `…/2/0`, nên Lace/Eternl không hiện và không tiêu được
+   địa chỉ enterprise dựng từ stake key hash — tiền về đó là tiền kẹt.
+2. **Tham số:** `CUTOFF_EPOCH` **đã chốt = 637** (dẫn giải trong `offchain/src/constants.ts`).
+   `TIGER_POOL_ID` vẫn phải xác nhận trước deploy thật.
 3. **Seed nhiều account.** `05` mới seed 1 account demo; deploy thật lặp seed ClaimAccount
    cho MỌI owner trong snapshot + committee cấp entitlement từng người (batch).
 
