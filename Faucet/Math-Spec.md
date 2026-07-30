@@ -221,7 +221,7 @@ khác stake cred, thỏa value-eq trên 1 cái, "ăn" cái kia
 
 ## 5. Bảng truy vết property ↔ test (đã có, đã pass)
 
-27 test Aiken, **toàn bộ pass** (`aiken check`, exit 0 — xem [EXEC](./EXEC.md)).
+27 test Aiken, **toàn bộ pass** (`aiken check`, exit 0 — xem [EXEC](./Exec-Spec.md)).
 
 | # | Property (định lý) | Onchain test |
 |---|---|---|
@@ -247,6 +247,6 @@ khác stake cred, thỏa value-eq trên 1 cái, "ăn" cái kia
 
 - **CONSERVE end-to-end onchain** (`dev nhận đúng c`): hiện chỉ test ở builder offchain
   (`builders.test.ts:148`). Validator KHÔNG kiểm output dev (cố ý, §3.2). Property đầy đủ chỉ
-  verify được ở **e2e Preview** (claim thật → đọc UTxO ví dev). Ghi ở [EXEC](./EXEC.md).
+  verify được ở **e2e Preview** (claim thật → đọc UTxO ví dev). Ghi ở [EXEC](./Exec-Spec.md).
 - **claim lặp tới cạn** (monotonic giảm `P → P−c → … → 0`): logic đúng theo §3.1 nhưng chưa có
   test chuỗi nhiều claim liên tiếp onchain. MVP chấp nhận; e2e Preview phủ.

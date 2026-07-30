@@ -12,7 +12,7 @@ Nguồn chuẩn bắt buộc đọc trước: [`CONTRACT.md`](./CONTRACT.md) (3 
 
 ### 0.1 Mục tiêu
 
-Đưa Treasury từ **outline** (`SPEC.md` + `CONTRACT.md`) tới **chạy thật trên Preview**, theo đúng cách Distribution đã làm (đã live Preview — xem [`Distribution/scripts/LIVE_DEPLOY_PREVIEW.md`](../Distribution/scripts/LIVE_DEPLOY_PREVIEW.md)). Cụ thể:
+Đưa Treasury từ **outline** (`SPEC.md` + `CONTRACT.md`) tới **chạy thật trên Preview**, theo đúng cách Distribution đã làm (đã live Preview — xem [`Distribution/scripts/live-deploy-preview.md`](../Distribution/scripts/live-deploy-preview.md)). Cụ thể:
 
 1. Một **`treasury_core` validator** (custody + bucket-sổ + release-gate) + một **lớp thu `collectToTreasury`** dùng chung, tái dùng nền `Distribution/onchain/validators/treasury.ak` (đã audit C-TRE/M1).
 2. **Migrate 3 generators** (Instant/Vacuum/Schedule) từ "trả LAMP vào một addr câm" sang `collectToTreasury` chung (split cut → bucket + receipt) — KHÔNG phá bất biến `treasury_receives_lamp >= lamp_paid` đã live.
@@ -49,15 +49,15 @@ Mục tiêu cuối của cả dự án: **làm LAMP có giá trị**. Treasury p
 | Thành phần | Trạng thái | Bằng chứng |
 |---|---|---|
 | `Distribution/treasury.ak` | ✅ **live Preview**, 4 test (happy + double_release + ada_drain + zero_release) | [`treasury.ak`](../Distribution/onchain/validators/treasury.ak) L141–174; commit `1fbd78a4` |
-| Harness e2e tuần tự 00→04 | ✅ chạy thật Preview (mint→genesis→beacon→redeem, in tx hash + explorer) | [`Distribution/scripts/04_e2e.ts`](../Distribution/scripts/04_e2e.ts), [`LIVE_DEPLOY_PREVIEW.md`](../Distribution/scripts/LIVE_DEPLOY_PREVIEW.md) |
-| 3 generators trả Treasury | ✅ **đã trả Treasury trên Preview** — bất biến `treasury_receives_lamp >= lamp_paid` | [`InstantGen/.../vault.ak`](../../MAGIC/InstantGen/onchain/validators/vault.ak) L173–174, L298–313; VacuumGen/ScheduleGen tương tự |
-| AppEconomics W/distribute | ✅ engine reward + test (math.ts) | [`MAGIC/AppEconomics/offchain/src/math.ts`](../../MAGIC/AppEconomics/offchain/src/math.ts) |
+| Harness e2e tuần tự 00→04 | ✅ chạy thật Preview (mint→genesis→beacon→redeem, in tx hash + explorer) | [`Distribution/scripts/04_e2e.ts`](../Distribution/scripts/04_e2e.ts), [`live-deploy-preview.md`](../Distribution/scripts/live-deploy-preview.md) |
+| 3 generators trả Treasury | ✅ **đã trả Treasury trên Preview** — bất biến `treasury_receives_lamp >= lamp_paid` | [`InstantGen/.../vault.ak`](https://github.com/MagicLampNetwork/MAGIC/blob/main/InstantGen/onchain/validators/vault.ak) (repo MAGIC) L173–174, L298–313; VacuumGen/ScheduleGen tương tự |
+| AppEconomics W/distribute | ✅ engine reward + test (math.ts) | [`MAGIC/AppEconomics/offchain/src/math.ts`](https://github.com/MagicLampNetwork/MAGIC/blob/main/AppEconomics/offchain/src/math.ts) (repo MAGIC) |
 | Treasury (collect + core) | 🔜 chỉ `CONTRACT.md` + `SPEC.md` outline | thư mục này |
 | Governance release gate | 🔜 CONTRACT VP đã duyệt; chưa có beacon kết quả vote on-chain | [`Governance/VotingPower/CONTRACT.md`](../Governance/VotingPower/CONTRACT.md) |
 
 **Hai sự thật quyết định lộ trình:**
 
-1. **Generators ĐÃ trả Treasury** — nhưng trả vào một `treasury_addr` *câm*: chỉ kiểm `lamp_at_treasury >= lamp_paid` **đếm theo FULL ADDRESS** `o.address == treasury_addr` (gồm stake cred, [`vault.ak` L298–313](../../MAGIC/InstantGen/onchain/validators/vault.ak)). Chưa có split cut, chưa bucket-sổ, chưa receipt, **và output câm KHÔNG mang datum**. ⇒ Migrate KHÔNG đơn thuần đổi addr: custody `Collect` validator yêu cầu output có **inline datum collect**, mà vault câm không build datum. Đường chốt: **adapter off-chain** (TECH §9 b-ii) — generator giữ logic cũ, adapter ráp datum + phát `Collect` (chi tiết §4.1). ⚠️ Bất biến mới **siết chặt hơn** bất biến cũ theo HAI chiều — per-asset thay vì chỉ LAMP, và đếm theo **payment script hash** thay vì full-address — KHÔNG phải quan hệ "tập con" thuần: cách đếm khác nhau (full-addr → script-hash) nên migrate **phải nâng cách đếm**, không chỉ đổi giá trị `treasury_addr`; đếm full-address hiện tại còn hở double-satisfaction qua stake cred (lỗ C1/C2 generators CHƯA sửa). Lưu ý thêm: quan hệ tập con (nếu xét riêng VALUE) cũng **CHỈ đúng cho ràng buộc VALUE** (`Σ out ≥ Σ in + cut`), KHÔNG đúng cho ràng buộc DATUM.
+1. **Generators ĐÃ trả Treasury** — nhưng trả vào một `treasury_addr` *câm*: chỉ kiểm `lamp_at_treasury >= lamp_paid` **đếm theo FULL ADDRESS** `o.address == treasury_addr` (gồm stake cred, [`vault.ak` L298–313](https://github.com/MagicLampNetwork/MAGIC/blob/main/InstantGen/onchain/validators/vault.ak) (repo MAGIC)). Chưa có split cut, chưa bucket-sổ, chưa receipt, **và output câm KHÔNG mang datum**. ⇒ Migrate KHÔNG đơn thuần đổi addr: custody `Collect` validator yêu cầu output có **inline datum collect**, mà vault câm không build datum. Đường chốt: **adapter off-chain** (TECH §9 b-ii) — generator giữ logic cũ, adapter ráp datum + phát `Collect` (chi tiết §4.1). ⚠️ Bất biến mới **siết chặt hơn** bất biến cũ theo HAI chiều — per-asset thay vì chỉ LAMP, và đếm theo **payment script hash** thay vì full-address — KHÔNG phải quan hệ "tập con" thuần: cách đếm khác nhau (full-addr → script-hash) nên migrate **phải nâng cách đếm**, không chỉ đổi giá trị `treasury_addr`; đếm full-address hiện tại còn hở double-satisfaction qua stake cred (lỗ C1/C2 generators CHƯA sửa). Lưu ý thêm: quan hệ tập con (nếu xét riêng VALUE) cũng **CHỈ đúng cho ràng buộc VALUE** (`Σ out ≥ Σ in + cut`), KHÔNG đúng cho ràng buộc DATUM.
 
 2. **`Distribution/treasury.ak` đã chứng minh khuôn release an toàn** (C-TRE-1 đếm theo script hash; C-VAL-0 bảo toàn tuyệt đối mọi asset; reject double-release + ada-drain). ⇒ `treasury_core` **mở rộng từ đây**: thay "release kích hoạt bởi Redeem hợp lệ" bằng "release kích hoạt bởi proposal Governance pass (đọc beacon)".
 
@@ -93,7 +93,7 @@ Mục tiêu cuối của cả dự án: **làm LAMP có giá trị**. Treasury p
 | **M3** | **`Release` redeemer** (lớp chi, T1 = Gov D3): release **chỉ khi** beacon Governance (reference input) cho biết proposal `status==Executed` + Proposal NFT + **proposal UTxO Ở `Script(governance_ref)`** (LỖ #1A) + **khớp `spend_spec_hash`** (đích/asset/amount đã duyệt — xem §6.1) + **`execute_after_epoch` đã tới** (time-lock). Custody ép **seed NFT hiện diện** in+out (C-NFT-1, LỖ #5) + **epoch neo chain** (C-EPOCH, LỖ #4) + **prune dòng sổ==0** (LỖ #3). Treasury KHÔNG tự kiểm ngưỡng bucket — Governance đã ép ngưỡng (gồm clamp BFT) TRƯỚC khi đặt `status==Executed`. Tái dùng C-TRE-1 (đếm script hash, 1-custody) + C-VAL-0 (bảo toàn asset khác). Multi-sig council. | M2, **Governance beacon CÓ `spend_spec_hash` + `execute_after_epoch`** (blocker cứng — xem §6.1, D2) | unit: release-no-proposal → reject; **proposal ở script lạ (≠ Script(governance_ref)) → reject** (#1A); **NFT name ≠ proposal_id → reject** (F1); **draws rỗng → reject** (C-REL-13, F2); **cross-instance cùng governance_ref → reject** (F10 — #1B ĐÓNG, spec_hash gồm instance_id); **thiếu seed NFT in/out → reject** (#5); release khi proposal chưa `Executed` → reject; release-sai-đích (spend_spec_hash lệch) → reject; release trước `execute_after_epoch` → reject; **epoch_out không neo get_epoch_bounded(tx) / range trải 2 epoch → reject** (#4/F4); **prune dòng==0 → pass** (#3); release-đúng → pass; ada-drain → reject (kế thừa M1 test). |
 | **M4** | **Property bảo-toàn-value** (MATH-driven test): sinh ngẫu nhiên N collect + M release → assert `Σ value_out(asset) = Σ value_in(asset)` tuyệt đối ∀ asset; `circulating = tổng − Σ bucket.balance`; **không có nhánh nào giảm tổng cung** (CONTRACT §5). | M2, M3 | property test (≥ vài trăm case) xanh; có log Σ_in == Σ_out. |
 | **M5** | **Offchain SDK**: `buildCollectTx`, `buildReleaseTx`, `decodeTreasuryDatum`, `reapplyValidators`. Tái dùng `config.ts`/`awaitTx`/`explorerTx` của Distribution. | M1–M4 | vitest offchain: datum decode khớp Aiken; tx build hợp lệ (dry-run). |
-| **M6** | **E2E Preview** (harness 00→04 kiểu Distribution): `01_deploy` (instance MagicLamp) → `02_collect_batch` (gộp lô nhiều collect) → `03_post_governance_beacon` (giả proposal pass) → `04_release` → verify on-chain (in tx hash + explorer). | M5 | record `LIVE_DEPLOY_PREVIEW.md` riêng cho Treasury với tx hash thật. |
+| **M6** | **E2E Preview** (harness 00→04 kiểu Distribution): `01_deploy` (instance MagicLamp) → `02_collect_batch` (gộp lô nhiều collect) → `03_post_governance_beacon` (giả proposal pass) → `04_release` → verify on-chain (in tx hash + explorer). | M5 | record `live-deploy-preview.md` riêng cho Treasury với tx hash thật. |
 | **M7** | **Migrate 3 generators** sang `collectToTreasury` chung + **tích hợp OriLife** + **bootstrap đa thuê bao**. | M6 | xem §4, §5; generators e2e Preview lại với treasury_core (không regression); OriLife settlement e2e. |
 
 > Thứ tự M2 trước M3 có chủ đích: **thu là đường nóng, độc lập Governance**; chi phụ thuộc beacon (blocker ngoài). Build + test được toàn bộ đường thu (và migrate generators) **trước khi** Governance beacon sẵn sàng → không bị blocker chặn tiến độ.
@@ -112,7 +112,7 @@ Mục tiêu cuối của cả dự án: **làm LAMP có giá trị**. Treasury p
 
 ## 4. Migrate 3 generators (Instant / Vacuum / Schedule)
 
-**Hiện trạng:** mỗi vault validator có param `treasury_addr` và kiểm `treasury_receives_lamp(outputs, treasury_addr, lamp_policy, lamp_paid) ⇒ lamp_at_treasury >= lamp_paid` ([`vault.ak` L298–313](../../MAGIC/InstantGen/onchain/validators/vault.ak)). Treasury hiện là **addr câm** (ví trên Preview).
+**Hiện trạng:** mỗi vault validator có param `treasury_addr` và kiểm `treasury_receives_lamp(outputs, treasury_addr, lamp_policy, lamp_paid) ⇒ lamp_at_treasury >= lamp_paid` ([`vault.ak` L298–313](https://github.com/MagicLampNetwork/MAGIC/blob/main/InstantGen/onchain/validators/vault.ak) (repo MAGIC)). Treasury hiện là **addr câm** (ví trên Preview).
 
 **Đích:** `treasury_addr` trỏ tới **`treasury_core` script address** (instance MagicLamp), và output vào đó mang **datum hợp lệ** (sổ bucket cập nhật + receipt). Generator KHÔNG cần biết bucket logic — nó chỉ cần đẩy LAMP + ghi `app_id`/`category` vào output datum theo schema collect.
 
@@ -150,7 +150,7 @@ OriLife đang **chờ một spec settlement**: làm sao phí thu từ app (vd `a
 |---|---|---|
 | 5.1 | OriLife tính `animal_fee` (định giá theo loài) + quy đổi qua **oracle** (`MAGIC/oracle`). | **APP + oracle**, NGOÀI Treasury (CONTRACT §3.5, §7). Treasury chỉ nhận `amount`. |
 | 5.2 | OriLife gọi `collectToTreasury(LAMP, fee, app_id="orilife", category)`. | Lớp thu (M2). Split cut → bucket; receipt ghi `app_id="orilife"`. |
-| 5.3 | AppEconomics `computeW`/`distribute` ([`math.ts`](../../MAGIC/AppEconomics/offchain/src/math.ts)) tính **pool reward** từ W mỗi app (dùng receipt làm input `V`/util). | **MAGIC/AppEconomics**. Treasury KHÔNG tính reward — chỉ **giữ** pool + **chi** theo output của `distribute()`. |
+| 5.3 | AppEconomics `computeW`/`distribute` ([`math.ts`](https://github.com/MagicLampNetwork/MAGIC/blob/main/AppEconomics/offchain/src/math.ts) (repo MAGIC)) tính **pool reward** từ W mỗi app (dùng receipt làm input `V`/util). | **MAGIC/AppEconomics**. Treasury KHÔNG tính reward — chỉ **giữ** pool + **chi** theo output của `distribute()`. |
 | 5.4 | Chi reward: `Release` redeemer (M3) chi từ bucket reward theo `distribute()` output, qua cổng Governance (proposal "phân bổ reward epoch e" pass). | Lớp chi (M3). Cap 30%/app (`MAX_SINGLE_APP_REWARD_BPS`) đã ở AppEconomics — Treasury chỉ chấp hành số liệu. |
 
 **DoD tích hợp OriLife:** e2e Preview — mint test-LAMP cho ví "OriLife user" → `collectToTreasury(fee)` → custody tăng + receipt `orilife` → (giả proposal pass) → `Release` chi reward theo `distribute()` → verify on-chain. Đây là **bằng chứng settlement spec mà OriLife chờ đã đóng**.
@@ -218,7 +218,7 @@ Bám nguyên tắc "verify behavior, không chỉ structure". Mỗi mốc phải
 | Property bảo-toàn-value | aiken property test / generator | ∀ chuỗi (collect×N, release×M): `Σ out(asset) = Σ in(asset)` tuyệt đối; `Σ bucket = custody LAMP`; `circulating = tổng − Σ balance`; KHÔNG nhánh giảm tổng (CONTRACT §5) | log Σ_in == Σ_out cho ≥ vài trăm case |
 | Datum parity | vitest offchain | decode TS ↔ Aiken khớp byte (P8 determinism) | test round-trip |
 | Migrate generators | aiken + integration | vault tx + treasury_core Collect cùng tx → cả hai pass; cut sai/treasury==wallet → reject | output test 3 generators không regression |
-| E2E Preview | harness 00→04 (lucid) | deploy instance → collect lô → beacon → release → verify on-chain | tx hash + explorer link trong `LIVE_DEPLOY_PREVIEW.md` Treasury |
+| E2E Preview | harness 00→04 (lucid) | deploy instance → collect lô → beacon → release → verify on-chain | tx hash + explorer link trong `live-deploy-preview.md` Treasury |
 | OriLife settlement | e2e Preview | collect(fee, app_id=orilife) → release reward theo distribute() | tx hash thật |
 
 **Bất biến trọng tâm phải có test riêng** (đây là xương sống). EXEC chỉ nêu **TEST gì** + **trỏ mã bất biến** — **không định nghĩa lại công thức** (§0.3). Nguồn-chân-lý duy nhất ở MATH; nếu MATH sửa mã bất biến, test ở đây bám theo mã, không lệch:
@@ -247,7 +247,7 @@ Bám nguyên tắc "verify behavior, không chỉ structure". Mỗi mốc phải
 - **TECH:** validator `treasury_core` (Collect + Release) compile + `aiken check` xanh; đếm theo payment script hash; datum bucket sổ + receipt; emergency isolation.
 - **MATH:** chứng minh `Σ out = Σ in` tuyệt đối ∀ asset (không nhánh giảm tổng); split cut đúng; `circulating = tổng − Σ balance` là hệ quả; property test xanh.
 - **FEAT:** vòng đời thu (collect/batch/receipt) + chi (release qua Governance) + giảm-lưu-hành (accounting, không burn) mô tả khớp validator.
-- **EXEC (file này):** harness 00→04 chạy thật Preview (record `LIVE_DEPLOY_PREVIEW.md` Treasury); 3 generators migrate không regression (e2e Preview); OriLife settlement e2e đóng (bằng chứng spec OriLife chờ); instance MagicLamp bootstrap + 1 instance thuê bao thử nghiệm.
+- **EXEC (file này):** harness 00→04 chạy thật Preview (record `live-deploy-preview.md` Treasury); 3 generators migrate không regression (e2e Preview); OriLife settlement e2e đóng (bằng chứng spec OriLife chờ); instance MagicLamp bootstrap + 1 instance thuê bao thử nghiệm.
 
 ---
 

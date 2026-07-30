@@ -1,8 +1,11 @@
-# LAMP — Distribution Spec (hoàn chỉnh, v1)
+# LAMP — Phân phối 36 tỷ ra cộng đồng
 
-> **Nguồn sự thật cho PHÂN PHỐI LAMP**: 18 pot ra cộng đồng thế nào (nhả / claim / gen-MAGIC).
-> Tầng MINT (lazy-mint, registry, cap-param, A-DEST) ở `Genesis/ALLOCATION-SPEC.md` — KHÔNG lặp ở đây.
-> Catalog mô tả pot ở `LAMP-POT-CATALOG.md`. Đơn vị: **NGHÌN LAMP** (tổng 36.000.000 = 36 tỷ).
+> **Paper class**: A — Positioning — giải thích cách 36 tỷ LAMP ra cộng đồng.
+> Đây là tài liệu **đối ngoại** (bản phái sinh), không phải đặc tả nội bộ. Chuẩn: `../CONVENTIONS.md`.
+
+> Giải thích 18 pot ra cộng đồng thế nào (nhả / claim / gen-MAGIC).
+> Tầng MINT (lazy-mint, registry, cap-param, A-DEST) ở `Genesis/CONTRACT.md` — KHÔNG lặp ở đây.
+> Catalog mô tả pot ở `pot-catalog.md`. Đơn vị: **NGHÌN LAMP** (tổng 36.000.000 = 36 tỷ).
 > Đông kết 2026-06-20. Mọi cơ chế bám code đã có (claim_account / beacon / treasury / srcl / airdrop module).
 
 ---
@@ -20,7 +23,7 @@
 
 ## 2. Allocation 18 pot (nghìn LAMP)
 
-Xem bảng đầy đủ ở `LAMP-POT-CATALOG.md §1`. Tóm tắt theo **cơ chế nhả**:
+Xem bảng đầy đủ ở `pot-catalog.md §1`. Tóm tắt theo **cơ chế nhả**:
 
 | Cơ chế nhả | Pot | Tổng (nghìn) |
 |---|---|---:|
@@ -161,8 +164,8 @@ Chi tiết ở spec Governance riêng. Điểm giao với phân phối: **gen-MA
 
 > ⚠️ **Mục này đã bị thay.** Chủ dự án chốt model v2 ngày 2026-07-10:
 > **Delegator 100M + SPO 5M + CS 15M**, cả ba pot đều chia **∝ trọng số stake**.
-> Đặc tả hiệu lực: [`Airdrop/AIRDROP-V2-SPEC-Vi.md`](../Airdrop/AIRDROP-V2-SPEC-Vi.md) +
-> [`Airdrop/SPO-CS-SPEC-Vi.md`](../Airdrop/SPO-CS-SPEC-Vi.md).
+> Đặc tả hiệu lực: [`Airdrop/CONTRACT.md`](../Airdrop/CONTRACT.md) +
+> [`Airdrop/spo-cs.md`](../Airdrop/spo-cs.md).
 > Phần dưới là mô hình v1 (tỉ lệ 20:100, SPO 20M, chưa có pot CS) — **giữ để truy vết, đừng lấy số**.
 - **Tổng:** 120.000 nghìn = 5 epoch × **24.000 nghìn/epoch**.
 - **Chia 20:100** mỗi epoch: `B_spo = 24.000 × 20/120 = 4.000` (SPO) + `B_del = 24.000 × 100/120 = 20.000` (Delegator).

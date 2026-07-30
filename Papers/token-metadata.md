@@ -1,6 +1,9 @@
-# TOKEN METADATA — LAMP (DRAFT chờ anh duyệt, 19/6)
+# Token metadata — LAMP
 
-> Nội dung CÔNG KHAI (hiện trên ví/explorer). Anh duyệt trước khi em gắn/đăng ký.
+> **Paper class**: C — Standard (metadata đăng ký, kiểu CIP-26) — để ví/explorer hiển thị đúng.
+> Đây là tài liệu **đối ngoại** (bản phái sinh), không phải đặc tả nội bộ. Chuẩn: `../CONVENTIONS.md`.
+
+> **Trạng thái**: DRAFT — chưa đăng ký. Nội dung sẽ hiện trên ví và explorer.
 
 ## Trường metadata
 
@@ -12,11 +15,11 @@
 | **decimals** | `6` | 1 LAMP = 10⁶ đơn-vị-con |
 | **đơn vị con** | `oildrop` | giống `lovelace` của ADA, `wei` của ETH. 1 LAMP = 1.000.000 oildrop |
 | **url** | `https://magiclamp.network/` | |
-| **logo** | `MagicLamp Logo.jpeg` → PNG 64×64 (base64) | em chuẩn bị |
+| **logo** | PNG 64×64 (base64) | chưa dựng |
 | **description** | (chọn 1 bên dưới) | |
 
 > Lưu ý: chuẩn Cardano token registry KHÔNG có trường "đơn vị con" riêng — `oildrop` là quy ước
-> tài liệu (như lovelace/wei), em ghi vào description + docs, không phải field ví đọc.
+> tài liệu (như lovelace/wei), ghi trong description + tài liệu, không phải field ví đọc.
 
 ## Description — 3 phương án (học cách NIGHT diễn đạt: điềm đạm, nói công dụng, không hứa giá)
 
@@ -57,7 +60,7 @@ official + công dụng + link, diễn đạt riêng, không sao chép.)*
 → **Khuyến nghị: làm CẢ HAI** — CIP-26 cho ví hiển thị rộng (decimals/logo/ticker), CIP-68
 cho metadata on-chain mutable. Cả hai cập nhật được sau, không đụng policy LAMP.
 
-## Chờ anh chốt
-1. Description: P1 / P2 / P3 (hay VN+EN cả hai)?
-2. decimals=6 + đơn vị con "oildrop" + name "MagicLamp" + ticker "LAMP" — đúng ý anh chứ?
-3. Logo: dùng `MagicLamp Logo.jpeg` (em resize PNG chuẩn). Anh có bản vuông/nền trong tốt hơn không?
+## Còn phải chốt trước khi đăng ký
+1. Chọn bản description (P1 / P2 / P3, hoặc song ngữ VN+EN).
+2. Xác nhận `decimals = 6`, đơn vị con `oildrop`, name `MagicLamp`, ticker `LAMP`.
+3. Logo: cần bản vuông, nền trong, xuất PNG 64×64.

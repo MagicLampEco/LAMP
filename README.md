@@ -56,18 +56,23 @@ Repo MAGIC: <https://github.com/MagicLampNetwork/MAGIC>
 
 | Bạn muốn biết | Đọc |
 |---|---|
-| LAMP là gì, cung ra sao, ai quản trị | [`Specs/LAMP-POLICY-EXPLAINER.md`](Specs/LAMP-POLICY-EXPLAINER.md) — kèm 100 câu hỏi thường gặp |
-| 36 tỷ chia thế nào | [`Specs/LAMP-POT-CATALOG.md`](Specs/LAMP-POT-CATALOG.md) · [`Specs/LAMP-DISTRIBUTION-SPEC.md`](Specs/LAMP-DISTRIBUTION-SPEC.md) |
-| Cơ chế ra mắt (Launch) | [`Specs/LAUNCH-FRAMEWORK-Vi.md`](Specs/LAUNCH-FRAMEWORK-Vi.md) · [`Specs/SRCL-SPEC-Vi.md`](Specs/SRCL-SPEC-Vi.md) |
-| Mint LAMP qua OrgDID | [`Specs/lamp-mint-core-adapter.md`](Specs/lamp-mint-core-adapter.md) |
+| LAMP là gì, cung ra sao, ai quản trị | [`Papers/Whitepaper.md`](Papers/Whitepaper.md) — kèm 100 câu hỏi thường gặp |
+| 36 tỷ chia thế nào | [`Papers/pot-catalog.md`](Papers/pot-catalog.md) · [`Papers/distribution.md`](Papers/distribution.md) |
+| Cơ chế ra mắt (Launch) | [`Papers/launch-framework.md`](Papers/launch-framework.md) · [`Papers/srcl.md`](Papers/srcl.md) |
+| Mint LAMP qua OrgDID | [`Genesis/mint-core-adapter.md`](Genesis/mint-core-adapter.md) |
 
 ## Cấu trúc
 
-**Đặc tả công khai**
+Quy ước đặt tên + phân biệt Spec/Paper: [`CONVENTIONS.md`](CONVENTIONS.md) (theo chuẩn StandardSpec).
+
+**Tài liệu đối ngoại**
 
 | Thư mục | Nội dung |
 |---|---|
-| `Specs/` | Đặc tả dành cho công chúng. Khi mâu thuẫn với bất kỳ chỗ nào khác trong repo, **`Specs/` đúng**. Một số file còn nhãn DRAFT — số liệu có thể còn tinh chỉnh, nhãn nằm ngay đầu file |
+| `Papers/` | Tài liệu dành cho người ngoài — định vị, giải thích cơ chế. Khi mâu thuẫn với bất kỳ chỗ nào khác trong repo, **`Papers/` đúng**. Một số file còn nhãn DRAFT — nhãn nằm ngay đầu file. Đây là **bản đối ngoại**, không phải nơi đội build lấy chi tiết kỹ thuật |
+
+**Đặc tả nội bộ** nằm trong từng thư mục module dưới đây (`CONTRACT.md`, `Feat-Spec.md`,
+`Math-Spec.md`, `Tech-Spec.md`, `Exec-Spec.md`) — INTERNAL mặc định theo StandardSpec Rule 6.
 
 **Hợp đồng on-chain + SDK off-chain**
 
@@ -95,7 +100,7 @@ Repo này ưu tiên nói thật hơn nói đẹp:
 - **Kho giữ LAMP trên mainnet hiện là ví một-chữ-ký.** `dist_treasury` là script **khởi tạo**, mã
   nguồn tự khai `BOOTSTRAP: authority = 1 pkh` — một chữ ký chuyển được LAMP ra khỏi kho. Đang giữ
   1.000.000 LAMP (0,0028% tổng cung, chưa phân phối). **Phải thay bằng `treasury.ak` trước khi mint
-  thêm giá trị** — xem [`Genesis/DEV-NOTE-kho-A-DEST-canonical.md`](Genesis/DEV-NOTE-kho-A-DEST-canonical.md).
+  thêm giá trị** — xem [`Genesis/kho-a-dest.md`](Genesis/kho-a-dest.md).
 - **`SRCL/` có một lỗi CRITICAL đang mở (S1)** — cửa `Sweep` mở sẵn từ ngày đầu và không đòi chữ
   ký. **Đừng nạp LAMP thật vào SRCL pot trước khi vá.** Cơ chế + cách vá: [`SRCL/README.md`](SRCL/README.md).
 - **Mã script `lamp_mint` đang chạy trên mainnet chưa được đối chiếu từng byte** với mã nguồn

@@ -2,8 +2,8 @@
 
 **Trạng thái:** draft 2026-06-09. Bám **xương sống** [`CONTRACT.md`](./CONTRACT.md) — KHÔNG mâu
 thuẫn. Tài liệu này là tầng **kỹ thuật** (datum/redeemer byte-perfect, validator, tham số, từng bất
-biến map tới dòng code, codec offchain↔onchain). Hành vi ở [FEAT](./FEAT.md), chứng minh ở
-[MATH](./MATH.md), lộ trình ở [EXEC](./EXEC.md).
+biến map tới dòng code, codec offchain↔onchain). Hành vi ở [FEAT](./Feat-Spec.md), chứng minh ở
+[MATH](./Math-Spec.md), lộ trình ở [EXEC](./Exec-Spec.md).
 
 Aiken: `plutus = "v3"`, stdlib `aiken-lang/stdlib v3.1.0` ([`aiken.toml`](./onchain/aiken.toml)).
 Module dùng: [`cardano/assets`](https://aiken-lang.github.io/stdlib/cardano/assets.html),
@@ -119,7 +119,7 @@ validator tlamp_policy(genesis_ref: OutputReference, total_supply: Int) {
 **Lý do dùng `dict.size + quantity_of` (không chỉ 1 trong 2):** `dict.size == 1` đảm bảo policy chỉ
 mint **1** asset name; `quantity_of == total_supply` đảm bảo asset name đó (nếu là `n`) đúng lượng.
 Hai góc red-team: `add(name', 0)` không tạo entry (size 0); `add(name', −1)` tạo entry (size 2) — cả
-hai đều bị một trong hai check bắt (xem [MATH §2.2](./MATH.md)).
+hai đều bị một trong hai check bắt (xem [MATH §2.2](./Math-Spec.md)).
 
 ---
 
@@ -158,7 +158,7 @@ validator faucet(tlamp_policy: ByteArray, tlamp_name: ByteArray) {
 
 **Thứ tự check có chủ đích:** `claim_amount > 0` (`:45`) đứng **trước** value-eq (`:63`). Nếu không,
 `c < 0` biến `add(..., −c)` thành `add(..., +|c|)` = bơm token vào pool. Đặt positivity trước đóng cửa
-này ([MATH §3.5](./MATH.md)).
+này ([MATH §3.5](./Math-Spec.md)).
 
 ### 3.1 Vì sao 1 đẳng thức value thay vì nhiều check rời
 
@@ -166,7 +166,7 @@ này ([MATH §3.5](./MATH.md)).
 ngược → mọi sai lệch làm `pool_out.value ≠ pool_in.value + add(−c)` → reject. Đây là lựa chọn **tối
 ưu eUTXO**: 1 phép so `Value` thay vì N phép so từng asset. `assets.add(v,p,n,−c)` chỉ chạm entry
 `(p,n)`, mọi asset khác (ADA, dust) tự động phải bằng nhau ([`faucet.ak:59-62`](./onchain/validators/faucet.ak),
-chứng minh [MATH §3.1](./MATH.md)).
+chứng minh [MATH §3.1](./Math-Spec.md)).
 
 ---
 

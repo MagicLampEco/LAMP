@@ -5,7 +5,7 @@
 //   - SPO 5M LAMP: chia ĐỀU cho SPO qua cổng đủ-điều-kiện (không theo stake).
 //   - CS 15M LAMP: theo Community Supporter đo qua AffiSo/ProofChat (cs_score.ts).
 //   - Delegator 100M LAMP: ∝stake mọi pool (build_delegator_snapshot.ts / snapshot builder).
-// Xem SPO-CS-SPEC-Vi.md + AIRDROP-V2-SPEC-Vi.md.
+// Xem spo-cs.md + CONTRACT.md.
 //
 // Dùng:
 //   npx tsx spo_stats.ts --pool pool1xs2yx...
@@ -231,7 +231,7 @@ async function main(): Promise<void> {
   console.log(
     "        (không theo stake); phần CS 15M LAMP theo đóng góp cộng đồng (cần DID).",
   );
-  console.log("        Chi tiết: SPO-CS-SPEC-Vi.md.");
+  console.log("        Chi tiết: spo-cs.md.");
 
   // ── Thông tin đăng ký ───────────────────────────────────────────────────
 

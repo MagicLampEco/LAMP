@@ -84,9 +84,9 @@ Genesis/
 │                                  # dist_treasury · lock_vault
 ├── offchain/src/                  # datum codec · mintBuilder · supplyState · circulating
 ├── scripts/                       # deploy · mint · verify (verify_mainnet_supply.ts là bản đọc-chỉ-đọc)
-├── ALLOCATION-SPEC.md
-├── DEV-NOTE-kho-A-DEST-canonical.md
-└── DEV-NOTE-mainnet-deploy-plan.md
+├── CONTRACT.md
+├── kho-a-dest.md
+└── mainnet-deploy-plan.md
 ```
 
 ## Chạy test
@@ -103,9 +103,9 @@ cd Genesis/offchain && npm install && npx vitest run   # 41 pass / 0 fail (đo 2
   được LAMP ra khỏi kho. Kho đang giữ 1.000.000 LAMP (0,0028% tổng cung, chưa phân phối cho
   ai). Thiết kế đích là `Treasury/treasury.ak`, nơi LAMP chỉ rời kho qua
   entitlement → Merkle → claim → redeem. **Phải thay trước khi mint thêm giá trị.** Chi tiết:
-  [`DEV-NOTE-kho-A-DEST-canonical.md`](./DEV-NOTE-kho-A-DEST-canonical.md).
+  [`kho-a-dest.md`](./kho-a-dest.md).
 - **Mã script `lamp_mint` đang chạy trên mainnet chưa được đối chiếu từng byte** với mã nguồn
   trong repo. Việc đó là điều kiện tiên quyết trước khi mint thêm bất kỳ lượng nào có giá trị.
-  Chi tiết: [`DEV-NOTE-mainnet-deploy-plan.md`](./DEV-NOTE-mainnet-deploy-plan.md).
+  Chi tiết: [`mainnet-deploy-plan.md`](./mainnet-deploy-plan.md).
 - Trần 36 tỷ **đã được xác minh trên chuỗi** — đó là phần chắc chắn. Hai điều trên là về **kho
   nhận** và **đối chiếu mã**, không phải về trần.

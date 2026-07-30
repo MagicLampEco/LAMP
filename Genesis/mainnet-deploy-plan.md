@@ -25,7 +25,7 @@
 ## A. Quyết định chiến lược
 1. ~~Token mainnet chính thức là cái nào~~ → **ĐÃ CHỐT 2026-07-29: `55d3e01b…180f0`.** Không
    migrate, không khai tử, không phát hành token thứ hai.
-2. **token_tag = `4c414d50`** — đã chốt (xem `DEV-NOTE-kho-A-DEST-canonical.md`).
+2. **token_tag = `4c414d50`** — đã chốt (xem `kho-a-dest.md`).
 3. **Kho A-DEST = `treasury.ak` vesting** — đã chốt. Kho mainnet hiện tại là `dist_treasury` 1-pkh
    (đang giữ 1 triệu LAMP) → **phải thay bằng `treasury.ak` TRƯỚC khi mint giá trị**.
 4. **Authority**: hệ quả trực tiếp của quyết định A1 — tham số đã **nướng vào policy-id**, nên
@@ -37,7 +37,7 @@
 Chưa ai đối chiếu **CBOR script đang chạy trên mainnet** với bản dựng lại từ mã nguồn. Cần biết
 chắc nó là bản **8 tham số (authority khoá thường, threshold 1)** hay **12 tham số (registry-gate
 theo DID)**, và A-DEST có được ép on-chain thật không. Đây là **điều kiện tiên quyết** của mọi
-bước mint có giá trị, và cũng là căn cứ để chốt lại `Specs/LAMP-POLICY-EXPLAINER.md §8`.
+bước mint có giá trị, và cũng là căn cứ để chốt lại `Papers/Whitepaper.md §8`.
 
 ## B. Code phải merge (hiện ở nhánh/worktree, chưa lên main)
 5. **LAMP**: `lamp_mint` 12-param + registry read-side đã nằm trọn trong nhánh PR #17

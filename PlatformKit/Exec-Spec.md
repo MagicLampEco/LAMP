@@ -2,11 +2,11 @@
 
 **Doctype:** MagicLamp Protocol — PlatformKit Spec (EXEC)
 **Trạng thái:** 🔜 outline triển khai 2026-06-15. Bám [`CONTRACT.md`](./CONTRACT.md) (khung interface
-khóa) — KHÔNG mâu thuẫn. EXEC KHÔNG định nghĩa lại datum/bất biến (việc của [TECH](./TECH.md)) — chỉ
+khóa) — KHÔNG mâu thuẫn. EXEC KHÔNG định nghĩa lại datum/bất biến (việc của [TECH](./Tech-Spec.md)) — chỉ
 định **thứ tự deploy, onboard, tích hợp, checklist, DoD, known-gap**.
 
 Nguồn chuẩn đọc trước: [`CONTRACT.md`](./CONTRACT.md) (platform = instance Treasury + entry Registry;
-ba cửa onboard; PK1–PK7), [`Treasury/EXEC.md`](../Treasury/EXEC.md) (mẫu lộ trình M0…M7 + custody_seed
+ba cửa onboard; PK1–PK7), [`Treasury/Exec-Spec.md`](../Treasury/Exec-Spec.md) (mẫu lộ trình M0…M7 + custody_seed
 §16 + hardening v1 §17), [`Treasury/onchain/validators/{registry_beacon,registry}.ak`] (đã sống).
 
 ---
@@ -26,8 +26,8 @@ Bám cách Treasury/Distribution đã làm (deploy theo bước, mỗi bước g
 - Checklist onboard + DoD (bằng chứng) + rủi ro + known-gap.
 
 ### 0.3 KHÔNG thuộc EXEC
-- Datum/redeemer/bất biến validator: [TECH](./TECH.md).
-- Custody/collect/release internals + deploy custody: [`Treasury/EXEC.md`](../Treasury/EXEC.md).
+- Datum/redeemer/bất biến validator: [TECH](./Tech-Spec.md).
+- Custody/collect/release internals + deploy custody: [`Treasury/Exec-Spec.md`](../Treasury/Exec-Spec.md).
 - Định giá/oracle: app-side (OriLife `animal_fee`, PhoenixKey phí DID).
 - Sửa **backend Java PhoenixKey** (`PhoenixKeyDID/Database`) hoặc **backend OriLife** — NGOÀI ranh giới
   (xem §5).
@@ -39,7 +39,7 @@ Bám cách Treasury/Distribution đã làm (deploy theo bước, mỗi bước g
   + `validators/registry_beacon.ak` (thêm **R-BIND** ref-input custody + **R-MINT-2** least-authority, F5)
   + `validators/registry.ak` (thêm **U-TERMINAL** Retired terminal). **`aiken check` = **137 pass, 0 fail** (đo 2026-07-29, cùng cây Treasury)**
   (toàn cây); chưa deploy testnet.
-- Treasury custody/collect/seed: đã viết, hardening v1 áp (`Treasury/EXEC.md §16/§17`); chưa deploy.
+- Treasury custody/collect/seed: đã viết, hardening v1 áp (`Treasury/Exec-Spec.md §16/§17`); chưa deploy.
 - Governance: **chưa thật** → `registry_authority` + `governance_ref` bootstrap bằng **committee multisig**
   (known-gap §6; audit #4 — KHÔNG key đơn).
 - Off-chain SDK PlatformKit (`onboard/registrationBuilder/collectAdapter/registryQuery`): **đã viết, test
@@ -60,7 +60,7 @@ Bám cách Treasury/Distribution đã làm (deploy theo bước, mỗi bước g
 | **M2** | **`registry_beacon` (mint) test** (TECH §3): R-SIG/R-MINT-1/**R-MINT-2**/R-OUT-1/R-WF/R-NAME/**R-BIND** + BURN cấm. | M1 | unit: happy register pass; **không-authority-ký → reject** (R-SIG); **mint 2 token / qty>1 → reject** (R-MINT-1); **mint thêm policy ngoài → reject** (R-MINT-2, F5); **output ví thường (is_vk) → reject** (R-OUT-1); **entry malformed → reject** (R-WF); **burn beacon → reject** (else fail); **thiếu ref-input custody / custody NFT≠1 / custody ở Script khác custody_hash → reject** (R-BIND). |
 | **M3** | **`registry` (spend) test** (TECH §4): U-SIG/U-SINGLE/U-NFT/U-ID/U-MUT/U-MINT-0/**U-TERMINAL**. | M1 | unit: happy update (đổi status / mutable) pass; **không-authority → reject** (U-SIG); **đổi identity (custody_hash…) → reject** (U-ID); **2 entry input (double-sat khác stake-cred) → reject** (U-SINGLE); **mint/burn trong update → reject** (U-MINT-0); **mutable hạ governance_ref="" → reject** (U-MUT); **mất beacon NFT out → reject** (U-NFT); **spend entry status=Retired (Retired→Active / Retired→Retired) → reject** (U-TERMINAL). |
 | **M4** | **Off-chain SDK** (TECH §6): `onboard/registrationBuilder/collectAdapter/registryQuery`. `decodePlatformEntry` khớp Aiken (9 field). Tái dùng config/lucid Treasury. | M1–M3 | **vitest = 86 pass (đo 2026-07-29)** (PlatformKit offchain): datum decode khớp Aiken; `planRegister`/`planUpdateEntry` dry-run hợp lệ + reject path (`REG-BIND` thiếu/sai custody, `UPD-TERMINAL` Retired); `discoverPlatforms` quét policy giả-lập trả entry + đánh dấu `duplicate`/`foreignScript`; `verifyEntryAgainstCustody` đối soát custody. |
-| **M5** | **E2E Preview** (harness kiểu Treasury): `01_deploy_registry` (param authority, self-ref chiều beacon→registry) → `02_onboard` PhoenixKey + OriLife (seed custody cửa 1 + register cửa 2) → `03_collect` (gộp lô cửa 3) → `04_update_status` (pause/resume/retire) → verify on-chain (tx hash + explorer). | M4, **Treasury custody/seed deploy Preview** (`Treasury/EXEC.md M6`) | record `LIVE_DEPLOY_PREVIEW.md` riêng PlatformKit với tx hash thật; discover quét policy ra đúng 2 platform Active. |
+| **M5** | **E2E Preview** (harness kiểu Treasury): `01_deploy_registry` (param authority, self-ref chiều beacon→registry) → `02_onboard` PhoenixKey + OriLife (seed custody cửa 1 + register cửa 2) → `03_collect` (gộp lô cửa 3) → `04_update_status` (pause/resume/retire) → verify on-chain (tx hash + explorer). | M4, **Treasury custody/seed deploy Preview** (`Treasury/Exec-Spec.md M6`) | record `live-deploy-preview.md` riêng PlatformKit với tx hash thật; discover quét policy ra đúng 2 platform Active. |
 | **M6** | **Tích hợp collect lớp touchable** (§5): PhoenixKey Frontend/SDK + OriLife mobile/SDK. KHÔNG đụng backend. | M5 | e2e: sự kiện app → CollectItem → settlement tx → custody tăng + receipt; **không touch backend Java / backend OriLife** (diff chỉ Frontend/SDK/mobile). |
 
 ---
@@ -150,7 +150,7 @@ làm sớm khi chưa nhiều platform).
 > `registry_authority` lên **multisig/committee script** (M-of-N native hoặc Plutus) — `list.has(extra_signatories,
 > authority)` đổi sang một check multisig, hoặc `registry_authority` là **script hash** một committee
 > validator (gate bằng governance_ref committee → DAO). Lộ trình: v1 committee multisig (bootstrap) →
-> DAO khi Governance chạy. (Xem `TECH.md` GAP-3.)
+> DAO khi Governance chạy. (Xem `Tech-Spec.md` GAP-3.)
 
 ### 6.2 `governance_ref` riêng từng instance (#1B — nay ĐÓNG)
 ✅ **#1B ĐÓNG (vá lần 2 F10).** Treasury `spend_spec_hash` NAY gồm `instance_id`
@@ -190,7 +190,7 @@ quyền release** (blast-radius nhỏ) — dùng chung KHÔNG còn rủi ro an t
   reference input nếu cần Pause thật. (CONTRACT PK10, TECH §4.)
 - **G8 (vá lần 2 F8) — receipt/app_id chưa neo on-chain.** `app_id` (CollectItem redeemer) vô danh;
   CustodyDatum không có `receipt_root`. VP/uy tín KHÔNG tin app_id từ Collect tới khi receipt thực thi
-  (chống bịa C1). receipt = v1.x / bỏ lời hứa. (CONTRACT PK11, `Treasury/TECH.md §6`.)
+  (chống bịa C1). receipt = v1.x / bỏ lời hứa. (CONTRACT PK11, `Treasury/Tech-Spec.md §6`.)
 - **G9 (vá lần 2 F13) — `verifyEntryAgainstCustody`+dedup chỉ là VAN SDK.** Người tích hợp PHẢI gọi TRƯỚC
   khi route phí; SDK không ép được. Bỏ qua = route phí tới custody giả / entry trùng. (TECH §6.4.)
 
@@ -242,7 +242,7 @@ quyền release** (blast-radius nhỏ) — dùng chung KHÔNG còn rủi ro an t
       registryQuery` có test, gồm `verifyCustodyBinding`/`verifyEntryAgainstCustody` (R-BIND/audit #6),
       `UPD-TERMINAL`, `findDuplicatePlatformIds`/`duplicate` (audit #2), `foreignScript` (audit #3) (M4).
 - [ ] E2E Preview: deploy registry → onboard PhoenixKey + OriLife → collect → update status → verify
-      on-chain (tx hash thật, `LIVE_DEPLOY_PREVIEW.md`); discover ra đúng 2 platform Active (M5).
+      on-chain (tx hash thật, `live-deploy-preview.md`); discover ra đúng 2 platform Active (M5).
 - [ ] Tích hợp collect lớp touchable: PhoenixKey Frontend/SDK + OriLife mobile/SDK; **diff KHÔNG chạm
       backend Java / backend OriLife** (M6).
 - [ ] Mọi `governance_ref` per-platform RIÊNG (PK6 — nay khuyến nghị tách quyền, #1B đã đóng F10);

@@ -1,6 +1,6 @@
 # DEV NOTE — Kho A-DEST canonical (quyết định + trạng thái)
 
-> Chốt 2026-07-13. Nguồn bất biến gốc: `ALLOCATION-SPEC.md §11`. Note này ghi QUYẾT ĐỊNH
+> Chốt 2026-07-13. Nguồn bất biến gốc: `CONTRACT.md §11`. Note này ghi QUYẾT ĐỊNH
 > cụ thể (kho nào) + TRẠNG THÁI (mainnet đang vi phạm) để mọi dev tái dùng, không mint lại.
 
 ## Quyết định

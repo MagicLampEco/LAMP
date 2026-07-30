@@ -9,8 +9,8 @@ chốt) — KHÔNG mâu thuẫn. Một trong 4 spec FEAT/MATH/TECH/EXEC của mo
 > [`onchain/validators/faucet.ak`](./onchain/validators/faucet.ak),
 > [`offchain/src/mintBuilder.ts`](./offchain/src/mintBuilder.ts),
 > [`offchain/src/claimBuilder.ts`](./offchain/src/claimBuilder.ts)).
-> KHÔNG đi sâu công thức/chứng minh (xem [MATH](./MATH.md)) hay datum/redeemer/validator
-> byte-level (xem [TECH](./TECH.md)) hay lộ trình build/test/deploy (xem [EXEC](./EXEC.md)).
+> KHÔNG đi sâu công thức/chứng minh (xem [MATH](./Math-Spec.md)) hay datum/redeemer/validator
+> byte-level (xem [TECH](./Tech-Spec.md)) hay lộ trình build/test/deploy (xem [EXEC](./Exec-Spec.md)).
 
 ---
 
@@ -55,10 +55,10 @@ với faucet "mint-on-demand" thông thường: Σ tLAMP **bất biến** sau m�
 
 | Chủ đề | Thuộc spec |
 |---|---|
-| Công thức + bất biến + chứng minh (value-preservation, one-shot, no-burn) | [MATH](./MATH.md) |
-| Datum/redeemer byte-perfect, validator Aiken, chống double-satisfaction | [TECH](./TECH.md) |
-| Codec offchain↔onchain (`OutputReference` shape, Constr index) | [TECH](./TECH.md) |
-| Lộ trình build/test/deploy Preview, test plan, gaps | [EXEC](./EXEC.md) |
+| Công thức + bất biến + chứng minh (value-preservation, one-shot, no-burn) | [MATH](./Math-Spec.md) |
+| Datum/redeemer byte-perfect, validator Aiken, chống double-satisfaction | [TECH](./Tech-Spec.md) |
+| Codec offchain↔onchain (`OutputReference` shape, Constr index) | [TECH](./Tech-Spec.md) |
+| Lộ trình build/test/deploy Preview, test plan, gaps | [EXEC](./Exec-Spec.md) |
 | Token LAMP **thật** mainnet (CIP-68, policy khác hẳn) | LAMP mainnet — tLAMP chỉ là test surrogate ([CONTRACT §2](./CONTRACT.md)) |
 | Cooldown per-address chống cạn pool | **v1.1, chưa code** ([CONTRACT §3](./CONTRACT.md)) |
 

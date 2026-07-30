@@ -2,11 +2,11 @@
 
 > Module phân bổ rổ Distribution (26,370 tỷ LAMP) ra các **kênh thưởng**, mỗi kênh
 > có trần cứng độc lập + nhả nhỏ giọt (Capped Drop). KHÔNG phải toàn bộ "tokenomics"
-> (bức tranh tổng ở `Specs/LAMP-POT-CATALOG.md` + `Specs/LAMP-DISTRIBUTION-SPEC.md`). Đơn vị oildrop: 1 LAMP = 10⁶ oildrop.
+> (bức tranh tổng ở `Papers/pot-catalog.md` + `Papers/distribution.md`). Đơn vị oildrop: 1 LAMP = 10⁶ oildrop.
 
 ## Vì sao tên "Allocation" (không phải "Tokenomics")
 Module này CHỈ làm phân bổ kênh. "Tokenomics" = toàn bộ thiết kế kinh tế = chính repo.
-Bức tranh tổng (cung, phát hành, điều tiết, pháp lý): `Specs/LAMP-POT-CATALOG.md`, `Specs/LAMP-DISTRIBUTION-SPEC.md`, `Specs/LAMP-POLICY-EXPLAINER.md`.
+Bức tranh tổng (cung, phát hành, điều tiết, pháp lý): `Papers/pot-catalog.md`, `Papers/distribution.md`, `Papers/Whitepaper.md`.
 
 ## HARD-CAP 2 lớp phòng thủ (vá lỗ committee cấp vượt ngân sách)
 - **Lớp A (kế toán, mềm):** `ChannelBudget` beacon NFT mang `remaining_oildrop`. Mỗi Claim
@@ -34,8 +34,8 @@ Công thức vested: `vested(t) = min(entitlement, drop_value · drops_per_epoch
 ## Các kênh (allocation v3) — khởi tạo per-channel
 
 > ⚠️ **Bảng dưới là số liệu LỊCH SỬ của tokenomics v3, ĐÃ BỊ THAY.** Tên kênh và con số hiệu lực
-> lấy theo [`Specs/LAMP-POT-CATALOG.md`](../Specs/LAMP-POT-CATALOG.md) (bảng 18 pot) và
-> [`Specs/LAMP-DISTRIBUTION-SPEC.md`](../Specs/LAMP-DISTRIBUTION-SPEC.md). Bảng này giữ lại để hiểu
+> lấy theo [`Papers/pot-catalog.md`](../Papers/pot-catalog.md) (bảng 18 pot) và
+> [`Papers/distribution.md`](../Papers/distribution.md). Bảng này giữ lại để hiểu
 > cấu trúc per-channel mà code đang hiện thực, **không phải để lấy số**.
 | Kênh (channel_id) | LAMP | Cơ chế |
 |---|---:|---|

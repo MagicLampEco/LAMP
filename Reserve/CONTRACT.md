@@ -127,7 +127,7 @@ Auth NFT là **input** từ gate → thỏa Luật 5; `reserve_gate` đọc `par
 
 - `reserve_gate` KHÔNG kiểm chi tiết draw (reserve_draw tự ép trần/kế toán);
   `reserve_draw` KHÔNG kiểm sàn (gate tự ép). Phân tách trách nhiệm sạch.
-- Chi tiết flow + interface contract apply-param: xem [`Treasury/RESERVE_PULL.md`](../Treasury/RESERVE_PULL.md).
+- Chi tiết flow + interface contract apply-param: xem [`Treasury/reserve-pull.md`](../Treasury/reserve-pull.md).
 
 ---
 

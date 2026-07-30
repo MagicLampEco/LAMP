@@ -3,8 +3,8 @@
 **Doctype:** MagicLamp Protocol — Onchain Spec (Math/Proofs)
 **Version:** v2 "Capped Drop"
 **Updated:** 2026-06-06
-**Nguồn chuẩn (interface contract):** [`CONTRACT-CappedDrop.md`](./CONTRACT-CappedDrop.md)
-**Hành vi:** [`SPEC-CappedDrop-FEAT.md`](./SPEC-CappedDrop-FEAT.md)
+**Nguồn chuẩn (interface contract):** [`capped-drop/CONTRACT.md`](./CONTRACT.md)
+**Hành vi:** [`capped-drop/Feat-Spec.md`](./Feat-Spec.md)
 
 Chứng minh các bất biến của Capped Drop: vested **đơn điệu** + **bị chặn** (cap `E`); số
 epoch để hết = `⌈E/D⌉`; **đa-claim cộng dồn** đúng; **entitlement bảo toàn** (bỏ lỡ epoch

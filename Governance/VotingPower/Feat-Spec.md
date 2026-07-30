@@ -44,15 +44,15 @@ Nguyên lý nền (từ contract §2, KHÔNG vi phạm):
 
 | Chủ đề | Thuộc spec |
 |---|---|
-| Công thức VP, cap, weight, chứng minh toán | [MATH](./MATH.md) *(chưa viết)* |
+| Công thức VP, cap, weight, chứng minh toán | [MATH](./Math-Spec.md) *(chưa viết)* |
 | Tính bounded / monotonic / sybil-cost của VP | MATH |
 | Công thức clamp `min(VP_i, ΣVP/BFT_FLOOR)` + chứng minh cận "k DID → tỉ lệ tối đa" | MATH |
-| Datum / redeemer / validator Aiken | [TECH](./TECH.md) *(chưa viết)* |
+| Datum / redeemer / validator Aiken | [TECH](./Tech-Spec.md) *(chưa viết)* |
 | Đọc C1–C4 qua reference input, cross-repo data flow | TECH |
 | Đếm số DID độc lập thuận + áp clamp khi tally on-chain | TECH |
 | Chống double-vote ở tầng on-chain | TECH |
 | Tích hợp zk-proof DID on-chain | TECH |
-| Lộ trình build, mốc, test plan, deploy Preview; chế độ hội đồng bảo trợ bootstrap | [EXEC](./EXEC.md) *(chưa viết)* |
+| Lộ trình build, mốc, test plan, deploy Preview; chế độ hội đồng bảo trợ bootstrap | [EXEC](./Exec-Spec.md) *(chưa viết)* |
 | Cơ chế sinh DID sinh trắc, zk-proof "1 người = 1 DID" | backend **PhoenixKey** (ngoài repo LAMP) |
 
 ### 0.4 Quan hệ với các tài liệu cũ — CONTRACT là chuẩn, SPEC.md cũ DEPRECATE
@@ -76,7 +76,7 @@ chỉ bám CONTRACT. Đề nghị anh đánh dấu `Governance/SPEC.md` là lỗ
 về CONTRACT) để tránh resume sau hiểu nhầm — **FEAT không tự sửa file cấp trên đó.**
 
 > Ngưỡng **recall** trong SPEC.md cũ (co-sign 200/500 DID, vote 66%/75%) cũng được FEAT
-> **chốt lại** ở §3.1 + §6 (xem §6.1). EXEC.md đã ghi sẵn "FEAT cần chốt lại" — FEAT là nơi
+> **chốt lại** ở §3.1 + §6 (xem §6.1). Exec-Spec.md đã ghi sẵn "FEAT cần chốt lại" — FEAT là nơi
 > chốt; EXEC phải bám theo §6 này, không bám số cũ của SPEC.md.
 
 ---
@@ -552,7 +552,7 @@ trừng phe đối lập:
   định trọng yếu). FEAT **chốt con số này**; nó **thay thế** các số cũ rải rác (SPEC.md cũ ghi
   vote 66%/75% + co-sign 200/500 DID — xem §0.4): **một** ngưỡng vote duy nhất **≥ 2/3** cho
   mọi recall, và co-sign khởi xướng theo đầu người (con số DAO định, không chốt cứng 200/500).
-  EXEC.md/SPEC.md phải bám §6 này.
+  Exec-Spec.md/SPEC.md phải bám §6 này.
 - **Quyết định cuối đếm theo VP** (chống đám đông Sybil lật người đóng góp thật); **khởi
   xướng đếm theo đầu người** (chống VP-lớn đơn lẻ tự mở recall đối thủ).
 - Hệ quả khi recall đạt: gỡ vai trò hội đồng và/hoặc **giảm/khóa VP** đối tượng (ví dụ hạ C3
@@ -716,7 +716,7 @@ là mở.
 
 ## 11. Cơ sở toán học & tham chiếu
 
-FEAT mô tả hành vi; **cơ sở toán** của mọi con số nằm ở [MATH](./MATH.md) và phần "Đánh giá mô hình"
+FEAT mô tả hành vi; **cơ sở toán** của mọi con số nằm ở [MATH](./Math-Spec.md) và phần "Đánh giá mô hình"
 trong [../SPEC.md](../SPEC.md). Tóm các neo lý thuyết cho các khái niệm dùng ở trên:
 
 - **Voting Power = hàm Cobb–Douglas có cap** (`∏_k min(C_k,cap_k)^{w_k}`): dạng hàm bổ trợ nhiều
@@ -754,8 +754,8 @@ xử lý + chỗ cần anh/đồng đội theo tiếp:
 
 - **F1 (recall ngưỡng — major):** FEAT **chốt** một ngưỡng recall duy nhất **≥ 2/3 tổng VP
   THUẬN** (vote) + khởi xướng **theo đầu người** (§3.1, §6.1). Số cũ rải rác trong `SPEC.md`
-  cũ (vote 66%/75%, co-sign 200/500 DID) **bị thay thế**. **Cần anh duyệt sửa `EXEC.md` +
-  `SPEC.md`** bám §6 (EXEC.md dòng 266/287 đã tự ghi "FEAT cần chốt lại" → khớp).
+  cũ (vote 66%/75%, co-sign 200/500 DID) **bị thay thế**. **Cần anh duyệt sửa `Exec-Spec.md` +
+  `SPEC.md`** bám §6 (Exec-Spec.md dòng 266/287 đã tự ghi "FEAT cần chốt lại" → khớp).
 - **F2 (xung đột công thức VP — major):** thêm **§0.4** — CONTRACT là chuẩn; công thức
   `(C1×C2×C3)^(1/3)` không-cap trong `Governance/SPEC.md` cũ **mâu thuẫn CONTRACT** (thiếu cap
   + thiếu C4 + thiếu weight DAO) → **đề nghị anh deprecate `SPEC.md`** (FEAT không tự sửa file
@@ -815,7 +815,7 @@ xử lý + chỗ cần anh/đồng đội theo tiếp:
   hết nên cần ≥8 để vượt; t=2/3→14; t=1→21), lập luận `n≥3f+1` (21 chịu f=6, là sàn không phải
   ghế), tương tác clamp với cap C4 (hai tầng bổ sung, không thay thế) — **khớp CONTRACT §2.5,
   không mâu thuẫn, đúng toán**. Các link còn lại đã verify hợp lý (Lamport byz.pdf, CIP-1694,
-  PBFT, Cobb-Douglas/AM-GM, Buterin). **Khuyến nghị MATH.md** chứng minh hình thức cận "k
+  PBFT, Cobb-Douglas/AM-GM, Buterin). **Khuyến nghị Math-Spec.md** chứng minh hình thức cận "k
   DID-clamp → tỉ lệ tối đa `k/21` trên mẫu số `ΣVP` gốc" để khóa cứng định nghĩa mẫu số (đã ghi
   ở §0.3 và §9 là việc của MATH).
 

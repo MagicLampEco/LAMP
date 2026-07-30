@@ -114,7 +114,7 @@ Tách bạch 3 vai — KHÔNG gộp polymorphic:
 
 | Vai | Hành động | Validator ép |
 |---|---|---|
-| (1) User đốt MAGIC | `consume.ak` `Consume` redeemer, `tx.mint` MAGIC âm | C-CM-1..5 (FEAT.md §4) |
+| (1) User đốt MAGIC | `consume.ak` `Consume` redeemer, `tx.mint` MAGIC âm | C-CM-1..5 (Feat-Spec.md §4) |
 | (2) App trả phí hộ | ADA input từ app wallet, LAMP input từ app wallet; app cosign | PM-1 (app_authority ∈ extra_signatories) |
 | (3) App nhận reward | Ghi receipt vào Treasury `collectToTreasury`; nhận AppEconomics | Treasury Collect validator |
 

@@ -2,14 +2,14 @@
 
 **Trạng thái:** draft 2026-06-15 (chờ anh duyệt). Bám **xương sống** [CONTRACT.md](./CONTRACT.md) —
 KHÔNG mâu thuẫn. Tài liệu này là tầng **kỹ thuật** (datum/redeemer/bất biến/validator + SDK off-chain)
-của lớp Registry. Hành vi ở [FEAT](./FEAT.md), lộ trình ở [EXEC](./EXEC.md).
+của lớp Registry. Hành vi ở [FEAT](./Feat-Spec.md), lộ trình ở [EXEC](./Exec-Spec.md).
 
 **Tái dùng nền sống cùng cây Treasury:**
 [`Treasury/onchain/lib/magiclamp/treasury/platform.ak`](../Treasury/onchain/lib/magiclamp/treasury/platform.ak)
 (types + helper) + [`validators/registry_beacon.ak`](../Treasury/onchain/validators/registry_beacon.ak)
 (minting) + [`validators/registry.ak`](../Treasury/onchain/validators/registry.ak) (spend) + helper
 [`lib/magiclamp/treasury/util.ak`](../Treasury/onchain/lib/magiclamp/treasury/util.ak). Custody/seed của
-platform là Treasury (`Treasury/TECH.md`) — TECH này CHỈ đặc tả tầng Registry quanh nó.
+platform là Treasury (`Treasury/Tech-Spec.md`) — TECH này CHỈ đặc tả tầng Registry quanh nó.
 
 ---
 
@@ -24,9 +24,9 @@ platform là Treasury (`Treasury/TECH.md`) — TECH này CHỈ đặc tả tần
 - Off-chain SDK: `onboard` / `registrationBuilder` / `collectAdapter` / `registryQuery`.
 
 ### KHÔNG thuộc spec này
-- **Custody/Collect/Release** internals (value, sổ bucket, split cut, release-gate): ở `Treasury/TECH.md`.
+- **Custody/Collect/Release** internals (value, sổ bucket, split cut, release-gate): ở `Treasury/Tech-Spec.md`.
   Registry **trỏ tới** custody nhưng KHÔNG enforce kế toán của nó.
-- **`custody_seed`** (cửa 1 onboard): minting policy của Treasury (`Treasury/EXEC.md §16`). Registry
+- **`custody_seed`** (cửa 1 onboard): minting policy của Treasury (`Treasury/Exec-Spec.md §16`). Registry
   nhận `instance_id/custody_hash/seed_policy` đầu ra của nó làm input đăng ký.
 - **Định giá / oracle**: app-side, NGOÀI PlatformKit.
 - **Đếm phiếu / VP** (đích `governance_ref`): `Governance/VotingPower/*`.
@@ -226,7 +226,7 @@ else fail — KHÔNG xóa entry (retire = status, không spend-burn — PK5).
 
 **U-SINGLE đếm theo PAYMENT SCRIPT HASH** (qua `count_inputs_at_script`/`count_outputs_at_script` của
 `util.ak`) — KHÔNG full-address: chống double-satisfaction N× entry khác stake-cred (đúng lỗ C1/C2 mà
-Distribution sửa, generators còn hở — `Treasury/FEAT.md §2.2`).
+Distribution sửa, generators còn hở — `Treasury/Feat-Spec.md §2.2`).
 
 > ⛔ **F7 (vá lần 2 — reconcile): `registry` KHÔNG gác custody on-chain.** `registry.ak` (UpdateEntry) chỉ
 > ép U-* về ENTRY (status/identity/mutable/NFT/authority) — **KHÔNG đọc custody UTxO**, và **custody
@@ -256,7 +256,7 @@ compile → vòng, không deploy được.
 **Chiều deploy:** `registry_beacon(authority)` compile trước → ra `beacon_policy` → `registry(authority,
 beacon_policy)` compile sau. Một chiều, không vòng.
 
-> Gương đúng mẫu `custody_seed` Treasury (`Treasury/EXEC.md §16` — phá vòng seed↔custody bằng self-ref).
+> Gương đúng mẫu `custody_seed` Treasury (`Treasury/Exec-Spec.md §16` — phá vòng seed↔custody bằng self-ref).
 > Cùng triết lý: minting policy chọn output bằng "token tôi vừa mint", không cần hash đích.
 
 **Đánh đổi đã cân:** vì `registry_beacon` chỉ ép output ở **Script bất kỳ** (không đúng hash registry),
@@ -297,7 +297,7 @@ ES modules, Lucid Evolution (gương `Treasury/offchain`). Bốn nhóm hàm:
   `CollectItem{app_id, policy, name, amount, category}` (schema Treasury). Pricing **KHÔNG ở đây** (app
   điền `amount`).
   > ⛔ **F8 (vá lần 2): `app_id` trong CollectItem là VÔ DANH on-chain.** `app_id` chỉ nằm ở **redeemer**
-  > Collect, KHÔNG neo vào CustodyDatum (Treasury chưa có `receipt_root` — `Treasury/TECH.md §6`). Sau khi
+  > Collect, KHÔNG neo vào CustodyDatum (Treasury chưa có `receipt_root` — `Treasury/Tech-Spec.md §6`). Sau khi
   > tx confirm, không hash/UTxO nào chứng thực `app_id` đã khai. **VP/uy tín KHÔNG được tin `app_id` từ
   > Collect** để cấp tín dụng C1 (MAGIC tiêu thụ) tới khi receipt được thực thi — nếu tin, kẻ tấn công khai
   > `app_id` người khác để bơm VP. receipt_root là v1.x hoặc bỏ lời hứa. (CONTRACT PK11.)

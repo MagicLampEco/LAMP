@@ -13,7 +13,7 @@ Spec anh em (build song song, mỗi spec có Agent phản biện): FEAT (hành v
 
 ### 0.1 Mục tiêu
 
-Đưa hệ Voting Power từ **outline** tới **chạy thật trên Preview** theo lộ trình có mốc rõ, phụ thuộc tường minh, test có bằng chứng — đúng cách Distribution đã làm (đã live Preview, xem [`Distribution/scripts/LIVE_DEPLOY_PREVIEW.md`](../../Distribution/scripts/LIVE_DEPLOY_PREVIEW.md)).
+Đưa hệ Voting Power từ **outline** tới **chạy thật trên Preview** theo lộ trình có mốc rõ, phụ thuộc tường minh, test có bằng chứng — đúng cách Distribution đã làm (đã live Preview, xem [`Distribution/scripts/live-deploy-preview.md`](../../Distribution/scripts/live-deploy-preview.md)).
 
 Mục tiêu cuối của cả dự án (theo định hướng dài hạn): làm LAMP có giá trị qua một hệ quản trị **không token-weighted**, chống thâu tóm bằng tiền. EXEC phục vụ mục tiêu đó bằng cách bảo đảm hệ build được, test được, nâng cấp được, và chuyển dần từ tập trung sang DAO.
 
@@ -176,7 +176,7 @@ Mỗi mốc có: đầu vào, việc, **đầu ra kiểm chứng được** (tes
 
 ### M5 — Deploy Preview (committee bootstrap, DID vẫn giả lập)
 
-- **Việc:** script tuần tự bám mẫu Distribution: `00_preflight` (kiểm tra ví/quỹ Preview) → `01_deploy` (script address + beacon NFT one-shot) → `02_seed` (post UTxO mock C1/C2/C3 gắn token xác thực; cho C4 thì **khóa LAMP test vào lock UTxO một-LAMP-một-DID rồi post registry mock LAMP-holding gắn `did_commit` của từng cử tri Stub** — CONTRACT §5 D4, KHÔNG nạp LAMP vào ví trần để đọc số dư) → `03_genesis` (mở proposal mẫu) → `04_e2e` (3 cử tri Stub vote, tally on-chain, recall thử). Ghi nhật ký như [`LIVE_DEPLOY_PREVIEW.md`](../../Distribution/scripts/LIVE_DEPLOY_PREVIEW.md).
+- **Việc:** script tuần tự bám mẫu Distribution: `00_preflight` (kiểm tra ví/quỹ Preview) → `01_deploy` (script address + beacon NFT one-shot) → `02_seed` (post UTxO mock C1/C2/C3 gắn token xác thực; cho C4 thì **khóa LAMP test vào lock UTxO một-LAMP-một-DID rồi post registry mock LAMP-holding gắn `did_commit` của từng cử tri Stub** — CONTRACT §5 D4, KHÔNG nạp LAMP vào ví trần để đọc số dư) → `03_genesis` (mở proposal mẫu) → `04_e2e` (3 cử tri Stub vote, tally on-chain, recall thử). Ghi nhật ký như [`live-deploy-preview.md`](../../Distribution/scripts/live-deploy-preview.md).
 - **Negative test C4 registry (bắt buộc — CONTRACT §5 D4):** hai kịch bản phủ trên **registry LAMP-holding + lock UTxO một-LAMP-một-DID** (KHÔNG còn đọc số dư ví trần):
   - **(i) "mượn-ảnh" (lỗ hổng C4 sống lại — bắt buộc):** dựng **2 DID Stub cùng trỏ một kho LAMP** (hai entry registry `did_commit_A→holding` và `did_commit_B→holding` cùng BACKED bởi **một** lock UTxO LAMP) → tally **fail** (vì lock UTxO một-LAMP-một-DID đã bị tiêu cho DID A thì DID B không còn bằng chứng khóa, hoặc validator phát hiện hai entry trỏ chung một UTxO khóa). Đây là negative-case lõi của D4: một kho LAMP KHÔNG được tính C4 cho hai DID.
   - **(ii) "mua trước tiêu sau" theo registry (giữ, đổi sang registry):** cử tri Stub **rút/tiêu LAMP đã khóa SAU khi vote** → kiểm: nếu phá lock UTxO thì entry registry C4 **mất hiệu lực** (hết bằng chứng khóa), tally KHÔNG còn tính C4 cho DID đó; LAMP khóa là điều kiện C4 đứng vững, không phải số dư ví đọc lén. e2e phải phủ cả (i) và (ii).
@@ -298,7 +298,7 @@ Hệ quả trực tiếp của **sàn cứng** (nguyên lý 5): nếu số DID �
 - **Định nghĩa đo:** Nakamoto coefficient của Governance = số **DID độc lập tối thiểu** cần cấu kết để kiểm soát > 1/3 tổng VP-tham-gia **sau clamp** (ngưỡng phủ quyết Byzantine). Có thể đo thêm bản > 1/2 (đa số thường). Tính off-chain từ snapshot VP mỗi proposal-open epoch; công khai để cộng đồng đối chiếu (trust-but-verify, mẫu Distribution).
 - **Vì sao đo sau clamp:** clamp ép trần `1/21` nên Nakamoto coefficient luôn **≥ 8** (cần ≥ 8 DID đã max-clamp để vượt 1/3 — M2). Con số đo có ý nghĩa khi vượt xa 8: nó cho biết quyền lực đã **phân tán tự nhiên** tới đâu (nhiều DID có VP gần trần) hay vẫn dồn vào nhóm nhỏ vừa-đủ-8.
 - **Mục tiêu theo thời gian:** Nakamoto coefficient **tăng dần qua các epoch** (mô hình tập sự CONTRACT §2.1 khiến cộng đồng tích VP dần) và đạt **≫ 21** ở hệ trưởng thành. Khi đó không DID nào còn chạm trần `1/21` → clamp vô hại → sàn BFT hoàn thành vai trò.
-- **Ghi nhận:** mỗi proposal-open epoch ghi Nakamoto coefficient đo được vào nhật ký quản trị (mẫu `LIVE_DEPLOY_PREVIEW.md`). Đây là chỉ số sức khỏe phi tập trung chính của hệ — theo dõi đường cong của nó để quyết định mở GĐ B→C.
+- **Ghi nhận:** mỗi proposal-open epoch ghi Nakamoto coefficient đo được vào nhật ký quản trị (mẫu `live-deploy-preview.md`). Đây là chỉ số sức khỏe phi tập trung chính của hệ — theo dõi đường cong của nó để quyết định mở GĐ B→C.
 
 ---
 
@@ -328,7 +328,7 @@ Hệ quả trực tiếp của **sàn cứng** (nguyên lý 5): nếu số DID �
 | **MATH** | Công thức VP biểu diễn xác định (fixed-point + bảng tra); ≥ property test cho bounded/monotonic/geometric-collapse pass (Aiken fuzzer); chứng minh "token không mua được quyền lực" viết rõ; **`vp_offchain_ref` off-chain khớp Tally-tra-bảng on-chain trong dải sai số MATH định (có test so khớp)** — KHÔNG kỳ vọng bit-khớp tuyệt đối với fixed-point exp/ln (MATH §11.5). |
 | **TECH** | Datum/redeemer định nghĩa đủ; validators đọc C1–C4 (C4 trực tiếp, C1/C2/C3 qua beacon+reference input); `Stub` DID verifier cắm được, thay bằng zk-verifier không phá datum; Aiken unit test phủ mọi nhánh + negative test. |
 | **FEAT** | Vòng đời cử tri (gồm tập sự VP≈0) + 3 loại quyết định + luồng proposal/vote/recall mô tả đủ; double-vote chặn; ngưỡng recall (co-sign + %) khớp Governance SPEC; integration test chạy 1 vòng quản trị. |
-| **EXEC** (file này) | M0–M5 có đầu ra kiểm chứng (test xanh + tx hash Preview); kế hoạch M6 + bootstrap DAO ghi rõ; rủi ro + giảm thiểu liệt kê; **clamp BFT + sàn cứng (nguyên lý 5) có test bắt buộc (§4.5) + chế độ hội đồng bảo trợ (§5.4) + mốc đo Nakamoto coefficient (§5.5) ghi rõ**; tài liệu deploy ghi như `LIVE_DEPLOY_PREVIEW.md`. |
+| **EXEC** (file này) | M0–M5 có đầu ra kiểm chứng (test xanh + tx hash Preview); kế hoạch M6 + bootstrap DAO ghi rõ; rủi ro + giảm thiểu liệt kê; **clamp BFT + sàn cứng (nguyên lý 5) có test bắt buộc (§4.5) + chế độ hội đồng bảo trợ (§5.4) + mốc đo Nakamoto coefficient (§5.5) ghi rõ**; tài liệu deploy ghi như `live-deploy-preview.md`. |
 
 ---
 

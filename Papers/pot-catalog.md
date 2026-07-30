@@ -1,5 +1,8 @@
 # LAMP — Catalog 18 Pot (mô tả + khoá/nhỏ-giọt + gen-MAGIC)
 
+> **Paper class**: A — Positioning — giải thích 18 pot cho người ngoài.
+> Đây là tài liệu **đối ngoại** (bản phái sinh), không phải đặc tả nội bộ. Chuẩn: `../CONVENTIONS.md`.
+
 > **DRAFT — chủ repo sẽ còn thay đổi.** Mục đích: để mọi người hiểu **mỗi pot là gì,
 > dùng làm gì, bị khoá hay nhỏ-giọt thế nào, và có sinh MAGIC hay không.**
 > Số liệu bám `TOKENOMICS-v17`. **Đơn vị: NGHÌN LAMP** (tổng 36.000.000 nghìn = 36 tỷ).
@@ -132,7 +135,7 @@
 - **14. Airdrop (120.000)** — **dành tặng cộng đồng SPO và Delegator** dựa trên stake + sự hỗ trợ; **ghi nhận đóng góp
   vào cơ chế bền vững của mạng blockchain Cardano**. Chia **3 pot**: Delegator **100M** · SPO **5M** ·
   CS (Community Supporter) **15M**, cả ba đều **∝ trọng số stake**. Đặc tả hiệu lực:
-  [`Airdrop/AIRDROP-V2-SPEC-Vi.md`](../Airdrop/AIRDROP-V2-SPEC-Vi.md). (Mô hình cũ 5 epoch ×24.000 tỉ lệ
+  [`Airdrop/CONTRACT.md`](../Airdrop/CONTRACT.md). (Mô hình cũ 5 epoch ×24.000 tỉ lệ
   20:100 đã bị thay ngày 2026-07-10.)
 - **15. SRCL (360.000)** — **redirect staking-reward ADA ↔ LAMP** (delegator tự nguyện đổi % reward), 36 epoch.
 

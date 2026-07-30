@@ -1,8 +1,8 @@
 # Airdrop — Hướng dẫn Delegator (pot Delegator 100M)
 
 > **Model v2 (chốt 2026-07-11).** Đây là **pot Delegator = 100.000.000 LAMP** trong tổng Airdrop
-> 120M (2 pot còn lại: SPO (Staking Pool Operator) 5M + CS (Community Supporter) 15M — xem `SPO-REGISTRATION.md`). Đặc tả:
-> `AIRDROP-V2-SPEC-Vi.md` §1. Khác v1: **mọi pool Cardano** (không chỉ TIGER) và **phải đăng ký**.
+> 120M (2 pot còn lại: SPO (Staking Pool Operator) 5M + CS (Community Supporter) 15M — xem `spo-registration.md`). Đặc tả:
+> `CONTRACT.md` §1. Khác v1: **mọi pool Cardano** (không chỉ TIGER) và **phải đăng ký**.
 
 Nếu bạn đã uỷ thác ADA vào một stake pool Cardano trong cửa sổ snapshot và đã đăng ký, phần đóng góp đó
 được **ghi nhận** bằng LAMP từ
@@ -72,7 +72,7 @@ npm install
 # Xác nhận bạn có trong snapshot
 npx tsx check_airdrop.ts --snapshot snapshot.json --addr stake1...
 
-# Chạy demo claim (xem OPERATOR-RUNBOOK.md để claim thật)
+# Chạy demo claim (xem operator-runbook.md để claim thật)
 npx tsx demo_airdrop.ts
 ```
 

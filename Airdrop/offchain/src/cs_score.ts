@@ -3,7 +3,7 @@
 // Vai trò: SPO = Staking Pool Operator · CS = Community Supporter.
 //
 // ─────────────────────────────────────────────────────────────────────────
-// MÔ HÌNH (thay hoàn toàn CS log-score cũ — xem SPO-CS-SPEC-Vi.md)
+// MÔ HÌNH (thay hoàn toàn CS log-score cũ — xem spo-cs.md)
 //
 //   Mỗi pot chia ∝ trọng số stake của người nhận, bằng largest-remainder
 //   (Hamilton) → BẢO TOÀN TUYỆT ĐỐI: Σ oildrop = potOildrop (khi cap=null).

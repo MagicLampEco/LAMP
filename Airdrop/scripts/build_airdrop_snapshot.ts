@@ -24,7 +24,7 @@
 //   Delegator 100M + SPO 5M + CS 15M. Script này phân bổ phần DELEGATOR
 //   (DEFAULT_BUDGET = 100_000_000) ∝stake. Hai pot còn lại KHÔNG theo stake:
 //   SPO 5M chia đều cho SPO qua cổng, CS 15M theo Community Supporter (cs_score.ts).
-//   Xem SPO-CS-SPEC-Vi.md + AIRDROP-V2-SPEC-Vi.md.
+//   Xem spo-cs.md + CONTRACT.md.
 
 import { writeFile } from "node:fs/promises";
 import { resolve, dirname } from "node:path";
@@ -300,7 +300,7 @@ async function main(): Promise<void> {
       note_spo_share:
         "Budget này = phần Delegator (100M LAMP, ∝stake). Model 3-pot: SPO 5M " +
         "chia đều cho SPO qua cổng + CS 15M theo Community Supporter — cả hai " +
-        "KHÔNG theo stake, tính riêng (cs_score.ts). Xem SPO-CS-SPEC-Vi.md.",
+        "KHÔNG theo stake, tính riêng (cs_score.ts). Xem spo-cs.md.",
     },
     entries,
   };
@@ -332,7 +332,7 @@ async function main(): Promise<void> {
   console.log();
   console.log("Bước tiếp theo:");
   console.log("  1. Kiểm tra snapshot: npx tsx check_airdrop.ts --snapshot snapshot.json --addr <stake_addr>");
-  console.log("  2. Deploy: npx tsx demo_airdrop.ts (xem OPERATOR-RUNBOOK.md để deploy thật)");
+  console.log("  2. Deploy: npx tsx demo_airdrop.ts (xem operator-runbook.md để deploy thật)");
 }
 
 main().catch((e) => {

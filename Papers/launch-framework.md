@@ -1,5 +1,8 @@
 # MagicLamp Launch — Khung ra-mắt dùng chung toàn hệ sinh thái
 
+> **Paper class**: A — Positioning > Position/Concept — bảo vệ lập trường về khung ra-mắt.
+> Đây là tài liệu **đối ngoại** (bản phái sinh), không phải đặc tả nội bộ. Chuẩn: `../CONVENTIONS.md`.
+
 > Launch là nền tảng ra-mắt của hệ sinh thái MagicLamp: bất kỳ dự án nào cũng có thể ra mắt bằng cách mời cộng đồng **đóng góp một nguồn lực của họ** để nhận lại **một token mới** — đồng thời tiếp cận người dùng cuối, thu hút ban quản trị và cố vấn kỹ thuật. Vận hành trên AffiSo tại `affiso.net/launch`.
 
 ---
@@ -46,7 +49,7 @@ Mỗi loại nguồn lực có một **cơ chế Launch riêng với giải phá
 
 | Cơ chế | Nguồn đóng góp | Token nhận | Trạng thái |
 |---|---|---|---|
-| **SRCL** (Staking Reward Contribution Launch) | phần thưởng staking (đo bằng ADA) | LAMP | spec riêng: `SRCL-SPEC-Vi.md` |
+| **SRCL** (Staking Reward Contribution Launch) | phần thưởng staking (đo bằng ADA) | LAMP | spec riêng: `srcl.md` |
 | **LampNet Launch** | sức tính toán + lưu trữ thiết bị | LAMP | (sẽ thiết kế) |
 | **VeData Launch** | dữ liệu thực để kiểm thử hệ thống | LAMP | (sẽ thiết kế) |
 | **AladinWork Launch** | sức lao động / khả năng chi trả lao động | WORK / MAGIC | (sẽ thiết kế) |

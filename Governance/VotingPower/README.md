@@ -2,7 +2,7 @@
 
 Nền Voting Power (VP) cho governance: cử tri = cá nhân (1 DID = 1 phiếu/proposal),
 VP tính từ **≥4 tham số geometric có cap** — token đơn thuần **không** mua được quyền lực.
-Đặc tả: [`CONTRACT.md`](./CONTRACT.md) · [`MATH.md`](./MATH.md) · [`TECH.md`](./TECH.md) · [`EXEC.md`](./EXEC.md).
+Đặc tả: [`CONTRACT.md`](./CONTRACT.md) · [`Math-Spec.md`](./Math-Spec.md) · [`Tech-Spec.md`](./Tech-Spec.md) · [`Exec-Spec.md`](./Exec-Spec.md).
 
 ## Trạng thái test (commit `e637f83`)
 

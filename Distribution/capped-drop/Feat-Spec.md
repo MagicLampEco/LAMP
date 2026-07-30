@@ -3,18 +3,18 @@
 **Doctype:** MagicLamp Protocol — Onchain Spec (Feature/Behavior)
 **Version:** v2 "Capped Drop" (thay Drop Lottery v0.1)
 **Updated:** 2026-06-06
-**Nguồn chuẩn (interface contract):** [`CONTRACT-CappedDrop.md`](./CONTRACT-CappedDrop.md)
-**Chứng minh toán:** [`SPEC-CappedDrop-MATH.md`](./SPEC-CappedDrop-MATH.md)
+**Nguồn chuẩn (interface contract):** [`capped-drop/CONTRACT.md`](./CONTRACT.md)
+**Chứng minh toán:** [`capped-drop/Math-Spec.md`](./Math-Spec.md)
 
 Tài liệu này đặc tả **hành vi** cơ chế Capped Drop: entitlement → drip (nhỏ giọt) →
 redeem (tự rút). Bỏ random/lottery/merkle/committee-chọn-winner. Mọi phát biểu bám
-`CONTRACT-CappedDrop.md`; mâu thuẫn thì CONTRACT thắng.
+`capped-drop/CONTRACT.md`; mâu thuẫn thì CONTRACT thắng.
 
 ---
 
 ## 0. Vì sao Capped Drop thay Drop Lottery
 
-Drop Lottery cũ (xem mô tả gốc đã gỡ trong [`SPEC.md`](./SPEC.md)) mang 2 lỗ hổng:
+Drop Lottery cũ (xem mô tả gốc đã gỡ trong [`SPEC.md`](../SPEC.md)) mang 2 lỗ hổng:
 
 1. **Proof hết hạn → mất quyền redeem.** Redeem phải submit Merkle proof của
    `won_cumulative` ứng với `MerkleRootBeacon` epoch nào đó. Nếu user bỏ lỡ, root xoay,
@@ -186,4 +186,4 @@ e2e harness `04_e2e.ts`, datum codec base, claim flow committee M-of-N.
 ```
 
 Mỗi bước có unit test (Aiken mock-tx + vitest builder). Chi tiết chứng minh số học:
-[`SPEC-CappedDrop-MATH.md`](./SPEC-CappedDrop-MATH.md).
+[`capped-drop/Math-Spec.md`](./Math-Spec.md).

@@ -168,4 +168,4 @@ discover + verifyEntryAgainstCustody trước route   (f)
 ```
 
 Tài liệu liên quan: `offchain/src/types.ts` (schema), `examples/` (mẫu thật),
-`scripts/03_onboard_platform.ts` (deploy end-to-end), `CONTRACT.md` / `TECH.md` (đặc tả đầy đủ).
+`scripts/03_onboard_platform.ts` (deploy end-to-end), `CONTRACT.md` / `Tech-Spec.md` (đặc tả đầy đủ).

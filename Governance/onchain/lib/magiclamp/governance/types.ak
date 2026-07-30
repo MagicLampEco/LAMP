@@ -19,7 +19,7 @@ use magiclamp/governance/power.{Knot}
 
 /// Trạng thái proposal. THỨ TỰ KHÓA (D10): index 0=Open, 1=Tallied, 2=Executed,
 /// 3=Rejected. Phải khớp byte-perfect Treasury ProposalStatus (cùng thứ tự).
-/// TECH.md draft cũ ghi {Open, Closed, Tallied, Executed} — SAI, đã sửa theo D10:
+/// Tech-Spec.md draft cũ ghi {Open, Closed, Tallied, Executed} — SAI, đã sửa theo D10:
 /// "Closed" KHÔNG tồn tại trong type phơi ra Treasury (vòng đời nội bộ dùng phase
 /// của Tally + status Proposal; "đóng vote" là CloseVoting redeemer, không phải
 /// một biến thể của ProposalStatus phơi ra).

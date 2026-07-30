@@ -1,5 +1,8 @@
 # LAMP — Tài liệu thuyết minh Policy
 
+> **Paper class**: A — Positioning > Whitepaper — định vị LAMP cho cộng đồng, holder, đối tác, dev.
+> Đây là tài liệu **đối ngoại** (bản phái sinh), không phải đặc tả nội bộ. Chuẩn: `../CONVENTIONS.md`.
+
 > Nội dung CÔNG KHAI cho cộng đồng. Viết tuân thủ: token tiện ích, không hứa giá, không "đầu tư/lợi nhuận".
 > Cập nhật 2026-07-29: **chốt policy `55d3e01b…180f0` là token LAMP chính thức trên mainnet** — không
 > có policy nào khác thay thế. Mọi số liệu cung ở đây đọc trực tiếp từ chuỗi, kiểm chứng được
@@ -74,7 +77,7 @@ redeem). Đó mới là thứ khiến nó không thể bị rút sạch.
 > Địa chỉ kho: `addr1w827sry6t2y9744ndkg4ks6nct57v7tm8pz46ywsq98dhdsf76slu`. Đang giữ **1.000.000
 > LAMP** = 0,0028% tổng cung — lượng khởi tạo kỹ thuật, chưa phân phối cho ai.
 >
-> Việc phải làm, đã ghi thành điều kiện bắt buộc trong `Genesis/DEV-NOTE-kho-A-DEST-canonical.md`:
+> Việc phải làm, đã ghi thành điều kiện bắt buộc trong `Genesis/kho-a-dest.md`:
 > **thay kho bằng `treasury.ak` TRƯỚC khi mint thêm bất kỳ lượng nào có giá trị.** Đổi kho không
 > phải mint lại policy (kho được trỏ động qua kho-NFT), nên đây là việc làm được, không phải bế tắc.
 >

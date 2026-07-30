@@ -6,8 +6,8 @@ KHÔNG mâu thuẫn contract. Tham số chưa chốt đánh dấu **"tham số m
 > Spec này mô tả **hành vi nhìn thấy được** của PlatformKit: một team onboard một platform thế nào
 > (seed kho → đăng ký đăng bạ → nối app thu phí), collect adapter biến sự kiện app thành `CollectItem`,
 > discover registry để tìm platform, và ai dùng SDK này. Người không-kỹ-thuật đọc cũng hiểu.
-> KHÔNG đi sâu datum/redeemer/validator (xem [TECH](./TECH.md)) hay lộ trình bootstrap (xem
-> [EXEC](./EXEC.md)).
+> KHÔNG đi sâu datum/redeemer/validator (xem [TECH](./Tech-Spec.md)) hay lộ trình bootstrap (xem
+> [EXEC](./Exec-Spec.md)).
 
 ---
 
@@ -43,10 +43,10 @@ Mục tiêu cuối: **làm LAMP có giá trị** bằng open SDK. Mỗi platform
 | Chủ đề | Thuộc |
 |---|---|
 | Custody/collect/release internals, bảo-toàn-value, split cut | [Treasury](../Treasury/) (FEAT/MATH/TECH) |
-| Datum `PlatformEntry`, redeemer registry, bất biến on-chain | [TECH](./TECH.md) |
+| Datum `PlatformEntry`, redeemer registry, bất biến on-chain | [TECH](./Tech-Spec.md) |
 | **Định giá phí** (bò ≠ gà — `animal_fee`), quy đổi LAMP↔USD/ADA | App (OriLife/PhoenixKey) + Oracle, **NGOÀI** PlatformKit |
 | Cơ chế vote / Voting Power (đích `governance_ref`) | [Governance/VotingPower](../Governance/VotingPower/) |
-| Lộ trình deploy registry, onboard PhoenixKey/OriLife, tích hợp collect | [EXEC](./EXEC.md) |
+| Lộ trình deploy registry, onboard PhoenixKey/OriLife, tích hợp collect | [EXEC](./Exec-Spec.md) |
 
 ---
 
@@ -125,12 +125,12 @@ Collect adapter là **lớp keo** giữa **logic app** (sự kiện + định gi
    > ⛔ **F8 — `app_id` VÔ DANH on-chain:** `app_id` chỉ ở redeemer Collect, KHÔNG được neo vào datum
    > custody (Treasury chưa có `receipt_root`). Sau khi tx confirm không gì chứng thực ai đóng góp. **VP/uy
    > tín KHÔNG được tin `app_id` từ Collect** để cấp tín dụng C1 (MAGIC tiêu thụ) tới khi receipt thực thi
-   > thật (chống bịa). receipt = v1.x / bỏ lời hứa. (CONTRACT PK11, `Treasury/TECH.md §6`.)
+   > thật (chống bịa). receipt = v1.x / bỏ lời hứa. (CONTRACT PK11, `Treasury/Tech-Spec.md §6`.)
 3. **Batch** — gom N item thành **một** `Collect{ items: [N] }` settlement tx mỗi cửa-sổ (mỗi epoch /
    mỗi ngưỡng số item — **tham số mở**), thay vì một tx mỗi micro-fee (bất khả thi vì min-ADA + phí mạng,
-   `Treasury/FEAT.md §2.3`).
+   `Treasury/Feat-Spec.md §2.3`).
 4. **Build tx** — spend custody mới nhất, tạo custody output (value + sổ cập nhật), trả `residual` ra
-   provider/node nếu có (`Treasury/TECH.md §4`).
+   provider/node nếu có (`Treasury/Tech-Spec.md §4`).
 
 ### 2.2 Pricing ở app — KHÔNG ở adapter
 
@@ -139,7 +139,7 @@ LAMP↔USD/ADA (oracle) nằm **ở app**. Adapter nhận `amount` đã tính, �
 khuôn onboarding đa platform **không thể biết mô hình giá của mọi app** — nhúng định giá vào sẽ phá
 open SDK.
 
-> **Hai tỷ lệ KHÔNG trộn** (kế thừa `Treasury/FEAT.md §2.4`): `animal_fee` 7% của OriLife là **phí
+> **Hai tỷ lệ KHÔNG trộn** (kế thừa `Treasury/Feat-Spec.md §2.4`): `animal_fee` 7% của OriLife là **phí
 > app-level** (app thu của người dùng); `cut_bps` là **cắt protocol-level** Treasury lấy trên `amount`.
 > Hai con số hai tầng — KHÔNG suy ra `cut_bps = 7%`.
 
@@ -197,7 +197,7 @@ custody. Người tin (ví/app gửi value tới kho của một platform) PHẢ
 
 > **Vì sao discover một mình KHÔNG đủ tin (first-principles):** một beacon NFT + datum chỉ chứng minh
 > "authority đã ký một đăng ký", KHÔNG chứng minh "entry này trỏ đúng custody thật ở thời điểm route phí".
-> Ba van trên đưa discover từ "thấy" sang "đủ tin để gửi tiền". (Chi tiết SDK ở `TECH.md §6.4`; mô hình
+> Ba van trên đưa discover từ "thấy" sang "đủ tin để gửi tiền". (Chi tiết SDK ở `Tech-Spec.md §6.4`; mô hình
 > tin cậy + lộ trình đóng ở `CONTRACT.md §8`.)
 >
 > ⛔ **F13 (vá lần 2 — nhấn mạnh):** `verifyEntryAgainstCustody` + dedup (`findDuplicatePlatformIds`) chỉ

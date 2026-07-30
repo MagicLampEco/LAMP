@@ -1,27 +1,27 @@
 # Airdrop — Merkle-airdrop (bộ máy on-chain dùng chung)
 
-> **MODEL HIỆN HÀNH = v2 (chốt 2026-07-10).** Đặc tả tổng: **`AIRDROP-V2-SPEC-Vi.md`**.
+> **MODEL HIỆN HÀNH = v2 (chốt 2026-07-10).** Đặc tả tổng: **`CONTRACT.md`**.
 > Airdrop v2 = **120 triệu LAMP**, chia 3 pot (Delegator · SPO · CS) dưới **cùng** bộ máy Merkle-airdrop dưới đây:
 > - **Pot Delegator = 100M LAMP** — delegator **PHẢI ĐĂNG KÝ** (ký reward stake key), thưởng
->   **∝stake ở bất kỳ pool Cardano**, cửa sổ snapshot mới, giữ ≥ N epoch. Xem `AIRDROP-V2-SPEC-Vi.md` §1.
+>   **∝stake ở bất kỳ pool Cardano**, cửa sổ snapshot mới, giữ ≥ N epoch. Xem `CONTRACT.md` §1.
 > - **Pot SPO/CS = 20M LAMP** = **SPO (Staking Pool Operator) 5M** (∝ Σ stake delegator đã đăng ký
 >   chảy vào pool của họ) + **CS (Community Supporter) 15M** (∝ Σ stake của delegator đã bình chọn
 >   rằng họ đã giúp; đo qua AffiSo, cần DID). **Cả hai đều ∝ trọng số stake** — mô hình cũ
->   "CS log-score" và "SPO chia đều" đã bỏ hoàn toàn (2026-07-11). Xem `SPO-CS-SPEC-Vi.md`.
+>   "CS log-score" và "SPO chia đều" đã bỏ hoàn toàn (2026-07-11). Xem `spo-cs.md`.
 >
 > **ĐỪNG NHẦM với ETD** (module `TIGER/`): ETD = pot RIÊNG 12M, hồi tố, **chỉ pool TIGER**,
-> KHÔNG đăng ký. Bảng phân biệt: `AIRDROP-V2-SPEC-Vi.md` §3.
+> KHÔNG đăng ký. Bảng phân biệt: `CONTRACT.md` §3.
 >
 > Phần dưới mô tả **cơ chế on-chain dùng chung** (pool NFT + CLAIM marker nullifier +
 > Sweep→Treasury + leaf encoding byte-perfect). v2 tái dùng nguyên, KHÔNG viết validator mới.
 > Ghi chú lịch sử: đoạn văn dưới nêu con số 100M/pool TIGER là mô tả bản v1 gốc; số/đối tượng
-> hiệu lực lấy theo `AIRDROP-V2-SPEC-Vi.md`.
+> hiệu lực lấy theo `CONTRACT.md`.
 
 Bộ máy Merkle-airdrop dùng chung: mỗi địa chỉ/DID claim đúng phần snapshot của mình bằng chứng
 minh Merkle, **không double-claim**; phần dư không ai claim hoàn về **Treasury**.
 
-Số lượng và đối tượng của từng pot lấy theo `AIRDROP-V2-SPEC-Vi.md` (Delegator 100M + SPO/CS 20M
-= **120 triệu LAMP**) và `SPO-CS-SPEC-Vi.md`. Đơn vị: **1 LAMP = 10⁶ oildrop**.
+Số lượng và đối tượng của từng pot lấy theo `CONTRACT.md` (Delegator 100M + SPO/CS 20M
+= **120 triệu LAMP**) và `spo-cs.md`. Đơn vị: **1 LAMP = 10⁶ oildrop**.
 
 ---
 

@@ -2,7 +2,7 @@
 
 > Chủ dự án chốt 2026-07-10. Bản này thay model v1 (TIGER-only auto-snapshot).
 > Đơn vị: **1 LAMP = 10⁶ oildrop** (hằng số `OILDROP_PER_LAMP` trong `offchain/src/constants.ts`).
-> Cơ chế on-chain: xem `README.md`. Phần SPO/CS: xem `SPO-CS-SPEC-Vi.md` (KHÔNG lặp ở đây).
+> Cơ chế on-chain: xem `README.md`. Phần SPO/CS: xem `spo-cs.md` (KHÔNG lặp ở đây).
 
 ---
 
@@ -17,8 +17,8 @@ BigInt oildrop) — chỉ khác **NGUỒN** trọng số. Mô hình cũ "CS log-
 | Pot | Ngân sách | Đối tượng | Trọng số (nguồn stake) | Đặc tả |
 |---|---|---|---|---|
 | **Delegator** | **100.000.000 LAMP** | Delegator Cardano (mọi pool) đã đăng ký | stake của **CHÍNH họ** (accStake mọi pool) | §1–§5 (bản này) |
-| **SPO** (Staking Pool Operator) | **5.000.000 LAMP** | SPO đã đăng ký | Σ stake delegator (đã đăng ký) **CHẢY VÀO POOL** của họ | `SPO-CS-SPEC-Vi.md` |
-| **CS** (Community Supporter) | **15.000.000 LAMP** | Người hỗ trợ cộng đồng (bất kỳ ai, có DID) | Σ stake của delegator đã **BÌNH CHỌN** rằng họ đã giúp | `SPO-CS-SPEC-Vi.md` |
+| **SPO** (Staking Pool Operator) | **5.000.000 LAMP** | SPO đã đăng ký | Σ stake delegator (đã đăng ký) **CHẢY VÀO POOL** của họ | `spo-cs.md` |
+| **CS** (Community Supporter) | **15.000.000 LAMP** | Người hỗ trợ cộng đồng (bất kỳ ai, có DID) | Σ stake của delegator đã **BÌNH CHỌN** rằng họ đã giúp | `spo-cs.md` |
 
 Tỷ lệ **SPO:CS = 5:15 = 25:75**. Tổng SPO+CS = 20M.
 
@@ -125,7 +125,7 @@ Yêu cầu: "1 pot on-chain có thể nhiều nguồn entitlement nạp qua SetR
 để phần code khớp:
 
 - **Validator hiện tại** (`airdrop_pool.ak`, `AirdropRedeemer`) chỉ có **`Claim` + `Sweep`**;
-  `merkle_root` **cố định tại genesis**, **CHƯA có redeemer `SetRoot`**. (`SPO-CS-SPEC-Vi.md`
+  `merkle_root` **cố định tại genesis**, **CHƯA có redeemer `SetRoot`**. (`spo-cs.md`
   §8/§10 nói "SetRoot" là **kiến trúc dự kiến**, không phải redeemer đã tồn tại.)
 - Hai cách khớp yêu cầu "nhiều nguồn" mà **KHÔNG viết validator mới**:
 
@@ -197,7 +197,7 @@ Tái dùng tối đa hạ tầng sẵn có — **KHÔNG viết lại**:
 |---|---|---|
 | `delegator_register.ts` | Ký reward stake key → map `stake_address → payment_address`; kiểm ví có `active_stake` (chưa stake → hướng dẫn stake TIGER/bất kỳ pool); xuất `delegator_registration.json` | Khung + verify Ed25519 + `pubkeyToStakeAddr` từ `spo_register.ts` |
 | `build_delegator_snapshot.ts` | Đọc list registration → mỗi `stake_address` fetch account history → `active_stake` per epoch trong `[E_open,E_cut)` **qua bất kỳ pool** → áp điều kiện giữ ≥ N epoch (§1.5) → SnapshotSet (owner=`payment_address`) → `computeEntitlements(budget=100M oildrop)` → `{address, amount}` → root + exportClaims | `computeEntitlements` (`TIGER/.../entitlement.ts`), `merkle.ts`, `snapshotTool.ts`, `datum.ts` |
-| `cs_score.ts` | Chia pot SPO/CS ∝stake: `splitByStake`/`splitSpoPot`/`splitCsPot` (largest-remainder + cap tuỳ chọn) | `computeEntitlements` (TIGER) — xem `SPO-CS-SPEC-Vi.md` §3 |
+| `cs_score.ts` | Chia pot SPO/CS ∝stake: `splitByStake`/`splitSpoPot`/`splitCsPot` (largest-remainder + cap tuỳ chọn) | `computeEntitlements` (TIGER) — xem `spo-cs.md` §3 |
 
 Đã có, dùng nguyên: `merkle.ts` (leaf byte-perfect), `snapshotTool.ts` (`{address,amount}`→root),
 `claimBuilder.ts`, `sweepBuilder.ts`, `datum.ts`. `computeEntitlements` hiện ở module TIGER —

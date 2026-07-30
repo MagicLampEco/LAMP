@@ -3,7 +3,7 @@
 > **Model 3-pot (chốt 2026-07-11).** Tổng Airdrop **120.000.000 LAMP** = Delegator **100M** +
 > SPO (Staking Pool Operator) **5M** + CS (Community Supporter) **15M**. Đăng ký SPO ở dưới mở khoá **hai pot**:
 > **SPO 5M** (tư cách pool hợp lệ) + **CS 15M** (đóng góp cộng đồng, cần DID).
-> Đặc tả công thức: **`SPO-CS-SPEC-Vi.md`**. Tổng quan 3 pot: **`AIRDROP-V2-SPEC-Vi.md`**.
+> Đặc tả công thức: **`spo-cs.md`**. Tổng quan 3 pot: **`CONTRACT.md`**.
 
 Đăng ký SPO nhắm tới **hai phần**:
 
@@ -14,7 +14,7 @@
   đồng (mời người thật delegate và giữ delegation…). Cần **DID sinh trắc**. KHÔNG theo lượng stake.
 
 > Phần delegator (**100M**) là pot RIÊNG: ∝stake ở bất kỳ pool Cardano, delegator tự đăng ký
-> ký reward stake key (xem `DELEGATOR-GUIDE.md`). Đăng ký SPO dưới đây KHÔNG liên quan pot delegator.
+> ký reward stake key (xem `delegator-guide.md`). Đăng ký SPO dưới đây KHÔNG liên quan pot delegator.
 
 ---
 
@@ -156,7 +156,7 @@ sinh trắc được SPO mời thực sự delegate và giữ ≥2 epoch (costly
 được-xác-nhận, giới thiệu bậc-2, retention — qua log-dampen + water-filling. Có **cổng kích hoạt**:
 SPO stake khổng lồ nhưng không hỗ trợ cộng đồng (CS=0) nhận **0**. Cần **DID sinh trắc**.
 
-> Công thức đầy đủ (trọng số, cap κ=40%, drip T=20 epoch, largest-remainder): **`SPO-CS-SPEC-Vi.md`**.
+> Công thức đầy đủ (trọng số, cap κ=40%, drip T=20 epoch, largest-remainder): **`spo-cs.md`**.
 > "Một SPO stake tối thiểu nhưng hỗ trợ cộng đồng mạnh nhận phần lớn thưởng" — bảo đảm bằng toán,
 > không phải chia theo stake.
 

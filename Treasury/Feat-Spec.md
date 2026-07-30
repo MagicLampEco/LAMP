@@ -7,8 +7,8 @@ duyệt). KHÔNG mâu thuẫn contract. Mọi tham số số học chưa chốt 
 > Spec này mô tả **hành vi nhìn thấy được** của Treasury: ba cửa tiền, luồng thu
 > (`collectToTreasury`), vòng đời bucket, cổng giải ngân qua Governance, mô hình đa thuê bao,
 > và vai của từng caller. Người không-kỹ-thuật đọc cũng hiểu hệ vận hành ra sao.
-> KHÔNG đi sâu công thức (xem [MATH](./MATH.md)) hay datum/redeemer/validator on-chain
-> (xem [TECH](./TECH.md)) hay lộ trình build/deploy (xem [EXEC](./EXEC.md)).
+> KHÔNG đi sâu công thức (xem [MATH](./Math-Spec.md)) hay datum/redeemer/validator on-chain
+> (xem [TECH](./Tech-Spec.md)) hay lộ trình build/deploy (xem [EXEC](./Exec-Spec.md)).
 
 ---
 
@@ -60,13 +60,13 @@ Nguyên lý nền (từ CONTRACT §2, §5 — KHÔNG vi phạm):
 
 | Chủ đề | Thuộc spec |
 |---|---|
-| Công thức split cut, làm tròn, chứng minh bảo-toàn-value tổng quát | [MATH](./MATH.md) *(chưa viết)* |
+| Công thức split cut, làm tròn, chứng minh bảo-toàn-value tổng quát | [MATH](./Math-Spec.md) *(chưa viết)* |
 | Cận an toàn của batch (không drain qua làm tròn), chứng minh đối soát bucket | MATH |
-| Datum schema (custody, sổ bucket, receipt), redeemer, validator Aiken | [TECH](./TECH.md) *(chưa viết)* |
+| Datum schema (custody, sổ bucket, receipt), redeemer, validator Aiken | [TECH](./Tech-Spec.md) *(chưa viết)* |
 | Đếm theo payment script hash, chống double-satisfaction on-chain | TECH |
 | Đọc beacon Governance qua reference input; time-lock; multi-sig council | TECH |
 | Sharding custody khi UTxO quá lớn; tách physical emergency bucket | TECH |
-| Lộ trình build, mốc, test plan, deploy Preview, tích hợp generators/OriLife | [EXEC](./EXEC.md) *(chưa viết)* |
+| Lộ trình build, mốc, test plan, deploy Preview, tích hợp generators/OriLife | [EXEC](./Exec-Spec.md) *(chưa viết)* |
 | **Định giá phí** (bò ≠ gà — `animal_fee`), quy đổi LAMP↔USD/ADA qua oracle | App (OriLife) + Oracle, **NGOÀI** Treasury |
 | Cơ chế vote, công thức Voting Power | [Governance/VotingPower](../Governance/VotingPower/) |
 
@@ -151,7 +151,7 @@ Với **mọi** asset, sau một settlement tx thu (bất biến áp cho **`Σ c
 ```
 
 Đây là **tổng quát hóa theo HAI chiều** của bất biến `treasury_receives_lamp >= lamp_paid` đã có ở
-generators MAGIC ([InstantGen vault.ak L298-313](../../MAGIC/InstantGen/onchain/validators/vault.ak)):
+generators MAGIC ([InstantGen vault.ak L298-313](https://github.com/MagicLampNetwork/MAGIC/blob/main/InstantGen/onchain/validators/vault.ak) (repo MAGIC)):
 
 1. **Đa-asset** — generators chỉ áp cho LAMP; Treasury áp cho **mọi** asset trong `accepted_assets`.
 2. **Đếm theo payment script hash** — generators hiện đếm theo **FULL ADDRESS**

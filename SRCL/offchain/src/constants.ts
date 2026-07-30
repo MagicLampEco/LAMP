@@ -1,7 +1,7 @@
 // SRCL constants — KHỚP onchain (lib/magiclamp/srcl). 1 LAMP = 10^6 oildrop.
 //
 // SRCL reward-redirect: tổng 360 triệu LAMP (pot SRCL trong bảng 18-pot,
-// Specs/LAMP-POT-CATALOG.md) chia ĐỀU 36 epoch cho delegator theo tỷ lệ stake.
+// Papers/pot-catalog.md) chia ĐỀU 36 epoch cho delegator theo tỷ lệ stake.
 // Phần off-chain (vận hành SPO + thu reward ADA) là thao tác 2 cty;
 // phần on-chain = phân phối LAMP per-epoch qua Merkle proof.
 

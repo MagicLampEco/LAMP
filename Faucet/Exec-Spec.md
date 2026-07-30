@@ -1,10 +1,10 @@
 # tLAMP + Faucet — EXEC: Lộ trình build / test / deploy
 
 **Trạng thái:** draft 2026-06-09. Bám [`CONTRACT.md`](./CONTRACT.md) (interface đã chốt) — KHÔNG
-mâu thuẫn. EXEC không định nghĩa lại datum/bất biến (việc của [TECH](./TECH.md)/[MATH](./MATH.md)) —
+mâu thuẫn. EXEC không định nghĩa lại datum/bất biến (việc của [TECH](./Tech-Spec.md)/[MATH](./Math-Spec.md)) —
 chỉ định **thứ tự build, test, deploy, trạng thái thật hiện tại, dẫn chứng, việc còn lại**.
 
-Nguồn chuẩn đọc trước: [CONTRACT.md](./CONTRACT.md), hành vi [FEAT.md](./FEAT.md). Mẫu 4-spec đã
+Nguồn chuẩn đọc trước: [CONTRACT.md](./CONTRACT.md), hành vi [Feat-Spec.md](./Feat-Spec.md). Mẫu 4-spec đã
 chạy ở [`Treasury`](../Treasury/) và [`Governance/VotingPower`](../Governance/VotingPower/).
 
 ---
@@ -29,9 +29,9 @@ trị** (open SDK: 1 policy id tLAMP chia sẻ toàn mạng test cho mọi Carda
 
 | Hạng mục | Thuộc |
 |---|---|
-| Datum/redeemer, validator, bất biến on-chain map dòng | [TECH](./TECH.md) |
-| Chứng minh one-shot / value-preservation / no-burn | [MATH](./MATH.md) |
-| Vai caller, luồng deploy/claim, trạng thái trước/sau | [FEAT](./FEAT.md) |
+| Datum/redeemer, validator, bất biến on-chain map dòng | [TECH](./Tech-Spec.md) |
+| Chứng minh one-shot / value-preservation / no-burn | [MATH](./Math-Spec.md) |
+| Vai caller, luồng deploy/claim, trạng thái trước/sau | [FEAT](./Feat-Spec.md) |
 | Cooldown per-address | v1.1, chưa code ([CONTRACT §3](./CONTRACT.md)) |
 
 ---
@@ -107,7 +107,7 @@ Lệnh: `cd onchain && aiken check`. Kết quả: **exit 0**, không test fail. 
 | `rt_two_pool_outputs` | 2 pool output |
 | `rt_own_ref_not_script` | own_ref non-script |
 
-> Map đầy đủ test ↔ property ở [MATH §5](./MATH.md).
+> Map đầy đủ test ↔ property ở [MATH §5](./Math-Spec.md).
 
 ### 3.2 Unit offchain (vitest) — viết xong, CHƯA chạy được trong sandbox
 
@@ -165,7 +165,7 @@ qua `explorerTx` (cardanoscan Preview, [`config.ts:128-130`](./scripts/config.ts
 |---|---|---|---|
 | G1 | **Deploy live Preview** chưa chạy — chưa có `deployed-faucet.json` + tx hash thật | deploy (cần credential + tADA) | cao |
 | G2 | **Vitest offchain chưa chạy** trong sandbox (vitest chưa cài) — cần `npm install && npm test` | môi trường | cao |
-| G3 | **Verify CONSERVE end-to-end onchain** (dev nhận đúng `c`): validator KHÔNG kiểm output dev (cố ý, tối ưu eUTXO) → chỉ e2e Preview phủ được ([MATH §3.2, §6](./MATH.md)) | e2e | cao |
+| G3 | **Verify CONSERVE end-to-end onchain** (dev nhận đúng `c`): validator KHÔNG kiểm output dev (cố ý, tối ưu eUTXO) → chỉ e2e Preview phủ được ([MATH §3.2, §6](./Math-Spec.md)) | e2e | cao |
 | G4 | **Test chuỗi claim lặp tới cạn** (monotonic `P→P−c→…→0`) chưa có onchain | test | trung |
 | G5 | **CIP-25 metadata (label 721)** cho tên/logo tLAMP ở ví/explorer — chưa đính, MVP chưa bắt buộc ([CONTRACT §2](./CONTRACT.md)) | nice-to-have | thấp |
 | G6 | **Cooldown per-address (v1.1)** chống cạn pool — marker UTxO "đã claim epoch N", KHÔNG thuộc MVP ([CONTRACT §3](./CONTRACT.md)) | v1.1, chưa code | thấp |

@@ -9,7 +9,7 @@ Hướng dẫn đầy đủ để operator deploy và vận hành TIGER Airdrop 
 > **Model 3-pot (chốt 2026-07-11):** tổng 120M LAMP = Delegator **100M** (∝stake, mọi pool) +
 > SPO (Staking Pool Operator) **5M** (∝ Σ stake delegator đã đăng ký chảy vào pool) + CS (Community
 > Supporter) **15M** (∝ Σ stake của delegator đã bình chọn; đo qua AffiSo). Cả hai ∝ trọng số stake.
-> Đặc tả: `AIRDROP-V2-SPEC-Vi.md` (tổng) + `SPO-CS-SPEC-Vi.md` (SPO+CS).
+> Đặc tả: `CONTRACT.md` (tổng) + `spo-cs.md` (SPO+CS).
 
 ```
 Bước 1: Chọn cửa sổ snapshot → build snapshot delegator (∝stake, Blockfrost)
@@ -85,7 +85,7 @@ npx tsx check_airdrop.ts --snapshot delegator_snapshot.json --top 20
 
 ## Bước 2: Collect SPO registrations → SPO 5M + CS 15M
 
-Xem `SPO-REGISTRATION.md` để hướng dẫn SPO operator, `SPO-CS-SPEC-Vi.md` cho công thức.
+Xem `spo-registration.md` để hướng dẫn SPO operator, `spo-cs.md` cho công thức.
 
 Model 3-pot: đăng ký SPO **không** còn chia theo stake. Hai phần:
 

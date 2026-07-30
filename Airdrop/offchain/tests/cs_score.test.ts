@@ -1,4 +1,4 @@
-// cs_score.test.ts — kiểm chứng phân phối stake-weighted (SPO-CS-SPEC-Vi.md).
+// cs_score.test.ts — kiểm chứng phân phối stake-weighted (spo-cs.md).
 // Mọi tiền là BigInt oildrop. 1 LAMP = 10^6 oildrop.
 
 import { describe, it, expect } from "vitest";

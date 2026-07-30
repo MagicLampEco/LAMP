@@ -1,7 +1,7 @@
 # Airdrop — Phần SPO (Staking Pool Operator, 5M) + CS (Community Supporter, 15M) — Đặc tả cơ chế
 
 > Mô hình **STAKE-WEIGHTED** (chủ dự án chốt 2026-07-11, thay hoàn toàn CS log-score cũ).
-> Nguồn tổng: `Airdrop/AIRDROP-V2-SPEC-Vi.md`. Phần delegator (100M) tách riêng.
+> Nguồn tổng: `Airdrop/CONTRACT.md`. Phần delegator (100M) tách riêng.
 > Đơn vị: **1 LAMP = 10⁶ oildrop**. Hai pot RÕ RÀNG:
 > **SPO = 5.000.000 LAMP** + **CS = 15.000.000 LAMP** (Community Supporter).
 > Tổng SPO + CS = **20.000.000 LAMP**. Tỷ lệ SPO:CS = 5:15 = **25:75**.

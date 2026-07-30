@@ -5,7 +5,7 @@
 // ║ bạn tự định nghĩa PriceFn + PlatformConfig của mình.                        ║
 // ╚══════════════════════════════════════════════════════════════════════════╝
 //
-// HƯỚNG DẪN: xem PlatformKit/ONBOARDING.md để biết toàn bộ quy trình onboard
+// HƯỚNG DẪN: xem PlatformKit/onboarding.md để biết toàn bộ quy trình onboard
 // (copy template → viết config → seed custody → đăng ký registry → tích hợp collect).
 //
 // Hai thứ phải định nghĩa cho platform của bạn:
@@ -68,7 +68,7 @@ export function makeExamplePriceFn(opts: {
 // (PlatformConfig) để biết chi tiết từng field + ràng buộc.
 export function exampleConfig(opts: {
   registryAuthority: string;     // ĐIỀN: payment key-hash (28-byte hex) authority ký đăng ký.
-                                 //   PRODUCTION: PHẢI là multisig/committee (xem ONBOARDING.md).
+                                 //   PRODUCTION: PHẢI là multisig/committee (xem onboarding.md).
   msPerEpoch: bigint;            // ĐIỀN: POSIX ms ↔ epoch của mạng (Preview/Mainnet khác nhau).
   reservedMinAda: bigint;        // ĐIỀN: lovelace giữ min-UTxO cho seed (≥ 0, KHÔNG ghi sổ).
   genesisRef: { transaction_id: string; output_index: bigint };  // UTxO one-shot tiêu khi seed.

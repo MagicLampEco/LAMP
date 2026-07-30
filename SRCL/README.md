@@ -10,13 +10,13 @@
 
 > ⚠️ **Cơ chế canonical = bản B** (đóng-góp-phần-thưởng, trustless). Tài liệu này mô tả **bản A**
 > (chia LAMP **∝ stake**, margin pool thu OFF-CHAIN, tin-operator) — biến thể vận-hành **cũ**.
-> Nguồn sự thật cơ chế: [`Specs/SRCL-SPEC-Vi.md`](../Specs/SRCL-SPEC-Vi.md) + validator
+> Nguồn sự thật cơ chế: [`Papers/srcl.md`](../Papers/srcl.md) + validator
 > `srcl_stake.ak` (bản B): vốn gốc **bất khả xâm phạm on-chain**, LAMP chia **∝ phần thưởng đã
 > đóng góp**. Phần **hạ tầng phân phối** dưới đây (`srcl_pool` — SetRoot/Claim/Sweep, Merkle,
 > chống double-claim) **DÙNG CHUNG** cho cả A và B; chỉ **nguồn entitlement** khác (∝stake → ∝reward).
 > Đọc mọi mô tả "∝ stake" / "native-margin" bên dưới như đặc tả **bản A**.
 
-Module phân phối **360 triệu LAMP** (pot SRCL trong bảng 18-pot, `Specs/LAMP-POT-CATALOG.md`)
+Module phân phối **360 triệu LAMP** (pot SRCL trong bảng 18-pot, `Papers/pot-catalog.md`)
 cho delegator của pool SRCL theo **tỷ lệ stake**, đều trong **36 epoch**
 (**10 triệu LAMP/epoch** chẵn), bằng cơ chế Merkle distribution per-epoch.
 

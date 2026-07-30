@@ -508,7 +508,7 @@ Governance — đọc lại sẽ nhân đôi logic + mở lỗ hổng "release b
 
 Governance phơi kết quả ở **Proposal UTxO** mang **Proposal authenticity NFT** (one-shot, mẫu
 `beacon_nft.ak`), datum `ProposalDatum{ status, spend_spec_hash, execute_after_epoch, released_cumulative,
-... }` (Gov CONTRACT §5 D2; [Governance TECH §3](../Governance/VotingPower/TECH.md)). Release đọc UTxO
+... }` (Gov CONTRACT §5 D2; [Governance TECH §3](../Governance/VotingPower/Tech-Spec.md)). Release đọc UTxO
 này làm **reference input** (không tiêu — nhiều release/đọc song song):
 [`Transaction.reference_inputs`](https://aiken-lang.github.io/stdlib/cardano/transaction.html).
 
@@ -687,7 +687,7 @@ tấn công của nhánh chi.
 > generators bằng **adapter off-chain (b-ii)** đi qua nhánh `Collect` đã có (không cần MigrateIn).
 
 Generators MAGIC (Vacuum/Instant/Schedule…) hiện trả LAMP về một `treasury_addr` đơn giản (bất biến
-`treasury_receives_lamp >= lamp_paid`, [vault.ak](../../MAGIC/VacuumGen/onchain/validators/vault.ak)).
+`treasury_receives_lamp >= lamp_paid`, [vault.ak](https://github.com/MagicLampNetwork/MAGIC/blob/main/VacuumGen/onchain/validators/vault.ak) (repo MAGIC)).
 Hai con đường tích hợp:
 
 **(a) Migrate value cũ (một lần) — `MigrateIn`:** (param thêm `old_treasury_hash: ByteArray` cho instance)
@@ -855,7 +855,7 @@ Evidence bắt buộc: `aiken check` output pass FULL (như chuẩn build mode �
 ## Phụ thuộc
 - **Governance / VotingPower** — phơi `ProposalDatum{status, yes/no_power, voter_count}` +
   Proposal authenticity NFT (policy `proposal_policy`). Treasury đọc qua reference input
-  ([Governance TECH](../Governance/VotingPower/TECH.md)). ⛔ **HARD BLOCKER (finding 7): cần thêm field**
+  ([Governance TECH](../Governance/VotingPower/Tech-Spec.md)). ⛔ **HARD BLOCKER (finding 7): cần thêm field**
   `spend_spec_hash` (+ `released_cumulative` nếu vesting) vào ProposalDatum — phải chốt với Governance
   TRƯỚC khi code Release (không chỉ phối hợp; thiếu → Release = két không khóa đích).
   - ⛔ **CHỐT INTERFACE (hardening v1 LỖ #1A): Proposal NFT = MỘT policy chung per-governance**
