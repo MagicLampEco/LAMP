@@ -41,6 +41,16 @@ pub fn own_script_hash(own_addr: Address) -> ByteArray {
   h
 }
 
+/// 28-byte payment credential-hash của address (VerificationKey(h) | Script(h) → h).
+/// Dùng dựng owner[28] của leaf schema C (Delegator = payment key-hash). Cả hai
+/// biến thể credential đều là blake2b_224 hash 28 byte → trích trực tiếp.
+pub fn payment_credential_hash(addr: Address) -> ByteArray {
+  when addr.payment_credential is {
+    VerificationKey(h) -> h
+    Script(h) -> h
+  }
+}
+
 pub fn is_at_script(addr: Address, script_hash: ByteArray) -> Bool {
   when addr.payment_credential is {
     Script(h) -> h == script_hash

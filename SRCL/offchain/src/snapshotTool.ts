@@ -18,7 +18,9 @@
 //   Dư do floor (budget − Σ entitlement) → dồn cho ví stake lớn nhất (xác định,
 //   không mất oildrop). Tổng entitlement_e == budget_e CHÍNH XÁC.
 
-import { PER_EPOCH_OILDROP, REMAINDER_OILDROP, EPOCHS } from "./constants.js";
+import {
+  PER_EPOCH_OILDROP, REMAINDER_OILDROP, EPOCHS, SRCL_CAMPAIGN_ID, ROLE_SPO,
+} from "./constants.js";
 import { buildTree, MerkleTree } from "./merkle.js";
 import type { Entitlement, StakeEntry } from "./types.js";
 
@@ -28,9 +30,35 @@ export function epochBudgetOildrop(epoch: number): bigint {
   return epoch === last ? PER_EPOCH_OILDROP + REMAINDER_OILDROP : PER_EPOCH_OILDROP;
 }
 
-/** Tính entitlement (oildrop) cho 1 epoch theo tỷ lệ stake. Tổng == budget chính xác.
- *  Bỏ qua ví stake = 0. Dư floor dồn vào ví stake lớn nhất. */
-export function computeEntitlements(
+// ─────────────────────────────────────────────────────────────────────────────
+// computeSrclEntitlements — CỐ Ý KHÁC canonical TIGER/offchain computeEntitlements.
+// ĐỔI TÊN (khỏi trùng "computeEntitlements") để bỏ bẫy import-nhầm: hai hàm là HAI
+// thuật toán khác NGHIỆP VỤ, KHÔNG phải bản chép cũ.
+//
+//   TIGER (Delegator airdrop, 1 lần chốt):
+//     • nhận SnapshotSet ĐA-epoch → TÍCH LŨY accStake = Σ stake mọi snapshot (thưởng
+//       lòng trung thành) rồi chia MỘT LẦN theo cutoff.
+//     • có cap + water-filling (chống cá voi) + excluded (loại self-dealing).
+//     • trả {entitlements, leftover, distributed}.
+//
+//   SRCL (reward-redirect, streaming per-epoch):
+//     • MỖI epoch là một pot ĐỘC LẬP 10 triệu LAMP, chia pro-rata theo stake CỦA
+//       CHÍNH epoch đó (KHÔNG tích lũy) — vì on-chain là epoch_roots[] + SetRoot/Claim
+//       theo từng epoch. Nhận 1 StakeEntry[] của 1 epoch, KHÔNG phải SnapshotSet.
+//     • KHÔNG cap/water-filling: thiết kế SRCL chia đều 36 epoch, không trần ví.
+//     • lọc stake>0 (bộ lọc tư cách — vd ngưỡng 1000 ADA — nằm ở tầng dựng StakeEntry,
+//       spec §7 + README "Nguồn stake").
+//
+// ⇒ import TIGER.computeEntitlements vào SRCL sẽ SAI (khác signature + khác mô hình
+//    phân phối). Giữ hàm riêng này.
+//
+// Dư floor → ví stake lớn nhất; tie-break = owner hex NHỎ NHẤT (tất định BẤT KỂ thứ tự
+// input — khớp quy ước tie-break canonical TIGER, tránh 2 operator cùng dữ liệu khác
+// thứ tự mảng lại ra root khác).
+// ─────────────────────────────────────────────────────────────────────────────
+/** Tính entitlement (oildrop) cho 1 epoch SRCL theo tỷ lệ stake. Tổng == budget chính xác.
+ *  Bỏ qua ví stake = 0. Dư floor dồn vào ví stake lớn nhất (tie → owner hex nhỏ nhất). */
+export function computeSrclEntitlements(
   epoch: number,
   stakes: StakeEntry[],
   budgetOildrop: bigint = epochBudgetOildrop(epoch),
@@ -46,13 +74,17 @@ export function computeEntitlements(
     amount: (budgetOildrop * s.stake) / total, // floor
   }));
 
-  // Dư do floor → ví stake lớn nhất (xác định: index stake max, tie → index nhỏ).
+  // Dư do floor → ví stake lớn nhất (tất định: stake max, tie → owner hex nhỏ nhất).
   const distributed = ents.reduce((a, e) => a + e.amount, 0n);
   const leftover = budgetOildrop - distributed;
   if (leftover > 0n) {
     let maxIdx = 0;
     for (let i = 1; i < active.length; i++) {
-      if (active[i]!.stake > active[maxIdx]!.stake) maxIdx = i;
+      const si = active[i]!.stake, sm = active[maxIdx]!.stake;
+      // stake lớn hơn thắng; bằng stake → owner hex nhỏ hơn thắng (tất định).
+      if (si > sm || (si === sm && active[i]!.owner < active[maxIdx]!.owner)) {
+        maxIdx = i;
+      }
     }
     ents[maxIdx]!.amount += leftover;
   }
@@ -69,10 +101,18 @@ export interface EpochSnapshot {
   totalOildrop: bigint;
 }
 
-/** Snapshot 1 epoch: stake → entitlement → cây Merkle → root. */
-export function snapshotEpoch(epoch: number, stakes: StakeEntry[]): EpochSnapshot {
-  const entitlements = computeEntitlements(epoch, stakes);
+/** Snapshot 1 epoch: stake → entitlement → cây Merkle (schema C) → root.
+ *  campaignId/role mặc định SRCL (LAMP-SRCL-1 / SPO); truyền khác để tái dùng engine. */
+export function snapshotEpoch(
+  epoch: number,
+  stakes: StakeEntry[],
+  campaignId: string = SRCL_CAMPAIGN_ID,
+  role: number = ROLE_SPO,
+): EpochSnapshot {
+  const entitlements = computeSrclEntitlements(epoch, stakes);
   const tree = buildTree(
+    campaignId,
+    role,
     entitlements.map((e) => ({ epoch: BigInt(e.epoch), owner: e.owner, amount: e.amount })),
   );
   const totalOildrop = entitlements.reduce((a, e) => a + e.amount, 0n);
@@ -83,9 +123,11 @@ export function snapshotEpoch(epoch: number, stakes: StakeEntry[]): EpochSnapsho
  *  Trả roots[] (index = epoch) + snapshot từng epoch để dựng proof về sau. */
 export function snapshotAll(
   stakesByEpoch: Map<number, StakeEntry[]>,
+  campaignId: string = SRCL_CAMPAIGN_ID,
+  role: number = ROLE_SPO,
 ): { roots: string[]; snapshots: EpochSnapshot[] } {
   const epochs = [...stakesByEpoch.keys()].sort((a, b) => a - b);
-  const snapshots = epochs.map((e) => snapshotEpoch(e, stakesByEpoch.get(e)!));
+  const snapshots = epochs.map((e) => snapshotEpoch(e, stakesByEpoch.get(e)!, campaignId, role));
   const roots = snapshots.map((s) => s.root);
   return { roots, snapshots };
 }

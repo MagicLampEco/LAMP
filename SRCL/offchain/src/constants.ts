@@ -14,6 +14,20 @@ export const SRCL_TOTAL_LAMP = 360_000_000n;
 /** Tổng quỹ SRCL tính bằng oildrop = 3,6e8 × 1e6 = 3,6e14 oildrop. */
 export const SRCL_TOTAL_OILDROP = SRCL_TOTAL_LAMP * OILDROP_PER_LAMP;
 
+// ── SCHEMA C — cô lập pot theo chiến dịch + vai (khớp onchain merkle.ak PARAM) ──
+
+/** Tên chiến dịch SRCL (utf8). campaign_id = blake2b_256(tên này). */
+export const SRCL_CAMPAIGN_NAME = "LAMP-SRCL-1";
+
+/** campaign_id[32] (hex) = blake2b_256("LAMP-SRCL-1"). BAKE làm PARAM validator.
+ *  Giá trị canonical do onchain merkle.ak chốt (test parity_v2_leaf). Off-chain
+ *  neo cứng để mọi leaf khớp byte-perfect; test khẳng định = blake2b_256(tên). */
+export const SRCL_CAMPAIGN_ID =
+  "5286f2c03f9f7c8b4e0d7da40f325ed5ecdc5d3eaf858efaf297aaefa6f1aedd";
+
+/** role[1] SRCL/SPO = 0x04 (spec §1 — CẤM đổi số role). owner leaf = stake key-hash. */
+export const ROLE_SPO = 4;
+
 /** Số epoch phân phối = 36 (epoch 0..35). */
 export const EPOCHS = 36n;
 

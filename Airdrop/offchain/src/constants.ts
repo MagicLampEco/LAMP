@@ -47,6 +47,24 @@ export const POOL_NFT_NAME = "41504f4f4c";
 export const LEAF_PREFIX = "00";
 export const NODE_PREFIX = "01";
 
+// ── Merkle schema C (v2) — cô lập leaf theo chiến dịch + vai ────────────────
+// Nguồn: SCHEMA-MERKLE-V2-Tech-Spec.md §1. campaign_id + role BAKE vào validator
+// (PARAM). epoch là param runtime = E_cut (KHÔNG hardcode ở đây).
+
+/** Tên chiến dịch pot Delegator (utf8) — nguồn của campaign_id. */
+export const DELEGATOR_CAMPAIGN = "LAMP-Delegator-Airdrop-1";
+
+/** campaign_id = blake2b_256(utf8(DELEGATOR_CAMPAIGN)), hex 32 byte.
+ *  Giá trị chuẩn vàng do on-chain (aiken) chốt — off-chain PHẢI khớp byte-perfect. */
+export const DELEGATOR_CAMPAIGN_ID =
+  "f5beb28d9ac6330b590fd5cc060d7e7fdbe2433130a4f1ffe93bb0deeb72db54";
+
+/** role byte trong leaf. Delegator=1, MCS=2, Engage=3, SPO=4. CẤM đổi số (§1). */
+export const ROLE_DELEGATOR = 1;
+export const ROLE_MCS = 2;
+export const ROLE_ENGAGE = 3;
+export const ROLE_SPO = 4;
+
 /** ms mỗi epoch theo network — khớp @magiclamp/utils MS_PER_EPOCH_BY_NETWORK.
  *  Preview/Preprod = 1 ngày; Mainnet = 5 ngày. Truyền vào validator làm param. */
 export const MS_PER_EPOCH_BY_NETWORK = {

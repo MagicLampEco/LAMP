@@ -14,6 +14,10 @@ import { buildDelegatorEntitlements } from "../src/delegator_entitlement.js";
 import { buildTree } from "../src/merkle.js";
 import { exportClaims } from "../src/snapshotTool.js";
 import { verifyProof } from "../src/merkle.js";
+import { DELEGATOR_CAMPAIGN_ID, ROLE_DELEGATOR } from "../src/constants.js";
+import type { MerkleParams } from "../src/types.js";
+
+const P: MerkleParams = { campaignId: DELEGATOR_CAMPAIGN_ID, epoch: 637n, role: ROLE_DELEGATOR };
 
 /** enterprise addr_test (payment key, không stake) từ 28-byte hash → getAddressDetails parse được. */
 function enterpriseAddr(seed: number): string {
@@ -65,12 +69,12 @@ describe("pipeline Delegator v2 end-to-end (offline)", () => {
     expect(ent.entitlements.every((e) => e.owner.startsWith("addr_test"))).toBe(true);
 
     // merkle + claims + verify proof mọi leaf khớp root
-    const tree = buildTree(ent.snapshot);
+    const tree = buildTree(ent.snapshot, P);
     expect(tree.root).toMatch(/^[0-9a-f]{64}$/);
     const claims = exportClaims(tree);
     expect(claims).toHaveLength(2);
     for (const c of claims) {
-      const ok = verifyProof(tree.root, { address: c.address, amount: c.amount }, c.proof);
+      const ok = verifyProof(tree.root, { address: c.address, amount: c.amount }, c.proof, P);
       expect(ok).toBe(true);
     }
   });

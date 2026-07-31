@@ -2,10 +2,11 @@
 
 import { describe, it, expect } from "vitest";
 import {
-  computeEntitlements, epochBudgetOildrop, snapshotEpoch, snapshotAll,
+  computeSrclEntitlements, epochBudgetOildrop, snapshotEpoch, snapshotAll,
 } from "../src/snapshotTool.js";
 import {
   PER_EPOCH_OILDROP, REMAINDER_OILDROP, SRCL_TOTAL_OILDROP, EPOCHS, END_EPOCH,
+  SRCL_CAMPAIGN_ID, ROLE_SPO,
 } from "../src/constants.js";
 import type { StakeEntry } from "../src/types.js";
 import { verifyProof } from "../src/merkle.js";
@@ -28,13 +29,13 @@ describe("hằng quỹ SRCL", () => {
   });
 });
 
-describe("computeEntitlements — tỷ lệ stake tất định", () => {
+describe("computeSrclEntitlements — tỷ lệ stake tất định (per-epoch, khác canonical TIGER)", () => {
   it("chia đôi đều khi stake bằng nhau", () => {
     const stakes: StakeEntry[] = [
       { owner: "aa", stake: 100n },
       { owner: "bb", stake: 100n },
     ];
-    const ents = computeEntitlements(0, stakes, 1000n);
+    const ents = computeSrclEntitlements(0, stakes, 1000n);
     expect(ents.map((e) => e.amount).sort()).toEqual([500n, 500n]);
     expect(ents.reduce((a, e) => a + e.amount, 0n)).toBe(1000n);
   });
@@ -44,7 +45,7 @@ describe("computeEntitlements — tỷ lệ stake tất định", () => {
       { owner: "aa", stake: 100n },
       { owner: "bb", stake: 300n },
     ];
-    const ents = computeEntitlements(0, stakes, 1000n);
+    const ents = computeSrclEntitlements(0, stakes, 1000n);
     const byOwner = Object.fromEntries(ents.map((e) => [e.owner, e.amount]));
     expect(byOwner["aa"]).toBe(250n);
     expect(byOwner["bb"]).toBe(750n);
@@ -57,7 +58,7 @@ describe("computeEntitlements — tỷ lệ stake tất định", () => {
       { owner: "bb", stake: 10n },
       { owner: "cc", stake: 10n },
     ];
-    const ents = computeEntitlements(0, stakes, 1000n);
+    const ents = computeSrclEntitlements(0, stakes, 1000n);
     expect(ents.reduce((a, e) => a + e.amount, 0n)).toBe(1000n);
     expect(ents.map((e) => e.amount).sort((a, b) => Number(a - b))).toEqual([333n, 333n, 334n]);
   });
@@ -68,7 +69,7 @@ describe("computeEntitlements — tỷ lệ stake tất định", () => {
       { owner: "bb", stake: 11n },
       { owner: "cc", stake: 13n },
     ];
-    const ents = computeEntitlements(5, stakes);
+    const ents = computeSrclEntitlements(5, stakes);
     expect(ents.reduce((a, e) => a + e.amount, 0n)).toBe(epochBudgetOildrop(5));
   });
 
@@ -82,14 +83,14 @@ describe("computeEntitlements — tỷ lệ stake tất định", () => {
       { owner: "aa", stake: 100n },
       { owner: "bb", stake: 0n },
     ];
-    const ents = computeEntitlements(0, stakes, 1000n);
+    const ents = computeSrclEntitlements(0, stakes, 1000n);
     expect(ents.length).toBe(1);
     expect(ents[0]!.amount).toBe(1000n);
   });
 
   it("list rỗng / tổng stake 0 → entitlement rỗng", () => {
-    expect(computeEntitlements(0, [], 1000n)).toEqual([]);
-    expect(computeEntitlements(0, [{ owner: "aa", stake: 0n }], 1000n)).toEqual([]);
+    expect(computeSrclEntitlements(0, [], 1000n)).toEqual([]);
+    expect(computeSrclEntitlements(0, [{ owner: "aa", stake: 0n }], 1000n)).toEqual([]);
   });
 });
 
@@ -104,7 +105,10 @@ describe("snapshotEpoch / snapshotAll — root + proof khớp", () => {
     expect(snap.totalOildrop).toBe(epochBudgetOildrop(2));
     for (const e of snap.entitlements) {
       const proof = snap.tree.proofFor(BigInt(e.epoch), e.owner);
-      expect(verifyProof(snap.root, BigInt(e.epoch), e.owner, e.amount, proof)).toBe(true);
+      // snapshotEpoch dùng campaign/role mặc định SRCL → verify với đúng cặp đó.
+      expect(
+        verifyProof(snap.root, SRCL_CAMPAIGN_ID, BigInt(e.epoch), ROLE_SPO, e.owner, e.amount, proof),
+      ).toBe(true);
     }
   });
 

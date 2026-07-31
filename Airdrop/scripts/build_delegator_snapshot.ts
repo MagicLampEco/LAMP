@@ -29,7 +29,11 @@ import type { DelegatorRegistration, StakeHistoryRow, RegWithHistory } from "../
 import { buildDelegatorEntitlements } from "../offchain/src/delegator_entitlement.js";
 import { buildTree } from "../offchain/src/merkle.js";
 import { exportClaims } from "../offchain/src/snapshotTool.js";
-import { DELEGATOR_TOTAL_LAMP, OILDROP_PER_LAMP, oildropToLamp } from "../offchain/src/constants.js";
+import {
+  DELEGATOR_TOTAL_LAMP, OILDROP_PER_LAMP, oildropToLamp,
+  DELEGATOR_CAMPAIGN, DELEGATOR_CAMPAIGN_ID, ROLE_DELEGATOR,
+} from "../offchain/src/constants.js";
+import type { MerkleParams } from "../offchain/src/types.js";
 import { loadRegistrations, sortByEarliestSigned } from "./registrations_io.js";
 
 interface Args {
@@ -138,6 +142,19 @@ async function main(): Promise<void> {
     }
   }
 
+  // Schema C: leaf cần epoch snapshot CỐ ĐỊNH (Delegator = E_cut). Bắt buộc --e-cut.
+  if (a.eCut === undefined) {
+    throw new Error(
+      "SCHEMA-C: bắt buộc --e-cut <E> — leaf Merkle v2 dùng epoch=E_cut làm HẰNG số " +
+      "(bake vào validator). Không có E_cut thì không dựng được leaf khớp on-chain.",
+    );
+  }
+  const merkleParams: MerkleParams = {
+    campaignId: DELEGATOR_CAMPAIGN_ID,
+    epoch: BigInt(a.eCut),
+    role: ROLE_DELEGATOR,
+  };
+
   const budgetOildrop = a.budgetLamp * OILDROP_PER_LAMP;
   const excluded = await loadExcluded(a);
 
@@ -232,9 +249,10 @@ async function main(): Promise<void> {
   console.log(`  → Top 10 nắm ${(Number((top10 * 10000n) / total) / 100).toFixed(2)}% pot.`);
 
   // ── SETUP merkle ───────────────────────────────────────────────────────
-  console.log(`\n=== SETUP merkle ===`);
-  const tree = buildTree(ent.snapshot);
+  console.log(`\n=== SETUP merkle (schema C: campaign=${DELEGATOR_CAMPAIGN} role=${ROLE_DELEGATOR} epoch=${a.eCut}) ===`);
+  const tree = buildTree(ent.snapshot, merkleParams);
   const claims = exportClaims(tree);
+  console.log(`  campaign_id: ${merkleParams.campaignId}`);
   console.log(`  merkle_root: ${tree.root}`);
   console.log(`  leaves:      ${tree.leaves.length}`);
 
@@ -248,6 +266,11 @@ async function main(): Promise<void> {
       min_run_n: a.n,
       e_open: a.eOpen ?? null,
       e_cut: a.eCut ?? null,
+      merkle_schema: "C",
+      campaign: DELEGATOR_CAMPAIGN,
+      campaign_id: merkleParams.campaignId,
+      role: ROLE_DELEGATOR,
+      leaf_epoch: a.eCut,
       merkle_root: tree.root,
       total_recipients: ent.snapshot.length,
       distributed_oildrop: ent.distributed.toString(),
@@ -256,7 +279,7 @@ async function main(): Promise<void> {
       dedupe_conflicts: conflicts.length,
       zero_accstake_dropped: zeroAcc.length,
       generated_at_epoch: genEpoch.toString(),
-      leaf_note: "owner = PAYMENT address (vá lỗ #1 v1). merkle root khớp merkle.ak byte-perfect.",
+      leaf_note: "schema C: leaf = blake2b(0x00 ‖ campaign_id[32] ‖ epoch_be8 ‖ role[1] ‖ owner[28] ‖ amount_be8). owner = PAYMENT key-hash (vá lỗ #1 v1). Khớp merkle.ak byte-perfect.",
     },
     merkle_root: tree.root,
     entitlements: ent.entitlements.map((e) => ({

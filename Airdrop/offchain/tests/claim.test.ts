@@ -9,11 +9,14 @@ import {
   type RawSnapshotRow,
 } from "../src/snapshotTool.js";
 import { buildProofForAddress, verifyProof, leafHash } from "../src/merkle.js";
-import { lampToOildrop, AIRDROP_TOTAL_OILDROP, OILDROP_PER_LAMP } from "../src/constants.js";
+import { lampToOildrop, AIRDROP_TOTAL_OILDROP, OILDROP_PER_LAMP, DELEGATOR_CAMPAIGN_ID, ROLE_DELEGATOR } from "../src/constants.js";
+import type { MerkleParams } from "../src/types.js";
 
 function previewAddr(pkhHex: string): string {
   return credentialToAddress("Preview", keyHashToCredential(pkhHex));
 }
+
+const P: MerkleParams = { campaignId: DELEGATOR_CAMPAIGN_ID, epoch: 637n, role: ROLE_DELEGATOR };
 
 const ADDR_A = previewAddr("00000000000000000000000000000000000000000000000000000a01");
 const ADDR_B = previewAddr("00000000000000000000000000000000000000000000000000000b02");
@@ -56,19 +59,19 @@ describe("buildSnapshotTree + exportClaims", () => {
   ];
 
   it("exportClaims: mọi record proof verify đúng root", () => {
-    const tree = buildSnapshotTree(rows);
+    const tree = buildSnapshotTree(rows, P);
     const claims = exportClaims(tree);
     expect(claims).toHaveLength(3);
     for (const c of claims) {
-      const ok = verifyProof(tree.root, { address: c.address, amount: c.amount }, c.proof);
+      const ok = verifyProof(tree.root, { address: c.address, amount: c.amount }, c.proof, P);
       expect(ok).toBe(true);
-      // leaf khớp leafHash(address, amount).
-      expect(c.leaf).toBe(leafHash({ address: c.address, amount: c.amount }));
+      // leaf khớp leafHash(address, amount) theo schema C.
+      expect(c.leaf).toBe(leafHash({ address: c.address, amount: c.amount }, P));
     }
   });
 
   it("amount trong claim = oildrop (×10^6 từ LAMP)", () => {
-    const tree = buildSnapshotTree(rows);
+    const tree = buildSnapshotTree(rows, P);
     const claims = exportClaims(tree);
     const a = claims.find((c) => c.address === ADDR_A)!;
     expect(a.amount).toBe(lampToOildrop(10n));
@@ -82,17 +85,17 @@ describe("slot leaf consistency (spend-once nullifier đầu vào)", () => {
   ];
 
   it("slot unit name == leaf == leafHash(claimer, amount)", () => {
-    const tree = buildSnapshotTree(rows);
+    const tree = buildSnapshotTree(rows, P);
     const { entry, leaf } = buildProofForAddress(tree, ADDR_A);
     const slotUnit = toUnit(NFT_POLICY, leaf);
     // unit = policyId(56 hex) + name(leaf). Tách name phải == leaf.
     expect(slotUnit.slice(0, 56)).toBe(NFT_POLICY);
     expect(slotUnit.slice(56)).toBe(leaf);
-    expect(leaf).toBe(leafHash(entry));
+    expect(leaf).toBe(leafHash(entry, P));
   });
 
   it("2 claimer khác leaf → 2 slot khác name (nullifier riêng)", () => {
-    const tree = buildSnapshotTree(rows);
+    const tree = buildSnapshotTree(rows, P);
     const la = buildProofForAddress(tree, ADDR_A).leaf;
     const lb = buildProofForAddress(tree, ADDR_B).leaf;
     expect(la).not.toBe(lb);

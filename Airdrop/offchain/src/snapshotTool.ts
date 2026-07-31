@@ -9,7 +9,7 @@
 
 import { buildTree, buildProof } from "./merkle.js";
 import { lampToOildrop } from "./constants.js";
-import type { SnapshotEntry, MerkleTree, ProofStep } from "./types.js";
+import type { SnapshotEntry, MerkleTree, ProofStep, MerkleParams } from "./types.js";
 
 /** 1 dòng snapshot thô (JSON). amount theo LAMP (mặc định) hoặc oildrop. */
 export interface RawSnapshotRow {
@@ -38,9 +38,13 @@ export function totalOildrop(entries: SnapshotEntry[]): bigint {
   return entries.reduce((s, e) => s + e.amount, 0n);
 }
 
-/** Dựng cây từ rows thô (parse + build trong 1 bước). */
-export function buildSnapshotTree(rows: RawSnapshotRow[], opts: ParseOptions = {}): MerkleTree {
-  return buildTree(parseSnapshot(rows, opts));
+/** Dựng cây từ rows thô (parse + build trong 1 bước). params = schema C (campaign/epoch/role). */
+export function buildSnapshotTree(
+  rows: RawSnapshotRow[],
+  params: MerkleParams,
+  opts: ParseOptions = {},
+): MerkleTree {
+  return buildTree(parseSnapshot(rows, opts), params);
 }
 
 /** Sinh bảng claim {address → {amount, leaf, proof}} cho mọi entry — frontend dùng. */

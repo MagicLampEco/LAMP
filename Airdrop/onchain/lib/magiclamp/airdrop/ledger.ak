@@ -85,7 +85,8 @@ pub const setup_authority_name: ByteArray = #"415345545550"
 ///   AirdropPool{merkle_root, deadline_epoch, treasury_dest, marker_dest, claimed_count}
 ///     = Constr(0, [bytes, int, Address, Address, int])
 pub type AirdropPool {
-  /// Gốc cây Merkle của snapshot (leaf = blake2b_256(address_bytes | amount_le)).
+  /// Gốc cây Merkle snapshot — leaf SCHEMA C (SCHEMA-MERKLE-V2-Tech-Spec §1):
+  /// blake2b_256(0x00 ‖ campaign_id[32] ‖ epoch_be8 ‖ role[1] ‖ owner[28] ‖ amount_oildrop_be8).
   merkle_root: ByteArray,
   /// Epoch (POSIX-derived) HẾT HẠN claim. Sau mốc này: chỉ Sweep được. Claim ép
   /// now < deadline_epoch. = (epoch 29/7) + 360.

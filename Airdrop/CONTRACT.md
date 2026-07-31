@@ -109,13 +109,28 @@ E_i        = floor(budget × accStake_i / Σ accStake)   // budget = 100M LAMP (
   nếu cần cap là *tham số quản trị*.
 - Loại ví self-dealing (sáng lập/đối tác) qua `excluded` trước khi chia (chống tư lợi).
 
-### 1.7. Nạp on-chain + claim (y hệt cơ chế cũ)
+### 1.7. Nạp on-chain + claim — **schema C (role-tag), chốt 2026-07-31**
 
-`{address, amount}` (address = `payment_address`, amount = `E_i` oildrop) → `snapshotTool.ts`
-dựng cây Merkle (sort theo leaf hash → root tất định) → `merkle_root`. Root đặt vào datum
-`AirdropPool` của POOL UTxO 100M. Claim bằng `payment_address` + Merkle proof; marker NFT
-`name = leaf` khóa vĩnh viễn = nullifier chống double-claim. Sau `deadline_epoch`: Sweep dư
-về `treasury_dest`. Chi tiết leaf encoding byte-perfect + replay note: README §1–§3.
+Từ 2026-07-31 pot Delegator dùng **schema Merkle C** — bộ máy chung mọi pot (Delegator/MCS/Engage/
+SPO). Nguồn sự thật: [`SCHEMA-MERKLE-V2-Tech-Spec.md`](../SCHEMA-MERKLE-V2-Tech-Spec.md).
+
+```
+leaf = blake2b_256( 0x00 ‖ campaign_id[32] ‖ epoch_be8 ‖ role[1] ‖ owner[28] ‖ amount_oildrop_be8 )
+```
+- `campaign_id` = `blake2b_256("LAMP-Delegator-Airdrop-1")` = `f5beb28d…db54` — **PARAM bake** validator.
+- `epoch` = `E_cut` (epoch snapshot, hằng cho pot 1-snapshot) — **PARAM bake**.
+- `role` = **1** (Delegator) — **PARAM bake**, CẤM đổi số (role-map §1 spec).
+- `owner` = **payment key-hash (28B)** của `payment_address` — anh Aladin chốt per-role: Delegator
+  neo payment-cred để giữ push-claim + trả được tiền (lỗ#1). SPO/SRCL neo stake-cred.
+- `amount` = `E_i` oildrop.
+
+`{address, amount}` (address = `payment_address` đầy đủ, giữ cho redeemer + payout) → `snapshotTool.ts`
+dựng cây (chuẩn hoá **sort TĂNG theo `slot = blake2b_256(epoch_be8 ‖ owner)`**, **trùng slot → NÉM
+LỖI**; ghép đôi + promote-odd giữ nguyên) → `merkle_root` → datum `AirdropPool` POOL UTxO 100M.
+Claim: redeemer `Claim{claimer, amount, proof}`; validator trích `owner = payment_cred(claimer)`, tính
+leaf schema C, verify proof, **trả ≥ amount LAMP tới địa chỉ claimer**; claim-slot NFT `name = leaf`
+one-shot chống double-claim (giữ nguyên). Sau `deadline_epoch`: Sweep dư về `treasury_dest`.
+**Datum + redeemer KHÔNG đổi** (anh chốt giữ nguyên pot); chỉ leaf-encoding + 3 param bake.
 
 ---
 
@@ -205,7 +220,7 @@ Tái dùng tối đa hạ tầng sẵn có — **KHÔNG viết lại**:
 | File cần viết | Nhiệm vụ | Tái dùng |
 |---|---|---|
 | `delegator_register.ts` | Ký reward stake key → map `stake_address → payment_address`; kiểm ví có `active_stake` (chưa stake → hướng dẫn stake TIGER/bất kỳ pool); xuất `delegator_registration.json` | Khung + verify Ed25519 + `pubkeyToStakeAddr` từ `spo_register.ts` |
-| `build_delegator_snapshot.ts` | Đọc list registration → mỗi `stake_address` fetch account history → `active_stake` per epoch trong `[E_open,E_cut)` **qua bất kỳ pool** → áp điều kiện giữ ≥ N epoch (§1.5) → SnapshotSet (owner=`payment_address`) → `computeEntitlements(budget=100M oildrop)` → `{address, amount}` → root + exportClaims | `computeEntitlements` (`TIGER/.../entitlement.ts`), `merkle.ts`, `snapshotTool.ts`, `datum.ts` |
+| `build_delegator_snapshot.ts` | Đọc list registration → mỗi `stake_address` fetch account history → `active_stake` per epoch trong `[E_open,E_cut)` **qua bất kỳ pool** → áp điều kiện giữ ≥ N epoch (§1.5) → SnapshotSet (owner=`payment_address`) → `computeEntitlements(budget=100M oildrop)` → `{address, amount}` → **cây schema C** (`campaign_id`=Delegator, `role`=1, `epoch`=`E_cut`, leaf owner=payment-cred, sort theo slot) → root + exportClaims | `computeEntitlements` (`TIGER/.../entitlement.ts`), `merkle.ts` (schema C), `snapshotTool.ts`, `datum.ts` |
 | `cs_score.ts` | Chia pot SPO/CS ∝stake: `splitByStake`/`splitSpoPot`/`splitCsPot` (largest-remainder + cap tuỳ chọn) | `computeEntitlements` (TIGER) — xem `spo-cs.md` §3 |
 
 Đã có, dùng nguyên: `merkle.ts` (leaf byte-perfect), `snapshotTool.ts` (`{address,amount}`→root),

@@ -1,12 +1,17 @@
-// SRCL Merkle (off-chain) — PHẢI khớp BYTE-PERFECT onchain merkle.ak.
+// SRCL Merkle (off-chain) — PHẢI khớp BYTE-PERFECT onchain merkle.ak (SCHEMA C).
 //
-// SƠ ĐỒ HASH (đồng nhất với Aiken):
-//   leaf   = blake2b_256( 0x00 ++ epoch_be8 ++ owner ++ amount_be8 )
-//   node   = blake2b_256( 0x01 ++ left ++ right )
-//   marker_name = blake2b_256( epoch_be8 ++ owner )
+// SƠ ĐỒ HASH (đồng nhất với Aiken merkle.ak):
+//   leaf        = blake2b_256( 0x00 ++ campaign_id[32] ++ epoch_be8 ++ role[1] ++ owner ++ amount_be8 )
+//   node        = blake2b_256( 0x01 ++ left ++ right )
+//   marker_name = blake2b_256( epoch_be8 ++ owner )   (slot NFT — GIỮ, KHÔNG nhúng campaign)
 //
-// - epoch + amount mã hoá big-endian 8 byte (cố định) — KHÔNG nhập nhằng độ dài.
+// - campaign_id[32] (= blake2b_256(tên chiến dịch)) + role[1] BAKE vào leaf → cô lập
+//   pot theo chiến dịch + vai: proof pot này KHÔNG dùng lại cho campaign/role khác.
+//   SRCL/SPO: role = 0x04, owner = stake key-hash 28B (spec §1/§3).
+// - epoch + amount mã hoá big-endian 8 byte, role 1 byte (cố định) — KHÔNG nhập nhằng độ dài.
 // - KHÔNG sort cặp: vị trí trái/phải giữ nguyên theo thứ tự leaf → on-chain rẻ.
+// - THỨ TỰ LÁ: sắp TĂNG DẦN theo slot = blake2b_256(epoch_be8 ++ owner) (spec §2). Trùng
+//   slot (cùng epoch+owner) → NÉM LỖI CỨNG (trùng = có người mất tiền).
 // - Cây đầy đủ; nếu số leaf lẻ ở 1 tầng, leaf cuối được "thăng" lên tầng trên
 //   (carry) — quy ước phổ biến, vẫn xác định và proof vẫn đúng.
 
@@ -47,6 +52,13 @@ export function intToBe8(n: bigint): Uint8Array {
   return out;
 }
 
+/** Int (0 ≤ n < 256) → big-endian 1 byte. Khớp merkle.int_to_be1 (role tag). */
+export function intToBe1(n: number): Uint8Array {
+  if (!Number.isInteger(n) || n < 0 || n > 255)
+    throw new Error(`SRCL-MERKLE-003: role ngoài [0,255]: ${n}`);
+  return new Uint8Array([n]);
+}
+
 function concat(...parts: Uint8Array[]): Uint8Array {
   let len = 0;
   for (const p of parts) len += p.length;
@@ -63,10 +75,29 @@ function b2b256(data: Uint8Array): Uint8Array {
   return blake2b(data, { dkLen: 32 });
 }
 
-/** Hash leaf (epoch, owner, amount). Trả hex. Khớp merkle.leaf_hash. */
-export function leafHash(epoch: bigint, owner: string, amount: bigint): string {
+/** Hash leaf SCHEMA C. Trả hex. Khớp merkle.leaf_hash.
+ *  layout = 0x00 ++ campaign_id[32] ++ epoch_be8 ++ role[1] ++ owner ++ amount_be8.
+ *  @param campaignId hex 32B (đã = blake2b_256(tên chiến dịch); vd SRCL_CAMPAIGN_ID).
+ *  @param role       byte vai (SRCL/SPO = 4).
+ *  @param owner      credential-hash hex (SRCL = stake key-hash 28B). */
+export function leafHash(
+  campaignId: string,
+  epoch: bigint,
+  role: number,
+  owner: string,
+  amount: bigint,
+): string {
   return bytesToHex(
-    b2b256(concat(LEAF_TAG, intToBe8(epoch), hexToBytes(owner), intToBe8(amount))),
+    b2b256(
+      concat(
+        LEAF_TAG,
+        hexToBytes(campaignId),
+        intToBe8(epoch),
+        intToBe1(role),
+        hexToBytes(owner),
+        intToBe8(amount),
+      ),
+    ),
   );
 }
 
@@ -85,6 +116,8 @@ export interface MerkleLeaf {
   epoch: bigint;
   owner: string;
   amount: bigint;
+  /** slot = blake2b_256(epoch_be8 ++ owner) (hex) — khoá sắp xếp + tên NFT claim-slot. */
+  slot: string;
   hash: string;
 }
 
@@ -144,29 +177,44 @@ export class MerkleTree {
   }
 }
 
-/** Xác thực 1 proof off-chain (đối chiếu với on-chain). */
+/** Xác thực 1 proof off-chain SCHEMA C (đối chiếu với on-chain merkle.verify). */
 export function verifyProof(
   root: string,
+  campaignId: string,
   epoch: bigint,
+  role: number,
   owner: string,
   amount: bigint,
   proof: MerkleStep[],
 ): boolean {
-  let cur = leafHash(epoch, owner, amount);
+  let cur = leafHash(campaignId, epoch, role, owner, amount);
   for (const step of proof) {
     cur = step.left ? nodeHash(step.hash, cur) : nodeHash(cur, step.hash);
   }
   return cur === root;
 }
 
-/** Dựng cây từ list (epoch, owner, amount). */
+/** Dựng cây từ list (epoch, owner, amount) cho 1 (campaignId, role) cố định.
+ *  SORT lá TĂNG DẦN theo slot (spec §2); trùng slot (cùng epoch+owner) → NÉM LỖI. */
 export function buildTree(
+  campaignId: string,
+  role: number,
   entries: { epoch: bigint; owner: string; amount: bigint }[],
 ): MerkleTree {
-  return new MerkleTree(
-    entries.map((e) => ({
-      ...e,
-      hash: leafHash(e.epoch, e.owner, e.amount),
-    })),
-  );
+  const leaves: MerkleLeaf[] = entries.map((e) => ({
+    ...e,
+    slot: markerName(e.epoch, e.owner),
+    hash: leafHash(campaignId, e.epoch, role, e.owner, e.amount),
+  }));
+  // sắp tăng dần theo slot (hex lexicographic, fixed-width 64 ký tự).
+  leaves.sort((a, b) => (a.slot < b.slot ? -1 : a.slot > b.slot ? 1 : 0));
+  // trùng slot → mất tiền → ném lỗi cứng (không âm thầm chọn 1).
+  for (let i = 1; i < leaves.length; i++) {
+    if (leaves[i]!.slot === leaves[i - 1]!.slot) {
+      throw new Error(
+        `SRCL-MERKLE-013: trùng slot ${leaves[i]!.slot} (epoch=${leaves[i]!.epoch}, owner=${leaves[i]!.owner}) — cùng (epoch,owner) 2 lần trong 1 pot`,
+      );
+    }
+  }
+  return new MerkleTree(leaves);
 }

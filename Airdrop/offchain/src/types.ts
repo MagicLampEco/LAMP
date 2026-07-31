@@ -8,6 +8,18 @@ export interface SnapshotEntry {
   amount: bigint;
 }
 
+/** Tham số cô lập leaf theo schema C (v2). Bake vào validator (PARAM) — off-chain
+ *  PHẢI truyền đúng cùng bộ để leaf khớp byte-perfect on-chain.
+ *  Nguồn: SCHEMA-MERKLE-V2-Tech-Spec.md §1. */
+export interface MerkleParams {
+  /** blake2b_256(tên_chiến_dịch_utf8), hex 32 byte. VD DELEGATOR_CAMPAIGN_ID. */
+  campaignId: string;
+  /** epoch snapshot (Delegator = E_cut hằng). big-endian u64 trong leaf. */
+  epoch: bigint;
+  /** Delegator=1, MCS=2, Engage=3, SPO=4. 1 byte (0..255). CẤM đổi số. */
+  role: number;
+}
+
 /** 1 bước Merkle proof. Khớp ledger.ProofStep = Constr(0, [bool, bytes]).
  *  is_left=true  → sibling bên TRÁI: parent = hash(sibling | current).
  *  is_left=false → sibling bên PHẢI: parent = hash(current | sibling). */
