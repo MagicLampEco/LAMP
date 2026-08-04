@@ -132,11 +132,24 @@ function campaignIdBytes(campaignId: string): Uint8Array {
 }
 
 /** owner[28] = credential-hash trích từ address theo VAI. Delegator = PAYMENT
- *  key-hash (§3). Ném lỗi nếu address không có payment credential hoặc hash ≠ 28 byte. */
+ *  key-hash (§3). Ném lỗi nếu address không có payment credential, credential là
+ *  SCRIPT, hoặc hash ≠ 28 byte.
+ *
+ *  Vì sao loại Script (đối xứng on-chain `util.payment_credential_hash`): owner[28]
+ *  là hash trần, không phân biệt tier. Nhận address script ở đây sẽ sinh lá mà
+ *  validator không bao giờ cho claim (validator ép `VerificationKey`) → phần LAMP
+ *  đó kẹt trong pool tới hạn quét. Loại NGAY lúc dựng snapshot để người đăng ký
+ *  biết mà khai lại địa chỉ, thay vì phát hiện lúc claim hỏng. */
 export function ownerBytes(entry: SnapshotEntry): Uint8Array {
   const d = getAddressDetails(entry.address);
   if (!d.paymentCredential) {
     throw new Error(`MERKLE-024: address không có payment credential: ${entry.address}`);
+  }
+  if (d.paymentCredential.type === "Script") {
+    throw new Error(
+      `MERKLE-026: owner phải là payment KEY-hash, nhận địa chỉ SCRIPT: ${entry.address} — ` +
+        `validator airdrop_pool chỉ cho claim từ VerificationKey; lá script sẽ không bao giờ claim được`,
+    );
   }
   const b = hexToBytes(d.paymentCredential.hash);
   if (b.length !== 28) {

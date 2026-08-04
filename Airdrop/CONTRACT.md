@@ -121,7 +121,13 @@ leaf = blake2b_256( 0x00 ‖ campaign_id[32] ‖ epoch_be8 ‖ role[1] ‖ owner
 - `epoch` = `E_cut` (epoch snapshot, hằng cho pot 1-snapshot) — **PARAM bake**.
 - `role` = **1** (Delegator) — **PARAM bake**, CẤM đổi số (role-map §1 spec).
 - `owner` = **payment key-hash (28B)** của `payment_address` — anh Aladin chốt per-role: Delegator
-  neo payment-cred để giữ push-claim + trả được tiền (lỗ#1). SPO/SRCL neo stake-cred.
+  neo payment-cred để giữ push-claim + trả được tiền (lỗ#1). **SRCL cũng neo payment-cred** (AffiSo
+  chốt 2026-08-01, xem spec §3.1 — bản "SRCL neo stake-cred" trước đó đã bị thu hồi). SPO: nghĩa
+  `owner` **chưa chốt**, phải khoá vào spec §3 trước khi dựng validator vai đó.
+  **Phải là KEY-hash — CẤM script-hash** (spec §3.2): `owner` là hash trần, không phân biệt
+  `VerificationKey` với `Script`, nên nhận địa chỉ script = cho phép chuyển phần của người khác vào
+  địa chỉ không ai mở được. Ép ở CẢ ba khâu: validator (`expect VerificationKey`), builder snapshot
+  (`MERKLE-026`), và khâu xác minh đăng ký.
 - `amount` = `E_i` oildrop.
 
 `{address, amount}` (address = `payment_address` đầy đủ, giữ cho redeemer + payout) → `snapshotTool.ts`

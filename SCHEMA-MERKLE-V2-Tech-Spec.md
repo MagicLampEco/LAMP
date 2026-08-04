@@ -32,7 +32,7 @@ là byte đầu). Mọi trường fixed-width ⇒ nối thẳng (raw-concat) kh�
 | `campaign_id` | 32 | `blake2b_256(tên_chiến_dịch_utf8)`. Bake vào validator (PARAM). |
 | `epoch_be8` | 8 | epoch big-endian u64. Pot 1-snapshot (Delegator): HẰNG = epoch snapshot (dùng `E_cut`). Pot đa-epoch (SRCL): epoch của từng dòng. |
 | `role` | 1 | Delegator=`0x01`, MCS=`0x02`, Engage=`0x03`, SPO=`0x04`. **CẤM đổi số.** |
-| `owner` | 28 | credential-hash (blake2b_224). **Delegator = payment key-hash; SPO/SRCL = stake key-hash.** (xem §3) |
+| `owner` | 28 | credential-hash (blake2b_224). **Mọi vai trả LAMP (Delegator, SRCL) = payment key-hash** (AffiSo chốt 2026-08-01). Phải là **KEY**-hash — CẤM script-hash, xem §3.2 (hash trần không phân biệt tier ⇒ nhận script = đốt tiền). (xem §3) |
 | `amount_oildrop_be8` | 8 | lượng oildrop (1 LAMP = 10⁶ oildrop), big-endian u64. |
 
 - prefix node = `0x01`. node = hash(0x01 ‖ left ‖ right) — **KHÔNG sort cặp** (giữ vị trí trái/phải).
@@ -52,19 +52,22 @@ là byte đầu). Mọi trường fixed-width ⇒ nối thẳng (raw-concat) kh�
 
 ## 3. Nghĩa owner theo vai (PER-ROLE — anh chốt 2026-07-31)
 
-Thư AffiSo viết "owner = stake key-hash" cho MỌI vai. **Sửa lại theo quyết định anh:** owner mang
-credential PHÙ HỢP với cách pot đó trả tiền / định danh:
+Thư AffiSo đầu viết "owner = stake key-hash" cho MỌI vai — **AffiSo đã THU HỒI + chốt payment-hash
+2026-08-01** (`_Agents/inbox/_done/AffiSo-reply-owner-tier-payment-hash-viec1-dang-hoi-dong-2026-08-01.md`).
+owner mang credential PHÙ HỢP với cách pot đó trả tiền / định danh:
 
 | Vai | owner[28] = | Lý do |
 |---|---|---|
 | **Delegator** (airdrop payout) | **payment key-hash** | pot TRẢ LAMP cho người nhận. Trả vào stake address (reward addr) KHÔNG tiêu được (lỗ#1). payment-cred cho phép push-claim: operator trả hộ vào địa chỉ có đúng payment-cred đó (ví người nhận kiểm soát). |
-| **SPO / SRCL** (reward-redirect) | ⚠️ **CHƯA CHỐT — xem §3.1** | (thư AffiSo đề "stake key-hash"; nhưng payout code `srcl_pool` so **payment**-cred ⇒ nếu owner=stake-hash sẽ KHOÁ TIỀN). |
+| **SRCL** (reward-redirect) | ✅ **payment key-hash (CHỐT)** | payout `srcl_pool.ak:198-203` so **payment**-cred; builder join stake→payment. Self-consistent, KHÔNG đổi validator. Xem §3.1. |
 | **MCS / Engage** | theo spec vai đó (chưa hiện thực) | khoá vào spec khi dựng validator vai đó. |
 
 ⇒ **owner KHÔNG đồng nhất một loại credential toàn hệ.** Mỗi role bake nghĩa owner riêng; role byte
 trong leaf đã cô lập nên không nhầm được.
 
-### 3.1 SRCL owner-tier — OPEN, hoà giải TRƯỚC khi mở claim SRCL (auditor CAO 2026-07-31)
+### 3.1 SRCL owner-tier — ĐÃ CHỐT payment-hash (auditor CAO 2026-07-31 → AffiSo xác nhận 2026-08-01)
+
+> **KẾT LUẬN:** owner SRCL = **payment key-hash**. AffiSo chốt 2026-08-01, không đổi validator. Phần dưới giữ lại lý do gốc.
 
 Auditor (cardano, PoC verify) chỉ ra: `srcl_pool.ak` payout dùng `is_owned_by` = so **payment_credential
 == owner**. Nếu builder set owner = **stake** key-hash (như thư AffiSo + chủ trương per-role ban đầu),
@@ -76,8 +79,44 @@ khoá tiền + griefer claim-hộ đốt slot → nạn nhân mất luôn entitl
   builder Delegator v2), giữ payout payment-cred → self-consistent, KHÔNG đổi validator. `types.ak:79`
   đã ghi owner="payment-credential hash" — tức code SRCL vốn giả định payment-cred; chính thư AffiSo +
   bảng trên là chỗ lệch. ⇒ nhiều khả năng "SRCL=stake-key-hash" là nhầm giữa vai KÝ reward-redirect
-  (stake key) với ĐÍCH trả LAMP (payment key). **Cần anh xác nhận** trước khi hiện thực builder SRCL cho seed.
-- Option 2 (nếu thật muốn owner=stake): đổi payout so `stake_credential` + trả vào base/reward addr — đổi validator, đắt hơn.
+  (stake key) với ĐÍCH trả LAMP (payment key). ✅ **AffiSo xác nhận 2026-08-01: chọn option 1 (payment-hash).**
+- Option 2 (nếu thật muốn owner=stake): đổi payout so `stake_credential` + trả vào base/reward addr — đổi validator, đắt hơn. **BỎ (không chọn).**
+
+### 3.2 owner PHẢI là KEY-hash, không được là SCRIPT-hash (bắt buộc, hai phía)
+
+`owner[28]` là hash **trần**: schema C **không** mang byte phân biệt `VerificationKey` với `Script`
+(khác leaf v1 cũ vốn ghim `cbor.serialise(address)` nên còn constructor tag). Hệ quả trực tiếp:
+
+> `Address{Script(h)}` và `Address{VerificationKey(h)}` sinh **CÙNG một leaf**.
+
+Nếu validator chấp nhận cả hai tier thì bất kỳ ai cũng lấy được proof công khai của nạn nhân, khai
+`claimer = Address{Script(h_nạn_nhân)}`, Merkle verify vẫn PASS, LAMP rơi vào địa chỉ script mà không
+ai mở được (muốn tiêu phải trình script có `blake2b_224 = h_nạn_nhân` — second-preimage), còn slot NFT
+đã burn nên nạn nhân **không claim lại được**. Chi phí kẻ tấn công ≈ phí 1 giao dịch, thiệt hại = trọn
+phần của nạn nhân. Đây là **hồi quy do chính schema C**, không tồn tại ở leaf v1.
+
+**Quy tắc chuẩn (normative), áp cho MỌI vai dùng schema C:**
+
+1. **On-chain** — validator rút `owner` từ address PHẢI ép tier key, fail-closed:
+   `expect VerificationKey(h) = addr.payment_credential`.
+   Hiện thực: `Airdrop/onchain/lib/magiclamp/airdrop/util.ak::payment_credential_hash`;
+   SRCL đã đúng sẵn qua `SRCL/onchain/lib/magiclamp/srcl/util.ak::is_owned_by` (nhánh `Script` → `False`).
+2. **Off-chain** — builder snapshot PHẢI loại địa chỉ script **ngay lúc dựng lá**, không đợi tới claim:
+   `Airdrop/offchain/src/merkle.ts::ownerBytes` ném `MERKLE-026`. Thiếu bước này thì lá script vẫn vào
+   cây, nhưng validator không cho claim ⇒ phần LAMP đó kẹt trong pot tới hạn quét, và người đăng ký
+   chỉ phát hiện lúc claim hỏng.
+3. **Đăng ký** — khâu xác minh đăng ký PHẢI từ chối `payment_address` là địa chỉ script, báo lỗi rõ để
+   người đăng ký khai lại. (Lớp 1–2 của `verify_delegator.ts` chỉ ràng phía **stake**; phía payment do
+   người khai tự do.)
+
+**Ràng buộc còn lại sau khi ép tier (đã biết, chấp nhận):** `stake_credential` của `claimer` vẫn tự do,
+nên kẻ tấn công vẫn ép được LAMP vào `Address{VerificationKey(h_nạn_nhân), Some(stake_kẻ_tấn_công)}`.
+Nạn nhân **vẫn tiêu được** (họ giữ khoá payment); thiệt hại thu về mức quấy rối: mất quyền chọn stake
+cho phần đó. Muốn chặn triệt để thì validator tự dựng đích `vk_address(owner)` — nhưng như vậy mất khả
+năng trả vào base-address có stake part, nên **chưa chọn**; ghi lại ở đây để lần dựng pot sau cân nhắc.
+
+Test chứng minh (chạy được): `Airdrop/onchain/validators/airdrop_pool.ak::claim_reject_script_tier_owner_collision`
+— gỡ ràng buộc tier ra thì test này FAIL (tức cuộc tấn công thành công), giữ ràng buộc thì PASS.
 
 ## 4. Quy tắc payout on-chain (pot Delegator)
 
@@ -120,15 +159,16 @@ amount      = 27_780_000 oildrop
 - **Airdrop:** merkle.ak (leaf A→C, thêm param campaign_id/epoch/role vào `airdrop_pool` +
   helper trích payment-cred) + off-chain merkle.ts (leaf C, sort theo slot, dup-slot throw) +
   builder v2 (owner=payment-key-hash, role=1, epoch=E_cut, campaign_id) + toàn bộ test.
-- **SRCL:** merkle.ak (B→C: thêm campaign_id + role=SPO/…; owner giữ stake-key-hash) + gộp
+- **SRCL:** merkle.ak (B→C: thêm campaign_id + role=SPO/…; owner = **payment-key-hash**, AffiSo chốt 2026-08-01) + gộp
   `srcl_stake.ak` bản B + sửa README (mô tả bản B) + vá `computeEntitlements` trùng tên.
 - **Chưa làm đợt này:** MCS/Engage/SPO validator (chưa tồn tại) — chỉ khoá role-map + checklist
   "pot mới PHẢI bake campaign_id + role đúng bảng §1" trước khi ai clone engine.
 - Datum `AirdropPool` KHÔNG đổi. Redeemer KHÔNG thêm. `owner` cross-pot: khi kế toán liên chương
-  trình (chống trả trùng 1 người) phải chuẩn hoá theo role (Delegator payment-cred ≠ SPO stake-cred).
+  trình (chống trả trùng 1 người) phải chuẩn hoá theo role — Delegator + SRCL đều **payment-cred** (chốt 2026-08-01); SPO/MCS/Engage khoá khi dựng validator vai đó.
 
 ## 7. Nguồn dẫn được
 - Layout: thư `AffiSo-reply-schema-lock-va-filter-owner-2026-07-29` + `AffiSo-reply-da-cap-patched-va-merkle-oildrop-2026-07-30`.
 - owner per-role: quyết định anh Aladin 2026-07-31 (topic `public-release-readiness.md` §PHIÊN 2026-07-31).
+- owner SRCL = payment-hash: AffiSo xác nhận 2026-08-01 (`_Agents/inbox/_done/AffiSo-reply-owner-tier-payment-hash-viec1-dang-hoi-dong-2026-08-01.md`).
 - Ranh giới tầng: AffiSo lọc tư cách khi dựng `StakeEntry[]`; LAMP `computeEntitlements` chỉ lọc
   `stake>0`, KHÔNG nhét ngưỡng 1000 ADA.

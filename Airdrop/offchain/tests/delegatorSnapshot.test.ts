@@ -12,6 +12,11 @@ import {
 } from "../src/delegatorSnapshot.js";
 import { pubkeyToStakeAddr } from "../src/delegatorCrypto.js";
 import { bytesToHex } from "../src/merkle.js";
+import {
+  credentialToAddress,
+  keyHashToCredential,
+  scriptHashToCredential,
+} from "@lucid-evolution/lucid";
 
 // WebCrypto + TextEncoder global (khai báo tối giản, node-free typing).
 declare const crypto: {
@@ -46,7 +51,11 @@ async function mintRegistration(
   return {
     version: "1.0",
     stake_address: stakeAddr,
-    payment_address: `addr_test_payment_${pubHex.slice(0, 12)}`,
+    // payment_address phải là địa chỉ THẬT parse được, payment-cred KEY (spec §3.2).
+    payment_address: credentialToAddress(
+      "Preview",
+      keyHashToCredential(pubHex.slice(0, 12).padEnd(56, "0")),
+    ),
     epochs_active: [500, 501],
     acc_stake_lovelace: "0",
     current_pool_id: null,
@@ -71,6 +80,25 @@ describe("verifyRegistration", () => {
     expect(v.ok).toBe(true);
     expect(v.reasons).toEqual([]);
     expect(v.derived_stake_address).toBe(reg.stake_address);
+  });
+
+  it("từ chối payment_address là địa chỉ SCRIPT (spec §3.2 — tier-collapse)", async () => {
+    // owner[28] là hash trần: script-addr sinh CÙNG leaf với key-addr cùng hash.
+    // Validator ép VerificationKey ⇒ lá script không bao giờ claim được. Phải loại
+    // ngay ở khâu đăng ký, không để tới lúc claim mới lộ.
+    const reg = await mintRegistration({
+      payment_address: credentialToAddress("Preview", scriptHashToCredential("a0".repeat(28))),
+    });
+    const v = await verifyRegistration(reg);
+    expect(v.ok).toBe(false);
+    expect(v.reasons.join(" ")).toMatch(/SCRIPT/);
+  });
+
+  it("từ chối payment_address không phân giải được", async () => {
+    const reg = await mintRegistration({ payment_address: "addr_test_payment_rác" });
+    const v = await verifyRegistration(reg);
+    expect(v.ok).toBe(false);
+    expect(v.reasons.join(" ")).toMatch(/payment_address/);
   });
 
   it("từ chối khi chữ ký bị sửa (một byte)", async () => {

@@ -11,6 +11,7 @@
 // CLI (verify_delegator.ts / build_delegator_snapshot.ts) chỉ fetch Blockfrost rồi
 // gọi vào đây. Đầu ra nối thẳng vào delegator_entitlement.buildDelegatorEntitlements.
 
+import { getAddressDetails } from "@lucid-evolution/lucid";
 import { verifyEd25519, pubkeyToStakeAddr } from "./delegatorCrypto.js";
 
 // ── Types ────────────────────────────────────────────────────────────────
@@ -55,6 +56,10 @@ export interface RegistrationVerdict {
  *   (a) định dạng: signature 128 hex, signing_pubkey 64 hex.
  *   (b) chữ ký Ed25519 khớp message_hex + signing_pubkey.
  *   (c) pubkeyToStakeAddr(signing_pubkey) === stake_address khai báo (chống mạo danh).
+ *   (d) payment_address parse được VÀ payment-credential là KEY, không phải SCRIPT
+ *       (spec §3.2): owner[28] trong leaf là hash trần, script-addr sinh cùng leaf với
+ *       key-addr ⇒ validator ép VerificationKey, lá script không bao giờ claim được.
+ *       Loại tại đây để người đăng ký còn kịp khai lại địa chỉ.
  * FAIL-CLOSED: bất kỳ điều kiện nào trượt → ok=false, KHÔNG nửa vời.
  * Async vì verify Ed25519 chạy qua WebCrypto subtle (node-free).
  */
@@ -88,6 +93,21 @@ export async function verifyRegistration(
     reasons.push(
       `pubkey KHÔNG khớp stake_address khai báo (khai ${reg.stake_address}, suy ${derived})`,
     );
+  }
+
+  // (d) payment_address phải là địa chỉ KEY (spec §3.2 — cấm script-hash).
+  try {
+    const pd = getAddressDetails(reg.payment_address ?? "").paymentCredential;
+    if (!pd) {
+      reasons.push("payment_address không có payment credential");
+    } else if (pd.type === "Script") {
+      reasons.push(
+        "payment_address là địa chỉ SCRIPT — owner phải là payment KEY-hash (spec §3.2); " +
+          "lá script không claim được, khai lại bằng địa chỉ ví thường",
+      );
+    }
+  } catch {
+    reasons.push(`payment_address không phân giải được: ${reg.payment_address}`);
   }
 
   return { ok: reasons.length === 0, derived_stake_address: derived, reasons };

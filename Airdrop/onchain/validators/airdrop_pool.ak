@@ -436,6 +436,48 @@ test claim_correct_amount_to_claimer() {
   ap_run_claim(100, ap_amount_a + 500_000)
 }
 
+test claim_reject_script_tier_owner_collision() fail {
+  // TIER-COLLAPSE — hồi quy do schema C. owner[28] là hash TRẦN, không mang byte
+  // phân biệt VerificationKey với Script. Kẻ tấn công lấy proof CÔNG KHAI của A
+  // rồi khai `claimer = Address{Script(#"c1a1")}` — cùng hash payment-cred với A.
+  // Nếu util.payment_credential_hash còn nhận nhánh Script thì leaf trùng khít
+  // leaf_a: Merkle verify PASS, pool nhả đúng amount, slot A bị burn, và LAMP rơi
+  // vào địa chỉ script mà không ai mở được (phải trình script có blake2b_224 =
+  // #"c1a1"). A mất phần vĩnh viễn, chi phí kẻ tấn công ≈ phí 1 tx.
+  // Ràng buộc `expect VerificationKey` trong util phải chặn ngay tại đây.
+  let evil_claimer = util.script_address(#"c1a1")
+  let base =
+    Transaction {
+      ..placeholder,
+      inputs: [
+        ap_pool_input(10_000_000, 100_000_000, 0),
+        ap_slot_input(3, ap_marker_addr(), ap_leaf_a()),
+      ],
+      outputs: [
+        ap_pool_output(10_000_000, 100_000_000 - ap_amount_a, 1),
+        ap_claimer_output(evil_claimer, ap_amount_a),
+      ],
+      mint: assets.zero |> assets.add(ap_nft_policy, ap_leaf_a(), -1),
+    }
+  airdrop_pool.spend(
+    ap_nft_policy,
+    ap_lamp_policy,
+    ap_lamp_name,
+    ap_ms_per_epoch,
+    ap_campaign_id,
+    ap_snapshot_epoch,
+    ap_role,
+    Some(ap_datum(0)),
+    Claim {
+      claimer: evil_claimer,
+      amount: ap_amount_a,
+      proof: [ledger_proof_step(False, ap_leaf_b())],
+    },
+    util.mk_ref(0),
+    ap_tx_before(100, base),
+  )
+}
+
 test claim_reject_wrong_proof() fail {
   // proof sibling sai (#"dead") → verify_proof False → reject.
   let tx = ap_claim_tx_a(100, ap_amount_a)

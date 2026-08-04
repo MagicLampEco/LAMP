@@ -13,7 +13,7 @@ import type { SnapshotEntry, MerkleParams } from "../src/types.js";
 
 // Địa chỉ Preview thật (enterprise key address) để getAddressDetails parse được.
 // Sinh tất định từ payment key hash (dùng credentialToAddress dưới).
-import { credentialToAddress, keyHashToCredential } from "@lucid-evolution/lucid";
+import { credentialToAddress, keyHashToCredential, scriptHashToCredential } from "@lucid-evolution/lucid";
 
 function previewAddr(pkhHex: string): string {
   return credentialToAddress("Preview", keyHashToCredential(pkhHex));
@@ -80,6 +80,14 @@ describe("leafHash (schema C)", () => {
   it("từ chối role ngoài 0..255 + campaign_id sai độ dài", () => {
     expect(() => leafHash({ address: ADDR_A, amount: 1n }, { ...P, role: 256 })).toThrow(/role/);
     expect(() => leafHash({ address: ADDR_A, amount: 1n }, { ...P, campaignId: "ab" })).toThrow(/campaign_id/);
+  });
+  it("từ chối địa chỉ SCRIPT (tier-collapse) — owner[28] là hash trần", () => {
+    // owner không mang byte phân biệt VerificationKey/Script, nên script-addr cùng
+    // hash sinh CÙNG leaf. On-chain airdrop_pool ép VerificationKey → lá script
+    // không bao giờ claim được. Loại ngay lúc dựng snapshot, đối xứng validator.
+    const PKH = "a0".repeat(28);
+    const scriptAddr = credentialToAddress("Preview", scriptHashToCredential(PKH));
+    expect(() => leafHash({ address: scriptAddr, amount: 1n }, P)).toThrow(/MERKLE-026/);
   });
 });
 
