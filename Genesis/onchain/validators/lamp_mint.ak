@@ -926,6 +926,29 @@ test registry_rotated_key_ok() {
   run(DistributionVest, build_tx_anchor(s, s2, 1_000_000, [new_key], refs))
 }
 
+// ── Registry NFT + datum bịa Ở VÍ THƯỜNG → reject (pin địa chỉ) ──
+test registry_ref_o_vi_thuong_bi_tu_choi() fail {
+  // Nếu find_registry_datum chỉ lọc theo NFT (không ép địa chỉ) thì bất kỳ ai nắm
+  // được registry NFT cũng đặt nó ở ví mình, tự khai authority = ví mình, rồi mint
+  // LAMP không giới hạn. Bản v1 (Legacy/Tokenomics-v1-anchor/.../phoenixkey.ak:142-156)
+  // thiếu đúng mệnh đề này và PoC mint được thật. Ràng buộc
+  // payment_credential == Script(registry_nft_policy) phải chặn ngay tại đây.
+  let s = fresh()
+  let s2 = SupplyState { ..s, dist_minted: 1_000_000 }
+  let v =
+    assets.from_lovelace(2_000_000) |> assets.add(registry_pol, registry_nm, 1)
+  let evil_ref =
+    util.mk_input(
+      util.mk_ref(7),
+      util.mk_output(
+        util.vk_address(ctrl_pkh),
+        v,
+        reg_datum(lamp_tag, SinglePkh { pkh: ctrl_pkh }),
+      ),
+    )
+  run(DistributionVest, build_tx_anchor(s, s2, 1_000_000, [ctrl_pkh], [evil_ref]))
+}
+
 // ── STRANGER ký (không phải authority của entry) → reject ──
 test registry_stranger_signs() fail {
   let s = fresh()
