@@ -44,26 +44,27 @@ Snapshot {address, amount}  ──►  cây Merkle  ──►  merkle_root
 
 ### Leaf encoding (byte-perfect 2 phía)
 
-```
-leaf = blake2b_256( 0x00 ++ cbor.serialise(address) ++ amount_be8 )
-node = blake2b_256( 0x01 ++ left ++ right )
-```
+Từ 2026-07-31 pot Delegator dùng **schema Merkle C (role-tag)**. Đây là parity byte-perfect giữa
+on-chain và off-chain — chép lại ở nhiều nơi là cách chắc chắn nhất để một bản tụt lại và làm
+claim hỏng. Nên chỉ có **một nguồn**:
 
-- `cbor.serialise(address)`: Plutus-Data canonical CBOR của Aiken `Address` Constr.
-  Off-chain dựng cùng cây Data (`Data.to(addressToPlutusData)`) → **cùng bytes**.
-- `amount_be8`: amount (oildrop) big-endian 8 byte (u64) — cố định độ dài, chống nhập nhằng.
-- Prefix `0x00` (leaf) / `0x01` (node): **domain-separation** chống second-preimage.
+- Nguồn sự thật: [`../SCHEMA-MERKLE-V2-Tech-Spec.md`](../SCHEMA-MERKLE-V2-Tech-Spec.md)
+- Áp dụng cho pot Delegator (kèm giá trị `campaign_id`/`epoch`/`role` bake vào param):
+  [`CONTRACT.md` §1.7](./CONTRACT.md)
 
-> Parity được khoá bằng 1 vector regression ở **cả** `onchain/.../merkle.ak`
-> (`parity_offchain_leaf`) **và** `offchain/tests/merkle.test.ts`:
-> `leaf(28×0xa0, 100) = 3aeee537…b6b8`. Nếu một phía đổi encoding, test gãy ngay.
+Tóm tắt để định hướng, **không dùng để hiện thực** — hiện thực đọc hai file trên:
+lá gồm `campaign_id` + `epoch` + `role` + `owner` (payment key-hash 28B) + `amount`, có
+domain-separation `0x00`/`0x01` chống second-preimage; lá sắp **tăng theo
+`slot = blake2b_256(epoch_be8 ‖ owner)`**, trùng slot thì ném lỗi.
+
+> Parity được khoá bằng vector regression ở **cả** `onchain/.../merkle.ak` **và**
+> `offchain/tests/merkle.test.ts`. Một phía đổi encoding thì test gãy ngay.
 
 ### Cây Merkle nhị phân thường (KHÔNG MPF)
 
 Snapshot CỐ ĐỊNH (tính 1 lần off-chain, không insert/delete on-chain) → cây nhị phân
 hash-chain là đủ và rẻ hơn Merkle-Patricia-Forestry. Node lẻ cuối tầng → **carry** lên
-nguyên vẹn (không tự-hash) để off-chain/on-chain nhất quán. Snapshot được **sort theo
-leaf hash** → root tất định, không phụ thuộc thứ tự nhập.
+nguyên vẹn (không tự-hash) để off-chain/on-chain nhất quán.
 
 ---
 

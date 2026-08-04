@@ -58,18 +58,26 @@ LAMP_ASSET_NAME=744c414d50
 
 ## Bước 1: Build snapshot delegator
 
+> ⚠️ Dùng `build_delegator_snapshot.ts` (v2). Bản cũ `build_airdrop_snapshot.ts` đã **DEPRECATED**:
+> nó dựng lá Merkle từ `stake_address`, mà `claim` trả LAMP về địa chỉ dựng từ **payment key hash** —
+> snapshot v1 tạo ra bản ghi **claim được nhưng không trả được tiền cho ai**. Đừng chạy cho phân phối thật.
+
 ```bash
 cd Airdrop/scripts
 npm install
 
-# Chọn epoch snapshot — epoch đã qua, có đủ dữ liệu trên Blockfrost
-# Ví dụ: 3 epoch liên tiếp
-npx tsx build_airdrop_snapshot.ts \
-  --epoch 580 \
-  --epoch 581 \
-  --epoch 582 \
-  --pool pool1xs2yx... \
-  --budget 100000000 \
+# 1a. Verify đăng ký trước (3 lớp fail-closed: chữ ký Ed25519, pubkey↔stake khớp khai báo,
+#     có lịch sử stake thật). Đầu ra là input bắt buộc của bước 1b.
+npx tsx verify_delegator.ts --in registrations/ --out verified.json
+
+# 1b. Dựng snapshot. `--excluded` FAIL-CLOSED: buộc chọn một trong hai, không có mặc định ngầm.
+npx tsx build_delegator_snapshot.ts \
+  --reg verified.json \
+  --no-excluded \
+  --n 2 \
+  --e-open 620 \
+  --e-cut 637 \
+  --budget-lamp 100000000 \
   --out delegator_snapshot.json
 
 # Xem tóm tắt
@@ -78,6 +86,11 @@ npx tsx check_airdrop.ts --snapshot delegator_snapshot.json --summary
 # Xem top 20
 npx tsx check_airdrop.ts --snapshot delegator_snapshot.json --top 20
 ```
+
+Ba khác biệt so với v1, đều là lỗ đã vá: `owner` là **payment key hash** join từ đăng ký đã verify
+(không phải `stake_address`) · cộng stake qua **mọi pool** theo `/accounts/{stake}/history`
+(không chỉ một `--pool`) · chỉ tính epoch nằm trong chuỗi giữ delegation **≥N liên tiếp** (§1.5).
+Cửa sổ phải thoả `E_cut − E_open ≥ N+1`, nếu không builder ném lỗi.
 
 **Verify output:** file `delegator_snapshot.json` với trường `meta` + `entries[]`.
 
