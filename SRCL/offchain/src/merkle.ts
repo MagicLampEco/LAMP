@@ -7,7 +7,8 @@
 //
 // - campaign_id[32] (= blake2b_256(tên chiến dịch)) + role[1] BAKE vào leaf → cô lập
 //   pot theo chiến dịch + vai: proof pot này KHÔNG dùng lại cho campaign/role khác.
-//   SRCL/SPO: role = 0x04, owner = stake key-hash 28B (spec §1/§3).
+//   SRCL/SPO: role = 0x04. owner = **payment key-hash 28B** cho SRCL (spec §3.1) —
+//   builder phải join stake→payment trước khi dựng lá.
 // - epoch + amount mã hoá big-endian 8 byte, role 1 byte (cố định) — KHÔNG nhập nhằng độ dài.
 // - KHÔNG sort cặp: vị trí trái/phải giữ nguyên theo thứ tự leaf → on-chain rẻ.
 // - THỨ TỰ LÁ: sắp TĂNG DẦN theo slot = blake2b_256(epoch_be8 ++ owner) (spec §2). Trùng
@@ -79,7 +80,7 @@ function b2b256(data: Uint8Array): Uint8Array {
  *  layout = 0x00 ++ campaign_id[32] ++ epoch_be8 ++ role[1] ++ owner ++ amount_be8.
  *  @param campaignId hex 32B (đã = blake2b_256(tên chiến dịch); vd SRCL_CAMPAIGN_ID).
  *  @param role       byte vai (SRCL/SPO = 4).
- *  @param owner      credential-hash hex (SRCL = stake key-hash 28B). */
+ *  @param owner      credential-hash hex (SRCL = **payment** key-hash 28B, spec §3.1). */
 export function leafHash(
   campaignId: string,
   epoch: bigint,

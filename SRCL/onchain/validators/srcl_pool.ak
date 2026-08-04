@@ -249,7 +249,7 @@ const ip_campaign_id: ByteArray =
 
 const ip_role: Int = 4
 
-// owner A/B (stake key-hash — SRCL reward-redirect, spec §3).
+// owner A/B (payment key-hash — spec §3.1; payout so payment_credential).
 const owner_a: ByteArray = #"0a0a"
 
 const owner_b: ByteArray = #"0b0b"

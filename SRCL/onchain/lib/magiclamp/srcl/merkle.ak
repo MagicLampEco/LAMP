@@ -15,7 +15,9 @@
 // - epoch nằm TRONG leaf → proof epoch e KHÔNG dùng lại cho epoch khác (root mỗi
 //   epoch khác nhau, và leaf cũng nhúng epoch → khoá kép).
 // - Mọi trường fixed-width (campaign 32B, epoch 8B, role 1B, amount 8B) → raw-concat
-//   KHÔNG nhập nhằng biên. owner = credential-hash (SRCL/SPO = stake key-hash 28B).
+//   KHÔNG nhập nhằng biên. owner = credential-hash 28B; **SRCL = PAYMENT key-hash**
+//   (spec §3.1, AffiSo chốt 2026-08-01) — khớp payout `util.is_owned_by` so payment_credential.
+//   Nạp stake key-hash vào đây thì claim validate xong nhưng LAMP không tới ai.
 // - marker_name/slot GIỮ NGUYÊN (epoch ++ owner) — slot chỉ để sort + đặt tên NFT
 //   claim-slot, KHÔNG cô lập theo campaign (spec §1). Cô lập pot nằm ở LEAF.
 //

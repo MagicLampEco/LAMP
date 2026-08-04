@@ -25,7 +25,8 @@ export const SRCL_CAMPAIGN_NAME = "LAMP-SRCL-1";
 export const SRCL_CAMPAIGN_ID =
   "5286f2c03f9f7c8b4e0d7da40f325ed5ecdc5d3eaf858efaf297aaefa6f1aedd";
 
-/** role[1] SRCL/SPO = 0x04 (spec §1 — CẤM đổi số role). owner leaf = stake key-hash. */
+/** role[1] SRCL/SPO = 0x04 (spec §1 — CẤM đổi số role).
+ *  owner leaf SRCL = **payment key-hash** (spec §3.1, AffiSo chốt 2026-08-01). */
 export const ROLE_SPO = 4;
 
 /** Số epoch phân phối = 36 (epoch 0..35). */
