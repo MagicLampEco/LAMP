@@ -56,7 +56,7 @@
 | 13 | **Early TIGER Deleg (ETD)** | 12.000 | 0,03% | Delegate sớm TIGER (redeem TRƯỚC = test) | Snapshot hồi tố | ❌ hết sớm |
 | 14 | **Airdrop** | 120.000 | 0,33% | Ghi nhận đóng góp vào cơ chế bền vững của mạng Cardano — 3 pot: Delegator 100M · SPO 5M · CS 15M | Snapshot, cả 3 pot ∝ trọng số stake (v2, chốt 10/7) | ❌ hết sớm |
 | 15 | **SRCL** | 360.000 | 1,00% | Redirect staking-reward ADA ↔ LAMP | Snapshot/epoch theo ADA góp; SPO bonus tự đặt | ❌ hết sớm |
-| 16 | **Joinnet** | 1.461.000 | 4,06% | Thưởng người góp tài nguyên thiết bị vào hạ tầng phân tán LampNet | Nhỏ-giọt | 🏛️ uỷ thác Platform **LampNet** DID |
+| 16 | **Join LampNet** | 1.461.000 | 4,06% | Thưởng người góp tài nguyên thiết bị vào hạ tầng phân tán LampNet | Nhỏ-giọt | 🏛️ uỷ thác Platform **LampNet** DID |
 | 17 | **RedBack** | 21.143 | 0,06% | Quỹ phòng-thủ neo giá đồng ổn định (peg CARP↔MAGIC): hy sinh khi peg đỏ, lớn lên khi thế chấp vượt trần | Engine phòng thủ peg (vốn vô chủ) | ❌ quỹ peg |
 | 18 | **Liquidity** | 888.000 | 2,47% | Cấp thanh khoản cho **sàn nội bộ hệ sinh thái** (cặp CARP/LAMP, CARP/ADA, CARP/NIGHT) | Engine LP theo TVL | ❌ trong LP |
 
@@ -67,7 +67,7 @@
 ## 2. Ba mức gen-MAGIC (tổng theo nghìn LAMP)
 
 - **🏛️ Tổ chức/Platform — LAMP nằm trong vault OrgDID/Platform-DID, gen kể cả khi khoá (~20.001.857 ≈ 20 tỷ):**
-  Foundation, Aladin, GreenSun, Platform, App, Joinnet→LampNet, Referrer→AffiSo, PhoenixKey→PhoenixKey-DID.
+  Foundation, Aladin, GreenSun, Platform, App, Join LampNet→LampNet, Referrer→AffiSo, PhoenixKey→PhoenixKey-DID.
 - **👤 User — chỉ gen khi claim về DID (~4.003.000 ≈ 4 tỷ):** Development, Wakeme, Partnership.
 - **❌ Không gen (~11.995.143 ≈ 12 tỷ):** Reserve, Treasury, ETD, Airdrop, SRCL, RedBack, Liquidity.
 
@@ -119,7 +119,7 @@
   duy trì số dư trả phí, không phải dịch vụ giao dịch cung cấp cho bên thứ ba. **Giao thức TỰ ĐỘNG, KHÔNG người kiểm soát.** Uỷ thác vào Platform **PhoenixKey** (DID riêng).
   > Bản cũ ghi "quỹ tài trợ phí ADA/DUST, user không cần ADA" — mô tả sai (agent bịa), đã thay bằng mô hình Feecover
   > thực: `TxFee` cố định (CARP) + đợt SRCL 7 epoch của pot này thu ADA + CARP mua lại ADA trên DEX.
-- **16. Joinnet (1.461.000)** — thưởng **người đóng góp tài nguyên thiết bị** (sức tính toán, lưu trữ, băng thông)
+- **16. Join LampNet (1.461.000)** — thưởng **người đóng góp tài nguyên thiết bị** (sức tính toán, lưu trữ, băng thông)
   vào **hạ tầng thiết bị phân tán LampNet**. Uỷ thác vào Platform **LampNet** (DID riêng).
 
 **Nhóm DAO & đối tác**
@@ -171,7 +171,7 @@ governance đầy đủ chưa lên → giao DAO sau.
 - `μ ≈ 0.25` cho **2 pot Founder** (Aladin + GreenSun) — nhả MAGIC về OrgDID cty, không tự-tiêu-lại-cho-cộng-đồng →
   cân quang học ngày đầu (org 80%→50%; →25% khi cộng đồng giữ 8 tỷ).
 - `μ = 1.0` (đầy đủ) cho Foundation (nuôi DAO, ban tiêu-thụ-lại), Platform/App (chia DID theo tiêu thụ),
-  Joinnet/Referrer/PhoenixKey (uỷ thác Platform-DID phục vụ cộng đồng) — cap nhóm này = tự bắn vào chân.
+  Join LampNet/Referrer/PhoenixKey (uỷ thác Platform-DID phục vụ cộng đồng) — cap nhóm này = tự bắn vào chân.
 - Vì Aladin chỉnh được, các mức trên là **điểm khởi đầu**, không khắc cứng vĩnh viễn.
 
 ---

@@ -27,7 +27,7 @@ Xem bảng đầy đủ ở `pot-catalog.md §1`. Tóm tắt theo **cơ chế nh
 
 | Cơ chế nhả | Pot | Tổng (nghìn) |
 |---|---|---:|
-| **CappedDrop** (vesting/epoch) | Development, Platform, App, User, Referrer, PhoenixKey, Aladin, GreenSun, Partnership, Joinnet | **22.708.857** |
+| **CappedDrop** (vesting/epoch) | Development, Platform, App, User, Referrer, PhoenixKey, Aladin, GreenSun, Partnership, Join LampNet | **22.708.857** |
 | **Snapshot-Merkle** (claim permissionless) | ETD, Airdrop, SRCL | 492.000 |
 | **Engine gate-Treasury** | Reserve | 9.630.000 |
 | **Kế toán / LP / mở-thanh-khoản** | Treasury, Liquidity, RedBack | 1.873.143 |
@@ -71,7 +71,7 @@ Một pot gen MAGIC ⟺ LAMP của nó **đã nằm trong một vault-DID**. Lu�
 
 | Mức | Pot | LAMP nằm ở vault-DID nào |
 |---|---|---|
-| 🏛️ **Tổ chức/Platform** | Foundation, Aladin, GreenSun, Platform, App, Joinnet→LampNet, Referrer→AffiSo, PhoenixKey→PhoenixKey-DID | vault **OrgDID / Platform-DID** (giữ/khoá ở đó → gen, kể cả phần khoá) |
+| 🏛️ **Tổ chức/Platform** | Foundation, Aladin, GreenSun, Platform, App, Join LampNet→LampNet, Referrer→AffiSo, PhoenixKey→PhoenixKey-DID | vault **OrgDID / Platform-DID** (giữ/khoá ở đó → gen, kể cả phần khoá) |
 | 👤 **User** | Development, User, Partnership | kênh phân phối (KHÔNG phải vault-DID) → CHỈ gen khi **claim về vault DID người dùng** |
 | ❌ **Không** | Reserve, Treasury, ETD, Airdrop, SRCL, RedBack, Liquidity | không ở vault-DID nào (chưa-mint LAMP / parked / LP / hết sớm) |
 
@@ -79,7 +79,7 @@ Một pot gen MAGIC ⟺ LAMP của nó **đã nằm trong một vault-DID**. Lu�
 (ban chuyên môn tiêu thụ / tái uỷ quyền / uỷ thác thu LAMP — định đoạt ra ngoài hệ do quy chế Foundation quyết
 định sau khi lập pháp nhân); founder khoá dài hạn cần nguồn thu R&D →
 LAMP ở OrgDID cty gen MAGIC về cty; Platform/App ở Platform-DID, MAGIC chia cho DID **theo lượng tiêu thụ**
-(khuyến khích build); Joinnet/Referrer/PhoenixKey uỷ thác toàn bộ vào Platform-DID (LampNet/AffiSo/PhoenixKey).
+(khuyến khích build); Join LampNet/Referrer/PhoenixKey uỷ thác toàn bộ vào Platform-DID (LampNet/AffiSo/PhoenixKey).
 
 ### 4.1 Kiểm soát gen pot — thực hiện ở TẦNG LAMP, KHÔNG sửa code MAGIC
 **Chốt (sau đánh giá MAGIC spec):** KHÔNG thêm tham số `μ` vào công thức SnapshotGen (sẽ phá P8 bit-identical +
@@ -88,7 +88,7 @@ hệ số `μ` đạt được **tương đương** bằng cách: **mỗi pot ch
 `(1−μ)` giữ ở **vault treasury KHÔNG-snapshot**. ⟹ μ là **chính sách phân bổ LAMP của từng OrgDID/ServiceDID**
 (quyết ở tầng LAMP/governance), KHÔNG đụng một dòng code MAGIC.
 - `μ ≈ 0.25` cho 2 pot **Founder** (Aladin/GreenSun) → chỉ ¼ balance vào vault sinh-MAGIC; org 80%→50% ngày đầu.
-- `μ = 1.0` cho Foundation/Platform/App/Joinnet/Referrer/PhoenixKey (đã tiêu-lại / chia-theo-tiêu-thụ về cộng đồng).
+- `μ = 1.0` cho Foundation/Platform/App/Join LampNet/Referrer/PhoenixKey (đã tiêu-lại / chia-theo-tiêu-thụ về cộng đồng).
 - μ điều chỉnh được (Aladin Contract → DAO) qua việc dời LAMP giữa 2 vault, không redeploy.
 
 **Lưu ý quan trọng (có thể KHÔNG cần cap):** loãng chỉ ở **trục kinh tế**, KHÔNG trục quyền lực — VP = MAGIC
@@ -280,7 +280,7 @@ Mọi tham số dưới đọc từ **config-UTxO** do **Aladin Contract đặt 
 | Tham số | Giá trị khởi đầu | Phạm vi / ghi chú |
 |---|---|---|
 | `μ_pot` Founder (Aladin, GreenSun) | **0.25** | (0,1]; cân quang học MAGIC ngày đầu |
-| `μ_pot` Foundation/Platform/App/Joinnet/Referrer/PhoenixKey | **1.0** | nhóm tiêu-lại/chia-theo-tiêu-thụ → không cap |
+| `μ_pot` Foundation/Platform/App/Join LampNet/Referrer/PhoenixKey | **1.0** | nhóm tiêu-lại/chia-theo-tiêu-thụ → không cap |
 | `μ_pot` User/Development/Partnership | **1.0** | gen ở vault user khi claim |
 | Reserve `trần` | **2% × C** (lưu hành) | trên trần → KHÔNG nhả |
 | Reserve `sàn` | **1% × C** | tại sàn → nhả tối đa |

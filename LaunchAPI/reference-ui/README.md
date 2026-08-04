@@ -1,6 +1,6 @@
 # Launch Checker — giao diện tham chiếu (bàn giao AffiSo)
 
-Giao diện tra cứu số LAMP nhận được (ETD/Airdrop/SRCL/Joinnet). **Read-only, song ngữ VI/EN.**
+Giao diện tra cứu số LAMP nhận được (ETD/Airdrop/SRCL/Join LampNet). **Read-only, song ngữ VI/EN.**
 Đây là bản THAM CHIẾU cho team AffiSo dựng trang `affiso.net/launch`.
 
 ## Hai cách chạy
@@ -38,7 +38,7 @@ AffiSo render JSON — **KHÔNG tự tính LAMP** (math canonical ở LAMP-side,
 | ETD | có dữ liệu | dán địa chỉ → LAMP + bảng epoch (stake + LAMP) + sparkline |
 | Airdrop | mô tả | 3 pot: SPO 5M · SC 15M · Delegator 100M |
 | SRCL | mô tả | ký-1-lần 3 đường (Lace/CLI/CIP-30), nút copy |
-| Joinnet | mô tả | sắp công bố |
+| Join LampNet | mô tả | sắp công bố |
 
 ## Bảo mật hiển thị
 - Chỉ đọc chain, KHÔNG đụng LAMP đã mint, KHÔNG tạo tx.

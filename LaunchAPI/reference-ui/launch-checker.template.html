@@ -213,7 +213,7 @@
     <button class="tab" role="tab" aria-selected="true" data-tab="etd">ETD<span class="dot"></span></button>
     <button class="tab" role="tab" aria-selected="false" data-tab="airdrop">Airdrop<span class="lock">🔒</span></button>
     <button class="tab" role="tab" aria-selected="false" data-tab="srcl">SRCL<span class="lock">🔒</span></button>
-    <button class="tab" role="tab" aria-selected="false" data-tab="joinnet">Joinnet<span class="lock">🔒</span></button>
+    <button class="tab" role="tab" aria-selected="false" data-tab="join-lampnet">Join LampNet<span class="lock">🔒</span></button>
   </div>
 
   <!-- ETD -->
@@ -324,11 +324,11 @@
     </div>
   </section>
 
-  <!-- Joinnet -->
-  <section class="panel" id="pane-joinnet" hidden>
+  <!-- Join LampNet -->
+  <section class="panel" id="pane-join-lampnet" hidden>
     <div class="info">
       <div class="lockbanner" data-i18n="jn_lock">Sắp công bố.</div>
-      <h3>Joinnet</h3>
+      <h3>Join LampNet</h3>
       <p data-i18n="jn_p">Đóng góp tài nguyên thiết bị cho mạng LampNet để nhận LAMP. Chi tiết công bố tại magiclamp.network.</p>
     </div>
   </section>
@@ -448,7 +448,7 @@ document.getElementById("themeBtn").addEventListener("click", ()=>{
 });
 document.getElementById("langBtn").addEventListener("click", ()=>{ lang = lang==="vi"?"en":"vi"; applyLang(); });
 
-const panes = {etd:"pane-etd",airdrop:"pane-airdrop",srcl:"pane-srcl",joinnet:"pane-joinnet"};
+const panes = {etd:"pane-etd",airdrop:"pane-airdrop",srcl:"pane-srcl","join-lampnet":"pane-join-lampnet"};
 document.querySelectorAll(".tab").forEach(tb=>{
   tb.addEventListener("click",()=>{
     document.querySelectorAll(".tab").forEach(x=>x.setAttribute("aria-selected", x===tb?"true":"false"));
