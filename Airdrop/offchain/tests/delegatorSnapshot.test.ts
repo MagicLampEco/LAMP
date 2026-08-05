@@ -41,14 +41,11 @@ async function mintRegistration(
   const kp = await crypto.subtle.generateKey({ name: "Ed25519" }, true, ["sign", "verify"]);
   const pubHex = bytesToHex(new Uint8Array(await crypto.subtle.exportKey("raw", kp.publicKey)));
   const stakeAddr = pubkeyToStakeAddr(pubHex, network);
-  const message = `MAGICLAMP TEST ${pubHex.slice(0, 8)}`;
-  const msgBytes = new TextEncoder().encode(message);
-  const messageHex = bytesToHex(msgBytes);
-  const sigHex = bytesToHex(
-    new Uint8Array(await crypto.subtle.sign({ name: "Ed25519" }, kp.privateKey, msgBytes)),
-  );
 
-  return {
+  // Payload TRƯỚC, message dựng TỪ payload — giống hệt `scripts/delegator_register.ts`.
+  // Nếu dựng message rời khỏi payload thì fixture sẽ luôn trượt lớp (e) và test
+  // không nói lên điều gì về đường thật.
+  const base = {
     version: "1.0",
     stake_address: stakeAddr,
     // payment_address phải là địa chỉ THẬT parse được, payment-cred KEY (spec §3.2).
@@ -59,14 +56,36 @@ async function mintRegistration(
     epochs_active: [500, 501],
     acc_stake_lovelace: "0",
     current_pool_id: null,
-    message,
-    message_hex: messageHex,
-    signature: sigHex,
-    signing_pubkey: pubHex,
     signed_at: "2026-07-30T00:00:00.000Z",
     nonce: "deadbeef",
     network,
     signing_method: "cardano-signer-ed25519",
+    ...overrides,
+  } as DelegatorRegistration;
+
+  const message = [
+    "MAGICLAMP AIRDROP DELEGATOR REGISTRATION v1.0",
+    "",
+    `Stake Address:   ${base.stake_address}`,
+    `Payment Address: ${base.payment_address}`,
+    `Network:         ${base.network}`,
+    `Timestamp:       ${base.signed_at}`,
+    `Nonce:           ${base.nonce}`,
+    `Epochs:          [${(base.epochs_active ?? []).join(", ")}]`,
+    `Acc Stake:       ${base.acc_stake_lovelace} lovelace·epoch`,
+  ].join("\n");
+  const msgBytes = new TextEncoder().encode(message);
+  const messageHex = bytesToHex(msgBytes);
+  const sigHex = bytesToHex(
+    new Uint8Array(await crypto.subtle.sign({ name: "Ed25519" }, kp.privateKey, msgBytes)),
+  );
+
+  return {
+    ...base,
+    message,
+    message_hex: messageHex,
+    signature: sigHex,
+    signing_pubkey: pubHex,
     ...overrides,
   };
 }
@@ -116,6 +135,67 @@ describe("verifyRegistration", () => {
     const v = await verifyRegistration(forged);
     expect(v.ok).toBe(false);
     expect(v.reasons.some((r) => r.includes("KHÔNG khớp stake_address"))).toBe(true);
+  });
+
+  // ── (e) chữ ký RÀNG BUỘC payload — lỗ Tuân báo trên PR #19 ───────────────
+  //
+  // Kịch bản: đăng ký của nạn nhân là công khai. Kẻ tấn công lấy tệp JSON, sửa
+  // ĐÚNG MỘT trường `payment_address` thành ví mình, giữ nguyên message_hex +
+  // signature + signing_pubkey. Trước bản vá: (a) định dạng qua, (b) Ed25519 qua
+  // (message_hex không đổi), (c) pubkey↔stake_address qua (đều là của nạn nhân),
+  // (d) địa chỉ mới vẫn là key-addr hợp lệ ⇒ ok=true ⇒ TOÀN BỘ phần LAMP
+  // delegator của nạn nhân chảy về ví kẻ tấn công.
+  it("từ chối SỬA PAYLOAD SAU KHI KÝ: đổi payment_address, giữ nguyên chữ ký", async () => {
+    const victim = await mintRegistration();
+    const attackerAddr = credentialToAddress(
+      "Preview",
+      keyHashToCredential("de".repeat(28)),
+    );
+    expect(attackerAddr).not.toBe(victim.payment_address);
+
+    const forged = { ...victim, payment_address: attackerAddr };
+    // Chữ ký vẫn hợp lệ trên đúng message cũ — đó chính là chỗ đánh lừa.
+    expect(forged.signature).toBe(victim.signature);
+    expect(forged.message_hex).toBe(victim.message_hex);
+
+    const v = await verifyRegistration(forged);
+    expect(v.ok).toBe(false);
+    expect(v.reasons.join(" ")).toMatch(/Payment Address/);
+  });
+
+  it("từ chối nhét thêm epoch để thổi phồng phần chia", async () => {
+    const reg = await mintRegistration({ epochs_active: [500, 501] });
+    const v = await verifyRegistration({ ...reg, epochs_active: [500, 501, 502, 503] });
+    expect(v.ok).toBe(false);
+    expect(v.reasons.join(" ")).toMatch(/Epochs/);
+  });
+
+  it("từ chối sửa acc_stake_lovelace sau khi ký", async () => {
+    const reg = await mintRegistration({ acc_stake_lovelace: "1000" });
+    const v = await verifyRegistration({ ...reg, acc_stake_lovelace: "999999999" });
+    expect(v.ok).toBe(false);
+    expect(v.reasons.join(" ")).toMatch(/Acc Stake/);
+  });
+
+  it("từ chối khi `message` bị sửa cho khớp payload nhưng message_hex thì không", async () => {
+    // Kẻ tấn công tinh vi hơn: sửa CẢ `message` cho khớp payload đã sửa. Nhưng
+    // `message` nằm NGOÀI chữ ký — nguồn sự thật là message_hex.
+    const reg = await mintRegistration();
+    const attackerAddr = credentialToAddress("Preview", keyHashToCredential("de".repeat(28)));
+    const forged = {
+      ...reg,
+      payment_address: attackerAddr,
+      message: reg.message.replace(reg.payment_address, attackerAddr),
+    };
+    const v = await verifyRegistration(forged);
+    expect(v.ok).toBe(false);
+    expect(v.reasons.join(" ")).toMatch(/Payment Address|message_hex/);
+  });
+
+  it("từ chối message_hex không giải được thành UTF-8", async () => {
+    const reg = await mintRegistration();
+    const v = await verifyRegistration({ ...reg, message_hex: "ff".repeat(10) });
+    expect(v.ok).toBe(false);
   });
 
   it("từ chối định dạng sai (pubkey không phải 64 hex)", async () => {

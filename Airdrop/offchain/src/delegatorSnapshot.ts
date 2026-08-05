@@ -41,6 +41,64 @@ export interface StakeHistoryRow {
   pool_id: string | null;
 }
 
+// ── 0. Ràng buộc chữ ký ↔ payload (nguồn DÙNG CHUNG cho cả Delegator và SPO) ─
+//
+// Chữ ký Ed25519 chỉ chứng minh "người này từng ký MỘT chuỗi nào đó". Nó KHÔNG
+// chứng minh chuỗi đó nói gì. Nếu pipeline đọc `payment_address` từ JSON mà không
+// đối chiếu với chuỗi đã ký, thì: lấy đăng ký công khai của nạn nhân → sửa MỖI
+// `payment_address` → giữ nguyên message_hex + signature + pubkey → mọi lớp kiểm
+// chữ ký/pubkey/lịch sử stake đều qua → toàn bộ phần LAMP của nạn nhân chảy về ví
+// kẻ sửa tệp. Đây là lỗ đã vá cho SPO (`verify_registration.ts` CHECK 5b) — đặt
+// ở đây để hai nhánh dùng CHUNG một cài đặt, không vá lệch lần nữa.
+
+// Khai báo tối giản như `delegatorCrypto.ts`: module này node-free, không kéo @types/node.
+declare const TextDecoder: {
+  new (label: string, opts: { fatal: boolean }): { decode(b: Uint8Array): string };
+};
+
+/** hex → chuỗi UTF-8. Ném lỗi nếu không phải hex chẵn byte. */
+export function hexToUtf8(hex: string): string {
+  const h = (hex ?? "").trim().toLowerCase();
+  if (h.length === 0 || h.length % 2 !== 0 || !/^[0-9a-f]+$/.test(h)) {
+    throw new Error(`không phải chuỗi hex chẵn byte: ${hex}`);
+  }
+  const bytes = new Uint8Array(h.length / 2);
+  for (let i = 0; i < bytes.length; i++) bytes[i] = parseInt(h.slice(i * 2, i * 2 + 2), 16);
+  return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+}
+
+/** Đọc giá trị của dòng `Label: <value>` trong message đã ký (nhãn không chứa ký tự regex). */
+export function messageField(message: string, label: string): string | null {
+  const m = message.match(new RegExp(`^${label}:\\s*(.+)$`, "m"));
+  return m ? m[1]!.trim() : null;
+}
+
+/**
+ * Trường nào của payload KHÔNG khớp message ĐÃ KÝ. Rỗng = chữ ký phủ trọn payload.
+ *
+ * `signedMessage` PHẢI là chuỗi giải từ `message_hex` (thứ thật sự được ký), KHÔNG
+ * phải trường `message` trong JSON — trường đó không nằm trong chữ ký, kẻ tấn công
+ * sửa được để nó "khớp" payload đã sửa.
+ */
+export function boundFieldMismatches(
+  signedMessage: string,
+  bound: [label: string, value: string][],
+): string[] {
+  return bound.filter(([l, v]) => messageField(signedMessage, l) !== v).map(([l]) => l);
+}
+
+/** Các cặp (nhãn trong message, giá trị payload) mà chữ ký delegator PHẢI phủ. */
+export function delegatorBoundFields(reg: DelegatorRegistration): [string, string][] {
+  return [
+    ["Stake Address", reg.stake_address],
+    ["Payment Address", reg.payment_address],
+    ["Network", reg.network],
+    ["Nonce", reg.nonce],
+    ["Epochs", `[${(reg.epochs_active ?? []).join(", ")}]`],
+    ["Acc Stake", `${reg.acc_stake_lovelace} lovelace·epoch`],
+  ];
+}
+
 // ── 1. verify chữ ký + khớp danh tính ──────────────────────────────────────
 
 export interface RegistrationVerdict {
@@ -60,6 +118,9 @@ export interface RegistrationVerdict {
  *       (spec §3.2): owner[28] trong leaf là hash trần, script-addr sinh cùng leaf với
  *       key-addr ⇒ validator ép VerificationKey, lá script không bao giờ claim được.
  *       Loại tại đây để người đăng ký còn kịp khai lại địa chỉ.
+ *   (e) chữ ký RÀNG BUỘC payload — mọi trường pipeline dùng phải nằm TRONG message
+ *       đã ký (giải từ `message_hex`). Không có (e) thì (b) chỉ chứng minh "từng ký
+ *       một chuỗi nào đó": sửa payment_address trong tệp JSON vẫn qua hết (a)-(d).
  * FAIL-CLOSED: bất kỳ điều kiện nào trượt → ok=false, KHÔNG nửa vời.
  * Async vì verify Ed25519 chạy qua WebCrypto subtle (node-free).
  */
@@ -108,6 +169,27 @@ export async function verifyRegistration(
     }
   } catch {
     reasons.push(`payment_address không phân giải được: ${reg.payment_address}`);
+  }
+
+  // (e) chữ ký ràng buộc payload. Nguồn sự thật = chuỗi GIẢI TỪ `message_hex` (thứ
+  // được ký), KHÔNG phải `reg.message` — trường đó nằm ngoài chữ ký.
+  let signedMessage: string | null = null;
+  try {
+    signedMessage = hexToUtf8(reg.message_hex);
+  } catch {
+    reasons.push("message_hex không giải được thành văn bản UTF-8");
+  }
+  if (signedMessage !== null) {
+    const unbound = boundFieldMismatches(signedMessage, delegatorBoundFields(reg));
+    if (unbound.length > 0) {
+      reasons.push(
+        `chữ ký KHÔNG phủ payload — trường lệch message đã ký: ${unbound.join(", ")}`,
+      );
+    }
+    // `message` chỉ để người đọc; lệch với bản đã ký là dấu hiệu tệp bị sửa tay.
+    if (reg.message !== undefined && reg.message !== signedMessage) {
+      reasons.push("trường `message` khác nội dung thật trong message_hex (tệp đã bị sửa)");
+    }
   }
 
   return { ok: reasons.length === 0, derived_stake_address: derived, reasons };
