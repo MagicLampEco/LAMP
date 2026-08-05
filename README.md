@@ -101,8 +101,11 @@ Repo này ưu tiên nói thật hơn nói đẹp:
   nguồn tự khai `BOOTSTRAP: authority = 1 pkh` — một chữ ký chuyển được LAMP ra khỏi kho. Đang giữ
   1.000.000 LAMP (0,0028% tổng cung, chưa phân phối). **Phải thay bằng `treasury.ak` trước khi mint
   thêm giá trị** — xem [`Genesis/kho-a-dest.md`](Genesis/kho-a-dest.md).
-- **`SRCL/` có một lỗi CRITICAL đang mở (S1)** — cửa `Sweep` mở sẵn từ ngày đầu và không đòi chữ
-  ký. **Đừng nạp LAMP thật vào SRCL pot trước khi vá.** Cơ chế + cách vá: [`SRCL/README.md`](SRCL/README.md).
+- **`SRCL/` có BA lỗi CRITICAL đang mở (S1, S2, S3).** S1: cửa `Sweep` mở sẵn từ ngày đầu và
+  không đòi chữ ký. S2: `Sweep` không ràng lovelace và **POOL NFT** — mất NFT là phải deploy
+  lại toàn bộ. S3: `Claim` không cấm đúc tên khác cùng policy ⇒ tái tạo slot, claim lặp.
+  **Đừng nạp LAMP thật vào SRCL pot trước khi vá cả ba.** Cả ba đổi script hash nên phải vá
+  cùng một lượt. Cơ chế + cách vá: [`SRCL/README.md`](SRCL/README.md).
 - **Mã script `lamp_mint` đang chạy trên mainnet chưa được đối chiếu từng byte** với mã nguồn
   trong repo. Việc đó phải xong trước khi mint thêm bất kỳ lượng nào có giá trị.
 - **Chưa module nào ngoài `Genesis/` chạy trên mainnet.** Những chỗ ghi "live Preview" là mạng

@@ -144,6 +144,19 @@ Slot tiêu 1 lần là hết ⇒ cặp `(epoch, owner)` không claim lại đư�
   dịch chết ở epoch 0 (không mất tiền — tiền về Treasury — nhưng delegator hết claim được).
   Test hiện có qua được chỉ vì fixture đặt `validity_range` theo epoch *tương đối*.
   **Cần sửa trước khi nạp LAMP thật vào pot.**
+- ⚠️ **S2 — Sweep rò lovelace + POOL NFT (lỗi mở).** `srcl_pool.ak:194-204` chỉ kiểm phần
+  LAMP, **không ràng lovelace và không ràng POOL NFT**. Sweep quét được cả hai thứ đó ra
+  ngoài. Mất POOL NFT nặng hơn mất lovelace nhiều: NFT là authenticity của pool, mất là
+  **phải deploy lại toàn bộ** — `genesis_ref` mới, policy mới, địa chỉ mới, mọi root đã phát
+  thành vô dụng.
+- ⚠️ **S3 — Tái tạo slot vô hạn (lỗi mở).** `srcl_nft.ak:77-84` không cấm đúc **tên KHÁC**
+  cùng policy trong tx `Claim`. Slot lẽ ra spend-once; kẽ này cho đúc lại slot ⇒ claim lặp.
+  Bản vá đối chiếu có sẵn ở `Airdrop/onchain/validators/airdrop_nft.ak:122-131` (SRCL fork
+  trước bản đó).
+
+> **Ba lỗ trên phải vá CÙNG MỘT LƯỢT** — cả ba đổi script hash, vá lẻ là ba lần deploy.
+> Cơ chế SRCL đã bàn giao cho **Launch agent** (anh Aladin chốt 2026-08-04); `SRCL/` giữ
+> nguyên trong repo này cho tới khi Launch port xong, **không xoá trước**.
 - **Cross-epoch replay**: `epoch` nhúng trong leaf + root mỗi epoch khác nhau → proof
   epoch `e` không dùng lại cho epoch khác.
 - **Cross-campaign / cross-role replay (schema C)**: leaf =
