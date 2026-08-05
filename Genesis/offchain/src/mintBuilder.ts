@@ -5,14 +5,24 @@
 //   - Mint:   Δ oil LAMP qua policy lamp_mint, redeemer DistributionVest|ReserveDraw.
 //   - Output: SupplyState' tại CÙNG script address, mang lại thread NFT, datum cập nhật
 //             (dist_minted hoặc reserve_minted += Δ); + Δ tLAMP trả `recipient`.
-//   - Sign:   authority đúng đường mint (extra_signatories) — caller bảo đảm ví ký.
+//   - Ref:    registry UTxO (mang registry NFT) + kho UTxO (mang kho NFT) — WHO-gate và
+//             A-DEST được validator đọc ĐỘNG qua `tx.reference_inputs`.
+//   - Sign:   authority mà RegistryDatum chỉ định cho `token_tag` (extra_signatories).
 //
-// PHẠM VI: builder này phục vụ đường DistributionVest (gate pubkey-sig). Đường ReserveDraw
-// KHÔNG còn dùng chữ ký — gate onchain đòi tx SPEND meter NFT (= reserve_thread NFT, permissionless).
-// Tx ReserveDraw thật được dựng bởi Reserve/offchain/drawBuilder.ts (co-spend reserve_thread +
-// SupplyState + mint tLAMP qua reserve_draw). KHÔNG dùng builder này cho ReserveDraw.
+// PHẠM VI: builder này phục vụ đường DistributionVest. Đường ReserveDraw KHÔNG dùng chữ
+// ký — gate onchain đòi tx SPEND meter NFT (= reserve_thread NFT, permissionless). Tx
+// ReserveDraw thật được dựng bởi `Reserve/offchain/drawBuilder.ts`. KHÔNG dùng builder này
+// cho ReserveDraw.
 //
 // Invariants ép TRƯỚC khi build (fail-fast offchain qua applyMint): Δ>0, ≤ cap, đúng quota.
+//
+// ⚠ ĐÃ SỬA 2026-08-05 — trước đó builder này KHÔNG dùng được với `lamp_mint` canonical.
+// Nó còn ở hình dạng v1/anchor: chỉ `addSigner(authority)` rồi `pay.ToAddress(recipient)`,
+// KHÔNG có `readFrom`. Validator canonical (`lamp_mint.ak` 12 tham số) đọc **registry** để
+// biết ai được mint và đọc **kho-NFT** để biết A-DEST rót đi đâu, cả hai qua reference
+// input. Thiếu chúng thì `expect` đầu tiên trong validator crash ⇒ MỌI tx dựng bằng builder
+// này đều fail, không tuỳ tham số. Đường chạy thật duy nhất trước bản vá là
+// `scripts/canonical_mint.ts:99` (`.readFrom([regU, khoU])`) — builder nay theo đúng nó.
 //
 // LƯU Ý KIẾN TRÚC: builder KHÔNG tự gắn signature — nó addSigner(authority) để Lucid
 // yêu cầu ví ký. Caller (script/ví) cấp khóa thật. tx.mint thread NFT == 0 (không đụng
@@ -58,13 +68,25 @@ export interface MintParams {
   amount: bigint;
 
   /** Người nhận tLAMP đã mint (bech32 address).
-   *  A-DEST (DistributionVest): PHẢI là địa chỉ KHO Distribution treasury khớp param
-   *  `dist_dest` của lamp_mint — nếu rót về ví cá nhân, validator reject (qty_to_script < Δ).
-   *  Khi treasury cần inline datum: đổi `.pay.ToAddress` → `.pay.ToContract` ở bước wire
-   *  treasury thật (integration phase). */
+   *  A-DEST (DistributionVest): PHẢI là địa chỉ KHO — tức chính địa chỉ đang giữ
+   *  `khoRefUtxo`. Rót về ví cá nhân thì validator reject (qty_to_script < Δ).
+   *  Builder ĐỐI CHIẾU điều này trước khi build (GMB-004) thay vì để hỏng trên chuỗi. */
   recipient: string;
 
-  /** Keyhash authority phải ký (đúng đường mint) — addSigner để Lucid đòi chữ ký. */
+  /** Inline datum đặt kèm output kho (hex CBOR). Kho `treasury.ak` đòi datum hợp lệ;
+   *  bỏ trống thì UTxO kho không spend được — LAMP no-burn ⇒ kẹt vĩnh viễn. */
+  recipientDatum?: string;
+
+  /** Reference input: UTxO mang **registry NFT** — validator đọc RegistryDatum từ đây để
+   *  biết `token_tag` này ai được mint (WHO-gate). Thiếu ⇒ validator crash. */
+  registryRefUtxo: UTxO;
+
+  /** Reference input: UTxO mang **kho NFT** — validator đọc địa chỉ kho từ đây (A-DEST
+   *  động). Thiếu ⇒ validator crash. */
+  khoRefUtxo: UTxO;
+
+  /** Keyhash authority phải ký (đúng đường mint) — addSigner để Lucid đòi chữ ký.
+   *  PHẢI khớp `Authority` mà RegistryDatum gán cho `token_tag`. */
   authoritySigners: string[];
 
   /** min-ADA giữ ở SupplyState output (mặc định 2 tADA). */
@@ -103,8 +125,19 @@ export async function buildMintTx(p: MintParams): Promise<{
   const tlampUnit = toUnit(p.tlampPolicyId, p.tokenName);
   const mintAssets: Assets = { [tlampUnit]: p.amount };
 
+  // GMB-004 (A-DEST): validator đọc địa chỉ kho ĐỘNG từ UTxO mang kho-NFT. Nếu recipient
+  // khác địa chỉ đó thì `qty_to_script < Δ` ⇒ reject. Bắt ở đây, trước khi tốn phí — và
+  // quan trọng hơn: trước khi ai đó tưởng mint thành công rồi đi tìm LAMP ở sai chỗ.
+  if (p.recipient !== p.khoRefUtxo.address) {
+    throw new Error(
+      `GMB-004: recipient (${p.recipient}) KHÁC địa chỉ kho mang kho-NFT ` +
+      `(${p.khoRefUtxo.address}). DistributionVest bắt buộc rót toàn bộ LAMP vào kho ` +
+      `(A-DEST) — validator sẽ từ chối tx này.`,
+    );
+  }
+
   const supplyOutValue = threadNftAssets(p.threadPolicyId, minAda);
-  const recipientValue: Assets = { [tlampUnit]: p.amount };
+  const recipientValue: Assets = { [tlampUnit]: p.amount, lovelace: minAda };
 
   let txb = p.lucid
     .newTx()
@@ -112,12 +145,21 @@ export async function buildMintTx(p: MintParams): Promise<{
     .attach.SpendingValidator(p.supplyStateScript)
     .mintAssets(mintAssets, mintRouteToCbor(p.route))
     .attach.MintingPolicy(p.tlampPolicy)
+    // WHO-gate (registry) + A-DEST (kho) — validator đọc cả hai qua reference input.
+    .readFrom([p.registryRefUtxo, p.khoRefUtxo])
     .pay.ToContract(
       p.supplyStateAddress,
       { kind: "inline", value: supplyStateToCbor(sOut) },
       supplyOutValue,
-    )
-    .pay.ToAddress(p.recipient, recipientValue);
+    );
+
+  txb = p.recipientDatum === undefined
+    ? txb.pay.ToAddress(p.recipient, recipientValue)
+    : txb.pay.ToContract(
+        p.recipient,
+        { kind: "inline", value: p.recipientDatum },
+        recipientValue,
+      );
 
   for (const kh of p.authoritySigners) {
     txb = txb.addSignerKey(kh);
