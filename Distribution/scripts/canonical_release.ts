@@ -25,12 +25,33 @@ const MS_EPOCH = 432_000_000n;                  // KHỚP canonical_mint
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const norm = (h: string) => (h.startsWith("0x") ? h.slice(2) : h).toLowerCase();
 
-async function gCode(mod: string, title: string) {
+/** Một validator trong blueprint + SỐ tham số nó khai — dùng để chặn apply thiếu param. */
+interface BpValidator { title: string; compiledCode: string; nParams: number }
+
+async function gCode(mod: string, title: string): Promise<BpValidator> {
   const bp = JSON.parse(await readFile(resolve(__dirname, `../../${mod}/onchain/plutus.json`), "utf8"));
-  const v = (bp.validators as { title: string; compiledCode: string }[]).find((x) => x.title === title);
-  if (!v) throw new Error(`${title} not found`); return v.compiledCode;
+  const v = (bp.validators as { title: string; compiledCode: string; parameters?: unknown[] }[])
+    .find((x) => x.title === title);
+  if (!v) throw new Error(`${title} not found`);
+  return { title, compiledCode: v.compiledCode, nParams: (v.parameters ?? []).length };
 }
-const applyV = (code: string, p: unknown[]): Validator => ({ type: "PlutusV3", script: applyParamsToScript(code, p as never) });
+
+/**
+ * Apply param + ÉP đủ số tham số blueprint khai.
+ * `applyParamsToScript` KHÔNG báo lỗi khi thiếu param — nó apply một phần và trả về một
+ * script hash KHÁC, im lặng. Script này trỏ vào deployment đã có, nên sai hash = gửi tiền
+ * vào địa chỉ trống. Thêm param vào validator (vd `treasury_nft_policy`) phải làm hỏng ở
+ * ĐÂY, ngay lúc chạy, chứ không phải hỏng trên chuỗi.
+ */
+const applyV = (v: BpValidator, p: unknown[]): Validator => {
+  if (p.length !== v.nParams) {
+    throw new Error(
+      `APPLY-001: ${v.title} khai ${v.nParams} tham số, script này truyền ${p.length}. ` +
+      `Validator đã đổi — cập nhật danh sách tham số (và địa chỉ deploy) trước khi chạy tiếp.`,
+    );
+  }
+  return { type: "PlutusV3", script: applyParamsToScript(v.compiledCode, p as never) };
+};
 const epochNow = async () => (await tipPosixMs()) / MS_EPOCH;
 
 async function main() {

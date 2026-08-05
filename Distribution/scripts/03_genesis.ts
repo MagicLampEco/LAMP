@@ -18,11 +18,13 @@
 // v2 BỎ hoàn toàn: Randomness/MerkleRoot beacon, nonce, claimed_cumulative/redeemed_cumulative.
 
 import {
-  Data, toUnit as lucidToUnit, getAddressDetails,
+  Data, Constr, toUnit as lucidToUnit, getAddressDetails,
 } from "@lucid-evolution/lucid";
 import {
-  NETWORK, DROP_ASSET_NAME,
+  NETWORK, DROP_ASSET_NAME, TREASURY_NFT_ASSET_NAME,
   makeLucid, walletPkh, nativeSigPolicy, nativeSigPolicyId,
+  beaconNftPolicyFromRef, beaconNftPolicyIdFromRef,
+  treasuryNftPolicyFromRef, treasuryNftPolicyIdFromRef,
   loadDeployed, saveDeployed, toUnit, explorerTx, awaitTx, currentEpoch,
 } from "./config.js";
 import {
@@ -79,9 +81,59 @@ async function main(): Promise<void> {
   console.log(`Ví B (PKH):   ${b.pkh}  (${b.real ? "ví thật" : "placeholder — chỉ demo account"})`);
   console.log();
 
-  const nftPolicyId = state.beaconNftPolicy ?? nativeSigPolicyId(aPkh);
-  const nftPolicy   = nativeSigPolicy(aPkh);
-  const lampUnit    = toUnit(state.testLamp.policyId, state.testLamp.assetName);
+  // ── Resolve beacon NFT minting policy theo mode đã chốt ở 01 ──
+  // oneshot: Aiken beacon_nft, policy parameterized bởi genesis_ref → mint PHẢI consume
+  //          đúng UTxO đó (supply 1 tuyệt đối). native-sig: MVP fallback Preview.
+  const mode = state.beaconNftMode ?? "native-sig";
+  let nftPolicy: import("@lucid-evolution/lucid").MintingPolicy;
+  let nftPolicyId: string;
+  let oneshotRef: import("./config.js").GenesisRef | undefined;
+
+  if (mode === "oneshot") {
+    if (!state.beaconNftGenesisRef) {
+      throw new Error(
+        "beaconNftMode=oneshot nhưng thiếu beaconNftGenesisRef trong deployed.json — chạy lại 01_deploy.",
+      );
+    }
+    oneshotRef = state.beaconNftGenesisRef;
+    nftPolicy   = await beaconNftPolicyFromRef(oneshotRef);
+    nftPolicyId = await beaconNftPolicyIdFromRef(oneshotRef);
+    // policy id PHẢI khớp cái 01 đã bake vào claim_account/beacon, nếu không → desync.
+    const baked = state.params.beaconNftPolicy;
+    if (nftPolicyId !== baked) {
+      throw new Error(
+        `beacon_nft one-shot desync: re-apply genesis_ref ra policy ${nftPolicyId} ` +
+        `≠ baked ${baked}. genesis_ref/blueprint đã đổi — chạy lại 01_deploy.`,
+      );
+    }
+  } else {
+    if (NETWORK === "Mainnet") {
+      throw new Error("Mainnet KHÔNG cho beacon NFT native-sig (re-mint được). Chạy 01_deploy one-shot.");
+    }
+    nftPolicy   = nativeSigPolicy(aPkh);
+    nftPolicyId = state.beaconNftPolicy ?? nativeSigPolicyId(aPkh);
+  }
+  const lampUnit = toUnit(state.testLamp.policyId, state.testLamp.assetName);
+
+  // ── Treasury authenticity NFT (TRSY) ONE-SHOT ────────────────
+  // policyId đã bake vào claim_account ở 01 (param 7); ở đây re-derive từ genesis_ref
+  // rồi mint TRSY consume đúng UTxO đó. Desync → fail-closed.
+  if (!state.treasuryNftGenesisRef) {
+    throw new Error(
+      "thiếu treasuryNftGenesisRef trong deployed.json — chạy lại 01_deploy " +
+      "(bản mới luôn bake treasury_nft one-shot).",
+    );
+  }
+  const treasuryNftRef    = state.treasuryNftGenesisRef;
+  const treasuryNftPolicy = await treasuryNftPolicyFromRef(treasuryNftRef);
+  const treasuryNftPolId  = await treasuryNftPolicyIdFromRef(treasuryNftRef);
+  if (treasuryNftPolId !== state.params.treasuryNftPolicy) {
+    throw new Error(
+      `treasury_nft one-shot desync: re-apply genesis_ref ra policy ${treasuryNftPolId} ` +
+      `≠ baked ${state.params.treasuryNftPolicy}. Chạy lại 01_deploy.`,
+    );
+  }
+  const trsyNft = lucidToUnit(treasuryNftPolId, TREASURY_NFT_ASSET_NAME);
 
   // committee_hash MVP = keyhash[0] (xem ghi chú đầu file).
   const committeeHash = state.committee.keyHashes[0]!;
@@ -92,8 +144,11 @@ async function main(): Promise<void> {
   // ── beacon datum: DropParam{epoch, D} ────────────────────────
   const dropDatum = beaconDatumToCbor({ epoch, kind: "DropParam", drop_value: DROP_VALUE });
 
-  // ── treasury datum ───────────────────────────────────────────
-  const trDatum = treasuryDatumToCbor({ committee_hash: committeeHash });
+  // ── treasury datum (sổ cái solvency khởi tạo cumulative_entitlement = 0) ──
+  const trDatum = treasuryDatumToCbor({
+    committee_hash: committeeHash,
+    cumulative_entitlement: 0n,
+  });
 
   // ── claim account datums v2 (genesis empty: entitlement=0, redeemed=0) ──
   const accA = claimAccountDatumToCbor({
@@ -114,17 +169,52 @@ async function main(): Promise<void> {
   }
   console.log();
 
-  // ── 1 tx: mint 1 NFT + tạo 4 output ──────────────────────────
-  const tx = await lucid
-    .newTx()
-    .mintAssets({ [dropNft]: 1n }, Data.void())
-    .attach.MintingPolicy(nftPolicy)
+  // ── 1 tx: mint 2 NFT (DROP beacon + TRSY treasury) + tạo 4 output ──
+  // one-shot: redeemer MintGenesis = Constr(0, []), và PHẢI consume đúng genesis_ref
+  //           (validator ép `list.any(inputs, == genesis_ref)`).
+  // native-sig (beacon fallback Preview): Data.void(), không cần consume ref cụ thể.
+  // treasury_nft LUÔN one-shot → luôn consume treasuryNftGenesisRef.
+  const MINT_GENESIS = Data.to(new Constr(0, [])); // MintGenesis (one-shot)
+  let txb = lucid.newTx();
+
+  // Gom các genesis_ref one-shot PHẢI consume (dedupe theo txHash#index).
+  const refsToCollect = new Map<string, { txHash: string; outputIndex: number }>();
+  if (mode === "oneshot" && oneshotRef) {
+    refsToCollect.set(`${oneshotRef.txHash}#${oneshotRef.outputIndex}`, oneshotRef);
+  }
+  refsToCollect.set(
+    `${treasuryNftRef.txHash}#${treasuryNftRef.outputIndex}`,
+    { txHash: treasuryNftRef.txHash, outputIndex: treasuryNftRef.outputIndex },
+  );
+  if (refsToCollect.size > 0) {
+    const refList = [...refsToCollect.values()];
+    const refUtxos = await lucid.utxosByOutRef(refList);
+    if (refUtxos.length !== refList.length) {
+      throw new Error(
+        `genesis_ref one-shot không còn đủ (đã spend?): cần ${refList.length}, ` +
+        `tìm thấy ${refUtxos.length}. Policy đã bake ref này — chạy lại 01_deploy.`,
+      );
+    }
+    txb = txb.collectFrom(refUtxos);
+  }
+
+  // Mint beacon DROP NFT.
+  txb = (mode === "oneshot" && oneshotRef)
+    ? txb.mintAssets({ [dropNft]: 1n }, MINT_GENESIS).attach.MintingPolicy(nftPolicy)
+    : txb.mintAssets({ [dropNft]: 1n }, Data.void()).attach.MintingPolicy(nftPolicy);
+
+  // Mint treasury TRSY NFT (one-shot, MintGenesis). NFT này gắn vào treasury UTxO bên dưới.
+  txb = txb
+    .mintAssets({ [trsyNft]: 1n }, MINT_GENESIS)
+    .attach.MintingPolicy(treasuryNftPolicy);
+
+  const tx = await txb
     // 1 beacon UTxO (DropParam)
     .pay.ToAddressWithData(state.beacon.address, { kind: "inline", value: dropDatum },
       { lovelace: BEACON_MIN_ADA, [dropNft]: 1n })
-    // treasury UTxO (pool LAMP)
+    // treasury UTxO (pool LAMP + TRSY authenticity NFT)
     .pay.ToAddressWithData(state.treasury.address, { kind: "inline", value: trDatum },
-      { lovelace: TREASURY_MIN_ADA, [lampUnit]: TREASURY_FUND })
+      { lovelace: TREASURY_MIN_ADA, [lampUnit]: TREASURY_FUND, [trsyNft]: 1n })
     // 2 claim account UTxO (empty)
     .pay.ToAddressWithData(state.claimAccount.address, { kind: "inline", value: accA },
       { lovelace: ACCOUNT_MIN_ADA })

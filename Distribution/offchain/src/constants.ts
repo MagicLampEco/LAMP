@@ -12,3 +12,6 @@ export const DEFAULT_DROPS_PER_EPOCH = 1n;
  * D là THAM SỐ đọc từ beacon, KHÔNG hardcode trong validator — đây chỉ là default tiện dụng.
  */
 export const D_GENESIS = 100_000_000n; // 100 LAMP/drop·epoch
+
+/** Asset-name hex treasury authenticity NFT — PHẢI khớp onchain util.treasury_nft_name. */
+export const TREASURY_NFT_ASSET_NAME = "54525359"; // "TRSY"
