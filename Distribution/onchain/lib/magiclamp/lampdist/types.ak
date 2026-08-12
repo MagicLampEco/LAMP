@@ -39,21 +39,24 @@ pub type BeaconRedeemer {
 }
 
 /// Treasury UTxO giữ LAMP pool (QĐ7) + sổ cái solvency.
-/// `cumulative_entitlement` = tổng dồn MỌI entitlement đã cấp (qua Claim) suốt vòng đời.
-/// Đơn điệu tăng, KHÔNG giảm khi redeem (redeem chỉ rút từ LAMP pool). Bất biến on-chain:
-///   cumulative_entitlement ≤ treasury_lamp (pool) — ép tại mỗi Claim co-spend treasury.
-/// Vì redeemed ≤ entitlement luôn đúng → Σ(E − redeemed) ≤ Σ E = cumulative_entitlement ≤ pool.
-/// → quỹ luôn over-collateralized, redeem KHÔNG bao giờ kẹt vì cạn pool.
-/// NOTE: field MỚI ở CUỐI (giữ Constr index cũ cho field đầu — backward compatible decode).
+/// `outstanding_entitlement` = SỐ CÒN NỢ người dùng = Σ(entitlement − redeemed) toàn hệ
+/// thống, serial-hoá qua treasury singleton. TĂNG khi grant (+granted), GIẢM khi redeem
+/// (−released) — hai vế đi cặp với pool. Bất biến on-chain, ép tại mỗi Claim:
+///   outstanding_entitlement ≤ treasury_lamp (pool)  ⇒ quỹ luôn đủ trả, redeem không kẹt.
+/// ⚠ 2026-08-12: trước đây trường này tên `cumulative_entitlement` và mang nghĩa TỔNG CẤP
+/// SUỐT VÒNG ĐỜI (bất biến khi redeem). Sai: pool giảm mỗi redeem còn sổ cái thì không,
+/// nên `≤ pool` siết dần đến BẾ TẮC — không cấp thêm được dù quỹ không nợ ai. Xem ghi chú
+/// đầy đủ ở đầu `validators/treasury.ak`.
+/// NOTE: field ở CUỐI (giữ Constr index cũ cho field đầu — backward compatible decode).
 pub type TreasuryDatum {
   committee_hash        : ByteArray,
-  cumulative_entitlement: Int,        // oil — sổ cái solvency (field mới, ở cuối)
+  outstanding_entitlement: Int,        // oil — sổ cái CÒN NỢ (field mới, ở cuối)
 }
 
 pub type TreasuryRedeemer {
-  // release LAMP cho các Redeem trong cùng tx (giảm pool đúng redeemed delta)
+  // release LAMP cho các Redeem trong cùng tx (pool ↓ và sổ cái nợ ↓, ĐÚNG redeemed delta)
   ReleaseForRedeem
-  // committee cấp entitlement: pool LAMP bất biến, cumulative_entitlement += granted,
-  // ép cumulative_entitlement_out ≤ treasury_lamp (solvency on-chain).
+  // committee cấp entitlement: pool LAMP bất biến, sổ cái nợ += granted,
+  // ép outstanding_entitlement_out ≤ treasury_lamp (solvency on-chain).
   GrantEntitlement
 }

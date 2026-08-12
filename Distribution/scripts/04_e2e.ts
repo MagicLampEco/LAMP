@@ -164,7 +164,7 @@ async function main(): Promise<void> {
   await ensureCollateral(lucid);
 
   // SOLVENCY co-spend (C-SOLV-*): mỗi Claim spend treasury (GrantEntitlement) →
-  // cumulative_entitlement += amount ≤ pool. Treasury UTxO canonical mang NFT TRSY.
+  // outstanding_entitlement += amount ≤ pool. Treasury UTxO canonical mang NFT TRSY.
   const accA0 = await findClaimAccount(lucid, state.claimAccount.address, aPkh);
   const treA  = await findTreasury(lucid, state.treasury.address, trsyUnit);
   const claimA = await buildClaimTx({

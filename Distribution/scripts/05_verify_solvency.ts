@@ -5,11 +5,14 @@
 // MAINNET-BLOCK (solvency): Committee cấp entitlement E qua Claim ĐỘC LẬP với số dư
 // treasury. Nếu Σ(E − redeemed) > treasury LAMP → quỹ under-collateralized → người
 // redeem sau bị kẹt vốn (first-come-first-served). On-chain ĐÃ ép bất biến này
-// (treasury.ak C-SOLV-2): mỗi GrantEntitlement buộc cumulative_entitlement += amount và
-// cumulative_entitlement ≤ treasury pool LAMP, qua sổ cái singleton NFT "TRSY". Vì
-// redeemed ≤ entitlement luôn đúng → Σ(E − redeemed) ≤ cum ≤ pool. Script này KHÔNG
-// còn là chốt duy nhất — nó là kiểm tra VẬN HÀNH độc lập (defense-in-depth):
-// query treasury + MỌI ClaimAccount, assert treasury_lamp ≥ Σ(entitlement − redeemed).
+// (treasury.ak C-SOLV-2): sổ cái singleton `outstanding_entitlement` (NFT "TRSY") tăng
+// += granted mỗi grant, giảm −= released mỗi redeem, và LUÔN bị ép ≤ treasury pool LAMP.
+// Sổ cái ĐÚNG BẰNG Σ(E − redeemed) nên script này và on-chain nói CÙNG một con số —
+// đó là điểm của bản vá 2026-08-12: trước đó on-chain đếm TỔNG CẤP lịch sử còn script
+// này đếm CÒN NỢ, hai bên lệch nhau vĩnh viễn sau đợt redeem đầu tiên (builder dựng
+// được tx mà validator từ chối). Script KHÔNG còn là chốt duy nhất — nó là kiểm tra
+// VẬN HÀNH độc lập (defense-in-depth): query treasury + MỌI ClaimAccount, assert
+// treasury_lamp ≥ Σ(entitlement − redeemed), VÀ đối chiếu với sổ cái on-chain.
 //
 // Dùng: (1) chạy + PASS trước khi mở Claim trên mainnet (sanity ngoài on-chain guard);
 //        (2) monitor định kỳ; (3) sau mỗi đợt Claim/fund.
@@ -19,7 +22,7 @@
 import { Data } from "@lucid-evolution/lucid";
 import { decodeClaimAccountDatum } from "../offchain/src/datum.js";
 import { decodeTreasuryDatum } from "../offchain/src/datum.js";
-import type { ClaimAccountDatum } from "../offchain/src/types.js";
+import type { ClaimAccountDatum, TreasuryDatum } from "../offchain/src/types.js";
 import { NETWORK, makeLucid, loadDeployed, toUnit } from "./config.js";
 
 async function main(): Promise<void> {
@@ -34,11 +37,15 @@ async function main(): Promise<void> {
   const treasuryUtxos = await lucid.utxosAt(state.treasury.address);
   let treasuryLamp = 0n;
   let treasuryCount = 0;
+  let ledgerOutstanding: bigint | undefined;
   for (const u of treasuryUtxos) {
     if (!u.datum) continue;
-    try { decodeTreasuryDatum(Data.from(u.datum)); } catch { continue; }
+    let td: TreasuryDatum;
+    try { td = decodeTreasuryDatum(Data.from(u.datum)); } catch { continue; }
     treasuryLamp += u.assets[lampUnit] ?? 0n;
     treasuryCount += 1;
+    // Sổ cái on-chain (treasury là singleton nên chỉ có 1 UTxO mang datum hợp lệ).
+    ledgerOutstanding = (ledgerOutstanding ?? 0n) + td.outstanding_entitlement;
   }
 
   // ── Σ(entitlement − redeemed) trên MỌI ClaimAccount ─────────
@@ -59,6 +66,22 @@ async function main(): Promise<void> {
   console.log(`ClaimAccount UTxOs: ${accCount}`);
   console.log(`Σ(E − redeemed):    ${outstanding} oil = ${outstanding / 1_000_000n} LAMP`);
   console.log();
+
+  // ── ĐỐI CHIẾU sổ cái on-chain với tổng đếm được ─────────────
+  // Chỉ có nghĩa từ bản vá 2026-08-12 (sổ cái = CÒN NỢ). Lệch ⇒ hoặc script này bỏ sót
+  // ClaimAccount, hoặc một tx đã ghi sổ sai — cả hai đều phải dừng trước khi mở Claim.
+  if (ledgerOutstanding === undefined) {
+    console.error("❌ không tìm thấy treasury UTxO nào mang TreasuryDatum hợp lệ.");
+    process.exit(1);
+  }
+  console.log(`Sổ cái on-chain:    ${ledgerOutstanding} oil`);
+  if (ledgerOutstanding !== outstanding) {
+    console.error(
+      `❌ LỆCH SỔ: on-chain ${ledgerOutstanding} oil ≠ Σ(E − redeemed) ${outstanding} oil ` +
+      `(chênh ${ledgerOutstanding - outstanding}). Sổ cái phải BẰNG tổng còn nợ.`,
+    );
+    process.exit(1);
+  }
 
   const margin = treasuryLamp - outstanding;
   if (margin < 0n) {

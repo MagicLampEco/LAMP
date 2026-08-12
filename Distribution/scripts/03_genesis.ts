@@ -144,10 +144,10 @@ async function main(): Promise<void> {
   // ── beacon datum: DropParam{epoch, D} ────────────────────────
   const dropDatum = beaconDatumToCbor({ epoch, kind: "DropParam", drop_value: DROP_VALUE });
 
-  // ── treasury datum (sổ cái solvency khởi tạo cumulative_entitlement = 0) ──
+  // ── treasury datum (sổ cái solvency khởi tạo outstanding_entitlement = 0) ──
   const trDatum = treasuryDatumToCbor({
     committee_hash: committeeHash,
-    cumulative_entitlement: 0n,
+    outstanding_entitlement: 0n,
   });
 
   // ── claim account datums v2 (genesis empty: entitlement=0, redeemed=0) ──

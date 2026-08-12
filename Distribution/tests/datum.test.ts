@@ -142,17 +142,17 @@ describe("BeaconDatum (DropParam{D})", () => {
 describe("TreasuryDatum", () => {
   const sample: TreasuryDatum = {
     committee_hash: "deadbeef".repeat(4),
-    cumulative_entitlement: 123_456_789n,
+    outstanding_entitlement: 123_456_789n,
   };
 
   it("round-trips via CBOR", () => {
     expect(treasuryDatumFromCbor(treasuryDatumToCbor(sample))).toEqual(sample);
   });
 
-  it("Constr(0, [bytes, int]) — cumulative_entitlement ở CUỐI", () => {
+  it("Constr(0, [bytes, int]) — outstanding_entitlement ở CUỐI", () => {
     const c = asConstr(treasuryDatumToCbor(sample));
     expect(c.index).toBe(0);
-    expect(c.fields).toEqual([sample.committee_hash, sample.cumulative_entitlement]);
+    expect(c.fields).toEqual([sample.committee_hash, sample.outstanding_entitlement]);
   });
 
   it("decode object form matches", () => {

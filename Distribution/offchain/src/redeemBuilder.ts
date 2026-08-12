@@ -159,11 +159,12 @@ export async function buildRedeemTx(params: RedeemParams): Promise<RedeemResult>
     start_epoch:     claim.start_epoch,
     drops_per_epoch: claim.drops_per_epoch,
   };
-  // Treasury': committee_hash + cumulative_entitlement bảo toàn (C-TRE-2 / C-SOLV-3).
-  // Redeem CHỈ giảm pool LAMP — sổ cái cumulative_entitlement BẤT BIẾN.
+  // Treasury': committee_hash bảo toàn (C-TRE-2); sổ cái nợ GIẢM ĐÚNG `amount` cùng nhịp
+  // với pool (C-SOLV-3). Redeem = TRẢ NỢ, nên cả hai vế đi cặp — nếu chỉ pool giảm mà sổ
+  // cái đứng yên thì `nợ ≤ pool` siết dần tới bế tắc grant (xem đầu `treasury.ak`).
   const newTreasuryDatum: TreasuryDatum = {
     committee_hash:         treasury.committee_hash,
-    cumulative_entitlement: treasury.cumulative_entitlement,
+    outstanding_entitlement: treasury.outstanding_entitlement - amount,
   };
 
   // ── Output assets: bảo toàn TẤT CẢ (audit dust lesson, C-VAL-0) ────

@@ -23,7 +23,7 @@ import { Data } from "@lucid-evolution/lucid";
 import {
   NETWORK, DROP_ASSET_NAME, MS_PER_EPOCH,
   makeLucid, walletPkh, loadDeployed, reapplyValidators,
-  toUnit, explorerTx, awaitTx, currentEpoch,
+  toUnit, explorerTx, awaitTx, currentEpoch, TREASURY_NFT_ASSET_NAME,
 } from "./config.js";
 import {
   decodeClaimAccountDatum, claimAccountDatumToCbor,
@@ -140,11 +140,20 @@ async function main(): Promise<void> {
   // ── b. CLAIM — committee cấp entitlement 0 → E_i ──
   console.log("\n── b. Claim (committee cấp E_i, drops/epoch bất biến) ──");
   const acc0 = await findAccountByOwnerStart(lucid, state.claimAccount.address, aPkh, cliff);
+  // Treasury co-spend BẮT BUỘC (C-SOLV-1): sổ cái nợ += E_i, ép ≤ pool. UTxO phải mang TRSY.
+  const trsyUnit = toUnit(state.params.treasuryNftPolicy, TREASURY_NFT_ASSET_NAME);
+  const treasuryClaimU = (await lucid.utxosAt(state.treasury.address))
+    .find((x) => (x.assets[trsyUnit] ?? 0n) === 1n);
+  if (!treasuryClaimU) throw new Error("không tìm thấy treasury UTxO mang NFT TRSY");
   const claimTx = await buildClaimTx({
     lucid, claimScript, network: NETWORK,
     ownerPkh: aPkh, amount: E_i, currentEpoch: epoch,
     claimAccountUtxo: acc0,
     committeeKeyHashes: committee, threshold, validFromMs,
+    treasury: {
+      utxo: treasuryClaimU, script: treasuryScript,
+      nftPolicy: state.params.treasuryNftPolicy, nftAssetName: TREASURY_NFT_ASSET_NAME,
+    },
   });
   console.log(claimTx.summary);
   await submit(lucid, claimTx.tx, "claim E_i");

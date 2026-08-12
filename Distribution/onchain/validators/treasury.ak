@@ -1,11 +1,26 @@
 // DistributionTreasury validator (SPEC §QĐ7, C-TRE-1/2, C-SOLV-*).
-// Giữ LAMP pool + sổ cái solvency `cumulative_entitlement`. 2 redeemer:
-//   ReleaseForRedeem — release đúng `released` cho mỗi Redeem cùng tx (pool ↓, cum bất biến).
+// Giữ LAMP pool + sổ cái solvency `outstanding_entitlement` = SỐ CÒN NỢ người dùng
+// = Σ(entitlement − redeemed) toàn hệ thống. 2 redeemer:
+//   ReleaseForRedeem — trả nợ: pool ↓ `released` VÀ sổ cái ↓ `released` (đi cặp).
 //     KHÔNG cần committee — gate bởi 1 Redeem hợp lệ (đã verify vested ở claim_account).
 //   GrantEntitlement — committee cấp E qua Claim cùng tx: pool LAMP BẤT BIẾN,
-//     cumulative_entitlement += granted, ép cumulative_entitlement_out ≤ pool (SOLVENCY).
-//     Treasury là singleton (1-in/1-out theo script hash) → cum là sổ cái toàn cục
-//     serial-hoá MỌI Claim → bất biến global Σ(E−redeemed) ≤ pool ép được PER-TX.
+//     sổ cái += granted, ép outstanding_entitlement_out ≤ pool (SOLVENCY).
+//     Treasury là singleton (1-in/1-out theo script hash) → sổ cái là biến toàn cục
+//     serial-hoá MỌI Claim/Redeem → bất biến Σ(E−redeemed) ≤ pool ép được PER-TX.
+//
+// ⚠ SỬA 2026-08-12 — NGỮ NGHĨA SỔ CÁI (review PR #22, điểm 1).
+// Bản đầu đặt sổ cái là `cumulative_entitlement` = TỔNG CẤP SUỐT VÒNG ĐỜI: chỉ tăng khi
+// grant, BẤT BIẾN khi redeem. Nhưng pool thì GIẢM mỗi lần redeem, mà C-SOLV-2 lại so sổ
+// cái với pool HIỆN TẠI ⇒ mỗi lần redeem lại siết cửa grant thêm một nấc, không có đường
+// lùi (không mệnh đề nào cho sổ cái giảm).
+// Hệ quả không phải bất tiện mà là BẾ TẮC: quỹ đã cấp 5000, người dùng rút hết 5000
+// (nợ = 0), nạp lại 5000 LAMP — cấp thêm 1 đồng vẫn BỊ TỪ CHỐI vì 5000+1 > 5000. Quy ra
+// phân phối thật, lần cấp CUỐI đòi pool ≥ 26,37 tỷ LAMP tại đúng thời điểm đó, trong khi
+// mọi redeem trước đã rút LAMP ra khỏi quỹ — cung cố định nên KHÔNG nạp bù được.
+// Tính chất an toàn muốn có (Σ(E−redeemed) ≤ pool) vốn đã được bảo toàn bởi phép kiểm
+// YẾU HƠN: chỉ cần sổ cái theo dõi CÒN NỢ thay vì TỔNG CẤP. Nay đổi đúng thế, và đổi luôn
+// TÊN trường (`cumulative_` → `outstanding_`) vì chính cái tên sai đã dẫn tới bất biến sai.
+// Đổi lại: sổ cái không còn là "tổng đã cấp lịch sử" — muốn con số đó thì cộng off-chain.
 
 use aiken/collection/list
 use cardano/assets
@@ -68,8 +83,14 @@ validator treasury(
         let released = ca_out.redeemed - ca_in.redeemed
         expect released > 0
 
-        // C-SOLV-3: sổ cái cumulative_entitlement BẤT BIẾN khi redeem (chỉ pool ↓).
-        expect out_datum.cumulative_entitlement == datum.cumulative_entitlement
+        // C-SOLV-3: redeem trả nợ ⇒ sổ cái GIẢM ĐÚNG `released`, song hành với pool.
+        // (Bản đầu ép sổ cái BẤT BIẾN ở đây — xem ghi chú "SỬA 2026-08-12" đầu file: đó
+        // chính là nguồn của bế tắc grant. Pool giảm mà sổ cái đứng yên thì `≤ pool` siết
+        // dần tới mức không cấp được nữa dù quỹ không nợ ai.)
+        expect out_datum.outstanding_entitlement == datum.outstanding_entitlement - released
+
+        // Sổ cái không bao giờ âm — chốt số học, cũng là canh cho `released` không vượt nợ.
+        expect out_datum.outstanding_entitlement >= 0
 
         // C-TRE-1 + C-VAL-0: output == input value với LAMP giảm ĐÚNG released.
         // Bảo toàn TUYỆT ĐỐI mọi asset khác (ADA, token) — chống drain ADA (audit M1).
@@ -110,12 +131,12 @@ validator treasury(
         let granted = ca_out.entitlement - ent_in
         expect granted > 0
 
-        // C-SOLV-1: cumulative_entitlement += granted (sổ cái dồn đúng amount cấp).
-        expect out_datum.cumulative_entitlement == datum.cumulative_entitlement + granted
+        // C-SOLV-1: outstanding_entitlement += granted (sổ cái dồn đúng amount cấp).
+        expect out_datum.outstanding_entitlement == datum.outstanding_entitlement + granted
 
-        // C-SOLV-2 (BẤT BIẾN SOLVENCY): cumulative_entitlement_out ≤ pool LAMP.
+        // C-SOLV-2 (BẤT BIẾN SOLVENCY): outstanding_entitlement_out ≤ pool LAMP.
         // Quỹ KHÔNG cấp E vượt số dư → redeem không bao giờ kẹt vì cạn pool.
-        expect out_datum.cumulative_entitlement <= pool_in
+        expect out_datum.outstanding_entitlement <= pool_in
 
         // C-VAL-0: pool LAMP + mọi asset BẤT BIẾN khi grant (chỉ datum đổi).
         expect tre_out.value == tre_in.value
@@ -163,7 +184,7 @@ const tt_committee: List<ByteArray> = [#"c1", #"c2", #"c3"]
 const tt_threshold: Int = 2
 
 fn tt_tre_d(cum: Int) -> TreasuryDatum {
-  TreasuryDatum { committee_hash: #"cccc", cumulative_entitlement: cum }
+  TreasuryDatum { committee_hash: #"cccc", outstanding_entitlement: cum }
 }
 
 fn tt_ca_d(entitlement: Int, redeemed: Int) -> ClaimAccountDatum {
@@ -216,8 +237,8 @@ fn release(cum_in: Int, tx: Transaction) -> Bool {
 }
 
 test treasury_happy() {
-  // released = 100; treasury LAMP 1000 → 900, ADA giữ nguyên, cum bất biến.
-  release(500, release_tx(tt_lamp_val(5_000_000, 1000), tt_lamp_val(5_000_000, 900), 500, 500, 0, 100, []))
+  // released = 100; treasury LAMP 1000 → 900, ADA giữ nguyên, sổ cái nợ 500 → 400.
+  release(500, release_tx(tt_lamp_val(5_000_000, 1000), tt_lamp_val(5_000_000, 900), 500, 400, 0, 100, []))
 }
 
 test treasury_double_release() fail {
@@ -225,12 +246,12 @@ test treasury_double_release() fail {
   let tre_addr2 = util.script_address_staked(tt_tre_sh, #"5742")
   let extra =
     util.mk_input(util.mk_ref(9), util.mk_output(tre_addr2, tt_lamp_val(5_000_000, 1000), tt_tre_d(500)))
-  release(500, release_tx(tt_lamp_val(5_000_000, 1000), tt_lamp_val(5_000_000, 900), 500, 500, 0, 100, [extra]))
+  release(500, release_tx(tt_lamp_val(5_000_000, 1000), tt_lamp_val(5_000_000, 900), 500, 400, 0, 100, [extra]))
 }
 
 test treasury_ada_drain() fail {
   // M1: LAMP delta đúng nhưng rút bớt ADA (5M→2M) → value sai → reject
-  release(500, release_tx(tt_lamp_val(5_000_000, 1000), tt_lamp_val(2_000_000, 900), 500, 500, 0, 100, []))
+  release(500, release_tx(tt_lamp_val(5_000_000, 1000), tt_lamp_val(2_000_000, 900), 500, 400, 0, 100, []))
 }
 
 test treasury_zero_release() fail {
@@ -238,9 +259,27 @@ test treasury_zero_release() fail {
   release(500, release_tx(tt_lamp_val(5_000_000, 1000), tt_lamp_val(5_000_000, 1000), 500, 500, 100, 100, []))
 }
 
-test treasury_release_tampers_cum() fail {
-  // C-SOLV-3: redeem KHÔNG được sửa cumulative_entitlement (sổ cái chỉ tăng khi grant).
-  release(500, release_tx(tt_lamp_val(5_000_000, 1000), tt_lamp_val(5_000_000, 900), 500, 400, 0, 100, []))
+test treasury_release_ledger_frozen_fails() fail {
+  // C-SOLV-3 (ngữ nghĩa MỚI): pool giảm 100 mà sổ cái nợ đứng yên (500→500) → reject.
+  // Đây CHÍNH LÀ hành vi bản đầu ÉP PHẢI có, và là nguồn bế tắc grant.
+  release(500, release_tx(tt_lamp_val(5_000_000, 1000), tt_lamp_val(5_000_000, 900), 500, 500, 0, 100, []))
+}
+
+test treasury_release_ledger_overpay_fails() fail {
+  // Sổ cái giảm 200 trong khi pool chỉ giảm 100 → lệch → reject (không xoá nợ khống).
+  release(500, release_tx(tt_lamp_val(5_000_000, 1000), tt_lamp_val(5_000_000, 900), 500, 300, 0, 100, []))
+}
+
+test treasury_release_ledger_never_negative() fail {
+  // Nợ mở 50 nhưng release 100 → sổ cái ra −50 → reject (chốt số học C-SOLV-3).
+  release(50, release_tx(tt_lamp_val(5_000_000, 1000), tt_lamp_val(5_000_000, 900), 50, -50, 0, 100, []))
+}
+
+test treasury_grant_after_full_redeem_ok() {
+  // HỒI QUY điểm 1 review: đã cấp 5000, người dùng rút HẾT (nợ 0), quỹ còn/nạp lại 5000.
+  // Cấp thêm 1000 cho account MỚI phải PASS. Bản đầu TỪ CHỐI ca này (5000+1000 > 5000)
+  // dù quỹ không nợ ai — chính là bế tắc.
+  grant(0, grant_tx(5000, 0, 1000, None, 1000, 0, [#"c1", #"c2"]))
 }
 
 // ── GRANT (GrantEntitlement — Claim cấp E) ────────────────────

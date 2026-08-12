@@ -16,8 +16,9 @@ triển khai **[SPEC-CappedDrop-EXEC.md](./SPEC-CappedDrop-EXEC.md)**.
 
 > **Đây là kho A-DEST canonical.** `treasury.ak` của module này là kho mà `DistributionVest`
 > bắt buộc rót LAMP vào — xem [`Genesis/DEV-NOTE-kho-A-DEST-canonical.md`](../Genesis/DEV-NOTE-kho-A-DEST-canonical.md).
-> Vì vậy nó giữ **sổ cái solvency** `cumulative_entitlement` (§C-SOLV-1..4): mọi entitlement
-> đã cấp không bao giờ vượt LAMP thật trong kho, ép on-chain tại từng lượt Claim.
+> Vì vậy nó giữ **sổ cái solvency** `outstanding_entitlement` (§C-SOLV-1..5) = **số còn nợ**
+> `Σ(entitlement − redeemed)`: tăng khi cấp, giảm khi trả, và luôn bị ép ≤ LAMP thật trong kho
+> tại từng lượt Claim.
 
 ## Công thức trung tâm
 

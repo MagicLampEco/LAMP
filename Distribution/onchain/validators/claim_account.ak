@@ -7,6 +7,7 @@
 
 use aiken/collection/list
 use aiken/interval
+use cardano/address.{Address, Script}
 use cardano/assets
 use cardano/transaction.{
   InlineDatum, Input, Output, OutputReference, Transaction, placeholder,
@@ -68,13 +69,15 @@ validator claim_account(
         expect out_datum.drops_per_epoch == datum.drops_per_epoch
 
         // C-SOLV-1 (binding): MỌI Claim PHẢI co-spend treasury (GrantEntitlement) và
-        // dồn cumulative_entitlement đúng `amount`. Ngăn committee tăng E mà KHÔNG
+        // dồn outstanding_entitlement đúng `amount`. Ngăn committee tăng E mà KHÔNG
         // cập nhật sổ cái solvency (bypass bất biến cum ≤ pool). Treasury authenticity
         // qua NFT "TRSY" → chống treasury giả. treasury validator độc lập ép cum ≤ pool
         // + value bảo toàn (C-SOLV-2/C-VAL-0); ở đây chỉ ràng buộc amount nhất quán.
-        let tre_in_cum = find_treasury_cum(tx.inputs, treasury_nft_policy)
-        let tre_out_cum = find_treasury_out_cum(tx.outputs, treasury_nft_policy)
-        expect tre_out_cum == tre_in_cum + amount
+        let (tre_in_addr, tre_in_out) = find_treasury_in(tx.inputs, treasury_nft_policy)
+        let (tre_out_addr, tre_out_out) = find_treasury_out(tx.outputs, treasury_nft_policy)
+        // C-SOLV-5: TRSY KHÔNG đổi nhà trong tx (và cả hai đầu đều ở script — helper ép).
+        expect tre_in_addr == tre_out_addr
+        expect tre_out_out == tre_in_out + amount
 
         True
       }
@@ -83,16 +86,6 @@ validator claim_account(
       Redeem -> {
         // C-RDM-6: owner ký
         expect list.has(tx.extra_signatories, datum.owner)
-
-        // C-SOLV-4 (TRSY binding redeem): treasury co-spend PHẢI là treasury canonical
-        // mang đúng 1 NFT "TRSY". Đối xứng với Claim path — chống redeem rút từ treasury
-        // giả (cùng script-hash, pool LAMP fake). find_treasury_cum ép đúng 1 input TRSY;
-        // sổ cái cumulative_entitlement bảo toàn khi redeem (C-SOLV-3, treasury.ak ép).
-        // Assert cum_in == cum_out để (a) buộc đánh giá find_treasury_*, (b) chốt thêm
-        // C-SOLV-3 từ phía account (treasury.ak vốn đã ép, đây là defense-in-depth).
-        let trsy_cum_in = find_treasury_cum(tx.inputs, treasury_nft_policy)
-        let trsy_cum_out = find_treasury_out_cum(tx.outputs, treasury_nft_policy)
-        expect trsy_cum_out == trsy_cum_in
 
         // C-RDM-1: D đọc từ DropParam beacon qua reference input (authenticity NFT).
         let drop_value = find_drop_value(tx.reference_inputs, beacon_nft_policy)
@@ -115,6 +108,17 @@ validator claim_account(
         // C-RDM-2: redeemable > 0 (chặn redeem khi vested == redeemed).
         let amount = vested - datum.redeemed
         expect amount > 0
+
+        // C-SOLV-3/4 (TRSY binding redeem): treasury co-spend PHẢI là treasury canonical
+        // mang đúng 1 NFT "TRSY" — chống redeem rút từ treasury giả. VÀ sổ cái phải GIẢM
+        // đúng `amount` (redeem = trả nợ), song hành với pool. Đặt SAU khi có `amount`:
+        // bản đầu ép cum_in == cum_out ở đầu nhánh, tức khoá sổ cái đứng yên khi pool giảm
+        // — chính là nguồn bế tắc grant (xem đầu `treasury.ak`).
+        let (trsy_in_addr, trsy_in_out) = find_treasury_in(tx.inputs, treasury_nft_policy)
+        let (trsy_out_addr, trsy_out_out) = find_treasury_out(tx.outputs, treasury_nft_policy)
+        // C-SOLV-5: TRSY KHÔNG đổi nhà trong tx.
+        expect trsy_in_addr == trsy_out_addr
+        expect trsy_out_out == trsy_in_out - amount
 
         // C-RDM-4: chỉ redeemed đổi; owner/entitlement/start_epoch/drops_per_epoch bất biến.
         expect out_datum.owner == datum.owner
@@ -156,31 +160,57 @@ fn find_drop_value(
   bd.drop_value
 }
 
-/// cumulative_entitlement của treasury INPUT mang NFT "TRSY" (authenticity).
-/// Đúng 1 treasury input theo NFT (chống treasury giả + chống 2 sổ cái nhập nhằng).
-fn find_treasury_cum(inputs: List<Input>, treasury_nft_policy: ByteArray) -> Int {
+// ─── TRSY carrier (sổ cái solvency) ────────────────────────────────────────
+//
+// C-SOLV-5 — VÌ SAO CHỈ ÉP "ở MỘT script" CHỨ KHÔNG ÉP "ĐÚNG script treasury":
+// ràng đúng hash treasury ở ĐÂY là BẤT KHẢ THI vì vòng tham số —
+//   treasury(claim_account_hash, …)  ⇒ hash treasury cần hash claim_account
+//   claim_account(…, treasury_nft_policy) ⇒ hash claim_account cần policy TRSY
+//   treasury_nft(genesis_ref, treasury_hash) ⇒ policy TRSY cần hash treasury
+// khép kín, không bake được. Nên phòng thủ chia hai tầng, cả hai đều KHÔNG cần vòng:
+//   (a) GENESIS — `treasury_nft.ak` ép NFT mint ra phải nằm ở một Script mang
+//       TreasuryDatum hợp lệ với outstanding = 0. Giết ca "đúc TRSY thẳng vào ví".
+//   (b) VÒNG ĐỜI — ở đây: carrier phải ngụ tại Script (không phải ví) VÀ đầu ra phải
+//       về ĐÚNG địa chỉ đầu vào. TRSY không đổi nhà được nữa.
+// Trước bản vá, hai hàm này lọc THUẦN THEO NFT, không một chữ nào về địa chỉ. Nếu TRSY
+// từng ngụ ở ví (chỉ cần 03_genesis dựng sai một lần), Claim sẽ đọc sổ cái do CHÍNH kẻ
+// dựng tx viết, treasury.ak KHÔNG chạy, và C-SOLV-2 không bao giờ được kiểm — cấp E vô
+// hạn trên một quỹ rỗng. Cùng loại phụ thuộc mà `registry.ak:118-131` đã cảnh báo.
+
+/// (địa chỉ, outstanding_entitlement) của treasury INPUT mang NFT "TRSY".
+/// Đúng 1 carrier theo NFT (chống treasury giả + chống 2 sổ cái nhập nhằng), và carrier
+/// PHẢI ngụ tại một script — ví thường bị loại ngay (C-SOLV-5).
+fn find_treasury_in(
+  inputs: List<Input>,
+  treasury_nft_policy: ByteArray,
+) -> (Address, Int) {
   let name = util.treasury_nft_name()
   expect [i] =
     list.filter(
       inputs,
       fn(x) { assets.quantity_of(x.output.value, treasury_nft_policy, name) == 1 },
     )
+  expect Script(_) = i.output.address.payment_credential
   expect InlineDatum(d) = i.output.datum
   expect td: TreasuryDatum = d
-  td.cumulative_entitlement
+  (i.output.address, td.outstanding_entitlement)
 }
 
-/// cumulative_entitlement của treasury OUTPUT mang NFT "TRSY". Đúng 1 (NFT đi cùng).
-fn find_treasury_out_cum(outputs: List<Output>, treasury_nft_policy: ByteArray) -> Int {
+/// (địa chỉ, outstanding_entitlement) của treasury OUTPUT mang NFT "TRSY". Đúng 1.
+fn find_treasury_out(
+  outputs: List<Output>,
+  treasury_nft_policy: ByteArray,
+) -> (Address, Int) {
   let name = util.treasury_nft_name()
   expect [o] =
     list.filter(
       outputs,
       fn(x) { assets.quantity_of(x.value, treasury_nft_policy, name) == 1 },
     )
+  expect Script(_) = o.address.payment_credential
   expect InlineDatum(d) = o.datum
   expect td: TreasuryDatum = d
-  td.cumulative_entitlement
+  (o.address, td.outstanding_entitlement)
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -222,15 +252,15 @@ fn ca_datum(
   }
 }
 
-/// treasury UTxO mang NFT "TRSY" + cumulative_entitlement (sổ cái solvency).
+/// treasury UTxO mang NFT "TRSY" + outstanding_entitlement (sổ cái solvency).
 fn treasury_io(cum_in: Int, cum_out: Int, pool: Int) -> (Input, Output) {
   let addr = util.script_address(t_treasury_sh)
   let val =
     assets.from_lovelace(2_000_000)
       |> assets.add(t_treasury_nft_policy, util.treasury_nft_name(), 1)
       |> assets.add(t_lamp_policy, t_lamp_name, pool)
-  let d_in = TreasuryDatum { committee_hash: #"cccc", cumulative_entitlement: cum_in }
-  let d_out = TreasuryDatum { committee_hash: #"cccc", cumulative_entitlement: cum_out }
+  let d_in = TreasuryDatum { committee_hash: #"cccc", outstanding_entitlement: cum_in }
+  let d_out = TreasuryDatum { committee_hash: #"cccc", outstanding_entitlement: cum_out }
   let tre_in = util.mk_input(util.mk_ref(8), util.mk_output(addr, val, d_in))
   let tre_out = util.mk_output(addr, val, d_out)
   (tre_in, tre_out)
@@ -340,9 +370,11 @@ fn redeem_tx(
   let beacon_datum = BeaconDatum { epoch: 0, kind: DropParam, drop_value: drop_value }
   let beacon_ref =
     util.mk_input(util.mk_ref(5), util.mk_output(beacon_addr, beacon_val, beacon_datum))
-  // treasury co-spend in+out mang NFT TRSY (authenticity, C-SOLV-4 redeem binding).
-  // cum bảo toàn (0→0) → claim_account chỉ assert authenticity + C-SOLV-3.
-  let (tre_in, tre_out) = treasury_io(0, 0, 100_000)
+  // treasury co-spend in+out mang NFT TRSY (authenticity, C-SOLV-4/5 redeem binding).
+  // Redeem = TRẢ NỢ ⇒ sổ cái GIẢM đúng amount (= redeemed_out − redeemed_in), song hành
+  // với pool. Mở sổ ở 100_000 cho đủ rộng với mọi ca dưới.
+  let amount = out_d.redeemed - in_d.redeemed
+  let (tre_in, tre_out) = treasury_io(100_000, 100_000 - amount, 100_000)
   Transaction {
     ..placeholder,
     inputs: [acc_in, tre_in],
@@ -526,5 +558,119 @@ test redeem_fake_treasury_no_trsy_rejected() fail {
     t_committee, t_threshold, t_mspe, t_lamp_policy, t_lamp_name, t_beacon_policy,
     t_treasury_nft_policy,
     Some(in_d), Redeem, util.mk_ref(0), tx,
+  )
+}
+
+// ── HỒI QUY C-SOLV-5 (review PR #22, điểm 2) ──────────────────────
+
+test claim_trsy_at_wallet_rejected() fail {
+  // Ca sinh ra bản vá. Trước đây test này PASS (validator trả True): carrier TRSY là UTxO
+  // VÍ THƯỜNG, KHÔNG một LAMP nào, sổ cái 0→1000 do chính kẻ dựng tx viết. Vì ví không
+  // phải script, spend nó KHÔNG chạy treasury.ak ⇒ C-SOLV-2 (nợ ≤ pool) không bao giờ
+  // được kiểm ⇒ cấp E vô hạn trên quỹ rỗng.
+  let in_d = ca_datum(0, 0, 5, 1)
+  let out_d = ca_datum(1000, 0, 5, 1)
+  let acc_addr = util.script_address(t_sh)
+  let acc_val = assets.from_lovelace(2_000_000)
+  let acc_in = util.mk_input(util.mk_ref(0), util.mk_output(acc_addr, acc_val, in_d))
+  let acc_out = util.mk_output(acc_addr, acc_val, out_d)
+
+  let vi = util.vk_address(#"badbad")
+  let fake_val =
+    assets.from_lovelace(2_000_000)
+      |> assets.add(t_treasury_nft_policy, util.treasury_nft_name(), 1)
+  let fake_in =
+    util.mk_input(
+      util.mk_ref(8),
+      util.mk_output(vi, fake_val, TreasuryDatum { committee_hash: #"cccc", outstanding_entitlement: 0 }),
+    )
+  let fake_out =
+    util.mk_output(vi, fake_val, TreasuryDatum { committee_hash: #"cccc", outstanding_entitlement: 1000 })
+
+  let tx =
+    Transaction {
+      ..placeholder,
+      inputs: [acc_in, fake_in],
+      outputs: [acc_out, fake_out],
+      extra_signatories: [#"c1", #"c2"],
+      mint: assets.zero,
+    }
+  claim_account.spend(
+    t_committee, t_threshold, t_mspe, t_lamp_policy, t_lamp_name, t_beacon_policy,
+    t_treasury_nft_policy, Some(in_d), Claim { amount: 1000 }, util.mk_ref(0), tx,
+  )
+}
+
+test claim_trsy_moved_to_other_script_rejected() fail {
+  // C-SOLV-5: TRSY vào từ script treasury nhưng ra ở script KHÁC → đổi nhà → reject.
+  let in_d = ca_datum(0, 0, 5, 1)
+  let out_d = ca_datum(1000, 0, 5, 1)
+  let acc_addr = util.script_address(t_sh)
+  let acc_val = assets.from_lovelace(2_000_000)
+  let acc_in = util.mk_input(util.mk_ref(0), util.mk_output(acc_addr, acc_val, in_d))
+  let acc_out = util.mk_output(acc_addr, acc_val, out_d)
+
+  let trsy_val =
+    assets.from_lovelace(2_000_000)
+      |> assets.add(t_treasury_nft_policy, util.treasury_nft_name(), 1)
+      |> assets.add(t_lamp_policy, t_lamp_name, 5000)
+  let tre_in =
+    util.mk_input(
+      util.mk_ref(8),
+      util.mk_output(util.script_address(t_treasury_sh), trsy_val,
+        TreasuryDatum { committee_hash: #"cccc", outstanding_entitlement: 0 }),
+    )
+  let tre_out =
+    util.mk_output(util.script_address(#"deadbeef"), trsy_val,
+      TreasuryDatum { committee_hash: #"cccc", outstanding_entitlement: 1000 })
+
+  let tx =
+    Transaction {
+      ..placeholder,
+      inputs: [acc_in, tre_in],
+      outputs: [acc_out, tre_out],
+      extra_signatories: [#"c1", #"c2"],
+      mint: assets.zero,
+    }
+  claim_account.spend(
+    t_committee, t_threshold, t_mspe, t_lamp_policy, t_lamp_name, t_beacon_policy,
+    t_treasury_nft_policy, Some(in_d), Claim { amount: 1000 }, util.mk_ref(0), tx,
+  )
+}
+
+test redeem_ledger_frozen_rejected() fail {
+  // C-SOLV-3 phía account: redeem 300 mà sổ cái nợ ĐỨNG YÊN → reject.
+  // (Bản đầu ép ĐÚNG hành vi này — cum_in == cum_out — nên ca này khi đó là happy path.)
+  let in_d = ca_datum(1000, 0, 0, 1)
+  let out_d = ca_datum(1000, 300, 0, 1)
+  let acc_addr = util.script_address(t_sh)
+  let val = assets.from_lovelace(2_000_000)
+  let acc_in = util.mk_input(util.mk_ref(0), util.mk_output(acc_addr, val, in_d))
+  let acc_out = util.mk_output(acc_addr, val, out_d)
+  let owner_val = assets.add(assets.from_lovelace(2_000_000), t_lamp_policy, t_lamp_name, 300)
+  let owner_out = util.mk_output(util.vk_address(t_owner), owner_val, in_d)
+  let beacon_val =
+    assets.add(assets.from_lovelace(2_000_000), t_beacon_policy, util.beacon_name(DropParam), 1)
+  let beacon_ref =
+    util.mk_input(
+      util.mk_ref(5),
+      util.mk_output(util.script_address(#"bbbbbbbb"), beacon_val,
+        BeaconDatum { epoch: 0, kind: DropParam, drop_value: 100 }),
+    )
+  // sổ cái 100_000 → 100_000 (đứng yên) trong khi pool trả ra 300.
+  let (tre_in, tre_out) = treasury_io(100_000, 100_000, 100_000)
+  let tx =
+    Transaction {
+      ..placeholder,
+      inputs: [acc_in, tre_in],
+      reference_inputs: [beacon_ref],
+      outputs: [acc_out, owner_out, tre_out],
+      extra_signatories: [t_owner],
+      validity_range: interval.after(3 * t_mspe),
+      mint: assets.zero,
+    }
+  claim_account.spend(
+    t_committee, t_threshold, t_mspe, t_lamp_policy, t_lamp_name, t_beacon_policy,
+    t_treasury_nft_policy, Some(in_d), Redeem, util.mk_ref(0), tx,
   )
 }

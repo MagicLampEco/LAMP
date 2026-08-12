@@ -6,7 +6,7 @@
 //   UPDATE: account đã có → entitlement += amount; redeemed/start_epoch/dpe bất biến.
 //
 // SOLVENCY ON-CHAIN (C-SOLV-*): MỌI Claim PHẢI co-spend treasury UTxO (GrantEntitlement):
-//   treasury.cumulative_entitlement += amount, ép cumulative_entitlement ≤ pool LAMP.
+//   treasury.outstanding_entitlement += amount, ép outstanding_entitlement ≤ pool LAMP.
 //   → bất biến global Σ(E−redeemed) ≤ pool ép được PER-TX qua sổ cái singleton (NFT "TRSY").
 //   Đây thay thế chốt off-chain assertClaimSolvency (vẫn giữ làm pre-flight cảnh báo sớm).
 //
@@ -14,8 +14,8 @@
 //   C-CLAIM-1  ≥ ⌈2N/3⌉ committee signatures.
 //   C-CLAIM-2  out.entitlement = in.entitlement + amount; amount > 0.
 //   C-CLAIM-3  out.owner == in.owner; redeemed/start_epoch/drops_per_epoch unchanged.
-//   C-SOLV-1   treasury.cumulative_entitlement_out = cum_in + amount (co-spend bắt buộc).
-//   C-SOLV-2   cumulative_entitlement_out ≤ treasury pool LAMP (ép on-chain ở treasury).
+//   C-SOLV-1   treasury.outstanding_entitlement_out = cum_in + amount (co-spend bắt buộc).
+//   C-SOLV-2   outstanding_entitlement_out ≤ treasury pool LAMP (ép on-chain ở treasury).
 //   C-MINT-0   tx.mint == 0 (builder không gọi .mintAssets).
 //   C-VAL-0    assets bảo toàn (lovelace + dust) — chỉ datum đổi; treasury pool bất biến.
 
@@ -61,11 +61,15 @@ export interface ClaimParams {
 
   /**
    * TREASURY CO-SPEND (BẮT BUỘC on-chain solvency, C-SOLV-*). Mọi Claim spend treasury
-   * UTxO với GrantEntitlement: cumulative_entitlement += amount, pool LAMP bất biến.
-   * Treasury validator ép cumulative_entitlement ≤ pool → over-grant vượt quỹ FAIL on-chain.
-   * Bỏ trống CHỈ cho unit test off-chain thuần (live tx KHÔNG validate được nếu thiếu).
+   * UTxO với GrantEntitlement: outstanding_entitlement += amount, pool LAMP bất biến.
+   * Treasury validator ép outstanding_entitlement ≤ pool → over-grant vượt quỹ FAIL on-chain.
+   * **BẮT BUỘC** (2026-08-12, review PR #22 điểm 4). Trước đây là tuỳ chọn và builder in
+   * ra "(off-chain only — no treasury co-spend)" như thể đó là một chế độ hợp lệ — nhưng
+   * on-chain MỌI Claim đều đòi đúng 1 input + 1 output mang TRSY (`find_treasury_in`
+   * `expect [i]`), nên nhánh không-treasury CHỈ dựng ra được tx chắc chắn fail. Cùng loại
+   * lỗi mà PR #23 đang vá ở `mintBuilder` — builder kẹt ở hình dạng validator không nhận.
    */
-  treasury?: {
+  treasury: {
     /** Treasury UTxO hiện tại (mang NFT "TRSY", inline TreasuryDatum). */
     utxo:        UTxO;
     /** Applied treasury validator (định nghĩa treasury address). */
@@ -86,7 +90,7 @@ export interface ClaimParams {
    * Khi cung cấp `solvency`, builder ép `Σ(entitlement − redeemed) sau Claim ≤ treasuryLamp`.
    * Đây là chốt off-chain pre-flight TẠI LÚC cấp E (cảnh báo sớm, mạnh hơn REDEEM-012
    * vốn chỉ chặn lúc redeem). KHÔNG còn là chốt duy nhất: on-chain treasury validator
-   * ĐÃ ép cumulative_entitlement ≤ pool (C-SOLV-2) qua treasury co-spend bắt buộc.
+   * ĐÃ ép outstanding_entitlement ≤ pool (C-SOLV-2) qua treasury co-spend bắt buộc.
    */
   solvency?: {
     /** LAMP (oil) hiện có trong treasury pool. */
@@ -110,8 +114,9 @@ export interface ClaimResult {
   claimAddress:     string;
   newDatum:         ClaimAccountDatum;
   mode:             "create" | "update";
-  /** Treasury datum mới (cumulative_entitlement += amount) — chỉ khi co-spend treasury. */
-  newTreasuryDatum?: TreasuryDatum;
+  /** Treasury datum mới (outstanding_entitlement += amount). Luôn có — treasury co-spend
+   *  là BẮT BUỘC, xem `ClaimParams.treasury`. */
+  newTreasuryDatum:  TreasuryDatum;
   summary:          string;
 }
 
@@ -225,9 +230,9 @@ export async function buildClaimTx(params: ClaimParams): Promise<ClaimResult> {
     outAssets,
   );
 
-  // ── TREASURY CO-SPEND (C-SOLV-1/2): cumulative_entitlement += amount ≤ pool ───
-  let newTreasuryDatum: TreasuryDatum | undefined;
-  if (params.treasury) {
+  // ── TREASURY CO-SPEND (C-SOLV-1/2): outstanding_entitlement += amount ≤ pool ───
+  let newTreasuryDatum: TreasuryDatum;
+  {
     const t = params.treasury;
     if (!t.utxo.datum) throw new Error("CLAIM-020: treasury.utxo has no inline datum");
     const treasuryAddress = credentialToAddress(
@@ -246,7 +251,7 @@ export async function buildClaimTx(params: ClaimParams): Promise<ClaimResult> {
 
     newTreasuryDatum = {
       committee_hash:         prevTreasury.committee_hash,                       // C-TRE-2
-      cumulative_entitlement: prevTreasury.cumulative_entitlement + amount,      // C-SOLV-1
+      outstanding_entitlement: prevTreasury.outstanding_entitlement + amount,      // C-SOLV-1
     };
 
     // C-SOLV-2: on-chain treasury validator ép cum_out ≤ pool LAMP (over-grant → fail).
@@ -280,14 +285,9 @@ export async function buildClaimTx(params: ClaimParams): Promise<ClaimResult> {
     `Redeemed:     ${newDatum.redeemed} oil`,
     `Start epoch:  ${newDatum.start_epoch}  · drops/epoch ${newDatum.drops_per_epoch}`,
     `Committee:    ${signers.length}/${committeeKeyHashes.length} signers (need ${threshold})`,
-    `Cumulative E: ${newTreasuryDatum ? `${newTreasuryDatum.cumulative_entitlement} oil (treasury co-spend)` : "(off-chain only — no treasury co-spend)"}`,
+    `Outstanding:  ${newTreasuryDatum.outstanding_entitlement} oil (sổ cái nợ sau Claim)`,
     `Claim addr:   ${claimAddress}`,
   ].join("\n");
 
-  // `newTreasuryDatum` là optional (`?:`) — dưới `exactOptionalPropertyTypes` KHÔNG được
-  // gán thẳng `undefined`, phải bỏ hẳn khoá khi không có treasury co-spend.
-  return {
-    tx, claimAddress, newDatum, mode, summary,
-    ...(newTreasuryDatum === undefined ? {} : { newTreasuryDatum }),
-  };
+  return { tx, claimAddress, newDatum, mode, summary, newTreasuryDatum };
 }
