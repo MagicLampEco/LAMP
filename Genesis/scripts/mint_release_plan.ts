@@ -10,18 +10,20 @@
 
 import { encodeSupplyState, decodeSupplyState } from "../offchain/src/supply_state.js";
 import type { SupplyState } from "../offchain/src/types.js";
+import { LAMP_MAINNET } from "../offchain/src/deployed.js";
 
 // ── Hằng MAINNET (ĐÃ XÁC MINH — tx genesis db0610c2…, verify_mainnet_supply.ts) ──
 
 const OILDROP = 1_000_000n; // 1 LAMP = 10⁶ oildrop
 
-/** Policy LAMP canonical mainnet (cap-36B lazy-mint, PlutusV3). */
-const LAMP_POLICY = "55d3e01bb6c469e02665e4b6573ce65bbaf7a50ad2024e247eb180f0";
-const LAMP_NAME = "4c414d50"; // "LAMP"
+// Định danh mainnet lấy từ NƠI GIỮ DUY NHẤT (offchain/src/deployed.ts) — đừng chép lại ở đây.
+const D = LAMP_MAINNET;
+const LAMP_POLICY = D.policyId;
+const LAMP_NAME = D.assetName;
 
 /** supply_state script (giữ NFT "SUPPLY" + datum 4-field). */
-const SUPPLY_STATE_ADDR = "addr1wxz0dkz0v3rg6zeqz9c7cyxz9lg3ynkrlkqrapfkj7e5ppqexy5d3";
-const SUPPLY_STATE_HASH = "84f6d84f64468d0b201171ec10c22fd1124ec3fd803e853697b34084";
+const SUPPLY_STATE_ADDR = D.supplyStateAddress;
+const SUPPLY_STATE_HASH = D.supplyStateHash;
 const SUPPLY_NFT_NAME = "535550504c59"; // "SUPPLY"
 
 /** KHO dist_treasury (A-DEST: Δ mint DistributionVest BẮT BUỘC chảy vào đây). */
@@ -90,7 +92,11 @@ export function printVestPlan(p: VestPlan, label: string): void {
   console.log(`                     (hash ${KHO_HASH}) — nếu ra ví ⇒ validator reject.`);
   console.log(`  redeemer mint    : DistributionVest = Constr(0, [])`);
   console.log(`  redeemer spend   : Advance          = Constr(0, [])  (spend supply_state)`);
-  console.log(`  authority ký     : theo registry WHO-gate (token_tag) của lamp_mint — CẦN KHOÁ`);
+  // ⚠️ MAINNET ≠ HEAD. Policy đang chạy (55d3e01b…180f0) là bản MỒI 8 tham số: WHO-gate là
+  // `dist_authority` (danh sách pkh) + `auth_threshold`, kiểm bằng extra_signatories — KHÔNG
+  // đọc registry/token_tag. Registry WHO-gate chỉ có ở bản 12 tham số CHƯA phát hành.
+  console.log(`  authority ký     : MAINNET = dist_authority (pkh nướng sẵn) + threshold — CẦN KHOÁ`);
+  console.log(`                     (registry WHO-gate/token_tag chỉ áp cho bản 12 tham số CHƯA deploy)`);
 }
 
 // ── Main (dry-run) ────────────────────────────────────────────────────────

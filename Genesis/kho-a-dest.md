@@ -15,13 +15,19 @@ Kho A-DEST (nơi `DistributionVest` bắt buộc rót toàn bộ LAMP) = **`Dist
 
 ## Lý do (2 trục)
 - **An toàn:** `treasury.ak:61` giữ pool thật với luật release, không single-key drain. 1-pkh = 1 điểm hỏng chí mạng cho kho giá-trị-lớn.
-- **Phân kỳ mainnet↔preprod:** hash script (Plutus lẫn native) **độc lập mạng** — phân kỳ chỉ đến từ *apply-param*, không từ network. `lamp_mint` đọc hash kho **động** qua kho-NFT (`lib/.../util.ak:147-153`), nên **đổi kho KHÔNG buộc mint lại policy LAMP**. ⇒ Chọn `treasury.ak` (apply-param per token/mạng) là tái dùng được + trung thực mainnet.
+- **Phân kỳ mainnet↔preprod:** hash script (Plutus lẫn native) **độc lập mạng** — phân kỳ chỉ đến từ *apply-param*, không từ network. `lamp_mint` bản HEAD đọc hash kho **động** qua kho-NFT (`lib/.../util.ak:147-153`), nên với bản đó đổi kho không buộc mint lại policy. ⇒ Chọn `treasury.ak` (apply-param per token/mạng) là tái dùng được + trung thực mainnet.
+
+  > 🔴 **ĐÍNH CHÍNH 2026-08-12 — câu trên KHÔNG áp cho policy đang chạy.** Mainnet chạy bản **MỒI 8
+  > tham số** (`55d3e01b…180f0`, tái lập từ commit `457f312`, CBOR trùng byte): nó **nướng cứng
+  > `dist_dest`** vào tham số, không có kho-NFT động. Tham số đi vào hash ⇒ **đổi kho = đổi script
+  > hash = policy-id KHÁC**. Với policy đang chạy, "đổi kho" là **mint lại policy**, không phải trỏ
+  > lại con trỏ. Kho-NFT động chỉ tồn tại ở bản **12 tham số CHƯA phát hành**.
 
 ## Cơ chế nhả của kho (vì sao an toàn) — QUAN TRỌNG cho người tích hợp
 `treasury.ak` nhả LAMP **chỉ qua `claim_account` redeem** (`treasury.ak:53-61`): `released = ca_out.redeemed − ca_in.redeemed`, đúng 1 claim_account input+output/tx, bảo toàn mọi asset khác. **KHÔNG có đường "authority gửi tuỳ ý"** — đó chính là điều khiến nó không thể bị rút sạch. Hệ quả: đưa LAMP tới 1 địa chỉ = phải qua pipeline phân phối (entitlement → SetRoot/Merkle → claim → redeem), KHÔNG phải 1 lệnh transfer. Param kho: `treasury(claim_account_hash, lamp_policy, lamp_name)`.
 
 ## Cảnh báo no-burn (đọc kỹ trước khi mint)
-Vì LAMP **no-burn**, mint LAMP vào kho SAI (1-pkh/placeholder/claim_account) = **kẹt vĩnh viễn**, phải mint BÙ lượng mới vào kho đúng (lượng cũ mất trắng). Đổi kho về sau rẻ (kho-NFT động) nhưng **giá trị đã rót nhầm thì không cứu được**. → Phải chốt kho đúng **NGAY từ lần mint đầu**.
+Vì LAMP **no-burn**, mint LAMP vào kho SAI (1-pkh/placeholder/claim_account) = **kẹt vĩnh viễn**, phải mint BÙ lượng mới vào kho đúng (lượng cũ mất trắng). **Đổi kho KHÔNG rẻ với policy đang chạy** — xem đính chính 2026-08-12 ở trên: bản 8 tham số nướng cứng `dist_dest`, đổi kho ⇒ policy-id mới ⇒ token cũ và token mới là **hai tài sản khác nhau**. Và **giá trị đã rót nhầm thì không cứu được**. → Phải chốt kho đúng **NGAY từ lần mint đầu**.
 
 ## token_tag canonical — CHỐT
 `token_tag = #"4c414d50"` ("LAMP") — là **param bake vào policy-id** của `lamp_mint` (`lamp_mint.ak:67`), phải khớp entry mà Core ghi (Core/HANDOFF dùng `4c414d50`). Hằng `#"4c414d50746167"` ("LAMPtag") ở `lamp_mint.ak:244` **chỉ là fixture test**, KHÔNG phải giá trị sản xuất. Deploy preprod + mainnet PHẢI dùng cùng `4c414d50`.

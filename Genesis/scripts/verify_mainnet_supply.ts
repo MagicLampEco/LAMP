@@ -5,11 +5,14 @@
 const KOIOS = "https://api.koios.rest/api/v1";
 const OILDROP = 1_000_000n; // 1 LAMP = 10^6 oildrop
 
-// Địa chỉ/hash đã xác minh trên mainnet (tx genesis db0610c2…):
-const LAMP_POLICY = "55d3e01bb6c469e02665e4b6573ce65bbaf7a50ad2024e247eb180f0";
-const LAMP_NAME = "4c414d50"; // "LAMP"
-const KHO = "addr1w827sry6t2y9744ndkg4ks6nct57v7tm8pz46ywsq98dhdsf76slu";
-const SUPPLY_STATE = "addr1wxz0dkz0v3rg6zeqz9c7cyxz9lg3ynkrlkqrapfkj7e5ppqexy5d3";
+// Địa chỉ/hash đã xác minh trên mainnet (tx genesis db0610c2…).
+// NƠI GIỮ DUY NHẤT = offchain/src/deployed.ts — script này chỉ ĐỌC, không chép lại giá trị.
+import { LAMP_MAINNET } from "../offchain/src/deployed.js";
+
+const LAMP_POLICY = LAMP_MAINNET.policyId;
+const LAMP_NAME = LAMP_MAINNET.assetName;
+const KHO = LAMP_MAINNET.khoAddress;
+const SUPPLY_STATE = LAMP_MAINNET.supplyStateAddress;
 const SUPPLY_NFT_NAME = "535550504c59"; // "SUPPLY"
 
 async function kpost<T>(path: string, body: unknown): Promise<T> {
