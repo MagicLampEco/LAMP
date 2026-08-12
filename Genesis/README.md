@@ -54,7 +54,8 @@ và `lock_vault.ak`.
 
 **WHO-gate** đi qua Registry NFT: `lamp_mint` đọc bảng registry và lấy authority theo `token_tag`.
 Đây là bản canonical **v2/registry-gate**. Bản v1/anchor (`CountMint`, datum 3 trường) đã lỗi
-thời, nằm ở `Legacy/Tokenomics-v1-anchor/`.
+thời. Thư mục `Legacy/` đã gỡ khỏi cây làm việc 2026-08-12 — tra bằng
+`git show be14728:Legacy/Tokenomics-v1-anchor/`.
 
 ## Asset name là tham số, không phải hằng
 

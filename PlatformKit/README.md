@@ -5,8 +5,10 @@
 
 Năm tệp đặc tả từng nằm ở thư mục này (`CONTRACT.md`, `Tech-Spec.md`, `Feat-Spec.md`, `Exec-Spec.md`,
 `onboarding.md`) đã chuyển vào
-[`Legacy/platformkit-spec-da-chuyen-Registry-2026-08-04/`](../Legacy/platformkit-spec-da-chuyen-Registry-2026-08-04/)
-ngày **2026-08-04**. Đọc bản Legacy chỉ để tra lịch sử; **đừng sửa** — sửa ở kho Registry.
+`Legacy/platformkit-spec-da-chuyen-Registry-2026-08-04/` ngày **2026-08-04**. Thư mục `Legacy/`
+đã gỡ khỏi cây làm việc 2026-08-12 — tra bằng
+`git show be14728:Legacy/platformkit-spec-da-chuyen-Registry-2026-08-04/`.
+Đọc chỉ để tra lịch sử; **đừng sửa** — sửa ở kho Registry.
 
 Vì sao chuyển: hai bản đã bắt đầu trôi khác nhau (LAMP đổi "niêm yết" → "đăng bạ" và đổi tên tệp theo
 chuẩn StandardSpec; Registry vá theo hướng riêng). Hai bản song song thì ai vớ nhầm bản nào cũng thấy

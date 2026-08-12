@@ -125,7 +125,8 @@ fn mint_is_exactly(self: Transaction, policy: PolicyId, token_name: AssetName) -
 /// continuing output tại `Script(own)`), nên đây là defence-in-depth — nhưng an
 /// toàn của LAMP không nên treo vào một bất biến nằm ở validator khác, không được
 /// ghi ở đâu và không được kiểm ở đâu. Bản v1 (`Legacy/Tokenomics-v1-anchor/…/
-/// phoenixkey.ak:142-156`) thiếu đúng mệnh đề này và PoC mint được LAMP không giới
+/// phoenixkey.ak:142-156` — `Legacy/` đã gỡ khỏi cây 2026-08-12, tra
+/// `git show be14728:Legacy/Tokenomics-v1-anchor/`) thiếu đúng mệnh đề này và PoC mint được LAMP không giới
 /// hạn từ anchor đặt ở ví thường.
 /// Pin được mà KHÔNG cần thêm tham số vì Registry-NFT policy ≡ registry script
 /// hash (xem header file).

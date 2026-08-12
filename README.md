@@ -91,7 +91,7 @@ Quy ước đặt tên + phân biệt Spec/Paper: [`CONVENTIONS.md`](CONVENTIONS
 | `Governance/` | Voting Power on-chain v1 (cử tri = cá nhân, ≥4 tham số có cap). iVoteSpace · bầu 3 hội đồng · Recall mới có spec | VP: ổn định · phần còn lại: spec | chưa |
 | `PlatformKit/` | Bộ ráp cho bên tích hợp — **đang chuyển sang repo `Registry`**, xem `PlatformKit/README.md` | spec + adapter off-chain | chưa |
 | `LaunchAPI/` | API + UI tham chiếu cho đợt ra mắt (`src/server.ts`, `src/etd.ts`, `reference-ui/`) | có mã chạy, chưa ổn định | chưa |
-| `Legacy/` | Bản đã bị thay thế + tài liệu nội bộ giai đoạn đầu — **giữ để truy vết, KHÔNG dùng lại** |
+| ~~`Legacy/`~~ | **ĐÃ GỠ khỏi cây làm việc 2026-08-12.** Bản đã bị thay thế + tài liệu nội bộ giai đoạn đầu. Vẫn còn nguyên trong lịch sử git để làm bằng chứng — tra bằng `git show be14728:Legacy/<đường-dẫn>` hoặc `git log --diff-filter=D -- Legacy/`. Mọi dẫn chiếu `Legacy/…` còn lại trong repo đọc theo lối đó. |
 
 ## Trạng thái thật — đọc trước khi dùng
 

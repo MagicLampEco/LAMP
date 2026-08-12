@@ -930,7 +930,8 @@ test registry_rotated_key_ok() {
 test registry_ref_o_vi_thuong_bi_tu_choi() fail {
   // Nếu find_registry_datum chỉ lọc theo NFT (không ép địa chỉ) thì bất kỳ ai nắm
   // được registry NFT cũng đặt nó ở ví mình, tự khai authority = ví mình, rồi mint
-  // LAMP không giới hạn. Bản v1 (Legacy/Tokenomics-v1-anchor/.../phoenixkey.ak:142-156)
+  // LAMP không giới hạn. Bản v1 (Legacy/Tokenomics-v1-anchor/.../phoenixkey.ak:142-156 —
+  // Legacy/ đã gỡ khỏi cây 2026-08-12, tra `git show be14728:Legacy/Tokenomics-v1-anchor/`)
   // thiếu đúng mệnh đề này và PoC mint được thật. Ràng buộc
   // payment_credential == Script(registry_nft_policy) phải chặn ngay tại đây.
   let s = fresh()

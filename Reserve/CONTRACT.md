@@ -161,5 +161,6 @@ Auth NFT là **input** từ gate → thỏa Luật 5; `reserve_gate` đọc `par
 - **offchain:** `types.ts` + `datum.ts` (codec byte-perfect) + `math.ts` (applyDraw/maxPerEpoch
   fail-fast) + `drawBuilder.ts` (dựng tx Draw co-spend ReserveState + SupplyState + Treasury auth).
 - **đích nhả:** `reserve_dest` = địa chỉ custody Treasury. ⚠️ **CHƯA CHỐT** — quyết định này còn
-  treo (bản ghi cũ ở `Legacy/internal-2026H1/PENDING.md §1`, thư mục đó **không còn hiệu lực**,
+  treo (bản ghi cũ ở `Legacy/internal-2026H1/PENDING.md §1` — thư mục `Legacy/` đã gỡ khỏi cây
+  2026-08-12, tra `git show be14728:Legacy/internal-2026H1/PENDING.md`; **không còn hiệu lực**,
   đừng lấy làm nguồn). Phải chốt lại và ghi vào chính file này trước khi deploy Reserve.
