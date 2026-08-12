@@ -24,6 +24,15 @@
 // `registry_mint.rs:605-619` (deploy) + `:770-788` (update), Core ĐANG gửi empty-constr cho cả
 // 2 builder. Lý do KHÔNG thêm field one-shot (vd genesis_ref kiểu thread_nft.ak) + rủi ro tồn dư
 // đã ghi đầy đủ ở đầu `lib/.../registry_write_logic.ak`.
+//
+// THU HỒI (Burn/Retire — thêm 2026-08-12, vá review PR #20 §1): Deploy KHÔNG chứng minh được
+// "chưa có registry nào cho DID này" (không proof-of-absence on-chain), nên registry THỨ HAI cùng
+// governing_did là DỰNG ĐƯỢC — và read-side `registry.ak.find_registry_datum` đòi ĐÚNG 1 carrier
+// ⇒ mint LAMP của DID đó KHOÁ. Bản đầu KHÔNG có đường đốt (`expect qty == 1` chặn mọi burn, spend
+// luôn ép continuing output) ⇒ khoá VĨNH VIỄN, không cứu được. Tệ hơn: redeemer rỗng + không nonce
+// nghĩa là chỉ cần controller KÝ NHẦM một tx do builder lỗi/độc dựng là brick — không cần cố ý.
+// Nay thêm `Burn` (mint, constr 1) + `Retire` (spend, constr 1): controller hiện tại đốt 1
+// Registry-NFT để gỡ bản trùng. Deploy/Update VẪN ở constr 0 ⇒ `registry_mint.rs` KHÔNG phải sửa.
 
 use aiken/collection/list
 use aiken/crypto.{blake2b_256}
@@ -37,35 +46,76 @@ use magiclamp/genesis/registry_write_logic.{
 use magiclamp/genesis/taad_mirror.{Active, Migrated, Person, Recovering, TAADDatum}
 use magiclamp/genesis/util
 
-pub type RegistryDeployRedeemer {
+/// Constr 0 `Deploy` (Core `registry_mint.rs` gửi empty-constr — KHÔNG đổi) · 1 `Burn` (thu hồi).
+pub type RegistryMintRedeemer {
   Deploy
+  Burn
 }
 
-pub type RegistryUpdateRedeemer {
+/// Constr 0 `Update` (Core empty-constr — KHÔNG đổi) · 1 `Retire` (đồng ý cho đốt NFT trong tx).
+pub type RegistrySpendRedeemer {
   Update
+  Retire
 }
 
 validator registry_write(taad_policy: PolicyId) {
-  // ── GENESIS: mint Registry-NFT + khoá RegistryDatum đầu tiên ─────────────
-  mint(_r: RegistryDeployRedeemer, own_policy: PolicyId, tx: Transaction) {
+  mint(r: RegistryMintRedeemer, own_policy: PolicyId, tx: Transaction) {
+    // ĐÚNG 1 asset-name chuyển động dưới policy này (chặn mint/burn đa-tên trong 1 tx).
     expect Some((name, qty)) = minted_pair(tx.mint, own_policy)
-    expect qty == 1
-    expect Some(out) = find_fresh_output(tx.outputs, own_policy, name)
-    expect d: RegistryDatum = util.inline_datum(out)
-    and {
-      // A-1 binding: asset name == blake2b_256(governing_did) của CHÍNH datum genesis.
-      name == blake2b_256(d.governing_did),
-      entries_well_formed(d.entries),
-      util.value_only_nft_and_ada(out.value, own_policy),
-      out.reference_script == None,
-      controller_authorized(tx.reference_inputs, taad_policy, d.governing_did, tx.extra_signatories),
+    when r is {
+      // ── GENESIS: mint Registry-NFT + khoá RegistryDatum đầu tiên ─────────
+      Deploy -> {
+        expect qty == 1
+        expect Some(out) = find_fresh_output(tx.outputs, own_policy, name)
+        expect d: RegistryDatum = util.inline_datum(out)
+        and {
+          // A-1 binding: asset name == blake2b_256(governing_did) của CHÍNH datum genesis.
+          name == blake2b_256(d.governing_did),
+          entries_well_formed(d.entries),
+          util.value_only_nft_and_ada(out.value, own_policy),
+          out.reference_script == None,
+          controller_authorized(
+            tx.reference_inputs,
+            taad_policy,
+            d.governing_did,
+            tx.extra_signatories,
+          ),
+        }
+      }
+      // ── THU HỒI: đốt ĐÚNG 1 Registry-NFT (gỡ bản trùng) ───────────────────
+      // Đây là purpose ÉP AUTHORITY cho đường đốt; `spend/Retire` chỉ đồng thuận (mint purpose
+      // LUÔN chạy khi tx.mint chạm policy này, nên không có đường vòng bỏ qua gate).
+      Burn -> {
+        expect qty == -1
+        // Carrier bị đốt PHẢI là UTxO đang bị spend TẠI CHÍNH script này (D8-#3, không tin
+        // "NFT chỉ có thể nằm ở đây" — bất biến đó là của validator này, vẫn kiểm tận nơi).
+        expect [carrier] =
+          list.filter(
+            tx.inputs,
+            fn(i) {
+              quantity_of(i.output.value, own_policy, name) == 1 && util.is_at_script(
+                i.output.address,
+                own_policy,
+              )
+            },
+          )
+        expect d: RegistryDatum = util.inline_datum(carrier.output)
+        and {
+          name == blake2b_256(d.governing_did),
+          controller_authorized(
+            tx.reference_inputs,
+            taad_policy,
+            d.governing_did,
+            tx.extra_signatories,
+          ),
+        }
+      }
     }
   }
 
-  // ── LIFECYCLE: sửa entries (Update) — chỉ controller hiện tại ────────────
   spend(
     datum_opt: Option<RegistryDatum>,
-    _r: RegistryUpdateRedeemer,
+    r: RegistrySpendRedeemer,
     own_ref: OutputReference,
     tx: Transaction,
   ) {
@@ -76,26 +126,43 @@ validator registry_write(taad_policy: PolicyId) {
 
     // D8-#3 style: UTxO bị spend PHẢI mang đúng Registry-NFT thật (không tin ngồi-ở-script-này).
     expect quantity_of(own_out.value, own_hash, nft_name) == 1
-    // NFT KHÔNG mint/burn trong tx Update (chống burn).
-    expect quantity_of(tx.mint, own_hash, nft_name) == 0
 
-    // Continuing output DUY NHẤT: đúng NFT, đúng script address.
-    let outs =
-      list.filter(
-        tx.outputs,
-        fn(o) { quantity_of(o.value, own_hash, nft_name) == 1 && o.address.payment_credential == Script(
-          own_hash,
-        ) },
-      )
-    expect [out] = outs
-    expect d_out: RegistryDatum = util.inline_datum(out)
+    when r is {
+      // ── LIFECYCLE: sửa entries (Update) — chỉ controller hiện tại ────────
+      Update -> {
+        // NFT KHÔNG mint/burn trong tx Update (chống burn).
+        expect quantity_of(tx.mint, own_hash, nft_name) == 0
 
-    and {
-      d_out.governing_did == d_in.governing_did,
-      entries_well_formed(d_out.entries),
-      util.value_only_nft_and_ada(out.value, own_hash),
-      out.reference_script == None,
-      controller_authorized(tx.reference_inputs, taad_policy, d_in.governing_did, tx.extra_signatories),
+        // Continuing output DUY NHẤT: đúng NFT, đúng script address.
+        let outs =
+          list.filter(
+            tx.outputs,
+            fn(o) {
+              quantity_of(o.value, own_hash, nft_name) == 1 && o.address.payment_credential == Script(
+                own_hash,
+              )
+            },
+          )
+        expect [out] = outs
+        expect d_out: RegistryDatum = util.inline_datum(out)
+
+        and {
+          d_out.governing_did == d_in.governing_did,
+          entries_well_formed(d_out.entries),
+          util.value_only_nft_and_ada(out.value, own_hash),
+          out.reference_script == None,
+          controller_authorized(
+            tx.reference_inputs,
+            taad_policy,
+            d_in.governing_did,
+            tx.extra_signatories,
+          ),
+        }
+      }
+      // ── THU HỒI: NFT của CHÍNH UTxO này bị đốt trong tx ───────────────────
+      // Authority + carrier-binding do `mint/Burn` ép (luôn chạy vì tx.mint chạm policy này).
+      // Không đòi continuing output — NFT biến mất là mục đích.
+      Retire -> quantity_of(tx.mint, own_hash, nft_name) == -1
     }
   }
 
@@ -184,7 +251,7 @@ fn base_deploy_tx(entries: List<RegistryEntry>, sigs: List<ByteArray>, refs: Lis
   }
 }
 
-fn run_mint(r: RegistryDeployRedeemer, tx: Transaction) -> Bool {
+fn run_mint(r: RegistryMintRedeemer, tx: Transaction) -> Bool {
   registry_write.mint(taad_pol, r, reg_pol, tx)
 }
 
@@ -339,7 +406,7 @@ fn reg_output(did: ByteArray, entries: List<RegistryEntry>) -> transaction.Outpu
   util.mk_output(util.script_address(reg_pol), v, reg_datum(did, entries))
 }
 
-fn run_spend(datum: Option<RegistryDatum>, r: RegistryUpdateRedeemer, own_ref: OutputReference, tx: Transaction) -> Bool {
+fn run_spend(datum: Option<RegistryDatum>, r: RegistrySpendRedeemer, own_ref: OutputReference, tx: Transaction) -> Bool {
   registry_write.spend(taad_pol, datum, r, own_ref, tx)
 }
 
@@ -390,14 +457,35 @@ test update_missing_signature_fails() fail {
 }
 
 test update_governing_did_changed_fails() fail {
+  // NFT GIỮ NGUYÊN asset-name cũ (blake2b_256(gov_did)) — chỉ DATUM đổi governing_did.
+  // Phải giữ đúng asset-name thì mới chạm được `d_out.governing_did == d_in.governing_did`;
+  // nếu đổi cả asset-name (bản trước) thì tx chết sớm ở `expect [out] = outs` và mệnh đề
+  // did KHÔNG BAO GIỜ được chạy. Chính mệnh đề này chặn gộp NFT của 2 DID vào 1 output.
   let old = one_entry(lamp_tag, SinglePkh { pkh: ctrl_pkh })
-  let bad_out = reg_output("did:phoenix:org:hijacked", old)
+  let v = assets.from_lovelace(2_000_000) |> assets.add(reg_pol, blake2b_256(gov_did), 1)
+  let bad_out =
+    util.mk_output(util.script_address(reg_pol), v, reg_datum("did:phoenix:org:hijacked", old))
   let tx =
     Transaction {
       ..transaction.placeholder,
       inputs: [reg_input(gov_did, old)],
       reference_inputs: [taad_ok_ref()],
       outputs: [bad_out],
+      extra_signatories: [ctrl_pkh],
+    }
+  run_spend(own_datum(old), Update, util.mk_ref(0), tx)
+}
+
+test update_output_asset_name_swapped_fails() fail {
+  // Bản CŨ của test trên (đổi cả asset-name) — giữ lại vì vẫn là ca âm thật, nhưng chết ở
+  // `expect [out] = outs`, KHÔNG phải ở gate did.
+  let old = one_entry(lamp_tag, SinglePkh { pkh: ctrl_pkh })
+  let tx =
+    Transaction {
+      ..transaction.placeholder,
+      inputs: [reg_input(gov_did, old)],
+      reference_inputs: [taad_ok_ref()],
+      outputs: [reg_output("did:phoenix:org:hijacked", old)],
       extra_signatories: [ctrl_pkh],
     }
   run_spend(own_datum(old), Update, util.mk_ref(0), tx)
@@ -509,4 +597,124 @@ test update_no_continuing_output_fails() fail {
       extra_signatories: [ctrl_pkh],
     }
   run_spend(own_datum(old), Update, util.mk_ref(0), tx)
+}
+
+// ─── thu hồi: mint(Burn) + spend(Retire) ────────────────────────────
+
+fn base_burn_tx(
+  sigs: List<ByteArray>,
+  refs: List<transaction.Input>,
+  ins: List<transaction.Input>,
+) -> Transaction {
+  Transaction {
+    ..transaction.placeholder,
+    inputs: ins,
+    reference_inputs: refs,
+    outputs: [],
+    mint: mint_reg_nft(-1),
+    extra_signatories: sigs,
+  }
+}
+
+fn dup_entry() -> List<RegistryEntry> {
+  one_entry(lamp_tag, SinglePkh { pkh: ctrl_pkh })
+}
+
+fn burn_tx_default() -> Transaction {
+  base_burn_tx([ctrl_pkh], [taad_ok_ref()], [reg_input(gov_did, dup_entry())])
+}
+
+// ── HAPPY: gỡ bản registry TRÙNG (cả 2 purpose phải pass trong CÙNG tx) ──
+
+test burn_duplicate_registry_mint_purpose_ok() {
+  run_mint(Burn, burn_tx_default())
+}
+
+test burn_duplicate_registry_spend_purpose_ok() {
+  run_spend(own_datum(dup_entry()), Retire, util.mk_ref(0), burn_tx_default())
+}
+
+// ── NEGATIVE: burn ──────────────────────────────────────────────
+
+test burn_stranger_signs_fails() fail {
+  run_mint(Burn, base_burn_tx([stranger], [taad_ok_ref()], [reg_input(gov_did, dup_entry())]))
+}
+
+test burn_anchor_revoked_fails() fail {
+  let refs = [taad_ref_input(taad_pol, gov_did, ctrl_pkh, taad_mirror.Revoked, 5)]
+  run_mint(Burn, base_burn_tx([ctrl_pkh], refs, [reg_input(gov_did, dup_entry())]))
+}
+
+test burn_no_anchor_ref_fails() fail {
+  run_mint(Burn, base_burn_tx([ctrl_pkh], [], [reg_input(gov_did, dup_entry())]))
+}
+
+test burn_carrier_off_script_fails() fail {
+  // NFT bị đốt đến từ UTxO ở VÍ, không phải script này → không có carrier hợp lệ → reject.
+  let v = assets.from_lovelace(2_000_000) |> assets.add(reg_pol, blake2b_256(gov_did), 1)
+  let wallet_in =
+    util.mk_input(
+      util.mk_ref(9),
+      util.mk_output(util.vk_address(#"beef"), v, reg_datum(gov_did, dup_entry())),
+    )
+  run_mint(Burn, base_burn_tx([ctrl_pkh], [taad_ok_ref()], [wallet_in]))
+}
+
+test burn_two_carriers_spent_fails() fail {
+  // Spend CẢ 2 bản trùng nhưng chỉ đốt 1 → mơ hồ bản nào chết → reject (fail-closed).
+  let dup =
+    util.mk_input(
+      util.mk_ref(1),
+      util.mk_output(
+        util.script_address(reg_pol),
+        assets.from_lovelace(2_000_000) |> assets.add(reg_pol, blake2b_256(gov_did), 1),
+        reg_datum(gov_did, dup_entry()),
+      ),
+    )
+  run_mint(Burn, base_burn_tx([ctrl_pkh], [taad_ok_ref()], [reg_input(gov_did, dup_entry()), dup]))
+}
+
+test burn_carrier_did_mismatch_fails() fail {
+  // Carrier mang NFT name của gov_did nhưng datum khai DID khác → A-1 binding gãy.
+  let liar =
+    util.mk_input(
+      util.mk_ref(0),
+      util.mk_output(
+        util.script_address(reg_pol),
+        assets.from_lovelace(2_000_000) |> assets.add(reg_pol, blake2b_256(gov_did), 1),
+        reg_datum("did:phoenix:org:other", dup_entry()),
+      ),
+    )
+  run_mint(Burn, base_burn_tx([ctrl_pkh], [taad_ok_ref()], [liar]))
+}
+
+test burn_redeemer_but_tx_mints_fails() fail {
+  let tx = Transaction { ..burn_tx_default(), mint: mint_reg_nft(1) }
+  run_mint(Burn, tx)
+}
+
+test deploy_redeemer_on_burn_tx_fails() fail {
+  // Đốt mà gửi redeemer Deploy (constr 0) → `expect qty == 1` chặn — luật cũ KHÔNG nới.
+  run_mint(Deploy, burn_tx_default())
+}
+
+test retire_without_actual_burn_fails() fail {
+  // spend Retire nhưng tx KHÔNG đốt gì → NFT rơi đi đâu tùy ý → chặn.
+  let tx =
+    Transaction {
+      ..transaction.placeholder,
+      inputs: [reg_input(gov_did, dup_entry())],
+      reference_inputs: [taad_ok_ref()],
+      outputs: [],
+      extra_signatories: [ctrl_pkh],
+    }
+  run_spend(own_datum(dup_entry()), Retire, util.mk_ref(0), tx)
+}
+
+test retire_input_missing_real_nft_fails() fail {
+  let tx =
+    Transaction {
+      ..base_burn_tx([ctrl_pkh], [taad_ok_ref()], [reg_input_no_nft(gov_did, dup_entry())]),
+    }
+  run_spend(own_datum(dup_entry()), Retire, util.mk_ref(0), tx)
 }

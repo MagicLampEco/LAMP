@@ -37,20 +37,31 @@
 //   CÓ THỂ tự mint 1 registry thứ 2 cho DID mình (đúng thẩm quyền, không phải tấn công) →
 //   2 UTxO cùng asset-name tại registry script. Downstream fail-closed: registry.ak
 //   `find_registry_datum` (đọc) đòi ĐÚNG 1 carrier — thấy ≥2 → None → mọi mint LAMP qua registry
-//   đó BỊ KHOÁ (DoS chính DID đó tự gây ra, KHÔNG rút được quỹ, KHÔNG ảnh hưởng DID khác). Không
-//   có đường tấn công từ bên ngoài; đây là rủi ro tự-gây, không phải lỗ hổng.
+//   đó BỊ KHOÁ. KHÔNG rút được quỹ, KHÔNG ảnh hưởng DID khác.
+//   ⚠ SỬA 2026-08-12 (review PR #20 §1): bản đầu mô tả cái trên là "DoS tự gây, chấp nhận được".
+//   Mô tả đó THIẾU hai vế. (i) KHÔNG THỂ CỨU: `expect qty == 1` chặn mọi burn và spend luôn ép
+//   continuing output ⇒ NFT trùng kẹt vĩnh viễn ⇒ DID mất quyền mint LAMP VĨNH VIỄN, không có
+//   đường lùi nào ngoài đổi DID/đổi script. (ii) KHÔNG CẦN CỐ Ý: redeemer rỗng, không nonce,
+//   không seed ⇒ chỉ cần controller ký một tx do builder lỗi (deploy chạy lại/retry) hoặc builder
+//   độc dựng là brick. "Tự gây" không có nghĩa là "khó xảy ra".
+//   ⇒ NAY CÓ ĐƯỜNG THU HỒI: `registry_write` thêm purpose-pair `Burn` (mint, constr 1) +
+//   `Retire` (spend, constr 1) — controller hiện tại (CÙNG gate `controller_authorized`) đốt
+//   ĐÚNG 1 Registry-NFT để gỡ bản trùng. Deploy/Update GIỮ NGUYÊN constr 0 ⇒ byte-compat
+//   `registry_mint.rs` KHÔNG vỡ, Core không phải sửa builder.
 //
 //   BẤT BIẾN update: NFT ở lại ĐÚNG script address (continuing output DUY NHẤT); governing_did
 //   KHÔNG đổi; entries mới `entries_well_formed`; output SẠCH (chỉ NFT + lovelace, không token
 //   lạ, không reference_script); NFT KHÔNG mint/burn trong tx Update (D8-#3 style — input bị
 //   spend PHẢI mang đúng NFT thật, không tin datum chỉ vì ngồi ở script này).
 //
-//   entries_well_formed: KHÔNG trùng token_tag; MultiSig → pkhs ≤ 16 (chặn ExUnit DoS, khớp
-//   `registry.ak:96-97` read-side), pkhs UNIQUE (chặn datum độc `[k,k,k]` — khác registry.ak vốn
-//   chỉ dedupe lúc ĐỌC, ở ĐÂY chặn NGAY LÚC GHI để datum sạch từ gốc), threshold ∈ [1, |pkhs|].
+//   entries_well_formed: |entries| ≤ 64 (đối xứng trần pkhs — xem `max_entries`); KHÔNG trùng
+//   token_tag; MultiSig → pkhs ≤ 16 (chặn ExUnit DoS, khớp `registry.ak:96-97` read-side),
+//   pkhs UNIQUE (chặn datum độc `[k,k,k]` — khác registry.ak vốn chỉ dedupe lúc ĐỌC, ở ĐÂY chặn
+//   NGAY LÚC GHI để datum sạch từ gốc), threshold ∈ [1, |pkhs|].
 
 use aiken/collection/dict
 use aiken/collection/list
+use aiken/primitive/bytearray
 use aiken/crypto.{blake2b_256}
 use cardano/address.{Script}
 use cardano/assets.{AssetName, PolicyId, Value, quantity_of}
@@ -61,12 +72,22 @@ use magiclamp/genesis/util
 
 // ─── entries_well_formed ────────────────────────────────────────────────────
 
+/// Trần số entry mỗi registry. Đối xứng với trần `pkhs <= 16` bên dưới: read-side
+/// `registry.ak.validate_mint` quét TOÀN BỘ entries + decode cả datum trên MỌI tx mint LAMP,
+/// nên datum phình = ExUnit phình trên đường nóng, đủ lớn thì mint vượt budget → khoá chính DID
+/// đó (cùng loại DoS tự-gây mà trần pkhs sinh ra để chặn, chỉ khác một tầng).
+/// ponytail: 64 là trần rộng tay (1 org thực tế vài token), KHÔNG phải số đo được. Nếu có org
+/// thật cần >64 token_tag thì nới hằng này — nới được vì chưa registry nào ghi quá 64.
+pub const max_entries: Int = 64
+
 /// Bảng entries hợp lệ để ghi (mint genesis HOẶC continuing update) ⟺:
-///   (a) không token_tag trùng (list.unique trên tag == chính nó);
-///   (b) mọi Authority hợp lệ cấu trúc (authority_well_formed).
+///   (a) số entry ≤ max_entries (chặn ExUnit DoS ở read-side);
+///   (b) không token_tag trùng (list.unique trên tag == chính nó);
+///   (c) mọi Authority hợp lệ cấu trúc (authority_well_formed).
 pub fn entries_well_formed(entries: List<RegistryEntry>) -> Bool {
   let tags = list.map(entries, fn(e) { e.token_tag })
   and {
+    list.length(entries) <= max_entries,
     list.length(list.unique(tags)) == list.length(tags),
     list.all(entries, fn(e) { authority_well_formed(e.authority) }),
   }
@@ -236,4 +257,32 @@ test authority_multisig_over_16_fails() {
   let many = list.repeat(pkh_1, 17)
   // 17 bản #"11" trùng nhau -> unique=1 nhưng n=17 > 16 -> fail trước khi tới check unique.
   !authority_well_formed(MultiSig { pkhs: many, threshold: 1 })
+}
+
+test entries_at_cap_ok() {
+  let at_cap =
+    list.map(
+      list.range(1, max_entries),
+      fn(i) {
+        RegistryEntry {
+          token_tag: bytearray.push(#"", i),
+          authority: SinglePkh { pkh: pkh_1 },
+        }
+      },
+    )
+  and { list.length(at_cap) == max_entries, entries_well_formed(at_cap) }
+}
+
+test entries_over_cap_fails() {
+  let over =
+    list.map(
+      list.range(1, max_entries + 1),
+      fn(i) {
+        RegistryEntry {
+          token_tag: bytearray.push(#"", i),
+          authority: SinglePkh { pkh: pkh_1 },
+        }
+      },
+    )
+  and { list.length(over) == max_entries + 1, !entries_well_formed(over) }
 }

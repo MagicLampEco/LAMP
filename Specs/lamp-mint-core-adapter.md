@@ -85,7 +85,7 @@ Explorer hiện `decimals 0` (thiếu metadata) → hiển thị raw base. Core 
 | Phần | Trạng thái | Ai |
 |---|---|---|
 | `lamp_mint`+`supply_state`+`registry`(schema mirror rs) | on-chain sẵn (branch B), **chờ merge main** | LAMP |
-| `registry_write` (Registry write-side: Deploy genesis + Update entries, gate qua TAAD anchor `controller_pkh`) | **on-chain sẵn 2026-07-10** (`Genesis/onchain/validators/registry_write.ak` + `lib/.../registry_write_logic.ak`, 37 test mới, `aiken check` 108/108), **chờ merge main** — redeemer empty-constr khớp byte-perfect `registry_mint.rs` (deploy §605-619, update §770-788), KHÔNG cần Core sửa builder | LAMP |
+| `registry_write` (Registry write-side: Deploy genesis + Update entries + Burn/Retire thu hồi, gate qua TAAD anchor `controller_pkh`) | **on-chain sẵn 2026-07-10**, vá review 2026-08-12 (`Genesis/onchain/validators/registry_write.ak` + `lib/.../registry_write_logic.ak`, 55 test mới, `aiken check` 126/126), **chờ merge main** — `Deploy`/`Update` VẪN là empty-constr (constr 0) khớp byte-perfect `registry_mint.rs` (deploy §605-619, update §770-788), KHÔNG cần Core sửa builder; `Burn`/`Retire` là constr **1**, Core chỉ cần builder MỚI nếu muốn dùng đường thu hồi | LAMP |
 | `registry_mint.rs` (schema registry) | Core đã có (mirror) | Core |
 | `build_mint_lamp_via_did` route DistributionVest + Advance + A-DEST | sửa theo §4 (thêm registry+KHO ref, output KHO) | Core |
 | Intent `LAMP_MINT` + endpoint + gom m-of-n | thiếu | Long |
