@@ -40,13 +40,35 @@
 > *(Chính xác một vế: `lamp_locked` bất biến qua InstantGen, nhưng `ScheduleFire` **giải phóng khoá**
 > nên `lamp_locked` có giảm — giải phóng khoá không phải LAMP rời vault.)*
 >
-> **Riêng pot Wakeme — hai đường ra, và cả hai đều có thật trong mã**
-> (`PhoenixKeyDID/PhoenixKey-Validator/validators/wakeme_vault.ak`, bản A chốt 2026-07-30):
-> **(a)** phần **chưa mở** mà người dùng bỏ không dùng → `Reclaim`/`ReclaimEpoch` thu về **pot**
-> (`pot_address`, anti-idle); **(b)** phần **đã mở** — `OwnEpoch` chuyển conditional → owned, chú
-> thích mã ghi *"SỞ-HỮU-HẲN"* — là **tài sản của người dùng** và rút về ví được qua `Redeem`
-> (`owner_address`). ⚠️ Có tài liệu đối ngoại trong hệ đang nói người dùng *"KHÔNG BAO GIỜ sở hữu"*
-> khoản này — **sai với mã đang chạy**; đã gửi thư đính chính cho nhà giữ tài liệu đó.
+> **Riêng pot Wakeme — HAI ĐÍCH, và đây là mô hình ĐÃ CHỐT** (chủ dự án chốt **2026-08-12**;
+> trước đó là điểm còn tranh chấp giữa hai tài liệu, nay hết tranh chấp).
+>
+> **Phát biểu chuẩn — dùng nguyên văn này ở mọi nơi:**
+> > *Mọi LAMP rời vault Wakeme đi ĐÚNG một trong hai đích: **pot** (kế toán Treasury/hồ chung)
+> > hoặc **ví-owner**. Không có đường đốt. LAMP vào vault chỉ từ genesis (pot).*
+>
+> Ba nguồn độc lập cùng nói một điều — không phải suy diễn:
+> - **Đặc tả toán**: `PhoenixKey-Specs/PhoenixKey-Wakeme-Math.md:95` (hard-constraint) và
+>   `:109` bất biến **I-ACT-5** *"mỗi LAMP rời vault → {pot, ví-owner}"*.
+> - **Mã đang chạy**: `PhoenixKey-Validator/validators/wakeme_vault.ak` (bản A, 2026-07-30) —
+>   `Reclaim`/`ReclaimEpoch` đích cứng `pot_address`; `Redeem` đích cứng `owner_address`;
+>   `OwnEpoch` **không rời vault** (chỉ đổi sổ nội bộ conditional → owned, `L(out) == L(in)`).
+> - **Định lý bảo toàn**: `Wakeme-Math.md:213` — phát biểu và chứng minh đúng hai đích đó.
+> - **Khung cũ đã bị loại, có ghi chép**: `PhoenixKey-Specs/PhoenixKey-Wakeme-Exec.md:8` ghi thẳng
+>   rằng khung *closed-loop-pot / "tấm-pin"* (2026-07-17, *"user KHÔNG BAO GIỜ sở hữu LAMP"*)
+>   **ĐÃ BỊ LOẠI** (chốt 2026-07-30) và đã chuyển vào `Legacy/` bên đó.
+>
+> Nói cách khác, hai đường ra: **(a)** phần **chưa mở** mà người dùng bỏ không dùng →
+> `Reclaim`/`ReclaimEpoch` thu về **pot** (anti-idle); **(b)** phần **đã mở** — `OwnEpoch`
+> chuyển conditional → owned (chú thích mã ghi *"SỞ-HỮU-HẲN"*) — là **tài sản của người dùng**,
+> rút về ví qua `Redeem` (I-ACT-9: *"đường LAMP owned → user DUY NHẤT"*).
+>
+> 🔴 **Việc còn phải làm ở nhà khác:** `Launch/Whitepaper-MagicLamp-Tokenomic-(Vi).md` còn **4 chỗ**
+> (đo 2026-08-12: dòng **13, 52, 86, 213**) nói người dùng *"KHÔNG BAO GIỜ sở hữu"* và *"mọi LAMP
+> rời vault chỉ về pot, KHÔNG về ví-người-dùng"* — **ngược với mô hình đã chốt**. Đáng chú ý:
+> dòng 213 viện dẫn chính `PhoenixKey-Wakeme-Math.md` làm bằng chứng, trong khi tệp đó ở dòng 95
+> nói ngược lại. LAMP KHÔNG tự sửa tệp nhà khác; đã gửi thư yêu cầu Launch agent sửa.
+> Gặp câu đó ở đâu thì đó là bản CHƯA cập nhật, đừng dẫn lại.
 
 > ⚠️ **Mối lo pha loãng:** LAMP ở vault tầng tổ chức 🏛️ ≈ **20 tỷ**, gấp ~5× tầng user 👤 (~4 tỷ). Kết luận
 > phản biện ở §4. **Hệ-số-gen mỗi pot KHÁC nhau** và do **Aladin Contract điều chỉnh** thời gian đầu
