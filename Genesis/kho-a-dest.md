@@ -33,7 +33,20 @@ Vì LAMP **no-burn**, mint LAMP vào kho SAI (1-pkh/placeholder/claim_account) =
 `token_tag = #"4c414d50"` ("LAMP") — là **param bake vào policy-id** của `lamp_mint` (`lamp_mint.ak:67`), phải khớp entry mà Core ghi (Core/HANDOFF dùng `4c414d50`). Hằng `#"4c414d50746167"` ("LAMPtag") ở `lamp_mint.ak:244` **chỉ là fixture test**, KHÔNG phải giá trị sản xuất. Deploy preprod + mainnet PHẢI dùng cùng `4c414d50`.
 
 ## Trạng thái hiện tại (2026-07-13)
-- 🔴 **Mainnet ĐANG VI PHẠM:** kho A-DEST mainnet = `dist_treasury` 1-pkh (hash `d5e80c9a…`), đang giữ LAMP. Phải thay bằng `treasury.ak` TRƯỚC khi rót thêm giá trị.
+- 🔴 **Mainnet ĐANG VI PHẠM:** kho A-DEST mainnet = `dist_treasury` 1-pkh (hash `d5e80c9a…`), đang giữ LAMP. ~~Phải thay bằng `treasury.ak` TRƯỚC khi rót thêm giá trị.~~
+  > ⚠️ **ĐÍNH CHÍNH 2026-08-12 — câu gạch trên KHÔNG thực hiện được, và cũng không cần thiết.**
+  > **Không thực hiện được:** `dist_dest` nướng vào tham số ⇒ đổi kho = đổi script hash = policy-id
+  > khác = token khác. Thêm nữa `treasury.ak` nhận `lamp_policy` làm tham số
+  > (`Distribution/onchain/validators/treasury.ak:16-19`) mà `lamp_policy` lại cần `dist_dest` =
+  > hash treasury ⇒ **vòng apply-param không giải được**.
+  > **Không cần thiết:** A-DEST chỉ ràng buộc TRONG tx đúc. Kho chi ra tự do bằng một chữ ký
+  > (`dist_treasury.ak:21`) nên nó làm **TRẠM TRUNG CHUYỂN** được — chính repo đã viết đường đó ở
+  > `Genesis/scripts/mint_release_plan.ts:160`.
+  > **Và đây mới là vấn đề thật, nặng hơn:** `dist_authority[0]` và `authority` của kho là **CÙNG
+  > MỘT pkh** `180a5c17…ee0441` (đo bằng cách đọc ngược bytecode cả hai script, 2026-08-12) ⇒
+  > A-DEST **không chia quyền cho ai**, nó là khúc vòng hai giao dịch. Đổi kho sang `treasury.ak`
+  > cũng không sửa được điều đó, chỉ đổi "một khoá rút ngay" thành "M-of-N rút dần".
+  > **Chi tiết + hai lựa chọn cần chủ dự án chốt: `Genesis/duong-toi-duc-lamp.md` §4.**
 - 🔴 **Preprod rehearsal:** phải dùng CÙNG `treasury.ak` (không native-sig) mới trung thực; hiện chưa dựng.
 - ⬜ Thiếu: bước genesis đặt kho-NFT tại `treasury.ak` thật (thay placeholder `"ce"*28` ở `preview_registry_e2e.ts:32`); script deploy 12-param production (bản hiện là v1 8-param hoặc demo Preview khoá cứng).
 
