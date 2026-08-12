@@ -59,4 +59,12 @@ pub type TreasuryRedeemer {
   // committee cấp entitlement: pool LAMP bất biến, sổ cái nợ += granted,
   // ép outstanding_entitlement_out ≤ treasury_lamp (solvency on-chain).
   GrantEntitlement
+  // ⚠ THÊM 2026-08-12 (vá review PR #22, điểm 2) — ĐẶT Ở CUỐI để giữ nguyên Constr index
+  // của hai redeemer trên (0/1), offchain đang neo theo đó.
+  // Gộp N ≥ 1 UTxO đang nằm ở script treasury vào ĐÚNG 1 output + cho phép nạp thêm LAMP.
+  // VÌ SAO PHẢI CÓ: trước bản vá không redeemer nào làm pool TĂNG — Grant ép value bất biến,
+  // Release chỉ cho LAMP giảm, và `count_inputs_at_script == 1` chặn luôn đường gộp. Tổng
+  // cấp phát suốt vòng đời do đó ≤ số dư genesis, còn LAMP rót về kho sau này (A-DEST hạ
+  // cánh dưới dạng UTxO RIÊNG, thường KHÔNG datum) nằm chết tại địa chỉ script.
+  Refill
 }

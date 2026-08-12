@@ -6,6 +6,7 @@
 //            rút redeemable = vested − redeemed từ treasury cùng tx.
 
 use aiken/collection/list
+use aiken/crypto.{blake2b_256}
 use aiken/interval
 use cardano/address.{Address, Script}
 use cardano/assets
@@ -27,6 +28,10 @@ validator claim_account(
   lamp_name           : ByteArray,
   beacon_nft_policy   : ByteArray,
   treasury_nft_policy : ByteArray,
+  // ⚠ THÊM 2026-08-12 (vá review PR #22, điểm 1) — ĐẶT CUỐI để không xáo trộn thứ tự 7
+  // tham số cũ trong chuỗi apply-param offchain. Policy của NFT tài khoản; xem
+  // `validators/claim_account_nft.ak` cho toàn bộ lý do tồn tại.
+  account_nft_policy  : ByteArray,
 ) {
   spend(
     datum_opt : Option<ClaimAccountDatum>,
@@ -51,9 +56,30 @@ validator claim_account(
     expect InlineDatum(d) = acc_out.datum
     expect out_datum: ClaimAccountDatum = d
 
-    // Account UTxO chỉ giữ min-ADA (không LAMP) — value bảo toàn tuyệt đối,
-    // chống chèn/rút asset lạ (C-VAL-0).
+    // Account UTxO chỉ giữ min-ADA + NFT tài khoản (không LAMP) — value bảo toàn
+    // tuyệt đối, chống chèn/rút asset lạ (C-VAL-0).
     expect acc_out.value == acc_in.value
+
+    // ── C-ACC-0 (2026-08-12, vá review PR #22 điểm 1): TÀI KHOẢN PHẢI CÓ NFT ────────
+    // Cardano KHÔNG chạy validator lúc TẠO output, nên trước bản vá bất kỳ ai cũng trả
+    // 2 ADA vào địa chỉ script này kèm `ClaimAccountDatum` tự chế (`entitlement` = con
+    // số bất kỳ, `redeemed = 0`) mà treasury chưa từng ghi khoản đó vào sổ nợ. Chờ hết
+    // vesting rồi `Redeem`: mọi phép kiểm dưới đây ĐỀU ĐÚNG (datum do chính kẻ đó
+    // viết), treasury trừ sổ đúng `released`, và chốt `outstanding_entitlement >= 0`
+    // chỉ giới hạn mức trộm bằng ĐÚNG SỐ ĐANG NỢ NGƯỜI DÙNG THẬT. Tức là: cướp trọn
+    // phần đã cam kết cho người dùng thật.
+    // Nay tài khoản chỉ tiêu được khi mang NFT do `claim_account_nft` đúc — mà lối vào
+    // duy nhất của NFT đó là một tx có committee ký VÀ có input TRSY, tức có
+    // `treasury.GrantEntitlement` chạy, tức khoản nợ ĐÃ VÀO SỔ.
+    // Tên NFT dính vào `owner` (blake2b_256) nên không mượn NFT của ví khác được.
+    // `acc_out.value == acc_in.value` ở trên đã giữ NFT ở lại; mệnh đề trên `acc_out`
+    // dưới đây do đó là ràng buộc THẬT theo chiều khác: `out_datum.owner` không được
+    // đổi sang ví khác (belt cho các mệnh đề `out_datum.owner == datum.owner` ở hai
+    // nhánh — nếu một nhánh tương lai quên, chỗ này vẫn chặn).
+    expect
+      assets.quantity_of(acc_in.value, account_nft_policy, blake2b_256(datum.owner)) == 1
+    expect
+      assets.quantity_of(acc_out.value, account_nft_policy, blake2b_256(out_datum.owner)) == 1
 
     when redeemer is {
       // ── CLAIM (committee cấp/tăng entitlement) ─────────────
@@ -237,6 +263,16 @@ const t_treasury_sh: ByteArray = #"77777777"
 
 const t_owner: ByteArray = #"0a0a"
 
+const t_acct_nft_policy: ByteArray = #"acac"
+
+/// Value của một tài khoản HỢP LỆ: min-ADA + NFT tài khoản tên blake2b_256(owner).
+/// Mọi fixture cũ phải đi qua đây, nếu không C-ACC-0 loại hết (đúng như thiết kế:
+/// UTxO không NFT = tài khoản giả).
+fn acc_value() -> assets.Value {
+  assets.from_lovelace(2_000_000)
+    |> assets.add(t_acct_nft_policy, blake2b_256(t_owner), 1)
+}
+
 fn ca_datum(
   entitlement: Int,
   redeemed: Int,
@@ -277,7 +313,7 @@ fn claim_tx(
   pool      : Int,
 ) -> Transaction {
   let acc_addr = util.script_address(t_sh)
-  let in_val = assets.from_lovelace(2_000_000)
+  let in_val = acc_value()
   let acc_in = util.mk_input(util.mk_ref(0), util.mk_output(acc_addr, in_val, in_d))
   let acc_out = util.mk_output(acc_addr, out_value, out_d)
   let (tre_in, tre_out) = treasury_io(cum_in, cum_out, pool)
@@ -294,10 +330,10 @@ test claim_happy_path() {
   // cấp E: 0 → 1000; treasury cum 0 → 1000 ≤ pool 5000.
   let in_d = ca_datum(0, 0, 5, 1)
   let out_d = ca_datum(1000, 0, 5, 1)
-  let tx = claim_tx(in_d, out_d, [#"c1", #"c2"], assets.from_lovelace(2_000_000), 0, 1000, 5000)
+  let tx = claim_tx(in_d, out_d, [#"c1", #"c2"], acc_value(), 0, 1000, 5000)
   claim_account.spend(
     t_committee, t_threshold, t_mspe, t_lamp_policy, t_lamp_name, t_beacon_policy,
-    t_treasury_nft_policy, Some(in_d), Claim { amount: 1000 }, util.mk_ref(0), tx,
+    t_treasury_nft_policy, t_acct_nft_policy, Some(in_d), Claim { amount: 1000 }, util.mk_ref(0), tx,
   )
 }
 
@@ -305,10 +341,10 @@ test claim_insufficient_committee() fail {
   let in_d = ca_datum(0, 0, 5, 1)
   let out_d = ca_datum(1000, 0, 5, 1)
   // chỉ 1 committee sig < threshold 2 → reject
-  let tx = claim_tx(in_d, out_d, [#"c1"], assets.from_lovelace(2_000_000), 0, 1000, 5000)
+  let tx = claim_tx(in_d, out_d, [#"c1"], acc_value(), 0, 1000, 5000)
   claim_account.spend(
     t_committee, t_threshold, t_mspe, t_lamp_policy, t_lamp_name, t_beacon_policy,
-    t_treasury_nft_policy, Some(in_d), Claim { amount: 1000 }, util.mk_ref(0), tx,
+    t_treasury_nft_policy, t_acct_nft_policy, Some(in_d), Claim { amount: 1000 }, util.mk_ref(0), tx,
   )
 }
 
@@ -316,11 +352,11 @@ test claim_value_tamper() fail {
   let in_d = ca_datum(0, 0, 5, 1)
   let out_d = ca_datum(1000, 0, 5, 1)
   // output nhét token lạ → acc_out.value != acc_in.value → reject (C-VAL-0)
-  let tampered = assets.add(assets.from_lovelace(2_000_000), #"dead", #"beef", 1)
+  let tampered = assets.add(acc_value(), #"dead", #"beef", 1)
   let tx = claim_tx(in_d, out_d, [#"c1", #"c2"], tampered, 0, 1000, 5000)
   claim_account.spend(
     t_committee, t_threshold, t_mspe, t_lamp_policy, t_lamp_name, t_beacon_policy,
-    t_treasury_nft_policy, Some(in_d), Claim { amount: 1000 }, util.mk_ref(0), tx,
+    t_treasury_nft_policy, t_acct_nft_policy, Some(in_d), Claim { amount: 1000 }, util.mk_ref(0), tx,
   )
 }
 
@@ -328,10 +364,10 @@ test claim_cumulative_not_updated() fail {
   // C-SOLV-1: entitlement +1000 nhưng treasury cum KHÔNG tăng (0→0) → bind reject.
   let in_d = ca_datum(0, 0, 5, 1)
   let out_d = ca_datum(1000, 0, 5, 1)
-  let tx = claim_tx(in_d, out_d, [#"c1", #"c2"], assets.from_lovelace(2_000_000), 0, 0, 5000)
+  let tx = claim_tx(in_d, out_d, [#"c1", #"c2"], acc_value(), 0, 0, 5000)
   claim_account.spend(
     t_committee, t_threshold, t_mspe, t_lamp_policy, t_lamp_name, t_beacon_policy,
-    t_treasury_nft_policy, Some(in_d), Claim { amount: 1000 }, util.mk_ref(0), tx,
+    t_treasury_nft_policy, t_acct_nft_policy, Some(in_d), Claim { amount: 1000 }, util.mk_ref(0), tx,
   )
 }
 
@@ -339,10 +375,10 @@ test claim_cumulative_wrong_delta() fail {
   // C-SOLV-1: cum tăng 999 ≠ amount 1000 → reject.
   let in_d = ca_datum(0, 0, 5, 1)
   let out_d = ca_datum(1000, 0, 5, 1)
-  let tx = claim_tx(in_d, out_d, [#"c1", #"c2"], assets.from_lovelace(2_000_000), 0, 999, 5000)
+  let tx = claim_tx(in_d, out_d, [#"c1", #"c2"], acc_value(), 0, 999, 5000)
   claim_account.spend(
     t_committee, t_threshold, t_mspe, t_lamp_policy, t_lamp_name, t_beacon_policy,
-    t_treasury_nft_policy, Some(in_d), Claim { amount: 1000 }, util.mk_ref(0), tx,
+    t_treasury_nft_policy, t_acct_nft_policy, Some(in_d), Claim { amount: 1000 }, util.mk_ref(0), tx,
   )
 }
 
@@ -357,7 +393,7 @@ fn redeem_tx(
   extra_outs     : List<Output>,
 ) -> Transaction {
   let acc_addr = util.script_address(t_sh)
-  let val = assets.from_lovelace(2_000_000)
+  let val = acc_value()
   let acc_in = util.mk_input(util.mk_ref(0), util.mk_output(acc_addr, val, in_d))
   let acc_out = util.mk_output(acc_addr, val, out_d)
   let owner_val =
@@ -393,7 +429,7 @@ test redeem_happy() {
   let tx = redeem_tx(in_d, out_d, 300, 100, 3, [t_owner], [])
   claim_account.spend(
     t_committee, t_threshold, t_mspe, t_lamp_policy, t_lamp_name, t_beacon_policy,
-    t_treasury_nft_policy,
+    t_treasury_nft_policy, t_acct_nft_policy,
     Some(in_d), Redeem, util.mk_ref(0), tx,
   )
 }
@@ -405,7 +441,7 @@ test redeem_small_entitlement_full_first_epoch() {
   let tx = redeem_tx(in_d, out_d, 50, 100, 1, [t_owner], [])
   claim_account.spend(
     t_committee, t_threshold, t_mspe, t_lamp_policy, t_lamp_name, t_beacon_policy,
-    t_treasury_nft_policy,
+    t_treasury_nft_policy, t_acct_nft_policy,
     Some(in_d), Redeem, util.mk_ref(0), tx,
   )
 }
@@ -419,7 +455,7 @@ test redeem_multi_claim_accumulate() {
   let r1 =
     claim_account.spend(
       t_committee, t_threshold, t_mspe, t_lamp_policy, t_lamp_name, t_beacon_policy,
-    t_treasury_nft_policy,
+    t_treasury_nft_policy, t_acct_nft_policy,
       Some(d1_in), Redeem, util.mk_ref(0), tx1,
     )
   // Đợt 2: epoch=5 → vested=500, redeemed 200→500, amount=300.
@@ -429,7 +465,7 @@ test redeem_multi_claim_accumulate() {
   let r2 =
     claim_account.spend(
       t_committee, t_threshold, t_mspe, t_lamp_policy, t_lamp_name, t_beacon_policy,
-    t_treasury_nft_policy,
+    t_treasury_nft_policy, t_acct_nft_policy,
       Some(d2_in), Redeem, util.mk_ref(0), tx2,
     )
   // Đợt 3: epoch=20 → raw=2000, vested=min(1000,2000)=1000, redeemed 500→1000, amount=500.
@@ -439,7 +475,7 @@ test redeem_multi_claim_accumulate() {
   let r3 =
     claim_account.spend(
       t_committee, t_threshold, t_mspe, t_lamp_policy, t_lamp_name, t_beacon_policy,
-    t_treasury_nft_policy,
+    t_treasury_nft_policy, t_acct_nft_policy,
       Some(d3_in), Redeem, util.mk_ref(0), tx3,
     )
   // tổng nhận = 200+300+500 = 1000 = E (cap chính xác).
@@ -454,7 +490,7 @@ test redeem_vested_capped_at_E() {
   let tx = redeem_tx(in_d, out_d, 1000, 100, 50, [t_owner], [])
   claim_account.spend(
     t_committee, t_threshold, t_mspe, t_lamp_policy, t_lamp_name, t_beacon_policy,
-    t_treasury_nft_policy,
+    t_treasury_nft_policy, t_acct_nft_policy,
     Some(in_d), Redeem, util.mk_ref(0), tx,
   )
 }
@@ -466,7 +502,7 @@ test redeem_over_cap_rejected() fail {
   let tx = redeem_tx(in_d, out_d, 1500, 100, 50, [t_owner], [])
   claim_account.spend(
     t_committee, t_threshold, t_mspe, t_lamp_policy, t_lamp_name, t_beacon_policy,
-    t_treasury_nft_policy,
+    t_treasury_nft_policy, t_acct_nft_policy,
     Some(in_d), Redeem, util.mk_ref(0), tx,
   )
 }
@@ -479,7 +515,7 @@ test redeem_nothing_vested_rejected() fail {
   let tx = redeem_tx(in_d, out_d, 0, 100, 5, [t_owner], [])
   claim_account.spend(
     t_committee, t_threshold, t_mspe, t_lamp_policy, t_lamp_name, t_beacon_policy,
-    t_treasury_nft_policy,
+    t_treasury_nft_policy, t_acct_nft_policy,
     Some(in_d), Redeem, util.mk_ref(0), tx,
   )
 }
@@ -491,7 +527,7 @@ test redeem_no_owner_sig() fail {
   let tx = redeem_tx(in_d, out_d, 300, 100, 3, [], [])
   claim_account.spend(
     t_committee, t_threshold, t_mspe, t_lamp_policy, t_lamp_name, t_beacon_policy,
-    t_treasury_nft_policy,
+    t_treasury_nft_policy, t_acct_nft_policy,
     Some(in_d), Redeem, util.mk_ref(0), tx,
   )
 }
@@ -506,7 +542,7 @@ test redeem_double_satisfaction() fail {
   let tx = redeem_tx(in_d, out_d, 300, 100, 3, [t_owner], [dup_out])
   claim_account.spend(
     t_committee, t_threshold, t_mspe, t_lamp_policy, t_lamp_name, t_beacon_policy,
-    t_treasury_nft_policy,
+    t_treasury_nft_policy, t_acct_nft_policy,
     Some(in_d), Redeem, util.mk_ref(0), tx,
   )
 }
@@ -519,7 +555,7 @@ test redeem_mint_rejected() fail {
   let tx = Transaction { ..base, mint: assets.add(assets.zero, #"dead", #"beef", 1) }
   claim_account.spend(
     t_committee, t_threshold, t_mspe, t_lamp_policy, t_lamp_name, t_beacon_policy,
-    t_treasury_nft_policy,
+    t_treasury_nft_policy, t_acct_nft_policy,
     Some(in_d), Redeem, util.mk_ref(0), tx,
   )
 }
@@ -532,7 +568,7 @@ test redeem_fake_treasury_no_trsy_rejected() fail {
   let out_d = ca_datum(1000, 300, 0, 1)
   // tx KHÔNG có treasury TRSY: thay acc_in + 1 input ví thường (không NFT).
   let acc_addr = util.script_address(t_sh)
-  let val = assets.from_lovelace(2_000_000)
+  let val = acc_value()
   let acc_in = util.mk_input(util.mk_ref(0), util.mk_output(acc_addr, val, in_d))
   let acc_out = util.mk_output(acc_addr, val, out_d)
   let owner_val =
@@ -556,7 +592,7 @@ test redeem_fake_treasury_no_trsy_rejected() fail {
     }
   claim_account.spend(
     t_committee, t_threshold, t_mspe, t_lamp_policy, t_lamp_name, t_beacon_policy,
-    t_treasury_nft_policy,
+    t_treasury_nft_policy, t_acct_nft_policy,
     Some(in_d), Redeem, util.mk_ref(0), tx,
   )
 }
@@ -571,7 +607,7 @@ test claim_trsy_at_wallet_rejected() fail {
   let in_d = ca_datum(0, 0, 5, 1)
   let out_d = ca_datum(1000, 0, 5, 1)
   let acc_addr = util.script_address(t_sh)
-  let acc_val = assets.from_lovelace(2_000_000)
+  let acc_val = acc_value()
   let acc_in = util.mk_input(util.mk_ref(0), util.mk_output(acc_addr, acc_val, in_d))
   let acc_out = util.mk_output(acc_addr, acc_val, out_d)
 
@@ -597,7 +633,7 @@ test claim_trsy_at_wallet_rejected() fail {
     }
   claim_account.spend(
     t_committee, t_threshold, t_mspe, t_lamp_policy, t_lamp_name, t_beacon_policy,
-    t_treasury_nft_policy, Some(in_d), Claim { amount: 1000 }, util.mk_ref(0), tx,
+    t_treasury_nft_policy, t_acct_nft_policy, Some(in_d), Claim { amount: 1000 }, util.mk_ref(0), tx,
   )
 }
 
@@ -606,7 +642,7 @@ test claim_trsy_moved_to_other_script_rejected() fail {
   let in_d = ca_datum(0, 0, 5, 1)
   let out_d = ca_datum(1000, 0, 5, 1)
   let acc_addr = util.script_address(t_sh)
-  let acc_val = assets.from_lovelace(2_000_000)
+  let acc_val = acc_value()
   let acc_in = util.mk_input(util.mk_ref(0), util.mk_output(acc_addr, acc_val, in_d))
   let acc_out = util.mk_output(acc_addr, acc_val, out_d)
 
@@ -634,7 +670,7 @@ test claim_trsy_moved_to_other_script_rejected() fail {
     }
   claim_account.spend(
     t_committee, t_threshold, t_mspe, t_lamp_policy, t_lamp_name, t_beacon_policy,
-    t_treasury_nft_policy, Some(in_d), Claim { amount: 1000 }, util.mk_ref(0), tx,
+    t_treasury_nft_policy, t_acct_nft_policy, Some(in_d), Claim { amount: 1000 }, util.mk_ref(0), tx,
   )
 }
 
@@ -644,7 +680,7 @@ test redeem_ledger_frozen_rejected() fail {
   let in_d = ca_datum(1000, 0, 0, 1)
   let out_d = ca_datum(1000, 300, 0, 1)
   let acc_addr = util.script_address(t_sh)
-  let val = assets.from_lovelace(2_000_000)
+  let val = acc_value()
   let acc_in = util.mk_input(util.mk_ref(0), util.mk_output(acc_addr, val, in_d))
   let acc_out = util.mk_output(acc_addr, val, out_d)
   let owner_val = assets.add(assets.from_lovelace(2_000_000), t_lamp_policy, t_lamp_name, 300)
@@ -671,6 +707,106 @@ test redeem_ledger_frozen_rejected() fail {
     }
   claim_account.spend(
     t_committee, t_threshold, t_mspe, t_lamp_policy, t_lamp_name, t_beacon_policy,
-    t_treasury_nft_policy, Some(in_d), Redeem, util.mk_ref(0), tx,
+    t_treasury_nft_policy, t_acct_nft_policy, Some(in_d), Redeem, util.mk_ref(0), tx,
+  )
+}
+
+// ── HỒI QUY C-ACC-0 (review PR #22, điểm 1) ───────────────────────
+//
+// Khung tx redeem dùng chung cho các ca dưới; chỉ khác nhau ở VALUE của UTxO tài khoản.
+// E=1000, D=100, dpe=1, start=0, epoch=3 → vested=300, amount=300 (giống redeem_happy).
+fn redeem_tx_with_acc_value(acc_v: assets.Value, in_d: ClaimAccountDatum, out_d: ClaimAccountDatum) -> Transaction {
+  let acc_addr = util.script_address(t_sh)
+  let acc_in = util.mk_input(util.mk_ref(0), util.mk_output(acc_addr, acc_v, in_d))
+  let acc_out = util.mk_output(acc_addr, acc_v, out_d)
+  let owner_val = assets.add(assets.from_lovelace(2_000_000), t_lamp_policy, t_lamp_name, 300)
+  let owner_out = util.mk_output(util.vk_address(t_owner), owner_val, in_d)
+  let beacon_val =
+    assets.add(assets.from_lovelace(2_000_000), t_beacon_policy, util.beacon_name(DropParam), 1)
+  let beacon_ref =
+    util.mk_input(
+      util.mk_ref(5),
+      util.mk_output(util.script_address(#"bbbbbbbb"), beacon_val,
+        BeaconDatum { epoch: 0, kind: DropParam, drop_value: 100 }),
+    )
+  let (tre_in, tre_out) = treasury_io(100_000, 100_000 - 300, 100_000)
+  Transaction {
+    ..placeholder,
+    inputs: [acc_in, tre_in],
+    reference_inputs: [beacon_ref],
+    outputs: [acc_out, owner_out, tre_out],
+    extra_signatories: [t_owner],
+    validity_range: interval.after(3 * t_mspe),
+    mint: assets.zero,
+  }
+}
+
+test redeem_fake_account_without_nft_rejected() fail {
+  // (a) CA SINH RA BẢN VÁ. Trước 2026-08-12 test này PASS: kẻ tấn công tự đỗ một UTxO ở
+  // địa chỉ `claim_account` với `entitlement = 1000` do chính mình viết — treasury chưa
+  // từng ghi khoản nợ đó — rồi rút 300 LAMP. Trần trộm = đúng số đang nợ người dùng thật.
+  // Nay UTxO không mang NFT tài khoản ⇒ không spend được ⇒ không rút được đồng nào.
+  let in_d = ca_datum(1000, 0, 0, 1)
+  let out_d = ca_datum(1000, 300, 0, 1)
+  let bare = assets.from_lovelace(2_000_000)
+  claim_account.spend(
+    t_committee, t_threshold, t_mspe, t_lamp_policy, t_lamp_name, t_beacon_policy,
+    t_treasury_nft_policy, t_acct_nft_policy,
+    Some(in_d), Redeem, util.mk_ref(0), redeem_tx_with_acc_value(bare, in_d, out_d),
+  )
+}
+
+test redeem_account_nft_wrong_name_rejected() fail {
+  // Biến thể của (a): CÓ token đúng policy nhưng tên KHÔNG phải blake2b_256(owner)
+  // (vd mượn NFT của ví khác, hoặc token tự đặt tên). Binding A-1 chặn.
+  let in_d = ca_datum(1000, 0, 0, 1)
+  let out_d = ca_datum(1000, 300, 0, 1)
+  let wrong =
+    assets.from_lovelace(2_000_000)
+      |> assets.add(t_acct_nft_policy, blake2b_256(#"badbad"), 1)
+  claim_account.spend(
+    t_committee, t_threshold, t_mspe, t_lamp_policy, t_lamp_name, t_beacon_policy,
+    t_treasury_nft_policy, t_acct_nft_policy,
+    Some(in_d), Redeem, util.mk_ref(0), redeem_tx_with_acc_value(wrong, in_d, out_d),
+  )
+}
+
+test redeem_account_nft_wrong_policy_rejected() fail {
+  // Biến thể của (a): tên đúng nhưng POLICY lạ (tự đúc token cùng tên dưới policy mình).
+  let in_d = ca_datum(1000, 0, 0, 1)
+  let out_d = ca_datum(1000, 300, 0, 1)
+  let wrong =
+    assets.from_lovelace(2_000_000)
+      |> assets.add(#"beef", blake2b_256(t_owner), 1)
+  claim_account.spend(
+    t_committee, t_threshold, t_mspe, t_lamp_policy, t_lamp_name, t_beacon_policy,
+    t_treasury_nft_policy, t_acct_nft_policy,
+    Some(in_d), Redeem, util.mk_ref(0), redeem_tx_with_acc_value(wrong, in_d, out_d),
+  )
+}
+
+test claim_fake_account_without_nft_rejected() fail {
+  // Đối xứng phía Claim: tài khoản giả (KHÔNG NFT ở CẢ input lẫn output — nếu chỉ thiếu
+  // ở output thì `acc_out.value == acc_in.value` bắt trước, không chạm tới C-ACC-0) cũng
+  // không nhận thêm entitlement được. Chặn cả đường "đỗ sẵn UTxO rồi xin committee ký".
+  let in_d = ca_datum(0, 0, 5, 1)
+  let out_d = ca_datum(1000, 0, 5, 1)
+  let acc_addr = util.script_address(t_sh)
+  let bare = assets.from_lovelace(2_000_000)
+  let acc_in = util.mk_input(util.mk_ref(0), util.mk_output(acc_addr, bare, in_d))
+  let acc_out = util.mk_output(acc_addr, bare, out_d)
+  let (tre_in, tre_out) = treasury_io(0, 1000, 5000)
+  let tx =
+    Transaction {
+      ..placeholder,
+      inputs: [acc_in, tre_in],
+      outputs: [acc_out, tre_out],
+      extra_signatories: [#"c1", #"c2"],
+      mint: assets.zero,
+    }
+  claim_account.spend(
+    t_committee, t_threshold, t_mspe, t_lamp_policy, t_lamp_name, t_beacon_policy,
+    t_treasury_nft_policy, t_acct_nft_policy,
+    Some(in_d), Claim { amount: 1000 }, util.mk_ref(0), tx,
   )
 }
