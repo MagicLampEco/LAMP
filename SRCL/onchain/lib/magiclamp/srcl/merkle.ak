@@ -28,6 +28,7 @@
 
 use aiken/builtin
 use aiken/crypto.{blake2b_256}
+use aiken/primitive/bytearray
 use magiclamp/srcl/types.{MerkleStep}
 
 const leaf_tag: ByteArray = #"00"
@@ -39,24 +40,17 @@ fn ba(a: ByteArray, b: ByteArray) -> ByteArray {
   builtin.append_bytearray(a, b)
 }
 
-/// Mã hoá Int → big-endian 8 byte (giả định 0 ≤ n < 2^64, đủ cho oildrop/epoch).
+/// Mã hoá Int → big-endian 8 byte (0 ≤ n < 2^64, đủ cho oildrop/epoch).
+/// Dùng stdlib (như Airdrop merkle.ak) — bản hand-rolled cũ ÂM THẦM cắt cụt
+/// n ≥ 2^64 (mod 256^8) trong khi off-chain `uintToBe8` NÉM lỗi ⇒ lá lệch giữa
+/// hai phía. stdlib fail luôn khi tràn → hai phía cùng fail-closed.
 pub fn int_to_be8(n: Int) -> ByteArray {
-  do_be(n, 8, #"")
+  bytearray.from_int_big_endian(n, 8)
 }
 
 /// Mã hoá Int → big-endian 1 byte (role: 0 ≤ n < 256). Fixed-width 1B cho role tag.
 pub fn int_to_be1(n: Int) -> ByteArray {
-  do_be(n, 1, #"")
-}
-
-fn do_be(n: Int, k: Int, acc: ByteArray) -> ByteArray {
-  if k == 0 {
-    acc
-  } else {
-    let byte = n % 256
-    // prepend byte (xây từ chữ-số-thấp lên cao → bytearray big-endian)
-    do_be(n / 256, k - 1, builtin.cons_bytearray(byte, acc))
-  }
+  bytearray.from_int_big_endian(n, 1)
 }
 
 /// Hash của leaf SCHEMA C: 0x00 ++ campaign_id[32] ++ epoch_be8 ++ role[1] ++

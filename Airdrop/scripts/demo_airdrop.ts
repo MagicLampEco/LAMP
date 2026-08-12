@@ -23,8 +23,10 @@ import { fileURLToPath } from "node:url";
 import { buildTree } from "../offchain/src/merkle.js";
 import { buildDeployTx } from "../offchain/src/deployBuilder.js";
 import { buildClaimTx } from "../offchain/src/claimBuilder.js";
-import type { AirdropPool, SnapshotEntry } from "../offchain/src/types.js";
-import { MS_PER_EPOCH_BY_NETWORK } from "../offchain/src/constants.js";
+import type { AirdropPool, SnapshotEntry, MerkleParams } from "../offchain/src/types.js";
+import {
+  MS_PER_EPOCH_BY_NETWORK, DELEGATOR_CAMPAIGN_ID, ROLE_DELEGATOR,
+} from "../offchain/src/constants.js";
 
 // Tìm .env: ưu tiên scripts/.env, fallback repo root
 const __dir = dirname(fileURLToPath(import.meta.url));
@@ -97,7 +99,17 @@ const snapshot: SnapshotEntry[] = [
   { address: myAddr, amount: MY_CLAIM_OILDROP },
   { address: otherAddr, amount: OTHER_OILDROP },
 ];
-const tree = buildTree(snapshot);
+
+// Schema C: bộ (campaign_id, snapshot_epoch, role) BAKE vào validator PARAM và
+// đồng thời vào leaf. Off-chain và param dưới đây PHẢI đọc cùng 3 hằng này —
+// lệch 1 byte thì leaf không khớp root và không claim được.
+const SNAPSHOT_EPOCH = BigInt(Math.floor(Date.now() / Number(MS_PER_EPOCH)));
+const merkleParams: MerkleParams = {
+  campaignId: DELEGATOR_CAMPAIGN_ID,
+  epoch: SNAPSHOT_EPOCH,
+  role: ROLE_DELEGATOR,
+};
+const tree = buildTree(snapshot, merkleParams);
 const poolSeedOildrop = snapshot.reduce((s, e) => s + e.amount, 0n); // tổng = 3 LAMP
 console.log(`[airdrop] merkle_root: ${tree.root}`);
 console.log(`[airdrop] leaves: ${tree.leaves.length}, pool seed: ${poolSeedOildrop} oildrop`);
@@ -119,7 +131,10 @@ const airdropNftPolicyId = mintingPolicyToId(airdropNftPolicy);
 
 const poolScript: Validator = {
   type: "PlutusV3",
-  script: applyParamsToScript(get("airdrop_pool.airdrop_pool.spend"), [airdropNftPolicyId, LAMP_POLICY, LAMP_NAME, MS_PER_EPOCH]),
+  script: applyParamsToScript(get("airdrop_pool.airdrop_pool.spend"), [
+    airdropNftPolicyId, LAMP_POLICY, LAMP_NAME, MS_PER_EPOCH,
+    merkleParams.campaignId, merkleParams.epoch, BigInt(merkleParams.role),
+  ]),
 };
 const markerScript: Validator = {
   type: "PlutusV3",
@@ -136,8 +151,7 @@ console.log(`[airdrop] markerAddr:  ${markerAddress}`);
 Object.assign(out, { airdropNftPolicyId, poolAddress, markerAddress, merkleRoot: tree.root, lampUnit, poolNftUnit });
 
 // deadline_epoch: rất xa trong tương lai để còn cửa sổ claim.
-const nowEpoch = BigInt(Math.floor(Date.now() / Number(MS_PER_EPOCH)));
-const deadlineEpoch = nowEpoch + 3650n; // ~10 năm
+const deadlineEpoch = SNAPSHOT_EPOCH + 3650n; // ~10 năm
 const pool: AirdropPool = {
   merkle_root: tree.root,
   deadline_epoch: deadlineEpoch,

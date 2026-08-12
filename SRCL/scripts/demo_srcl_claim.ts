@@ -17,7 +17,9 @@ import { readFileSync } from "node:fs";
 
 import { buildTree, markerName } from "../offchain/src/merkle.js";
 import { decodeSrclDatum, srclDatumToCbor, claimRedeemerToCbor, burnSlotRedeemerToCbor } from "../offchain/src/datum.js";
-import { POOL_NFT_NAME, END_EPOCH, MS_PER_EPOCH_MAINNET } from "../offchain/src/constants.js";
+import {
+  POOL_NFT_NAME, END_EPOCH, MS_PER_EPOCH_MAINNET, SRCL_CAMPAIGN_ID, ROLE_SPO,
+} from "../offchain/src/constants.js";
 import type { SrclDatum, ClaimProof } from "../offchain/src/types.js";
 
 const [genesisTxHash, genesisIdxStr] = process.argv.slice(2);
@@ -52,7 +54,9 @@ const srclNftPolicy: MintingPolicy = { type: "PlutusV3", script: applyParamsToSc
 const srclNftPolicyId = mintingPolicyToId(srclNftPolicy);
 const markerScript: Validator = { type: "PlutusV3", script: applyParamsToScript(get("srcl_marker.srcl_marker.spend"), [srclNftPolicyId]) };
 const markerHash = validatorToScriptHash(markerScript);
-const poolScript: Validator = { type: "PlutusV3", script: applyParamsToScript(get("srcl_pool.srcl_pool.spend"), [srclNftPolicyId, LAMP_POLICY, LAMP_NAME, [pkh], 1n, markerHash]) };
+// 8 param — PHẢI khớp y hệt demo_srcl.ts (kể cả campaign_id + role schema C),
+// nếu không script-hash lệch ⇒ dựng lại sai địa chỉ pool.
+const poolScript: Validator = { type: "PlutusV3", script: applyParamsToScript(get("srcl_pool.srcl_pool.spend"), [srclNftPolicyId, LAMP_POLICY, LAMP_NAME, [pkh], 1n, markerHash, SRCL_CAMPAIGN_ID, BigInt(ROLE_SPO)]) };
 const poolAddress = credentialToAddress("Preview", scriptHashToCredential(validatorToScriptHash(poolScript)));
 const markerAddress = credentialToAddress("Preview", scriptHashToCredential(markerHash));
 const poolNftUnit = toUnit(srclNftPolicyId, POOL_NFT_NAME);
@@ -67,7 +71,7 @@ const mySlotUnit = toUnit(srclNftPolicyId, sName);
 
 // cây để sinh proof (giống deploy: owner ví mình 1 LAMP + pkh giả 2 LAMP).
 const dummyOwner = "00112233445566778899aabbccddeeff00112233445566778899aabb";
-const tree = buildTree([
+const tree = buildTree(SRCL_CAMPAIGN_ID, ROLE_SPO, [
   { epoch: 0n, owner: pkh, amount: MY_OILDROP },
   { epoch: 0n, owner: dummyOwner, amount: 2_000_000n },
 ]);

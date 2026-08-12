@@ -22,7 +22,9 @@ import { buildTree } from "../offchain/src/merkle.js";
 import { srclDatumToCbor, mintPoolRedeemerToCbor } from "../offchain/src/datum.js";
 import { buildSetRootTx } from "../offchain/src/setRootBuilder.js";
 import { buildClaimTx } from "../offchain/src/claimBuilder.js";
-import { POOL_NFT_NAME, END_EPOCH, MS_PER_EPOCH_MAINNET } from "../offchain/src/constants.js";
+import {
+  POOL_NFT_NAME, END_EPOCH, MS_PER_EPOCH_MAINNET, SRCL_CAMPAIGN_ID, ROLE_SPO,
+} from "../offchain/src/constants.js";
 import type { SrclDatum, ClaimProof } from "../offchain/src/types.js";
 
 const ENV_PATH = "/Users/ductiger/Projects/LAMP-launch-wt/.env";
@@ -94,11 +96,13 @@ const markerHash = validatorToScriptHash(markerScript);
 const ADMIN = [pkh];
 const ADMIN_THRESHOLD = 1n;
 
-// pool — 6 param (param thứ 6 = slot_registry_hash = markerHash).
+// pool — 8 param. 6 = slot_registry_hash (markerHash); 7+8 = schema C
+// (campaign_id, role) — BAKE cùng bộ mà buildTree dùng, lệch là claim hỏng.
 const poolScript: Validator = {
   type: "PlutusV3",
   script: applyParamsToScript(get("srcl_pool.srcl_pool.spend"),
-    [srclNftPolicyId, LAMP_POLICY, LAMP_NAME, ADMIN, ADMIN_THRESHOLD, markerHash]),
+    [srclNftPolicyId, LAMP_POLICY, LAMP_NAME, ADMIN, ADMIN_THRESHOLD, markerHash,
+     SRCL_CAMPAIGN_ID, BigInt(ROLE_SPO)]),
 };
 
 const poolAddress = credentialToAddress("Preview", scriptHashToCredential(validatorToScriptHash(poolScript)));
@@ -120,7 +124,7 @@ const entries = [
   { epoch: 0n, owner: pkh, amount: MY_OILDROP },
   { epoch: 0n, owner: dummyOwner, amount: OTHER_OILDROP },
 ];
-const tree = buildTree(entries);
+const tree = buildTree(SRCL_CAMPAIGN_ID, ROLE_SPO, entries);
 const root0 = tree.root;
 const poolSeedOildrop = MY_OILDROP + OTHER_OILDROP; // 3 LAMP
 console.log(`[srcl] root0: ${root0}, pool seed: ${poolSeedOildrop} oildrop`);

@@ -199,10 +199,25 @@ export async function verifyRegistration(
 
 export interface DedupeConflict {
   key: string;
-  /** loại xung đột: cùng stake_address, hoặc cùng payment_address khác stake. */
+  /** loại xung đột: cùng stake_address, hoặc cùng payment CREDENTIAL khác stake. */
   kind: "duplicate_stake" | "payment_collision";
   kept: DelegatorRegistration;
   dropped: DelegatorRegistration;
+}
+
+/** Khoá dedupe phía payment = payment CREDENTIAL hash, KHÔNG phải chuỗi bech32.
+ *  Merkle schema C khoá slot = blake2b(epoch ‖ payment-cred-hash), nên 2 địa chỉ
+ *  chỉ khác phần stake là CÙNG một slot. Dedupe theo bech32 để lọt cả hai, rồi
+ *  `normalizeSnapshot` ném MERKLE-030 ở cuối — sau khi đã trả tiền cho toàn bộ
+ *  lượt fetch Blockfrost, và không có chỗ nào loại giúp. Loại ngay tại đây.
+ *  Địa chỉ không phân giải được → dùng nguyên chuỗi (verifyRegistration đã loại
+ *  bản hỏng; nhánh này chỉ còn khi chạy --trust-input). */
+function paymentDedupeKey(address: string): string {
+  try {
+    return getAddressDetails(address).paymentCredential?.hash ?? address;
+  } catch {
+    return address;
+  }
 }
 
 export interface DedupeResult {
@@ -227,7 +242,7 @@ export function dedupeFirstWins(regs: DelegatorRegistration[]): DedupeResult {
 
   for (const reg of regs) {
     const stake = reg.stake_address;
-    const payment = reg.payment_address;
+    const payment = paymentDedupeKey(reg.payment_address);
 
     const priorStake = byStake.get(stake);
     if (priorStake) {

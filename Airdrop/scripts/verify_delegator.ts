@@ -16,7 +16,7 @@
 
 import { writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import { bfAll, BLOCKFROST_KEY, NETWORK } from "./config.js";
+import { bfAll, BLOCKFROST_KEY, NETWORK, mapLimit } from "./config.js";
 import { verifyRegistration } from "../offchain/src/delegatorSnapshot.js";
 import type { DelegatorRegistration, StakeHistoryRow } from "../offchain/src/delegatorSnapshot.js";
 import { loadRegistrations } from "./registrations_io.js";
@@ -72,7 +72,10 @@ async function main(): Promise<void> {
   const verified: DelegatorRegistration[] = [];
   const rejected: { source: string; stake: string; reasons: string[] }[] = [];
 
-  for (const { reg, source } of loaded) {
+  // Lớp 3 gọi mạng cho TỪNG đăng ký; chạy 8 luồng thay vì tuần tự (vài nghìn đăng
+  // ký × lịch sử phân trang = hàng giờ). Kết quả vẫn theo đúng thứ tự đầu vào nên
+  // log bên dưới không đổi.
+  const checked = await mapLimit(loaded, 8, async ({ reg, source }) => {
     const v = await verifyRegistration(reg);
     const reasons = [...v.reasons];
 
@@ -83,7 +86,10 @@ async function main(): Promise<void> {
       });
       if (!chain.ok) reasons.push("không có lịch sử stake thật (0 epoch active > 0)");
     }
+    return { reg, source, reasons };
+  });
 
+  for (const { reg, source, reasons } of checked) {
     if (reasons.length === 0) {
       verified.push(reg);
       console.log(`  ✓ ${short(reg.stake_address)} → ${short(reg.payment_address)}`);

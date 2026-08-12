@@ -52,4 +52,7 @@ export interface MerkleTree {
   leaves: string[];
   /** Snapshot đã chuẩn hoá (sort + dedup) — thứ tự khớp leaves. */
   entries: SnapshotEntry[];
+  /** Mọi tầng cây, layers[0] = leaves, tầng cuối = [root]. buildProof đọc thẳng
+   *  từ đây; không có nó thì mỗi proof phải băm lại cả cây → O(n²) cho cả pot. */
+  layers: string[][];
 }

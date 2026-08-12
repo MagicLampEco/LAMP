@@ -90,14 +90,18 @@ export async function etdCheck(address: string): Promise<EtdCheckResult> {
     try {
       const file = JSON.parse(readFileSync(SNAPSHOT_PATH, "utf8")) as SnapshotFile;
       const snap = parseSnapshotFile(file);
-      // owner khớp owner_key của snapshot (stake_address, hoặc payment pkh khi đã registry-map)
-      const owner = file.meta.owner_key === "stake_address" ? stakeAddr : stakeAddr;
-      const proj = projectLampFromSnapshot(snap, owner, TIGER_TOTAL_OILDROP);
-      if (proj.amountOildrop !== null) {
-        amount_lamp = (proj.amountOildrop / OILDROP_PER_LAMP).toString();
-        capped = proj.capped;
+      // Chỉ tra được snapshot khoá theo `stake_address`. Bản registry-map khoá theo
+      // payment pkh: từ stake address KHÔNG suy ngược ra payment key được (cần bảng
+      // registry, chưa có ở tầng này) → GIỮ provisional, KHÔNG trả 0 "đã chốt".
+      // Trả `amount_lamp: null, provisional: false` cho người CÓ phần là báo sai.
+      if (file.meta.owner_key === "stake_address") {
+        const proj = projectLampFromSnapshot(snap, stakeAddr, TIGER_TOTAL_OILDROP);
+        if (proj.amountOildrop !== null) {
+          amount_lamp = (proj.amountOildrop / OILDROP_PER_LAMP).toString();
+          capped = proj.capped;
+        }
+        provisional = false;
       }
-      provisional = false;
     } catch { /* snapshot lỗi → giữ provisional */ }
   }
 

@@ -12,6 +12,15 @@ const PUSH_TIMEOUT_MS = 8_000;
 // Ngoài webhook_secret per-target, cũng cho phép global env var.
 const GLOBAL_SIGNING_SECRET = process.env.LAUNCH_SIGNING_SECRET ?? "";
 
+/** Bỏ `push_targets` (URL + webhook_secret riêng của TỪNG consumer) khỏi mọi
+ *  campaign đi ra ngoài — payload webhook, SSE (`/events` KHÔNG có auth), và mọi
+ *  GET public. MỘT bản cài đặt duy nhất: trước đây cùng phép lược này được viết
+ *  tay 3 chỗ, sửa 1 chỗ là 2 chỗ kia còn rò. */
+export function publicCampaign<T extends { push_targets?: unknown }>(c: T): Omit<T, "push_targets"> {
+  const { push_targets: _drop, ...rest } = c;
+  return rest;
+}
+
 function sign(payload: string, secret: string): string {
   return "sha256=" + createHmac("sha256", secret).update(payload).digest("hex");
 }
@@ -66,11 +75,10 @@ export async function pushAll(
   // BỎ `push_targets` khỏi payload: nó chứa URL + webhook_secret của TẤT CẢ
   // consumer. Gửi nguyên đi thì consumer A đọc được secret của B và C, rồi ký
   // giả `X-Launch-Signature` tới họ. Mỗi target nhận đúng phần công khai.
-  const { push_targets: _drop, ...publicCampaign } = campaign;
   const payload: PushPayload = {
     event,
     campaign_id: campaign.id,
-    campaign: publicCampaign as typeof campaign,
+    campaign: publicCampaign(campaign) as typeof campaign,
     changed_fields: changedFields,
     timestamp: new Date().toISOString(),
   };

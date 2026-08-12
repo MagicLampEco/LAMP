@@ -229,6 +229,24 @@ describe("dedupeFirstWins", () => {
     expect(conflicts[0]!.kind).toBe("payment_collision");
   });
 
+  it("2 địa chỉ CÙNG payment-cred khác stake-cred → vẫn là payment_collision", async () => {
+    // Merkle schema C khoá slot = blake2b(epoch ‖ payment-cred-hash) nên hai địa
+    // chỉ này ĐỤNG slot. Dedupe theo chuỗi bech32 sẽ cho lọt cả hai rồi buildTree
+    // ném MERKLE-030 ở cuối — sau khi đã fetch xong toàn bộ lịch sử Blockfrost.
+    const pay = keyHashToCredential("11".repeat(28));
+    const addr1 = credentialToAddress("Preview", pay, keyHashToCredential("aa".repeat(28)));
+    const addr2 = credentialToAddress("Preview", pay, keyHashToCredential("bb".repeat(28)));
+    expect(addr1).not.toBe(addr2);
+
+    const a = await mintRegistration({ stake_address: "stake_test1aaa", payment_address: addr1 });
+    const b = await mintRegistration({ stake_address: "stake_test1bbb", payment_address: addr2 });
+    const { kept, conflicts } = dedupeFirstWins([a, b]);
+    expect(kept).toHaveLength(1);
+    expect(kept[0]!.payment_address).toBe(addr1); // first-wins
+    expect(conflicts).toHaveLength(1);
+    expect(conflicts[0]!.kind).toBe("payment_collision");
+  });
+
   it("không xung đột → giữ hết, đúng thứ tự", async () => {
     const a = await mintRegistration({ stake_address: "s1", payment_address: "p1" });
     const b = await mintRegistration({ stake_address: "s2", payment_address: "p2" });

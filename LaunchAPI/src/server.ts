@@ -25,6 +25,7 @@ import {
 } from "./content.js";
 import {
   pushAll, verifyWebhookSignature, registerSseClient, unregisterSseClient, broadcastSse,
+  publicCampaign,
 } from "./push.js";
 import type { AdminUpdateRequest, ApiResponse, LaunchCampaign, LaunchStats } from "./types.js";
 import { etdCheck } from "./etd.js";
@@ -69,13 +70,7 @@ async function readBody(req: IncomingMessage): Promise<unknown> {
   });
 }
 
-/** Bỏ `push_targets` (URL + webhook_secret riêng của từng consumer) khỏi mọi
- *  campaign đi ra ngoài. GET đã lọc từ trước; SSE và webhook payload thì chưa —
- *  `/events` KHÔNG có auth nên rò ở đó là rò cho bất kỳ ai. */
-export function publicCampaign<T extends { push_targets?: unknown }>(c: T): Omit<T, "push_targets"> {
-  const { push_targets: _drop, ...rest } = c;
-  return rest;
-}
+export { publicCampaign };
 
 function requireAdmin(req: IncomingMessage, res: ServerResponse): boolean {
   if (DEV_NO_AUTH) return true; // dev: DEV_NO_AUTH=1 tường minh
@@ -155,7 +150,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
       mechanism: url.searchParams.get("mechanism") ?? undefined,
     });
     // Không expose push_targets (private webhook URLs) ra public
-    const safe = campaigns.map(({ push_targets: _, ...c }) => c);
+    const safe = campaigns.map(publicCampaign);
     return json(res, { ok: true, data: safe });
   }
 
@@ -165,7 +160,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
     const sub = campaignMatch[2];
     const c = await getCampaign(id);
     if (!c) return err(res, "campaign not found", 404);
-    const { push_targets: _, ...safe } = c;
+    const safe = publicCampaign(c);
 
     if (sub === "phases") return json(res, { ok: true, data: safe.phases });
     if (sub === "stats")  return json(res, { ok: true, data: safe.stats ?? null });

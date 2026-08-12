@@ -219,26 +219,27 @@ export function normalizeSnapshot(entries: SnapshotEntry[], params: MerkleParams
   return dedup.map((d) => d.entry);
 }
 
-/** Dựng cây Merkle từ snapshot. Trả root + leaves + entries (đã chuẩn hoá). */
+/** Một tầng lên tầng cha: ghép đôi; node lẻ cuối CARRY nguyên vẹn (không tự-hash). */
+function nextLayer(level: string[]): string[] {
+  const next: string[] = [];
+  for (let i = 0; i < level.length; i += 2) {
+    next.push(i + 1 < level.length ? nodeHash(level[i]!, level[i + 1]!) : level[i]!);
+  }
+  return next;
+}
+
+/** Dựng cây Merkle từ snapshot. Trả root + leaves + entries (đã chuẩn hoá) + layers. */
 export function buildTree(rawEntries: SnapshotEntry[], params: MerkleParams): MerkleTree {
   if (rawEntries.length === 0) throw new Error("MERKLE-040: snapshot rỗng");
   const entries = normalizeSnapshot(rawEntries, params);
   const leaves = entries.map((e) => leafHash(e, params));
 
-  let level = leaves.slice();
-  while (level.length > 1) {
-    const next: string[] = [];
-    for (let i = 0; i < level.length; i += 2) {
-      if (i + 1 < level.length) {
-        next.push(nodeHash(level[i]!, level[i + 1]!));
-      } else {
-        // node lẻ cuối → carry lên nguyên vẹn (không tự-hash).
-        next.push(level[i]!);
-      }
-    }
-    level = next;
+  // Băm cả cây ĐÚNG 1 LẦN, giữ lại mọi tầng → buildProof chỉ còn index vào layers.
+  const layers: string[][] = [leaves];
+  while (layers[layers.length - 1]!.length > 1) {
+    layers.push(nextLayer(layers[layers.length - 1]!));
   }
-  return { root: level[0]!, leaves, entries };
+  return { root: layers[layers.length - 1]![0]!, leaves, entries, layers };
 }
 
 /** Sinh Merkle proof cho leaf tại index (trong cây đã dựng). */
@@ -248,17 +249,9 @@ export function buildProof(tree: MerkleTree, leafIndex: number): ProofStep[] {
   }
   const proof: ProofStep[] = [];
   let idx = leafIndex;
-  let level = tree.leaves.slice();
 
-  while (level.length > 1) {
-    const next: string[] = [];
-    for (let i = 0; i < level.length; i += 2) {
-      if (i + 1 < level.length) {
-        next.push(nodeHash(level[i]!, level[i + 1]!));
-      } else {
-        next.push(level[i]!);
-      }
-    }
+  for (const level of tree.layers) {
+    if (level.length <= 1) break;
     // tìm sibling của idx ở tầng hiện tại.
     if (idx % 2 === 0) {
       // node hiện tại là TRÁI → sibling là phải (nếu tồn tại). is_left=false.
@@ -271,7 +264,6 @@ export function buildProof(tree: MerkleTree, leafIndex: number): ProofStep[] {
       proof.push({ is_left: true, hash: level[idx - 1]! });
     }
     idx = Math.floor(idx / 2);
-    level = next;
   }
   return proof;
 }

@@ -23,7 +23,7 @@
 
 import { writeFile, readFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import { bfAll, BLOCKFROST_KEY, NETWORK, currentEpoch } from "./config.js";
+import { bfAll, BLOCKFROST_KEY, NETWORK, currentEpoch, mapLimit } from "./config.js";
 import { verifyRegistration, dedupeFirstWins, accStakePerRegistration } from "../offchain/src/delegatorSnapshot.js";
 import type { DelegatorRegistration, StakeHistoryRow, RegWithHistory } from "../offchain/src/delegatorSnapshot.js";
 import { buildDelegatorEntitlements } from "../offchain/src/delegator_entitlement.js";
@@ -48,6 +48,18 @@ interface Args {
   outFile: string;
 }
 
+/** Số nguyên bắt buộc. `Number("2x")` = NaN, và NaN lọt HẾT mọi guard so sánh
+ *  bên dưới (`n < 1` false, `run.length >= NaN` false) → chạy tới cuối rồi chết
+ *  bằng "không ai đủ điều kiện", sau khi đã đốt xong mọi lượt gọi Blockfrost. */
+function int(flag: string, raw: string): number {
+  const v = Number(raw);
+  if (!Number.isInteger(v)) {
+    console.error(`${flag} phải là số nguyên, nhận "${raw}"`);
+    process.exit(1);
+  }
+  return v;
+}
+
 function parseArgs(): Args {
   const args = process.argv.slice(2);
   let regPath = "";
@@ -63,9 +75,9 @@ function parseArgs(): Args {
   for (let i = 0; i < args.length; i++) {
     const a = args[i]!;
     if (a === "--reg" && args[i + 1]) regPath = args[++i]!;
-    else if (a === "--n" && args[i + 1]) n = Number(args[++i]!);
-    else if (a === "--e-open" && args[i + 1]) eOpen = Number(args[++i]!);
-    else if (a === "--e-cut" && args[i + 1]) eCut = Number(args[++i]!);
+    else if (a === "--n" && args[i + 1]) n = int(a, args[++i]!);
+    else if (a === "--e-open" && args[i + 1]) eOpen = int(a, args[++i]!);
+    else if (a === "--e-cut" && args[i + 1]) eCut = int(a, args[++i]!);
     else if (a === "--budget-lamp" && args[i + 1]) budgetLamp = BigInt(args[++i]!);
     else if (a === "--excluded" && args[i + 1]) excludedFile = args[++i]!;
     else if (a === "--no-excluded") noExcluded = true;
@@ -204,14 +216,11 @@ async function main(): Promise<void> {
 
   // ── Fetch history đa pool + §1.5 accStake (lõi thuần accStakePerRegistration) ──
   console.log(`\nLấy lịch sử stake (đa pool) + áp §1.5 cho ${afterExcluded.length} đăng ký...`);
-  const withHistory: RegWithHistory[] = [];
-  for (const r of afterExcluded) {
-    withHistory.push({
-      stake_address: r.stake_address,
-      payment_address: r.payment_address,
-      history: await fetchHistory(r.stake_address),
-    });
-  }
+  const withHistory: RegWithHistory[] = await mapLimit(afterExcluded, 8, async (r) => ({
+    stake_address: r.stake_address,
+    payment_address: r.payment_address,
+    history: await fetchHistory(r.stake_address),
+  }));
   const acc = accStakePerRegistration(withHistory, {
     n: a.n,
     ...(a.eOpen !== undefined ? { eOpen: a.eOpen } : {}),
