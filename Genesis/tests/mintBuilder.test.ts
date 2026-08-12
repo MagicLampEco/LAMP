@@ -51,8 +51,11 @@ function params(overrides: Partial<MintParams> = {}): MintParams {
     route: "DistributionVest",
     amount: 10_000n * 1_000_000n,
     recipient: KHO_ADDR,
+    recipientDatum: "d87980",
     registryRefUtxo: utxo("addr_test1wregistry", { [`${REG_PID}524547`]: 1n }, "d87980"),
+    registryNftPolicyId: REG_PID,
     khoRefUtxo: utxo(KHO_ADDR, { [`${KHO_PID}4b484f`]: 1n }),
+    khoNftPolicyId: KHO_PID,
     authoritySigners: ["ee".repeat(28)],
     ...overrides,
   };
@@ -79,6 +82,48 @@ describe("buildMintTx — A-DEST", () => {
   });
 });
 
+describe("buildMintTx — no-datum LÀ MẤT TIỀN (GMB-006)", () => {
+  // Ca đắt nhất TUYỆT ĐỐI trong builder này, và là ca DUY NHẤT mà chuỗi không cứu được:
+  // kho là địa chỉ script; `lamp_mint` cấp phép A-DEST bằng `qty_to_script` — đếm theo
+  // payment credential, KHÔNG nhìn datum — nên tx thiếu datum vẫn HỢP LỆ và mint thành
+  // công. UTxO sinh ra thì `treasury.ak:27 expect Some(datum)` từ chối vĩnh viễn, mà LAMP
+  // không burn được. Bản trước để `recipientDatum` là tuỳ chọn và mặc định rơi vào
+  // `pay.ToAddress` — tức đường MẶC ĐỊNH là đường mất tiền.
+  it("chặn khi thiếu recipientDatum", async () => {
+    const p = params();
+    delete (p as { recipientDatum?: string }).recipientDatum;
+    await expect(buildMintTx(p)).rejects.toThrow(/GMB-006/);
+  });
+
+  it("chặn khi recipientDatum rỗng", async () => {
+    await expect(buildMintTx(params({ recipientDatum: "" }))).rejects.toThrow(/GMB-006/);
+  });
+});
+
+describe("buildMintTx — reference input phải THẬT (GMB-005)", () => {
+  it("chặn khoRefUtxo không mang kho-NFT", async () => {
+    // Ca này lọt qua GMB-004 vì recipient == khoRefUtxo.address — guard địa chỉ tự thoả
+    // khi chính khoRefUtxo sai. Phải kiểm NFT mới bắt được.
+    const fake = utxo(VI_THUONG, {});
+    await expect(
+      buildMintTx(params({ khoRefUtxo: fake, recipient: VI_THUONG })),
+    ).rejects.toThrow(/GMB-005/);
+  });
+
+  it("chặn registryRefUtxo không mang registry-NFT", async () => {
+    await expect(
+      buildMintTx(params({ registryRefUtxo: utxo("addr_test1wregistry", {}, "d87980") })),
+    ).rejects.toThrow(/GMB-005/);
+  });
+
+  it("GMB-005 chạy TRƯỚC GMB-004 (bắt đúng nguyên nhân gốc)", async () => {
+    const fake = utxo(VI_THUONG, {});
+    await expect(
+      buildMintTx(params({ khoRefUtxo: fake })),
+    ).rejects.not.toThrow(/GMB-004/);
+  });
+});
+
 describe("buildMintTx — hợp đồng tham số v2", () => {
   it("registryRefUtxo + khoRefUtxo là tham số BẮT BUỘC", () => {
     // Khoá hình dạng: bỏ một trong hai là quay lại bản v1 hỏng-mọi-tx. TypeScript đã ép
@@ -87,6 +132,8 @@ describe("buildMintTx — hợp đồng tham số v2", () => {
     expect(p.registryRefUtxo).toBeDefined();
     expect(p.khoRefUtxo).toBeDefined();
     expect(p.khoRefUtxo.address).toBe(p.recipient);
+    // recipientDatum BẮT BUỘC — xem GMB-006. Đừng nới lại thành optional.
+    expect(p.recipientDatum).toBeDefined();
   });
 });
 
