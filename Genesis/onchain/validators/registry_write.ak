@@ -41,9 +41,12 @@ use cardano/assets.{PolicyId, quantity_of}
 use cardano/transaction.{OutputReference, Transaction}
 use magiclamp/genesis/registry.{Authority, MultiSig, RegistryDatum, RegistryEntry, SinglePkh}
 use magiclamp/genesis/registry_write_logic.{
-  controller_authorized, entries_well_formed, find_fresh_output, minted_pair,
+  controller_authorized, controller_signed_any_status, count_carriers_at_script,
+  entries_well_formed, find_fresh_output, minted_pair,
 }
-use magiclamp/genesis/taad_mirror.{Active, Migrated, Person, Recovering, TAADDatum}
+use magiclamp/genesis/taad_mirror.{
+  Active, Migrated, Person, Recovering, TaadAnchorV2, TaadStatusShape, genesis_anchor,
+}
 use magiclamp/genesis/util
 
 /// Constr 0 `Deploy` (Core `registry_mint.rs` gửi empty-constr — KHÔNG đổi) · 1 `Burn` (thu hồi).
@@ -102,7 +105,11 @@ validator registry_write(taad_policy: PolicyId) {
         expect d: RegistryDatum = util.inline_datum(carrier.output)
         and {
           name == blake2b_256(d.governing_did),
-          controller_authorized(
+          // ⚠ CỐ Ý dùng gate KHÔNG đòi status Active — xem lý do đầy đủ ở
+          // `registry_write_logic.controller_signed_any_status`. Tóm tắt: DID bị Revoke xong
+          // mà Burn vẫn đòi Active thì registry của DID chết ĐÓNG BĂNG VĨNH VIỄN, thu hồi DID
+          // thành hình thức. Burn chỉ PHÁ, không cấp quyền cho ai ⇒ nới ở đây an toàn.
+          controller_signed_any_status(
             tx.reference_inputs,
             taad_policy,
             d.governing_did,
@@ -132,6 +139,14 @@ validator registry_write(taad_policy: PolicyId) {
       Update -> {
         // NFT KHÔNG mint/burn trong tx Update (chống burn).
         expect quantity_of(tx.mint, own_hash, nft_name) == 0
+
+        // 🔴 CHỐNG DOUBLE-SATISFACTION (vá review PR #20 §2): ép ĐÚNG 1 carrier BỊ TIÊU.
+        // Không có mệnh đề này, tx tiêu 2 bản Registry-NFT TRÙNG (cùng did ⇒ cùng asset-name)
+        // rót 1 bản về script + 1 bản ra VÍ vẫn PASS cả hai lần chạy, vì bộ lọc output bên
+        // dưới chỉ đếm output Ở SCRIPT nên không thấy bản ra ví. Chi tiết + hậu quả (NFT ra
+        // ví ⇒ đính datum tuỳ ý ⇒ tự cấp quyền đúc LAMP, thoát vòng đời DID) ghi ở
+        // `registry_write_logic.count_carriers_at_script`.
+        expect count_carriers_at_script(tx.inputs, own_hash, nft_name) == 1
 
         // Continuing output DUY NHẤT: đúng NFT, đúng script address.
         let outs =
@@ -195,22 +210,14 @@ const farm_tag: ByteArray = #"4641524d"
 
 // ─── TAAD anchor fixtures ─────────────────────────────────────────
 
-fn taad_datum(did: ByteArray, ctrl: ByteArray, status: taad_mirror.TAADStatus) -> TAADDatum {
-  TAADDatum {
-    did,
-    entity_type: Person,
-    controller_pkh: ctrl,
-    hw_key_pubkey: #"",
-    sequence: 0,
-    status,
-    guardians: [],
-    parent_did: None,
-    revoked_slot: None,
-    recovery_anchor: None,
-  }
+// Anchor ref-input dựng bằng hình dạng ĐẦY ĐỦ 15 trường (`genesis_anchor`), tức là đúng cái
+// mà PhoenixKey thật sự đặt on-chain. Bộ test CŨ dựng bằng type 10 trường tự chế nên nó xanh
+// trong khi đường chạy thật CRASH — đây là chỗ sửa cái đó.
+fn taad_datum(did: ByteArray, ctrl: ByteArray, status: TaadStatusShape) -> TaadAnchorV2 {
+  genesis_anchor(did, Person, ctrl, status)
 }
 
-fn taad_ref_input(policy: PolicyId, did: ByteArray, ctrl: ByteArray, status: taad_mirror.TAADStatus, ix: Int) -> transaction.Input {
+fn taad_ref_input(policy: PolicyId, did: ByteArray, ctrl: ByteArray, status: TaadStatusShape, ix: Int) -> transaction.Input {
   let v =
     assets.from_lovelace(2_000_000) |> assets.add(policy, blake2b_256(did), 1)
   util.mk_input(util.mk_ref(ix), util.mk_output(util.script_address(policy), v, taad_datum(did, ctrl, status)))
@@ -278,7 +285,14 @@ test deploy_stranger_signs_fails() fail {
 
 test deploy_anchor_recovering_fails() fail {
   let recovering =
-    Recovering { pending_controller_pkh: new_ctrl_pkh, pending_hw_pubkey: #"", deadline_slot: 100, collateral_lovelace: 5_000_000 }
+    Recovering {
+      pending_controller_pkh: new_ctrl_pkh,
+      pending_hw_pubkey: #"",
+      deadline_ms: 100,
+      collateral_lovelace: 5_000_000,
+      collateral_refund_pkh: #"9a",
+      pending_device_pkh: #"9b",
+    }
   let refs = [taad_ref_input(taad_pol, gov_did, ctrl_pkh, recovering, 5)]
   run_mint(Deploy, base_deploy_tx(one_entry(lamp_tag, SinglePkh { pkh: ctrl_pkh }), [ctrl_pkh], refs))
 }
@@ -640,9 +654,39 @@ test burn_stranger_signs_fails() fail {
   run_mint(Burn, base_burn_tx([stranger], [taad_ok_ref()], [reg_input(gov_did, dup_entry())]))
 }
 
-test burn_anchor_revoked_fails() fail {
+// 🔴 ĐẢO CHIỀU so với bản trước (vá review PR #20 §3). Bản trước ghi ca này là `fail` — tức
+// CHỐT rằng DID đã Revoke thì KHÔNG đốt được registry nữa. Đó chính là cái bẫy: registry của
+// một DID đã chết đóng băng vĩnh viễn với entries lúc bị lộ. Nay là ca DƯƠNG.
+test burn_on_revoked_did_ok() {
   let refs = [taad_ref_input(taad_pol, gov_did, ctrl_pkh, taad_mirror.Revoked, 5)]
   run_mint(Burn, base_burn_tx([ctrl_pkh], refs, [reg_input(gov_did, dup_entry())]))
+}
+
+test burn_on_migrated_did_ok() {
+  let refs = [taad_ref_input(taad_pol, gov_did, ctrl_pkh, Migrated, 5)]
+  run_mint(Burn, base_burn_tx([ctrl_pkh], refs, [reg_input(gov_did, dup_entry())]))
+}
+
+/// Nới status KHÔNG được nới sang chữ ký: người lạ vẫn không đốt được registry của DID chết.
+test burn_on_revoked_did_stranger_still_fails() fail {
+  let refs = [taad_ref_input(taad_pol, gov_did, ctrl_pkh, taad_mirror.Revoked, 5)]
+  run_mint(Burn, base_burn_tx([stranger], refs, [reg_input(gov_did, dup_entry())]))
+}
+
+/// Và KHÔNG nới sang các cổng cấp quyền: Deploy/Update vẫn đòi Active như cũ
+/// (`deploy_anchor_revoked_fails`, `update_anchor_revoked_fails` ở trên vẫn là ca âm).
+test burn_on_revoked_did_did_mismatch_still_fails() fail {
+  let refs = [taad_ref_input(taad_pol, gov_did, ctrl_pkh, taad_mirror.Revoked, 5)]
+  let liar =
+    util.mk_input(
+      util.mk_ref(0),
+      util.mk_output(
+        util.script_address(reg_pol),
+        assets.from_lovelace(2_000_000) |> assets.add(reg_pol, blake2b_256(gov_did), 1),
+        reg_datum("did:phoenix:org:other", dup_entry()),
+      ),
+    )
+  run_mint(Burn, base_burn_tx([ctrl_pkh], refs, [liar]))
 }
 
 test burn_no_anchor_ref_fails() fail {
@@ -712,9 +756,70 @@ test retire_without_actual_burn_fails() fail {
 }
 
 test retire_input_missing_real_nft_fails() fail {
+  let tx = base_burn_tx([ctrl_pkh], [taad_ok_ref()], [reg_input_no_nft(gov_did, dup_entry())])
+  run_spend(own_datum(dup_entry()), Retire, util.mk_ref(0), tx)
+}
+
+
+// ══════════════════════════════════════════════════════════════
+// DOUBLE-SATISFACTION — ca dựng lại đúng PoC của review PR #20 §2
+// ══════════════════════════════════════════════════════════════
+// Hai bản Registry-NFT TRÙNG (cùng governing_did ⇒ CÙNG asset-name — tồn dư đã ghi ở đầu
+// `registry_write_logic.ak`). Tx tiêu CẢ HAI, rót 1 bản về script và 1 bản ra VÍ.
+// TRƯỚC bản vá: bộ lọc output chỉ đếm output ngụ ở `Script(own_hash)` nên KHÔNG thấy bản ra
+// ví ⇒ đếm được "đúng 1 continuing output" ⇒ CẢ HAI lần chạy validator đều PASS ⇒ một
+// Registry-NFT thật rời khỏi script và mang datum tuỳ ý được.
+// SAU bản vá: `count_carriers_at_script(tx.inputs, …) == 1` chặn ngay ở đầu.
+
+fn dup_reg_input(ix: Int, entries: List<RegistryEntry>) -> transaction.Input {
+  let v = assets.from_lovelace(2_000_000) |> assets.add(reg_pol, blake2b_256(gov_did), 1)
+  util.mk_input(util.mk_ref(ix), util.mk_output(util.script_address(reg_pol), v, reg_datum(gov_did, entries)))
+}
+
+test update_double_satisfaction_nft_escapes_to_wallet_fails() fail {
+  let old = one_entry(lamp_tag, SinglePkh { pkh: ctrl_pkh })
+  let v = assets.from_lovelace(2_000_000) |> assets.add(reg_pol, blake2b_256(gov_did), 1)
+  let escape_out = util.mk_output(util.vk_address(#"beef"), v, reg_datum(gov_did, old))
   let tx =
     Transaction {
-      ..base_burn_tx([ctrl_pkh], [taad_ok_ref()], [reg_input_no_nft(gov_did, dup_entry())]),
+      ..transaction.placeholder,
+      // hai carrier TRÙNG cùng bị tiêu
+      inputs: [dup_reg_input(0, old), dup_reg_input(1, old)],
+      reference_inputs: [taad_ok_ref()],
+      // một ở lại script (đủ để bộ lọc cũ thấy "đúng 1"), một CHUỒN ra ví
+      outputs: [reg_output(gov_did, old), escape_out],
+      extra_signatories: [ctrl_pkh],
     }
-  run_spend(own_datum(dup_entry()), Retire, util.mk_ref(0), tx)
+  run_spend(own_datum(old), Update, util.mk_ref(0), tx)
+}
+
+/// Biến thể: cả hai ra script → bộ lọc thấy 2 output ⇒ đã chết ở `expect [out]` từ TRƯỚC bản
+/// vá. Giữ để chốt rằng bản vá KHÔNG nới ca này.
+test update_two_carriers_two_script_outputs_fails() fail {
+  let old = one_entry(lamp_tag, SinglePkh { pkh: ctrl_pkh })
+  let tx =
+    Transaction {
+      ..transaction.placeholder,
+      inputs: [dup_reg_input(0, old), dup_reg_input(1, old)],
+      reference_inputs: [taad_ok_ref()],
+      outputs: [reg_output(gov_did, old), reg_output(gov_did, old)],
+      extra_signatories: [ctrl_pkh],
+    }
+  run_spend(own_datum(old), Update, util.mk_ref(0), tx)
+}
+
+/// Ca DƯƠNG đối chứng: đúng 1 carrier vào, đúng 1 continuing output ⇒ vẫn chạy bình thường.
+/// (Bản vá không được siết nhầm đường dùng thật.)
+test update_single_carrier_still_ok() {
+  let old = one_entry(lamp_tag, SinglePkh { pkh: ctrl_pkh })
+  let new = one_entry(farm_tag, SinglePkh { pkh: ctrl_pkh })
+  let tx =
+    Transaction {
+      ..transaction.placeholder,
+      inputs: [dup_reg_input(0, old)],
+      reference_inputs: [taad_ok_ref()],
+      outputs: [reg_output(gov_did, new)],
+      extra_signatories: [ctrl_pkh],
+    }
+  run_spend(own_datum(old), Update, util.mk_ref(0), tx)
 }

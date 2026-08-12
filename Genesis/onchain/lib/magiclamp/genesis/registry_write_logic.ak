@@ -67,7 +67,7 @@ use cardano/address.{Script}
 use cardano/assets.{AssetName, PolicyId, Value, quantity_of}
 use cardano/transaction.{InlineDatum, Input, Output}
 use magiclamp/genesis/registry.{Authority, MultiSig, RegistryEntry, Revoked, SinglePkh}
-use magiclamp/genesis/taad_mirror.{TAADDatum, status_is_active}
+use magiclamp/genesis/taad_mirror.{TaadView, status_is_active, taad_view}
 use magiclamp/genesis/util
 
 // ─── entries_well_formed ────────────────────────────────────────────────────
@@ -120,7 +120,7 @@ pub fn find_taad_datum(
   refs: List<Input>,
   taad_policy: PolicyId,
   governing_did: ByteArray,
-) -> Option<TAADDatum> {
+) -> Option<TaadView> {
   let name = blake2b_256(governing_did)
   let carriers =
     list.filter(
@@ -138,19 +138,16 @@ pub fn find_taad_datum(
   }
 }
 
-fn read_taad_datum(o: Output) -> Option<TAADDatum> {
+fn read_taad_datum(o: Output) -> Option<TaadView> {
   when o.datum is {
-    InlineDatum(data) -> {
-      expect parsed: TAADDatum = data
-      Some(parsed)
-    }
+    InlineDatum(data) -> taad_view(data)
     _ -> None
   }
 }
 
 /// AUTHORITY tổng: TAAD anchor của governing_did tồn tại (đúng 1, đúng script), datum.did khớp
 /// (defense-in-depth, khớp A-1 binding TAAD dùng), status Active, và controller_pkh hiện tại ∈
-/// chữ ký tx. Dùng CHUNG cho mint(Deploy) và spend(Update).
+/// chữ ký tx. Dùng cho mint(Deploy) và spend(Update) — hai đường NỚI/GIỮ quyền.
 pub fn controller_authorized(
   refs: List<Input>,
   taad_policy: PolicyId,
@@ -166,6 +163,79 @@ pub fn controller_authorized(
       }
     None -> False
   }
+}
+
+/// Y HỆT `controller_authorized` NHƯNG BỎ điều kiện status Active.
+///
+/// 🔴 VÌ SAO PHẢI CÓ (vá review PR #20 §3): đường THU HỒI (`Burn`/`Retire`) trước đây dùng
+/// chung gate `Active`, và đó là một cái bẫy đóng lại sau lưng. Chuỗi thật:
+///   1. Khoá controller lộ → PhoenixKey `Revoke` DID (status → `Revoked`).
+///   2. Registry-NFT của DID đó VẪN nằm ở script, VẪN mang entries cũ.
+///   3. `Update` đòi Active ⇒ không sửa entries được nữa.
+///   4. `Burn` cũng đòi Active ⇒ **không đốt được nữa**.
+/// ⇒ Registry đóng băng VĨNH VIỄN ở đúng trạng thái lúc bị lộ. Thu hồi DID mà không thu hồi
+/// được registry của nó thì việc thu hồi chỉ là hình thức.
+///
+/// VÌ SAO NỚI Ở ĐÂY AN TOÀN: `Burn` là thao tác CHỈ PHÁ, không cấp quyền cho ai. Nó xoá một
+/// Registry-NFT; nó không tạo được entry, không đổi được authority, không đúc được LAMP.
+/// Nới một cổng chỉ-phá cho DID đã chết là đúng hướng: DID chết thì registry của nó ĐÁNG bị
+/// gỡ. Cổng NỚI/GIỮ quyền (`Deploy`/`Update`) vẫn đòi Active như cũ.
+///
+/// ⚠ TỒN DƯ ĐÃ BIẾT, KHÔNG VÁ Ở PR NÀY (báo Tuân, cần quyết định liên-nhà): read-side
+/// `registry.ak.validate_mint` KHÔNG đọc anchor TAAD, nên một DID đã `Revoked` mà registry
+/// còn sống thì LAMP VẪN đúc được theo entries cũ. Đóng lỗ đó phải cho `lamp_mint` nhận thêm
+/// tham số `taad_policy` ⇒ ĐỔI SỐ THAM SỐ ⇒ đổi script hash ⇒ policy-id khác ⇒ là việc phát
+/// hành lại, không phải việc vá. Bản vá này chỉ bảo đảm **có đường gỡ** (đốt registry được),
+/// chứ chưa tự động hoá việc gỡ.
+pub fn controller_signed_any_status(
+  refs: List<Input>,
+  taad_policy: PolicyId,
+  governing_did: ByteArray,
+  sigs: List<ByteArray>,
+) -> Bool {
+  when find_taad_datum(refs, taad_policy, governing_did) is {
+    Some(d) ->
+      and {
+        d.did == governing_did,
+        list.has(sigs, d.controller_pkh),
+      }
+    None -> False
+  }
+}
+
+/// Số UTxO ĐANG BỊ TIÊU mang đúng 1 (policy, name) VÀ ngụ tại `Script(policy)`.
+///
+/// 🔴 VÌ SAO CẦN (vá review PR #20 §2 — double-satisfaction): nhánh `Update` chỉ ép "ĐÚNG 1
+/// continuing output", KHÔNG ép "ĐÚNG 1 input". Với hai bản Registry-NFT TRÙNG (cùng
+/// governing_did ⇒ CÙNG asset-name — chính cái tồn dư đã ghi ở đầu tệp), kẻ có quyền dựng
+/// được tx tiêu CẢ HAI, rồi rót:
+///   • output A: 1 NFT về `Script(registry)` — bộ lọc thấy, đếm = 1 ⇒ PASS;
+///   • output B: 1 NFT về **VÍ** — bộ lọc KHÔNG thấy (nó đòi `Script(own_hash)`).
+/// Cả hai lần chạy validator (mỗi input một lần) đều nhìn CÙNG output A và đều thấy "đúng 1"
+/// ⇒ cả hai PASS. Một Registry-NFT thật RỜI KHỎI script.
+///
+/// HẬU QUẢ KHÔNG DỪNG Ở "MẤT MỘT NFT": read-side `registry.ak.find_registry_datum` đọc
+/// carrier từ reference input; NFT nằm trong ví thì kẻ giữ nó đính KÈM datum tuỳ ý. Từ đó
+/// tự khai `entries` bất kỳ ⇒ tự cấp authority đúc LAMP, và authority đó KHÔNG còn theo
+/// vòng đời DID nữa (rotate/revoke controller không chạm tới được). Vá kép:
+///   (a) tại đây — chặn tiêu nhiều carrier trong một tx;
+///   (b) tại `registry.ak.find_registry_datum` — ép carrier phải ngụ ở `Script(policy)`.
+/// Chỉ có (a) thì NFT lỡ ra ví bằng đường khác vẫn giả mạo được; chỉ có (b) thì NFT vẫn rời
+/// script được (mất tài sản, DoS). Cần cả hai.
+pub fn count_carriers_at_script(
+  inputs: List<Input>,
+  policy: PolicyId,
+  name: AssetName,
+) -> Int {
+  list.count(
+    inputs,
+    fn(i) {
+      quantity_of(i.output.value, policy, name) == 1 && util.is_at_script(
+        i.output.address,
+        policy,
+      )
+    },
+  )
 }
 
 // ─── Mint helpers (genesis output) ──────────────────────────────────────────

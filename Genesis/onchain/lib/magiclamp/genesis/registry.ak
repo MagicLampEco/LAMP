@@ -18,6 +18,7 @@
 
 use aiken/collection/dict
 use aiken/collection/list
+use cardano/address.{Script}
 use cardano/assets.{AssetName, PolicyId, quantity_of}
 use cardano/transaction.{InlineDatum, Input, Output, Transaction}
 
@@ -114,13 +115,35 @@ fn mint_is_exactly(self: Transaction, policy: PolicyId, token_name: AssetName) -
   }
 }
 
-/// Đúng 1 reference input mang (policy,name) NFT → decode RegistryDatum. None nếu 0/≥2/parse-fail.
+/// Đúng 1 reference input mang (policy,name) NFT **VÀ ngụ tại `Script(policy)`** → decode
+/// RegistryDatum. None nếu 0/≥2/không-ở-script/parse-fail.
+///
+/// 🔴 RÀNG ĐỊA CHỈ THÊM 2026-08-12 (vá review PR #20 §2, vế đọc). Bản trước chỉ lọc theo
+/// (policy, name) mà KHÔNG hỏi carrier đang ngụ ở đâu. Registry-NFT là NFT — "chỉ có một" —
+/// nên nghe thì đủ. Nó KHÔNG đủ, vì reference input không cần chữ ký của ai: hễ NFT lọt ra
+/// một địa chỉ VÍ (đường thoát cụ thể: double-satisfaction ở `registry_write` nhánh `Update`,
+/// nay đã vá bên đó), kẻ giữ nó đính KÈM inline datum tuỳ ý rồi đưa vào ref-input. Từ đó tự
+/// khai `entries` bất kỳ ⇒ tự cấp authority đúc LAMP, và quyền đó KHÔNG còn theo vòng đời
+/// DID (rotate/revoke controller không với tới được vì registry đã ra khỏi validator).
+///
+/// Ràng được là nhờ Design 2: policy-id của Registry-NFT ≡ script hash của chính
+/// `registry_write` ⇒ `Script(policy)` CHÍNH LÀ nhà của nó, không cần thêm tham số, không tạo
+/// vòng phụ thuộc. Đây là vế PHÒNG THỦ ĐỘC LẬP: kể cả write-side có thủng đường khác thì NFT
+/// nằm ngoài script vẫn không đọc được.
 fn find_registry_datum(
   refs: List<Input>,
   policy: PolicyId,
   name: AssetName,
 ) -> Option<RegistryDatum> {
-  let carriers = list.filter(refs, fn(i) { quantity_of(i.output.value, policy, name) == 1 })
+  let carriers =
+    list.filter(
+      refs,
+      fn(i) {
+        quantity_of(i.output.value, policy, name) == 1 && i.output.address.payment_credential == Script(
+          policy,
+        )
+      },
+    )
   when carriers is {
     [single] -> read_registry_datum(single.output)
     _ -> None
