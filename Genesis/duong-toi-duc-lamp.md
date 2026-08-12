@@ -179,7 +179,21 @@ Mục tiêu là *"không ai, kể cả đội dự án, rút tắt được"*. �
 - **`SRCL/onchain/validators/srcl_pool.ak` CHƯA ĐẠT.** `SetRoot` cho admin **append một root mới
   mỗi epoch** (`:117-122`, trần `end_epoch + 1` root). Value được bảo toàn tuyệt đối trong
   `SetRoot`, nên đây không phải cửa rút tiền — nhưng nó **là** quyền thêm người nhận về sau.
-  Cộng với 3 lỗi CRITICAL đang mở (`SRCL/README.md`). **Đừng nạp LAMP thật vào SRCL** trước khi vá.
+  Nặng hơn: **ba lỗ đang MỞ**, chính `SRCL/README.md:140-157` ghi rõ, kèm câu phải vá **cùng một
+  lượt** vì cả ba đổi script hash:
+  - **S1 — cửa `Sweep` mở ngay từ ngày đầu.** `util.get_epoch` trả epoch POSIX **tuyệt đối**
+    (~4132 hiện nay) trong khi `end_epoch = 35` là epoch **tương đối của chiến dịch** ⇒ `4132 > 35`
+    ⇒ **bất kỳ ai cũng quét sạch pot về Treasury, không cần chữ ký**. Không mất tiền (tiền về
+    Treasury) nhưng chiến dịch chết ở epoch 0. Test hiện tại xanh chỉ vì fixture đặt validity-range
+    theo epoch *tương đối* — đúng lớp "test tự đối chiếu với niềm tin của chính nó" đã gặp ở
+    `taad_mirror`.
+  - **S2 — `Sweep` rò lovelace VÀ POOL NFT** (`srcl_pool.ak:194-204` chỉ kiểm phần LAMP). Mất POOL
+    NFT là mất authenticity ⇒ **phải deploy lại toàn bộ**, mọi root đã phát thành vô dụng.
+  - **S3 — tái tạo slot vô hạn** (`srcl_nft.ak:77-84` không cấm đúc tên KHÁC cùng policy trong tx
+    `Claim`) ⇒ claim lặp. Bản vá đối chiếu có sẵn ở `Airdrop/onchain/validators/airdrop_nft.ak:122-131`.
+
+  🔴 **ĐỪNG NẠP LAMP THẬT VÀO SRCL** trước khi vá cả ba. Lưu ý cơ chế SRCL **đã bàn giao cho Launch
+  agent** (chốt 2026-08-04); `SRCL/` giữ nguyên trong repo này tới khi Launch port xong.
 - **`Distribution/` (Capped Drop) — phụ thuộc PR #22.** Trên nhánh chính hiện nay `TreasuryDatum`
   chỉ có `committee_hash`, **không có sổ cái solvency**, và `Claim { amount }` không có trần nào.
   Sổ cái `outstanding_entitlement` + bất biến `≤ pool` chỉ tồn tại trên nhánh **PR #22 chưa merge**.
@@ -225,7 +239,7 @@ coi như đã đóng cho `lamp_mint`/`supply_state`, nhưng vẫn mở cho mọi
 | Phát biểu lại cung (§3.3) trong Papers | LAMP agent | chờ chốt §4 |
 | Sửa whitepaper Launch | **Launch agent** | đã gửi thư |
 | PhoenixKey/OrgDID | **không ai** | không nằm trên đường găng — xem §1 |
-| Vá 3 CRITICAL của SRCL trước khi nạp | LAMP agent | chưa xếp lịch |
+| Vá S1/S2/S3 của SRCL trước khi nạp (cùng một lượt) | Launch agent (đã bàn giao) | chưa xếp lịch |
 
 *Bản này tổng hợp từ ba lượt rà độc lập (bản đồ đường đi · phản biện đối kháng · rút về nguyên lý
 gốc) do LAMP agent điều phối và kiểm lại từng khẳng định nặng. Chỗ nào hai lượt rà nói ngược nhau
