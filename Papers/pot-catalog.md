@@ -31,6 +31,23 @@
      DID người dùng** (kể cả chưa redeem).
    - **KHÔNG** ❌ — chưa-gen on-chain / parked Treasury / trong LP sàn nội bộ / quỹ peg / hết sớm → KHÔNG ở vault-DID nào → không gen.
 
+> **Bất biến I-ACT-7 — LAMP ĐỨNG YÊN** (neo: `MAGIC/InstantGen/TECH.md` §A02 và
+> `MAGIC/ScheduleGen/TECH.md` đầu tệp + §3.2): LAMP **không rời vault khi sinh MAGIC**. Khi vault
+> fire, LAMP là **nền tính suất** — `lamp_balance` **bất biến**, LAMP trong vault UTxO
+> byte-identical trước và sau. MAGIC được tạo ra nhưng LAMP vẫn đứng yên. Mọi luồng "LAMP →
+> Treasury" phát sinh từ *hành động sinh MAGIC* là **bất hợp lệ**; chân Treasury đã bị xoá khỏi
+> validator, không phải chỉ bị cấm trên giấy.
+> *(Chính xác một vế: `lamp_locked` bất biến qua InstantGen, nhưng `ScheduleFire` **giải phóng khoá**
+> nên `lamp_locked` có giảm — giải phóng khoá không phải LAMP rời vault.)*
+>
+> **Riêng pot Wakeme — hai đường ra, và cả hai đều có thật trong mã**
+> (`PhoenixKeyDID/PhoenixKey-Validator/validators/wakeme_vault.ak`, bản A chốt 2026-07-30):
+> **(a)** phần **chưa mở** mà người dùng bỏ không dùng → `Reclaim`/`ReclaimEpoch` thu về **pot**
+> (`pot_address`, anti-idle); **(b)** phần **đã mở** — `OwnEpoch` chuyển conditional → owned, chú
+> thích mã ghi *"SỞ-HỮU-HẲN"* — là **tài sản của người dùng** và rút về ví được qua `Redeem`
+> (`owner_address`). ⚠️ Có tài liệu đối ngoại trong hệ đang nói người dùng *"KHÔNG BAO GIỜ sở hữu"*
+> khoản này — **sai với mã đang chạy**; đã gửi thư đính chính cho nhà giữ tài liệu đó.
+
 > ⚠️ **Mối lo pha loãng:** LAMP ở vault tầng tổ chức 🏛️ ≈ **20 tỷ**, gấp ~5× tầng user 👤 (~4 tỷ). Kết luận
 > phản biện ở §4. **Hệ-số-gen mỗi pot KHÁC nhau** và do **Aladin Contract điều chỉnh** thời gian đầu
 > (team dev Aladin vận hành giao thức), **sau giao DAO**.

@@ -78,11 +78,20 @@ redeem). Đó mới là thứ khiến nó không thể bị rút sạch.
 > LAMP** = 0,0028% tổng cung — lượng khởi tạo kỹ thuật, chưa phân phối cho ai.
 >
 > Việc phải làm, đã ghi thành điều kiện bắt buộc trong `Genesis/kho-a-dest.md`:
-> **thay kho bằng `treasury.ak` TRƯỚC khi mint thêm bất kỳ lượng nào có giá trị.** Đổi kho không
-> phải mint lại policy (kho được trỏ động qua kho-NFT), nên đây là việc làm được, không phải bế tắc.
+> **thay kho bằng `treasury.ak` TRƯỚC khi mint thêm bất kỳ lượng nào có giá trị.**
 >
-> Ngoài ra, mã script `lamp_mint` đang chạy trên mainnet **chưa được đối chiếu từng byte** với mã
-> nguồn trong repo. Việc đó cũng phải xong trước khi mint giá trị thật.
+> **Đính chính 2026-08-12 — chỗ này tài liệu từng nói sai.** Bản trước viết "đổi kho không phải
+> mint lại policy (kho được trỏ động qua kho-NFT)". Điều đó **chỉ đúng với bản thiết kế chưa phát
+> hành**. Bản `lamp_mint` **đang chạy trên mainnet** nướng thẳng địa chỉ kho (`dist_dest`) vào
+> tham số script, mà tham số thì đi vào hash ⇒ **đổi kho = đổi script hash = một policy-id KHÁC**.
+> Nói cách khác: policy LAMP hiện tại và kho 1-chữ-ký ở trên **dính liền nhau, không tách rời được**.
+> Đường đi đã chốt là phát hành policy mới khi bật được mint uỷ quyền bằng OrgDID, không phải
+> "trỏ kho sang chỗ khác".
+>
+> Về việc đối chiếu mã: mã `lamp_mint` chạy trên mainnet **đã được đối chiếu** (2026-08-09) — dựng
+> lại từ commit `457f312` rồi áp 8 tham số cho ra **CBOR trùng byte, hash trùng**. Hai script còn
+> lại (`supply_state`, `dist_treasury`) **chưa** đối chiếu; việc đó phải xong trước khi mint giá
+> trị thật.
 >
 > Chúng tôi để nguyên đoạn này trong tài liệu công khai thay vì viết một câu nghe an toàn hơn.
 > Ai đang cân nhắc tin vào LAMP thì cần biết đúng chỗ nó chưa xong.

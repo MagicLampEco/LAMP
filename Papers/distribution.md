@@ -67,6 +67,16 @@ KHÔNG theo epoch. Nhả khi Treasury parked tụt dưới trần, tối đa ở
 
 **NGUYÊN TẮC CỐT LÕI: MAGIC CHỈ gen trong VAULT của một DID — KHÔNG bao giờ "gen trong pot".**
 Một pot gen MAGIC ⟺ LAMP của nó **đã nằm trong một vault-DID**. Luật SnapshotGen:
+
+> **Bất biến I-ACT-7 — LAMP ĐỨNG YÊN:** LAMP **không rời vault khi sinh MAGIC**. `lamp_balance`
+> **bất biến** qua mọi cửa gen; LAMP thật trong vault UTxO byte-identical trước và sau một fire.
+> LAMP là nền tính suất, không phải nhiên liệu bị chuyển. Luồng "LAMP → Treasury" phát sinh từ
+> *hành động sinh MAGIC* là **bất hợp lệ** — mô hình cũ đó đã bị bỏ, chân Treasury và apply-param
+> `treasury_addr` đã xoá khỏi validator.
+> **Một vế cần nói đúng:** `lamp_locked` bất biến qua **InstantGen**
+> (`MAGIC/InstantGen/TECH.md` §A02 — cùng `lamp_balance`, `loyalty_holdings`), nhưng
+> **ScheduleFire GIẢI PHÓNG khoá**, tức `lamp_locked` **có giảm** (`MAGIC/ScheduleGen/TECH.md`
+> đầu tệp + §3.2). Giải phóng khoá ≠ LAMP rời vault — số LAMP vẫn nguyên trong vault.
 `M = ⌊μ_pot · L · R · LF · OAC · PM · B / Q⁵⌋` per-DID, mỗi epoch, tính cả LAMP **locked** trong vault (C-SS-5).
 
 | Mức | Pot | LAMP nằm ở vault-DID nào |

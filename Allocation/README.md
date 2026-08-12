@@ -44,7 +44,11 @@ Công thức vested: `vested(t) = min(entitlement, drop_value · drops_per_epoch
 | TREASURY (seed) | 1 tỷ | Capped Drop (vốn mồi điều tiết) |
 | AFFILIATE / SCAVENGER | 1 + 1 tỷ | Capped Drop, committee/DID (→ 27/9) |
 | PLATFORM | 5 tỷ | Capped Drop theo MAGIC tiêu thụ (→ 27/9) |
-| NEWUSER | 4,001 tỷ | DID × 1001 (**= pot Wakeme**, xem POT-CATALOG #6) + thuật toán √×MAGIC (→ 27/9) |
+| Wakeme | 1,001 tỷ | Vault-vesting mỗi PersonDID ≤1001 LAMP + anti-idle (xem POT-CATALOG #6) |
+
+> **Đổi tên 2026-08-12:** kênh `NEWUSER` của v3 (4,001 tỷ = 1,001 tỷ đèn-mượn + 3 tỷ "user-sau
+> √×MAGIC") **không còn**. v17 chỉ giữ pot **Wakeme = 1,001 tỷ**; **không có pot "user-sau 3 tỷ"**
+> nào trong bảng 18 pot. Đừng lấy lại con số 4,001 tỷ từ bất kỳ bản v3 nào.
 
 (RESERVE 9,630 tỷ KHÔNG qua kênh này — nó ở rổ Reserve, nhả bởi `Reserve/` engine.)
 
