@@ -3,7 +3,7 @@
 // + validation errors. CONTRACT v2 "Capped Drop".
 
 import { describe, it, expect } from "vitest";
-import { validatorToScriptHash, credentialToAddress, scriptHashToCredential, toUnit } from "@lucid-evolution/lucid";
+import { validatorToScriptHash, credentialToAddress, scriptHashToCredential, toUnit, Data } from "@lucid-evolution/lucid";
 import type { UTxO, Validator } from "@lucid-evolution/lucid";
 
 import { buildClaimTx, assertClaimSolvency } from "../offchain/src/claimBuilder.js";
@@ -16,7 +16,6 @@ import {
 import { committeeThreshold } from "../offchain/src/committee.js";
 import { TREASURY_NFT_ASSET_NAME } from "../offchain/src/constants.js";
 import { lampOildrop } from "./helpers.js";
-import { Data } from "@lucid-evolution/lucid";
 
 // ── Mock Lucid tx-builder ──────────────────────────────────────────────
 interface Recorded {
