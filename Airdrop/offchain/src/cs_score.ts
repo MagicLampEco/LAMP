@@ -3,10 +3,10 @@
 // Vai trò: SPO = Staking Pool Operator · CS = Community Supporter.
 //
 // ─────────────────────────────────────────────────────────────────────────
-// MÔ HÌNH (thay hoàn toàn CS log-score cũ — xem SPO-CS-SPEC-Vi.md)
+// MÔ HÌNH (thay hoàn toàn CS log-score cũ — xem spo-cs.md)
 //
 //   Mỗi pot chia ∝ trọng số stake của người nhận, bằng largest-remainder
-//   (Hamilton) → BẢO TOÀN TUYỆT ĐỐI: Σ oil = potOil (khi cap=null).
+//   (Hamilton) → BẢO TOÀN TUYỆT ĐỐI: Σ oildrop = potOildrop (khi cap=null).
 //
 //   • Pot SPO (5M)  — trọng số SPO(i) = Σ stake các delegator (đã đăng ký) ủy
 //     thác VÀO POOL của SPO i (delegation chảy vào pool).
@@ -23,13 +23,13 @@
 //
 //   MỌI trọng số + khoản tiền là BigInt oildrop. KHÔNG float, KHÔNG Number.
 //   Chia bằng largest-remainder → bảo toàn tuyệt đối. Cap tuỳ chọn mỗi-người
-//   nhận (như ETD `capOil`) qua water-filling; mặc định null (không cap).
+//   nhận (như ETD `capOildrop`) qua water-filling; mặc định null (không cap).
 //
-//   Đơn vị: 1 LAMP = 10^6 oildrop (OIL_PER_LAMP).
+//   Đơn vị: 1 LAMP = 10^6 oildrop (OILDROP_PER_LAMP).
 //   Pot SPO = 5.000.000 LAMP · Pot CS = 15.000.000 LAMP (constants.ts).
 // ─────────────────────────────────────────────────────────────────────────
 
-import { SPO_POT_OIL, CS_POT_OIL } from "./constants.js";
+import { SPO_POT_OILDROP, CS_POT_OILDROP } from "./constants.js";
 import { computeEntitlements } from "../../../TIGER/offchain/src/entitlement.js";
 import { buildSnapshotSet } from "../../../TIGER/offchain/src/snapshot.js";
 
@@ -47,31 +47,31 @@ export interface StakeWeight {
 /** Reward 1 người nhận (oildrop). */
 export interface StakeReward {
   id: string;
-  oil: bigint;
+  oildrop: bigint;
 }
 
 // ── Lõi: chia 1 pot ∝ stake ────────────────────────────────────────────────
 
-/** Chia `potOil` (oildrop) cho `weights` ∝ stake, bằng largest-remainder (Hamilton).
+/** Chia `potOildrop` (oildrop) cho `weights` ∝ stake, bằng largest-remainder (Hamilton).
  *
  *  TÁI DÙNG thuật toán token-side đã chạy thật trên Preview (`computeEntitlements`
  *  của TIGER): cùng largest-remainder + water-filling cap + gom dư floor → KHÔNG
  *  copy-lệch, 1 nguồn thuật toán duy nhất.
  *
- *  Trả về 1 entry / id theo ĐÚNG thứ tự input (id trọng số 0 hoặc bị loại → oil=0).
+ *  Trả về 1 entry / id theo ĐÚNG thứ tự input (id trọng số 0 hoặc bị loại → oildrop=0).
  *
  *  Bất biến:
- *    • cap=null ⇒ Σ oil = potOil (bảo toàn tuyệt đối; dư floor gom về stake lớn nhất).
- *    • không id nào stake>0 (mảng rỗng / toàn 0) ⇒ Σ oil = 0, leftover = potOil.
- *    • cap>0 ⇒ mỗi oil ≤ cap; phần không chia được (do cap) là leftover về Treasury.
+ *    • cap=null ⇒ Σ oildrop = potOildrop (bảo toàn tuyệt đối; dư floor gom về stake lớn nhất).
+ *    • không id nào stake>0 (mảng rỗng / toàn 0) ⇒ Σ oildrop = 0, leftover = potOildrop.
+ *    • cap>0 ⇒ mỗi oildrop ≤ cap; phần không chia được (do cap) là leftover về Treasury.
  *
  *  Ném lỗi nếu 2 weight trùng id (buildSnapshotSet bắt trùng owner — chống thổi phồng). */
 export function splitByStake(
   weights: StakeWeight[],
-  potOil: bigint,
-  capOil: bigint | null = null,
+  potOildrop: bigint,
+  capOildrop: bigint | null = null,
 ): StakeReward[] {
-  if (potOil < 0n) throw new Error("CS-POT: potOil phải ≥ 0");
+  if (potOildrop < 0n) throw new Error("CS-POT: potOildrop phải ≥ 0");
 
   // 1 "epoch" tổng hợp: rows = id ↦ stake. buildSnapshotSet bỏ stake ≤ 0 và ném
   // lỗi nếu id trùng trong cùng epoch (chống 1 người xuất hiện 2 dòng).
@@ -81,10 +81,10 @@ export function splitByStake(
   }));
   const snap = buildSnapshotSet([{ epoch: 0n, rows }]);
 
-  const res = computeEntitlements(snap, { budgetOil: potOil, capOil });
-  const oilById = new Map(res.entitlements.map((e) => [e.owner, e.amount]));
+  const res = computeEntitlements(snap, { budgetOildrop: potOildrop, capOildrop });
+  const oildropById = new Map(res.entitlements.map((e) => [e.owner, e.amount]));
 
-  return weights.map((w) => ({ id: w.id, oil: oilById.get(w.id) ?? 0n }));
+  return weights.map((w) => ({ id: w.id, oildrop: oildropById.get(w.id) ?? 0n }));
 }
 
 // ── Pot SPO — trọng số = stake chảy VÀO POOL ────────────────────────────────
@@ -94,10 +94,10 @@ export function splitByStake(
  *  vào pool của SPO i. Thưởng SPO hút/giữ được nhiều delegation. */
 export function splitSpoPot(
   spoWeights: StakeWeight[],
-  potOil: bigint = SPO_POT_OIL,
-  capOil: bigint | null = null,
+  potOildrop: bigint = SPO_POT_OILDROP,
+  capOildrop: bigint | null = null,
 ): StakeReward[] {
-  return splitByStake(spoWeights, potOil, capOil);
+  return splitByStake(spoWeights, potOildrop, capOildrop);
 }
 
 // ── Pot CS (Community Supporter) — trọng số = stake của người BÌNH CHỌN ──────
@@ -109,8 +109,8 @@ export function splitSpoPot(
  *  Supporter KHÔNG cần là SPO — chỉ cần được stakeholder công nhận đã giúp. */
 export function splitCsPot(
   csWeights: StakeWeight[],
-  potOil: bigint = CS_POT_OIL,
-  capOil: bigint | null = null,
+  potOildrop: bigint = CS_POT_OILDROP,
+  capOildrop: bigint | null = null,
 ): StakeReward[] {
-  return splitByStake(csWeights, potOil, capOil);
+  return splitByStake(csWeights, potOildrop, capOildrop);
 }

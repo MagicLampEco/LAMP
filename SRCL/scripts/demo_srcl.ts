@@ -22,7 +22,9 @@ import { buildTree } from "../offchain/src/merkle.js";
 import { srclDatumToCbor, mintPoolRedeemerToCbor } from "../offchain/src/datum.js";
 import { buildSetRootTx } from "../offchain/src/setRootBuilder.js";
 import { buildClaimTx } from "../offchain/src/claimBuilder.js";
-import { POOL_NFT_NAME, END_EPOCH, MS_PER_EPOCH_MAINNET } from "../offchain/src/constants.js";
+import {
+  POOL_NFT_NAME, END_EPOCH, MS_PER_EPOCH_MAINNET, SRCL_CAMPAIGN_ID, ROLE_SPO,
+} from "../offchain/src/constants.js";
 import type { SrclDatum, ClaimProof } from "../offchain/src/types.js";
 
 const ENV_PATH = "/Users/ductiger/Projects/LAMP-launch-wt/.env";
@@ -94,11 +96,13 @@ const markerHash = validatorToScriptHash(markerScript);
 const ADMIN = [pkh];
 const ADMIN_THRESHOLD = 1n;
 
-// pool — 6 param (param thứ 6 = slot_registry_hash = markerHash).
+// pool — 8 param. 6 = slot_registry_hash (markerHash); 7+8 = schema C
+// (campaign_id, role) — BAKE cùng bộ mà buildTree dùng, lệch là claim hỏng.
 const poolScript: Validator = {
   type: "PlutusV3",
   script: applyParamsToScript(get("srcl_pool.srcl_pool.spend"),
-    [srclNftPolicyId, LAMP_POLICY, LAMP_NAME, ADMIN, ADMIN_THRESHOLD, markerHash]),
+    [srclNftPolicyId, LAMP_POLICY, LAMP_NAME, ADMIN, ADMIN_THRESHOLD, markerHash,
+     SRCL_CAMPAIGN_ID, BigInt(ROLE_SPO)]),
 };
 
 const poolAddress = credentialToAddress("Preview", scriptHashToCredential(validatorToScriptHash(poolScript)));
@@ -113,17 +117,17 @@ Object.assign(out, { srclNftPolicyId, poolAddress, markerAddress, markerHash, la
 
 // ── Snapshot epoch 0 (2 owner: ví mình + 1 pkh giả) ────────────────────────
 const dummyOwner = "00112233445566778899aabbccddeeff00112233445566778899aabb";
-const MY_OIL = 1_000_000n;     // 1 LAMP cho ví mình
-const OTHER_OIL = 2_000_000n;  // 2 LAMP cho pkh giả
+const MY_OILDROP = 1_000_000n;     // 1 LAMP cho ví mình
+const OTHER_OILDROP = 2_000_000n;  // 2 LAMP cho pkh giả
 const owners = [pkh, dummyOwner];
 const entries = [
-  { epoch: 0n, owner: pkh, amount: MY_OIL },
-  { epoch: 0n, owner: dummyOwner, amount: OTHER_OIL },
+  { epoch: 0n, owner: pkh, amount: MY_OILDROP },
+  { epoch: 0n, owner: dummyOwner, amount: OTHER_OILDROP },
 ];
-const tree = buildTree(entries);
+const tree = buildTree(SRCL_CAMPAIGN_ID, ROLE_SPO, entries);
 const root0 = tree.root;
-const poolSeedOil = MY_OIL + OTHER_OIL; // 3 LAMP
-console.log(`[srcl] root0: ${root0}, pool seed: ${poolSeedOil} oil`);
+const poolSeedOildrop = MY_OILDROP + OTHER_OILDROP; // 3 LAMP
+console.log(`[srcl] root0: ${root0}, pool seed: ${poolSeedOildrop} oildrop`);
 
 // ── Datum khởi tạo (treasury_dest = payment-cred hash ví mình) ──────────────
 const initDatum: SrclDatum = {
@@ -146,14 +150,14 @@ let i1Hash: string;
     .pay.ToAddressWithData(
       poolAddress,
       { kind: "inline", value: srclDatumToCbor(initDatum) },
-      { lovelace: 5_000_000n, [poolNftUnit]: 1n, [lampUnit]: poolSeedOil },
+      { lovelace: 5_000_000n, [poolNftUnit]: 1n, [lampUnit]: poolSeedOildrop },
     )
     .addSignerKey(pkh)
     .complete({ coinSelection: true });
   const signed = await tx.sign.withWallet().complete();
   i1Hash = await signed.submit();
-  console.log(`[I1] DEPLOY submitted ${link(i1Hash)} (POOL NFT + ${poolSeedOil} oil tLAMP)`);
-  rec({ step: "I1_deploy", hash: i1Hash, link: link(i1Hash), poolAddress, poolNftUnit, poolSeedOil: poolSeedOil.toString() });
+  console.log(`[I1] DEPLOY submitted ${link(i1Hash)} (POOL NFT + ${poolSeedOildrop} oildrop tLAMP)`);
+  rec({ step: "I1_deploy", hash: i1Hash, link: link(i1Hash), poolAddress, poolNftUnit, poolSeedOildrop: poolSeedOildrop.toString() });
   await lucid.awaitTx(i1Hash);
   await waitVisible(i1Hash, poolAddress);
   console.log(`[I1] confirmed + visible`);
@@ -200,7 +204,7 @@ let ownerAddrOut = "";
   if (!slotUtxo) throw new Error("không tìm thấy slot UTxO (epoch0, ví mình) ở registry");
 
   const proof = tree.proofFor(0n, pkh);
-  const claim: ClaimProof = { epoch: 0n, owner: pkh, amount: MY_OIL, proof };
+  const claim: ClaimProof = { epoch: 0n, owner: pkh, amount: MY_OILDROP, proof };
 
   const { tx, amount, poolAfter, slotUnit, ownerAddress, summary } = await buildClaimTx({
     lucid, network: "Preview" as never,
@@ -213,8 +217,8 @@ let ownerAddrOut = "";
   console.log("\n" + summary + "\n");
   const signed = await tx.sign.withWallet().complete();
   i3Hash = await signed.submit();
-  console.log(`[I3] CLAIM submitted ${link(i3Hash)} (amount ${amount} oil → ${ownerAddress})`);
-  rec({ step: "I3_claim", hash: i3Hash, link: link(i3Hash), epoch: 0, owner: pkh, amountOil: amount.toString(), poolAfterOil: poolAfter.toString(), slotUnit, ownerAddress });
+  console.log(`[I3] CLAIM submitted ${link(i3Hash)} (amount ${amount} oildrop → ${ownerAddress})`);
+  rec({ step: "I3_claim", hash: i3Hash, link: link(i3Hash), epoch: 0, owner: pkh, amountOildrop: amount.toString(), poolAfterOildrop: poolAfter.toString(), slotUnit, ownerAddress });
   await lucid.awaitTx(i3Hash);
   await waitVisible(i3Hash, poolAddress);
   console.log(`[I3] confirmed`);
@@ -229,8 +233,8 @@ let ownerAddrOut = "";
   const poolUtxo = poolUtxos.find((u) => (u.assets[poolNftUnit] ?? 0n) === 1n);
   const poolLampAfter = poolUtxo ? (poolUtxo.assets[lampUnit] ?? 0n) : -1n;
   console.log(`[verify] slot (epoch0,ví mình) còn ở registry? ${slotStill} (kỳ vọng false = đã burn)`);
-  console.log(`[verify] pool tLAMP sau claim: ${poolLampAfter} oil (kỳ vọng ${poolSeedOil - MY_OIL})`);
-  rec({ step: "verify", slotBurned: !slotStill, poolLampAfterOil: poolLampAfter.toString(), expectedPoolLampOil: (poolSeedOil - MY_OIL).toString(), ownerReceived: ownerAddrOut });
+  console.log(`[verify] pool tLAMP sau claim: ${poolLampAfter} oildrop (kỳ vọng ${poolSeedOildrop - MY_OILDROP})`);
+  rec({ step: "verify", slotBurned: !slotStill, poolLampAfterOildrop: poolLampAfter.toString(), expectedPoolLampOildrop: (poolSeedOildrop - MY_OILDROP).toString(), ownerReceived: ownerAddrOut });
 }
 
 await writeFile(resolve(import.meta.dirname, "demo-srcl-out.json"),

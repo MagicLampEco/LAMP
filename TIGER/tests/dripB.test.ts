@@ -12,7 +12,7 @@ import {
   vestedIdealB,
   fullyVestedAfter,
 } from "../offchain/src/dripB.js";
-import { DROP_VALUE_OIL } from "../offchain/src/constants.js";
+import { DROP_VALUE_OILDROP } from "../offchain/src/constants.js";
 
 const OWNER = "0a".repeat(28);
 
@@ -20,7 +20,7 @@ describe("dripBParams — r = ceil(E/N), D = 1 chung", () => {
   it("chia hết: E=3600, N=36 → r=100", () => {
     const p = dripBParams(3600n, 36n, 0n);
     expect(p.dropsPerEpoch).toBe(100n);
-    expect(p.dropValue).toBe(DROP_VALUE_OIL);
+    expect(p.dropValue).toBe(DROP_VALUE_OILDROP);
     expect(p.startEpoch).toBe(0n);
   });
   it("lẻ: E=3601, N=36 → r=ceil=101 (mở nhanh hơn, không chậm)", () => {
@@ -43,7 +43,7 @@ describe("tigerDatum — khởi tạo account", () => {
 });
 
 describe("kiểu B — cliff + full đúng N + không vượt E", () => {
-  const E = 3_600_000n; // 3.6 LAMP-oil-scale
+  const E = 3_600_000n; // 3.6 LAMP-oildrop-scale
   const N = 36n;
   const cliff = 10n;
   const d = tigerDatum(OWNER, E, N, cliff);
@@ -103,7 +103,7 @@ describe("kiểu B ≥ kiểu B lý tưởng mỗi epoch, cả hai full ≤ N", 
   });
 
   it("ví cực nhỏ E < N xong sớm (E epoch) — chấp nhận, dưới ngưỡng thực tế", () => {
-    // E=10 oil, N=36 → r=ceil(10/36)=1 → full sau 10 epoch
+    // E=10 oildrop, N=36 → r=ceil(10/36)=1 → full sau 10 epoch
     expect(fullyVestedAfter(10n, 36n)).toBe(10n);
   });
 });

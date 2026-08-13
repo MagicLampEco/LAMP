@@ -10,7 +10,7 @@ import { readFileSync } from "node:fs";
 import { bf, bfAll, NETWORK, BLOCKFROST_KEY, TIGER_POOL_ID } from "./config.js";
 import { analyzeHistory, projectLampFromSnapshot, type HistoryEntry } from "../offchain/src/check.js";
 import { parseSnapshotFile, type SnapshotFile } from "../offchain/src/snapshot.js";
-import { TIGER_TOTAL_OIL, OIL_PER_LAMP } from "../offchain/src/constants.js";
+import { TIGER_TOTAL_OILDROP, OILDROP_PER_LAMP } from "../offchain/src/constants.js";
 
 function parseArgs(): { addr: string; cutoff: bigint | null; snapshotFile: string | null } {
   const a = process.argv.slice(2);
@@ -70,9 +70,9 @@ async function main(): Promise<void> {
     const file = JSON.parse(readFileSync(snapshotFile, "utf8")) as SnapshotFile;
     const snap = parseSnapshotFile(file);
     const owner = file.meta.owner_key === "stake_address" ? stakeAddr : stakeAddr; // registry-map ngoài phạm vi CLI
-    const proj = projectLampFromSnapshot(snap, owner, TIGER_TOTAL_OIL);
-    if (proj.amountOil !== null) {
-      console.log(`\nLAMP sẽ nhận: ${(proj.amountOil / OIL_PER_LAMP).toLocaleString()} LAMP` +
+    const proj = projectLampFromSnapshot(snap, owner, TIGER_TOTAL_OILDROP);
+    if (proj.amountOildrop !== null) {
+      console.log(`\nLAMP sẽ nhận: ${(proj.amountOildrop / OILDROP_PER_LAMP).toLocaleString()} LAMP` +
         `${proj.capped ? " (chạm cap/ví)" : ""}`);
     } else {
       console.log(`\nLAMP sẽ nhận: (owner không có trong snapshot — kiểm tra owner_key/registry)`);

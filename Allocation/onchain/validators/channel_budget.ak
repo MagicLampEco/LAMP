@@ -2,7 +2,7 @@
 //
 // Budget beacon là "co-signer bắt buộc" của mọi Claim cho kênh đó:
 //   - consume + re-create beacon (NFT name = channel_id giữ authenticity).
-//   - remaining_oil -= amount; REJECT khi amount > remaining (vượt budget).
+//   - remaining_oildrop -= amount; REJECT khi amount > remaining (vượt budget).
 //   - amount PHẢI khớp entitlement-delta của ClaimAccount cùng tx (khoá chéo).
 // → Σ entitlement đã cấp của kênh ≤ budget gốc, cưỡng chế on-chain.
 //
@@ -64,8 +64,8 @@ validator channel_budget(
     expect out_datum.channel_id == datum.channel_id
 
     // Kế toán: remaining giảm ĐÚNG amount; REJECT vượt budget (BẤT BIẾN CỐT LÕI).
-    expect datum.remaining_oil >= amount
-    expect out_datum.remaining_oil == datum.remaining_oil - amount
+    expect datum.remaining_oildrop >= amount
+    expect out_datum.remaining_oildrop == datum.remaining_oildrop - amount
 
     // Committee threshold ký.
     expect util.count_committee_sigs(committee, tx.extra_signatories) >= threshold
@@ -131,7 +131,7 @@ const cb_other_channel: ByteArray = #"5245534552564500"  // "RESERVE"
 const cb_owner: ByteArray = #"0a0a"
 
 fn cb_budget_d(channel: ByteArray, remaining: Int) -> ChannelBudgetDatum {
-  ChannelBudgetDatum { channel_id: channel, remaining_oil: remaining }
+  ChannelBudgetDatum { channel_id: channel, remaining_oildrop: remaining }
 }
 
 fn cb_ca_d(channel: ByteArray, entitlement: Int) -> ClaimAccountDatum {

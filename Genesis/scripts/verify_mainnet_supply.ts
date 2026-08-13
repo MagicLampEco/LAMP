@@ -3,13 +3,16 @@
 // Chạy: npx tsx verify_mainnet_supply.ts
 
 const KOIOS = "https://api.koios.rest/api/v1";
-const OIL = 1_000_000n; // 1 LAMP = 10^6 oildrop
+const OILDROP = 1_000_000n; // 1 LAMP = 10^6 oildrop
 
-// Địa chỉ/hash đã xác minh trên mainnet (tx genesis db0610c2…):
-const LAMP_POLICY = "55d3e01bb6c469e02665e4b6573ce65bbaf7a50ad2024e247eb180f0";
-const LAMP_NAME = "4c414d50"; // "LAMP"
-const KHO = "addr1w827sry6t2y9744ndkg4ks6nct57v7tm8pz46ywsq98dhdsf76slu";
-const SUPPLY_STATE = "addr1wxz0dkz0v3rg6zeqz9c7cyxz9lg3ynkrlkqrapfkj7e5ppqexy5d3";
+// Địa chỉ/hash đã xác minh trên mainnet (tx genesis db0610c2…).
+// NƠI GIỮ DUY NHẤT = offchain/src/deployed.ts — script này chỉ ĐỌC, không chép lại giá trị.
+import { LAMP_MAINNET } from "../offchain/src/deployed.js";
+
+const LAMP_POLICY = LAMP_MAINNET.policyId;
+const LAMP_NAME = LAMP_MAINNET.assetName;
+const KHO = LAMP_MAINNET.khoAddress;
+const SUPPLY_STATE = LAMP_MAINNET.supplyStateAddress;
 const SUPPLY_NFT_NAME = "535550504c59"; // "SUPPLY"
 
 async function kpost<T>(path: string, body: unknown): Promise<T> {
@@ -21,7 +24,7 @@ async function kpost<T>(path: string, body: unknown): Promise<T> {
   return res.json() as Promise<T>;
 }
 
-const lamp = (oil: bigint) => (oil / OIL).toLocaleString("en-US") + " LAMP";
+const lamp = (oildrop: bigint) => (oildrop / OILDROP).toLocaleString("en-US") + " LAMP";
 
 async function main() {
   console.log("═".repeat(64));
@@ -47,7 +50,7 @@ async function main() {
 
   const totalCap = distCap + reserveCap;
   const totalMinted = distMinted + reserveMinted;
-  console.log(`\n  TỔNG CAP       = ${lamp(totalCap)}  ${totalCap === 36_000_000_000n * OIL ? "✓ = 36 tỷ" : "✗ ≠ 36 tỷ"}`);
+  console.log(`\n  TỔNG CAP       = ${lamp(totalCap)}  ${totalCap === 36_000_000_000n * OILDROP ? "✓ = 36 tỷ" : "✗ ≠ 36 tỷ"}`);
   console.log(`  ĐÃ MINT        = ${lamp(totalMinted)}`);
   console.log(`  CÒN MINT ĐƯỢC  = ${lamp(distCap - distMinted)} (distribution) + ${lamp(reserveCap - reserveMinted)} (reserve)`);
 
@@ -60,11 +63,11 @@ async function main() {
 
   // 3) headroom cho 3 đợt launch
   const need = { ETD: 12_000_000n, Airdrop: 120_000_000n, SRCL: 381_000_000n }; // LAMP
-  const needOil = Object.values(need).reduce((s, x) => s + x, 0n) * OIL;
-  console.log(`\nNhu cầu 3 đợt (ETD 12M + Airdrop 120M + SRCL ~381M) = ${lamp(needOil)}`);
-  console.log(`Headroom distribution ${(distCap - distMinted) >= needOil ? "ĐỦ ✓" : "THIẾU ✗"} (còn ${lamp(distCap - distMinted)}).`);
+  const needOildrop = Object.values(need).reduce((s, x) => s + x, 0n) * OILDROP;
+  console.log(`\nNhu cầu 3 đợt (ETD 12M + Airdrop 120M + SRCL ~381M) = ${lamp(needOildrop)}`);
+  console.log(`Headroom distribution ${(distCap - distMinted) >= needOildrop ? "ĐỦ ✓" : "THIẾU ✗"} (còn ${lamp(distCap - distMinted)}).`);
 
-  console.log(`\nKẾT LUẬN: lazy-mint validator B ${hasNft && totalCap === 36_000_000_000n * OIL ? "ĐÃ wired trên mainnet" : "CẦN kiểm tra thêm"}.`);
+  console.log(`\nKẾT LUẬN: lazy-mint validator B ${hasNft && totalCap === 36_000_000_000n * OILDROP ? "ĐÃ wired trên mainnet" : "CẦN kiểm tra thêm"}.`);
   console.log("Để mint THẬT cho pot: cần (a) registry WHO-gate + khoá authority (Tuân giữ),");
   console.log("(b) builder advance supply_state + mint→kho + release→pot. Xem HANDOFF.");
   console.log("═".repeat(64));

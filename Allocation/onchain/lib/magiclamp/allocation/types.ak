@@ -1,15 +1,15 @@
 // LAMP Allocation onchain types — HARD-CAP PER-CHANNEL (vá lỗ committee cấp vượt ngân sách).
 //
 // Thiết kế 2 lớp phòng thủ độc lập (defense-in-depth):
-//   Lớp A (kế toán, soft): ChannelBudget beacon mang `remaining_oil`. Mỗi Claim
-//     PHẢI consume + re-create beacon, trừ remaining_oil; reject khi amount > remaining.
+//   Lớp A (kế toán, soft): ChannelBudget beacon mang `remaining_oildrop`. Mỗi Claim
+//     PHẢI consume + re-create beacon, trừ remaining_oildrop; reject khi amount > remaining.
 //     → Σ entitlement đã cấp của kênh ≤ budget gốc (bất biến số học).
 //   Lớp B (vật lý, hard): treasury con PER-CHANNEL, value LAMP = ĐÚNG budget kênh.
 //     Cạn UTxO = hết ngân sách vật lý, bất khả vượt kể cả Lớp A lỗi.
 //
 // Khoá chéo: claim_account ↔ channel_budget BẮT BUỘC cùng tx — không bên nào bỏ qua được.
 //
-// Mọi giá trị là oil (1 LAMP = 10^6 oil). Tổng cung CỐ ĐỊNH 36e15 oil, no-burn.
+// Mọi giá trị là oildrop (1 LAMP = 10^6 oildrop). Tổng cung CỐ ĐỊNH 36e15 oildrop, no-burn.
 // Constr index theo thứ tự khai báo (byte-perfect với offchain types.ts).
 
 /// Per-wallet account tại claim_account script — "Capped Drop" tất định.
@@ -34,10 +34,10 @@ pub type ClaimAccountRedeemer {
 }
 
 /// Beacon ngân sách kênh (Lớp A). Authenticity = NFT riêng (name = channel_id).
-/// remaining_oil giảm dần mỗi Claim; cạn = hết ngân sách CẤP-MỚI của kênh.
+/// remaining_oildrop giảm dần mỗi Claim; cạn = hết ngân sách CẤP-MỚI của kênh.
 pub type ChannelBudgetDatum {
   channel_id    : ByteArray,   // định danh kênh (bind vào budget NFT name)
-  remaining_oil : Int,         // oil còn được phép CẤP (entitlement) cho kênh
+  remaining_oildrop : Int,         // oildrop còn được phép CẤP (entitlement) cho kênh
 }
 
 pub type ChannelBudgetRedeemer {

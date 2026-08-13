@@ -5,21 +5,21 @@
 ///
 /// FIRST-PRINCIPLES — Reserve là LỚP ĐỆM SAU CÙNG, nhả demand-gated:
 ///   Reserve KHÔNG nhả tự động theo thời gian. Mỗi epoch có TRẦN CỨNG:
-///     max_per_epoch = total_oil / 1000.
+///     max_per_epoch = total_oildrop / 1000.
 ///   Treasury "kéo" (pull) qua co-spend authority NFT của nó; Reserve chỉ đòi sự
 ///   hiện diện auth NFT (logic sàn parked < floor nằm Ở TREASURY, ngoài phạm vi).
 ///   KHÔNG cộng dồn catch-up: epoch không nhả hết trần / bị gate → dư ở lại pot,
 ///   nhả ở epoch sau → tổng kéo dài tối thiểu ~1000 epoch (≤1 draw/epoch).
 ///
-///   start_epoch + total_oil BẤT BIẾN qua mọi transition.
-///   drawn_oil chỉ TĂNG (đơn điệu, ≤ total_oil).
+///   start_epoch + total_oildrop BẤT BIẾN qua mọi transition.
+///   drawn_oildrop chỉ TĂNG (đơn điệu, ≤ total_oildrop).
 ///   last_epoch ghi epoch của draw gần nhất → ép ≤1 draw/epoch (t > last_epoch).
 ///
 /// = Constr(0, [int, int, int, int])
 pub type ReserveState {
   start_epoch : Int,
-  total_oil   : Int,
-  drawn_oil   : Int,
+  total_oildrop   : Int,
+  drawn_oildrop   : Int,
   last_epoch  : Int,
 }
 

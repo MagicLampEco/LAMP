@@ -68,7 +68,7 @@ function gateParams(over: Partial<ReserveGateSpendParams> = {}): ReserveGateSpen
     custodyUtxo: custodyUtxo(50n),
     lampPolicyId: LAMP_POLICY,
     tokenName: LAMP_NAME,
-    floorOil: 100n,
+    floorOildrop: 100n,
     ...over,
   };
 }
@@ -114,13 +114,13 @@ describe("attachGateSpend — fail-fast ép sàn + auth NFT trước khi build",
 
   it("parked == floor → RGATE-001 (sàn là cận chặt, không kéo)", () => {
     expect(() =>
-      attachGateSpend({} as any, gateParams({ custodyUtxo: custodyUtxo(100n), floorOil: 100n })),
+      attachGateSpend({} as any, gateParams({ custodyUtxo: custodyUtxo(100n), floorOildrop: 100n })),
     ).toThrow(/RGATE-001/);
   });
 
   it("parked > floor → RGATE-001 (trên sàn, không cần kéo)", () => {
     expect(() =>
-      attachGateSpend({} as any, gateParams({ custodyUtxo: custodyUtxo(150n), floorOil: 100n })),
+      attachGateSpend({} as any, gateParams({ custodyUtxo: custodyUtxo(150n), floorOildrop: 100n })),
     ).toThrow(/RGATE-001/);
   });
 

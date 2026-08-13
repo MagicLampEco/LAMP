@@ -12,6 +12,11 @@
 //                       PARAM MỚI (≠ datum → KHÔNG phá interface contract; chấp
 //                       nhận đổi địa chỉ deploy pool). Pool ép Claim consume slot
 //                       TỪ registry này; SetRoot ép gửi bộ slot VÀO registry này.
+//   campaign_id       : 32-byte blake2b_256(tên_chiến_dịch) — BAKE vào leaf (schema
+//                       C). Cô lập proof theo chiến dịch: pot campaign khác KHÔNG
+//                       chia sẻ leaf hợp lệ. Xem lib/merkle.ak §SCHEMA C.
+//   role              : 1-byte vai (SPO/SRCL = 4, spec §1 — CẤM đổi số). BAKE vào
+//                       leaf → cô lập proof theo vai trong cùng chiến dịch.
 //
 // ─────────────────────────────────────────────────────────────────────────
 // 3 REDEEMER
@@ -76,6 +81,8 @@ validator srcl_pool(
   admin: List<ByteArray>,
   admin_threshold: Int,
   slot_registry_hash: ByteArray,
+  campaign_id: ByteArray,
+  role: Int,
 ) {
   spend(
     datum_opt: Option<SrclDatum>,
@@ -154,8 +161,9 @@ validator srcl_pool(
         // root của epoch lấy từ epoch_roots[epoch]. Phải đã được admin nạp.
         expect Some(root) = util.list_at(d.epoch_roots, epoch)
 
-        // Merkle: (epoch, owner, amount) ∈ root[epoch].
-        expect merkle.verify(root, epoch, owner, amount, proof)
+        // Merkle: (campaign_id, epoch, role, owner, amount) ∈ root[epoch].
+        // campaign_id + role BAKE (param) → proof pot khác campaign/role KHÔNG khớp.
+        expect merkle.verify(root, campaign_id, epoch, role, owner, amount, proof)
 
         // pool.value = pool_in − amount LAMP (giữ POOL NFT + ADA + asset khác).
         expect
@@ -234,21 +242,28 @@ const ip_mspe: Int = 432_000_000
 
 const ip_end_epoch: Int = 35
 
-// owner A/B (pkh ví).
+// campaign_id + role (schema C) BAKE làm param pool. campaign_id = blake2b_256(
+// "LAMP-SRCL-1"); role SPO/SRCL = 4 (spec §1).
+const ip_campaign_id: ByteArray =
+  #"5286f2c03f9f7c8b4e0d7da40f325ed5ecdc5d3eaf858efaf297aaefa6f1aedd"
+
+const ip_role: Int = 4
+
+// owner A/B (payment key-hash — spec §3.1; payout so payment_credential).
 const owner_a: ByteArray = #"0a0a"
 
 const owner_b: ByteArray = #"0b0b"
 
 // ── Merkle fixtures (cây 2 leaf cho epoch 0) ──────────────────────
-// L0 = leaf(0, owner_a, 1000); L1 = leaf(0, owner_b, 2000). root0 = node(L0,L1).
-// proof(A) = [L1 phải]; proof(B) = [L0 trái].
+// L0 = leaf(cid,0,role,owner_a,1000); L1 = leaf(cid,0,role,owner_b,2000).
+// root0 = node(L0,L1). proof(A) = [L1 phải]; proof(B) = [L0 trái].
 
 fn leaf_a() -> ByteArray {
-  merkle.leaf_hash(0, owner_a, 1000)
+  merkle.leaf_hash(ip_campaign_id, 0, ip_role, owner_a, 1000)
 }
 
 fn leaf_b() -> ByteArray {
-  merkle.leaf_hash(0, owner_b, 2000)
+  merkle.leaf_hash(ip_campaign_id, 0, ip_role, owner_b, 2000)
 }
 
 fn root0() -> ByteArray {
@@ -349,7 +364,7 @@ fn claim_tx(
 fn run_claim(in_d: SrclDatum, claim: ClaimProof, tx: Transaction) -> Bool {
   srcl_pool.spend(
     ip_nft_policy, ip_lamp_policy, ip_lamp_name, ip_admin, ip_admin_threshold,
-    ip_registry_sh, Some(in_d), Claim { claim }, util.mk_ref(0), tx,
+    ip_registry_sh, ip_campaign_id, ip_role, Some(in_d), Claim { claim }, util.mk_ref(0), tx,
   )
 }
 
@@ -372,7 +387,7 @@ test claim_happy_epoch0() {
 
 test claim_multi_epoch() {
   // Cùng owner_a claim ở 2 epoch khác nhau (0 và 1). Mỗi epoch slot riêng.
-  let root1 = merkle.leaf_hash(1, owner_a, 500)
+  let root1 = merkle.leaf_hash(ip_campaign_id, 1, ip_role, owner_a, 500)
   let roots = [root0(), root1]
   let in_d = ip_datum(roots, 0)
   let r0 =
@@ -621,7 +636,7 @@ fn setroot_tx_slots(
 fn run_setroot(in_d: SrclDatum, root: ByteArray, tx: Transaction) -> Bool {
   srcl_pool.spend(
     ip_nft_policy, ip_lamp_policy, ip_lamp_name, ip_admin, ip_admin_threshold,
-    ip_registry_sh, Some(in_d), SetRoot { root }, util.mk_ref(0), tx,
+    ip_registry_sh, ip_campaign_id, ip_role, Some(in_d), SetRoot { root }, util.mk_ref(0), tx,
   )
 }
 
@@ -690,7 +705,7 @@ test setroot_remint_burned_slot_admin_trusted() {
   // theo epoch trên-chain, test này phải đổi sang `fail`.)
   let in_d = ip_datum([root0()], 0)
   let stale_slot = merkle.marker_name(0, owner_a)
-  let root1 = merkle.leaf_hash(1, owner_a, 500)
+  let root1 = merkle.leaf_hash(ip_campaign_id, 1, ip_role, owner_a, 500)
   let tx =
     setroot_tx_slots(
       [root0()], [root0(), root1], [#"ad01", #"ad02"],
@@ -721,7 +736,7 @@ fn sweep_tx(now_epoch: Int, lamp_in: Int, lamp_to_treasury: Int) -> Transaction 
 fn run_sweep(in_d: SrclDatum, tx: Transaction) -> Bool {
   srcl_pool.spend(
     ip_nft_policy, ip_lamp_policy, ip_lamp_name, ip_admin, ip_admin_threshold,
-    ip_registry_sh, Some(in_d), Sweep, util.mk_ref(0), tx,
+    ip_registry_sh, ip_campaign_id, ip_role, Some(in_d), Sweep, util.mk_ref(0), tx,
   )
 }
 

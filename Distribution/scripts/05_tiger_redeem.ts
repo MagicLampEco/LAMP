@@ -1,12 +1,12 @@
 // Distribution/scripts/05_tiger_redeem.ts — TIGER drip kiểu B chạy THẬT trên Preview.
 //
-// Chạy: npx tsx 05_tiger_redeem.ts   (sau 01 → 02 → 03 deploy với DROP_VALUE_OIL=1)
+// Chạy: npx tsx 05_tiger_redeem.ts   (sau 01 → 02 → 03 deploy với DROP_VALUE_OILDROP=1)
 //
 // Chứng minh end-to-end rằng pot "Early TIGER Deleg 12" rút được trên validator
 // claim_account ĐÃ AUDIT, với tham số kiểu B:
 //   • entitlement E_i  — tính off-chain từ stake tích lũy (TIGER/offchain/src/entitlement).
 //   • drops_per_epoch  — r_i = ceil(E_i / N)  (TIGER/offchain/src/dripB).
-//   • D (beacon)       — 1 oil (DROP_VALUE_OIL).
+//   • D (beacon)       — 1 oildrop (DROP_VALUE_OILDROP).
 //   • start_epoch      — cliff.
 //   ⇒ vested(t) = min(E_i, 1·r_i·(t−cliff)) = kiểu B (xong đúng N epoch, có cliff).
 //
@@ -33,12 +33,12 @@ import { buildRedeemTx } from "../offchain/src/redeemBuilder.js";
 // ── TIGER module: nguồn sự thật cho entitlement + drip kiểu B ──
 import { computeEntitlements } from "../../TIGER/offchain/src/entitlement.js";
 import { tigerDatum, vestedAt, ceilDiv } from "../../TIGER/offchain/src/dripB.js";
-import { OIL_PER_LAMP } from "../../TIGER/offchain/src/constants.js";
+import { OILDROP_PER_LAMP } from "../../TIGER/offchain/src/constants.js";
 import type { SnapshotSet } from "../../TIGER/offchain/src/types.js";
 import type { LucidEvolution, UTxO, TxSignBuilder } from "@lucid-evolution/lucid";
 
 // Demo budget nhỏ để treasury (500k LAMP) chi trả được (thuật toán budget-agnostic).
-const DEMO_BUDGET_OIL = 360n * OIL_PER_LAMP; // 360 LAMP chia cho delegator demo
+const DEMO_BUDGET_OILDROP = 360n * OILDROP_PER_LAMP; // 360 LAMP chia cho delegator demo
 const N_DRIP = 36n;                          // nhỏ giọt 36 epoch
 
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
@@ -90,7 +90,7 @@ async function main(): Promise<void> {
 
   const state = await loadDeployed();
   if (!state.genesis || !state.testLamp || !state.beaconNftPolicy) {
-    throw new Error("deployed.json thiếu genesis/testLamp/beacon — chạy 01→02→03 (DROP_VALUE_OIL=1) trước.");
+    throw new Error("deployed.json thiếu genesis/testLamp/beacon — chạy 01→02→03 (DROP_VALUE_OILDROP=1) trước.");
   }
 
   const lucid = await makeLucid();
@@ -111,14 +111,14 @@ async function main(): Promise<void> {
     [{ owner: aPkh, stake: 300n }, { owner: C, stake: 50n }],  // epoch -2 (A trung thành 2 epoch)
   ];
   const { entitlements, distributed, leftover } = computeEntitlements(snaps, {
-    budgetOil: DEMO_BUDGET_OIL,
+    budgetOildrop: DEMO_BUDGET_OILDROP,
   });
   const eA = entitlements.find((e) => norm(e.owner) === norm(aPkh))!;
   const E_i = eA.amount;
   const r_i = ceilDiv(E_i, N_DRIP);
-  console.log(`Entitlement A: ${E_i / OIL_PER_LAMP} LAMP (acc stake ${eA.accStake}), `
-    + `r=ceil(E/${N_DRIP})=${r_i} oil/epoch`);
-  console.log(`(Σ phân bổ ${distributed / OIL_PER_LAMP} LAMP, leftover ${leftover / OIL_PER_LAMP})\n`);
+  console.log(`Entitlement A: ${E_i / OILDROP_PER_LAMP} LAMP (acc stake ${eA.accStake}), `
+    + `r=ceil(E/${N_DRIP})=${r_i} oildrop/epoch`);
+  console.log(`(Σ phân bổ ${distributed / OILDROP_PER_LAMP} LAMP, leftover ${leftover / OILDROP_PER_LAMP})\n`);
 
   const tDatum = tigerDatum(aPkh, E_i, N_DRIP, cliff); // entitlement=E_i ở off-chain ref
   const lampUnit = toUnit(state.testLamp.policyId, state.testLamp.assetName);
@@ -155,7 +155,7 @@ async function main(): Promise<void> {
   const d1 = decodeClaimAccountDatum(Data.from(acc1.datum!));
   const rEpoch = await currentEpoch();
   const offchainVested = vestedAt(d1, rEpoch); // dự đoán off-chain (TIGER module)
-  console.log(`   off-chain vested dự đoán @epoch ${rEpoch}: ${offchainVested / OIL_PER_LAMP} LAMP`);
+  console.log(`   off-chain vested dự đoán @epoch ${rEpoch}: ${offchainVested / OILDROP_PER_LAMP} LAMP`);
 
   const treasuryU = (await lucid.utxosAt(state.treasury.address))
     .find((u) => (u.assets[lampUnit] ?? 0n) >= offchainVested);
@@ -163,14 +163,14 @@ async function main(): Promise<void> {
   const dropBeacon = (await lucid.utxosAt(state.beacon.address))
     .find((u) => (u.assets[dropNft] ?? 0n) === 1n);
   if (!dropBeacon) throw new Error("không thấy DropParam beacon");
-  // PREMISE kiểu B (audit HIGH): bit-identity chỉ đúng khi beacon D == 1 oil.
+  // PREMISE kiểu B (audit HIGH): bit-identity chỉ đúng khi beacon D == 1 oildrop.
   // D ≠ 1 → vested on-chain mở nhanh gấp D lần → phá "nhỏ giọt đều N epoch".
   // BeaconDatum = Constr(0, [epoch:int, kind, drop_value:int]); D ở field index 2.
   const beaconFields = (Data.from(dropBeacon.datum!) as { fields: unknown[] }).fields;
   const onchainD = beaconFields[2] as bigint;
   if (onchainD !== 1n) {
     throw new Error(
-      `CHẶN: beacon D=${onchainD} ≠ 1 → kiểu B sai. Deploy 03 với DROP_VALUE_OIL=1.`,
+      `CHẶN: beacon D=${onchainD} ≠ 1 → kiểu B sai. Deploy 03 với DROP_VALUE_OILDROP=1.`,
     );
   }
 
@@ -189,8 +189,8 @@ async function main(): Promise<void> {
   console.log("\n── d. Verify (on-chain == off-chain) ──");
   const acc2 = await findAccountByOwnerStart(lucid, state.claimAccount.address, aPkh, cliff);
   const d2 = decodeClaimAccountDatum(Data.from(acc2.datum!));
-  console.log(`   on-chain: entitlement=${d2.entitlement / OIL_PER_LAMP} redeemed=${d2.redeemed / OIL_PER_LAMP} LAMP`);
-  console.log(`   off-chain vested: ${offchainVested / OIL_PER_LAMP} LAMP; redeem.amount: ${redeem.amount / OIL_PER_LAMP} LAMP`);
+  console.log(`   on-chain: entitlement=${d2.entitlement / OILDROP_PER_LAMP} redeemed=${d2.redeemed / OILDROP_PER_LAMP} LAMP`);
+  console.log(`   off-chain vested: ${offchainVested / OILDROP_PER_LAMP} LAMP; redeem.amount: ${redeem.amount / OILDROP_PER_LAMP} LAMP`);
 
   if (d2.redeemed !== redeem.amount) {
     throw new Error(`redeemed on-chain (${d2.redeemed}) ≠ amount (${redeem.amount})`);
@@ -201,7 +201,7 @@ async function main(): Promise<void> {
   if (d2.redeemed > d2.entitlement) {
     throw new Error(`vi phạm cap: redeemed (${d2.redeemed}) > E (${d2.entitlement})`);
   }
-  console.log(`\n✅ TIGER kiểu B chạy THẬT trên Preview — on-chain redeemed == off-chain vested == ${offchainVested / OIL_PER_LAMP} LAMP. BIT-IDENTITY xác nhận.`);
+  console.log(`\n✅ TIGER kiểu B chạy THẬT trên Preview — on-chain redeemed == off-chain vested == ${offchainVested / OILDROP_PER_LAMP} LAMP. BIT-IDENTITY xác nhận.`);
 }
 
 main().catch((e) => { console.error("❌", e instanceof Error ? e.message : e); process.exit(1); });

@@ -3,7 +3,7 @@
 // Pure BigInt. Tính transition + kiểm bất biến TRƯỚC khi build tx (fail-fast offchain,
 // tránh tốn phí tx chắc chắn reject onchain). Logic PHẢI khớp lamp_mint.ak.
 
-import { DIST_CAP_OIL, RESERVE_CAP_OIL } from "./constants.js";
+import { DIST_CAP_OILDROP, RESERVE_CAP_OILDROP } from "./constants.js";
 import type { MintRoute, SupplyState } from "./types.js";
 
 /** SupplyState khởi tạo (genesis): chưa mint gì, caps chuẩn MVP. */
@@ -11,8 +11,8 @@ export function genesisSupplyState(): SupplyState {
   return {
     dist_minted:    0n,
     reserve_minted: 0n,
-    dist_cap:       DIST_CAP_OIL,
-    reserve_cap:    RESERVE_CAP_OIL,
+    dist_cap:       DIST_CAP_OILDROP,
+    reserve_cap:    RESERVE_CAP_OILDROP,
   };
 }
 
@@ -21,12 +21,12 @@ export function mintedTotal(s: SupplyState): bigint {
   return s.dist_minted + s.reserve_minted;
 }
 
-/** Quota Distribution còn lại (oil) = dist_cap − dist_minted (POT Reserve ẢO tương tự). */
+/** Quota Distribution còn lại (oildrop) = dist_cap − dist_minted (POT Reserve ẢO tương tự). */
 export function distRemaining(s: SupplyState): bigint {
   return s.dist_cap - s.dist_minted;
 }
 
-/** Quota Reserve còn lại (oil) = reserve_cap − reserve_minted (POT Reserve ẢO). */
+/** Quota Reserve còn lại (oildrop) = reserve_cap − reserve_minted (POT Reserve ẢO). */
 export function reserveRemaining(s: SupplyState): bigint {
   return s.reserve_cap - s.reserve_minted;
 }
@@ -34,7 +34,7 @@ export function reserveRemaining(s: SupplyState): bigint {
 export class SupplyMintError extends Error {}
 
 /**
- * Tính SupplyState mới sau khi mint `delta` oil qua `route`.
+ * Tính SupplyState mới sau khi mint `delta` oildrop qua `route`.
  * Ép ĐÚNG luật onchain (Δ>0, cộng đúng quota, monotonic, ≤ cap, cap bất biến).
  * Throw SupplyMintError nếu vi phạm (fail-fast TRƯỚC khi tốn phí onchain).
  */
@@ -47,7 +47,7 @@ export function applyMint(s: SupplyState, route: MintRoute, delta: bigint): Supp
     if (next > s.dist_cap) {
       throw new SupplyMintError(
         `GMINT-010: vượt dist_cap — dist_minted ${next} > cap ${s.dist_cap} ` +
-        `(còn ${distRemaining(s)} oil)`,
+        `(còn ${distRemaining(s)} oildrop)`,
       );
     }
     return { ...s, dist_minted: next };
@@ -57,7 +57,7 @@ export function applyMint(s: SupplyState, route: MintRoute, delta: bigint): Supp
   if (next > s.reserve_cap) {
     throw new SupplyMintError(
       `GMINT-011: vượt reserve_cap — reserve_minted ${next} > cap ${s.reserve_cap} ` +
-      `(còn ${reserveRemaining(s)} oil)`,
+      `(còn ${reserveRemaining(s)} oildrop)`,
     );
   }
   return { ...s, reserve_minted: next };

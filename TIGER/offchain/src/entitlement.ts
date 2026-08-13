@@ -1,7 +1,7 @@
-// TIGER entitlement — tích lũy stake qua mọi snapshot trước cutoff → E_i (oil).
+// TIGER entitlement — tích lũy stake qua mọi snapshot trước cutoff → E_i (oildrop).
 //
 // ─────────────────────────────────────────────────────────────────────────
-// THUẬT TOÁN (tất định, bảo toàn oil)
+// THUẬT TOÁN (tất định, bảo toàn oildrop)
 //
 //   1. Tích lũy:  accStake[o] = Σ_snapshot stake(o)   (cộng mọi epoch < cutoff).
 //      → Ví stake X qua 10 epoch nhận 10X "stake·epoch": THƯỞNG LÒNG TRUNG THÀNH
@@ -18,7 +18,7 @@
 //
 //   Bất biến: 0 ≤ E_i ≤ cap; Σ E_i + leftover = budget (cap=null ⇒ leftover=0).
 
-import { TIGER_TOTAL_OIL } from "./constants.js";
+import { TIGER_TOTAL_OILDROP } from "./constants.js";
 import type {
   EntitlementParams,
   SnapshotSet,
@@ -28,7 +28,7 @@ import type {
 
 /** Tham số mặc định: full budget, không cap, không loại ai. */
 export function defaultParams(): EntitlementParams {
-  return { budgetOil: TIGER_TOTAL_OIL, capOil: null, excluded: new Set() };
+  return { budgetOildrop: TIGER_TOTAL_OILDROP, capOildrop: null, excluded: new Set() };
 }
 
 /** B1 — tích lũy stake qua mọi snapshot. Loại excluded + stake 0.
@@ -68,10 +68,10 @@ function byStakeDescOwnerAsc(
   return a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0;
 }
 
-/** Kết quả entitlement đầy đủ + leftover (oil chưa phân bổ do cap). */
+/** Kết quả entitlement đầy đủ + leftover (oildrop chưa phân bổ do cap). */
 export interface EntitlementResult {
   entitlements: TigerEntitlement[];
-  /** oil còn lại do cap chặn không chia hết (về treasury pot). cap=null ⇒ 0. */
+  /** oildrop còn lại do cap chặn không chia hết (về treasury pot). cap=null ⇒ 0. */
   leftover: bigint;
   /** tổng đã phân bổ = Σ amount. */
   distributed: bigint;
@@ -83,16 +83,16 @@ export function computeEntitlements(
   params: Partial<EntitlementParams> = {},
 ): EntitlementResult {
   const p: EntitlementParams = { ...defaultParams(), ...params };
-  if (p.budgetOil < 0n) throw new Error("TIGER-000: budget phải ≥ 0");
-  if (p.capOil !== null && p.capOil <= 0n)
+  if (p.budgetOildrop < 0n) throw new Error("TIGER-000: budget phải ≥ 0");
+  if (p.capOildrop !== null && p.capOildrop <= 0n)
     throw new Error("TIGER-001: cap phải > 0 (hoặc null)");
 
   const acc = accumulate(snapshots, p.excluded);
   const owners = [...acc.entries()].sort(byStakeDescOwnerAsc);
   if (owners.length === 0)
-    return { entitlements: [], leftover: p.budgetOil, distributed: 0n };
+    return { entitlements: [], leftover: p.budgetOildrop, distributed: 0n };
 
-  const cap = p.capOil;
+  const cap = p.capOildrop;
   const amount = new Map<string, bigint>(); // kết quả ghim cho ví đã cap
   const capped = new Set<string>();
   let free = new Set(owners.map(([o]) => o));
@@ -102,7 +102,7 @@ export function computeEntitlements(
     let freeTotal = 0n;
     for (const o of free) freeTotal += acc.get(o)!;
     const reserved = [...capped].reduce((s, o) => s + amount.get(o)!, 0n);
-    const budgetForFree = p.budgetOil - reserved;
+    const budgetForFree = p.budgetOildrop - reserved;
     if (free.size === 0 || freeTotal === 0n || budgetForFree <= 0n) break;
 
     // tỷ lệ tạm cho ví free
@@ -132,7 +132,7 @@ export function computeEntitlements(
   // ── B4: dư floor → ví CHƯA-cap stake lớn nhất, tôn trọng cap ──
   let distributed = 0n;
   for (const v of amount.values()) distributed += v;
-  let dust = p.budgetOil - distributed;
+  let dust = p.budgetOildrop - distributed;
   if (dust > 0n) {
     for (const [o] of owners) {
       if (capped.has(o)) continue;
@@ -155,5 +155,5 @@ export function computeEntitlements(
     .filter((e) => e.amount > 0n);
 
   distributed = entitlements.reduce((s, e) => s + e.amount, 0n);
-  return { entitlements, leftover: p.budgetOil - distributed, distributed };
+  return { entitlements, leftover: p.budgetOildrop - distributed, distributed };
 }

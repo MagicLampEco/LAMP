@@ -2,7 +2,7 @@
 //
 // CO-SPEND 2 UTxO trong CÙNG tx (khoá chéo claim_account ↔ channel_budget):
 //   IN  ClaimAccount  (Claim{amount})     → entitlement += amount; field khác bất biến.
-//   IN  ChannelBudget (Decrement{amount})  → remaining_oil -= amount; NFT+value+channel bất biến.
+//   IN  ChannelBudget (Decrement{amount})  → remaining_oildrop -= amount; NFT+value+channel bất biến.
 //   OUT ClaimAccount' (cùng addr, value == in) + ChannelBudget' (cùng addr, value == in).
 //   SIGN ≥ threshold committee (cả 2 validator đòi).
 //   tx.mint == 0 (builder không gọi .mintAssets).
@@ -10,7 +10,7 @@
 // Invariants ép TRƯỚC build (fail-fast offchain, khớp luật onchain):
 //   C-CLM-1  amount > 0.
 //   C-CLM-2  account.channel_id == budget.channel_id (cùng kênh — khoá chéo).
-//   C-CLM-3  budget.remaining_oil ≥ amount (Lớp A: không cấp vượt budget).
+//   C-CLM-3  budget.remaining_oildrop ≥ amount (Lớp A: không cấp vượt budget).
 //   C-CLM-4  out.entitlement = in.entitlement + amount; owner/redeemed/start/dpe/channel bất biến.
 //   C-CLM-5  budget NFT (policy, name=channel_id) qty 1 trên beacon UTxO (authenticity).
 //   C-CLM-6  ≥ threshold committee signers.
@@ -50,7 +50,7 @@ export interface ClaimParams {
   /** Budget NFT policy id (compile-time param; name = channel_id). */
   budgetNftPolicy:  string;
 
-  /** Oil entitlement cấp thêm lần này (> 0). */
+  /** Oildrop entitlement cấp thêm lần này (> 0). */
   amount:           bigint;
 
   /** Committee key-hash (hex) + threshold (= param validator) + subset ký. */
@@ -94,9 +94,9 @@ export async function buildClaimTx(params: ClaimParams): Promise<ClaimResult> {
   }
 
   // C-CLM-3: Lớp A — không cấp vượt remaining (channel_budget.ak: remaining ≥ amount).
-  if (budget.remaining_oil < amount) {
+  if (budget.remaining_oildrop < amount) {
     throw new Error(
-      `CLAIM-005: amount ${amount} > remaining_oil ${budget.remaining_oil} (vượt budget kênh)`,
+      `CLAIM-005: amount ${amount} > remaining_oildrop ${budget.remaining_oildrop} (vượt budget kênh)`,
     );
   }
 
@@ -122,7 +122,7 @@ export async function buildClaimTx(params: ClaimParams): Promise<ClaimResult> {
   // ChannelBudget': remaining -= amount; channel_id bất biến.
   const newBudgetDatum: ChannelBudgetDatum = {
     channel_id:    budget.channel_id,
-    remaining_oil: budget.remaining_oil - amount,
+    remaining_oildrop: budget.remaining_oildrop - amount,
   };
 
   // ── Addresses ──────────────────────────────────────────────────────
@@ -163,9 +163,9 @@ export async function buildClaimTx(params: ClaimParams): Promise<ClaimResult> {
     `═══ Claim (Capped Drop · hard-cap kênh) ═══`,
     `Owner:        ${normHex(claim.owner)}`,
     `Channel:      ${normHex(claim.channel_id)}`,
-    `Amount:       ${amount / 1_000_000n} LAMP (${amount} oil)`,
-    `Entitlement:  ${claim.entitlement} → ${newClaimDatum.entitlement} oil`,
-    `Remaining:    ${budget.remaining_oil} → ${newBudgetDatum.remaining_oil} oil`,
+    `Amount:       ${amount / 1_000_000n} LAMP (${amount} oildrop)`,
+    `Entitlement:  ${claim.entitlement} → ${newClaimDatum.entitlement} oildrop`,
+    `Remaining:    ${budget.remaining_oildrop} → ${newBudgetDatum.remaining_oildrop} oildrop`,
     `Committee:    ${signers.length}/${committeeKeyHashes.length} signers (need ${threshold})`,
     `Claim addr:   ${claimAddress}`,
     `Budget addr:  ${budgetAddress}`,

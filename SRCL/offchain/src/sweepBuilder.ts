@@ -40,7 +40,7 @@ export interface SweepParams {
 
 export interface SweepResult {
   tx: TxSignBuilder;
-  sweptOil: bigint;
+  sweptOildrop: bigint;
   treasuryAddress: string;
   summary: string;
 }
@@ -56,8 +56,8 @@ export async function buildSweepTx(params: SweepParams): Promise<SweepResult> {
   if (!poolUtxo.datum) throw new Error("SRCL-SWEEP-001: poolUtxo không có inline datum");
   const datum: SrclDatum = decodeSrclDatum(Data.from(poolUtxo.datum));
 
-  const sweptOil = poolUtxo.assets[lampUnit] ?? 0n;
-  if (sweptOil <= 0n) throw new Error("SRCL-SWEEP-002: pool không còn LAMP để quét");
+  const sweptOildrop = poolUtxo.assets[lampUnit] ?? 0n;
+  if (sweptOildrop <= 0n) throw new Error("SRCL-SWEEP-002: pool không còn LAMP để quét");
 
   // treasury_dest là Script hash (đích Sweep = Treasury script).
   const treasuryAddress = credentialToAddress(
@@ -66,7 +66,7 @@ export async function buildSweepTx(params: SweepParams): Promise<SweepResult> {
 
   const treasuryAssets: Record<string, bigint> = {
     lovelace: treasuryLovelace,
-    [lampUnit]: sweptOil,
+    [lampUnit]: sweptOildrop,
   };
 
   const txb = lucid
@@ -80,11 +80,11 @@ export async function buildSweepTx(params: SweepParams): Promise<SweepResult> {
 
   const summary = [
     `═══ SRCL Sweep → Treasury ═══`,
-    `Swept LAMP:    ${sweptOil / 1_000_000n} LAMP (${sweptOil} oil)`,
+    `Swept LAMP:    ${sweptOildrop / 1_000_000n} LAMP (${sweptOildrop} oildrop)`,
     `Treasury:      ${treasuryAddress}`,
     `end_epoch:     ${datum.end_epoch} (now phải > giá trị này)`,
     `validFrom ms:  ${validFromMs}`,
   ].join("\n");
 
-  return { tx, sweptOil, treasuryAddress, summary };
+  return { tx, sweptOildrop, treasuryAddress, summary };
 }

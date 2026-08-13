@@ -26,7 +26,7 @@ import {
   accountUseRedeemerToCbor,
 } from "../offchain/src/datum.js";
 import {
-  DRIP_OIL, COOLDOWN, RECLAIM, POOL_NFT_NAME, ACCT_NFT_NAME, MS_PER_EPOCH_PREVIEW,
+  DRIP_OILDROP, COOLDOWN, RECLAIM, POOL_NFT_NAME, ACCT_NFT_NAME, MS_PER_EPOCH_PREVIEW,
 } from "../offchain/src/constants.js";
 
 dotenv.config({ path: resolve(process.cwd(), "../../.env") });
@@ -36,7 +36,7 @@ const LAMP_POLICY = "b1474a77c8867762efda418adda90ecf7bb5ca35b0be13a7bfbf0ebd";
 const LAMP_NAME = "744c414d50";
 const lampUnit = toUnit(LAMP_POLICY, LAMP_NAME);
 
-const POOL_SEED_OIL = BigInt(process.env.POOL_SEED_OIL ?? "2500000000"); // 2500 tLAMP
+const POOL_SEED_OILDROP = BigInt(process.env.POOL_SEED_OILDROP ?? "2500000000"); // 2500 tLAMP
 const MS_PER_EPOCH = MS_PER_EPOCH_PREVIEW;
 
 const lucid = await Lucid(
@@ -123,7 +123,7 @@ Object.assign(out, { faucetNftPid, didPolicyId, didName: DID_NAME, poolAddr, acc
 // ─────────────────────────────────────────────────────────────────────────
 // T1 — deploy pool: mint POOL NFT one-shot + seed tLAMP + FaucetConfig.
 // ─────────────────────────────────────────────────────────────────────────
-const cfg = { drip_oil: DRIP_OIL, cooldown_epochs: COOLDOWN, reclaim_epochs: RECLAIM };
+const cfg = { drip_oildrop: DRIP_OILDROP, cooldown_epochs: COOLDOWN, reclaim_epochs: RECLAIM };
 {
   const tx = await lucid.newTx()
     .collectFrom([genesis])                                  // consume genesis (one-shot)
@@ -132,13 +132,13 @@ const cfg = { drip_oil: DRIP_OIL, cooldown_epochs: COOLDOWN, reclaim_epochs: REC
     .pay.ToAddressWithData(
       poolAddr,
       { kind: "inline", value: faucetConfigToCbor(cfg) },
-      { lovelace: 5_000_000n, [poolNftUnit]: 1n, [lampUnit]: POOL_SEED_OIL },
+      { lovelace: 5_000_000n, [poolNftUnit]: 1n, [lampUnit]: POOL_SEED_OILDROP },
     )
     .addSignerKey(pkh)
     .complete({ coinSelection: true });
   const h = await (await tx.sign.withWallet().complete()).submit();
-  console.log(`[T1] pool deployed (POOL NFT + ${Number(POOL_SEED_OIL) / 1e6} tLAMP) ${link(h)}`);
-  rec({ step: "T1_deploy_pool", hash: h, link: link(h), poolAddr, poolNftUnit, seedOil: POOL_SEED_OIL.toString() });
+  console.log(`[T1] pool deployed (POOL NFT + ${Number(POOL_SEED_OILDROP) / 1e6} tLAMP) ${link(h)}`);
+  rec({ step: "T1_deploy_pool", hash: h, link: link(h), poolAddr, poolNftUnit, seedOildrop: POOL_SEED_OILDROP.toString() });
   await lucid.awaitTx(h);
   await waitVisible(h, poolAddr);
   await waitVisible(h, myAddr);
@@ -158,7 +158,7 @@ let accountRef: { txHash: string; outputIndex: number };
 
   const validFromMs = Date.now() - 60_000;                  // lùi 60s cho an toàn slot
   const now = epochOf(validFromMs);
-  const poolAfter = (poolUtxo.assets[lampUnit] ?? 0n) - DRIP_OIL;
+  const poolAfter = (poolUtxo.assets[lampUnit] ?? 0n) - DRIP_OILDROP;
 
   const poolOutAssets: Record<string, bigint> = { ...poolUtxo.assets };
   if (poolAfter > 0n) poolOutAssets[lampUnit] = poolAfter; else delete poolOutAssets[lampUnit];
@@ -173,14 +173,14 @@ let accountRef: { txHash: string; outputIndex: number };
     .attach.MintingPolicy(faucetNftPolicy)
     .pay.ToAddressWithData(poolAddr, { kind: "inline", value: faucetConfigToCbor(cfg) }, poolOutAssets)
     .pay.ToAddressWithData(accountAddr, { kind: "inline", value: faucetAccountToCbor(acctDatum) },
-      { lovelace: 2_000_000n, [acctNftUnit]: 1n, [lampUnit]: DRIP_OIL })
+      { lovelace: 2_000_000n, [acctNftUnit]: 1n, [lampUnit]: DRIP_OILDROP })
     .pay.ToAddress(myAddr, { [didUnit]: 1n, lovelace: 2_000_000n })  // trả DID NFT về ví
     .validFrom(validFromMs)
     .addSignerKey(pkh)
     .complete({ coinSelection: true });
   const h = await (await tx.sign.withWallet().complete()).submit();
   console.log(`[T2] claim 1001 tLAMP → account (epoch=${now}) ${link(h)}`);
-  rec({ step: "T2_claim", hash: h, link: link(h), accountAddr, dripOil: DRIP_OIL.toString(), epoch: now.toString() });
+  rec({ step: "T2_claim", hash: h, link: link(h), accountAddr, dripOildrop: DRIP_OILDROP.toString(), epoch: now.toString() });
   await lucid.awaitTx(h);
   await waitVisible(h, accountAddr);
   await waitVisible(h, myAddr);

@@ -155,7 +155,7 @@ pub fn policy_qty_outside_script(
   )
 }
 
-/// LAMP (oil) tới owner (VerificationKey(pkh)) — cộng dồn mọi output của owner.
+/// LAMP (oildrop) tới owner (VerificationKey(pkh)) — cộng dồn mọi output của owner.
 pub fn lamp_to_owner(
   outputs: List<Output>,
   owner: ByteArray,
@@ -175,7 +175,7 @@ pub fn lamp_to_owner(
   )
 }
 
-/// LAMP (oil) tới Treasury (Script(treasury_dest)) — cộng dồn.
+/// LAMP (oildrop) tới Treasury (Script(treasury_dest)) — cộng dồn.
 pub fn lamp_to_script(
   outputs: List<Output>,
   dest_hash: ByteArray,

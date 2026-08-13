@@ -17,7 +17,7 @@ import {
   accountReclaimIdleRedeemerToCbor, poolReclaimRedeemerToCbor,
 } from "../offchain/src/datum.js";
 import {
-  DRIP_OIL, COOLDOWN, RECLAIM, TLAMP_ASSET_NAME, ACCT_NFT_NAME,
+  DRIP_OILDROP, COOLDOWN, RECLAIM, TLAMP_ASSET_NAME, ACCT_NFT_NAME,
 } from "../offchain/src/constants.js";
 
 interface Recorded {
@@ -68,12 +68,12 @@ function addr(v: Validator): string {
   return credentialToAddress(NETWORK, scriptHashToCredential(validatorToScriptHash(v)));
 }
 
-const CFG = { drip_oil: DRIP_OIL, cooldown_epochs: COOLDOWN, reclaim_epochs: RECLAIM };
+const CFG = { drip_oildrop: DRIP_OILDROP, cooldown_epochs: COOLDOWN, reclaim_epochs: RECLAIM };
 
-function poolUtxo(tlampOil: bigint): UTxO {
+function poolUtxo(tlampOildrop: bigint): UTxO {
   return {
     txHash: "cd".repeat(32), outputIndex: 0, address: addr(POOL_SCRIPT),
-    assets: { lovelace: 10_000_000n, [POOL_NFT_UNIT]: 1n, [TLAMP_UNIT]: tlampOil },
+    assets: { lovelace: 10_000_000n, [POOL_NFT_UNIT]: 1n, [TLAMP_UNIT]: tlampOildrop },
     datum: faucetConfigToCbor(CFG),
   };
 }
@@ -85,17 +85,17 @@ function didUtxo(): UTxO {
   };
 }
 
-function accountUtxo(tlampOil: bigint, lastEpoch: bigint): UTxO {
+function accountUtxo(tlampOildrop: bigint, lastEpoch: bigint): UTxO {
   return {
     txHash: "ef".repeat(32), outputIndex: 0, address: addr(ACCT_SCRIPT),
-    assets: { lovelace: 2_000_000n, [ACCT_NFT_UNIT]: 1n, [TLAMP_UNIT]: tlampOil },
+    assets: { lovelace: 2_000_000n, [ACCT_NFT_UNIT]: 1n, [TLAMP_UNIT]: tlampOildrop },
     datum: faucetAccountToCbor({ did_name: DID_NAME, last_epoch: lastEpoch }),
   };
 }
 
 // ── CLAIM ──────────────────────────────────────────────────────────────
 describe("buildClaimDidTx — DID-gated drip 1001", () => {
-  it("drips exactly DRIP_OIL, pool −drip, account +drip + datum{now}, mints ACCT, collects DID", async () => {
+  it("drips exactly DRIP_OILDROP, pool −drip, account +drip + datum{now}, mints ACCT, collects DID", async () => {
     const { lucid, rec } = mockLucid("addr_user");
     const POOL_BEFORE = 5_000_000_000n;
     const res = await buildClaimDidTx({
@@ -107,8 +107,8 @@ describe("buildClaimDidTx — DID-gated drip 1001", () => {
       tlampPolicyId: TLAMP_POLICY,
       currentEpoch: 100n,
     });
-    expect(res.drip).toBe(DRIP_OIL);
-    expect(res.poolAfter).toBe(POOL_BEFORE - DRIP_OIL);
+    expect(res.drip).toBe(DRIP_OILDROP);
+    expect(res.poolAfter).toBe(POOL_BEFORE - DRIP_OILDROP);
 
     // pool spent (Claim) + DID collected; ACCT minted.
     expect(rec.collectFrom.some((c) => c.redeemer === poolClaimRedeemerToCbor())).toBe(true);
@@ -119,7 +119,7 @@ describe("buildClaimDidTx — DID-gated drip 1001", () => {
 
     // pool output: tLAMP −drip, POOL NFT + ADA + config preserved.
     const poolOut = rec.payData.find((p) => p.address === addr(POOL_SCRIPT))!;
-    expect(poolOut.assets[TLAMP_UNIT]).toBe(POOL_BEFORE - DRIP_OIL);
+    expect(poolOut.assets[TLAMP_UNIT]).toBe(POOL_BEFORE - DRIP_OILDROP);
     expect(poolOut.assets[POOL_NFT_UNIT]).toBe(1n);
     expect(poolOut.assets.lovelace).toBe(10_000_000n);
     expect(poolOut.datum).toBe(faucetConfigToCbor(CFG));
@@ -127,7 +127,7 @@ describe("buildClaimDidTx — DID-gated drip 1001", () => {
     // account output: ACCT NFT + exactly drip tLAMP + datum{did_name, last_epoch=now}.
     const acctOut = rec.payData.find((p) => p.address === addr(ACCT_SCRIPT))!;
     expect(acctOut.assets[ACCT_NFT_UNIT]).toBe(1n);
-    expect(acctOut.assets[TLAMP_UNIT]).toBe(DRIP_OIL);
+    expect(acctOut.assets[TLAMP_UNIT]).toBe(DRIP_OILDROP);
     expect(acctOut.datum).toBe(faucetAccountToCbor({ did_name: DID_NAME, last_epoch: 100n }));
 
     // bảo toàn cung: poolOut tLAMP + acctOut tLAMP == pool_in.
@@ -150,7 +150,7 @@ describe("buildClaimDidTx — DID-gated drip 1001", () => {
     const { lucid } = mockLucid("addr_user");
     await expect(buildClaimDidTx({
       lucid, network: NETWORK,
-      poolUtxo: poolUtxo(DRIP_OIL - 1n), faucetPoolScript: POOL_SCRIPT,
+      poolUtxo: poolUtxo(DRIP_OILDROP - 1n), faucetPoolScript: POOL_SCRIPT,
       faucetNftPolicy: NFT_POLICY, faucetNftPolicyId: NFT_POLICY_ID, faucetAccountScript: ACCT_SCRIPT,
       didUtxo: didUtxo(), didNftPolicyId: DID_POLICY_ID, didName: DID_NAME,
       tlampPolicyId: TLAMP_POLICY, currentEpoch: 100n,
@@ -164,17 +164,17 @@ describe("buildUseTx — gia hạn last_epoch", () => {
     const { lucid, rec } = mockLucid("addr_user");
     const res = await buildUseTx({
       lucid, network: NETWORK,
-      accountUtxo: accountUtxo(DRIP_OIL, 100n), faucetAccountScript: ACCT_SCRIPT,
+      accountUtxo: accountUtxo(DRIP_OILDROP, 100n), faucetAccountScript: ACCT_SCRIPT,
       faucetNftPolicyId: NFT_POLICY_ID,
       didUtxo: didUtxo(), didNftPolicyId: DID_POLICY_ID, didName: DID_NAME,
       tlampPolicyId: TLAMP_POLICY, currentEpoch: 200n,
-      withdrawOil: 1_000_000n,
+      withdrawOildrop: 1_000_000n,
     });
     expect(res.newAccountDatum.last_epoch).toBe(200n);
-    expect(res.accountLampAfter).toBe(DRIP_OIL - 1_000_000n);
+    expect(res.accountLampAfter).toBe(DRIP_OILDROP - 1_000_000n);
     const acctOut = rec.payData.find((p) => p.address === addr(ACCT_SCRIPT))!;
     expect(acctOut.assets[ACCT_NFT_UNIT]).toBe(1n);
-    expect(acctOut.assets[TLAMP_UNIT]).toBe(DRIP_OIL - 1_000_000n);
+    expect(acctOut.assets[TLAMP_UNIT]).toBe(DRIP_OILDROP - 1_000_000n);
     expect(acctOut.datum).toBe(faucetAccountToCbor({ did_name: DID_NAME, last_epoch: 200n }));
   });
 
@@ -182,11 +182,11 @@ describe("buildUseTx — gia hạn last_epoch", () => {
     const { lucid } = mockLucid("addr_user");
     await expect(buildUseTx({
       lucid, network: NETWORK,
-      accountUtxo: accountUtxo(DRIP_OIL, 100n), faucetAccountScript: ACCT_SCRIPT,
+      accountUtxo: accountUtxo(DRIP_OILDROP, 100n), faucetAccountScript: ACCT_SCRIPT,
       faucetNftPolicyId: NFT_POLICY_ID,
       didUtxo: didUtxo(), didNftPolicyId: DID_POLICY_ID, didName: DID_NAME,
       tlampPolicyId: TLAMP_POLICY, currentEpoch: 200n,
-      withdrawOil: DRIP_OIL + 1n,
+      withdrawOildrop: DRIP_OILDROP + 1n,
     })).rejects.toThrow(/> account tLAMP/);
   });
 });
@@ -200,17 +200,17 @@ describe("buildReclaimTx — thu hồi idle về pool", () => {
     const res = await buildReclaimTx({
       lucid, network: NETWORK,
       poolUtxo: poolUtxo(POOL_BEFORE), faucetPoolScript: POOL_SCRIPT,
-      accountUtxo: accountUtxo(DRIP_OIL, 100n), faucetAccountScript: ACCT_SCRIPT,
+      accountUtxo: accountUtxo(DRIP_OILDROP, 100n), faucetAccountScript: ACCT_SCRIPT,
       tlampPolicyId: TLAMP_POLICY, currentEpoch: 1101n,
     });
-    expect(res.reclaimed).toBe(DRIP_OIL);
-    expect(res.poolAfter).toBe(POOL_BEFORE + DRIP_OIL);
+    expect(res.reclaimed).toBe(DRIP_OILDROP);
+    expect(res.poolAfter).toBe(POOL_BEFORE + DRIP_OILDROP);
 
     expect(rec.collectFrom.some((c) => c.redeemer === accountReclaimIdleRedeemerToCbor())).toBe(true);
     expect(rec.collectFrom.some((c) => c.redeemer === poolReclaimRedeemerToCbor())).toBe(true);
 
     const poolOut = rec.payData.find((p) => p.address === addr(POOL_SCRIPT))!;
-    expect(poolOut.assets[TLAMP_UNIT]).toBe(POOL_BEFORE + DRIP_OIL);
+    expect(poolOut.assets[TLAMP_UNIT]).toBe(POOL_BEFORE + DRIP_OILDROP);
     expect(poolOut.assets[POOL_NFT_UNIT]).toBe(1n);
     expect(poolOut.datum).toBe(faucetConfigToCbor(CFG));
   });
@@ -220,7 +220,7 @@ describe("buildReclaimTx — thu hồi idle về pool", () => {
     await expect(buildReclaimTx({
       lucid, network: NETWORK,
       poolUtxo: poolUtxo(3_000_000_000n), faucetPoolScript: POOL_SCRIPT,
-      accountUtxo: accountUtxo(DRIP_OIL, 100n), faucetAccountScript: ACCT_SCRIPT,
+      accountUtxo: accountUtxo(DRIP_OILDROP, 100n), faucetAccountScript: ACCT_SCRIPT,
       tlampPolicyId: TLAMP_POLICY, currentEpoch: 1100n,  // < 100+1001
     })).rejects.toThrow(/chưa idle đủ/);
   });

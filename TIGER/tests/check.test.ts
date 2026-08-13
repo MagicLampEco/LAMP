@@ -47,7 +47,7 @@ describe("analyzeHistory", () => {
 describe("lookupLamp + projectLampFromSnapshot", () => {
   it("lookupLamp trả null khi owner không có trong entitlements", () => {
     const r = lookupLamp([], "0aowner");
-    expect(r.amountOil).toBeNull();
+    expect(r.amountOildrop).toBeNull();
   });
 
   it("projectLampFromSnapshot tính đúng LAMP owner từ snapshot chốt", () => {
@@ -64,9 +64,9 @@ describe("lookupLamp + projectLampFromSnapshot", () => {
     const budget = 600_000_000n;
     const pa = projectLampFromSnapshot(snap, "A", budget);
     const pb = projectLampFromSnapshot(snap, "B", budget);
-    expect(pa.amountOil).not.toBeNull();
+    expect(pa.amountOildrop).not.toBeNull();
     expect(pa.accStake).toBe(5000n);           // 2000 + 3000
-    expect(pa.amountOil! > pb.amountOil!).toBe(true);
+    expect(pa.amountOildrop! > pb.amountOildrop!).toBe(true);
     expect(pa.provisional).toBe(false);
   });
 });

@@ -34,11 +34,11 @@ const BEACON_MIN_ADA   = 2_000_000n;
 const TREASURY_MIN_ADA = 2_000_000n;
 const ACCOUNT_MIN_ADA  = 2_000_000n;
 
-// test-LAMP fund vào treasury pool (oil). Mặc định 500_000 LAMP — dư cho redeem demo.
-const TREASURY_FUND = BigInt(process.env.TREASURY_FUND_OIL ?? (500_000n * 1_000_000n).toString());
+// test-LAMP fund vào treasury pool (oildrop). Mặc định 500_000 LAMP — dư cho redeem demo.
+const TREASURY_FUND = BigInt(process.env.TREASURY_FUND_OILDROP ?? (500_000n * 1_000_000n).toString());
 
-// DropParam D (oil/drop·epoch). THAM SỐ — đọc từ beacon ở redeem, không hardcode validator.
-const DROP_VALUE = BigInt(process.env.DROP_VALUE_OIL ?? D_GENESIS.toString());
+// DropParam D (oildrop/drop·epoch). THAM SỐ — đọc từ beacon ở redeem, không hardcode validator.
+const DROP_VALUE = BigInt(process.env.DROP_VALUE_OILDROP ?? D_GENESIS.toString());
 
 /** Ví B test: PRIVATE_KEY_B/WALLET_SEED_B nếu có; else PKH cố định (chỉ demo 2 account). */
 async function resolveWalletBPkh(): Promise<{ pkh: string; real: boolean }> {
@@ -74,7 +74,7 @@ async function main(): Promise<void> {
 
   console.log(`Network:      ${NETWORK}`);
   console.log(`Epoch:        ${epoch}`);
-  console.log(`Drop value D: ${DROP_VALUE / 1_000_000n} LAMP/drop·epoch (${DROP_VALUE} oil)`);
+  console.log(`Drop value D: ${DROP_VALUE / 1_000_000n} LAMP/drop·epoch (${DROP_VALUE} oildrop)`);
   console.log(`Ví A (PKH):   ${aPkh}  (= ví deploy, redeem được)`);
   console.log(`Ví B (PKH):   ${b.pkh}  (${b.real ? "ví thật" : "placeholder — chỉ demo account"})`);
   console.log();

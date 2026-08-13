@@ -31,8 +31,8 @@ export function ceilDiv(a: bigint, b: bigint): bigint {
 
 /**
  * vested(t) = min(E, D · dpe · max(0, t − t0)).
- * @param entitlement   E (oil)
- * @param dropValue     D (oil/drop·epoch) — compile-time param của claim_account
+ * @param entitlement   E (oildrop)
+ * @param dropValue     D (oildrop/drop·epoch) — compile-time param của claim_account
  * @param dropsPerEpoch drops_per_epoch (datum)
  * @param startEpoch    t0
  * @param currentEpoch  t

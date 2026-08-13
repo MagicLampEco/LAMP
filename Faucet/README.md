@@ -4,11 +4,11 @@ Faucet cấp tLAMP test cho dev/Agent xây trên Cardano. **Self-serve permissio
 (ai cũng claim qua SDK, kể cả bot), nhưng **chống sybil bằng DID NFT** + **rate-limit
 per-DID** + **tự thu hồi token idle** để bảo toàn pool hữu hạn.
 
-## Hằng số (1 tLAMP = 10^6 oil)
+## Hằng số (1 tLAMP = 10^6 oildrop)
 
 | Tham số | Giá trị | Ý nghĩa |
 |---|---|---|
-| `drip_oil` | `1_001_000_000` (1001 tLAMP) | lượng nhả mỗi claim |
+| `drip_oildrop` | `1_001_000_000` (1001 tLAMP) | lượng nhả mỗi claim |
 | `cooldown_epochs` | `36` | tối thiểu giữa 2 claim của cùng 1 DID |
 | `reclaim_epochs` | `1001` | account idle đủ lâu → ai cũng thu hồi |
 
@@ -66,7 +66,7 @@ outputs: pool' = pool − drip tLAMP   (POOL NFT + ADA + FaucetConfig bảo toà
          DID NFT trả lại ví claimer
 ```
 
-Onchain ép: drip đúng `drip_oil`; `account.last_epoch == now`; `did_name` account
+Onchain ép: drip đúng `drip_oildrop`; `account.last_epoch == now`; `did_name` account
 khớp DID NFT trong input; nếu có account cũ cùng `did_name` → `now ≥ old.last_epoch
 + cooldown_epochs`. `now` = `validity_range.lower_bound / ms_per_epoch` → builder
 PHẢI set `validFrom = bây giờ`.
@@ -93,7 +93,7 @@ toàn cung: token idle quay lại pool, không bốc hơi, không vào ví keepe
 
 ## Offchain SDK (`offchain/src/`)
 
-- `constants.ts` — `DRIP_OIL`, `COOLDOWN`, `RECLAIM`, NFT names, `MS_PER_EPOCH_PREVIEW`.
+- `constants.ts` — `DRIP_OILDROP`, `COOLDOWN`, `RECLAIM`, NFT names, `MS_PER_EPOCH_PREVIEW`.
 - `datum.ts` — codec `FaucetConfig` / `FaucetAccount` + redeemers (PoolRedeemer,
   AccountRedeemer, FaucetNftRedeemer).
 - `claimDidBuilder.ts` — `buildClaimDidTx` (claim dùng DID NFT, re-claim tùy chọn).

@@ -1,11 +1,23 @@
 // TIGER Airdrop offchain types — mirror onchain ledger.ak.
 
-/** 1 bản ghi snapshot: 1 địa chỉ delegator + phần airdrop (oil). */
+/** 1 bản ghi snapshot: 1 địa chỉ delegator + phần airdrop (oildrop). */
 export interface SnapshotEntry {
   /** Địa chỉ Cardano (bech32) của delegator TIGER pool. */
   address: string;
-  /** Lượng LAMP (oil) địa chỉ này được airdrop. */
+  /** Lượng LAMP (oildrop) địa chỉ này được airdrop. */
   amount: bigint;
+}
+
+/** Tham số cô lập leaf theo schema C (v2). Bake vào validator (PARAM) — off-chain
+ *  PHẢI truyền đúng cùng bộ để leaf khớp byte-perfect on-chain.
+ *  Nguồn: SCHEMA-MERKLE-V2-Tech-Spec.md §1. */
+export interface MerkleParams {
+  /** blake2b_256(tên_chiến_dịch_utf8), hex 32 byte. VD DELEGATOR_CAMPAIGN_ID. */
+  campaignId: string;
+  /** epoch snapshot (Delegator = E_cut hằng). big-endian u64 trong leaf. */
+  epoch: bigint;
+  /** Delegator=1, MCS=2, Engage=3, SPO=4. 1 byte (0..255). CẤM đổi số. */
+  role: number;
 }
 
 /** 1 bước Merkle proof. Khớp ledger.ProofStep = Constr(0, [bool, bytes]).
@@ -40,4 +52,7 @@ export interface MerkleTree {
   leaves: string[];
   /** Snapshot đã chuẩn hoá (sort + dedup) — thứ tự khớp leaves. */
   entries: SnapshotEntry[];
+  /** Mọi tầng cây, layers[0] = leaves, tầng cuối = [root]. buildProof đọc thẳng
+   *  từ đây; không có nó thì mỗi proof phải băm lại cả cây → O(n²) cho cả pot. */
+  layers: string[][];
 }

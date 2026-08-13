@@ -1,7 +1,7 @@
 // LAMP Genesis offchain types — mirror onchain lib/magiclamp/genesis/types.ak.
 // PHẢI khớp byte-perfect (Constr index = thứ tự khai báo trong types.ak).
 
-/** SupplyState — bộ đếm phát hành đơn điệu (oil), ghim bởi thread NFT one-shot.
+/** SupplyState — bộ đếm phát hành đơn điệu (oildrop), ghim bởi thread NFT one-shot.
  *  minted_total = dist_minted + reserve_minted ≤ dist_cap + reserve_cap (BẤT BIẾN).
  *  = Constr(0, [int, int, int, int]) */
 export interface SupplyState {

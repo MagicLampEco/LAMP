@@ -1,7 +1,7 @@
 // LAMP Reserve datum/redeemer codec — Plutus Data (Lucid Evolution).
 // PHẢI khớp byte-perfect onchain types.ak (Constr index = thứ tự khai báo, từ 0).
 //
-//   ReserveState{start_epoch, total_oil, drawn_oil, last_epoch} = Constr(0, [int×4])
+//   ReserveState{start_epoch, total_oildrop, drawn_oildrop, last_epoch} = Constr(0, [int×4])
 //   ReserveRedeemer: Draw                                       = Constr(0, [])
 //
 // Duck-type Constr (như Genesis/Distribution datum.ts) để tránh lỗi `instanceof`
@@ -31,10 +31,10 @@ function asInt(d: Data, ctx: string): bigint {
 }
 
 // ── ReserveState ────────────────────────────────────────────────────────
-// Constr(0, [start_epoch:int, total_oil:int, drawn_oil:int, last_epoch:int])
+// Constr(0, [start_epoch:int, total_oildrop:int, drawn_oildrop:int, last_epoch:int])
 
 export function encodeReserveState(s: ReserveState): Constr<Data> {
-  return new Constr(0, [s.start_epoch, s.total_oil, s.drawn_oil, s.last_epoch]);
+  return new Constr(0, [s.start_epoch, s.total_oildrop, s.drawn_oildrop, s.last_epoch]);
 }
 
 export function decodeReserveState(d: Data): ReserveState {
@@ -44,8 +44,8 @@ export function decodeReserveState(d: Data): ReserveState {
     throw new Error(`RDATUM-011: ReserveState expects 4 fields, got ${c.fields.length}`);
   return {
     start_epoch: asInt(c.fields[0]!, "ReserveState.start_epoch"),
-    total_oil:   asInt(c.fields[1]!, "ReserveState.total_oil"),
-    drawn_oil:   asInt(c.fields[2]!, "ReserveState.drawn_oil"),
+    total_oildrop:   asInt(c.fields[1]!, "ReserveState.total_oildrop"),
+    drawn_oildrop:   asInt(c.fields[2]!, "ReserveState.drawn_oildrop"),
     last_epoch:  asInt(c.fields[3]!, "ReserveState.last_epoch"),
   };
 }

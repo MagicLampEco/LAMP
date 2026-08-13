@@ -5,10 +5,10 @@ chi tiết hóa thành 4 spec:
 
 | Spec | Nội dung | File |
 |---|---|---|
-| **FEAT** | 3 cửa tiền, luồng `collectToTreasury`, vòng đời bucket, release, đa thuê bao | [FEAT.md](./FEAT.md) |
-| **MATH** | bảo toàn value `Σ_out=Σ_in`, circulating = tổng − Σ balance, số học split | [MATH.md](./MATH.md) |
-| **TECH** | validator Aiken (Custody/Collect/Release), datum bucket-accounting, chống double-satisfaction | [TECH.md](./TECH.md) |
-| **EXEC** | lộ trình, migrate generators, tích hợp OriLife, test Preview | [EXEC.md](./EXEC.md) |
+| **FEAT** | 3 cửa tiền, luồng `collectToTreasury`, vòng đời bucket, release, đa thuê bao | [Feat-Spec.md](./Feat-Spec.md) |
+| **MATH** | bảo toàn value `Σ_out=Σ_in`, circulating = tổng − Σ balance, số học split | [Math-Spec.md](./Math-Spec.md) |
+| **TECH** | validator Aiken (Custody/Collect/Release), datum bucket-accounting, chống double-satisfaction | [Tech-Spec.md](./Tech-Spec.md) |
+| **EXEC** | lộ trình, migrate generators, tích hợp OriLife, test Preview | [Exec-Spec.md](./Exec-Spec.md) |
 
 ---
 

@@ -33,7 +33,7 @@ const PROPOSAL_POLICY = "00".repeat(28);   // placeholder (Collect KHÔNG đọc
 const MS_PER_EPOCH = 432_000_000n;
 const INSTANCE_ID = "74726561737572792d6c616d70"; // "treasury-lamp" hex
 const RESERVED_MIN_ADA = 3_000_000n;       // ADA giữ cho min-UTxO (không ghi sổ)
-const SEED_LEDGER_OIL = 100_000_000n;      // 100 tLAMP seed vào bucket 0
+const SEED_LEDGER_OILDROP = 100_000_000n;      // 100 tLAMP seed vào bucket 0
 const CUT_BPS = 1000n;                      // 10% cut
 
 const lucid = await Lucid(
@@ -91,7 +91,7 @@ const seedDatum: CustodyDatum = {
     { policy: custodySeedPid, name: INSTANCE_ID },          // NFT key (để dòng sổ NFT hợp lệ)
   ],
   ledger: [
-    { bucket_id: 0n, policy: LAMP_POLICY, name: LAMP_NAME, amount: SEED_LEDGER_OIL },
+    { bucket_id: 0n, policy: LAMP_POLICY, name: LAMP_NAME, amount: SEED_LEDGER_OILDROP },
     { bucket_id: 9n, policy: custodySeedPid, name: INSTANCE_ID, amount: 1n }, // book NFT
   ],
   cut_bps: CUT_BPS,
@@ -101,7 +101,7 @@ const seedDatum: CustodyDatum = {
 };
 // seed_value_ok: value == ledger_value ⊕ reserved_min_ada(lovelace).
 // ledger_value = 100 tLAMP + 1 NFT; value = + reserved ADA. NFT thêm bên dưới (pay).
-const seedAssets: Record<string, bigint> = { lovelace: RESERVED_MIN_ADA, [lampUnit]: SEED_LEDGER_OIL };
+const seedAssets: Record<string, bigint> = { lovelace: RESERVED_MIN_ADA, [lampUnit]: SEED_LEDGER_OILDROP };
 
 let custodyRef: { txHash: string; outputIndex: number };
 {
@@ -119,7 +119,7 @@ let custodyRef: { txHash: string; outputIndex: number };
     .complete({ coinSelection: true });
   const h = await (await tx.sign.withWallet().complete()).submit();
   console.log(`[S1] custody seeded (NFT + 100 tLAMP, ledger@bucket0) ${link(h)}`);
-  rec({ step: "S1_seed", hash: h, link: link(h), custodyAddr, custodyNftUnit, seedLedgerOil: SEED_LEDGER_OIL.toString() });
+  rec({ step: "S1_seed", hash: h, link: link(h), custodyAddr, custodyNftUnit, seedLedgerOildrop: SEED_LEDGER_OILDROP.toString() });
   await lucid.awaitTx(h);
   await waitVisible(h, custodyAddr);
   await waitVisible(h, myAddr);
