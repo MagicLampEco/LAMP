@@ -18,7 +18,7 @@ import { resolve } from "node:path";
 import { bf, bfAll, BLOCKFROST_KEY, NETWORK } from "./config.js";
 import type { SnapshotOutput, SnapshotRow } from "./build_airdrop_snapshot.js";
 
-const OIL_PER_LAMP = 1_000_000n;
+const OILDROP_PER_LAMP = 1_000_000n;
 
 // ── CLI ────────────────────────────────────────────────────────────────────
 
@@ -76,8 +76,8 @@ Dùng:
 
 function fmtLamp(lamp: bigint | string): string {
   const n = typeof lamp === "string" ? BigInt(lamp) : lamp;
-  const whole = n / OIL_PER_LAMP;
-  return `${whole.toLocaleString()} LAMP (${n.toLocaleString()} oil)`;
+  const whole = n / OILDROP_PER_LAMP;
+  return `${whole.toLocaleString()} LAMP (${n.toLocaleString()} oildrop)`;
 }
 
 function fmtLovelace(lovelace: string): string {

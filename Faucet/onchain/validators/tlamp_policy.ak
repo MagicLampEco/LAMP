@@ -15,8 +15,8 @@
 //   - dict.size == 1: policy này KHÔNG mint asset name lạ nào khác.
 //   - quantity_of == total_supply: đúng tổng cung, không dư không thiếu, không âm.
 //
-// total_supply tính ở offchain = 36_000_000_000 × 10^6 oil (decimals 6, khớp
-// Distribution: 1 LAMP = 10^6 oil). Truyền qua param để onchain không hard-code
+// total_supply tính ở offchain = 36_000_000_000 × 10^6 oildrop (decimals 6, khớp
+// Distribution: 1 LAMP = 10^6 oildrop). Truyền qua param để onchain không hard-code
 // con số khổng lồ + cho phép preprod/preview dùng cùng policy code.
 //
 // BURN: CẤM hoàn toàn. LAMP mainnet fixed-supply BẤT BIẾN (KHÔNG bao giờ burn),

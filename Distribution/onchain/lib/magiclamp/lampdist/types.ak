@@ -2,7 +2,7 @@
 // Phải khớp byte-perfect với offchain types.ts (Constr index theo thứ tự khai báo).
 
 /// Per-wallet account tại claim_account script — CONTRACT v2 "Capped Drop".
-/// Mọi giá trị là oil. Bất biến: 0 ≤ redeemed ≤ entitlement; vested cộng dồn cap E.
+/// Mọi giá trị là oildrop. Bất biến: 0 ≤ redeemed ≤ entitlement; vested cộng dồn cap E.
 ///   vested(t) = min(entitlement, D · drops_per_epoch · max(0, t − start_epoch))
 ///   redeemable = vested − redeemed
 pub type ClaimAccountDatum {
@@ -21,12 +21,12 @@ pub type ClaimAccountRedeemer {
 }
 
 pub type BeaconKind {
-  // tham số drop value D (oil/drop) committee/DAO post
+  // tham số drop value D (oildrop/drop) committee/DAO post
   DropParam
 }
 
 /// Beacon UTxO do committee post. Authenticity = NFT.
-///   DropParam → drop_value D (oil) — số LAMP mở khoá mỗi drop·epoch.
+///   DropParam → drop_value D (oildrop) — số LAMP mở khoá mỗi drop·epoch.
 pub type BeaconDatum {
   epoch     : Int,
   kind      : BeaconKind,
@@ -50,7 +50,7 @@ pub type BeaconRedeemer {
 /// NOTE: field ở CUỐI (giữ Constr index cũ cho field đầu — backward compatible decode).
 pub type TreasuryDatum {
   committee_hash        : ByteArray,
-  outstanding_entitlement: Int,        // oil — sổ cái CÒN NỢ (field mới, ở cuối)
+  outstanding_entitlement: Int,        // oildrop — sổ cái CÒN NỢ (field mới, ở cuối)
 }
 
 pub type TreasuryRedeemer {

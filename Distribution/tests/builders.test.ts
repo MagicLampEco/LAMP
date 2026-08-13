@@ -15,7 +15,7 @@ import {
 } from "../offchain/src/datum.js";
 import { committeeThreshold } from "../offchain/src/committee.js";
 import { TREASURY_NFT_ASSET_NAME } from "../offchain/src/constants.js";
-import { lampOil } from "./helpers.js";
+import { lampOildrop } from "./helpers.js";
 import { Data } from "@lucid-evolution/lucid";
 
 // ── Mock Lucid tx-builder ──────────────────────────────────────────────
@@ -65,7 +65,7 @@ const NETWORK = "Preview" as const;
 const OWNER   = "aabbccddeeff00112233445566778899aabbccddeeff001122334455";
 const LAMP_POLICY = "ff".repeat(28);
 const LAMP_UNIT   = toUnit(LAMP_POLICY, "744c414d50"); // tLAMP canonical
-const D = lampOil(100n);
+const D = lampOildrop(100n);
 
 // committee 3 keys, threshold 2
 const COMMITTEE = ["11".repeat(28), "22".repeat(28), "33".repeat(28)];
@@ -76,7 +76,7 @@ const COMMITTEE = ["11".repeat(28), "22".repeat(28), "33".repeat(28)];
 const TRSY_POLICY = "ab".repeat(28);
 const TRSY_UNIT   = toUnit(TRSY_POLICY, TREASURY_NFT_ASSET_NAME);
 
-function trsyUtxo(outstanding: bigint, lamp = lampOil(100_000n)): UTxO {
+function trsyUtxo(outstanding: bigint, lamp = lampOildrop(100_000n)): UTxO {
   return {
     txHash: "33".repeat(32), outputIndex: 0,
     address: credentialToAddress(NETWORK, scriptHashToCredential(validatorToScriptHash(FAKE_TREASURY))),
@@ -85,7 +85,7 @@ function trsyUtxo(outstanding: bigint, lamp = lampOil(100_000n)): UTxO {
   };
 }
 
-function trsyParam(outstanding: bigint, lamp = lampOil(100_000n)) {
+function trsyParam(outstanding: bigint, lamp = lampOildrop(100_000n)) {
   return { utxo: trsyUtxo(outstanding, lamp), script: FAKE_TREASURY, nftPolicy: TRSY_POLICY };
 }
 
@@ -110,7 +110,7 @@ describe("buildClaimTx — CREATE path", () => {
     const { lucid, rec } = mockLucid("addr_wallet");
     const res = await buildClaimTx({
       lucid, claimScript: FAKE_CLAIM, network: NETWORK,
-      ownerPkh: OWNER, amount: lampOil(250n), currentEpoch: 5n,
+      ownerPkh: OWNER, amount: lampOildrop(250n), currentEpoch: 5n,
       committeeKeyHashes: COMMITTEE, treasury: trsyParam(0n),
     });
     expect(res.mode).toBe("create");
@@ -120,7 +120,7 @@ describe("buildClaimTx — CREATE path", () => {
     expect(rec.payData[0]!.address).toBe(scriptAddr(FAKE_CLAIM));
     expect(rec.signers.length).toBeGreaterThanOrEqual(2);
     expect(res.newDatum).toEqual({
-      owner: OWNER, entitlement: lampOil(250n),
+      owner: OWNER, entitlement: lampOildrop(250n),
       redeemed: 0n, start_epoch: 5n, drops_per_epoch: 1n,
     });
     expect(rec.payData[0]!.datum).toBe(claimAccountDatumToCbor(res.newDatum));
@@ -139,11 +139,11 @@ describe("buildClaimTx — UPDATE path", () => {
 
   it("increments entitlement, preserves owner+redeemed+start+dpe+assets", async () => {
     const { lucid, rec } = mockLucid("addr_wallet");
-    const prev = { owner: OWNER, entitlement: lampOil(100n), redeemed: lampOil(40n), start_epoch: 3n, drops_per_epoch: 1n };
+    const prev = { owner: OWNER, entitlement: lampOildrop(100n), redeemed: lampOildrop(40n), start_epoch: 3n, drops_per_epoch: 1n };
     const DUST = toUnit("ab".repeat(28), "cafe");
     const res = await buildClaimTx({
       lucid, claimScript: FAKE_CLAIM, network: NETWORK,
-      ownerPkh: OWNER, amount: lampOil(60n), currentEpoch: 9n,
+      ownerPkh: OWNER, amount: lampOildrop(60n), currentEpoch: 9n,
       claimAccountUtxo: claimUtxo(prev, { [DUST]: 7n }),
       committeeKeyHashes: COMMITTEE, treasury: trsyParam(0n),
     });
@@ -151,8 +151,8 @@ describe("buildClaimTx — UPDATE path", () => {
     expect(rec.collectFrom.filter(c => c.utxos[0]?.assets[TRSY_UNIT] !== 1n)).toHaveLength(1);
     expect(rec.attach).toContain(FAKE_CLAIM);
     expect(res.newDatum).toEqual({
-      owner: OWNER, entitlement: lampOil(160n),   // +60
-      redeemed: lampOil(40n),                     // unchanged
+      owner: OWNER, entitlement: lampOildrop(160n),   // +60
+      redeemed: lampOildrop(40n),                     // unchanged
       start_epoch: 3n,                            // unchanged
       drops_per_epoch: 1n,                        // unchanged
     });
@@ -207,7 +207,7 @@ describe("buildPostBeaconTx — DropParam{D}", () => {
     const res = await buildPostBeaconTx({
       lucid, beaconScript: FAKE_BEACON, network: NETWORK,
       beaconNftPolicy: NFT_POLICY,
-      beaconUtxo: beaconUtxo(9n, lampOil(80n), { lovelace: 2_000_000n, [NFT_UNIT]: 1n }),
+      beaconUtxo: beaconUtxo(9n, lampOildrop(80n), { lovelace: 2_000_000n, [NFT_UNIT]: 1n }),
       newBeacon: { epoch: 10n, kind: "DropParam", drop_value: D },
       committeeKeyHashes: COMMITTEE,
     });
@@ -246,7 +246,7 @@ describe("buildPostBeaconTx — DropParam{D}", () => {
 // ── buildRedeemTx (Capped Drop) ────────────────────────────────────────
 describe("buildRedeemTx — vested = min(E, D·dpe·Δ)", () => {
   function claimUtxo(
-    redeemed: bigint, entitlement = lampOil(250n), startEpoch = 0n, dpe = 1n,
+    redeemed: bigint, entitlement = lampOildrop(250n), startEpoch = 0n, dpe = 1n,
     extra: Record<string, bigint> = {},
   ): UTxO {
     return {
@@ -258,7 +258,7 @@ describe("buildRedeemTx — vested = min(E, D·dpe·Δ)", () => {
       }),
     };
   }
-  function treasuryUtxo(lamp: bigint, extra: Record<string, bigint> = {}, cum = lampOil(1000n)): UTxO {
+  function treasuryUtxo(lamp: bigint, extra: Record<string, bigint> = {}, cum = lampOildrop(1000n)): UTxO {
     return {
       txHash: "22".repeat(32), outputIndex: 0,
       address: scriptAddr(FAKE_TREASURY),
@@ -286,14 +286,14 @@ describe("buildRedeemTx — vested = min(E, D·dpe·Δ)", () => {
     // E=250, D=100, dpe=1, t0=0, t=3 → vested=min(250,300)=250; redeemed=100 → amount=150.
     const res = await buildRedeemTx({
       ...base, lucid, currentEpoch: 3n,
-      claimAccountUtxo: claimUtxo(lampOil(100n)),
-      treasuryUtxo: treasuryUtxo(lampOil(1000n), { [DUST]: 3n }),
+      claimAccountUtxo: claimUtxo(lampOildrop(100n)),
+      treasuryUtxo: treasuryUtxo(lampOildrop(1000n), { [DUST]: 3n }),
       dropBeaconUtxo: dropBeaconUtxo(D),
     });
-    expect(res.vested).toBe(lampOil(250n));
-    expect(res.amount).toBe(lampOil(150n));                           // 250 − 100
-    expect(res.newClaimDatum.redeemed).toBe(lampOil(250n));           // = redeemed + amount
-    expect(res.newClaimDatum.entitlement).toBe(lampOil(250n));        // unchanged
+    expect(res.vested).toBe(lampOildrop(250n));
+    expect(res.amount).toBe(lampOildrop(150n));                           // 250 − 100
+    expect(res.newClaimDatum.redeemed).toBe(lampOildrop(250n));           // = redeemed + amount
+    expect(res.newClaimDatum.entitlement).toBe(lampOildrop(250n));        // unchanged
     expect(res.newClaimDatum.start_epoch).toBe(0n);                   // unchanged
     expect(res.newClaimDatum.drops_per_epoch).toBe(1n);              // unchanged
 
@@ -304,17 +304,17 @@ describe("buildRedeemTx — vested = min(E, D·dpe·Δ)", () => {
 
     // treasury output: LAMP 1000→850, dust + lovelace bảo toàn
     const treasuryOut = rec.payData.find(p => p.address === scriptAddr(FAKE_TREASURY))!;
-    expect(treasuryOut.assets[LAMP_UNIT]).toBe(lampOil(850n));
+    expect(treasuryOut.assets[LAMP_UNIT]).toBe(lampOildrop(850n));
     expect(treasuryOut.assets.lovelace).toBe(5_000_000n);
     expect(treasuryOut.assets[DUST]).toBe(3n);
     // C-SOLV-3: redeem TRẢ NỢ ⇒ sổ cái giảm ĐÚNG amount, cùng nhịp với pool (1000→850).
     // Bản đầu ép sổ cái BẤT BIẾN ở đây — chính là nguồn bế tắc grant (xem treasury.ak).
     expect(decodeTreasuryDatum(Data.from(treasuryOut.datum)).outstanding_entitlement)
-      .toBe(lampOil(1000n) - lampOil(150n));
+      .toBe(lampOildrop(1000n) - lampOildrop(150n));
 
     // user receives exactly amount LAMP
     expect(rec.payAddr).toHaveLength(1);
-    expect(rec.payAddr[0]!.assets[LAMP_UNIT]).toBe(lampOil(150n));
+    expect(rec.payAddr[0]!.assets[LAMP_UNIT]).toBe(lampOildrop(150n));
     expect(rec.payAddr[0]!.address).toBe("addr_user");
 
     // owner signs
@@ -326,12 +326,12 @@ describe("buildRedeemTx — vested = min(E, D·dpe·Δ)", () => {
     // E=30 < D=100, t=1 → vested=min(30,100)=30, redeemed=0 → amount=30.
     const res = await buildRedeemTx({
       ...base, lucid, currentEpoch: 1n,
-      claimAccountUtxo: claimUtxo(0n, lampOil(30n)),
-      treasuryUtxo: treasuryUtxo(lampOil(1000n)),
+      claimAccountUtxo: claimUtxo(0n, lampOildrop(30n)),
+      treasuryUtxo: treasuryUtxo(lampOildrop(1000n)),
       dropBeaconUtxo: dropBeaconUtxo(D),
     });
-    expect(res.amount).toBe(lampOil(30n));
-    expect(res.newClaimDatum.redeemed).toBe(lampOil(30n));
+    expect(res.amount).toBe(lampOildrop(30n));
+    expect(res.newClaimDatum.redeemed).toBe(lampOildrop(30n));
   });
 
   it("drip: t=1 chỉ mở 1 drop D", async () => {
@@ -340,10 +340,10 @@ describe("buildRedeemTx — vested = min(E, D·dpe·Δ)", () => {
     const res = await buildRedeemTx({
       ...base, lucid, currentEpoch: 1n,
       claimAccountUtxo: claimUtxo(0n),
-      treasuryUtxo: treasuryUtxo(lampOil(1000n)),
+      treasuryUtxo: treasuryUtxo(lampOildrop(1000n)),
       dropBeaconUtxo: dropBeaconUtxo(D),
     });
-    expect(res.amount).toBe(lampOil(100n));
+    expect(res.amount).toBe(lampOildrop(100n));
   });
 
   it("sets validFrom khi truyền validFromMs", async () => {
@@ -351,7 +351,7 @@ describe("buildRedeemTx — vested = min(E, D·dpe·Δ)", () => {
     await buildRedeemTx({
       ...base, lucid, currentEpoch: 2n, validFromMs: 2n * 86_400_000n,
       claimAccountUtxo: claimUtxo(0n),
-      treasuryUtxo: treasuryUtxo(lampOil(1000n)),
+      treasuryUtxo: treasuryUtxo(lampOildrop(1000n)),
       dropBeaconUtxo: dropBeaconUtxo(D),
     });
     expect(rec.validFrom).toEqual([Number(2n * 86_400_000n)]);
@@ -362,8 +362,8 @@ describe("buildRedeemTx — vested = min(E, D·dpe·Δ)", () => {
     // t=1 → vested=100; redeemed=100 → amount 0 → reject.
     await expect(buildRedeemTx({
       ...base, lucid, currentEpoch: 1n,
-      claimAccountUtxo: claimUtxo(lampOil(100n)),
-      treasuryUtxo: treasuryUtxo(lampOil(1000n)),
+      claimAccountUtxo: claimUtxo(lampOildrop(100n)),
+      treasuryUtxo: treasuryUtxo(lampOildrop(1000n)),
       dropBeaconUtxo: dropBeaconUtxo(D),
     })).rejects.toThrow(/redeemable ≤ 0/);
   });
@@ -373,8 +373,8 @@ describe("buildRedeemTx — vested = min(E, D·dpe·Δ)", () => {
     // t0=5, t=5 → vested=0 → amount 0 → reject.
     await expect(buildRedeemTx({
       ...base, lucid, currentEpoch: 5n,
-      claimAccountUtxo: claimUtxo(0n, lampOil(250n), 5n),
-      treasuryUtxo: treasuryUtxo(lampOil(1000n)),
+      claimAccountUtxo: claimUtxo(0n, lampOildrop(250n), 5n),
+      treasuryUtxo: treasuryUtxo(lampOildrop(1000n)),
       dropBeaconUtxo: dropBeaconUtxo(D),
     })).rejects.toThrow(/redeemable ≤ 0/);
   });
@@ -394,7 +394,7 @@ describe("buildRedeemTx — vested = min(E, D·dpe·Δ)", () => {
     await expect(buildRedeemTx({
       ...base, lucid, currentEpoch: 3n,
       claimAccountUtxo: claimUtxo(0n),
-      treasuryUtxo: treasuryUtxo(lampOil(1000n)),
+      treasuryUtxo: treasuryUtxo(lampOildrop(1000n)),
       dropBeaconUtxo: noDatum,
     })).rejects.toThrow(/no inline datum/);
   });
@@ -405,7 +405,7 @@ describe("buildRedeemTx — vested = min(E, D·dpe·Δ)", () => {
     await expect(buildRedeemTx({
       ...base, lucid, currentEpoch: 1n,
       claimAccountUtxo: claimUtxo(0n),
-      treasuryUtxo: treasuryUtxo(lampOil(50n)),
+      treasuryUtxo: treasuryUtxo(lampOildrop(50n)),
       dropBeaconUtxo: dropBeaconUtxo(D),
     })).rejects.toThrow(/< amount/);
   });
@@ -422,7 +422,7 @@ describe("assertClaimSolvency — Σ(E−redeemed) ≤ treasury", () => {
     expect(() => assertClaimSolvency(1000n, 100n, 200n)).not.toThrow();
   });
 
-  it("reject khi Σ vượt quỹ 1 oil", () => {
+  it("reject khi Σ vượt quỹ 1 oildrop", () => {
     // 400 + 601 = 1001 > 1000 → CLAIM-010.
     expect(() => assertClaimSolvency(1000n, 400n, 601n)).toThrow(/CLAIM-010/);
   });
@@ -446,9 +446,9 @@ describe("buildClaimTx — solvency guard tích hợp", () => {
     const { lucid } = mockLucid("addr_wallet");
     await expect(buildClaimTx({
       lucid, claimScript: FAKE_CLAIM, network: NETWORK,
-      ownerPkh: OWNER, amount: lampOil(600n), currentEpoch: 5n,
+      ownerPkh: OWNER, amount: lampOildrop(600n), currentEpoch: 5n,
       committeeKeyHashes: COMMITTEE, treasury: trsyParam(0n),
-      solvency: { treasuryLamp: lampOil(1000n), otherOutstanding: lampOil(500n) },
+      solvency: { treasuryLamp: lampOildrop(1000n), otherOutstanding: lampOildrop(500n) },
     })).rejects.toThrow(/CLAIM-010/);  // 500 + 600 = 1100 > 1000
   });
 
@@ -456,9 +456,9 @@ describe("buildClaimTx — solvency guard tích hợp", () => {
     const { lucid, rec } = mockLucid("addr_wallet");
     const res = await buildClaimTx({
       lucid, claimScript: FAKE_CLAIM, network: NETWORK,
-      ownerPkh: OWNER, amount: lampOil(400n), currentEpoch: 5n,
+      ownerPkh: OWNER, amount: lampOildrop(400n), currentEpoch: 5n,
       committeeKeyHashes: COMMITTEE, treasury: trsyParam(0n),
-      solvency: { treasuryLamp: lampOil(1000n), otherOutstanding: lampOil(500n) },
+      solvency: { treasuryLamp: lampOildrop(1000n), otherOutstanding: lampOildrop(500n) },
     });
     expect(res.mode).toBe("create");         // 500 + 400 = 900 ≤ 1000
     expect(rec.payData.filter(x => x.assets[TRSY_UNIT] !== 1n)).toHaveLength(1);
@@ -468,12 +468,12 @@ describe("buildClaimTx — solvency guard tích hợp", () => {
     const { lucid } = mockLucid("addr_wallet");
     // prev: E=300, redeemed=100 → outstanding cũ 200; +amount 250 → E=550, redeemed=100
     // → thisOutstandingAfter = 450. other 600 → 1050 > 1000 → reject.
-    const prev = { owner: OWNER, entitlement: lampOil(300n), redeemed: lampOil(100n), start_epoch: 2n, drops_per_epoch: 1n };
+    const prev = { owner: OWNER, entitlement: lampOildrop(300n), redeemed: lampOildrop(100n), start_epoch: 2n, drops_per_epoch: 1n };
     await expect(buildClaimTx({
       lucid, claimScript: FAKE_CLAIM, network: NETWORK,
-      ownerPkh: OWNER, amount: lampOil(250n), currentEpoch: 9n,
+      ownerPkh: OWNER, amount: lampOildrop(250n), currentEpoch: 9n,
       claimAccountUtxo: claimUtxoS(prev), committeeKeyHashes: COMMITTEE, treasury: trsyParam(0n),
-      solvency: { treasuryLamp: lampOil(1000n), otherOutstanding: lampOil(600n) },
+      solvency: { treasuryLamp: lampOildrop(1000n), otherOutstanding: lampOildrop(600n) },
     })).rejects.toThrow(/CLAIM-010/);
   });
 
@@ -481,7 +481,7 @@ describe("buildClaimTx — solvency guard tích hợp", () => {
     const { lucid, rec } = mockLucid("addr_wallet");
     const res = await buildClaimTx({
       lucid, claimScript: FAKE_CLAIM, network: NETWORK,
-      ownerPkh: OWNER, amount: lampOil(999999n), currentEpoch: 5n,
+      ownerPkh: OWNER, amount: lampOildrop(999999n), currentEpoch: 5n,
       committeeKeyHashes: COMMITTEE, treasury: trsyParam(0n),
     });
     expect(res.mode).toBe("create");
@@ -495,8 +495,8 @@ describe("buildClaimTx — treasury co-spend", () => {
     const { lucid, rec } = mockLucid("addr_wallet");
     await buildClaimTx({
       lucid, claimScript: FAKE_CLAIM, network: NETWORK,
-      ownerPkh: OWNER, amount: lampOil(400n), currentEpoch: 5n,
-      committeeKeyHashes: COMMITTEE, treasury: trsyParam(lampOil(100n)),
+      ownerPkh: OWNER, amount: lampOildrop(400n), currentEpoch: 5n,
+      committeeKeyHashes: COMMITTEE, treasury: trsyParam(lampOildrop(100n)),
     });
     const tre = rec.collectFrom.find(c => c.utxos[0]?.assets[TRSY_UNIT] === 1n);
     expect(tre).toBeDefined();
@@ -508,13 +508,13 @@ describe("buildClaimTx — treasury co-spend", () => {
     const { lucid, rec } = mockLucid("addr_wallet");
     const res = await buildClaimTx({
       lucid, claimScript: FAKE_CLAIM, network: NETWORK,
-      ownerPkh: OWNER, amount: lampOil(400n), currentEpoch: 5n,
-      committeeKeyHashes: COMMITTEE, treasury: trsyParam(lampOil(100n)),
+      ownerPkh: OWNER, amount: lampOildrop(400n), currentEpoch: 5n,
+      committeeKeyHashes: COMMITTEE, treasury: trsyParam(lampOildrop(100n)),
     });
-    expect(res.newTreasuryDatum.outstanding_entitlement).toBe(lampOil(500n));
+    expect(res.newTreasuryDatum.outstanding_entitlement).toBe(lampOildrop(500n));
     const treOut = rec.payData.find(p => p.assets[TRSY_UNIT] === 1n)!;
-    expect(decodeTreasuryDatum(Data.from(treOut.datum)).outstanding_entitlement).toBe(lampOil(500n));
-    expect(treOut.assets[LAMP_UNIT]).toBe(lampOil(100_000n));
+    expect(decodeTreasuryDatum(Data.from(treOut.datum)).outstanding_entitlement).toBe(lampOildrop(500n));
+    expect(treOut.assets[LAMP_UNIT]).toBe(lampOildrop(100_000n));
   });
 
   it("CLAIM-021: từ chối treasury UTxO KHÔNG mang TRSY", async () => {
@@ -523,7 +523,7 @@ describe("buildClaimTx — treasury co-spend", () => {
     delete (noNft.assets as Record<string, bigint>)[TRSY_UNIT];
     await expect(buildClaimTx({
       lucid, claimScript: FAKE_CLAIM, network: NETWORK,
-      ownerPkh: OWNER, amount: lampOil(400n), currentEpoch: 5n,
+      ownerPkh: OWNER, amount: lampOildrop(400n), currentEpoch: 5n,
       committeeKeyHashes: COMMITTEE,
       treasury: { utxo: noNft, script: FAKE_TREASURY, nftPolicy: TRSY_POLICY },
     })).rejects.toThrow(/CLAIM-021/);

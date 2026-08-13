@@ -11,7 +11,7 @@ import {
 } from "../offchain/src/datum.js";
 import { genesisSupplyState, applyMint } from "../offchain/src/supplyState.js";
 
-const TEST_MINT_OIL = BigInt(process.env.TEST_MINT_OIL ?? "100000000"); // 100 tLAMP
+const TEST_MINT_OILDROP = BigInt(process.env.TEST_MINT_OILDROP ?? "100000000"); // 100 tLAMP
 const GENESIS_REF_HASH = "689c56e05a6c4cb97ea59c26f9b2bb271ca2cf6ae52ee3dba08fb9c7a9204973";
 const GENESIS_REF_IDX = 1;
 
@@ -47,8 +47,8 @@ if (!supplyUtxo) throw new Error("SupplyState UTxO không thấy on-chain");
 console.log(`SupplyState in: ${supplyUtxo.txHash}#${supplyUtxo.outputIndex}`);
 
 const s0 = genesisSupplyState();
-const s1 = applyMint(s0, "DistributionVest", TEST_MINT_OIL);
-console.log(`mint Δ=${TEST_MINT_OIL} → dist_minted ${s1.dist_minted}`);
+const s1 = applyMint(s0, "DistributionVest", TEST_MINT_OILDROP);
+console.log(`mint Δ=${TEST_MINT_OILDROP} → dist_minted ${s1.dist_minted}`);
 
 // pick a pure-ADA utxo as collateral
 const walletUtxos = await lucid.wallet().getUtxos();
@@ -59,10 +59,10 @@ console.log(`collateral candidate: ${pureAda[0].txHash}#${pureAda[0].outputIndex
 const tx = await lucid.newTx()
   .collectFrom([supplyUtxo], supplyStateRedeemerToCbor())
   .attach.SpendingValidator(ssScript)
-  .mintAssets({ [tlampUnit]: TEST_MINT_OIL }, mintRouteToCbor("DistributionVest"))
+  .mintAssets({ [tlampUnit]: TEST_MINT_OILDROP }, mintRouteToCbor("DistributionVest"))
   .attach.MintingPolicy(tlampPolicy)
   .pay.ToContract(ssAddr, { kind: "inline", value: supplyStateToCbor(s1) }, { lovelace: 2_000_000n, [threadUnit]: 1n })
-  .pay.ToAddress(myAddr, { [tlampUnit]: TEST_MINT_OIL })
+  .pay.ToAddress(myAddr, { [tlampUnit]: TEST_MINT_OILDROP })
   .collectFrom([pureAda[0]])
   .addSignerKey(pkh)
   .complete({ coinSelection: true });
@@ -73,5 +73,5 @@ const h = await signed.submit();
 console.log(`SUBMITTED: ${explorerTx(h)}`);
 console.log(`hash: ${h}`);
 await lucid.awaitTx(h);
-console.log(`✅ Minted ${TEST_MINT_OIL} oil tLAMP DistributionVest`);
+console.log(`✅ Minted ${TEST_MINT_OILDROP} oildrop tLAMP DistributionVest`);
 console.log(`tlampPolicy=${tlampPid} assetName=${TOKEN_NAME}`);

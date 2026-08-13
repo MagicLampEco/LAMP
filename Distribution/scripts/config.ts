@@ -431,7 +431,7 @@ export function toUnit(policyId: string, assetName: string): string {
   return policyId + assetName;
 }
 
-export function lampToOil(lamp: bigint): bigint {
+export function lampToOildrop(lamp: bigint): bigint {
   return lamp * 1_000_000n;
 }
 

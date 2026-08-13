@@ -76,10 +76,10 @@ describe("serialize round-trip + nạp vào computeEntitlements", () => {
     expect(parseSnapshotFile(file)).toEqual(snap);
   });
 
-  it("SnapshotSet nạp thẳng vào computeEntitlements, bảo toàn oil", () => {
+  it("SnapshotSet nạp thẳng vào computeEntitlements, bảo toàn oildrop", () => {
     const snap = buildSnapshotSet(perEpoch);
-    const budget = 700_000_000n; // oil
-    const { entitlements, distributed, leftover } = computeEntitlements(snap, { budgetOil: budget });
+    const budget = 700_000_000n; // oildrop
+    const { entitlements, distributed, leftover } = computeEntitlements(snap, { budgetOildrop: budget });
     // A giữ 600/700 accStake → phần lớn nhất
     const eA = entitlements.find((e) => e.owner === SA_A)!;
     const eB = entitlements.find((e) => e.owner === SA_B)!;

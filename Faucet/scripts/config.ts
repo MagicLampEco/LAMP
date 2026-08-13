@@ -105,12 +105,12 @@ export interface FaucetDeployed {
   tlamp: {
     policyId: string;
     assetName: string;
-    totalSupplyOil: string;
+    totalSupplyOildrop: string;
     genesisRef: { txHash: string; outputIndex: number };
   };
   faucet: { hash: string; address: string };
   poolUtxo?: { txHash: string; outputIndex: number };
-  claimAmountOil: string;
+  claimAmountOildrop: string;
 }
 
 export async function loadDeployed(): Promise<FaucetDeployed> {

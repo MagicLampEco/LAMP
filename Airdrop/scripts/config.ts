@@ -95,6 +95,26 @@ export async function bfAll<T>(base: string): Promise<T[]> {
   return out;
 }
 
+/** Chạy `worker` trên `items` với tối đa `limit` việc song song, GIỮ NGUYÊN thứ tự
+ *  kết quả. Vài nghìn đăng ký × lịch sử phân trang mà gọi tuần tự (`await` trong
+ *  vòng lặp) thì mất hàng giờ, và hỏng giữa chừng là mất sạch việc đã làm.
+ *  ponytail: 8 luồng cố định — đủ dưới rate-limit Blockfrost (bf() đã tự lùi khi
+ *  gặp 429); cần đổi thì sửa tham số ở chỗ gọi. */
+export async function mapLimit<T, R>(
+  items: T[],
+  limit: number,
+  worker: (x: T) => Promise<R>,
+): Promise<R[]> {
+  const out = new Array<R>(items.length);
+  let next = 0;
+  await Promise.all(
+    Array.from({ length: Math.min(limit, items.length) }, async () => {
+      for (let i = next++; i < items.length; i = next++) out[i] = await worker(items[i]!);
+    }),
+  );
+  return out;
+}
+
 /** Epoch hiện tại từ Blockfrost tip. */
 export async function currentEpoch(): Promise<bigint> {
   const tip = await bf<{ epoch: number }>("/blocks/latest");

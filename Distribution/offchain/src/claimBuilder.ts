@@ -42,7 +42,7 @@ export interface ClaimParams {
 
   /** PKH chủ ví (hex 28-byte) được committee xác nhận. */
   ownerPkh:     string;
-  /** Số oil entitlement cấp thêm lần này (> 0). */
+  /** Số oildrop entitlement cấp thêm lần này (> 0). */
   amount:       bigint;
   /** Epoch hiện tại (committee tính off-chain từ validity range). */
   currentEpoch: bigint;
@@ -93,11 +93,11 @@ export interface ClaimParams {
    * ĐÃ ép outstanding_entitlement ≤ pool (C-SOLV-2) qua treasury co-spend bắt buộc.
    */
   solvency?: {
-    /** LAMP (oil) hiện có trong treasury pool. */
+    /** LAMP (oildrop) hiện có trong treasury pool. */
     treasuryLamp: bigint;
     /**
      * Tổng (entitlement − redeemed) của MỌI ClaimAccount ĐANG MỞ KHÁC (không gồm
-     * account đang Claim này — account đó tính lại từ amount + datum cũ). oil.
+     * account đang Claim này — account đó tính lại từ amount + datum cũ). oildrop.
      */
     otherOutstanding: bigint;
   };
@@ -141,9 +141,9 @@ export function assertClaimSolvency(
   const totalOutstanding = otherOutstanding + thisOutstandingAfter;
   if (totalOutstanding > treasuryLamp) {
     throw new Error(
-      `CLAIM-010: solvency — Σ(entitlement−redeemed) sau Claim = ${totalOutstanding} oil ` +
-      `> treasury ${treasuryLamp} oil. Cấp E vượt quỹ (under-collateralized). ` +
-      `Fund thêm treasury ≥ ${totalOutstanding} oil TRƯỚC khi Claim, hoặc giảm amount.`,
+      `CLAIM-010: solvency — Σ(entitlement−redeemed) sau Claim = ${totalOutstanding} oildrop ` +
+      `> treasury ${treasuryLamp} oildrop. Cấp E vượt quỹ (under-collateralized). ` +
+      `Fund thêm treasury ≥ ${totalOutstanding} oildrop TRƯỚC khi Claim, hoặc giảm amount.`,
     );
   }
 }
@@ -280,12 +280,12 @@ export async function buildClaimTx(params: ClaimParams): Promise<ClaimResult> {
   const summary = [
     `═══ Claim (${mode}) ═══`,
     `Owner:        ${owner}`,
-    `Amount:       ${amount / 1_000_000n} LAMP (${amount} oil)`,
-    `Entitlement:  ${newDatum.entitlement} oil`,
-    `Redeemed:     ${newDatum.redeemed} oil`,
+    `Amount:       ${amount / 1_000_000n} LAMP (${amount} oildrop)`,
+    `Entitlement:  ${newDatum.entitlement} oildrop`,
+    `Redeemed:     ${newDatum.redeemed} oildrop`,
     `Start epoch:  ${newDatum.start_epoch}  · drops/epoch ${newDatum.drops_per_epoch}`,
     `Committee:    ${signers.length}/${committeeKeyHashes.length} signers (need ${threshold})`,
-    `Outstanding:  ${newTreasuryDatum.outstanding_entitlement} oil (sổ cái nợ sau Claim)`,
+    `Outstanding:  ${newTreasuryDatum.outstanding_entitlement} oildrop (sổ cái nợ sau Claim)`,
     `Claim addr:   ${claimAddress}`,
   ].join("\n");
 

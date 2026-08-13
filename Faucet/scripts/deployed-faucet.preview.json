@@ -5,13 +5,13 @@
   "tlamp": {
     "policyId": "7a1a7aed5ec47acc37b6fa82695c1219bf76895b505b01161367adf9",
     "assetName": "744c414d50",
-    "totalSupplyOil": "9000000000"
+    "totalSupplyOildrop": "9000000000"
   },
   "faucet": {
     "hash": "296774919a2bdd9975f7d5c45bd77e183f08890f9fae770006c1847a",
     "address": "addr_test1wq5kway3ng4amxt47l2ugk7h0cvr7zyfp706uacqqmqcg7sg80hqc"
   },
-  "claimAmountOil": "100000000",
+  "claimAmountOildrop": "100000000",
   "poolUtxo": {
     "txHash": "6a375e47d0c3cbcff696f3d71be7915bba42bd44a713c48df17f82a6456d144f",
     "outputIndex": 0

@@ -103,7 +103,7 @@ describe("ClaimAccountRedeemer", () => {
 
 // ── ChannelBudgetDatum = Constr(0, [bytes,int]) ─────────────────────────
 describe("ChannelBudgetDatum", () => {
-  const sample: ChannelBudgetDatum = { channel_id: CHANNEL_TEAM, remaining_oil: 1_000_000_000n };
+  const sample: ChannelBudgetDatum = { channel_id: CHANNEL_TEAM, remaining_oildrop: 1_000_000_000n };
 
   it("round-trips via CBOR", () => {
     expect(channelBudgetDatumFromCbor(channelBudgetDatumToCbor(sample))).toEqual(sample);
@@ -114,7 +114,7 @@ describe("ChannelBudgetDatum", () => {
     expect(c.index).toBe(0);
     expect(c.fields).toHaveLength(2);
     expect(c.fields[0]).toBe(sample.channel_id);     // channel_id (bytes)
-    expect(c.fields[1]).toBe(sample.remaining_oil);  // remaining_oil (int)
+    expect(c.fields[1]).toBe(sample.remaining_oildrop);  // remaining_oildrop (int)
   });
 
   it("decode object form matches", () => {

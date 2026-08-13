@@ -15,7 +15,7 @@ import {
   analyzeHistory, projectLampFromSnapshot, type HistoryEntry,
 } from "../../TIGER/offchain/src/check.js";
 import { parseSnapshotFile, type SnapshotFile } from "../../TIGER/offchain/src/snapshot.js";
-import { TIGER_TOTAL_OIL, OIL_PER_LAMP, TIGER_POOL_ID_DEFAULT } from "../../TIGER/offchain/src/constants.js";
+import { TIGER_TOTAL_OILDROP, OILDROP_PER_LAMP, TIGER_POOL_ID_DEFAULT } from "../../TIGER/offchain/src/constants.js";
 
 const NETWORK = process.env.NETWORK ?? "Preview";
 const BLOCKFROST_KEY = process.env.BLOCKFROST_KEY ?? "";
@@ -71,6 +71,13 @@ export async function etdCheck(address: string): Promise<EtdCheckResult> {
   if (!BLOCKFROST_KEY) throw new Error("server thiếu BLOCKFROST_KEY");
   if (!address) throw new Error("thiếu tham số address");
 
+  // Địa chỉ đi thẳng vào đường dẫn Blockfrost (`/addresses/${addr}`). `fetch`/`URL`
+  // chuẩn hoá `..` TRƯỚC khi gửi, nên `address=..%2F..%2F<endpoint>` gọi được endpoint
+  // Blockfrost tuỳ ý bằng khoá của server — encodeURIComponent KHÔNG chặn được.
+  // Chặn bằng danh sách trắng ký tự: bech32 Cardano chỉ gồm chữ-số thường.
+  if (!/^(addr|addr_test|stake|stake_test)1[02-9ac-hj-np-z]+$/.test(address))
+    throw new Error("địa chỉ không đúng định dạng bech32 Cardano");
+
   const stakeAddr = await resolveStakeAddr(address);
   const history = await bfAll<HistoryEntry>(`/accounts/${stakeAddr}/history`);
   const { rows, tigerRows, tigerAccStake } = analyzeHistory(history, {
@@ -83,14 +90,18 @@ export async function etdCheck(address: string): Promise<EtdCheckResult> {
     try {
       const file = JSON.parse(readFileSync(SNAPSHOT_PATH, "utf8")) as SnapshotFile;
       const snap = parseSnapshotFile(file);
-      // owner khớp owner_key của snapshot (stake_address, hoặc payment pkh khi đã registry-map)
-      const owner = file.meta.owner_key === "stake_address" ? stakeAddr : stakeAddr;
-      const proj = projectLampFromSnapshot(snap, owner, TIGER_TOTAL_OIL);
-      if (proj.amountOil !== null) {
-        amount_lamp = (proj.amountOil / OIL_PER_LAMP).toString();
-        capped = proj.capped;
+      // Chỉ tra được snapshot khoá theo `stake_address`. Bản registry-map khoá theo
+      // payment pkh: từ stake address KHÔNG suy ngược ra payment key được (cần bảng
+      // registry, chưa có ở tầng này) → GIỮ provisional, KHÔNG trả 0 "đã chốt".
+      // Trả `amount_lamp: null, provisional: false` cho người CÓ phần là báo sai.
+      if (file.meta.owner_key === "stake_address") {
+        const proj = projectLampFromSnapshot(snap, stakeAddr, TIGER_TOTAL_OILDROP);
+        if (proj.amountOildrop !== null) {
+          amount_lamp = (proj.amountOildrop / OILDROP_PER_LAMP).toString();
+          capped = proj.capped;
+        }
+        provisional = false;
       }
-      provisional = false;
     } catch { /* snapshot lỗi → giữ provisional */ }
   }
 

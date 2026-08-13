@@ -1,5 +1,5 @@
 // LAMP Allocation offchain types — mirror onchain lib/magiclamp/allocation/types.ak.
-// HARD-CAP PER-CHANNEL (Capped Drop tất định). Mọi giá trị là oil (1 LAMP = 10^6 oil).
+// HARD-CAP PER-CHANNEL (Capped Drop tất định). Mọi giá trị là oildrop (1 LAMP = 10^6 oildrop).
 // PHẢI khớp byte-perfect: Constr index = thứ tự khai báo trong types.ak (Aiken từ 0).
 //
 // Bất biến (types.ak §): 0 ≤ redeemed ≤ entitlement; vested cộng dồn cap E.
@@ -11,8 +11,8 @@
  *  = Constr(0, [bytes, int, int, int, int, bytes]) — channel_id là field CUỐI. */
 export interface ClaimAccountDatum {
   owner           : string;  // PKH hex (28-byte)
-  entitlement     : bigint;  // E — tổng LAMP được phân bổ (oil)
-  redeemed        : bigint;  // đã nhận tích lũy (oil)
+  entitlement     : bigint;  // E — tổng LAMP được phân bổ (oildrop)
+  redeemed        : bigint;  // đã nhận tích lũy (oildrop)
   start_epoch     : bigint;  // t0 (đặt lùi = cliff)
   drops_per_epoch : bigint;  // nhịp nhả
   channel_id      : string;  // kênh hex ("TEAM"/"RESERVE"... bind vào budget NFT name)
@@ -22,7 +22,7 @@ export interface ClaimAccountDatum {
  *  = Constr(0, [bytes, int]). */
 export interface ChannelBudgetDatum {
   channel_id    : string;  // định danh kênh hex (bind vào budget NFT name)
-  remaining_oil : bigint;  // oil còn được phép CẤP (entitlement) cho kênh
+  remaining_oildrop : bigint;  // oildrop còn được phép CẤP (entitlement) cho kênh
 }
 
 /** Treasury con per-channel (Lớp B). Giữ LAMP pool ĐÚNG budget kênh.

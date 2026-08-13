@@ -62,9 +62,9 @@ async function main(): Promise<void> {
   }
 
   console.log(`Network:            ${NETWORK}`);
-  console.log(`Treasury UTxOs:     ${treasuryCount}  (LAMP pool ${treasuryLamp} oil = ${treasuryLamp / 1_000_000n} LAMP)`);
+  console.log(`Treasury UTxOs:     ${treasuryCount}  (LAMP pool ${treasuryLamp} oildrop = ${treasuryLamp / 1_000_000n} LAMP)`);
   console.log(`ClaimAccount UTxOs: ${accCount}`);
-  console.log(`Σ(E − redeemed):    ${outstanding} oil = ${outstanding / 1_000_000n} LAMP`);
+  console.log(`Σ(E − redeemed):    ${outstanding} oildrop = ${outstanding / 1_000_000n} LAMP`);
   console.log();
 
   // ── ĐỐI CHIẾU sổ cái on-chain với tổng đếm được ─────────────
@@ -74,10 +74,10 @@ async function main(): Promise<void> {
     console.error("❌ không tìm thấy treasury UTxO nào mang TreasuryDatum hợp lệ.");
     process.exit(1);
   }
-  console.log(`Sổ cái on-chain:    ${ledgerOutstanding} oil`);
+  console.log(`Sổ cái on-chain:    ${ledgerOutstanding} oildrop`);
   if (ledgerOutstanding !== outstanding) {
     console.error(
-      `❌ LỆCH SỔ: on-chain ${ledgerOutstanding} oil ≠ Σ(E − redeemed) ${outstanding} oil ` +
+      `❌ LỆCH SỔ: on-chain ${ledgerOutstanding} oildrop ≠ Σ(E − redeemed) ${outstanding} oildrop ` +
       `(chênh ${ledgerOutstanding - outstanding}). Sổ cái phải BẰNG tổng còn nợ.`,
     );
     process.exit(1);
@@ -86,12 +86,12 @@ async function main(): Promise<void> {
   const margin = treasuryLamp - outstanding;
   if (margin < 0n) {
     console.error(
-      `❌ UNDER-COLLATERALIZED: thiếu ${-margin} oil (${-margin / 1_000_000n} LAMP). ` +
-      `KHÔNG mở Claim / fund thêm treasury ≥ ${-margin} oil.`,
+      `❌ UNDER-COLLATERALIZED: thiếu ${-margin} oildrop (${-margin / 1_000_000n} LAMP). ` +
+      `KHÔNG mở Claim / fund thêm treasury ≥ ${-margin} oildrop.`,
     );
     process.exit(1);
   }
-  console.log(`✅ SOLVENT — dư ${margin} oil (${margin / 1_000_000n} LAMP). treasury ≥ Σ(E − redeemed).`);
+  console.log(`✅ SOLVENT — dư ${margin} oildrop (${margin / 1_000_000n} LAMP). treasury ≥ Σ(E − redeemed).`);
 }
 
 main().catch((e) => { console.error("❌", e instanceof Error ? e.message : e); process.exit(1); });

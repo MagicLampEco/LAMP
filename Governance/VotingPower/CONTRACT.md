@@ -122,8 +122,8 @@ Sau rà soát đối kháng, các interface dưới đây được **ghim cứng
   ProposalStatus { Open, Tallied, Executed, Rejected }   // Constr index 0,1,2,3 — Executed=2
   ```
   **BẮT BUỘC:** Governance `types.ak` khai báo `ProposalStatus` ĐÚNG THỨ TỰ `{Open, Tallied,
-  Executed, Rejected}` (KHÔNG `{Open, Closed, Tallied, Executed}` như TECH.md draft — lệch index sẽ
-  decode-fail trên UTxO thật). TECH.md phải sửa theo đây. `ProposalDatum` 12 field (D2) vẫn dùng NỘI
+  Executed, Rejected}` (KHÔNG `{Open, Closed, Tallied, Executed}` như Tech-Spec.md draft — lệch index sẽ
+  decode-fail trên UTxO thật). Tech-Spec.md phải sửa theo đây. `ProposalDatum` 12 field (D2) vẫn dùng NỘI
   BỘ cho Tally/Vote; `ProposalResult` chỉ là projection phơi ra cho Treasury.
   **Lý do (4 trục):** tối ưu eUTXO (reference input gọn, ít byte); KHÔNG rework Treasury đã build+test
   61 pass; ranh giới sạch onchain↔onchain; bền vững (đổi nội bộ Governance không phá Treasury).

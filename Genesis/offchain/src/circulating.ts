@@ -1,7 +1,7 @@
 // LAMP Genesis — circulating supply (CONTRACT §6).
 //
 //   circulating = minted_total − Σ(Treasury + Deposits tLAMP held)
-//   minted_total = dist_minted + reserve_minted ≤ 36 tỷ (oil).
+//   minted_total = dist_minted + reserve_minted ≤ 36 tỷ (oildrop).
 //
 // Reserve KHÔNG trừ ở đây: Reserve là quota CHƯA mint (ẢO) → token đó chưa tồn tại
 // on-chain nên KHÔNG nằm trong minted_total. Chỉ trừ token ĐÃ mint mà đang nằm trong
@@ -10,10 +10,10 @@
 import { mintedTotal } from "./supplyState.js";
 import type { SupplyState } from "./types.js";
 
-/** Một pot custody giữ tLAMP đã mint (Treasury / Deposits). amount = oil đang giữ. */
+/** Một pot custody giữ tLAMP đã mint (Treasury / Deposits). amount = oildrop đang giữ. */
 export interface PotHolding {
   label  : string;   // "Treasury" | "Deposits" | ...
-  held   : bigint;   // oil tLAMP custody giữ
+  held   : bigint;   // oildrop tLAMP custody giữ
 }
 
 export class CirculatingError extends Error {}

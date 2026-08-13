@@ -136,7 +136,7 @@ export async function buildRedeemTx(params: RedeemParams): Promise<RedeemResult>
   const treasuryLamp = treasuryUtxo.assets[lampUnit] ?? 0n;
   if (treasuryLamp < amount) {
     throw new Error(
-      `REDEEM-012: treasury UTxO chỉ có ${treasuryLamp} oil LAMP < amount ${amount}. ` +
+      `REDEEM-012: treasury UTxO chỉ có ${treasuryLamp} oildrop LAMP < amount ${amount}. ` +
       `Chọn treasury UTxO khác hoặc tách.`,
     );
   }
@@ -212,13 +212,13 @@ export async function buildRedeemTx(params: RedeemParams): Promise<RedeemResult>
   const summary = [
     `═══ Redeem (Capped Drop) ═══`,
     `Owner:          ${owner}`,
-    `Entitlement E:  ${claim.entitlement} oil`,
-    `Redeemed before:${claim.redeemed} oil`,
-    `Drop value D:   ${D} oil  · drops/epoch ${claim.drops_per_epoch}`,
+    `Entitlement E:  ${claim.entitlement} oildrop`,
+    `Redeemed before:${claim.redeemed} oildrop`,
+    `Drop value D:   ${D} oildrop  · drops/epoch ${claim.drops_per_epoch}`,
     `Epoch:          t0=${claim.start_epoch} → t=${currentEpoch}`,
-    `Vested(t):      ${vestedNow} oil`,
-    `Amount:         ${amount / 1_000_000n} LAMP (${amount} oil)`,
-    `Treasury LAMP:  ${treasuryLamp} → ${treasuryAfter} oil`,
+    `Vested(t):      ${vestedNow} oildrop`,
+    `Amount:         ${amount / 1_000_000n} LAMP (${amount} oildrop)`,
+    `Treasury LAMP:  ${treasuryLamp} → ${treasuryAfter} oildrop`,
     `Destination:    ${destination}`,
   ].join("\n");
 

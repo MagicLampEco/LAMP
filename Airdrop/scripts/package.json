@@ -5,7 +5,9 @@
   "private": true,
   "description": "TIGER Airdrop operator scripts: snapshot build, eligibility check, deploy, sweep",
   "scripts": {
-    "snapshot": "npx tsx build_airdrop_snapshot.ts",
+    "snapshot": "npx tsx build_delegator_snapshot.ts",
+    "snapshot:v1-deprecated": "npx tsx build_airdrop_snapshot.ts",
+    "verify": "npx tsx verify_delegator.ts",
     "check": "npx tsx check_airdrop.ts",
     "spo:stats": "npx tsx spo_stats.ts",
     "spo:register": "npx tsx spo_register.ts",

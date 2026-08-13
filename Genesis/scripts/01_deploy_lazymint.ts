@@ -35,7 +35,28 @@ import {
 } from "../offchain/src/datum.js";
 import { genesisSupplyState, applyMint } from "../offchain/src/supplyState.js";
 
-const TEST_MINT_OIL = BigInt(process.env.TEST_MINT_OIL ?? "100000000"); // 100 tLAMP
+// ⚠ SCRIPT NÀY ĐÃ LỖI THỜI — ĐỪNG DÙNG ĐỂ DEPLOY (ghi 2026-08-05).
+//
+// Nó còn ở hình dạng **v1/anchor**: apply **8 tham số** cho `lamp_mint`, trong khi
+// validator canonical khai **12** (`thread_nft_policy, thread_nft_name, token_name,
+// dist_cap, reserve_cap, registry_nft_policy, registry_nft_name, token_tag,
+// kho_nft_policy, kho_nft_name, meter_nft_policy, meter_nft_name`). Hai tham số v1
+// `dist_authority`/`dist_dest` KHÔNG còn tồn tại — WHO-gate nay đọc **registry** và
+// A-DEST đọc **kho-NFT**, cả hai qua reference input.
+//
+// `applyParamsToScript` không báo lỗi khi thiếu tham số: nó sinh **policy id khác**, im
+// lặng. Mint dưới policy id sai = LAMP sai policy, mà LAMP **không burn được**. Nay
+// `config.ts::applyPolicy` chặn bằng `APPLY-001`, nên chạy script này sẽ **dừng có lỗi rõ
+// ràng** thay vì đi tiếp và deploy nhầm.
+//
+// ➜ Đường deploy canonical đang chạy thật (Preprod/Preview): **`canonical_mint.ts`**
+//   (`.readFrom([regU, khoU])` ở dòng 99) và `canonical_mint_resume.ts`.
+// ➜ Builder thư viện cho bên tích hợp: **`Genesis/offchain/src/mintBuilder.ts`**.
+//
+// Giữ tệp lại để truy vết đường v1, KHÔNG xoá vội — nhưng đừng sửa nó thành v2: việc đó
+// đã có `canonical_mint.ts` làm rồi.
+
+const TEST_MINT_OILDROP = BigInt(process.env.TEST_MINT_OILDROP ?? "100000000"); // 100 tLAMP
 
 function encodeOutputRef(txHash: string, index: number): Constr<Data> {
   // OutputReference = Constr(0, [transaction_id: bytes, output_index: int]).
@@ -151,22 +172,22 @@ async function main(): Promise<void> {
 
   // ── Tx B: mint thử DistributionVest ─────────────────────────────────
   console.log("\nTx B — mint thử DistributionVest:");
-  const s1 = applyMint(s0, "DistributionVest", TEST_MINT_OIL);
-  console.log(`  Δ = ${TEST_MINT_OIL} oil → dist_minted: 0 → ${s1.dist_minted}`);
+  const s1 = applyMint(s0, "DistributionVest", TEST_MINT_OILDROP);
+  console.log(`  Δ = ${TEST_MINT_OILDROP} oildrop → dist_minted: 0 → ${s1.dist_minted}`);
 
   if (SUBMIT && supplyUtxo) {
     const txB = await lucid
       .newTx()
       .collectFrom([supplyUtxo], supplyStateRedeemerToCbor())
       .attach.SpendingValidator(ssScript)
-      .mintAssets({ [tlampUnit]: TEST_MINT_OIL }, mintRouteToCbor("DistributionVest"))
+      .mintAssets({ [tlampUnit]: TEST_MINT_OILDROP }, mintRouteToCbor("DistributionVest"))
       .attach.MintingPolicy(tlampPolicy)
       .pay.ToContract(
         ssAddr,
         { kind: "inline", value: supplyStateToCbor(s1) },
         { lovelace: 2_000_000n, [threadUnit]: 1n },
       )
-      .pay.ToAddress(distDestAddr, { [tlampUnit]: TEST_MINT_OIL })  // A-DEST: LAMP vào KHO, không về ví
+      .pay.ToAddress(distDestAddr, { [tlampUnit]: TEST_MINT_OILDROP })  // A-DEST: LAMP vào KHO, không về ví
       .addSignerKey(pkh)
       .complete();
 
@@ -175,7 +196,7 @@ async function main(): Promise<void> {
     const hashB = await signedB.submit();
     console.log(`  📤 submitted: ${explorerTx(hashB)}`);
     await lucid.awaitTx(hashB);
-    console.log(`  ✅ Minted ${TEST_MINT_OIL} oil tLAMP qua DistributionVest`);
+    console.log(`  ✅ Minted ${TEST_MINT_OILDROP} oildrop tLAMP qua DistributionVest`);
   } else {
     console.log("  (SUBMIT=false → cap math đã verify offchain qua applyMint; tx B cần SupplyState on-chain để build)");
   }

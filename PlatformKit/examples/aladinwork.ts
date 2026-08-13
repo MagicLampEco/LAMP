@@ -25,7 +25,7 @@
 import type { PlatformConfig } from "../offchain/src/types.js";
 import type { FeeEvent, PriceFn, PricedItem } from "../offchain/src/collectAdapter.js";
 import { ADA, asciiToHex, padHash28 } from "../offchain/src/encoding.js";
-import { usdToOil, LAMP_USD_DEFAULT } from "./orilife.js";
+import { usdToOildrop, LAMP_USD_DEFAULT } from "./orilife.js";
 
 // ── Bucket map marketplace (kế toán custody) ─────────────────────────────────
 export const ALADINWORK_BUCKETS = {
@@ -153,7 +153,7 @@ export function makeAladinWorkPriceFn(opts: {
       ...(demandFactor !== undefined ? { demandFactor } : {}),
     });
 
-    const amount = usdToOil(feeUsd, lampUsd);
+    const amount = usdToOildrop(feeUsd, lampUsd);
     if (amount <= 0n) return null;
     return { asset: lamp, amount, bucketCategory: ALADINWORK_BUCKETS.PROTOCOL };
   };

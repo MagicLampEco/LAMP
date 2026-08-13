@@ -49,7 +49,7 @@ export interface ClaimParams {
   lampPolicyId: string;
   lampAssetName: string;
 
-  /** Mục claim (epoch, owner pkh, amount oil, Merkle proof). */
+  /** Mục claim (epoch, owner pkh, amount oildrop, Merkle proof). */
   claim: ClaimProof;
 
   /** ADA min kèm output owner. Mặc định 2 ADA. */
@@ -90,7 +90,7 @@ export async function buildClaimTx(params: ClaimParams): Promise<ClaimResult> {
 
   const poolLamp = poolUtxo.assets[lampUnit] ?? 0n;
   if (poolLamp < amount) {
-    throw new Error(`SRCL-CLAIM-005: pool còn ${poolLamp} oil < amount ${amount}. Quỹ epoch cạn.`);
+    throw new Error(`SRCL-CLAIM-005: pool còn ${poolLamp} oildrop < amount ${amount}. Quỹ epoch cạn.`);
   }
 
   // slot NFT name = blake2b_256(epoch || owner). slotUtxo PHẢI mang đúng slot này.
@@ -146,8 +146,8 @@ export async function buildClaimTx(params: ClaimParams): Promise<ClaimResult> {
     `═══ SRCL Claim (slot spend-once) ═══`,
     `Epoch:        ${epoch}`,
     `Owner (pkh):  ${owner}`,
-    `Amount:       ${amount / 1_000_000n} LAMP (${amount} oil)`,
-    `Pool LAMP:    ${poolLamp} → ${poolAfter} oil`,
+    `Amount:       ${amount / 1_000_000n} LAMP (${amount} oildrop)`,
+    `Pool LAMP:    ${poolLamp} → ${poolAfter} oildrop`,
     `Slot NFT:     ${slotUnit} (BURN −1)`,
     `Proof steps:  ${proof.length}`,
   ].join("\n");

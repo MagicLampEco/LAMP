@@ -175,3 +175,69 @@ testnet → đổi param/script hash KHÔNG cần migrate (lý do làm ngay bây
   per-governance KHÔNG ép unique asset-name); **F12** authority/committee 1-of-1 → multisig M-of-N TRƯỚC
   mainnet (lộ key = drain mọi custody của gov đó); **F13** (PlatformKit) `verifyEntryAgainstCustody`+dedup
   chỉ là van SDK — người tích hợp PHẢI gọi trước khi route phí.
+
+## 12. Grant — lớp kỷ luật vận hành cho `dist_treasury` (2026-08-04, **CHƯA HIỆN THỰC**)
+
+> ⚠️ **Thì tương lai, có chủ ý.** Tooling verify Grant **chưa tồn tại trong cây này**. Mọi câu dưới mô
+> tả thứ sẽ được xây, không phải thứ đang gác. Đừng đọc mục này rồi bỏ lớp bảo vệ khác vì tưởng đã có
+> lớp này. (Phoenix yêu cầu ghi rõ điều đó — đúng.)
+
+Nguồn sự thật của giao thức Grant là **`Anchorme §11.2`** (kho PhoenixKey). Mục này chỉ ghi **nghĩa vụ
+phía tiêu thụ** của LAMP — thứ LAMP phải tự làm, để về sau không ai phải suy lại.
+
+### 12.1 Grant KHÔNG phải ranh giới an ninh
+
+> Ranh giới an ninh của kho là khoá `authority`. Mất nó thì Grant không chặn được gì. Grant là lớp
+> **kỷ luật vận hành**: nó chặn **sai sót và lạm quyền của người CÓ khoá**, không chặn kẻ **chiếm được**
+> khoá.
+
+Lý do đo được: `Genesis/onchain/validators/dist_treasury.ak:14-22` là authority-sig thuần —
+`list.has(self.extra_signatories, authority)`, một chữ ký rút sạch. **Validator không đọc Grant.** Nên
+mọi thứ Grant làm đều nằm ngoài chuỗi.
+
+### 12.2 `resource` = địa chỉ bech32 tại thời điểm cấp
+
+Thứ đem so phải là **byte tx thật sự chạm**, không qua bảng tra pot-id→địa chỉ — bảng đó chính là chỗ
+sinh lỗi, và một Grant "khớp" trên bảng sai còn tệ hơn không có Grant. Không dùng dạng ghép
+`<pot-id>@<addr>`, không thêm trường thứ hai để chữa.
+
+> `resource` neo vào địa chỉ **tại thời điểm cấp**. Bất kỳ thay đổi tham số validator nào (gồm xoay
+> `authority`) **làm mất hiệu lực toàn bộ Grant đang lưu hành** cho địa chỉ cũ. Không có đường di trú;
+> cấp lại.
+
+Fail-closed có chủ ý. Điều nguy hiểm là để nó im lặng: tooling thấy địa chỉ không khớp rồi tự đoán
+"chắc do xoay khoá" và cho qua — **cấm**.
+
+### 12.3 Một Grant : một tx, chiếm bằng thao tác nguyên tử
+
+Hai bộ đếm cho cùng một hạn mức, không trọng tài chung, trên một validator không đọc Grant — đó là bộ
+đếm không ai cưỡng chế được. Cấp nhiều Grant rẻ hơn và cho dấu vết kiểm toán tách bạch.
+
+Trạng thái **một chiều, không có cạnh quay lui**:
+
+```
+ISSUED ──claim──▶ PENDING(txHash) ──▶ CONSUMED
+                        └── quá hạn ──▶ EXPIRED
+```
+
+- **(a) Chiếm bằng compare-and-set phía Phoenix.** `POST /grant/{grantId}/claim` → server tự CAS
+  `ISSUED → PENDING`; ai thắng nhận `{leaseId, expiresAt}`, ai thua nhận **409 và KHÔNG được ký**.
+  Không có đường "đọc trạng thái rồi tự đặt" — thêm một trạng thái vào giữa không thu hẹp khe đua giữa
+  *đọc* và *ký*, chỉ dời nó.
+- **(b) Gắn vào ĐÚNG một tx body ngay lúc chiếm, không đợi lên chuỗi.** Trên Cardano `txHash` = hash
+  của body, **biết trước khi gửi**. `claim` nhận luôn `{grantId, txHash}` và ghi `PENDING(txHash)` ⇒
+  lần ký thứ hai trên một tx **khác** bị từ chối kể cả khi tx đầu chưa bao giờ lên chuỗi.
+- **(c) `PENDING` KHÔNG được tự quay về `ISSUED`.** Trực giác vận hành sẽ kéo về hướng ngược lại ("tx
+  rớt thì trả Grant cho dùng lại") — **sai**. Tx đã ký vẫn còn gửi được cho tới khi chạm TTL của chính
+  nó; trả về `ISSUED` là mở đúng cửa cho hai tx cùng sống dưới một Grant. Hạn của Grant phải đặt
+  **≥ TTL của tx** đã ký dưới nó. Cần rót lại thì cấp Grant mới.
+
+### 12.4 Nghĩa vụ của LAMP
+
+1. Tooling LAMP **PHẢI** gọi `claim` (CAS) trước khi ký, và **PHẢI** dừng khi nhận 409.
+2. Tooling **PHẢI** fail-closed: không verify được Grant (mạng hỏng, endpoint chết, địa chỉ không
+   khớp) ⇒ **không ký**, không đoán.
+3. Cho tới khi 4 bước verify chạy thật và có test, **mọi tài liệu LAMP nói về Grant phải ở thì tương
+   lai kèm nhãn trạng thái** — như mục này.
+
+Đơn vị dùng chung: `1 LAMP = 1_000_000 oildrop` (khớp `Utils.OILDROP_PER_LAMP`).

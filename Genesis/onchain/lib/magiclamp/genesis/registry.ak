@@ -18,6 +18,7 @@
 
 use aiken/collection/dict
 use aiken/collection/list
+use cardano/address.{Script}
 use cardano/assets.{AssetName, PolicyId, quantity_of}
 use cardano/transaction.{InlineDatum, Input, Output, Transaction}
 
@@ -114,13 +115,41 @@ fn mint_is_exactly(self: Transaction, policy: PolicyId, token_name: AssetName) -
   }
 }
 
-/// Đúng 1 reference input mang (policy,name) NFT → decode RegistryDatum. None nếu 0/≥2/parse-fail.
+/// Đúng 1 reference input mang (policy,name) NFT **VÀ ngụ tại đúng script registry**
+/// → decode RegistryDatum. None nếu 0/≥2/parse-fail/sai địa chỉ.
+///
+/// ĐỪNG GỠ RÀNG BUỘC ĐỊA CHỈ. Lọc theo NFT không thôi thì bất kỳ UTxO nào mang
+/// registry NFT — kể cả ví thường — cũng mở được cổng mint, và datum trên đó do
+/// chính người dựng tx đặt (bịa `authority = SinglePkh(ví_mình)` là mint được).
+/// Reference input không cần chữ ký của ai, nên hễ NFT lọt ra một địa chỉ ví là
+/// kẻ giữ nó tự khai `entries` bất kỳ ⇒ tự cấp authority đúc LAMP, và quyền đó
+/// KHÔNG còn theo vòng đời DID (rotate/revoke controller không với tới được).
+/// Đường thoát cụ thể đã biết: double-satisfaction ở `registry_write` nhánh
+/// `Update` — nay vá bên đó (PR #20). Ràng buộc ở đây là vế PHÒNG THỦ ĐỘC LẬP:
+/// kể cả write-side thủng đường khác thì NFT nằm ngoài script vẫn không đọc được.
+/// Hôm nay NFT chưa rời được script (đúc one-shot + `validate_update` luôn ép
+/// continuing output tại `Script(own)`), nên đây là defence-in-depth — nhưng an
+/// toàn của LAMP không nên treo vào một bất biến nằm ở validator khác, không được
+/// ghi ở đâu và không được kiểm ở đâu. Bản v1 (`Legacy/Tokenomics-v1-anchor/…/
+/// phoenixkey.ak:142-156` — `Legacy/` đã gỡ khỏi cây 2026-08-12, tra
+/// `git show be14728:Legacy/Tokenomics-v1-anchor/`) thiếu đúng mệnh đề này và PoC mint được LAMP không giới
+/// hạn từ anchor đặt ở ví thường.
+/// Pin được mà KHÔNG cần thêm tham số vì Registry-NFT policy ≡ registry script
+/// hash (xem header file).
 fn find_registry_datum(
   refs: List<Input>,
   policy: PolicyId,
   name: AssetName,
 ) -> Option<RegistryDatum> {
-  let carriers = list.filter(refs, fn(i) { quantity_of(i.output.value, policy, name) == 1 })
+  let carriers =
+    list.filter(
+      refs,
+      fn(i) {
+        quantity_of(i.output.value, policy, name) == 1 && i.output.address.payment_credential == Script(
+          policy,
+        )
+      },
+    )
   when carriers is {
     [single] -> read_registry_datum(single.output)
     _ -> None

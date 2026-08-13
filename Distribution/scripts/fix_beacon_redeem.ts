@@ -113,7 +113,7 @@ async function main() {
     currentEpoch: rEpoch, validFromMs: rEpoch * MS_EPOCH, lampPolicyId: lampPid, lampAssetName: TLAMP_NAME,
     destinationAddress: fAddr,
   });
-  console.log(`redeem: vested=${redeem.vested} amount=${redeem.amount} oil (${redeem.amount / 1_000_000n} tLAMP)`);
+  console.log(`redeem: vested=${redeem.vested} amount=${redeem.amount} oildrop (${redeem.amount / 1_000_000n} tLAMP)`);
   const rh = await (await redeem.tx.sign.withWallet().complete()).submit();
   console.log(`   ${explorerTx(rh)}`); await awaitTx(fLucid, rh, "redeem"); await sleep(15_000);
   const fLamp = (await fLucid.utxosAt(fAddr)).reduce((s, x) => s + (x.assets[lampUnit] ?? 0n), 0n);

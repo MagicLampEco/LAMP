@@ -11,7 +11,7 @@
 //                   = min( E , (E/N) · max(0, t − cliff) )
 //   ⇒ Kiểu B = kiểu A với MỨC MỞ MỖI EPOCH (D·r) = E/N, t0 = cliff.
 //
-//   Hiện thực số nguyên: đặt D = 1 oil (beacon CHUNG), r_i = ceil(E_i / N) per-account.
+//   Hiện thực số nguyên: đặt D = 1 oildrop (beacon CHUNG), r_i = ceil(E_i / N) per-account.
 //       vested(t) = min( E_i , ceil(E_i/N) · (t − cliff) ).
 //   Bảo đảm:
 //     • cliff:        t ≤ cliff ⇒ vested = 0   (max(0, ·) trong validator).
@@ -19,10 +19,10 @@
 //     • không vượt:   vested ≤ E mọi t (cap min).
 //     • đơn điệu + cộng dồn + bỏ-lỡ-không-mất: kế thừa nguyên §SPEC-MATH (kiểu A).
 //   Sai khác kiểu-B-lý-tưởng: ceil mở NHANH HƠN ≤ 1 đơn-vị-rate/epoch (không bao giờ
-//   chậm hơn, không bao giờ vượt E) → an toàn user. Ví E_i < N oil (cực nhỏ, dưới
+//   chậm hơn, không bao giờ vượt E) → an toàn user. Ví E_i < N oildrop (cực nhỏ, dưới
 //   ngưỡng thực tế) xong sớm hơn N; ví thực (E_i ≥ N) xong đúng N.
 
-import { DROP_VALUE_OIL } from "./constants.js";
+import { DROP_VALUE_OILDROP } from "./constants.js";
 import type { ClaimAccountDatum } from "./types.js";
 
 /** ceil(a/b) cho BigInt dương. */
@@ -33,42 +33,42 @@ export function ceilDiv(a: bigint, b: bigint): bigint {
 }
 
 /** Tham số drip kiểu B per-account cho claim_account.
- *  drop_value D = DROP_VALUE_OIL (beacon CHUNG); ở đây trả drops_per_epoch + start. */
+ *  drop_value D = DROP_VALUE_OILDROP (beacon CHUNG); ở đây trả drops_per_epoch + start. */
 export interface DripBParams {
   /** r_i = ceil(E_i / N) — drops_per_epoch ghi vào datum. */
   dropsPerEpoch: bigint;
   /** t0 = cliff — start_epoch ghi vào datum. */
   startEpoch: bigint;
-  /** D = DROP_VALUE_OIL — beacon dùng chung (echo lại để builder dùng). */
+  /** D = DROP_VALUE_OILDROP — beacon dùng chung (echo lại để builder dùng). */
   dropValue: bigint;
 }
 
 /** Sinh tham số kiểu B cho 1 ví: r = ceil(E/N), t0 = cliff. */
 export function dripBParams(
-  entitlementOil: bigint,
+  entitlementOildrop: bigint,
   dripEpochs: bigint,
   cliffEpoch: bigint,
 ): DripBParams {
-  if (entitlementOil < 0n) throw new Error("DRIPB-001: E phải ≥ 0");
+  if (entitlementOildrop < 0n) throw new Error("DRIPB-001: E phải ≥ 0");
   if (cliffEpoch < 0n) throw new Error("DRIPB-002: cliff phải ≥ 0");
   return {
-    dropsPerEpoch: ceilDiv(entitlementOil, dripEpochs),
+    dropsPerEpoch: ceilDiv(entitlementOildrop, dripEpochs),
     startEpoch: cliffEpoch,
-    dropValue: DROP_VALUE_OIL,
+    dropValue: DROP_VALUE_OILDROP,
   };
 }
 
 /** Datum ClaimAccount khởi tạo cho 1 ví TIGER (redeemed = 0). */
 export function tigerDatum(
   owner: string,
-  entitlementOil: bigint,
+  entitlementOildrop: bigint,
   dripEpochs: bigint,
   cliffEpoch: bigint,
 ): ClaimAccountDatum {
-  const p = dripBParams(entitlementOil, dripEpochs, cliffEpoch);
+  const p = dripBParams(entitlementOildrop, dripEpochs, cliffEpoch);
   return {
     owner,
-    entitlement: entitlementOil,
+    entitlement: entitlementOildrop,
     redeemed: 0n,
     start_epoch: p.startEpoch,
     drops_per_epoch: p.dropsPerEpoch,
@@ -90,11 +90,11 @@ export function vested(
   return raw < entitlement ? raw : entitlement;
 }
 
-/** vested của 1 datum TIGER tại epoch t (dùng D = DROP_VALUE_OIL chung). */
+/** vested của 1 datum TIGER tại epoch t (dùng D = DROP_VALUE_OILDROP chung). */
 export function vestedAt(d: ClaimAccountDatum, currentEpoch: bigint): bigint {
   return vested(
     d.entitlement,
-    DROP_VALUE_OIL,
+    DROP_VALUE_OILDROP,
     d.drops_per_epoch,
     d.start_epoch,
     currentEpoch,
@@ -123,10 +123,10 @@ export function vestedIdealB(
 
 /** Epoch (kể từ cliff) để vested chạm full = ceil(E / r). Bảo đảm ≤ N. */
 export function fullyVestedAfter(
-  entitlementOil: bigint,
+  entitlementOildrop: bigint,
   dripEpochs: bigint,
 ): bigint {
-  const r = ceilDiv(entitlementOil, dripEpochs);
+  const r = ceilDiv(entitlementOildrop, dripEpochs);
   if (r <= 0n) return 0n;
-  return ceilDiv(entitlementOil, r);
+  return ceilDiv(entitlementOildrop, r);
 }

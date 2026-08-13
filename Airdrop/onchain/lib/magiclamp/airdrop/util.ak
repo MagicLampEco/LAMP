@@ -41,6 +41,28 @@ pub fn own_script_hash(own_addr: Address) -> ByteArray {
   h
 }
 
+/// 28-byte payment KEY-hash của address. CHỈ nhận `VerificationKey(h)`; gặp
+/// `Script(h)` thì FAIL (fail-closed).
+///
+/// ĐỪNG GỠ RÀNG BUỘC TIER NÀY. owner[28] trong leaf schema C là hash TRẦN, không
+/// mang byte phân biệt VerificationKey với Script (khác leaf v1 cũ vốn ghim cả
+/// `cbor.serialise(address)` nên còn constructor tag). Nếu hàm này nhận cả hai
+/// nhánh thì `Address{Script(h)}` và `Address{VerificationKey(h)}` sinh CÙNG một
+/// leaf: kẻ tấn công lấy proof công khai của nạn nhân, khai `claimer =
+/// Address{Script(h_nạn_nhân)}`, Merkle verify vẫn PASS, LAMP rơi vào địa chỉ
+/// script mà không ai mở được (muốn tiêu phải trình script có blake2b_224 =
+/// h_nạn_nhân — second-preimage), còn slot NFT đã burn nên nạn nhân không claim
+/// lại được. Tiền chết vĩnh viễn.
+///
+/// SRCL chặn cùng lỗ này bằng `srcl/util.is_owned_by` (nhánh Script → False).
+/// Off-chain đối xứng: `Airdrop/offchain/src/merkle.ts::ownerBytes` loại Script —
+/// phải giữ cả hai, vì nếu builder vẫn nhận address script thì lá sinh ra không
+/// bao giờ claim được (tiền kẹt trong pool tới hạn quét).
+pub fn payment_credential_hash(addr: Address) -> ByteArray {
+  expect VerificationKey(h) = addr.payment_credential
+  h
+}
+
 pub fn is_at_script(addr: Address, script_hash: ByteArray) -> Bool {
   when addr.payment_credential is {
     Script(h) -> h == script_hash

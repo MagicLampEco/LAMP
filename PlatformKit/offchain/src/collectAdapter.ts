@@ -38,7 +38,7 @@ export interface FeeEvent {
 export interface PricedItem {
   /** Asset thu (policy/name hex; ADA = {policy:"",name:""}). */
   asset: AssetKey;
-  /** Số đã định giá (đơn vị nhỏ nhất: lovelace / nanogic / oil). BigInt — không Number. */
+  /** Số đã định giá (đơn vị nhỏ nhất: lovelace / nanogic / oildrop). BigInt — không Number. */
   amount: bigint;
   /** bucket_id đích cho phần cut (= CollectItem.category). */
   bucketCategory: bigint;

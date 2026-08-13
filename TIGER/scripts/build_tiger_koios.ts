@@ -11,7 +11,7 @@ import { writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { buildSnapshotSet, summarize, type EpochRows } from "../offchain/src/snapshot.js";
 import { computeEntitlements } from "../offchain/src/entitlement.js";
-import { TIGER_TOTAL_OIL, OIL_PER_LAMP, TIGER_POOL_ID_DEFAULT } from "../offchain/src/constants.js";
+import { TIGER_TOTAL_OILDROP, OILDROP_PER_LAMP, TIGER_POOL_ID_DEFAULT } from "../offchain/src/constants.js";
 
 const KOIOS = "https://api.koios.rest/api/v1";
 const POOL = process.env.TIGER_POOL_ID ?? TIGER_POOL_ID_DEFAULT;
@@ -93,8 +93,8 @@ async function main() {
 
   const snap = buildSnapshotSet(perEpoch);          // owner = stake_address
   const { accStake, totalStake, owners } = summarize(snap);
-  const { entitlements, distributed, leftover } = computeEntitlements(snap, { budgetOil: TIGER_TOTAL_OIL });
-  console.log(`\nOwner duy nhất: ${owners} · Σ accStake=${totalStake} · phân bổ ${distributed / OIL_PER_LAMP} LAMP · leftover ${leftover / OIL_PER_LAMP}`);
+  const { entitlements, distributed, leftover } = computeEntitlements(snap, { budgetOildrop: TIGER_TOTAL_OILDROP });
+  console.log(`\nOwner duy nhất: ${owners} · Σ accStake=${totalStake} · phân bổ ${distributed / OILDROP_PER_LAMP} LAMP · leftover ${leftover / OILDROP_PER_LAMP}`);
 
   // 3) per-owner epochs {epoch, stake} (để hiển thị + attribute LAMP)
   const perOwnerEpochs = new Map<string, { epoch: bigint; stake: bigint }[]>();
@@ -123,14 +123,14 @@ async function main() {
   for (const sa of entitledStakes) {
     const e = entMap.get(sa)!;
     const eps = (perOwnerEpochs.get(sa) ?? []).sort((a, b) => (a.epoch < b.epoch ? -1 : 1));
-    const lampTotal = e.amount / OIL_PER_LAMP;               // LAMP nguyên owner
+    const lampTotal = e.amount / OILDROP_PER_LAMP;               // LAMP nguyên owner
     const perEpLamp = attributePerEpoch(lampTotal, eps.map((x) => x.stake));
     entries.push({
       stake_address: sa,
       addresses: addrMap.get(sa) ?? [],
       acc_stake_lovelace: (accStake.get(sa) ?? 0n).toString(),
       claimable_lamp: lampTotal.toString(),
-      claimable_lamp_frac: Number(e.amount % OIL_PER_LAMP) / 1e6,
+      claimable_lamp_frac: Number(e.amount % OILDROP_PER_LAMP) / 1e6,
       capped: e.capped,
       epochs: eps.map((x, i) => ({ epoch: String(x.epoch), stake: x.stake.toString(), lamp: perEpLamp[i]!.toString() })),
     });
@@ -139,7 +139,7 @@ async function main() {
   const out = {
     meta: {
       pool_id: POOL, cutoff_epoch: String(CUTOFF), network: "mainnet",
-      budget_lamp: (TIGER_TOTAL_OIL / OIL_PER_LAMP).toString(),
+      budget_lamp: (TIGER_TOTAL_OILDROP / OILDROP_PER_LAMP).toString(),
       total_owners: entries.length, total_acc_stake_lovelace: totalStake.toString(),
       provisional: true,
       note: "PROVISIONAL — gồm MỌI ai từng stake TIGER (< epoch 637), kể cả đã rời pool; owner=stake_address; số LAMP có thể đổi khi chốt registration payment address.",

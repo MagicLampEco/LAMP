@@ -61,7 +61,7 @@ export interface RedeemParams {
   treasuryUtxo:     UTxO;
   treasuryScript:   Validator;
 
-  /** D (drop_value, oil/drop·epoch) — COMPILE-TIME param của claim_account validator. */
+  /** D (drop_value, oildrop/drop·epoch) — COMPILE-TIME param của claim_account validator. */
   dropValue:        bigint;
 
   /**
@@ -140,7 +140,7 @@ export async function buildRedeemTx(params: RedeemParams): Promise<RedeemResult>
   const treasuryLamp = treasuryUtxo.assets[lampUnit] ?? 0n;
   if (treasuryLamp < amount) {
     throw new Error(
-      `REDEEM-012: treasury con chỉ có ${treasuryLamp} oil LAMP < amount ${amount} ` +
+      `REDEEM-012: treasury con chỉ có ${treasuryLamp} oildrop LAMP < amount ${amount} ` +
       `(Lớp B vật lý: hết ngân sách kênh).`,
     );
   }
@@ -209,13 +209,13 @@ export async function buildRedeemTx(params: RedeemParams): Promise<RedeemResult>
     `═══ Redeem (Capped Drop · treasury con kênh) ═══`,
     `Owner:          ${owner}`,
     `Channel:        ${normHex(claim.channel_id)}`,
-    `Entitlement E:  ${claim.entitlement} oil`,
-    `Redeemed:       ${claim.redeemed} → ${newClaimDatum.redeemed} oil`,
-    `Drop value D:   ${dropValue} oil  · drops/epoch ${claim.drops_per_epoch}`,
+    `Entitlement E:  ${claim.entitlement} oildrop`,
+    `Redeemed:       ${claim.redeemed} → ${newClaimDatum.redeemed} oildrop`,
+    `Drop value D:   ${dropValue} oildrop  · drops/epoch ${claim.drops_per_epoch}`,
     `Epoch:          t0=${claim.start_epoch} → t=${currentEpoch}`,
-    `Vested(t):      ${vestedNow} oil`,
-    `Amount:         ${amount / 1_000_000n} LAMP (${amount} oil)`,
-    `Treasury LAMP:  ${treasuryLamp} → ${treasuryAfter} oil`,
+    `Vested(t):      ${vestedNow} oildrop`,
+    `Amount:         ${amount / 1_000_000n} LAMP (${amount} oildrop)`,
+    `Treasury LAMP:  ${treasuryLamp} → ${treasuryAfter} oildrop`,
     `Destination:    ${destination}`,
   ].join("\n");
 

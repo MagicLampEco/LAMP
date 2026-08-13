@@ -9,7 +9,7 @@ Viết bằng [Aiken](https://aiken-lang.org/) (Plutus V3), off-chain bằng Typ
 | **Policy LAMP (mainnet)** | `55d3e01bb6c469e02665e4b6573ce65bbaf7a50ad2024e247eb180f0` |
 | **Asset** | `55d3e01b….4c414d50` — tên hiển thị **MagicLamp**, mã **LAMP** |
 | **Tổng cung** | 36.000.000.000 LAMP — **cố định, không đốt** |
-| **Đơn vị con** | 1 LAMP = 1.000.000 **oildrop** (decimals 6) — trong mã nguồn biến vẫn đặt tên `oil`, cùng một thứ, việc đổi tên trong code chưa làm |
+| **Đơn vị con** | 1 LAMP = 1.000.000 **oildrop** (decimals 6) |
 | **Tra cứu** | [cexplorer.io/policy/55d3e01b…](https://cexplorer.io/policy/55d3e01bb6c469e02665e4b6573ce65bbaf7a50ad2024e247eb180f0) |
 | **Giấy phép mã nguồn** | Apache-2.0 |
 
@@ -24,7 +24,10 @@ cd Genesis/scripts && npx tsx verify_mainnet_supply.ts
 
 - **Không bán token.** Không ICO, không IDO, không presale, không nhận tiền của ai đổi lấy LAMP.
 - **Không hứa giá, không hứa lợi nhuận, không cam kết niêm yết.**
-- **Không đặt cọc, không phí tham gia.** Người tham gia không nộp gì cả.
+- **Không đặt cọc để nhận token, không phí tham gia.** Người tham gia phân phối không nộp gì cả.
+  (Cơ chế quản trị có yêu cầu **ký quỹ LAMP hoàn lại** khi khởi xướng đề xuất/recall, để chống quấy
+  rối — đó là việc nội bộ giữa các thành viên đã có LAMP, không phải điều kiện để nhận LAMP. Xem
+  [`Governance/`](Governance/).)
 - **Quản trị không theo số token nắm giữ** — cử tri là **cá nhân** định danh qua PhoenixKey DID;
   nắm nhiều token không mua được nhiều quyền.
 
@@ -53,18 +56,23 @@ Repo MAGIC: <https://github.com/MagicLampNetwork/MAGIC>
 
 | Bạn muốn biết | Đọc |
 |---|---|
-| LAMP là gì, cung ra sao, ai quản trị | [`Specs/LAMP-POLICY-EXPLAINER.md`](Specs/LAMP-POLICY-EXPLAINER.md) — kèm 100 câu hỏi thường gặp |
-| 36 tỷ chia thế nào | [`Specs/LAMP-POT-CATALOG.md`](Specs/LAMP-POT-CATALOG.md) · [`Specs/LAMP-DISTRIBUTION-SPEC.md`](Specs/LAMP-DISTRIBUTION-SPEC.md) |
-| Cơ chế ra mắt (Launch) | [`Specs/LAUNCH-FRAMEWORK-Vi.md`](Specs/LAUNCH-FRAMEWORK-Vi.md) · [`Specs/SRCL-SPEC-Vi.md`](Specs/SRCL-SPEC-Vi.md) |
-| Mint LAMP qua OrgDID | [`Specs/lamp-mint-core-adapter.md`](Specs/lamp-mint-core-adapter.md) |
+| LAMP là gì, cung ra sao, ai quản trị | [`Papers/Whitepaper.md`](Papers/Whitepaper.md) — kèm 100 câu hỏi thường gặp |
+| 36 tỷ chia thế nào | [`Papers/pot-catalog.md`](Papers/pot-catalog.md) · [`Papers/distribution.md`](Papers/distribution.md) |
+| Cơ chế ra mắt (Launch) | [`Papers/launch-framework.md`](Papers/launch-framework.md) · [`Papers/srcl.md`](Papers/srcl.md) |
+| Mint LAMP qua OrgDID | [`Genesis/mint-core-adapter.md`](Genesis/mint-core-adapter.md) |
 
 ## Cấu trúc
 
-**Đặc tả công khai**
+Quy ước đặt tên + phân biệt Spec/Paper: [`CONVENTIONS.md`](CONVENTIONS.md) (theo chuẩn StandardSpec).
+
+**Tài liệu đối ngoại**
 
 | Thư mục | Nội dung |
 |---|---|
-| `Specs/` | Đặc tả dành cho công chúng. Khi mâu thuẫn với bất kỳ chỗ nào khác trong repo, **`Specs/` đúng**. Một số file còn nhãn DRAFT — số liệu có thể còn tinh chỉnh, nhãn nằm ngay đầu file |
+| `Papers/` | Tài liệu dành cho người ngoài — định vị, giải thích cơ chế. Khi mâu thuẫn với bất kỳ chỗ nào khác trong repo, **`Papers/` đúng**. Một số file còn nhãn DRAFT — nhãn nằm ngay đầu file. Đây là **bản đối ngoại**, không phải nơi đội build lấy chi tiết kỹ thuật |
+
+**Đặc tả nội bộ** nằm trong từng thư mục module dưới đây (`CONTRACT.md`, `Feat-Spec.md`,
+`Math-Spec.md`, `Tech-Spec.md`, `Exec-Spec.md`) — INTERNAL mặc định theo StandardSpec Rule 6.
 
 **Hợp đồng on-chain + SDK off-chain**
 
@@ -80,10 +88,10 @@ Repo MAGIC: <https://github.com/MagicLampNetwork/MAGIC>
 | `TIGER/` | ETD — pot hồi tố cho người đã ủy thác pool TIGER | ổn định (còn tham số placeholder) | chưa |
 | `SRCL/` | Hạ tầng phân phối cho cơ chế ra mắt SRCL | ⚠️ có lỗi mở | chưa |
 | `Faucet/` | Vòi tLAMP cho dev (chỉ testnet) | ổn định | chỉ testnet |
-| `Governance/` | iVoteSpace, bầu 3 hội đồng, Voting Power, Recall | mới có spec | chưa |
-| `PlatformKit/` | Bộ ráp cho bên tích hợp | spec | chưa |
-| `LaunchAPI/` | API + UI tham chiếu cho đợt ra mắt | spec | chưa |
-| `Legacy/` | Bản đã bị thay thế + tài liệu nội bộ giai đoạn đầu — **giữ để truy vết, KHÔNG dùng lại** |
+| `Governance/` | Voting Power on-chain v1 (cử tri = cá nhân, ≥4 tham số có cap). iVoteSpace · bầu 3 hội đồng · Recall mới có spec | VP: ổn định · phần còn lại: spec | chưa |
+| `PlatformKit/` | Bộ ráp cho bên tích hợp — **đang chuyển sang repo `Registry`**, xem `PlatformKit/README.md` | spec + adapter off-chain | chưa |
+| `LaunchAPI/` | API + UI tham chiếu cho đợt ra mắt (`src/server.ts`, `src/etd.ts`, `reference-ui/`) | có mã chạy, chưa ổn định | chưa |
+| ~~`Legacy/`~~ | **ĐÃ GỠ khỏi cây làm việc 2026-08-12.** Bản đã bị thay thế + tài liệu nội bộ giai đoạn đầu. Vẫn còn nguyên trong lịch sử git để làm bằng chứng — tra bằng `git show be14728:Legacy/<đường-dẫn>` hoặc `git log --diff-filter=D -- Legacy/`. Mọi dẫn chiếu `Legacy/…` còn lại trong repo đọc theo lối đó. |
 
 ## Trạng thái thật — đọc trước khi dùng
 
@@ -92,9 +100,12 @@ Repo này ưu tiên nói thật hơn nói đẹp:
 - **Kho giữ LAMP trên mainnet hiện là ví một-chữ-ký.** `dist_treasury` là script **khởi tạo**, mã
   nguồn tự khai `BOOTSTRAP: authority = 1 pkh` — một chữ ký chuyển được LAMP ra khỏi kho. Đang giữ
   1.000.000 LAMP (0,0028% tổng cung, chưa phân phối). **Phải thay bằng `treasury.ak` trước khi mint
-  thêm giá trị** — xem [`Genesis/DEV-NOTE-kho-A-DEST-canonical.md`](Genesis/DEV-NOTE-kho-A-DEST-canonical.md).
-- **`SRCL/` có một lỗi CRITICAL đang mở (S1)** — cửa `Sweep` mở sẵn từ ngày đầu và không đòi chữ
-  ký. **Đừng nạp LAMP thật vào SRCL pot trước khi vá.** Cơ chế + cách vá: [`SRCL/README.md`](SRCL/README.md).
+  thêm giá trị** — xem [`Genesis/kho-a-dest.md`](Genesis/kho-a-dest.md).
+- **`SRCL/` có BA lỗi CRITICAL đang mở (S1, S2, S3).** S1: cửa `Sweep` mở sẵn từ ngày đầu và
+  không đòi chữ ký. S2: `Sweep` không ràng lovelace và **POOL NFT** — mất NFT là phải deploy
+  lại toàn bộ. S3: `Claim` không cấm đúc tên khác cùng policy ⇒ tái tạo slot, claim lặp.
+  **Đừng nạp LAMP thật vào SRCL pot trước khi vá cả ba.** Cả ba đổi script hash nên phải vá
+  cùng một lượt. Cơ chế + cách vá: [`SRCL/README.md`](SRCL/README.md).
 - **Mã script `lamp_mint` đang chạy trên mainnet chưa được đối chiếu từng byte** với mã nguồn
   trong repo. Việc đó phải xong trước khi mint thêm bất kỳ lượng nào có giá trị.
 - **Chưa module nào ngoài `Genesis/` chạy trên mainnet.** Những chỗ ghi "live Preview" là mạng

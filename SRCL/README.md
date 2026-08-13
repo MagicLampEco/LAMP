@@ -8,15 +8,15 @@
 >
 > Người tham gia **không nộp tiền, không mua gì, không đặt cọc**. LAMP **không được bán**.
 
-> ⚠️ **Cơ chế canonical = bản B** (đóng-góp-phần-thưởng, trustless). Tài liệu này mô tả **bản A**
-> (chia LAMP **∝ stake**, margin pool thu OFF-CHAIN, tin-operator) — biến thể vận-hành **cũ**.
-> Nguồn sự thật cơ chế: [`Specs/SRCL-SPEC-Vi.md`](../Specs/SRCL-SPEC-Vi.md) + validator
-> `srcl_stake.ak` (bản B): vốn gốc **bất khả xâm phạm on-chain**, LAMP chia **∝ phần thưởng đã
-> đóng góp**. Phần **hạ tầng phân phối** dưới đây (`srcl_pool` — SetRoot/Claim/Sweep, Merkle,
-> chống double-claim) **DÙNG CHUNG** cho cả A và B; chỉ **nguồn entitlement** khác (∝stake → ∝reward).
-> Đọc mọi mô tả "∝ stake" / "native-margin" bên dưới như đặc tả **bản A**.
+> ℹ️ **Trạng thái mã (đang TRONG cây)** — đọc kỹ để khỏi nhầm thiết-kế với mã-đang-chạy:
+> validator phân phối duy nhất hiện có = `srcl_pool` (SetRoot / Claim / Sweep, Merkle **schema C**,
+> claim-slot spend-once). Nguồn entitlement đã hiện thực = **∝ stake per-epoch**
+> (`computeSrclEntitlements`, mỗi epoch một pot độc lập chia theo tỷ lệ stake của chính epoch đó).
+> Biến thể **∝ phần thưởng đã đóng góp** (thiết kế ở [`Papers/srcl.md`](../Papers/srcl.md), dự kiến
+> tách thành validator `srcl_stake`) **CHƯA có trong cây** — là ý hướng thiết kế, KHÔNG phải mã đang
+> chạy, và không kèm mốc hứa. Mọi mô tả "∝ stake" bên dưới = **đúng hiện trạng mã**.
 
-Module phân phối **360 triệu LAMP** (pot SRCL trong bảng 18-pot, `Specs/LAMP-POT-CATALOG.md`)
+Module phân phối **360 triệu LAMP** (pot SRCL trong bảng 18-pot, `Papers/pot-catalog.md`)
 cho delegator của pool SRCL theo **tỷ lệ stake**, đều trong **36 epoch**
 (**10 triệu LAMP/epoch** chẵn), bằng cơ chế Merkle distribution per-epoch.
 
@@ -59,17 +59,17 @@ Cơ chế **phân phối LAMP cho delegator theo snapshot stake mỗi epoch**:
 ## Toán phân phối (tất định, tỷ lệ stake)
 
 ```
-TỔNG       = 360_000_000 LAMP × 10^6 = 3,6e14 oil
+TỔNG       = 360_000_000 LAMP × 10^6 = 3,6e14 oildrop
 EPOCHS     = 36  (epoch 0..35)
-budget_e   = 3,6e14 / 36 = 10_000_000_000_000 oil = 10.000.000 LAMP  (chia hết, dư 0)
-entitlement_e[i] = floor( budget_e × stake_i / Σ stake )   (oil)
+budget_e   = 3,6e14 / 36 = 10_000_000_000_000 oildrop = 10.000.000 LAMP  (chia hết, dư 0)
+entitlement_e[i] = floor( budget_e × stake_i / Σ stake )   (oildrop)
 ```
 
 - Dư do `floor` (budget − Σ entitlement) → dồn cho ví **stake lớn nhất** (xác định,
-  không mất oil). Tổng entitlement mỗi epoch == `budget_e` chính xác.
-- Phần dư lẻ toàn cục `3,6e14 − 36 × budget_e` (= `REMAINDER_OIL`) gộp vào **epoch cuối**;
-  với 360 triệu thì `REMAINDER_OIL = 0` (360M chia hết 36).
-- Đơn vị: **oil** (1 LAMP = 10^6 oil), mọi số học BigInt.
+  không mất oildrop). Tổng entitlement mỗi epoch == `budget_e` chính xác.
+- Phần dư lẻ toàn cục `3,6e14 − 36 × budget_e` (= `REMAINDER_OILDROP`) gộp vào **epoch cuối**;
+  với 360 triệu thì `REMAINDER_OILDROP = 0` (360M chia hết 36).
+- Đơn vị: **oildrop** (1 LAMP = 10^6 oildrop), mọi số học BigInt.
 
 ---
 
@@ -83,14 +83,17 @@ entitlement_e[i] = floor( budget_e × stake_i / Σ stake )   (oil)
 - **SLOT NFT** (name = `blake2b_256(epoch ‖ owner)`, qty 1) — **claim-slot** per
   `(epoch, owner)`: `SetRoot` đúc cả bộ và gửi vào registry, `Claim` tiêu + **đốt**.
 
-### `srcl_pool` (spend, param `srcl_nft_policy`, `lamp_policy`, `lamp_name`, `admin`, `admin_threshold`, `slot_registry_hash`)
+### `srcl_pool` (spend, param `srcl_nft_policy`, `lamp_policy`, `lamp_name`, `admin`, `admin_threshold`, `slot_registry_hash`, `campaign_id`, `role`)
+
+> `campaign_id`[32] (= `blake2b_256("LAMP-SRCL-1")`) + `role`[1] (SPO/SRCL = `0x04`) BAKE làm param →
+> nhúng vào **leaf schema C** (xem `merkle.ak`), cô lập proof theo chiến dịch + vai.
 
 UTxO mang POOL NFT + kho LAMP + `SrclDatum`:
 
 ```
 SrclDatum {
   epoch_roots:       List<ByteArray>,  // root_e theo epoch (index = epoch)
-  distributed_total: Int,              // oil đã phát (sổ kế toán)
+  distributed_total: Int,              // oildrop đã phát (sổ kế toán)
   end_epoch:         Int,              // = 35
   treasury_dest:     ByteArray,        // payment-cred Treasury (đích Sweep)
   ms_per_epoch:      Int,
@@ -102,7 +105,7 @@ SrclDatum {
 | Redeemer | Ai | Ràng buộc chính |
 |---|---|---|
 | `SetRoot{root}` | admin (≥ threshold) | append `root` vào `epoch_roots`; pool.value bảo toàn tuyệt đối; ≤ 36 root; bộ SLOT mới KHÔNG rò khỏi registry |
-| `Claim{ClaimProof}` | delegator (permissionless) | Merkle verify `(epoch,owner,amount) ∈ epoch_roots[epoch]`; owner nhận `amount` LAMP; tiêu đúng 1 SLOT `(epoch,owner)` **từ registry** + đốt (qty −1); `distributed_total += amount`; pool − `amount` LAMP |
+| `Claim{ClaimProof}` | delegator (permissionless) | Merkle verify `(campaign_id,epoch,role,owner,amount) ∈ epoch_roots[epoch]` (campaign_id+role từ param); owner nhận `amount` LAMP; tiêu đúng 1 SLOT `(epoch,owner)` **từ registry** + đốt (qty −1); `distributed_total += amount`; pool − `amount` LAMP |
 | `Sweep` | bất kỳ, sau `end_epoch` | `now > end_epoch`; toàn bộ LAMP dư → Treasury — ⚠️ **đang lỗi, xem S1 dưới** |
 
 ---
@@ -141,8 +144,24 @@ Slot tiêu 1 lần là hết ⇒ cặp `(epoch, owner)` không claim lại đư�
   dịch chết ở epoch 0 (không mất tiền — tiền về Treasury — nhưng delegator hết claim được).
   Test hiện có qua được chỉ vì fixture đặt `validity_range` theo epoch *tương đối*.
   **Cần sửa trước khi nạp LAMP thật vào pot.**
+- ⚠️ **S2 — Sweep rò lovelace + POOL NFT (lỗi mở).** `srcl_pool.ak:194-204` chỉ kiểm phần
+  LAMP, **không ràng lovelace và không ràng POOL NFT**. Sweep quét được cả hai thứ đó ra
+  ngoài. Mất POOL NFT nặng hơn mất lovelace nhiều: NFT là authenticity của pool, mất là
+  **phải deploy lại toàn bộ** — `genesis_ref` mới, policy mới, địa chỉ mới, mọi root đã phát
+  thành vô dụng.
+- ⚠️ **S3 — Tái tạo slot vô hạn (lỗi mở).** `srcl_nft.ak:77-84` không cấm đúc **tên KHÁC**
+  cùng policy trong tx `Claim`. Slot lẽ ra spend-once; kẽ này cho đúc lại slot ⇒ claim lặp.
+  Bản vá đối chiếu có sẵn ở `Airdrop/onchain/validators/airdrop_nft.ak:122-131` (SRCL fork
+  trước bản đó).
+
+> **Ba lỗ trên phải vá CÙNG MỘT LƯỢT** — cả ba đổi script hash, vá lẻ là ba lần deploy.
+> Cơ chế SRCL đã bàn giao cho **Launch agent** (anh Aladin chốt 2026-08-04); `SRCL/` giữ
+> nguyên trong repo này cho tới khi Launch port xong, **không xoá trước**.
 - **Cross-epoch replay**: `epoch` nhúng trong leaf + root mỗi epoch khác nhau → proof
   epoch `e` không dùng lại cho epoch khác.
+- **Cross-campaign / cross-role replay (schema C)**: leaf =
+  `blake2b_256(0x00 ‖ campaign_id[32] ‖ epoch_be8 ‖ role[1] ‖ owner ‖ amount_be8)`.
+  `campaign_id` + `role` BAKE (param) → proof pot campaign/role này KHÔNG khớp root pot khác.
 - **Second-preimage Merkle**: domain tag `0x00` (leaf) / `0x01` (node).
 
 ---
@@ -151,17 +170,20 @@ Slot tiêu 1 lần là hết ⇒ cặp `(epoch, owner)` không claim lại đư�
 
 | File | Vai trò |
 |---|---|
-| `constants.ts` | `SRCL_TOTAL_OIL=3,6e14`, `EPOCHS=36`, `PER_EPOCH_OIL`, `POOL_NFT_NAME`, … |
+| `constants.ts` | `SRCL_TOTAL_OILDROP=3,6e14`, `EPOCHS=36`, `PER_EPOCH_OILDROP`, `POOL_NFT_NAME`, `SRCL_CAMPAIGN_ID`, `ROLE_SPO`, … |
 | `types.ts` | `SrclDatum`, `ClaimProof`, `MerkleStep`, `Entitlement`, `StakeEntry` |
 | `datum.ts` | codec Plutus Data **byte-perfect** với onchain |
-| `merkle.ts` | blake2b-256 (`@noble/hashes`), `MerkleTree`, proof — khớp onchain |
-| `snapshotTool.ts` | stake list → entitlement per epoch → roots |
+| `merkle.ts` | blake2b-256 (`@noble/hashes`), `leafHash` **schema C** (campaign_id+role), `MerkleTree` (sort theo slot, trùng slot → throw), proof — khớp onchain |
+| `snapshotTool.ts` | stake list → `computeSrclEntitlements` (∝stake per-epoch, **cố ý khác** canonical TIGER) → roots |
 | `claimBuilder.ts` | dựng tx Claim (lucid-evolution) |
 | `sweepBuilder.ts` | dựng tx Sweep → Treasury |
 | `index.ts` | public exports |
 
 Cây Merkle off-chain ↔ on-chain được **đối chiếu byte-perfect** bằng vector cố định
-(test `*_matches_offchain_vector` trong `merkle.ak`).
+(test `*_matches_offchain_vector` + `parity_v2_leaf` trong `merkle.ak`, đối ứng
+`PARITY byte-perfect schema C` trong `merkle.test.ts`). Vector chuẩn schema C:
+`leaf(campaign_id=blake2b_256("LAMP-SRCL-1"), epoch=100, role=4, owner=bb×28, amount=27_780_000)`
+`= e47d8183552d5c21de639b5ddf9a82bcc6d4648c3fad2bc0959e2cd1826f03ba`.
 
 ---
 
@@ -190,6 +212,6 @@ nằm trong contract. `snapshotTool` nhận sẵn list `{ owner(pkh), stake }` c
 # On-chain (Aiken) — 55 test pass, 0 fail
 cd SRCL/onchain && aiken check
 
-# Off-chain (vitest) — 43 test pass (3 file)
+# Off-chain (vitest) — 54 test pass (3 file)
 cd SRCL/offchain && npm install && npx vitest run
 ```
