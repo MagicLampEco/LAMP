@@ -56,7 +56,7 @@ export interface DeployParams {
 
   lamp_policy: string;
   lamp_name: string;
-  /** Tổng LAMP (oil) nạp vào pool = tổng snapshot. */
+  /** Tổng LAMP (oildrop) nạp vào pool = tổng snapshot. */
   poolLampAmount: bigint;
 
   /** min-ADA kèm POOL UTxO. Mặc định 2 ADA. */
@@ -121,7 +121,7 @@ export async function buildDeployTx(params: DeployParams): Promise<DeployResult>
     `Registry:     ${pool.marker_dest}`,
     `POOL NFT:     ${poolNftUnit}`,
     `Slots minted: ${slotUnits.length} (1/leaf)`,
-    `Pool LAMP:    ${poolLampAmount / 1_000_000n} LAMP (${poolLampAmount} oil)`,
+    `Pool LAMP:    ${poolLampAmount / 1_000_000n} LAMP (${poolLampAmount} oildrop)`,
     `Merkle root:  ${pool.merkle_root}`,
     `Deadline:     epoch ${pool.deadline_epoch}`,
   ].join("\n");

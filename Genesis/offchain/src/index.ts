@@ -2,6 +2,7 @@
 
 export * from "./types.js";
 export * from "./constants.js";
+export * from "./deployed.js";
 export * from "./datum.js";
 export * from "./supplyState.js";
 export * from "./circulating.js";

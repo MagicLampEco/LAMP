@@ -117,7 +117,7 @@ pub fn is_at_script_cred(addr: Address) -> Bool {
   }
 }
 
-/// Tổng LAMP (oil) các output trả về cho owner PKH.
+/// Tổng LAMP (oildrop) các output trả về cho owner PKH.
 pub fn lamp_to_owner(
   outputs    : List<Output>,
   owner      : ByteArray,

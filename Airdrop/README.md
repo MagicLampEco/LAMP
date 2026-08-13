@@ -1,26 +1,27 @@
 # Airdrop — Merkle-airdrop (bộ máy on-chain dùng chung)
 
-> **MODEL HIỆN HÀNH = v2 (chốt 2026-07-10).** Đặc tả tổng: **`AIRDROP-V2-SPEC-Vi.md`**.
+> **MODEL HIỆN HÀNH = v2 (chốt 2026-07-10).** Đặc tả tổng: **`CONTRACT.md`**.
 > Airdrop v2 = **120 triệu LAMP**, chia 3 pot (Delegator · SPO · CS) dưới **cùng** bộ máy Merkle-airdrop dưới đây:
 > - **Pot Delegator = 100M LAMP** — delegator **PHẢI ĐĂNG KÝ** (ký reward stake key), thưởng
->   **∝stake ở bất kỳ pool Cardano**, cửa sổ snapshot mới, giữ ≥ N epoch. Xem `AIRDROP-V2-SPEC-Vi.md` §1.
-> - **Pot SPO/CS = 20M LAMP** = **SPO (Staking Pool Operator) 5M** (tư cách pool hợp lệ, chia
->   đều) + **CS (Community Supporter) 15M** (đo qua AffiSo, cần DID) — KHÔNG theo stake. Xem
->   `SPO-CS-SPEC-Vi.md`.
+>   **∝stake ở bất kỳ pool Cardano**, cửa sổ snapshot mới, giữ ≥ N epoch. Xem `CONTRACT.md` §1.
+> - **Pot SPO/CS = 20M LAMP** = **SPO (Staking Pool Operator) 5M** (∝ Σ stake delegator đã đăng ký
+>   chảy vào pool của họ) + **CS (Community Supporter) 15M** (∝ Σ stake của delegator đã bình chọn
+>   rằng họ đã giúp; đo qua AffiSo, cần DID). **Cả hai đều ∝ trọng số stake** — mô hình cũ
+>   "CS log-score" và "SPO chia đều" đã bỏ hoàn toàn (2026-07-11). Xem `spo-cs.md`.
 >
 > **ĐỪNG NHẦM với ETD** (module `TIGER/`): ETD = pot RIÊNG 12M, hồi tố, **chỉ pool TIGER**,
-> KHÔNG đăng ký. Bảng phân biệt: `AIRDROP-V2-SPEC-Vi.md` §3.
+> KHÔNG đăng ký. Bảng phân biệt: `CONTRACT.md` §3.
 >
 > Phần dưới mô tả **cơ chế on-chain dùng chung** (pool NFT + CLAIM marker nullifier +
 > Sweep→Treasury + leaf encoding byte-perfect). v2 tái dùng nguyên, KHÔNG viết validator mới.
 > Ghi chú lịch sử: đoạn văn dưới nêu con số 100M/pool TIGER là mô tả bản v1 gốc; số/đối tượng
-> hiệu lực lấy theo `AIRDROP-V2-SPEC-Vi.md`.
+> hiệu lực lấy theo `CONTRACT.md`.
 
 Bộ máy Merkle-airdrop dùng chung: mỗi địa chỉ/DID claim đúng phần snapshot của mình bằng chứng
 minh Merkle, **không double-claim**; phần dư không ai claim hoàn về **Treasury**.
 
-Số lượng và đối tượng của từng pot lấy theo `AIRDROP-V2-SPEC-Vi.md` (Delegator 100M + SPO/CS 20M
-= **120 triệu LAMP**) và `SPO-CS-SPEC-Vi.md`. Đơn vị: **1 LAMP = 10⁶ oildrop**.
+Số lượng và đối tượng của từng pot lấy theo `CONTRACT.md` (Delegator 100M + SPO/CS 20M
+= **120 triệu LAMP**) và `spo-cs.md`. Đơn vị: **1 LAMP = 10⁶ oildrop**.
 
 ---
 
@@ -43,26 +44,27 @@ Snapshot {address, amount}  ──►  cây Merkle  ──►  merkle_root
 
 ### Leaf encoding (byte-perfect 2 phía)
 
-```
-leaf = blake2b_256( 0x00 ++ cbor.serialise(address) ++ amount_be8 )
-node = blake2b_256( 0x01 ++ left ++ right )
-```
+Từ 2026-07-31 pot Delegator dùng **schema Merkle C (role-tag)**. Đây là parity byte-perfect giữa
+on-chain và off-chain — chép lại ở nhiều nơi là cách chắc chắn nhất để một bản tụt lại và làm
+claim hỏng. Nên chỉ có **một nguồn**:
 
-- `cbor.serialise(address)`: Plutus-Data canonical CBOR của Aiken `Address` Constr.
-  Off-chain dựng cùng cây Data (`Data.to(addressToPlutusData)`) → **cùng bytes**.
-- `amount_be8`: amount (oil) big-endian 8 byte (u64) — cố định độ dài, chống nhập nhằng.
-- Prefix `0x00` (leaf) / `0x01` (node): **domain-separation** chống second-preimage.
+- Nguồn sự thật: [`../SCHEMA-MERKLE-V2-Tech-Spec.md`](../SCHEMA-MERKLE-V2-Tech-Spec.md)
+- Áp dụng cho pot Delegator (kèm giá trị `campaign_id`/`epoch`/`role` bake vào param):
+  [`CONTRACT.md` §1.7](./CONTRACT.md)
 
-> Parity được khoá bằng 1 vector regression ở **cả** `onchain/.../merkle.ak`
-> (`parity_offchain_leaf`) **và** `offchain/tests/merkle.test.ts`:
-> `leaf(28×0xa0, 100) = 3aeee537…b6b8`. Nếu một phía đổi encoding, test gãy ngay.
+Tóm tắt để định hướng, **không dùng để hiện thực** — hiện thực đọc hai file trên:
+lá gồm `campaign_id` + `epoch` + `role` + `owner` (payment key-hash 28B) + `amount`, có
+domain-separation `0x00`/`0x01` chống second-preimage; lá sắp **tăng theo
+`slot = blake2b_256(epoch_be8 ‖ owner)`**, trùng slot thì ném lỗi.
+
+> Parity được khoá bằng vector regression ở **cả** `onchain/.../merkle.ak` **và**
+> `offchain/tests/merkle.test.ts`. Một phía đổi encoding thì test gãy ngay.
 
 ### Cây Merkle nhị phân thường (KHÔNG MPF)
 
 Snapshot CỐ ĐỊNH (tính 1 lần off-chain, không insert/delete on-chain) → cây nhị phân
 hash-chain là đủ và rẻ hơn Merkle-Patricia-Forestry. Node lẻ cuối tầng → **carry** lên
-nguyên vẹn (không tự-hash) để off-chain/on-chain nhất quán. Snapshot được **sort theo
-leaf hash** → root tất định, không phụ thuộc thứ tự nhập.
+nguyên vẹn (không tự-hash) để off-chain/on-chain nhất quán.
 
 ---
 
@@ -135,7 +137,7 @@ Airdrop/
 │       └── airdrop_pool.ak   # spend: Claim (Merkle-gated) + Sweep (sau deadline)
 └── offchain/
     ├── src/
-    │   ├── constants.ts      # AIRDROP_TOTAL_OIL, CLAIM_WINDOW_EPOCHS, names, ms/epoch
+    │   ├── constants.ts      # AIRDROP_TOTAL_OILDROP, CLAIM_WINDOW_EPOCHS, names, ms/epoch
     │   ├── types.ts          # SnapshotEntry, ProofStep, AirdropPool, MerkleTree
     │   ├── merkle.ts         # dựng cây + proof + leaf encoding (byte-perfect)
     │   ├── datum.ts          # codec datum/redeemer (Plutus Data)

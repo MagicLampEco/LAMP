@@ -2,39 +2,40 @@
 
 import { describe, it, expect } from "vitest";
 import {
-  computeEntitlements, epochBudgetOil, snapshotEpoch, snapshotAll,
+  computeSrclEntitlements, epochBudgetOildrop, snapshotEpoch, snapshotAll,
 } from "../src/snapshotTool.js";
 import {
-  PER_EPOCH_OIL, REMAINDER_OIL, SRCL_TOTAL_OIL, EPOCHS, END_EPOCH,
+  PER_EPOCH_OILDROP, REMAINDER_OILDROP, SRCL_TOTAL_OILDROP, EPOCHS, END_EPOCH,
+  SRCL_CAMPAIGN_ID, ROLE_SPO,
 } from "../src/constants.js";
 import type { StakeEntry } from "../src/types.js";
 import { verifyProof } from "../src/merkle.js";
 
 describe("hằng quỹ SRCL", () => {
-  it("tổng = 360 triệu LAMP = 3,6e14 oil", () => {
-    expect(SRCL_TOTAL_OIL).toBe(360_000_000_000_000n);
+  it("tổng = 360 triệu LAMP = 3,6e14 oildrop", () => {
+    expect(SRCL_TOTAL_OILDROP).toBe(360_000_000_000_000n);
   });
   it("36 epoch", () => {
     expect(EPOCHS).toBe(36n);
     expect(END_EPOCH).toBe(35n);
   });
-  it("36 × PER_EPOCH + REMAINDER = tổng (không mất oil)", () => {
-    expect(PER_EPOCH_OIL * EPOCHS + REMAINDER_OIL).toBe(SRCL_TOTAL_OIL);
+  it("36 × PER_EPOCH + REMAINDER = tổng (không mất oildrop)", () => {
+    expect(PER_EPOCH_OILDROP * EPOCHS + REMAINDER_OILDROP).toBe(SRCL_TOTAL_OILDROP);
   });
   it("PER_EPOCH = 10 triệu LAMP chẵn, dư 0", () => {
-    // 3,6e14 / 36 = 10_000_000_000_000 oil = 10.000.000 LAMP. 360M ⋮ 36.
-    expect(PER_EPOCH_OIL).toBe(10_000_000_000_000n);
-    expect(REMAINDER_OIL).toBe(0n);
+    // 3,6e14 / 36 = 10_000_000_000_000 oildrop = 10.000.000 LAMP. 360M ⋮ 36.
+    expect(PER_EPOCH_OILDROP).toBe(10_000_000_000_000n);
+    expect(REMAINDER_OILDROP).toBe(0n);
   });
 });
 
-describe("computeEntitlements — tỷ lệ stake tất định", () => {
+describe("computeSrclEntitlements — tỷ lệ stake tất định (per-epoch, khác canonical TIGER)", () => {
   it("chia đôi đều khi stake bằng nhau", () => {
     const stakes: StakeEntry[] = [
       { owner: "aa", stake: 100n },
       { owner: "bb", stake: 100n },
     ];
-    const ents = computeEntitlements(0, stakes, 1000n);
+    const ents = computeSrclEntitlements(0, stakes, 1000n);
     expect(ents.map((e) => e.amount).sort()).toEqual([500n, 500n]);
     expect(ents.reduce((a, e) => a + e.amount, 0n)).toBe(1000n);
   });
@@ -44,7 +45,7 @@ describe("computeEntitlements — tỷ lệ stake tất định", () => {
       { owner: "aa", stake: 100n },
       { owner: "bb", stake: 300n },
     ];
-    const ents = computeEntitlements(0, stakes, 1000n);
+    const ents = computeSrclEntitlements(0, stakes, 1000n);
     const byOwner = Object.fromEntries(ents.map((e) => [e.owner, e.amount]));
     expect(byOwner["aa"]).toBe(250n);
     expect(byOwner["bb"]).toBe(750n);
@@ -57,7 +58,7 @@ describe("computeEntitlements — tỷ lệ stake tất định", () => {
       { owner: "bb", stake: 10n },
       { owner: "cc", stake: 10n },
     ];
-    const ents = computeEntitlements(0, stakes, 1000n);
+    const ents = computeSrclEntitlements(0, stakes, 1000n);
     expect(ents.reduce((a, e) => a + e.amount, 0n)).toBe(1000n);
     expect(ents.map((e) => e.amount).sort((a, b) => Number(a - b))).toEqual([333n, 333n, 334n]);
   });
@@ -68,13 +69,13 @@ describe("computeEntitlements — tỷ lệ stake tất định", () => {
       { owner: "bb", stake: 11n },
       { owner: "cc", stake: 13n },
     ];
-    const ents = computeEntitlements(5, stakes);
-    expect(ents.reduce((a, e) => a + e.amount, 0n)).toBe(epochBudgetOil(5));
+    const ents = computeSrclEntitlements(5, stakes);
+    expect(ents.reduce((a, e) => a + e.amount, 0n)).toBe(epochBudgetOildrop(5));
   });
 
   it("epoch cuối (35) cộng dư lẻ REMAINDER", () => {
-    expect(epochBudgetOil(35)).toBe(PER_EPOCH_OIL + REMAINDER_OIL);
-    expect(epochBudgetOil(0)).toBe(PER_EPOCH_OIL);
+    expect(epochBudgetOildrop(35)).toBe(PER_EPOCH_OILDROP + REMAINDER_OILDROP);
+    expect(epochBudgetOildrop(0)).toBe(PER_EPOCH_OILDROP);
   });
 
   it("bỏ qua ví stake 0", () => {
@@ -82,14 +83,14 @@ describe("computeEntitlements — tỷ lệ stake tất định", () => {
       { owner: "aa", stake: 100n },
       { owner: "bb", stake: 0n },
     ];
-    const ents = computeEntitlements(0, stakes, 1000n);
+    const ents = computeSrclEntitlements(0, stakes, 1000n);
     expect(ents.length).toBe(1);
     expect(ents[0]!.amount).toBe(1000n);
   });
 
   it("list rỗng / tổng stake 0 → entitlement rỗng", () => {
-    expect(computeEntitlements(0, [], 1000n)).toEqual([]);
-    expect(computeEntitlements(0, [{ owner: "aa", stake: 0n }], 1000n)).toEqual([]);
+    expect(computeSrclEntitlements(0, [], 1000n)).toEqual([]);
+    expect(computeSrclEntitlements(0, [{ owner: "aa", stake: 0n }], 1000n)).toEqual([]);
   });
 });
 
@@ -101,10 +102,13 @@ describe("snapshotEpoch / snapshotAll — root + proof khớp", () => {
       { owner: "c3", stake: 300n },
     ];
     const snap = snapshotEpoch(2, stakes);
-    expect(snap.totalOil).toBe(epochBudgetOil(2));
+    expect(snap.totalOildrop).toBe(epochBudgetOildrop(2));
     for (const e of snap.entitlements) {
       const proof = snap.tree.proofFor(BigInt(e.epoch), e.owner);
-      expect(verifyProof(snap.root, BigInt(e.epoch), e.owner, e.amount, proof)).toBe(true);
+      // snapshotEpoch dùng campaign/role mặc định SRCL → verify với đúng cặp đó.
+      expect(
+        verifyProof(snap.root, SRCL_CAMPAIGN_ID, BigInt(e.epoch), ROLE_SPO, e.owner, e.amount, proof),
+      ).toBe(true);
     }
   });
 
@@ -115,6 +119,6 @@ describe("snapshotEpoch / snapshotAll — root + proof khớp", () => {
     const { roots, snapshots } = snapshotAll(m);
     expect(roots.length).toBe(2);
     expect(roots[0]).not.toBe(roots[1]); // stake khác → root khác.
-    expect(snapshots[0]!.totalOil).toBe(epochBudgetOil(0));
+    expect(snapshots[0]!.totalOildrop).toBe(epochBudgetOildrop(0));
   });
 });

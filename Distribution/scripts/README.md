@@ -26,7 +26,7 @@ Ví deploy cần ≥ 10 tADA (faucet: https://docs.cardano.org/cardano-testnet/t
 | `BEACON_NFT_POLICY` | policy NFT beacon (khi agent beacon_nft ship) | native sig của ví deploy |
 | `WALLET_SEED_B` / `PRIVATE_KEY_B` | ví B test (claim account thứ 2) | placeholder PKH |
 | `TEST_LAMP_MINT` | LAMP mint (02), số nguyên | 1_000_000 |
-| `TREASURY_FUND_OIL` | LAMP fund treasury (03), oil | 500_000 LAMP |
+| `TREASURY_FUND_OILDROP` | LAMP fund treasury (03), oildrop | 500_000 LAMP |
 | `TARGET_RATE_Q_E2E` | tỉ lệ trúng lottery e2e (Q) | 500_000_000 (50%, để A chắc trúng) |
 
 > **Committee self-test:** mặc định committee = 1 ví deploy (threshold 1) để demo full

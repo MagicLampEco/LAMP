@@ -15,7 +15,7 @@ import {
   claimAccountDatumToCbor, channelBudgetDatumToCbor, treasuryDatumToCbor,
 } from "../offchain/src/datum.js";
 import { committeeThreshold } from "../offchain/src/committee.js";
-import { lampOil, CHANNEL_TEAM, CHANNEL_RESERVE } from "./helpers.js";
+import { lampOildrop, CHANNEL_TEAM, CHANNEL_RESERVE } from "./helpers.js";
 
 // ── Mock Lucid tx-builder ──────────────────────────────────────────────
 interface Recorded {
@@ -75,7 +75,7 @@ const COMMITTEE_HASH = "ee".repeat(28);
 const LAMP_POLICY = "ff".repeat(28);
 const LAMP_UNIT   = toUnit(LAMP_POLICY, "4c414d50");
 const NFT_POLICY  = "cd".repeat(28);
-const D = lampOil(100n);
+const D = lampOildrop(100n);
 /** ms mỗi epoch (Preview demo) — phải khớp ms_per_epoch bake vào claim_account. */
 const MS_PER_EPOCH = 86_400_000n;
 /** lower_bound ms cho epoch t (đầu epoch) — get_epoch = floor(ms/MS_PER_EPOCH). */
@@ -110,7 +110,7 @@ function budgetUtxo(remaining: bigint, channel = CHANNEL_TEAM, withNft = true): 
     txHash: "22".repeat(32), outputIndex: 0,
     address: scriptAddr(FAKE_BUDGET),
     assets: withNft ? { lovelace: 2_000_000n, [nftUnit]: 1n } : { lovelace: 2_000_000n },
-    datum: channelBudgetDatumToCbor({ channel_id: channel, remaining_oil: remaining }),
+    datum: channelBudgetDatumToCbor({ channel_id: channel, remaining_oildrop: remaining }),
   };
 }
 
@@ -144,15 +144,15 @@ describe("buildClaimTx — cấp entitlement + trừ remaining (khoá chéo)", (
     const { lucid, rec } = mockLucid("addr_committee");
     const DUST = toUnit("ab".repeat(28), "cafe");
     const res = await buildClaimTx({
-      ...base, lucid, amount: lampOil(300n),
-      claimAccountUtxo: claimUtxo({ entitlement: lampOil(100n), redeemed: lampOil(40n) }, { [DUST]: 7n }),
-      budgetUtxo: budgetUtxo(lampOil(1000n)),
+      ...base, lucid, amount: lampOildrop(300n),
+      claimAccountUtxo: claimUtxo({ entitlement: lampOildrop(100n), redeemed: lampOildrop(40n) }, { [DUST]: 7n }),
+      budgetUtxo: budgetUtxo(lampOildrop(1000n)),
     });
     // datums
-    expect(res.newClaimDatum.entitlement).toBe(lampOil(400n));   // 100 + 300
-    expect(res.newClaimDatum.redeemed).toBe(lampOil(40n));       // bất biến
+    expect(res.newClaimDatum.entitlement).toBe(lampOildrop(400n));   // 100 + 300
+    expect(res.newClaimDatum.redeemed).toBe(lampOildrop(40n));       // bất biến
     expect(res.newClaimDatum.channel_id).toBe(CHANNEL_TEAM);     // bất biến
-    expect(res.newBudgetDatum.remaining_oil).toBe(lampOil(700n)); // 1000 − 300
+    expect(res.newBudgetDatum.remaining_oildrop).toBe(lampOildrop(700n)); // 1000 − 300
 
     // co-spend 2 input, attach 2 validator
     expect(rec.collectFrom).toHaveLength(2);
@@ -174,43 +174,43 @@ describe("buildClaimTx — cấp entitlement + trừ remaining (khoá chéo)", (
     await expect(buildClaimTx({
       ...base, lucid, amount: 0n,
       claimAccountUtxo: claimUtxo({ entitlement: 0n, redeemed: 0n }),
-      budgetUtxo: budgetUtxo(lampOil(1000n)),
+      budgetUtxo: budgetUtxo(lampOildrop(1000n)),
     })).rejects.toThrow(/amount must be > 0/);
   });
 
   it("rejects channel mismatch (account TEAM vs budget RESERVE)", async () => {
     const { lucid } = mockLucid("addr_committee");
     await expect(buildClaimTx({
-      ...base, lucid, amount: lampOil(10n),
+      ...base, lucid, amount: lampOildrop(10n),
       claimAccountUtxo: claimUtxo({ entitlement: 0n, redeemed: 0n, channel: CHANNEL_TEAM }),
-      budgetUtxo: budgetUtxo(lampOil(1000n), CHANNEL_RESERVE),
+      budgetUtxo: budgetUtxo(lampOildrop(1000n), CHANNEL_RESERVE),
     })).rejects.toThrow(/channel mismatch/);
   });
 
-  it("rejects amount > remaining_oil (vượt budget kênh — Lớp A)", async () => {
+  it("rejects amount > remaining_oildrop (vượt budget kênh — Lớp A)", async () => {
     const { lucid } = mockLucid("addr_committee");
     await expect(buildClaimTx({
-      ...base, lucid, amount: lampOil(101n),
+      ...base, lucid, amount: lampOildrop(101n),
       claimAccountUtxo: claimUtxo({ entitlement: 0n, redeemed: 0n }),
-      budgetUtxo: budgetUtxo(lampOil(100n)),
+      budgetUtxo: budgetUtxo(lampOildrop(100n)),
     })).rejects.toThrow(/vượt budget/);
   });
 
   it("rejects budget UTxO thiếu NFT authenticity", async () => {
     const { lucid } = mockLucid("addr_committee");
     await expect(buildClaimTx({
-      ...base, lucid, amount: lampOil(10n),
+      ...base, lucid, amount: lampOildrop(10n),
       claimAccountUtxo: claimUtxo({ entitlement: 0n, redeemed: 0n }),
-      budgetUtxo: budgetUtxo(lampOil(1000n), CHANNEL_TEAM, false),
+      budgetUtxo: budgetUtxo(lampOildrop(1000n), CHANNEL_TEAM, false),
     })).rejects.toThrow(/exactly 1 NFT/);
   });
 
   it("rejects below-threshold signers", async () => {
     const { lucid } = mockLucid("addr_committee");
     await expect(buildClaimTx({
-      ...base, lucid, amount: lampOil(10n),
+      ...base, lucid, amount: lampOildrop(10n),
       claimAccountUtxo: claimUtxo({ entitlement: 0n, redeemed: 0n }),
-      budgetUtxo: budgetUtxo(lampOil(1000n)),
+      budgetUtxo: budgetUtxo(lampOildrop(1000n)),
       signerKeyHashes: [COMMITTEE[0]!],   // 1 < 2
     })).rejects.toThrow(/need ≥ 2 signers/);
   });
@@ -218,12 +218,12 @@ describe("buildClaimTx — cấp entitlement + trừ remaining (khoá chéo)", (
   it("exact drain: amount == remaining → remaining 0 (biên hợp lệ)", async () => {
     const { lucid } = mockLucid("addr_committee");
     const res = await buildClaimTx({
-      ...base, lucid, amount: lampOil(500n),
-      claimAccountUtxo: claimUtxo({ entitlement: lampOil(100n), redeemed: 0n }),
-      budgetUtxo: budgetUtxo(lampOil(500n)),
+      ...base, lucid, amount: lampOildrop(500n),
+      claimAccountUtxo: claimUtxo({ entitlement: lampOildrop(100n), redeemed: 0n }),
+      budgetUtxo: budgetUtxo(lampOildrop(500n)),
     });
-    expect(res.newBudgetDatum.remaining_oil).toBe(0n);
-    expect(res.newClaimDatum.entitlement).toBe(lampOil(600n));
+    expect(res.newBudgetDatum.remaining_oildrop).toBe(0n);
+    expect(res.newClaimDatum.entitlement).toBe(lampOildrop(600n));
   });
 });
 
@@ -240,13 +240,13 @@ describe("buildRedeemTx — vested = min(E, D·dpe·Δ), rút treasury cùng kê
     // E=250, D=100, dpe=1, t0=0, t=3 → vested=min(250,300)=250; redeemed=100 → amount=150.
     const res = await buildRedeemTx({
       ...base, lucid, validFromMs: epochMs(3n),
-      claimAccountUtxo: claimUtxo({ entitlement: lampOil(250n), redeemed: lampOil(100n) }),
-      treasuryUtxo: treasuryUtxo(lampOil(1000n), CHANNEL_TEAM, { [DUST]: 3n }),
+      claimAccountUtxo: claimUtxo({ entitlement: lampOildrop(250n), redeemed: lampOildrop(100n) }),
+      treasuryUtxo: treasuryUtxo(lampOildrop(1000n), CHANNEL_TEAM, { [DUST]: 3n }),
     });
-    expect(res.vested).toBe(lampOil(250n));
-    expect(res.amount).toBe(lampOil(150n));
-    expect(res.newClaimDatum.redeemed).toBe(lampOil(250n));
-    expect(res.newClaimDatum.entitlement).toBe(lampOil(250n));   // bất biến
+    expect(res.vested).toBe(lampOildrop(250n));
+    expect(res.amount).toBe(lampOildrop(150n));
+    expect(res.newClaimDatum.redeemed).toBe(lampOildrop(250n));
+    expect(res.newClaimDatum.entitlement).toBe(lampOildrop(250n));   // bất biến
     expect(res.newClaimDatum.channel_id).toBe(CHANNEL_TEAM);     // bất biến
 
     expect(rec.collectFrom).toHaveLength(2);                     // account + treasury
@@ -255,14 +255,14 @@ describe("buildRedeemTx — vested = min(E, D·dpe·Δ), rút treasury cùng kê
 
     // treasury output: LAMP 1000→850, dust + lovelace + datum bảo toàn
     const tOut = rec.payData.find(p => p.address === scriptAddr(FAKE_TREASURY))!;
-    expect(tOut.assets[LAMP_UNIT]).toBe(lampOil(850n));
+    expect(tOut.assets[LAMP_UNIT]).toBe(lampOildrop(850n));
     expect(tOut.assets.lovelace).toBe(5_000_000n);
     expect(tOut.assets[DUST]).toBe(3n);
     expect(tOut.datum).toBe(treasuryDatumToCbor({ committee_hash: COMMITTEE_HASH, channel_id: CHANNEL_TEAM }));
 
     // user nhận đúng amount + min-ADA tường minh (F4); owner ký
     expect(rec.payAddr).toHaveLength(1);
-    expect(rec.payAddr[0]!.assets[LAMP_UNIT]).toBe(lampOil(150n));
+    expect(rec.payAddr[0]!.assets[LAMP_UNIT]).toBe(lampOildrop(150n));
     expect(rec.payAddr[0]!.assets.lovelace).toBe(2_000_000n);   // F4 min-ADA
     expect(rec.payAddr[0]!.address).toBe("addr_user");
     expect(rec.signers).toContain(OWNER);
@@ -274,10 +274,10 @@ describe("buildRedeemTx — vested = min(E, D·dpe·Δ), rút treasury cùng kê
     const { lucid } = mockLucid("addr_user");
     const res = await buildRedeemTx({
       ...base, lucid, validFromMs: epochMs(1n),
-      claimAccountUtxo: claimUtxo({ entitlement: lampOil(250n), redeemed: 0n }),
-      treasuryUtxo: treasuryUtxo(lampOil(1000n)),
+      claimAccountUtxo: claimUtxo({ entitlement: lampOildrop(250n), redeemed: 0n }),
+      treasuryUtxo: treasuryUtxo(lampOildrop(1000n)),
     });
-    expect(res.amount).toBe(lampOil(100n));
+    expect(res.amount).toBe(lampOildrop(100n));
   });
 
   it("exact full drain treasury (released == LAMP có)", async () => {
@@ -285,10 +285,10 @@ describe("buildRedeemTx — vested = min(E, D·dpe·Δ), rút treasury cùng kê
     // E=100, t=5 → vested=100; treasury chỉ 100 LAMP → out 0, bỏ unit.
     const res = await buildRedeemTx({
       ...base, lucid, validFromMs: epochMs(5n),
-      claimAccountUtxo: claimUtxo({ entitlement: lampOil(100n), redeemed: 0n }),
-      treasuryUtxo: treasuryUtxo(lampOil(100n)),
+      claimAccountUtxo: claimUtxo({ entitlement: lampOildrop(100n), redeemed: 0n }),
+      treasuryUtxo: treasuryUtxo(lampOildrop(100n)),
     });
-    expect(res.amount).toBe(lampOil(100n));
+    expect(res.amount).toBe(lampOildrop(100n));
     expect(res.treasuryAfter).toBe(0n);
     const tOut = rec.payData.find(p => p.address === scriptAddr(FAKE_TREASURY))!;
     expect(tOut.assets[LAMP_UNIT]).toBeUndefined();   // hết LAMP → bỏ unit
@@ -299,8 +299,8 @@ describe("buildRedeemTx — vested = min(E, D·dpe·Δ), rút treasury cùng kê
     const { lucid, rec } = mockLucid("addr_user");
     await buildRedeemTx({
       ...base, lucid, validFromMs: epochMs(2n),
-      claimAccountUtxo: claimUtxo({ entitlement: lampOil(250n), redeemed: 0n }),
-      treasuryUtxo: treasuryUtxo(lampOil(1000n)),
+      claimAccountUtxo: claimUtxo({ entitlement: lampOildrop(250n), redeemed: 0n }),
+      treasuryUtxo: treasuryUtxo(lampOildrop(1000n)),
     });
     expect(rec.validFrom).toEqual([Number(epochMs(2n))]);
   });
@@ -314,12 +314,12 @@ describe("buildRedeemTx — vested = min(E, D·dpe·Δ), rút treasury cùng kê
     const validFromMs = (29n * MS_PER_EPOCH) / 10n;   // 2.9 epoch
     const res = await buildRedeemTx({
       ...base, lucid, validFromMs,
-      claimAccountUtxo: claimUtxo({ entitlement: lampOil(1000n), redeemed: 0n }),
-      treasuryUtxo: treasuryUtxo(lampOil(5000n)),
+      claimAccountUtxo: claimUtxo({ entitlement: lampOildrop(1000n), redeemed: 0n }),
+      treasuryUtxo: treasuryUtxo(lampOildrop(5000n)),
     });
     // floor(2.9) = epoch 2 → vested = 100·1·2 = 200 (KHÔNG phải 290 hay 300).
-    expect(res.vested).toBe(lampOil(200n));
-    expect(res.amount).toBe(lampOil(200n));
+    expect(res.vested).toBe(lampOildrop(200n));
+    expect(res.amount).toBe(lampOildrop(200n));
     // validFrom set ĐÚNG ms gốc (Finite), không phải epoch đã floor.
     expect(rec.validFrom).toEqual([Number(validFromMs)]);
   });
@@ -329,18 +329,18 @@ describe("buildRedeemTx — vested = min(E, D·dpe·Δ), rút treasury cùng kê
     // validFromMs = 4·msPerEpoch → epoch 4 chẵn. E=1000 → vested=100·4=400.
     const res = await buildRedeemTx({
       ...base, lucid, validFromMs: epochMs(4n),
-      claimAccountUtxo: claimUtxo({ entitlement: lampOil(1000n), redeemed: 0n }),
-      treasuryUtxo: treasuryUtxo(lampOil(5000n)),
+      claimAccountUtxo: claimUtxo({ entitlement: lampOildrop(1000n), redeemed: 0n }),
+      treasuryUtxo: treasuryUtxo(lampOildrop(5000n)),
     });
-    expect(res.vested).toBe(lampOil(400n));
+    expect(res.vested).toBe(lampOildrop(400n));
   });
 
   it("rejects double-redeem (redeemable ≤ 0)", async () => {
     const { lucid } = mockLucid("addr_user");
     await expect(buildRedeemTx({
       ...base, lucid, validFromMs: epochMs(1n),
-      claimAccountUtxo: claimUtxo({ entitlement: lampOil(250n), redeemed: lampOil(100n) }),
-      treasuryUtxo: treasuryUtxo(lampOil(1000n)),
+      claimAccountUtxo: claimUtxo({ entitlement: lampOildrop(250n), redeemed: lampOildrop(100n) }),
+      treasuryUtxo: treasuryUtxo(lampOildrop(1000n)),
     })).rejects.toThrow(/redeemable ≤ 0/);
   });
 
@@ -348,8 +348,8 @@ describe("buildRedeemTx — vested = min(E, D·dpe·Δ), rút treasury cùng kê
     const { lucid } = mockLucid("addr_user");
     await expect(buildRedeemTx({
       ...base, lucid, validFromMs: epochMs(5n),
-      claimAccountUtxo: claimUtxo({ entitlement: lampOil(250n), redeemed: 0n, start_epoch: 5n }),
-      treasuryUtxo: treasuryUtxo(lampOil(1000n)),
+      claimAccountUtxo: claimUtxo({ entitlement: lampOildrop(250n), redeemed: 0n, start_epoch: 5n }),
+      treasuryUtxo: treasuryUtxo(lampOildrop(1000n)),
     })).rejects.toThrow(/redeemable ≤ 0/);
   });
 
@@ -357,8 +357,8 @@ describe("buildRedeemTx — vested = min(E, D·dpe·Δ), rút treasury cùng kê
     const { lucid } = mockLucid("addr_user");
     await expect(buildRedeemTx({
       ...base, lucid, validFromMs: epochMs(3n),
-      claimAccountUtxo: claimUtxo({ entitlement: lampOil(250n), redeemed: 0n, channel: CHANNEL_TEAM }),
-      treasuryUtxo: treasuryUtxo(lampOil(1000n), CHANNEL_RESERVE),
+      claimAccountUtxo: claimUtxo({ entitlement: lampOildrop(250n), redeemed: 0n, channel: CHANNEL_TEAM }),
+      treasuryUtxo: treasuryUtxo(lampOildrop(1000n), CHANNEL_RESERVE),
     })).rejects.toThrow(/channel mismatch/);
   });
 
@@ -366,8 +366,8 @@ describe("buildRedeemTx — vested = min(E, D·dpe·Δ), rút treasury cùng kê
     const { lucid } = mockLucid("addr_user");
     await expect(buildRedeemTx({
       ...base, lucid, validFromMs: epochMs(1n),
-      claimAccountUtxo: claimUtxo({ entitlement: lampOil(250n), redeemed: 0n }),
-      treasuryUtxo: treasuryUtxo(lampOil(50n)),
+      claimAccountUtxo: claimUtxo({ entitlement: lampOildrop(250n), redeemed: 0n }),
+      treasuryUtxo: treasuryUtxo(lampOildrop(50n)),
     })).rejects.toThrow(/< amount/);
   });
 
@@ -375,8 +375,8 @@ describe("buildRedeemTx — vested = min(E, D·dpe·Δ), rút treasury cùng kê
     const { lucid } = mockLucid("addr_user");
     await expect(buildRedeemTx({
       ...base, lucid, msPerEpoch: 0n, validFromMs: epochMs(3n),
-      claimAccountUtxo: claimUtxo({ entitlement: lampOil(250n), redeemed: 0n }),
-      treasuryUtxo: treasuryUtxo(lampOil(1000n)),
+      claimAccountUtxo: claimUtxo({ entitlement: lampOildrop(250n), redeemed: 0n }),
+      treasuryUtxo: treasuryUtxo(lampOildrop(1000n)),
     })).rejects.toThrow(/msPerEpoch must be > 0/);
   });
 });
@@ -397,7 +397,7 @@ describe("buildSetupChannelTx — khởi tạo kênh hard-cap 2 lớp", () => {
   it("consume genesis, mint 1 NFT name=channel, beacon+treasury đúng datum/value", async () => {
     const { lucid, rec } = mockLucid("addr_committee");
     const res = await buildSetupChannelTx({
-      ...base, lucid, channelId: CHANNEL_TEAM, budgetOil: lampOil(1000n),
+      ...base, lucid, channelId: CHANNEL_TEAM, budgetOildrop: lampOildrop(1000n),
     });
     // consume genesis
     expect(rec.collectFrom).toHaveLength(1);
@@ -412,27 +412,27 @@ describe("buildSetupChannelTx — khởi tạo kênh hard-cap 2 lớp", () => {
     // beacon output: NFT → channel_budget script, datum {channel, remaining=budget}
     const bOut = rec.payData.find(p => p.address === scriptAddr(FAKE_BUDGET))!;
     expect(bOut.assets[nftUnit]).toBe(1n);
-    expect(bOut.datum).toBe(channelBudgetDatumToCbor({ channel_id: CHANNEL_TEAM, remaining_oil: lampOil(1000n) }));
+    expect(bOut.datum).toBe(channelBudgetDatumToCbor({ channel_id: CHANNEL_TEAM, remaining_oildrop: lampOildrop(1000n) }));
 
-    // treasury output: LAMP = budgetOil, datum {committee, channel}
+    // treasury output: LAMP = budgetOildrop, datum {committee, channel}
     const tOut = rec.payData.find(p => p.address === scriptAddr(FAKE_TREASURY))!;
-    expect(tOut.assets[LAMP_UNIT]).toBe(lampOil(1000n));
+    expect(tOut.assets[LAMP_UNIT]).toBe(lampOildrop(1000n));
     expect(tOut.datum).toBe(treasuryDatumToCbor({ committee_hash: COMMITTEE_HASH, channel_id: CHANNEL_TEAM }));
 
     expect(res.nftUnit).toBe(nftUnit);
   });
 
-  it("rejects budgetOil ≤ 0", async () => {
+  it("rejects budgetOildrop ≤ 0", async () => {
     const { lucid } = mockLucid("addr_committee");
     await expect(buildSetupChannelTx({
-      ...base, lucid, channelId: CHANNEL_TEAM, budgetOil: 0n,
-    })).rejects.toThrow(/budgetOil must be > 0/);
+      ...base, lucid, channelId: CHANNEL_TEAM, budgetOildrop: 0n,
+    })).rejects.toThrow(/budgetOildrop must be > 0/);
   });
 
   it("F3: rejects genesisUtxo lệch genesis_ref (sai outputIndex)", async () => {
     const { lucid } = mockLucid("addr_committee");
     await expect(buildSetupChannelTx({
-      ...base, lucid, channelId: CHANNEL_TEAM, budgetOil: lampOil(1000n),
+      ...base, lucid, channelId: CHANNEL_TEAM, budgetOildrop: lampOildrop(1000n),
       genesisRef: { txHash: "aa".repeat(32), outputIndex: 0 },   // utxo là #7 → lệch
     })).rejects.toThrow(/TSETUP-001: genesisUtxo không khớp genesis_ref/);
   });
@@ -440,7 +440,7 @@ describe("buildSetupChannelTx — khởi tạo kênh hard-cap 2 lớp", () => {
   it("F3: rejects genesisUtxo lệch genesis_ref (sai txHash)", async () => {
     const { lucid } = mockLucid("addr_committee");
     await expect(buildSetupChannelTx({
-      ...base, lucid, channelId: CHANNEL_TEAM, budgetOil: lampOil(1000n),
+      ...base, lucid, channelId: CHANNEL_TEAM, budgetOildrop: lampOildrop(1000n),
       genesisRef: { txHash: "bb".repeat(32), outputIndex: 7 },   // tx khác → lệch
     })).rejects.toThrow(/TSETUP-001/);
   });

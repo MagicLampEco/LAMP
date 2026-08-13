@@ -6,6 +6,9 @@
 //   lamp_policy        : policy id LAMP.
 //   lamp_name          : asset name LAMP.
 //   ms_per_epoch       : ms mỗi epoch (network-specific) → quy đổi epoch.
+//   campaign_id        : 32 byte blake2b_256(tên chiến dịch) — bake leaf schema C.
+//   snapshot_epoch     : epoch snapshot (=E_cut). HẰNG cho pot 1-snapshot → epoch_be8 leaf.
+//   role               : 1 byte vai (Delegator=1). Cô lập proof theo vai trong campaign.
 //
 // ─────────────────────────────────────────────────────────────────────────
 // CLAIM (permissionless, Merkle-gated):
@@ -46,6 +49,9 @@ validator airdrop_pool(
   lamp_policy: ByteArray,
   lamp_name: ByteArray,
   ms_per_epoch: Int,
+  campaign_id: ByteArray,
+  snapshot_epoch: Int,
+  role: Int,
 ) {
   spend(
     datum_opt: Option<AirdropPool>,
@@ -76,8 +82,15 @@ validator airdrop_pool(
         let now_upper = util.get_epoch_upper(tx, ms_per_epoch)
         expect now_upper < pool.deadline_epoch
 
-        // Merkle-gated: (claimer, amount) thuộc snapshot.
-        expect merkle.verify_proof(pool.merkle_root, claimer, amount, proof)
+        // Leaf schema C: owner = payment-cred-hash(claimer) (28 byte); campaign_id/
+        // snapshot_epoch/role bake PARAM → cô lập proof theo chiến dịch + vai. CHÍNH
+        // leaf này dùng cho CẢ verify Merkle CẢ tên slot-NFT (nhất quán 1 nguồn).
+        let owner = util.payment_credential_hash(claimer)
+        let leaf =
+          merkle.leaf_hash_v2(campaign_id, snapshot_epoch, role, owner, amount)
+
+        // Merkle-gated: leaf (claimer, amount) thuộc snapshot.
+        expect merkle.verify(pool.merkle_root, leaf, proof)
 
         // Đúng 1 POOL output mang POOL NFT (pool tiếp tục tồn tại để claimer khác).
         expect
@@ -123,8 +136,8 @@ validator airdrop_pool(
           )
         expect to_claimer >= amount
 
-        // CHỐNG DOUBLE-CLAIM (SPEND-ONCE): consume ĐÚNG claim-slot UTxO của leaf này.
-        let leaf = merkle.leaf_hash(claimer, amount)
+        // CHỐNG DOUBLE-CLAIM (SPEND-ONCE): consume ĐÚNG claim-slot UTxO của leaf này
+        // (leaf schema C tính ở trên — cùng nguồn với verify Merkle).
         // (1) ĐÚNG 1 slot input mang (policy, leaf) Ở SCRIPT REGISTRY (marker).
         //     So PAYMENT-CREDENTIAL script-hash (không full-address) — mẫu SRCL
         //     util.is_at_script: bỏ qua stake credential (slot hợp lệ vẫn được nhận
@@ -204,7 +217,15 @@ const ap_ms_per_epoch: Int = 86_400_000
 
 const ap_deadline: Int = 500
 
-// claimer A: amount 1_000_000 oil (1 LAMP). claimer B: 2_000_000.
+// Schema C params (bake vào validator). campaign_id 32 byte mẫu; epoch=637; role=1.
+const ap_campaign_id: ByteArray =
+  #"f5beb28d9ac6330b590fd5cc060d7e7fdbe2433130a4f1ffe93bb0deeb72db54"
+
+const ap_snapshot_epoch: Int = 637
+
+const ap_role: Int = 1
+
+// claimer A: amount 1_000_000 oildrop (1 LAMP). claimer B: 2_000_000.
 const ap_amount_a: Int = 1_000_000
 
 const ap_amount_b: Int = 2_000_000
@@ -225,13 +246,26 @@ fn ap_marker_addr() -> Address {
   util.script_address(ap_marker_sh)
 }
 
-// Cây 2 leaf: L_A = leaf(A, amount_a), L_B = leaf(B, amount_b). root = node(L_A,L_B).
+// Cây 2 leaf schema C: L_A = leaf(ownerA, amount_a), L_B = leaf(ownerB, amount_b).
+// owner = payment-cred-hash(claimer) (= pkh của vk_address). root = node(L_A,L_B).
 fn ap_leaf_a() -> ByteArray {
-  merkle.leaf_hash(ap_claimer_a(), ap_amount_a)
+  merkle.leaf_hash_v2(
+    ap_campaign_id,
+    ap_snapshot_epoch,
+    ap_role,
+    util.payment_credential_hash(ap_claimer_a()),
+    ap_amount_a,
+  )
 }
 
 fn ap_leaf_b() -> ByteArray {
-  merkle.leaf_hash(ap_claimer_b(), ap_amount_b)
+  merkle.leaf_hash_v2(
+    ap_campaign_id,
+    ap_snapshot_epoch,
+    ap_role,
+    util.payment_credential_hash(ap_claimer_b()),
+    ap_amount_b,
+  )
 }
 
 fn ap_root() -> ByteArray {
@@ -374,6 +408,9 @@ fn ap_run_claim_tx(tx: Transaction) -> Bool {
     ap_lamp_policy,
     ap_lamp_name,
     ap_ms_per_epoch,
+    ap_campaign_id,
+    ap_snapshot_epoch,
+    ap_role,
     Some(ap_datum(0)),
     Claim {
       claimer: ap_claimer_a(),
@@ -399,6 +436,48 @@ test claim_correct_amount_to_claimer() {
   ap_run_claim(100, ap_amount_a + 500_000)
 }
 
+test claim_reject_script_tier_owner_collision() fail {
+  // TIER-COLLAPSE — hồi quy do schema C. owner[28] là hash TRẦN, không mang byte
+  // phân biệt VerificationKey với Script. Kẻ tấn công lấy proof CÔNG KHAI của A
+  // rồi khai `claimer = Address{Script(#"c1a1")}` — cùng hash payment-cred với A.
+  // Nếu util.payment_credential_hash còn nhận nhánh Script thì leaf trùng khít
+  // leaf_a: Merkle verify PASS, pool nhả đúng amount, slot A bị burn, và LAMP rơi
+  // vào địa chỉ script mà không ai mở được (phải trình script có blake2b_224 =
+  // #"c1a1"). A mất phần vĩnh viễn, chi phí kẻ tấn công ≈ phí 1 tx.
+  // Ràng buộc `expect VerificationKey` trong util phải chặn ngay tại đây.
+  let evil_claimer = util.script_address(#"c1a1")
+  let base =
+    Transaction {
+      ..placeholder,
+      inputs: [
+        ap_pool_input(10_000_000, 100_000_000, 0),
+        ap_slot_input(3, ap_marker_addr(), ap_leaf_a()),
+      ],
+      outputs: [
+        ap_pool_output(10_000_000, 100_000_000 - ap_amount_a, 1),
+        ap_claimer_output(evil_claimer, ap_amount_a),
+      ],
+      mint: assets.zero |> assets.add(ap_nft_policy, ap_leaf_a(), -1),
+    }
+  airdrop_pool.spend(
+    ap_nft_policy,
+    ap_lamp_policy,
+    ap_lamp_name,
+    ap_ms_per_epoch,
+    ap_campaign_id,
+    ap_snapshot_epoch,
+    ap_role,
+    Some(ap_datum(0)),
+    Claim {
+      claimer: evil_claimer,
+      amount: ap_amount_a,
+      proof: [ledger_proof_step(False, ap_leaf_b())],
+    },
+    util.mk_ref(0),
+    ap_tx_before(100, base),
+  )
+}
+
 test claim_reject_wrong_proof() fail {
   // proof sibling sai (#"dead") → verify_proof False → reject.
   let tx = ap_claim_tx_a(100, ap_amount_a)
@@ -407,6 +486,9 @@ test claim_reject_wrong_proof() fail {
     ap_lamp_policy,
     ap_lamp_name,
     ap_ms_per_epoch,
+    ap_campaign_id,
+    ap_snapshot_epoch,
+    ap_role,
     Some(ap_datum(0)),
     Claim {
       claimer: ap_claimer_a(),
@@ -426,6 +508,9 @@ test claim_reject_wrong_amount() fail {
     ap_lamp_policy,
     ap_lamp_name,
     ap_ms_per_epoch,
+    ap_campaign_id,
+    ap_snapshot_epoch,
+    ap_role,
     Some(ap_datum(0)),
     Claim {
       claimer: ap_claimer_a(),
@@ -636,6 +721,9 @@ fn ap_run_sweep(now_epoch: Int, pool_lamp: Int, to_treasury: Int) -> Bool {
     ap_lamp_policy,
     ap_lamp_name,
     ap_ms_per_epoch,
+    ap_campaign_id,
+    ap_snapshot_epoch,
+    ap_role,
     Some(ap_datum(5)),
     Sweep,
     util.mk_ref(0),

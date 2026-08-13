@@ -1,7 +1,7 @@
 // Treasury reserveGateBuilder — dựng tx SPEND reserve_gate (ép SÀN + giữ auth, reserve_gate.ak).
 //
 // VAI TRÒ (cầu Reserve↔Treasury, lớp ép sàn):
-//   reserve_gate giữ Treasury-pull auth NFT. Spend hợp lệ ⟺ Treasury parked < floor_oil.
+//   reserve_gate giữ Treasury-pull auth NFT. Spend hợp lệ ⟺ Treasury parked < floor_oildrop.
 //   Khi gate spend → auth NFT thành input → thỏa điều kiện "treasury_auth NFT input" của
 //   reserve_draw.ak (Reserve), cho phép Reserve nhả. 2 validator chạy ĐỒNG THỜI 1 tx:
 //   reserve_gate (ép sàn + re-output auth về gate) và reserve_draw (ép trần epoch + kế toán).
@@ -13,7 +13,7 @@
 // Param onchain (apply trước deploy):
 //   custody_nft_policy/name — authenticity custody (custody_seed one-shot NFT).
 //   lamp_policy/token_name  — LAMP/tLAMP (đo parked trong custody.value).
-//   floor_oil               — SÀN parked. parked < floor_oil mới cho kéo.
+//   floor_oildrop               — SÀN parked. parked < floor_oildrop mới cho kéo.
 //   auth_policy/auth_name    — = treasury_auth_policy/name của reserve_draw (reserve_auth đúc).
 //
 // Datum + redeemer gate = Void = Constr(0, []).
@@ -58,8 +58,8 @@ export interface ReserveGateSpendParams {
   lampPolicyId: string;
   tokenName: string;
 
-  /** SÀN parked (oil) — khớp param floor_oil onchain. parked < floor mới cho kéo. */
-  floorOil: bigint;
+  /** SÀN parked (oildrop) — khớp param floor_oildrop onchain. parked < floor mới cho kéo. */
+  floorOildrop: bigint;
 
   /** min-ADA kèm auth NFT re-output (mặc định = ADA hiện có ở authUtxo, fallback 2 tADA). */
   minAda?: bigint;
@@ -71,7 +71,7 @@ export interface ReserveGateSpendParams {
  *   - reference custodyUtxo (CIP-31, KHÔNG tiêu).
  *   - re-output auth NFT VỀ gateAddress (inline Void datum) — tái dùng.
  *
- * Fail-fast offchain: ép parked < floorOil trước khi build (khớp G-FLOOR-1 onchain),
+ * Fail-fast offchain: ép parked < floorOildrop trước khi build (khớp G-FLOOR-1 onchain),
  * tránh submit tx chắc-chắn-fail tốn phí.
  *
  * GỘP với Reserve: caller dùng `attachGateSpend(txb, params)` để thêm phần gate vào
@@ -82,9 +82,9 @@ export function attachGateSpend(
   p: ReserveGateSpendParams,
 ): ReturnType<LucidEvolution["newTx"]> {
   const parked = parkedOf(p.custodyUtxo, p.lampPolicyId, p.tokenName);
-  if (parked >= p.floorOil) {
+  if (parked >= p.floorOildrop) {
     throw new Error(
-      `RGATE-001: parked (${parked}) ≥ floor (${p.floorOil}) — Treasury KHÔNG dưới sàn, không được kéo Reserve.`,
+      `RGATE-001: parked (${parked}) ≥ floor (${p.floorOildrop}) — Treasury KHÔNG dưới sàn, không được kéo Reserve.`,
     );
   }
 
@@ -129,7 +129,7 @@ export async function buildGateOnlyTx(p: ReserveGateSpendParams): Promise<{
     `═══ Reserve Gate Spend (ép sàn) ═══`,
     `Auth:    ${p.authPolicyId}.${p.authName}`,
     `Custody: ${p.custodyUtxo.txHash}#${p.custodyUtxo.outputIndex} (reference)`,
-    `Parked:  ${parked} < floor ${p.floorOil} ✓`,
+    `Parked:  ${parked} < floor ${p.floorOildrop} ✓`,
     `→ auth re-output về gate: ${p.gateAddress}`,
   ].join("\n");
 

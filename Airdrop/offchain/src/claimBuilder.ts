@@ -125,10 +125,10 @@ export async function buildClaimTx(params: ClaimParams): Promise<ClaimResult> {
   const summary = [
     `═══ TIGER Airdrop Claim (spend-once) ═══`,
     `Claimer:      ${claimerAddress}`,
-    `Amount:       ${amount / 1_000_000n} LAMP (${amount} oil)`,
+    `Amount:       ${amount / 1_000_000n} LAMP (${amount} oildrop)`,
     `Leaf:         ${leaf}`,
     `Slot unit:    ${slotUnit} (BURN -1, từ ${pool.marker_dest})`,
-    `Pool LAMP:    ${poolLamp} → ${poolLamp - amount} oil`,
+    `Pool LAMP:    ${poolLamp} → ${poolLamp - amount} oildrop`,
     `claimed_count:${pool.claimed_count} → ${pool.claimed_count + 1n}`,
     `Proof steps:  ${proof.length}`,
   ].join("\n");

@@ -52,10 +52,10 @@ export function faucetDatumFromCbor(cbor: string): FaucetDatum {
 }
 
 // ── FaucetConfig (v2 pool datum) ────────────────────────────────────────
-//   Constr(0, [drip_oil, cooldown_epochs, reclaim_epochs])
+//   Constr(0, [drip_oildrop, cooldown_epochs, reclaim_epochs])
 
 export function encodeFaucetConfig(c: FaucetConfig): Constr<Data> {
-  return new Constr(0, [c.drip_oil, c.cooldown_epochs, c.reclaim_epochs]);
+  return new Constr(0, [c.drip_oildrop, c.cooldown_epochs, c.reclaim_epochs]);
 }
 
 export function decodeFaucetConfig(d: Data): FaucetConfig {
@@ -63,7 +63,7 @@ export function decodeFaucetConfig(d: Data): FaucetConfig {
   if (c.index !== 0) throw new Error(`FAUCET-DATUM-030: FaucetConfig expects Constr 0, got ${c.index}`);
   if (c.fields.length !== 3) throw new Error(`FAUCET-DATUM-031: FaucetConfig expects 3 fields, got ${c.fields.length}`);
   return {
-    drip_oil: asInt(c.fields[0]!, "drip_oil"),
+    drip_oildrop: asInt(c.fields[0]!, "drip_oildrop"),
     cooldown_epochs: asInt(c.fields[1]!, "cooldown_epochs"),
     reclaim_epochs: asInt(c.fields[2]!, "reclaim_epochs"),
   };

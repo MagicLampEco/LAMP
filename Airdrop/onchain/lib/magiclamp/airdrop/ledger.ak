@@ -2,7 +2,7 @@
 //
 // ─────────────────────────────────────────────────────────────────────────
 // MỤC TIÊU (TOKENOMICS §TIGER Airdrop)
-//   0,1 tỷ LAMP = 100_000_000 LAMP = 100_000_000 × 10^6 oil airdrop retro cho
+//   0,1 tỷ LAMP = 100_000_000 LAMP = 100_000_000 × 10^6 oildrop airdrop retro cho
 //   delegator TIGER pool theo snapshot. Claim mở 360 epoch sau 29/7; phần DƯ
 //   (không ai claim) → hoàn về Treasury. 1 địa chỉ/DID claim đúng phần snapshot,
 //   KHÔNG double-claim.
@@ -68,7 +68,7 @@
 //     onchain (vốn bất khả thi trong eUTXO).
 //
 // ─────────────────────────────────────────────────────────────────────────
-// ĐƠN VỊ (1 LAMP = 10^6 oil) — KHỚP @magiclamp/utils OIL_PER_LAMP.
+// ĐƠN VỊ (1 LAMP = 10^6 oildrop) — KHỚP @magiclamp/utils OILDROP_PER_LAMP.
 
 use cardano/address.{Address}
 
@@ -85,7 +85,8 @@ pub const setup_authority_name: ByteArray = #"415345545550"
 ///   AirdropPool{merkle_root, deadline_epoch, treasury_dest, marker_dest, claimed_count}
 ///     = Constr(0, [bytes, int, Address, Address, int])
 pub type AirdropPool {
-  /// Gốc cây Merkle của snapshot (leaf = blake2b_256(address_bytes | amount_le)).
+  /// Gốc cây Merkle snapshot — leaf SCHEMA C (SCHEMA-MERKLE-V2-Tech-Spec §1):
+  /// blake2b_256(0x00 ‖ campaign_id[32] ‖ epoch_be8 ‖ role[1] ‖ owner[28] ‖ amount_oildrop_be8).
   merkle_root: ByteArray,
   /// Epoch (POSIX-derived) HẾT HẠN claim. Sau mốc này: chỉ Sweep được. Claim ép
   /// now < deadline_epoch. = (epoch 29/7) + 360.
@@ -109,7 +110,7 @@ pub type AirdropRedeemer {
   Claim {
     /// Address của claimer (khớp leaf + khớp output nhận LAMP).
     claimer: Address,
-    /// Lượng LAMP (oil) claimer được nhận (khớp leaf).
+    /// Lượng LAMP (oildrop) claimer được nhận (khớp leaf).
     amount: Int,
     /// Merkle proof: list các (is_left, sibling_hash) từ leaf → root.
     proof: List<ProofStep>,

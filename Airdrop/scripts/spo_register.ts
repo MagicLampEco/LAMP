@@ -264,7 +264,7 @@ async function main(): Promise<void> {
   console.log(`Tổng stake × ${history.length} epoch: ${fmtAda(totalStakeLovelace.toString())}`);
   console.log();
 
-  // 3. Luật chơi (model 3-pot — chốt 2026-07-11; xem SPO-CS-SPEC-Vi.md)
+  // 3. Luật chơi (model 3-pot — chốt 2026-07-11; xem spo-cs.md)
   console.log("LUẬT CHƠI AIRDROP SPO REGISTRATION (model 3-pot):");
   console.log("  1. Đăng ký để CHỨNG MINH tư cách SPO hợp lệ (đã sản xuất block, đủ");
   console.log("     tuổi pool, pledge tối thiểu, dedupe owner) → nhận phần SPO");
@@ -275,7 +275,7 @@ async function main(): Promise<void> {
   console.log("  4. Payment address đăng ký sẽ KHÔNG thay đổi sau khi nộp");
   console.log("  5. Deadline đăng ký: xem magiclamp.network/airdrop");
   console.log("  6. SPO không đăng ký / không qua cổng đúng hạn → phần dư về Treasury");
-  console.log("  Chi tiết công thức SPO 5M + CS 15M: xem SPO-CS-SPEC-Vi.md");
+  console.log("  Chi tiết công thức SPO 5M + CS 15M: xem spo-cs.md");
   console.log();
 
   if (!noInteract) {

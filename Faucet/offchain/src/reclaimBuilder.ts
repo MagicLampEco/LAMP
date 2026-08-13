@@ -102,8 +102,8 @@ export async function buildReclaimTx(params: ReclaimParams): Promise<ReclaimResu
   const summary = [
     `═══ Faucet v2 ReclaimIdle (thu hồi → pool) ═══`,
     `Account DID:  ${acct.did_name} (last_epoch ${acct.last_epoch})`,
-    `Reclaimed:    ${reclaimed / 1_000_000n} tLAMP (${reclaimed} oil) → pool`,
-    `Pool tLAMP:   ${poolLamp} → ${poolAfter} oil`,
+    `Reclaimed:    ${reclaimed / 1_000_000n} tLAMP (${reclaimed} oildrop) → pool`,
+    `Pool tLAMP:   ${poolLamp} → ${poolAfter} oildrop`,
   ].join("\n");
 
   return { tx, reclaimed, poolAfter, summary };

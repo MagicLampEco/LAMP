@@ -95,11 +95,11 @@ export function estimateFeeUsd(args: {
   return Math.min(raw, ceiling);
 }
 
-/** USD → oil (LAMP × 10^6, đơn vị nhỏ nhất LAMP). lamp = usd / lampUsd; oil = lamp × 10^6. */
-export function usdToOil(feeUsd: number, lampUsd: number = LAMP_USD_DEFAULT): bigint {
+/** USD → oildrop (LAMP × 10^6, đơn vị nhỏ nhất LAMP). lamp = usd / lampUsd; oildrop = lamp × 10^6. */
+export function usdToOildrop(feeUsd: number, lampUsd: number = LAMP_USD_DEFAULT): bigint {
   if (!Number.isFinite(lampUsd) || lampUsd <= 0) throw new Error("lampUsd phải hữu hạn, dương");
   const lamp = feeUsd / lampUsd;
-  // oil = round(lamp × 10^6). Floor sau khi nhân để giữ BigInt (đơn vị nhỏ nhất).
+  // oildrop = round(lamp × 10^6). Floor sau khi nhân để giữ BigInt (đơn vị nhỏ nhất).
   return BigInt(Math.round(lamp * 1_000_000));
 }
 
@@ -116,10 +116,10 @@ const FLAT_FEE_USD: Record<string, number> = {
 
 /**
  * Tạo PriceFn OriLife (cần LAMP policy thật + tỉ giá lampUsd runtime).
- * - animal.enroll: value-based theo loài (extra.species/declaredValueUsd) → estimateFeeUsd → oil LAMP.
+ * - animal.enroll: value-based theo loài (extra.species/declaredValueUsd) → estimateFeeUsd → oildrop LAMP.
  * - tree.verify_add: value-based nếu extra.species/declaredValueUsd có; nếu không → phí phẳng.
  * - animal.verify / fruit.lifecycle: phí phẳng nhỏ (không value-based).
- * Thu bằng LAMP (oil), cut về bucket PROTOCOL (orchestrator + anchor).
+ * Thu bằng LAMP (oildrop), cut về bucket PROTOCOL (orchestrator + anchor).
  *
  * STUB ở tỉ giá lampUsd + tham số DAO. WIRE THẬT: bơm params on-chain + oracle TWAP.
  */
@@ -168,7 +168,7 @@ export function makeOriLifePriceFn(opts: {
         return null;   // sự kiện không thu phí qua adapter này.
     }
 
-    const amount = usdToOil(feeUsd, lampUsd);
+    const amount = usdToOildrop(feeUsd, lampUsd);
     if (amount <= 0n) return null;   // phí 0 (làm tròn) → bỏ qua (không sinh CollectItem rỗng).
     return { asset: lamp, amount, bucketCategory: ORILIFE_BUCKETS.PROTOCOL };
   };

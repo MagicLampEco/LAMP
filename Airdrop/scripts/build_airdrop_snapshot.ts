@@ -1,3 +1,9 @@
+// ⚠️ DEPRECATED (2026-07-30) — KHÔNG dùng cho pot Delegator.
+//   Bản v1 này dựng leaf từ stake_address (claim KHÔNG trả được — lỗ #1), chỉ 1 pool
+//   (--pool — lỗ #2), và THIẾU ràng buộc giữ ≥N epoch liên tiếp (§1.5). Thay bằng:
+//       build_delegator_snapshot.ts  (v2: join stake→payment, đa pool, §1.5)
+//   Giữ lại chỉ để tham chiếu lịch sử. Không chạy cho phân phối thật.
+//
 // build_airdrop_snapshot.ts — Snapshot builder cho TIGER Airdrop.
 //
 // Lấy danh sách delegator TIGER pool tại epoch snapshot từ Blockfrost,
@@ -10,7 +16,7 @@
 //   npx tsx build_airdrop_snapshot.ts --epoch 580 --pool pool1abc... --out snapshot.json
 //
 // Mặc định: pool = TIGER_POOL_ID từ .env hoặc env.
-// Output: snapshot.json với {address, amount_lamp, amount_oil, stake_epoch}[]
+// Output: snapshot.json với {address, amount_lamp, amount_oildrop, stake_epoch}[]
 //
 // THUẬT TOÁN:
 //   1. Với mỗi epoch E: gọi /epochs/{E}/stakes?pool_id={pool} → danh sách
@@ -18,13 +24,13 @@
 //   2. Cộng dồn stake_epoch cho mỗi địa chỉ qua các epoch: S[addr] += amount
 //   3. Tổng = Σ S[addr]. Phần LAMP = floor(S[addr] × BUDGET / TOTAL_STAKE_EPOCH).
 //   4. Hamilton apportionment → đảm bảo tổng phân bổ = đúng BUDGET (không rò BigInt).
-//   5. Loại địa chỉ nhận < MIN_LAMP_ALLOCATION (default 1 LAMP = 1 × 10⁶ oil).
+//   5. Loại địa chỉ nhận < MIN_LAMP_ALLOCATION (default 1 LAMP = 1 × 10⁶ oildrop).
 //
 // GHI CHÚ 100M vs 120M (model 3-pot, chốt 2026-07-11): tổng Airdrop 120M LAMP =
 //   Delegator 100M + SPO 5M + CS 15M. Script này phân bổ phần DELEGATOR
 //   (DEFAULT_BUDGET = 100_000_000) ∝stake. Hai pot còn lại KHÔNG theo stake:
 //   SPO 5M chia đều cho SPO qua cổng, CS 15M theo Community Supporter (cs_score.ts).
-//   Xem SPO-CS-SPEC-Vi.md + AIRDROP-V2-SPEC-Vi.md.
+//   Xem spo-cs.md + CONTRACT.md.
 
 import { writeFile } from "node:fs/promises";
 import { resolve, dirname } from "node:path";
@@ -35,7 +41,7 @@ const __dir = dirname(fileURLToPath(import.meta.url));
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
-const OIL_PER_LAMP = 1_000_000n;
+const OILDROP_PER_LAMP = 1_000_000n;
 
 // Pool TIGER mặc định (Preview testnet). Override bằng --pool hoặc TIGER_POOL_ID env.
 const DEFAULT_TIGER_POOL =
@@ -127,7 +133,7 @@ interface PoolInfo {
 export interface SnapshotRow {
   address: string;
   amount_lamp: string;  // stringified bigint (để JSON serialize an toàn)
-  amount_oil: string;
+  amount_oildrop: string;
   cumulative_lovelace: string;
   stake_epochs: number;
 }
@@ -269,7 +275,7 @@ async function main(): Promise<void> {
     entries.push({
       address: addrs[i]!,
       amount_lamp: lamp.toString(),
-      amount_oil: (lamp * OIL_PER_LAMP).toString(),
+      amount_oildrop: (lamp * OILDROP_PER_LAMP).toString(),
       cumulative_lovelace: stakes[i]!.toString(),
       stake_epochs: epochCountPerAddr.get(addrs[i]!) ?? 0,
     });
@@ -300,7 +306,7 @@ async function main(): Promise<void> {
       note_spo_share:
         "Budget này = phần Delegator (100M LAMP, ∝stake). Model 3-pot: SPO 5M " +
         "chia đều cho SPO qua cổng + CS 15M theo Community Supporter — cả hai " +
-        "KHÔNG theo stake, tính riêng (cs_score.ts). Xem SPO-CS-SPEC-Vi.md.",
+        "KHÔNG theo stake, tính riêng (cs_score.ts). Xem spo-cs.md.",
     },
     entries,
   };
@@ -332,7 +338,7 @@ async function main(): Promise<void> {
   console.log();
   console.log("Bước tiếp theo:");
   console.log("  1. Kiểm tra snapshot: npx tsx check_airdrop.ts --snapshot snapshot.json --addr <stake_addr>");
-  console.log("  2. Deploy: npx tsx demo_airdrop.ts (xem OPERATOR-RUNBOOK.md để deploy thật)");
+  console.log("  2. Deploy: npx tsx demo_airdrop.ts (xem operator-runbook.md để deploy thật)");
 }
 
 main().catch((e) => {

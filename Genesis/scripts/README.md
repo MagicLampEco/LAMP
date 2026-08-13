@@ -34,4 +34,4 @@ SUBMIT=true npm run deploy       # gửi thật lên Preview
 - **Tx B**: spend SupplyState (Advance) + mint Δ tLAMP (DistributionVest) → recreate
   SupplyState' (dist_minted += Δ) + trả Δ cho ví. Authority stub = ví deploy (1-of-1).
 
-`TEST_MINT_OIL` (env, mặc định 100_000_000 = 100 tLAMP) — lượng mint thử ở Tx B.
+`TEST_MINT_OILDROP` (env, mặc định 100_000_000 = 100 tLAMP) — lượng mint thử ở Tx B.
