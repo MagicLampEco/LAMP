@@ -10,7 +10,15 @@ không cần proof/committee. Core engine **DID-agnostic** — dùng cho mọi C
 
 Nguồn chuẩn (interface contract): **[capped-drop/CONTRACT.md](./capped-drop/CONTRACT.md)**.
 Đặc tả đầy đủ: **[SPEC.md](./SPEC.md)** · hành vi **[capped-drop/Feat-Spec.md](./capped-drop/Feat-Spec.md)** ·
-chứng minh **[capped-drop/Math-Spec.md](./capped-drop/Math-Spec.md)**.
+chứng minh **[capped-drop/Math-Spec.md](./capped-drop/Math-Spec.md)** ·
+kỹ thuật **[capped-drop/Tech-Spec.md](./capped-drop/Tech-Spec.md)** ·
+triển khai **[capped-drop/Exec-Spec.md](./capped-drop/Exec-Spec.md)**.
+
+> **Đây là kho A-DEST canonical.** `treasury.ak` của module này là kho mà `DistributionVest`
+> bắt buộc rót LAMP vào — xem [`Genesis/kho-a-dest.md`](../Genesis/kho-a-dest.md).
+> Vì vậy nó giữ **sổ cái solvency** `outstanding_entitlement` (§C-SOLV-1..5) = **số còn nợ**
+> `Σ(entitlement − redeemed)`: tăng khi cấp, giảm khi trả, và luôn bị ép ≤ LAMP thật trong kho
+> tại từng lượt Claim.
 
 ## Công thức trung tâm
 
@@ -42,9 +50,11 @@ Distribution/
       constants.ak  types.ak  math.ak
       util.ak                   # helper + chống double-satisfaction (payment-hash count)
     validators/
-      claim_account.ak          # Redeem (vested tất định, không proof)
+      claim_account.ak          # Redeem (vested tất định, không proof) + co-spend kho (C-SOLV-1)
       beacon.ak                 # post DropParam (committee, NFT-auth)
-      treasury.ak               # release LAMP cho redeem (bảo toàn non-LAMP value)
+      beacon_nft.ak             # NFT authenticity beacon (one-shot theo genesis_ref)
+      treasury.ak               # release LAMP cho redeem + sổ cái solvency (cum ≤ pool)
+      treasury_nft.ak           # NFT "TRSY" authenticity kho (one-shot) — chống kho giả
   offchain/src/                 # TypeScript (Lucid Evolution)
     datum.ts committee.ts            # codec Data + committee threshold
     beaconBuilder.ts claimBuilder.ts redeemBuilder.ts   # tx builders (redeem tính vested)

@@ -12,6 +12,7 @@ import { fileURLToPath } from "node:url";
 import {
   NETWORK, BLOCKFROST_URL, BLOCKFROST_KEY, makeLucid, walletPkh, explorerTx, awaitTx, tipPosixMs,
 } from "./config.js";
+import { TREASURY_NFT_ASSET_NAME } from "./config.js";
 import { beaconDatumToCbor, decodeClaimAccountDatum } from "../offchain/src/datum.js";
 import { buildClaimTx } from "../offchain/src/claimBuilder.js";
 import { buildRedeemTx } from "../offchain/src/redeemBuilder.js";
@@ -25,12 +26,33 @@ const MS_EPOCH = 432_000_000n;                  // KHỚP canonical_mint
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const norm = (h: string) => (h.startsWith("0x") ? h.slice(2) : h).toLowerCase();
 
-async function gCode(mod: string, title: string) {
+/** Một validator trong blueprint + SỐ tham số nó khai — dùng để chặn apply thiếu param. */
+interface BpValidator { title: string; compiledCode: string; nParams: number }
+
+async function gCode(mod: string, title: string): Promise<BpValidator> {
   const bp = JSON.parse(await readFile(resolve(__dirname, `../../${mod}/onchain/plutus.json`), "utf8"));
-  const v = (bp.validators as { title: string; compiledCode: string }[]).find((x) => x.title === title);
-  if (!v) throw new Error(`${title} not found`); return v.compiledCode;
+  const v = (bp.validators as { title: string; compiledCode: string; parameters?: unknown[] }[])
+    .find((x) => x.title === title);
+  if (!v) throw new Error(`${title} not found`);
+  return { title, compiledCode: v.compiledCode, nParams: (v.parameters ?? []).length };
 }
-const applyV = (code: string, p: unknown[]): Validator => ({ type: "PlutusV3", script: applyParamsToScript(code, p as never) });
+
+/**
+ * Apply param + ÉP đủ số tham số blueprint khai.
+ * `applyParamsToScript` KHÔNG báo lỗi khi thiếu param — nó apply một phần và trả về một
+ * script hash KHÁC, im lặng. Script này trỏ vào deployment đã có, nên sai hash = gửi tiền
+ * vào địa chỉ trống. Thêm param vào validator (vd `treasury_nft_policy`) phải làm hỏng ở
+ * ĐÂY, ngay lúc chạy, chứ không phải hỏng trên chuỗi.
+ */
+const applyV = (v: BpValidator, p: unknown[]): Validator => {
+  if (p.length !== v.nParams) {
+    throw new Error(
+      `APPLY-001: ${v.title} khai ${v.nParams} tham số, script này truyền ${p.length}. ` +
+      `Validator đã đổi — cập nhật danh sách tham số (và địa chỉ deploy) trước khi chạy tiếp.`,
+    );
+  }
+  return { type: "PlutusV3", script: applyParamsToScript(v.compiledCode, p as never) };
+};
 const epochNow = async () => (await tipPosixMs()) / MS_EPOCH;
 
 async function main() {
@@ -44,11 +66,23 @@ async function main() {
   const lampPid = validatorToScriptHash(lampMint);
   const lampUnit = u(lampPid, TLAMP_NAME);
   const committee = [pkh], threshold = 1n;
+  // treasury_nft (TRSY) là ONE-SHOT theo genesis_ref — KHÔNG có fallback native-sig, nên
+  // script này không tự dựng được; phải lấy policy id của deployment đang chạy.
+  const TRSY_POLICY = (process.env.TREASURY_NFT_POLICY ?? "").trim();
+  if (!TRSY_POLICY) {
+    throw new Error(
+      "thiếu TREASURY_NFT_POLICY. Kho nay giữ sổ cái solvency, xác thực bằng NFT TRSY " +
+      "one-shot (không có bản native-sig để tự dựng). Lấy `params.treasuryNftPolicy` từ " +
+      "deployed.json của deployment đang chạy rồi đặt vào .env.",
+    );
+  }
+  const trsyUnit = u(TRSY_POLICY, TREASURY_NFT_ASSET_NAME);
   const claimS = applyV(await gCode("Distribution", "claim_account.claim_account.spend"),
-    [committee, threshold, MS_EPOCH, lampPid, TLAMP_NAME, nPid]);
+    [committee, threshold, MS_EPOCH, lampPid, TLAMP_NAME, nPid, TRSY_POLICY]);
   const claimHash = validatorToScriptHash(claimS);
   const claimAddr = credentialToAddress(NETWORK, scriptHashToCredential(claimHash));
-  const treS = applyV(await gCode("Distribution", "treasury.treasury.spend"), [claimHash, lampPid, TLAMP_NAME]);
+  const treS = applyV(await gCode("Distribution", "treasury.treasury.spend"),
+    [claimHash, lampPid, TLAMP_NAME, committee, threshold]);
   const treAddr = credentialToAddress(NETWORK, scriptHashToCredential(validatorToScriptHash(treS)));
   const beaconS = applyV(await gCode("Distribution", "beacon.beacon.spend"), [committee, threshold, nPid]);
   const beaconAddr = credentialToAddress(NETWORK, scriptHashToCredential(validatorToScriptHash(beaconS)));
@@ -95,9 +129,16 @@ async function main() {
   if (existAcc) { console.log(`   account FOUNDATION đã có (skip claim): ${existAcc.txHash}#${existAcc.outputIndex}`); }
   else {
     const startEpoch = (await epochNow()) - 2n;
+    // Treasury co-spend BẮT BUỘC (C-SOLV-1): sổ cái nợ += DELTA, ép ≤ pool.
+    const treClaimU = (await lucid.utxosAt(treAddr)).find((x) => (x.assets[trsyUnit] ?? 0n) === 1n);
+    if (!treClaimU) throw new Error("không tìm thấy treasury UTxO mang NFT TRSY (kho chưa genesis?)");
     const claim = await buildClaimTx({
       lucid, claimScript: claimS, network: NETWORK, ownerPkh: fPkh, amount: DELTA,
       currentEpoch: startEpoch, committeeKeyHashes: committee, threshold: 1, validFromMs: startEpoch * MS_EPOCH,
+      treasury: {
+        utxo: treClaimU, script: treS,
+        nftPolicy: TRSY_POLICY, nftAssetName: TREASURY_NFT_ASSET_NAME,
+      },
     });
     const ch = await (await claim.tx.sign.withWallet().complete()).submit();
     console.log(`   ${explorerTx(ch)}`); await awaitTx(lucid, ch, "claim"); await sleep(50_000);

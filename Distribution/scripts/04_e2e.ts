@@ -21,7 +21,7 @@
 
 import { Data } from "@lucid-evolution/lucid";
 import {
-  NETWORK, DROP_ASSET_NAME, MS_PER_EPOCH,
+  NETWORK, DROP_ASSET_NAME, TREASURY_NFT_ASSET_NAME, MS_PER_EPOCH,
   makeLucid, walletPkh, loadDeployed, reapplyValidators,
   toUnit, explorerTx, awaitTx, currentEpoch,
 } from "./config.js";
@@ -70,6 +70,16 @@ async function findBeacon(
   const utxos = await lucid.utxosAt(address);
   const u = utxos.find((x) => (x.assets[nftUnit] ?? 0n) === 1n);
   if (!u) throw new Error(`không tìm thấy beacon UTxO chứa ${nftUnit}`);
+  return u;
+}
+
+/** Tìm treasury UTxO canonical (mang đúng 1 NFT TRSY). Re-resolve sau mỗi Claim/Redeem. */
+async function findTreasury(
+  lucid: LucidEvolution, address: string, trsyUnit: string,
+): Promise<UTxO> {
+  const utxos = await lucid.utxosAt(address);
+  const u = utxos.find((x) => (x.assets[trsyUnit] ?? 0n) === 1n);
+  if (!u) throw new Error(`không tìm thấy treasury UTxO chứa NFT TRSY ${trsyUnit}`);
   return u;
 }
 
@@ -138,6 +148,8 @@ async function main(): Promise<void> {
 
   const lampUnit = toUnit(state.testLamp.policyId, state.testLamp.assetName);
   const dropNft  = toUnit(state.beaconNftPolicy, DROP_ASSET_NAME);
+  const treasuryNftPolicy = state.params.treasuryNftPolicy;
+  const trsyUnit = toUnit(treasuryNftPolicy, TREASURY_NFT_ASSET_NAME);
 
   // balance A trước flow
   const balBefore = (await lucid.wallet().getUtxos())
@@ -151,11 +163,18 @@ async function main(): Promise<void> {
 
   await ensureCollateral(lucid);
 
+  // SOLVENCY co-spend (C-SOLV-*): mỗi Claim spend treasury (GrantEntitlement) →
+  // outstanding_entitlement += amount ≤ pool. Treasury UTxO canonical mang NFT TRSY.
   const accA0 = await findClaimAccount(lucid, state.claimAccount.address, aPkh);
+  const treA  = await findTreasury(lucid, state.treasury.address, trsyUnit);
   const claimA = await buildClaimTx({
     lucid, claimScript, network: NETWORK,
     ownerPkh: aPkh, amount: LAMP_A, currentEpoch: epoch,
     claimAccountUtxo: accA0,
+    treasury: {
+      utxo: treA, script: treasuryScript,
+      nftPolicy: treasuryNftPolicy, nftAssetName: TREASURY_NFT_ASSET_NAME,
+    },
     committeeKeyHashes: committee, threshold,
     validFromMs,
   });
@@ -165,10 +184,16 @@ async function main(): Promise<void> {
   // Claim B (ví placeholder) — best-effort: lỗi không chặn flow chính (A → redeem).
   try {
     const accB0 = await findClaimAccount(lucid, state.claimAccount.address, bPkh);
+    // treasury đã bị Claim A spend → re-resolve UTxO mới (cum đã += LAMP_A).
+    const treB  = await findTreasury(lucid, state.treasury.address, trsyUnit);
     const claimB = await buildClaimTx({
       lucid, claimScript, network: NETWORK,
       ownerPkh: bPkh, amount: LAMP_B, currentEpoch: epoch,
       claimAccountUtxo: accB0,
+      treasury: {
+        utxo: treB, script: treasuryScript,
+        nftPolicy: treasuryNftPolicy, nftAssetName: TREASURY_NFT_ASSET_NAME,
+      },
       committeeKeyHashes: committee, threshold,
       validFromMs,
     });
@@ -212,9 +237,10 @@ async function main(): Promise<void> {
     );
   }
 
+  // Treasury canonical mang TRSY + còn LAMP (redeem path bind TRSY on-chain mới).
   const treasuryU = (await lucid.utxosAt(state.treasury.address))
-    .find((u) => (u.assets[lampUnit] ?? 0n) > 0n);
-  if (!treasuryU) throw new Error("không tìm thấy treasury UTxO còn LAMP");
+    .find((u) => (u.assets[trsyUnit] ?? 0n) === 1n && (u.assets[lampUnit] ?? 0n) > 0n);
+  if (!treasuryU) throw new Error("không tìm thấy treasury UTxO (TRSY + còn LAMP)");
   const dropBeacon = await findBeacon(lucid, state.beacon.address, dropNft);
 
   const redeem = await buildRedeemTx({

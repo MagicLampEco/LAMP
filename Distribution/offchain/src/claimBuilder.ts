@@ -5,26 +5,34 @@
 //           start_epoch=current, drops_per_epoch}.
 //   UPDATE: account đã có → entitlement += amount; redeemed/start_epoch/dpe bất biến.
 //
+// SOLVENCY ON-CHAIN (C-SOLV-*): MỌI Claim PHẢI co-spend treasury UTxO (GrantEntitlement):
+//   treasury.outstanding_entitlement += amount, ép outstanding_entitlement ≤ pool LAMP.
+//   → bất biến global Σ(E−redeemed) ≤ pool ép được PER-TX qua sổ cái singleton (NFT "TRSY").
+//   Đây thay thế chốt off-chain assertClaimSolvency (vẫn giữ làm pre-flight cảnh báo sớm).
+//
 // Invariants:
 //   C-CLAIM-1  ≥ ⌈2N/3⌉ committee signatures.
 //   C-CLAIM-2  out.entitlement = in.entitlement + amount; amount > 0.
 //   C-CLAIM-3  out.owner == in.owner; redeemed/start_epoch/drops_per_epoch unchanged.
+//   C-SOLV-1   treasury.outstanding_entitlement_out = cum_in + amount (co-spend bắt buộc).
+//   C-SOLV-2   outstanding_entitlement_out ≤ treasury pool LAMP (ép on-chain ở treasury).
 //   C-MINT-0   tx.mint == 0 (builder không gọi .mintAssets).
-//   C-VAL-0    assets bảo toàn (lovelace + dust) — chỉ datum đổi.
+//   C-VAL-0    assets bảo toàn (lovelace + dust) — chỉ datum đổi; treasury pool bất biến.
 
 import {
-  Data,
+  Data, toUnit,
   credentialToAddress, scriptHashToCredential, validatorToScriptHash,
   type LucidEvolution, type UTxO, type Validator, type TxSignBuilder,
 } from "@lucid-evolution/lucid";
 import type { Network } from "@magiclamp/utils";
 
-import type { ClaimAccountDatum } from "./types.js";
+import type { ClaimAccountDatum, TreasuryDatum } from "./types.js";
 import {
   claimAccountDatumToCbor, claimRedeemerToCbor, decodeClaimAccountDatum,
+  decodeTreasuryDatum, treasuryDatumToCbor, grantEntitlementRedeemerToCbor,
 } from "./datum.js";
 import { assertCommitteeSigners } from "./committee.js";
-import { DEFAULT_DROPS_PER_EPOCH } from "./constants.js";
+import { DEFAULT_DROPS_PER_EPOCH, TREASURY_NFT_ASSET_NAME } from "./constants.js";
 
 export interface ClaimParams {
   lucid:        LucidEvolution;
@@ -51,10 +59,48 @@ export interface ClaimParams {
   /** Min-ADA cho ClaimAccount UTxO mới (CREATE path). Mặc định 2 ADA. */
   accountLovelace?: bigint;
 
+  /**
+   * TREASURY CO-SPEND (BẮT BUỘC on-chain solvency, C-SOLV-*). Mọi Claim spend treasury
+   * UTxO với GrantEntitlement: outstanding_entitlement += amount, pool LAMP bất biến.
+   * Treasury validator ép outstanding_entitlement ≤ pool → over-grant vượt quỹ FAIL on-chain.
+   * **BẮT BUỘC** (2026-08-12, review PR #22 điểm 4). Trước đây là tuỳ chọn và builder in
+   * ra "(off-chain only — no treasury co-spend)" như thể đó là một chế độ hợp lệ — nhưng
+   * on-chain MỌI Claim đều đòi đúng 1 input + 1 output mang TRSY (`find_treasury_in`
+   * `expect [i]`), nên nhánh không-treasury CHỈ dựng ra được tx chắc chắn fail. Cùng loại
+   * lỗi mà PR #23 đang vá ở `mintBuilder` — builder kẹt ở hình dạng validator không nhận.
+   */
+  treasury: {
+    /** Treasury UTxO hiện tại (mang NFT "TRSY", inline TreasuryDatum). */
+    utxo:        UTxO;
+    /** Applied treasury validator (định nghĩa treasury address). */
+    script:      Validator;
+    /** Treasury authenticity NFT policy id (compile-time param). */
+    nftPolicy:   string;
+    /** NFT asset-name hex; mặc định "TRSY". */
+    nftAssetName?: string;
+  };
+
   /** Danh sách committee key-hash (hex). */
   committeeKeyHashes: string[];
   threshold?:        number;
   signerKeyHashes?:  string[];
+
+  /**
+   * SOLVENCY GUARD (over-collateralization) — chặn committee cấp E vượt quỹ.
+   * Khi cung cấp `solvency`, builder ép `Σ(entitlement − redeemed) sau Claim ≤ treasuryLamp`.
+   * Đây là chốt off-chain pre-flight TẠI LÚC cấp E (cảnh báo sớm, mạnh hơn REDEEM-012
+   * vốn chỉ chặn lúc redeem). KHÔNG còn là chốt duy nhất: on-chain treasury validator
+   * ĐÃ ép outstanding_entitlement ≤ pool (C-SOLV-2) qua treasury co-spend bắt buộc.
+   */
+  solvency?: {
+    /** LAMP (oildrop) hiện có trong treasury pool. */
+    treasuryLamp: bigint;
+    /**
+     * Tổng (entitlement − redeemed) của MỌI ClaimAccount ĐANG MỞ KHÁC (không gồm
+     * account đang Claim này — account đó tính lại từ amount + datum cũ). oildrop.
+     */
+    otherOutstanding: bigint;
+  };
 
   /**
    * POSIX ms cho lower_bound validity_range (BẮT BUỘC live tx CREATE: validator
@@ -64,11 +110,14 @@ export interface ClaimParams {
 }
 
 export interface ClaimResult {
-  tx:              TxSignBuilder;
-  claimAddress:    string;
-  newDatum:        ClaimAccountDatum;
-  mode:            "create" | "update";
-  summary:         string;
+  tx:               TxSignBuilder;
+  claimAddress:     string;
+  newDatum:         ClaimAccountDatum;
+  mode:             "create" | "update";
+  /** Treasury datum mới (outstanding_entitlement += amount). Luôn có — treasury co-spend
+   *  là BẮT BUỘC, xem `ClaimParams.treasury`. */
+  newTreasuryDatum:  TreasuryDatum;
+  summary:          string;
 }
 
 const DEFAULT_ACCOUNT_LOVELACE = 2_000_000n;
@@ -76,6 +125,27 @@ const DEFAULT_ACCOUNT_LOVELACE = 2_000_000n;
 /** Strip leading 0x + lowercase (so sánh owner). */
 function normHex(hex: string): string {
   return (hex.startsWith("0x") ? hex.slice(2) : hex).toLowerCase();
+}
+
+/**
+ * Over-collateralization invariant (off-chain, lúc cấp E):
+ *   Σ(entitlement − redeemed) toàn hệ thống SAU Claim ≤ treasuryLamp.
+ * `thisOutstandingAfter` = entitlement_after − redeemed của account đang Claim.
+ * Ném CLAIM-010 nếu vi phạm. Pure → unit-testable.
+ */
+export function assertClaimSolvency(
+  treasuryLamp: bigint,
+  otherOutstanding: bigint,
+  thisOutstandingAfter: bigint,
+): void {
+  const totalOutstanding = otherOutstanding + thisOutstandingAfter;
+  if (totalOutstanding > treasuryLamp) {
+    throw new Error(
+      `CLAIM-010: solvency — Σ(entitlement−redeemed) sau Claim = ${totalOutstanding} oildrop ` +
+      `> treasury ${treasuryLamp} oildrop. Cấp E vượt quỹ (under-collateralized). ` +
+      `Fund thêm treasury ≥ ${totalOutstanding} oildrop TRƯỚC khi Claim, hoặc giảm amount.`,
+    );
+  }
 }
 
 export async function buildClaimTx(params: ClaimParams): Promise<ClaimResult> {
@@ -143,11 +213,60 @@ export async function buildClaimTx(params: ClaimParams): Promise<ClaimResult> {
     outAssets = { lovelace: accountLovelace };
   }
 
+  // SOLVENCY GUARD (off-chain pre-flight, over-collateralization) — cảnh báo sớm.
+  // KHÔNG còn là chốt duy nhất: on-chain treasury validator ép cum ≤ pool (C-SOLV-2).
+  if (params.solvency) {
+    const thisOutstandingAfter = newDatum.entitlement - newDatum.redeemed;
+    assertClaimSolvency(
+      params.solvency.treasuryLamp,
+      params.solvency.otherOutstanding,
+      thisOutstandingAfter,
+    );
+  }
+
   txb = txb.pay.ToAddressWithData(
     claimAddress,
     { kind: "inline", value: claimAccountDatumToCbor(newDatum) },
     outAssets,
   );
+
+  // ── TREASURY CO-SPEND (C-SOLV-1/2): outstanding_entitlement += amount ≤ pool ───
+  let newTreasuryDatum: TreasuryDatum;
+  {
+    const t = params.treasury;
+    if (!t.utxo.datum) throw new Error("CLAIM-020: treasury.utxo has no inline datum");
+    const treasuryAddress = credentialToAddress(
+      network, scriptHashToCredential(validatorToScriptHash(t.script)),
+    );
+    const prevTreasury = decodeTreasuryDatum(Data.from(t.utxo.datum));
+
+    // Authenticity: treasury UTxO PHẢI mang đúng 1 NFT "TRSY" (chống treasury giả).
+    const nftUnit = toUnit(t.nftPolicy, t.nftAssetName ?? TREASURY_NFT_ASSET_NAME);
+    const nftQty = t.utxo.assets[nftUnit] ?? 0n;
+    if (nftQty !== 1n) {
+      throw new Error(
+        `CLAIM-021: treasury UTxO phải giữ đúng 1 NFT authenticity (${nftUnit}); got ${nftQty}`,
+      );
+    }
+
+    newTreasuryDatum = {
+      committee_hash:         prevTreasury.committee_hash,                       // C-TRE-2
+      outstanding_entitlement: prevTreasury.outstanding_entitlement + amount,      // C-SOLV-1
+    };
+
+    // C-SOLV-2: on-chain treasury validator ép cum_out ≤ pool LAMP (over-grant → fail).
+    // Pool LAMP + mọi asset BẤT BIẾN khi grant (chỉ datum đổi) — C-VAL-0.
+    const treasuryOutAssets: Record<string, bigint> = { ...t.utxo.assets };
+
+    txb = txb
+      .collectFrom([t.utxo], grantEntitlementRedeemerToCbor())
+      .attach.SpendingValidator(t.script)
+      .pay.ToAddressWithData(
+        treasuryAddress,
+        { kind: "inline", value: treasuryDatumToCbor(newTreasuryDatum) },
+        treasuryOutAssets,
+      );
+  }
 
   for (const k of signers) txb = txb.addSignerKey(k);
 
@@ -166,8 +285,9 @@ export async function buildClaimTx(params: ClaimParams): Promise<ClaimResult> {
     `Redeemed:     ${newDatum.redeemed} oildrop`,
     `Start epoch:  ${newDatum.start_epoch}  · drops/epoch ${newDatum.drops_per_epoch}`,
     `Committee:    ${signers.length}/${committeeKeyHashes.length} signers (need ${threshold})`,
+    `Outstanding:  ${newTreasuryDatum.outstanding_entitlement} oildrop (sổ cái nợ sau Claim)`,
     `Claim addr:   ${claimAddress}`,
   ].join("\n");
 
-  return { tx, claimAddress, newDatum, mode, summary };
+  return { tx, claimAddress, newDatum, mode, summary, newTreasuryDatum };
 }

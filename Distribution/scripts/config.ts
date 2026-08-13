@@ -20,6 +20,7 @@ import {
   getAddressDetails, validatorToScriptHash,
   credentialToAddress, scriptHashToCredential,
   applyParamsToScript, mintingPolicyToId, scriptFromNative,
+  Constr,
   type LucidEvolution, type Validator, type MintingPolicy,
 } from "@lucid-evolution/lucid";
 import { msPerEpoch, type Network } from "@magiclamp/utils";
@@ -97,19 +98,52 @@ export async function resolveCommittee(lucid: LucidEvolution): Promise<Committee
         throw new Error(`COMMITTEE_KEYHASHES: keyhash không hợp lệ (cần 28-byte hex): ${k}`);
       }
     }
+    const n = keyHashes.length;
+    const byzantine = Math.ceil((2 * n) / 3); // ⌈2N/3⌉
     const th = process.env.COMMITTEE_THRESHOLD
       ? Number(process.env.COMMITTEE_THRESHOLD)
-      : Math.ceil((2 * keyHashes.length) / 3);
+      : byzantine;
+    // GUARD (no-undo genesis): threshold sai → 3 validator hash sai, vốn khoá vĩnh viễn.
+    if (!Number.isInteger(th) || th < 1 || th > n) {
+      throw new Error(
+        `COMMITTEE_THRESHOLD không hợp lệ: ${process.env.COMMITTEE_THRESHOLD} ` +
+        `(cần số nguyên 1 ≤ threshold ≤ N=${n}). ` +
+        `threshold=0/1 với N lớn phá Byzantine 2/3; threshold>N không bao giờ đủ chữ ký.`,
+      );
+    }
+    if (th < byzantine) {
+      console.warn(
+        `⚠ CẢNH BÁO: threshold=${th} < ⌈2N/3⌉=${byzantine} (N=${n}) — KHÔNG đạt ` +
+        `chịu lỗi Byzantine 2/3. Production nên đặt threshold ≥ ${byzantine}. ` +
+        `Đặt COMMITTEE_THRESHOLD_ACK=1 để xác nhận chủ ý hạ ngưỡng.`,
+      );
+      if (NETWORK === "Mainnet" && process.env.COMMITTEE_THRESHOLD_ACK !== "1") {
+        throw new Error(
+          `Mainnet từ chối threshold=${th} < ⌈2N/3⌉=${byzantine} khi chưa xác nhận. ` +
+          `Đặt COMMITTEE_THRESHOLD_ACK=1 nếu thật sự muốn.`,
+        );
+      }
+    }
     return { keyHashes, threshold: th, source: "env" };
   }
   // Fallback self-test: ví deploy là committee duy nhất.
+  // FAIL-CLOSED: KHÔNG cho self-test 1-of-1 trên Mainnet (1 key = không có Byzantine
+  // fault tolerance, committee compromise = drain ngay). Production PHẢI set COMMITTEE_KEYHASHES.
+  if (NETWORK === "Mainnet") {
+    throw new Error(
+      "Mainnet bắt buộc COMMITTEE_KEYHASHES (≥3 keyhash, threshold ⌈2N/3⌉). " +
+      "Fallback ví-self 1-of-1 chỉ dành cho Preview self-test.",
+    );
+  }
   const pkh = await walletPkh(lucid);
   return { keyHashes: [pkh], threshold: 1, source: "wallet-self" };
 }
 
-// ── LAMP token (test-LAMP self-contained, KHÔNG phụ thuộc tLAMP Tuân) ──
-// 02_mint_test_lamp.ts ghi policy + name vào deployed.json. Asset name "LAMP".
-export const LAMP_ASSET_NAME = "4c414d50"; // "LAMP"
+// ── LAMP token (test-LAMP self-contained: policy riêng để e2e không cần
+// Genesis/Faucet deploy trước, NHƯNG asset NAME = canonical tLAMP để khớp
+// token thật Genesis/Faucet mint — tránh deploy Distribution tìm sai asset) ──
+// 02_mint_test_lamp.ts ghi policy + name vào deployed.json. Asset name "tLAMP".
+export const LAMP_ASSET_NAME = "744c414d50"; // "tLAMP" — canonical (khớp Genesis/Faucet)
 
 // ── Beacon NFT (authenticity) ──────────────────────────────────
 // CONTRACT v2 "Capped Drop": chỉ còn 1 beacon DropParam{D} duy nhất. Bỏ
@@ -132,6 +166,85 @@ export function nativeSigPolicy(ownerKeyHash: string): MintingPolicy {
 
 export function nativeSigPolicyId(ownerKeyHash: string): string {
   return mintingPolicyToId(nativeSigPolicy(ownerKeyHash));
+}
+
+// ── Beacon NFT ONE-SHOT (Aiken minting validator `beacon_nft`) ─────────
+// One-shot: policy parameterized bởi 1 genesis OutputReference. Mint chỉ hợp lệ khi
+// tx CONSUME đúng UTxO đó → supply 1 NFT TUYỆT ĐỐI, KHÔNG re-mint. Tách hẳn khỏi ví
+// deploy (khác native-sig: native-sig cho phép chủ key re-mint NFT giả vô hạn).
+// Quy trình: 01_deploy chọn genesis_ref (1 UTxO ví) → tính policy id → bake vào
+// claim_account/beacon; 03_genesis mint qua attach.MintingPolicy(beaconNftPlutus) +
+// consume đúng genesis_ref.
+
+export interface GenesisRef { txHash: string; outputIndex: number; }
+
+/** OutputReference Plutus = Constr(0, [transaction_id: bytes, output_index: int]). */
+function outputRefToData(ref: GenesisRef): Constr<unknown> {
+  return new Constr(0, [ref.txHash.toLowerCase(), BigInt(ref.outputIndex)]);
+}
+
+/** Compiled code (chưa apply) của minting validator beacon_nft. */
+export async function rawBeaconNft(): Promise<RawValidator> {
+  return rawValidator("beacon_nft.beacon_nft.mint");
+}
+
+/** Applied one-shot minting policy (Validator) từ genesis ref. */
+export async function beaconNftPolicyFromRef(ref: GenesisRef): Promise<MintingPolicy> {
+  const raw = await rawBeaconNft();
+  return {
+    type: "PlutusV3",
+    script: applyParamsToScript(raw.compiledCode, [outputRefToData(ref)] as never),
+  };
+}
+
+/** Policy id của one-shot beacon_nft cho genesis ref. */
+export async function beaconNftPolicyIdFromRef(ref: GenesisRef): Promise<string> {
+  return mintingPolicyToId(await beaconNftPolicyFromRef(ref));
+}
+
+// ── Treasury authenticity NFT ONE-SHOT (Aiken `treasury_nft`) ──────────
+// Cùng mẫu one-shot beacon_nft: policy parameterized bởi 1 genesis OutputReference.
+// Mint chỉ hợp lệ khi tx CONSUME đúng UTxO đó → supply 1 NFT "TRSY" TUYỆT ĐỐI.
+// Policy id phải tính TRƯỚC ở 01_deploy để bake vào claim_account (param 7), NFT thật
+// chỉ mint ở 03_genesis (consume đúng genesis_ref). Treasury_nft KHÔNG có native-sig
+// fallback — authenticity treasury là sống còn cho solvency, luôn one-shot.
+
+/** Asset-name hex treasury authenticity NFT — PHẢI khớp onchain util.treasury_nft_name. */
+export const TREASURY_NFT_ASSET_NAME = "54525359"; // "TRSY"
+
+/** Compiled code (chưa apply) của minting validator treasury_nft. */
+export async function rawTreasuryNft(): Promise<RawValidator> {
+  return rawValidator("treasury_nft.treasury_nft.mint");
+}
+
+/** Applied one-shot treasury_nft minting policy (Validator) từ genesis ref. */
+export async function treasuryNftPolicyFromRef(ref: GenesisRef): Promise<MintingPolicy> {
+  const raw = await rawTreasuryNft();
+  return {
+    type: "PlutusV3",
+    script: applyParamsToScript(raw.compiledCode, [outputRefToData(ref)] as never),
+  };
+}
+
+/** Policy id của one-shot treasury_nft cho genesis ref. */
+export async function treasuryNftPolicyIdFromRef(ref: GenesisRef): Promise<string> {
+  return mintingPolicyToId(await treasuryNftPolicyFromRef(ref));
+}
+
+/**
+ * Chọn 1 UTxO ví deploy làm genesis_ref one-shot (tất định: sort theo txHash#index,
+ * lấy phần tử đầu). UTxO này PHẢI còn sống tới 03_genesis (mint consume nó). Nếu ví
+ * tiêu nó ở bước trung gian → 03 phải re-pick (nhưng policy đã bake ở 01 sẽ desync →
+ * fail-closed, an toàn hơn mint sai).
+ */
+export async function pickGenesisRef(lucid: LucidEvolution): Promise<GenesisRef> {
+  const utxos = await lucid.wallet().getUtxos();
+  if (utxos.length === 0) throw new Error("ví deploy không có UTxO nào để làm genesis_ref one-shot");
+  const sorted = [...utxos].sort((a, b) =>
+    a.txHash === b.txHash ? a.outputIndex - b.outputIndex : a.txHash.localeCompare(b.txHash),
+  );
+  const u = sorted[0]!;
+  return { txHash: u.txHash, outputIndex: u.outputIndex };
 }
 
 // ── plutus.json loader + apply params ──────────────────────────
@@ -217,12 +330,20 @@ export interface DeployedState {
     lampPolicy: string;
     lampName: string;
     beaconNftPolicy: string;
+    treasuryNftPolicy: string;
     claimAccountHash: string;
   };
   // test-LAMP token (02)
   testLamp?: { policyId: string; assetName: string; minted: string };
   // beacon NFT policy (03)
   beaconNftPolicy?: string;
+  // beacon NFT mode + one-shot genesis ref (01 → 03). "oneshot" = Aiken beacon_nft
+  // validator (genesisRef baked vào policy id); "native-sig" = MVP fallback (Preview).
+  beaconNftMode?: "oneshot" | "native-sig";
+  beaconNftGenesisRef?: GenesisRef;
+  // treasury authenticity NFT (TRSY) one-shot genesis ref (01 → 03). LUÔN one-shot Aiken
+  // treasury_nft. policyId baked vào claim_account (param 7); NFT mint ở 03 consume ref.
+  treasuryNftGenesisRef?: GenesisRef;
   // genesis UTxOs (03) — txHash#index để bước sau resolve.
   // v2: 1 beacon DropParam duy nhất (bỏ pparam/randomness/merkle).
   genesis?: {
@@ -268,7 +389,8 @@ export async function reapplyValidators(state: DeployedState): Promise<{
 
   const rawClaim = await rawValidator("claim_account.claim_account.spend");
   const claimScript = applyValidator(rawClaim.compiledCode, [
-    committee, threshold, msPerEpoch, p.lampPolicy, p.lampName, p.beaconNftPolicy,
+    committee, threshold, msPerEpoch, p.lampPolicy, p.lampName,
+    p.beaconNftPolicy, p.treasuryNftPolicy,
   ]);
   const rawBeacon = await rawValidator("beacon.beacon.spend");
   const beaconScript = applyValidator(rawBeacon.compiledCode, [
@@ -276,7 +398,7 @@ export async function reapplyValidators(state: DeployedState): Promise<{
   ]);
   const rawTreasury = await rawValidator("treasury.treasury.spend");
   const treasuryScript = applyValidator(rawTreasury.compiledCode, [
-    p.claimAccountHash, p.lampPolicy, p.lampName,
+    p.claimAccountHash, p.lampPolicy, p.lampName, committee, threshold,
   ]);
 
   // verify hash khớp

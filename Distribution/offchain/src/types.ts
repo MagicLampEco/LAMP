@@ -21,5 +21,8 @@ export interface BeaconDatum {
 }
 
 export interface TreasuryDatum {
-  committee_hash : string;  // hex
+  committee_hash         : string;  // hex
+  outstanding_entitlement : bigint;  // oildrop — sổ cái CÒN NỢ = Σ(entitlement − redeemed).
+                                    // Tăng khi grant, GIẢM khi redeem (đi cặp với pool).
+                                    // Bất biến on-chain: outstanding_entitlement ≤ pool.
 }
