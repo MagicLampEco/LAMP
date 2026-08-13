@@ -69,8 +69,8 @@ fn some_state() -> Option<SupplyState> {
   Some(SupplyState {
     dist_minted: 0,
     reserve_minted: 0,
-    dist_cap: constants.dist_cap_oil,
-    reserve_cap: constants.reserve_cap_oil,
+    dist_cap: constants.dist_cap_oildrop,
+    reserve_cap: constants.reserve_cap_oildrop,
   })
 }
 

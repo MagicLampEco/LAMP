@@ -1,6 +1,6 @@
 // Faucet offchain types — mirror onchain types.ak + ledger.ak (v2).
 
-/** [LEGACY] Datum Faucet pool v1. claim_amount = lượng tLAMP (oil) mỗi claim. */
+/** [LEGACY] Datum Faucet pool v1. claim_amount = lượng tLAMP (oildrop) mỗi claim. */
 export interface FaucetDatum {
   claim_amount: bigint;
 }
@@ -8,9 +8,9 @@ export interface FaucetDatum {
 // ── Faucet v2 (DID-gated) ────────────────────────────────────────────────
 
 /** Cấu hình Faucet pool (datum POOL UTxO). Khớp ledger.FaucetConfig.
- *  Constr(0, [drip_oil, cooldown_epochs, reclaim_epochs]). */
+ *  Constr(0, [drip_oildrop, cooldown_epochs, reclaim_epochs]). */
 export interface FaucetConfig {
-  drip_oil: bigint;
+  drip_oildrop: bigint;
   cooldown_epochs: bigint;
   reclaim_epochs: bigint;
 }

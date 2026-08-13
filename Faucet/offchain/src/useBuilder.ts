@@ -43,8 +43,8 @@ export interface UseParams {
   /** epoch hiện tại → account'.last_epoch. */
   currentEpoch: bigint;
 
-  /** tLAMP (oil) rút ra khỏi account để dùng (0 = chỉ gia hạn). Mặc định 0. */
-  withdrawOil?: bigint;
+  /** tLAMP (oildrop) rút ra khỏi account để dùng (0 = chỉ gia hạn). Mặc định 0. */
+  withdrawOildrop?: bigint;
   /** ADA min account'. Mặc định = ADA account cũ. */
   accountLovelace?: bigint;
 }
@@ -66,7 +66,7 @@ export async function buildUseTx(params: UseParams): Promise<UseResult> {
   const tlampUnit = toUnit(tlampPolicyId, assetName);
   const acctNftUnit = toUnit(faucetNftPolicyId, ACCT_NFT_NAME);
   const didUnit = toUnit(didNftPolicyId, didName);
-  const withdraw = params.withdrawOil ?? 0n;
+  const withdraw = params.withdrawOildrop ?? 0n;
 
   if (!accountUtxo.datum) throw new Error("USE-001: accountUtxo has no inline datum");
   const acct: FaucetAccount = decodeFaucetAccount(Data.from(accountUtxo.datum));
@@ -78,7 +78,7 @@ export async function buildUseTx(params: UseParams): Promise<UseResult> {
   }
 
   const acctLamp = accountUtxo.assets[tlampUnit] ?? 0n;
-  if (withdraw < 0n) throw new Error("USE-004: withdrawOil < 0");
+  if (withdraw < 0n) throw new Error("USE-004: withdrawOildrop < 0");
   if (withdraw > acctLamp) throw new Error(`USE-005: withdraw ${withdraw} > account tLAMP ${acctLamp}`);
   const lampAfter = acctLamp - withdraw;
 
@@ -111,7 +111,7 @@ export async function buildUseTx(params: UseParams): Promise<UseResult> {
     `═══ Faucet v2 Use (gia hạn account) ═══`,
     `DID name:     ${didName}`,
     `last_epoch:   ${acct.last_epoch} → ${currentEpoch}`,
-    `Account tLAMP: ${acctLamp} → ${lampAfter} oil (rút ${withdraw})`,
+    `Account tLAMP: ${acctLamp} → ${lampAfter} oildrop (rút ${withdraw})`,
   ].join("\n");
 
   return { tx, newAccountDatum: newDatum, accountLampAfter: lampAfter, summary };

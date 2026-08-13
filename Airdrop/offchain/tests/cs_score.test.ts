@@ -1,4 +1,4 @@
-// cs_score.test.ts — kiểm chứng phân phối stake-weighted (SPO-CS-SPEC-Vi.md).
+// cs_score.test.ts — kiểm chứng phân phối stake-weighted (spo-cs.md).
 // Mọi tiền là BigInt oildrop. 1 LAMP = 10^6 oildrop.
 
 import { describe, it, expect } from "vitest";
@@ -8,13 +8,13 @@ import {
   splitCsPot,
   type StakeWeight,
 } from "../src/cs_score.js";
-import { OIL_PER_LAMP, SPO_POT_OIL, CS_POT_OIL } from "../src/constants.js";
+import { OILDROP_PER_LAMP, SPO_POT_OILDROP, CS_POT_OILDROP } from "../src/constants.js";
 
-const LAMP = OIL_PER_LAMP;
-const sum = (rs: { oil: bigint }[]) => rs.reduce((s, r) => s + r.oil, 0n);
+const LAMP = OILDROP_PER_LAMP;
+const sum = (rs: { oildrop: bigint }[]) => rs.reduce((s, r) => s + r.oildrop, 0n);
 
 describe("splitByStake — bảo toàn tuyệt đối (Σ = pot)", () => {
-  it("stake khác nhau → Σ oil = pot, dư floor gom hết", () => {
+  it("stake khác nhau → Σ oildrop = pot, dư floor gom hết", () => {
     // pot 100 oildrop chia cho stake 1:1:1 → 34/33/33, Σ=100
     const rs = splitByStake(
       [{ id: "a", stake: 1n }, { id: "b", stake: 1n }, { id: "c", stake: 1n }],
@@ -22,7 +22,7 @@ describe("splitByStake — bảo toàn tuyệt đối (Σ = pot)", () => {
     );
     expect(sum(rs)).toBe(100n);
     // dư floor về stake lớn nhất (tie → id hex nhỏ nhất = "a")
-    expect(rs.map((r) => r.oil)).toEqual([34n, 33n, 33n]);
+    expect(rs.map((r) => r.oildrop)).toEqual([34n, 33n, 33n]);
   });
 
   it("chia sạch: Σ = pot chính xác", () => {
@@ -30,9 +30,9 @@ describe("splitByStake — bảo toàn tuyệt đối (Σ = pot)", () => {
       [{ id: "a", stake: 1000n }, { id: "b", stake: 3000n }, { id: "c", stake: 6000n }],
       10_000n,
     );
-    expect(rs.find((r) => r.id === "a")!.oil).toBe(1_000n);
-    expect(rs.find((r) => r.id === "b")!.oil).toBe(3_000n);
-    expect(rs.find((r) => r.id === "c")!.oil).toBe(6_000n);
+    expect(rs.find((r) => r.id === "a")!.oildrop).toBe(1_000n);
+    expect(rs.find((r) => r.id === "b")!.oildrop).toBe(3_000n);
+    expect(rs.find((r) => r.id === "c")!.oildrop).toBe(6_000n);
     expect(sum(rs)).toBe(10_000n);
   });
 });
@@ -43,7 +43,7 @@ describe("∝ stake — trọng số lớn hơn ⇒ reward lớn hơn", () => {
       [{ id: "small", stake: 10n }, { id: "mid", stake: 50n }, { id: "big", stake: 200n }],
       1_000_000n,
     );
-    const by = Object.fromEntries(rs.map((r) => [r.id, r.oil]));
+    const by = Object.fromEntries(rs.map((r) => [r.id, r.oildrop]));
     expect(by.big!).toBeGreaterThan(by.mid!);
     expect(by.mid!).toBeGreaterThan(by.small!);
     // tỷ lệ đúng: big=200/260·1e6=769230(.7); dư floor (2) gom về stake lớn nhất = big
@@ -54,7 +54,7 @@ describe("∝ stake — trọng số lớn hơn ⇒ reward lớn hơn", () => {
   });
 });
 
-describe("cap tuỳ chọn mỗi-người (như ETD capOil)", () => {
+describe("cap tuỳ chọn mỗi-người (như ETD capOildrop)", () => {
   it("người vượt cap bị ghim = cap, dư chia lại cho người chưa cap", () => {
     // stake 100:1:1, pot 300, cap 150 → whale ghim 150, còn 150 cho 2 người nhỏ
     const rs = splitByStake(
@@ -62,11 +62,11 @@ describe("cap tuỳ chọn mỗi-người (như ETD capOil)", () => {
       300n,
       150n,
     );
-    const by = Object.fromEntries(rs.map((r) => [r.id, r.oil]));
+    const by = Object.fromEntries(rs.map((r) => [r.id, r.oildrop]));
     expect(by.whale!).toBe(150n); // ghim ở cap
     expect(by.x! + by.y!).toBe(150n); // dư chia cho 2 người nhỏ
     expect(sum(rs)).toBe(300n);
-    for (const r of rs) expect(r.oil).toBeLessThanOrEqual(150n);
+    for (const r of rs) expect(r.oildrop).toBeLessThanOrEqual(150n);
   });
 
   it("cap chặn không chia hết → leftover về Treasury", () => {
@@ -95,13 +95,13 @@ describe("cạnh biên", () => {
       5_000n,
     );
     expect(sum(rs)).toBe(0n);
-    for (const r of rs) expect(r.oil).toBe(0n);
+    for (const r of rs) expect(r.oildrop).toBe(0n);
     expect(5_000n - sum(rs)).toBe(5_000n);
   });
 
   it("1 recipient duy nhất → nhận TOÀN BỘ pot", () => {
     const rs = splitByStake([{ id: "solo", stake: 42n }], 7_777n);
-    expect(rs).toEqual([{ id: "solo", oil: 7_777n }]);
+    expect(rs).toEqual([{ id: "solo", oildrop: 7_777n }]);
   });
 
   it("id trùng → ném lỗi (chống thổi phồng trọng số)", () => {
@@ -110,7 +110,7 @@ describe("cạnh biên", () => {
     ).toThrow();
   });
 
-  it("potOil âm → ném lỗi", () => {
+  it("potOildrop âm → ném lỗi", () => {
     expect(() => splitByStake([{ id: "a", stake: 1n }], -1n)).toThrow();
   });
 });
@@ -123,10 +123,10 @@ describe("splitSpoPot — trọng số = stake chảy vào pool (mặc định 5
     { id: "spoC", stake: 6_000_000n },
   ];
   const rs = splitSpoPot(spoWeights);
-  const by = Object.fromEntries(rs.map((r) => [r.id, r.oil]));
+  const by = Object.fromEntries(rs.map((r) => [r.id, r.oildrop]));
 
-  it("mặc định potOil = SPO_POT_OIL = 5.000.000 LAMP", () => {
-    expect(SPO_POT_OIL).toBe(5_000_000n * LAMP);
+  it("mặc định potOildrop = SPO_POT_OILDROP = 5.000.000 LAMP", () => {
+    expect(SPO_POT_OILDROP).toBe(5_000_000n * LAMP);
   });
 
   it("reward ∝ stake-vào-pool: A:B:C = 1:3:6", () => {
@@ -137,8 +137,8 @@ describe("splitSpoPot — trọng số = stake chảy vào pool (mặc định 5
     expect(by.spoB!).toBeGreaterThan(by.spoA!);
   });
 
-  it("bảo toàn: Σ = SPO_POT_OIL = 5.000.000 LAMP", () => {
-    expect(sum(rs)).toBe(SPO_POT_OIL);
+  it("bảo toàn: Σ = SPO_POT_OILDROP = 5.000.000 LAMP", () => {
+    expect(sum(rs)).toBe(SPO_POT_OILDROP);
     expect(sum(rs)).toBe(5_000_000n * LAMP);
   });
 });
@@ -150,10 +150,10 @@ describe("splitCsPot — trọng số = stake người bình chọn (mặc đị
     { id: "sup2", stake: 300n },
   ];
   const rs = splitCsPot(csWeights);
-  const by = Object.fromEntries(rs.map((r) => [r.id, r.oil]));
+  const by = Object.fromEntries(rs.map((r) => [r.id, r.oildrop]));
 
-  it("mặc định potOil = CS_POT_OIL = 15.000.000 LAMP", () => {
-    expect(CS_POT_OIL).toBe(15_000_000n * LAMP);
+  it("mặc định potOildrop = CS_POT_OILDROP = 15.000.000 LAMP", () => {
+    expect(CS_POT_OILDROP).toBe(15_000_000n * LAMP);
   });
 
   it("reward ∝ stake-bình-chọn: sup1:sup2 = 2:3", () => {
@@ -161,7 +161,7 @@ describe("splitCsPot — trọng số = stake người bình chọn (mặc đị
     expect(by.sup2! / LAMP).toBe(9_000_000n); // 15M × 3/5
   });
 
-  it("bảo toàn: Σ = CS_POT_OIL = 15.000.000 LAMP", () => {
-    expect(sum(rs)).toBe(CS_POT_OIL);
+  it("bảo toàn: Σ = CS_POT_OILDROP = 15.000.000 LAMP", () => {
+    expect(sum(rs)).toBe(CS_POT_OILDROP);
   });
 });

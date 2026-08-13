@@ -20,7 +20,7 @@ import {
   NETWORK, makeLucid, walletPkh, applyPolicy, policyId, rawValidator, explorerTx,
 } from "./config.js";
 import {
-  DIST_CAP_OIL, RESERVE_CAP_OIL, SUPPLY_NAME, LAMP_NAME, OIL_PER_LAMP,
+  DIST_CAP_OILDROP, RESERVE_CAP_OILDROP, SUPPLY_NAME, LAMP_NAME, OILDROP_PER_LAMP,
 } from "../offchain/src/constants.js";
 import { supplyStateToCbor } from "../offchain/src/datum.js";
 import type { LucidEvolution } from "@lucid-evolution/lucid";
@@ -30,7 +30,7 @@ const KHO_NAME = fromText("KHO");   // kho NFT asset name
 const MET_NAME = fromText("MET");   // meter (ReserveDraw — không test)
 const LAMP_TAG = fromText("LAMPtag"); // token_tag LAMP trong registry
 const KHO_SCRIPT_HASH = "ce".repeat(28); // 28-byte placeholder = địa chỉ kho
-const DELTA = 250n * OIL_PER_LAMP;  // mint 250 LAMP
+const DELTA = 250n * OILDROP_PER_LAMP;  // mint 250 LAMP
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -64,7 +64,7 @@ async function main() {
   // ── apply-param lamp_mint (12 param) ──
   const lampMint = applyPolicy((await rawValidator("lamp_mint.lamp_mint.mint")).compiledCode, [
     nPid, SUPPLY_NAME, LAMP_NAME,        // thread + token_name
-    DIST_CAP_OIL, RESERVE_CAP_OIL,       // cap PARAM (framework: LAMP 36 tỷ; FARM 12 tỷ…)
+    DIST_CAP_OILDROP, RESERVE_CAP_OILDROP,       // cap PARAM (framework: LAMP 36 tỷ; FARM 12 tỷ…)
     nPid, REG_NAME, LAMP_TAG,            // registry + tag
     nPid, KHO_NAME,                      // kho NFT
     nPid, MET_NAME,                      // meter
@@ -74,8 +74,8 @@ async function main() {
   console.log("lamp_policy:", lampPid, "\nkho addr:", khoAddr, "\n");
 
   // datums
-  const ssDatum0 = supplyStateToCbor({ dist_minted: 0n, reserve_minted: 0n, dist_cap: DIST_CAP_OIL, reserve_cap: RESERVE_CAP_OIL });
-  const ssDatum1 = supplyStateToCbor({ dist_minted: DELTA, reserve_minted: 0n, dist_cap: DIST_CAP_OIL, reserve_cap: RESERVE_CAP_OIL });
+  const ssDatum0 = supplyStateToCbor({ dist_minted: 0n, reserve_minted: 0n, dist_cap: DIST_CAP_OILDROP, reserve_cap: RESERVE_CAP_OILDROP });
+  const ssDatum1 = supplyStateToCbor({ dist_minted: DELTA, reserve_minted: 0n, dist_cap: DIST_CAP_OILDROP, reserve_cap: RESERVE_CAP_OILDROP });
   // RegistryDatum Constr0[gov_did, [Entry Constr0[tag, Authority SinglePkh Constr0[pkh]]]]
   const regDatum = Data.to(new Constr(0, [fromText("did:phoenix:org:greensun"), [new Constr(0, [LAMP_TAG, new Constr(0, [pkh])])]]));
 
@@ -112,13 +112,13 @@ async function main() {
   await submit(lucid, mintTx, "mint LAMP → kho");
 
   const khoLamp = (await lucid.utxosAt(khoAddr)).reduce((s, u) => s + (u.assets[lampUnit] ?? 0n), 0n);
-  console.log(`   ✓ kho giữ ${khoLamp / OIL_PER_LAMP} LAMP (mong đợi ${DELTA / OIL_PER_LAMP})`);
+  console.log(`   ✓ kho giữ ${khoLamp / OILDROP_PER_LAMP} LAMP (mong đợi ${DELTA / OILDROP_PER_LAMP})`);
   if (khoLamp < DELTA) throw new Error("A-DEST FAIL: LAMP không vào kho");
 
   // ── c. ATTACK: rót LAMP về VÍ (không vào kho) → node REJECT ──
   console.log("\n── c. ATTACK: mint LAMP → ví (né kho) — mong đợi REJECT ──");
   const ssU2 = (await lucid.utxosAt(walletAddr)).find((u) => (u.assets[threadUnit] ?? 0n) === 1n)!;
-  const ssDatum2 = supplyStateToCbor({ dist_minted: DELTA * 2n, reserve_minted: 0n, dist_cap: DIST_CAP_OIL, reserve_cap: RESERVE_CAP_OIL });
+  const ssDatum2 = supplyStateToCbor({ dist_minted: DELTA * 2n, reserve_minted: 0n, dist_cap: DIST_CAP_OILDROP, reserve_cap: RESERVE_CAP_OILDROP });
   try {
     const atk = await lucid.newTx()
       .collectFrom([ssU2])

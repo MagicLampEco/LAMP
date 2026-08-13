@@ -14,7 +14,7 @@ export interface MerkleStep {
 export interface SrclDatum {
   /** Merkle root mỗi epoch (hex). Index = epoch. Admin append qua SetRoot. */
   epoch_roots: string[];
-  /** Tổng LAMP (oil) đã phân phối (sổ kế toán, chỉ tăng). */
+  /** Tổng LAMP (oildrop) đã phân phối (sổ kế toán, chỉ tăng). */
   distributed_total: bigint;
   /** Epoch cuối SRCL (= 35). */
   end_epoch: bigint;
@@ -24,13 +24,13 @@ export interface SrclDatum {
   ms_per_epoch: bigint;
 }
 
-/** Một entitlement: (epoch, owner) nhận amount LAMP (oil). */
+/** Một entitlement: (epoch, owner) nhận amount LAMP (oildrop). */
 export interface Entitlement {
   /** Epoch (0..35). */
   epoch: number;
   /** payment-credential hash (pkh hex) của delegator. */
   owner: string;
-  /** Lượng LAMP (oil). */
+  /** Lượng LAMP (oildrop). */
   amount: bigint;
 }
 

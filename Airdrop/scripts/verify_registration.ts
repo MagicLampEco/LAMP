@@ -20,6 +20,9 @@ import { blake2b } from "@noble/hashes/blake2b";
 import { bech32 } from "@scure/base";
 import { bf, bfAll, BLOCKFROST_KEY, NETWORK } from "./config.js";
 import type { SpoRegistration } from "./spo_register.js";
+import {
+  hexToUtf8, boundFieldMismatches,
+} from "../offchain/src/delegatorSnapshot.js";
 
 // ── Crypto ──────────────────────────────────────────────────────────────────
 
@@ -39,15 +42,13 @@ function verifyEd25519(messageHex: string, sigHex: string, pubkeyHex: string): b
   }
 }
 
-/** Đọc giá trị của dòng `Label: <value>` trong message đã ký (nhãn không chứa ký tự regex). */
-function messageField(message: string, label: string): string | null {
-  const m = message.match(new RegExp(`^${label}:\\s*(.+)$`, "m"));
-  return m ? m[1]!.trim() : null;
-}
-
-/** Trường nào của registration KHÔNG khớp message đã ký. Rỗng = chữ ký phủ trọn payload. */
-function boundFieldMismatches(reg: SpoRegistration): string[] {
-  const bound: [string, string][] = [
+/**
+ * Các cặp (nhãn trong message, giá trị payload) mà chữ ký SPO PHẢI phủ.
+ * `messageField`/`boundFieldMismatches` nay là NGUỒN DÙNG CHUNG với nhánh delegator
+ * (`offchain/src/delegatorSnapshot.ts`) — hai nhánh không được vá lệch nữa.
+ */
+function spoBoundFields(reg: SpoRegistration): [string, string][] {
+  return [
     ["Pool", reg.pool_id],
     ["Reward Address", reg.reward_stake_address],
     ["Payment Address", reg.payment_address],
@@ -55,7 +56,6 @@ function boundFieldMismatches(reg: SpoRegistration): string[] {
     ["Nonce", reg.nonce],
     ["Epochs", `[${(reg.epochs_active ?? []).join(", ")}]`],
   ];
-  return bound.filter(([l, v]) => messageField(reg.message, l) !== v).map(([l]) => l);
 }
 
 function pubkeyToStakeAddr(pubkeyHex: string, network: string): string {
@@ -187,7 +187,18 @@ async function verifyOne(filePath: string): Promise<VerifyResult> {
   // nào đó": sửa payment_address trong file JSON vẫn VALID (CHECK 8 vẫn khớp vì pubkey
   // là thật của pool) ⇒ phần LAMP SPO chảy về ví kẻ sửa file. Fail-closed: lệch 1
   // trường ⇒ INVALID.
-  const unboundFields = boundFieldMismatches(reg);
+  // Đối chiếu với chuỗi GIẢI TỪ `message_hex` (thứ thật sự được ký), không phải
+  // `reg.message` — trường đó nằm ngoài chữ ký. CHECK 3 đã ràng hai thứ bằng nhau,
+  // nhưng lấy thẳng bản đã ký thì không phụ thuộc thứ tự check.
+  let signedMsg: string;
+  try {
+    signedMsg = hexToUtf8(reg.message_hex);
+  } catch {
+    signedMsg = "";
+  }
+  const unboundFields = signedMsg === ""
+    ? ["(message_hex không giải được)"]
+    : boundFieldMismatches(signedMsg, spoBoundFields(reg));
   checks.push({
     name: "Chữ ký ràng buộc payload",
     pass: unboundFields.length === 0,
@@ -341,17 +352,19 @@ function selftest(): void {
     epochs_active: [580, 581], message: msg,
   } as SpoRegistration;
 
-  assert.deepStrictEqual(boundFieldMismatches(honest), []);
+  assert.deepStrictEqual(boundFieldMismatches(msg, spoBoundFields(honest)), []);
   // Kẻ tấn công đổi ví nhận trong JSON, giữ nguyên message + chữ ký thật của SPO.
   assert.deepStrictEqual(
-    boundFieldMismatches({ ...honest, payment_address: "addr_test1attacker" }),
+    boundFieldMismatches(msg, spoBoundFields({ ...honest, payment_address: "addr_test1attacker" })),
     ["Payment Address"],
   );
   // Nhét thêm epoch để thổi phồng phần chia.
   assert.deepStrictEqual(
-    boundFieldMismatches({ ...honest, epochs_active: [580, 581, 582] }),
+    boundFieldMismatches(msg, spoBoundFields({ ...honest, epochs_active: [580, 581, 582] })),
     ["Epochs"],
   );
+  // hexToUtf8 là nguồn sự thật: sửa `message` mà giữ message_hex thì vẫn bị bắt.
+  assert.deepStrictEqual(hexToUtf8(Buffer.from(msg, "utf8").toString("hex")), msg);
   console.log("selftest OK — sửa payload sau khi ký bị bắt");
 }
 

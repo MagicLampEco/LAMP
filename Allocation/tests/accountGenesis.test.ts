@@ -11,7 +11,7 @@ import type { MintingPolicy, Validator } from "@lucid-evolution/lucid";
 import { buildAccountGenesisTx } from "../offchain/src/accountGenesisBuilder.js";
 import { accountNftRedeemerToCbor } from "../offchain/src/datum.js";
 import { accountNftName } from "../offchain/src/accountNft.js";
-import { lampOil, CHANNEL_TEAM } from "./helpers.js";
+import { lampOildrop, CHANNEL_TEAM } from "./helpers.js";
 
 interface Recorded {
   mint:    { assets: Record<string, bigint>; redeemer: string }[];
@@ -41,7 +41,7 @@ const NETWORK = "Preview" as const;
 const OWNER = "aabbccddeeff00112233445566778899aabbccddeeff001122334455";
 const NFT_POLICY = "cd".repeat(28);
 const COMMITTEE = ["11".repeat(28), "22".repeat(28), "33".repeat(28)];
-const D = lampOil(100n);
+const D = lampOildrop(100n);
 
 function scriptAddr(v: Validator): string {
   return credentialToAddress(NETWORK, scriptHashToCredential(validatorToScriptHash(v)));
@@ -53,7 +53,7 @@ function baseParams(over: Record<string, unknown> = {}) {
     network: NETWORK,
     owner: OWNER,
     channelId: CHANNEL_TEAM,
-    entitlement: lampOil(1000n),
+    entitlement: lampOildrop(1000n),
     startEpoch: 5n,
     dropsPerEpoch: D,
     accountNftPolicy: FAKE_NFT_POLICY,

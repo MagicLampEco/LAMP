@@ -4,7 +4,7 @@ import { describe, it, expect } from "vitest";
 import {
   estimateTaskFeeUsd, makeAladinWorkPriceFn, aladinWorkConfig, ALADINWORK_BUCKETS,
 } from "../examples/aladinwork.js";
-import { usdToOil } from "../examples/orilife.js";
+import { usdToOildrop } from "../examples/orilife.js";
 import { eventToCollectItem } from "../offchain/src/collectAdapter.js";
 import { asciiToHex } from "../offchain/src/encoding.js";
 
@@ -51,7 +51,7 @@ describe("AladinWork PriceFn adapter (tầng ① — LAMP cut Treasury)", () => 
   const lampPolicy = "ab".repeat(28);
   const priceFn = makeAladinWorkPriceFn({ lampPolicy, lampUsd: 0.01 });
 
-  it("task.complete → CollectItem LAMP, amount = oil(3.02), bucket PROTOCOL", () => {
+  it("task.complete → CollectItem LAMP, amount = oildrop(3.02), bucket PROTOCOL", () => {
     const item = eventToCollectItem(
       { eventType: "task.complete", payer: "11".repeat(28), extra: { declaredValueUsd: 100 } },
       priceFn,
@@ -59,18 +59,18 @@ describe("AladinWork PriceFn adapter (tầng ① — LAMP cut Treasury)", () => 
     expect(item).not.toBeNull();
     expect(item!.policy).toBe(lampPolicy);
     expect(item!.name).toBe(asciiToHex("LAMP"));
-    expect(item!.amount).toBe(usdToOil(3.02, 0.01));
+    expect(item!.amount).toBe(usdToOildrop(3.02, 0.01));
     expect(item!.amount).toBe(302_000_000n);
     expect(item!.category).toBe(ALADINWORK_BUCKETS.PROTOCOL);
   });
 
-  it("tree.identify phẳng → oil(0.004) = 400_000", () => {
+  it("tree.identify phẳng → oildrop(0.004) = 400_000", () => {
     const item = eventToCollectItem(
       { eventType: "tree.identify", payer: "11".repeat(28) }, priceFn);
     expect(item!.amount).toBe(400_000n);
   });
 
-  it("residue.test phẳng → oil(0.05) = 5_000_000", () => {
+  it("residue.test phẳng → oildrop(0.05) = 5_000_000", () => {
     const item = eventToCollectItem(
       { eventType: "residue.test", payer: "11".repeat(28) }, priceFn);
     expect(item!.amount).toBe(5_000_000n);

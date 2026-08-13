@@ -23,7 +23,7 @@
 //
 // VIỆC 2 — ÉP Lớp A == Lớp B lúc genesis (per-channel):
 //   Lúc mint budget NFT (= lúc setup kênh), ép tx có:
-//     - đúng 1 output MANG NFT vừa mint + ChannelBudgetDatum {channel_id, remaining_oil=R}
+//     - đúng 1 output MANG NFT vừa mint + ChannelBudgetDatum {channel_id, remaining_oildrop=R}
 //     - đúng 1 treasury con output: TreasuryDatum cùng channel_id, value LAMP == R.
 //   → Lớp A (remaining beacon) == Lớp B (LAMP vật lý) NGAY TỪ GENESIS. Bịt audit #2
 //   (dist_authority seed treasury ≠ remaining). Đối xứng custody_seed S-SEED-0 của Treasury.
@@ -69,7 +69,7 @@ validator budget_nft(
     expect budget_datum: ChannelBudgetDatum = bd
     // beacon.channel_id PHẢI khớp NFT name (= channel_id param) — chống beacon lệch kênh.
     expect budget_datum.channel_id == channel_id
-    let r = budget_datum.remaining_oil
+    let r = budget_datum.remaining_oildrop
     expect r > 0
 
     // ── GENESIS HARDENING: beacon PHẢI ở Script credential (không ví thường) ──
@@ -82,7 +82,7 @@ validator budget_nft(
     // ── VIỆC 2: ÉP Lớp A == Lớp B — đúng 1 treasury con LAMP == R, cùng kênh ──
     // Nhận diện treasury output = output MANG TreasuryDatum cùng channel_id (đọc được).
     // KHÔNG dùng treasury_hash param (sẽ tái sinh vòng: budget_nft→treasury→claim_account
-    // →budget_nft_policy). Ép quantity_of(LAMP) == remaining_oil của beacon.
+    // →budget_nft_policy). Ép quantity_of(LAMP) == remaining_oildrop của beacon.
     let treasury_outs =
       list.filter(tx.outputs, fn(o) { is_treasury_for_channel(o, channel_id) })
     expect [treasury_out] = treasury_outs
@@ -153,7 +153,7 @@ fn bn_other_input() -> transaction.Input {
 }
 
 fn bn_budget_d(channel: ByteArray, remaining: Int) -> ChannelBudgetDatum {
-  ChannelBudgetDatum { channel_id: channel, remaining_oil: remaining }
+  ChannelBudgetDatum { channel_id: channel, remaining_oildrop: remaining }
 }
 
 fn bn_tre_d(channel: ByteArray) -> TreasuryDatum {
@@ -300,7 +300,7 @@ test budget_nft_reject_treasury_wrong_channel() fail {
   bn_run(tx)
 }
 
-// remaining_oil <= 0 (beacon khởi tạo rỗng) → reject (kênh phải có ngân sách > 0).
+// remaining_oildrop <= 0 (beacon khởi tạo rỗng) → reject (kênh phải có ngân sách > 0).
 test budget_nft_reject_zero_remaining() fail {
   let tx =
     Transaction {

@@ -4,7 +4,7 @@
 //   reserve_auth.ak đúc 1 auth NFT one-shot. NFT đó bị KHÓA tại reserve_gate (script này).
 //   reserve_draw.ak (Reserve) nhả CHỈ khi tx có 1 input mang auth NFT — nhưng reserve_draw
 //   KHÔNG biết logic sàn. reserve_gate là nơi DUY NHẤT ép điều kiện sàn: auth NFT chỉ được
-//   spend (→ trở thành input để thỏa reserve_draw) KHI Treasury parked < floor_oil. Vì auth
+//   spend (→ trở thành input để thỏa reserve_draw) KHI Treasury parked < floor_oildrop. Vì auth
 //   NFT không thể rời gate nếu chưa qua kiểm sàn, Reserve nhả ⟺ Treasury thực sự dưới sàn.
 //
 //   2 validator chạy ĐỒNG THỜI trong 1 tx: reserve_gate (ép sàn + giữ auth) và reserve_draw
@@ -16,7 +16,7 @@
 //   G-CUST-1   tx có REFERENCE INPUT là custody UTxO THẬT: mang custody NFT
 //              (custody_nft_policy, custody_nft_name) qty == 1. Reference (CIP-31) —
 //              KHÔNG tiêu custody (custody do collect/release tự quản).
-//   G-FLOOR-1  parked = quantity_of(custody_ref.value, lamp_policy, token_name) < floor_oil.
+//   G-FLOOR-1  parked = quantity_of(custody_ref.value, lamp_policy, token_name) < floor_oildrop.
 //              CHỈ cho kéo khi PARKED dưới sàn (demand-gated).
 //   G-REOUT-1  auth NFT re-output VỀ CHÍNH gate script (cùng payment script hash), qty == 1.
 //              Tái dùng vô hạn; không mất, không burn, không rời script.
@@ -49,7 +49,7 @@ fn output_with_nft(outputs: List<Output>, policy: PolicyId, name: ByteArray) -> 
 /// reserve_gate parameterized — interface contract với Reserve + custody:
 ///   custody_nft_policy / custody_nft_name — authenticity custody (custody_seed one-shot NFT).
 ///   lamp_policy / token_name              — LAMP/tLAMP (đo parked trong custody.value).
-///   floor_oil                             — SÀN parked (oil). parked < floor_oil mới cho kéo.
+///   floor_oildrop                             — SÀN parked (oildrop). parked < floor_oildrop mới cho kéo.
 ///   auth_policy / auth_name               — Treasury-pull auth NFT (= treasury_auth_policy/name
 ///                                           của reserve_draw; = policy/name reserve_auth đúc).
 validator reserve_gate(
@@ -57,7 +57,7 @@ validator reserve_gate(
   custody_nft_name   : ByteArray,
   lamp_policy        : PolicyId,
   token_name         : ByteArray,
-  floor_oil          : Int,
+  floor_oildrop          : Int,
   auth_policy        : PolicyId,
   auth_name          : ByteArray,
 ) {
@@ -92,9 +92,9 @@ validator reserve_gate(
       )
     let custody_out: Output = cust_ref.output
 
-    // ── G-FLOOR-1: parked < floor_oil (CHỈ cho kéo khi dưới sàn) ───────────
+    // ── G-FLOOR-1: parked < floor_oildrop (CHỈ cho kéo khi dưới sàn) ───────────
     let parked = assets.quantity_of(custody_out.value, lamp_policy, token_name)
-    expect parked < floor_oil
+    expect parked < floor_oildrop
 
     // ── G-REOUT-1 + G-DS-1 (vế output): auth NFT re-output VỀ chính gate script ──
     // own_hash = payment script hash của gate (từ own input address). Đúng 1 output
@@ -132,7 +132,7 @@ const auth_pol: PolicyId = #"a1a1"
 
 const auth_nm: ByteArray = #"5450554c4c"
 
-// SÀN = 100 oil (đơn vị test gọn).
+// SÀN = 100 oildrop (đơn vị test gọn).
 const floor: Int = 100
 
 // gate script hash + 1 script hash KHÁC (test sai địa chỉ re-output).

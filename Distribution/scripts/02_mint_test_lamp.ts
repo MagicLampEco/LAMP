@@ -13,11 +13,11 @@
 import { Data } from "@lucid-evolution/lucid";
 import {
   NETWORK, makeLucid, walletPkh, nativeSigPolicy, nativeSigPolicyId,
-  loadDeployed, saveDeployed, toUnit, lampToOil, explorerTx, awaitTx,
+  loadDeployed, saveDeployed, toUnit, lampToOildrop, explorerTx, awaitTx,
 } from "./config.js";
 
-// Lượng test-LAMP mint (oil). Mặc định 1_000_000 LAMP — dư fund treasury pool test.
-const MINT_LAMP = lampToOil(BigInt(process.env.TEST_LAMP_MINT ?? "1000000"));
+// Lượng test-LAMP mint (oildrop). Mặc định 1_000_000 LAMP — dư fund treasury pool test.
+const MINT_LAMP = lampToOildrop(BigInt(process.env.TEST_LAMP_MINT ?? "1000000"));
 
 async function main(): Promise<void> {
   console.log("=== LampDistribution Step 2: Mint test-LAMP ===\n");
@@ -44,7 +44,7 @@ async function main(): Promise<void> {
   console.log(`Network:    ${NETWORK}`);
   console.log(`Wallet PKH: ${pkh}`);
   console.log(`LAMP unit:  ${lampUnit}`);
-  console.log(`Minting:    ${MINT_LAMP} oil = ${MINT_LAMP / 1_000_000n} LAMP\n`);
+  console.log(`Minting:    ${MINT_LAMP} oildrop = ${MINT_LAMP / 1_000_000n} LAMP\n`);
 
   const utxos   = await lucid.wallet().getUtxos();
   const balance = utxos.reduce((s, u) => s + (u.assets.lovelace ?? 0n), 0n);

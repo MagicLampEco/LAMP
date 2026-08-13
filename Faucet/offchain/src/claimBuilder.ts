@@ -65,7 +65,7 @@ export async function buildClaimTx(params: ClaimParams): Promise<ClaimResult> {
   const poolLamp = poolUtxo.assets[tlampUnit] ?? 0n;
   if (poolLamp < amount) {
     throw new Error(
-      `CLAIM-003: pool chỉ còn ${poolLamp} oil tLAMP < claim_amount ${amount}. Pool cạn — re-deploy.`,
+      `CLAIM-003: pool chỉ còn ${poolLamp} oildrop tLAMP < claim_amount ${amount}. Pool cạn — re-deploy.`,
     );
   }
 
@@ -97,8 +97,8 @@ export async function buildClaimTx(params: ClaimParams): Promise<ClaimResult> {
 
   const summary = [
     `═══ Faucet Claim ═══`,
-    `Pool tLAMP:   ${poolLamp} → ${poolAfter} oil`,
-    `Claim:        ${amount / 1_000_000n} LAMP (${amount} oil)`,
+    `Pool tLAMP:   ${poolLamp} → ${poolAfter} oildrop`,
+    `Claim:        ${amount / 1_000_000n} LAMP (${amount} oildrop)`,
     `Destination:  ${destination}`,
   ].join("\n");
 

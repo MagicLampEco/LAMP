@@ -10,18 +10,20 @@
 
 import { encodeSupplyState, decodeSupplyState } from "../offchain/src/supply_state.js";
 import type { SupplyState } from "../offchain/src/types.js";
+import { LAMP_MAINNET } from "../offchain/src/deployed.js";
 
 // ── Hằng MAINNET (ĐÃ XÁC MINH — tx genesis db0610c2…, verify_mainnet_supply.ts) ──
 
-const OIL = 1_000_000n; // 1 LAMP = 10⁶ oildrop
+const OILDROP = 1_000_000n; // 1 LAMP = 10⁶ oildrop
 
-/** Policy LAMP canonical mainnet (cap-36B lazy-mint, PlutusV3). */
-const LAMP_POLICY = "55d3e01bb6c469e02665e4b6573ce65bbaf7a50ad2024e247eb180f0";
-const LAMP_NAME = "4c414d50"; // "LAMP"
+// Định danh mainnet lấy từ NƠI GIỮ DUY NHẤT (offchain/src/deployed.ts) — đừng chép lại ở đây.
+const D = LAMP_MAINNET;
+const LAMP_POLICY = D.policyId;
+const LAMP_NAME = D.assetName;
 
 /** supply_state script (giữ NFT "SUPPLY" + datum 4-field). */
-const SUPPLY_STATE_ADDR = "addr1wxz0dkz0v3rg6zeqz9c7cyxz9lg3ynkrlkqrapfkj7e5ppqexy5d3";
-const SUPPLY_STATE_HASH = "84f6d84f64468d0b201171ec10c22fd1124ec3fd803e853697b34084";
+const SUPPLY_STATE_ADDR = D.supplyStateAddress;
+const SUPPLY_STATE_HASH = D.supplyStateHash;
 const SUPPLY_NFT_NAME = "535550504c59"; // "SUPPLY"
 
 /** KHO dist_treasury (A-DEST: Δ mint DistributionVest BẮT BUỘC chảy vào đây). */
@@ -32,13 +34,13 @@ const KHO_HASH = "d5e80c9a5a885f56b36d915b4353c2e9e6797b38455d11d0014edbb6";
 const MAINNET_SUPPLY_STATE_CBOR =
   "d8799f1b000000e8d4a51000001b005daf6012ba20001b0022366f192fe000ff";
 
-const fmtLamp = (oil: bigint) => (oil / OIL).toLocaleString("en-US") + " LAMP";
+const fmtLamp = (oildrop: bigint) => (oildrop / OILDROP).toLocaleString("en-US") + " LAMP";
 
 // ── Kế hoạch DistributionVest ────────────────────────────────────────────
 
 export interface VestPlan {
   route: "DistributionVest";
-  deltaOil: bigint;
+  deltaOildrop: bigint;
   prev: SupplyState;
   next: SupplyState;
   prevCbor: string;
@@ -46,19 +48,19 @@ export interface VestPlan {
 }
 
 /**
- * Tính datum supply_state MỚI sau khi mint `deltaLampOil` oildrop qua DistributionVest.
+ * Tính datum supply_state MỚI sau khi mint `deltaLampOildrop` oildrop qua DistributionVest.
  * Kiểm dist_minted' ≤ dist_cap (fail-fast). CHỈ tính + trả kế hoạch — KHÔNG dựng tx.
  *
- * @param deltaLampOil Δ mint (oildrop). VD 12M LAMP = 12_000_000n * OIL.
+ * @param deltaLampOildrop Δ mint (oildrop). VD 12M LAMP = 12_000_000n * OILDROP.
  * @param fromCbor     datum supply_state hiện tại (mặc định: đã xác minh mainnet).
  */
 export function planDistributionVest(
-  deltaLampOil: bigint,
+  deltaLampOildrop: bigint,
   fromCbor: string = MAINNET_SUPPLY_STATE_CBOR,
 ): VestPlan {
-  if (deltaLampOil <= 0n) throw new Error("PLAN-001: Δ phải > 0 (lazy-mint không burn/no-op)");
+  if (deltaLampOildrop <= 0n) throw new Error("PLAN-001: Δ phải > 0 (lazy-mint không burn/no-op)");
   const prev = decodeSupplyState(fromCbor);
-  const nextDist = prev.dist_minted + deltaLampOil;
+  const nextDist = prev.dist_minted + deltaLampOildrop;
   if (nextDist > prev.dist_cap) {
     throw new Error(
       `PLAN-010: vượt dist_cap — dist_minted' ${nextDist} > cap ${prev.dist_cap} ` +
@@ -68,7 +70,7 @@ export function planDistributionVest(
   const next: SupplyState = { ...prev, dist_minted: nextDist };
   return {
     route: "DistributionVest",
-    deltaOil: deltaLampOil,
+    deltaOildrop: deltaLampOildrop,
     prev, next,
     prevCbor: encodeSupplyState(prev),
     nextCbor: encodeSupplyState(next),
@@ -79,18 +81,22 @@ export function planDistributionVest(
 export function printVestPlan(p: VestPlan, label: string): void {
   console.log(`\n── ${label} ─────────────────────────────────────────────`);
   console.log(`  route            : ${p.route}`);
-  console.log(`  Δ mint           : ${fmtLamp(p.deltaOil)}  (${p.deltaOil} oildrop)`);
+  console.log(`  Δ mint           : ${fmtLamp(p.deltaOildrop)}  (${p.deltaOildrop} oildrop)`);
   console.log(`  supply_state IN  : dist_minted=${fmtLamp(p.prev.dist_minted)}`);
   console.log(`  supply_state OUT : dist_minted=${fmtLamp(p.next.dist_minted)}`);
   console.log(`  headroom sau     : ${fmtLamp(p.next.dist_cap - p.next.dist_minted)}`);
   console.log(`  datum CŨ  (cbor) : ${p.prevCbor}`);
   console.log(`  datum MỚI (cbor) : ${p.nextCbor}`);
-  console.log(`  A-DEST           : Δ = ${fmtLamp(p.deltaOil)} PHẢI chảy vào KHO`);
+  console.log(`  A-DEST           : Δ = ${fmtLamp(p.deltaOildrop)} PHẢI chảy vào KHO`);
   console.log(`                     ${KHO_ADDR}`);
   console.log(`                     (hash ${KHO_HASH}) — nếu ra ví ⇒ validator reject.`);
   console.log(`  redeemer mint    : DistributionVest = Constr(0, [])`);
   console.log(`  redeemer spend   : Advance          = Constr(0, [])  (spend supply_state)`);
-  console.log(`  authority ký     : theo registry WHO-gate (token_tag) của lamp_mint — CẦN KHOÁ`);
+  // ⚠️ MAINNET ≠ HEAD. Policy đang chạy (55d3e01b…180f0) là bản MỒI 8 tham số: WHO-gate là
+  // `dist_authority` (danh sách pkh) + `auth_threshold`, kiểm bằng extra_signatories — KHÔNG
+  // đọc registry/token_tag. Registry WHO-gate chỉ có ở bản 12 tham số CHƯA phát hành.
+  console.log(`  authority ký     : MAINNET = dist_authority (pkh nướng sẵn) + threshold — CẦN KHOÁ`);
+  console.log(`                     (registry WHO-gate/token_tag chỉ áp cho bản 12 tham số CHƯA deploy)`);
 }
 
 // ── Main (dry-run) ────────────────────────────────────────────────────────
@@ -116,24 +122,24 @@ function main() {
 
   // 3 đợt launch — thứ tự mint 513M LAMP < headroom 26,369B.
   const tranches: Array<[string, bigint]> = [
-    ["ETD (Early TIGER Delegator)", 12_000_000n * OIL],
-    ["Airdrop-v2 (delegator+SPO+CS)", 120_000_000n * OIL],
-    ["SRCL (staking-reward → LAMP)", 381_000_000n * OIL],
+    ["ETD (Early TIGER Delegator)", 12_000_000n * OILDROP],
+    ["Airdrop-v2 (delegator+SPO+CS)", 120_000_000n * OILDROP],
+    ["SRCL (staking-reward → LAMP)", 381_000_000n * OILDROP],
   ];
 
   if (argLamp !== null) {
-    printVestPlan(planDistributionVest(argLamp * OIL), `Δ tuỳ chọn = ${argLamp} LAMP`);
+    printVestPlan(planDistributionVest(argLamp * OILDROP), `Δ tuỳ chọn = ${argLamp} LAMP`);
   } else {
     // Kế hoạch tuần tự: mỗi đợt vest tiếp nối datum của đợt trước.
     let cursor = MAINNET_SUPPLY_STATE_CBOR;
-    let totalOil = 0n;
+    let totalOildrop = 0n;
     for (const [name, delta] of tranches) {
       const p = planDistributionVest(delta, cursor);
       printVestPlan(p, name);
       cursor = p.nextCbor;
-      totalOil += delta;
+      totalOildrop += delta;
     }
-    console.log(`\n  TỔNG 3 đợt: ${fmtLamp(totalOil)} < headroom ${fmtLamp(prev.dist_cap - prev.dist_minted)}  ⇒ ĐỦ ✓`);
+    console.log(`\n  TỔNG 3 đợt: ${fmtLamp(totalOildrop)} < headroom ${fmtLamp(prev.dist_cap - prev.dist_minted)}  ⇒ ĐỦ ✓`);
   }
 
   console.log("\n" + "─".repeat(66));

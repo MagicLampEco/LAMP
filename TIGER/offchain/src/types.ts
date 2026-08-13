@@ -14,13 +14,13 @@ export interface StakeEntry {
  *  Thứ tự không quan trọng cho tích lũy (chỉ cộng tổng). */
 export type SnapshotSet = StakeEntry[][];
 
-/** Kết quả entitlement 1 ví: E_i (oil) sau khi cộng dồn stake + áp cap. */
+/** Kết quả entitlement 1 ví: E_i (oildrop) sau khi cộng dồn stake + áp cap. */
 export interface TigerEntitlement {
   /** payment-credential hash (pkh hex). */
   owner: string;
   /** Tổng stake tích lũy qua mọi snapshot (lovelace·epoch) — minh bạch kiểm toán. */
   accStake: bigint;
-  /** Entitlement cuối (oil LAMP). */
+  /** Entitlement cuối (oildrop LAMP). */
   amount: bigint;
   /** true nếu E_i bị cap chạm trần (cap/ví). */
   capped: boolean;
@@ -28,15 +28,15 @@ export interface TigerEntitlement {
 
 /** Tham số sinh entitlement. */
 export interface EntitlementParams {
-  /** Ngân sách pot (oil). Mặc định TIGER_TOTAL_OIL. */
-  budgetOil: bigint;
-  /** Trần mỗi ví (oil). null = không cap. */
-  capOil: bigint | null;
+  /** Ngân sách pot (oildrop). Mặc định TIGER_TOTAL_OILDROP. */
+  budgetOildrop: bigint;
+  /** Trần mỗi ví (oildrop). null = không cap. */
+  capOildrop: bigint | null;
   /** Ví bị loại (self-dealing: sáng lập/đối tác). pkh hex, so khớp chính xác. */
   excluded: Set<string>;
 }
 
-/** Datum ClaimAccount (mirror Distribution types.ClaimAccountDatum). Mọi field oil/epoch. */
+/** Datum ClaimAccount (mirror Distribution types.ClaimAccountDatum). Mọi field oildrop/epoch. */
 export interface ClaimAccountDatum {
   owner: string;
   entitlement: bigint;

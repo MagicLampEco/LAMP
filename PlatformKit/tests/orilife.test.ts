@@ -2,7 +2,7 @@
 
 import { describe, it, expect } from "vitest";
 import {
-  estimateFeeUsd, usdToOil, makeOriLifePriceFn, oriLifeConfig, ORILIFE_BUCKETS,
+  estimateFeeUsd, usdToOildrop, makeOriLifePriceFn, oriLifeConfig, ORILIFE_BUCKETS,
 } from "../examples/orilife.js";
 import { eventToCollectItem } from "../offchain/src/collectAdapter.js";
 import { asciiToHex } from "../offchain/src/encoding.js";
@@ -40,12 +40,12 @@ describe("estimateFeeUsd mirror animal_fee.py", () => {
   });
 });
 
-describe("usdToOil (USD → oil LAMP×10^6)", () => {
-  it("0.14 USD @ 0.01 USD/LAMP = 14 LAMP = 14_000_000 oil", () => {
-    expect(usdToOil(0.14, 0.01)).toBe(14_000_000n);
+describe("usdToOildrop (USD → oildrop LAMP×10^6)", () => {
+  it("0.14 USD @ 0.01 USD/LAMP = 14 LAMP = 14_000_000 oildrop", () => {
+    expect(usdToOildrop(0.14, 0.01)).toBe(14_000_000n);
   });
   it("lampUsd ≤ 0 → ném lỗi", () => {
-    expect(() => usdToOil(1, 0)).toThrow(/dương/);
+    expect(() => usdToOildrop(1, 0)).toThrow(/dương/);
   });
 });
 
@@ -53,7 +53,7 @@ describe("OriLife PriceFn adapter", () => {
   const lampPolicy = "ab".repeat(28);
   const priceFn = makeOriLifePriceFn({ lampPolicy, lampUsd: 0.01 });
 
-  it("animal.enroll cattle → CollectItem LAMP, amount = oil(0.14), bucket PROTOCOL", () => {
+  it("animal.enroll cattle → CollectItem LAMP, amount = oildrop(0.14), bucket PROTOCOL", () => {
     const item = eventToCollectItem(
       { eventType: "animal.enroll", payer: "11".repeat(28),
         extra: { species: "cattle", declaredValueUsd: 0 } },
@@ -66,23 +66,23 @@ describe("OriLife PriceFn adapter", () => {
     expect(item!.category).toBe(ORILIFE_BUCKETS.PROTOCOL);
   });
 
-  it("animal.verify → phí phẳng 0.008 USD = 800_000 oil", () => {
+  it("animal.verify → phí phẳng 0.008 USD = 800_000 oildrop", () => {
     const item = eventToCollectItem(
       { eventType: "animal.verify", payer: "11".repeat(28) }, priceFn);
-    expect(item!.amount).toBe(usdToOil(0.008, 0.01));
+    expect(item!.amount).toBe(usdToOildrop(0.008, 0.01));
     expect(item!.amount).toBe(800_000n);
   });
 
   it("fruit.lifecycle → phí phẳng 0.006 USD", () => {
     const item = eventToCollectItem(
       { eventType: "fruit.lifecycle", payer: "11".repeat(28) }, priceFn);
-    expect(item!.amount).toBe(usdToOil(0.006, 0.01));
+    expect(item!.amount).toBe(usdToOildrop(0.006, 0.01));
   });
 
   it("tree.verify_add không value → ≥ phí phẳng 0.02 USD", () => {
     const item = eventToCollectItem(
       { eventType: "tree.verify_add", payer: "11".repeat(28) }, priceFn);
-    expect(item!.amount).toBe(usdToOil(0.02, 0.01));
+    expect(item!.amount).toBe(usdToOildrop(0.02, 0.01));
   });
 
   it("event lạ → null", () => {

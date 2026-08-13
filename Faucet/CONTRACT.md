@@ -4,8 +4,8 @@ Module testnet cho phép **mọi dev tự claim 100 tLAMP** (như tADA) để te
 năng LAMP mainnet trên Preview/Preprod. tLAMP là **token test canonical duy nhất**
 của MagicLamp — chốt 1 policy, deprecate các tLAMP cũ phân mảnh (xem §6).
 
-Đơn vị: **oil**, 1 LAMP = 10^6 oil (decimals 6) — KHỚP `Distribution/constants.ak`
-(q-format oil) + `Distribution` LAMP_ASSET_NAME. Mọi số nguyên (pure BigInt, không float).
+Đơn vị: **oildrop**, 1 LAMP = 10^6 oildrop (decimals 6) — KHỚP `Distribution/constants.ak`
+(q-format oildrop) + `Distribution` LAMP_ASSET_NAME. Mọi số nguyên (pure BigInt, không float).
 
 ---
 
@@ -33,13 +33,13 @@ của MagicLamp — chốt 1 policy, deprecate các tLAMP cũ phân mảnh (xem 
 | Tham số | Ý nghĩa |
 |---|---|
 | `genesis_ref` | `OutputReference` UTxO ví deploy bị CONSUME (one-shot lock) |
-| `total_supply` | Tổng cung oil = 36e9 × 10^6 = **36_000_000_000_000_000** |
+| `total_supply` | Tổng cung oildrop = 36e9 × 10^6 = **36_000_000_000_000_000** |
 
 Redeemer: `MintGenesis = Constr(0, [])` (không Burn).
 
 Asset name: `"tLAMP"` = `#"744c414d50"` (0x74 `'t'` + `"LAMP"`). KHÔNG dùng `"LAMP"`
-(`#"4c414d50"`) để tránh nhầm với token LAMP thật. Đơn vị nhỏ nhất = **oil**, 6
-decimals (1 tLAMP = 10^6 oil — y như lovelace với ADA).
+(`#"4c414d50"`) để tránh nhầm với token LAMP thật. Đơn vị nhỏ nhất = **oildrop**, 6
+decimals (1 tLAMP = 10^6 oildrop — y như lovelace với ADA).
 
 **Bất biến mint** (tất cả phải đúng, nếu không → `fail`):
 - `MINT-A` consume đúng `genesis_ref` (one-shot — chống mint lần 2).
@@ -71,8 +71,8 @@ test surrogate) → không tạo nợ kỹ thuật.
 
 `faucet.faucet.spend(tlamp_policy: ByteArray, tlamp_name: ByteArray)`
 
-Datum pool: `FaucetDatum{ claim_amount: Int } = Constr(0, [int])` — lượng oil mỗi claim
-(MVP = 100 LAMP = `100_000_000` oil). Tham số runtime (DAO/test chỉnh không cần recompile).
+Datum pool: `FaucetDatum{ claim_amount: Int } = Constr(0, [int])` — lượng oildrop mỗi claim
+(MVP = 100 LAMP = `100_000_000` oildrop). Tham số runtime (DAO/test chỉnh không cần recompile).
 
 Redeemer: `Claim = Constr(0, [])` (permissionless).
 
@@ -117,7 +117,7 @@ pool mới rẻ). Nếu v1.1 cần chống cạn: thêm per-address marker UTxO 
   vào pool UTxO với `FaucetDatum`. (`mintBuilder.ts`)
 - `buildClaimTx(params)` — dev claim: spend pool, pool_out = pool_in − claim_amount,
   dev nhận đúng claim_amount, datum + ADA + dust bảo toàn, no mint. (`claimBuilder.ts`)
-- Constants: `OIL_PER_LAMP=1e6`, `TOTAL_SUPPLY_OIL=3.6e16`, `CLAIM_AMOUNT_OIL=1e8`,
+- Constants: `OILDROP_PER_LAMP=1e6`, `TOTAL_SUPPLY_OILDROP=3.6e16`, `CLAIM_AMOUNT_OILDROP=1e8`,
   `TLAMP_ASSET_NAME="744c414d50"`.
 
 Scripts (`Faucet/scripts/`, đọc `.env` từ `MAGIC/.env`:

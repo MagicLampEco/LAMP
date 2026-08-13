@@ -35,7 +35,7 @@ import {
 } from "../offchain/src/datum.js";
 import { genesisSupplyState, applyMint } from "../offchain/src/supplyState.js";
 
-const TEST_MINT_OIL = BigInt(process.env.TEST_MINT_OIL ?? "100000000"); // 100 tLAMP
+const TEST_MINT_OILDROP = BigInt(process.env.TEST_MINT_OILDROP ?? "100000000"); // 100 tLAMP
 
 function encodeOutputRef(txHash: string, index: number): Constr<Data> {
   // OutputReference = Constr(0, [transaction_id: bytes, output_index: int]).
@@ -151,22 +151,22 @@ async function main(): Promise<void> {
 
   // ── Tx B: mint thử DistributionVest ─────────────────────────────────
   console.log("\nTx B — mint thử DistributionVest:");
-  const s1 = applyMint(s0, "DistributionVest", TEST_MINT_OIL);
-  console.log(`  Δ = ${TEST_MINT_OIL} oil → dist_minted: 0 → ${s1.dist_minted}`);
+  const s1 = applyMint(s0, "DistributionVest", TEST_MINT_OILDROP);
+  console.log(`  Δ = ${TEST_MINT_OILDROP} oildrop → dist_minted: 0 → ${s1.dist_minted}`);
 
   if (SUBMIT && supplyUtxo) {
     const txB = await lucid
       .newTx()
       .collectFrom([supplyUtxo], supplyStateRedeemerToCbor())
       .attach.SpendingValidator(ssScript)
-      .mintAssets({ [tlampUnit]: TEST_MINT_OIL }, mintRouteToCbor("DistributionVest"))
+      .mintAssets({ [tlampUnit]: TEST_MINT_OILDROP }, mintRouteToCbor("DistributionVest"))
       .attach.MintingPolicy(tlampPolicy)
       .pay.ToContract(
         ssAddr,
         { kind: "inline", value: supplyStateToCbor(s1) },
         { lovelace: 2_000_000n, [threadUnit]: 1n },
       )
-      .pay.ToAddress(distDestAddr, { [tlampUnit]: TEST_MINT_OIL })  // A-DEST: LAMP vào KHO, không về ví
+      .pay.ToAddress(distDestAddr, { [tlampUnit]: TEST_MINT_OILDROP })  // A-DEST: LAMP vào KHO, không về ví
       .addSignerKey(pkh)
       .complete();
 
@@ -175,7 +175,7 @@ async function main(): Promise<void> {
     const hashB = await signedB.submit();
     console.log(`  📤 submitted: ${explorerTx(hashB)}`);
     await lucid.awaitTx(hashB);
-    console.log(`  ✅ Minted ${TEST_MINT_OIL} oil tLAMP qua DistributionVest`);
+    console.log(`  ✅ Minted ${TEST_MINT_OILDROP} oildrop tLAMP qua DistributionVest`);
   } else {
     console.log("  (SUBMIT=false → cap math đã verify offchain qua applyMint; tx B cần SupplyState on-chain để build)");
   }

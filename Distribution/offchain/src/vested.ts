@@ -18,8 +18,8 @@ function minBig(a: bigint, b: bigint): bigint {
 
 /**
  * vested(t) = min(E, D · dpe · max(0, t − t0)).
- * @param entitlement   E (oil)
- * @param dropValue     D (oil/drop) — đọc từ DropParam beacon
+ * @param entitlement   E (oildrop)
+ * @param dropValue     D (oildrop/drop) — đọc từ DropParam beacon
  * @param dropsPerEpoch drops_per_epoch (datum)
  * @param startEpoch    t0
  * @param currentEpoch  t

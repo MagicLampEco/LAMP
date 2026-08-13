@@ -8,8 +8,8 @@
 //             SupplyState  UTxO (mang SUPPLY NFT)         — redeemer Advance (Genesis).
 //             Treasury auth UTxO (mang Treasury auth NFT) — bằng chứng Treasury-pull.
 //             ReserveState NFT đóng vai "meter" gate nhịp của Genesis ReserveDraw.
-//   - Mint:   delta oil LAMP qua policy lamp_mint, redeemer ReserveDraw (Constr 1).
-//   - Output: ReserveState' (NFT trả lại, drawn_oil += delta, last_epoch := epoch).
+//   - Mint:   delta oildrop LAMP qua policy lamp_mint, redeemer ReserveDraw (Constr 1).
+//   - Output: ReserveState' (NFT trả lại, drawn_oildrop += delta, last_epoch := epoch).
 //             SupplyState'  (NFT trả lại, reserve_minted += delta).
 //             delta LAMP tới reserve_dest (Treasury — TOÀN BỘ, không rò rỉ).
 //
@@ -95,8 +95,8 @@ export interface DrawParams {
   /** Unix-time (ms) cận TRÊN validity_range — phải CÙNG epoch lower (Luật 2b ghim t). */
   validToUnixMs: number;
 
-  /** Lượng Treasury muốn kéo (oil). Mặc định = trần epoch (kéo tối đa). */
-  requestedOil?: bigint;
+  /** Lượng Treasury muốn kéo (oildrop). Mặc định = trần epoch (kéo tối đa). */
+  requestedOildrop?: bigint;
 
   /** min-ADA giữ ở ReserveState output (mặc định 2 tADA). */
   reserveMinAda?: bigint;
@@ -147,7 +147,7 @@ export async function buildDrawTx(p: DrawParams): Promise<{
   }
 
   const sIn = readReserveState(p.reserveUtxo);
-  const requested = p.requestedOil ?? maxPerEpoch(sIn.total_oil);
+  const requested = p.requestedOildrop ?? maxPerEpoch(sIn.total_oildrop);
   // Fail-fast offchain: ép t>last_epoch + delta>0 (≤trần & ≤pot) + transition đúng.
   const { next: sOut, drawn } = applyDraw(sIn, p.epoch, requested);
 
@@ -179,7 +179,7 @@ export async function buildDrawTx(p: DrawParams): Promise<{
     // Mint delta LAMP qua route ReserveDraw.
     .mintAssets(mintAssets, p.reserveDrawRedeemerCbor)
     .attach.MintingPolicy(p.tlampPolicy)
-    // Recreate ReserveState' (NFT trả lại, drawn_oil += delta, last_epoch := epoch).
+    // Recreate ReserveState' (NFT trả lại, drawn_oildrop += delta, last_epoch := epoch).
     .pay.ToContract(
       p.reserveAddress,
       { kind: "inline", value: reserveStateToCbor(sOut) },

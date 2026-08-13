@@ -8,10 +8,10 @@ chi tiết hóa thành 4 spec:
 
 | Spec | Nội dung | File |
 |---|---|---|
-| **FEAT** | Tính năng/hành vi: vòng đời cử tri, tập sự, loại quyết định, luồng vote/recall | [VotingPower/FEAT.md](./VotingPower/FEAT.md) |
-| **MATH** | Cơ sở toán: công thức VP, chứng minh bounded/monotonic, geometric vs additive, chi phí thâu tóm | [VotingPower/MATH.md](./VotingPower/MATH.md) |
-| **TECH** | Kiến trúc on-chain Aiken: validator, đọc C1–C4, DID proof, chống double-vote | [VotingPower/TECH.md](./VotingPower/TECH.md) |
-| **EXEC** | Lộ trình, mốc, test plan, deploy Preview, bootstrap DAO | [VotingPower/EXEC.md](./VotingPower/EXEC.md) |
+| **FEAT** | Tính năng/hành vi: vòng đời cử tri, tập sự, loại quyết định, luồng vote/recall | [VotingPower/Feat-Spec.md](./VotingPower/Feat-Spec.md) |
+| **MATH** | Cơ sở toán: công thức VP, chứng minh bounded/monotonic, geometric vs additive, chi phí thâu tóm | [VotingPower/Math-Spec.md](./VotingPower/Math-Spec.md) |
+| **TECH** | Kiến trúc on-chain Aiken: validator, đọc C1–C4, DID proof, chống double-vote | [VotingPower/Tech-Spec.md](./VotingPower/Tech-Spec.md) |
+| **EXEC** | Lộ trình, mốc, test plan, deploy Preview, bootstrap DAO | [VotingPower/Exec-Spec.md](./VotingPower/Exec-Spec.md) |
 
 ---
 
@@ -89,7 +89,7 @@ Gọi `VP_max = ∏_k cap_k^{w_k}`. Một thực thể nắm `H` LAMP muốn t�
 - **Cũ:** mũ cứng `1/3`, 3 yếu tố cố định. Muốn đổi tầm quan trọng → phải sửa công thức (hard fork).
 - **Mới:** `w_k` là **tham số DAO chỉnh** → cộng đồng hạ trọng số vốn (C4), nâng trọng số uy tín (C3)
   mà không đổi cấu trúc. Thêm yếu tố mới (`K` tăng) **không phá** tính bounded/monotonic — chứng minh
-  ở [MATH](./VotingPower/MATH.md). Nếu chuẩn hóa `Σ w_k = 1` thì VP là **trung bình nhân có trọng số**,
+  ở [MATH](./VotingPower/Math-Spec.md). Nếu chuẩn hóa `Σ w_k = 1` thì VP là **trung bình nhân có trọng số**,
   giữ thứ nguyên, so sánh được giữa các cử tri.
 
 ### So với các mô hình quản trị khác
@@ -125,4 +125,4 @@ Nguồn: `MagicLamp-Docs/docs/Foundation-Bootstrap.md` (lưu ý: bản local hi�
 - **PhoenixKey DID sinh trắc + zk-proof** "1 DID = 1 người" — backend PhoenixKey, **ngoài repo LAMP**
   (Claude không sửa). Blocker tiên quyết để Governance chạy thật.
 - C1/C2 đọc từ repo **MAGIC** (MAGIC consumed, ScheduleGen commitment) qua reference input; C4 từ
-  **LAMP**. Cross-repo — thiết kế ở [TECH](./VotingPower/TECH.md).
+  **LAMP**. Cross-repo — thiết kế ở [TECH](./VotingPower/Tech-Spec.md).

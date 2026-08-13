@@ -8,9 +8,9 @@ không cần proof/committee. Core engine **DID-agnostic** — dùng cho mọi C
 > nonce), có 2 lỗ hổng (proof hết hạn → mất quyền redeem; committee nonce grinding). Capped
 > Drop bỏ random/merkle/committee-chọn-winner.
 
-Nguồn chuẩn (interface contract): **[CONTRACT-CappedDrop.md](./CONTRACT-CappedDrop.md)**.
-Đặc tả đầy đủ: **[SPEC.md](./SPEC.md)** · hành vi **[SPEC-CappedDrop-FEAT.md](./SPEC-CappedDrop-FEAT.md)** ·
-chứng minh **[SPEC-CappedDrop-MATH.md](./SPEC-CappedDrop-MATH.md)**.
+Nguồn chuẩn (interface contract): **[capped-drop/CONTRACT.md](./capped-drop/CONTRACT.md)**.
+Đặc tả đầy đủ: **[SPEC.md](./SPEC.md)** · hành vi **[capped-drop/Feat-Spec.md](./capped-drop/Feat-Spec.md)** ·
+chứng minh **[capped-drop/Math-Spec.md](./capped-drop/Math-Spec.md)**.
 
 ## Công thức trung tâm
 
@@ -33,10 +33,10 @@ bash Distribution/verify.sh
 
 ```
 Distribution/
-  CONTRACT-CappedDrop.md        # interface contract (xương sống — bám file này)
+  capped-drop/CONTRACT.md        # interface contract (xương sống — bám file này)
   SPEC.md                       # spec tổng hợp (mô hình + datum + redeem + invariants)
-  SPEC-CappedDrop-FEAT.md       # hành vi: entitlement → drip → redeem, ví nhỏ/lớn, hooks DAO
-  SPEC-CappedDrop-MATH.md       # chứng minh: đơn điệu, cap E, ⌈E/D⌉, đa-claim, bảo toàn
+  capped-drop/Feat-Spec.md       # hành vi: entitlement → drip → redeem, ví nhỏ/lớn, hooks DAO
+  capped-drop/Math-Spec.md       # chứng minh: đơn điệu, cap E, ⌈E/D⌉, đa-claim, bảo toàn
   onchain/                      # Aiken (Plutus V3)
     lib/magiclamp/lampdist/
       constants.ak  types.ak  math.ak
@@ -87,4 +87,4 @@ LAMP **không burn** (fixed-supply 36 tỷ bất biến); giảm lưu hành ch�
 - **Multi-drop per-DID:** DAO tăng `drops_per_epoch` cho DID uy tín → rút nhanh hơn, vẫn cap `E`.
 - **Pause/penalty:** DAO đặt `drops_per_epoch = 0` trong `N` epoch → vested đứng yên, không tịch thu.
 
-Cả 2 không phá đơn điệu/cap (chứng minh [SPEC-CappedDrop-MATH.md](./SPEC-CappedDrop-MATH.md) §5).
+Cả 2 không phá đơn điệu/cap (chứng minh [capped-drop/Math-Spec.md](./capped-drop/Math-Spec.md) §5).

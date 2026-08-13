@@ -5,7 +5,7 @@
 
 import { describe, it, expect } from "vitest";
 import { vested } from "../offchain/src/vested.js";
-import { lampOil } from "./helpers.js";
+import { lampOildrop } from "./helpers.js";
 
 // ── Mô hình ClaimAccount (mirror onchain datum v2) ──
 interface Account {
@@ -29,16 +29,16 @@ function simulateRedeem(
 
 describe("Full distribution flow (Capped Drop)", () => {
   it("claim → drip nhiều epoch → redeem cộng dồn → double-redeem reject", () => {
-    const D = lampOil(100n);   // committee post DropParam D = 100 LAMP
+    const D = lampOildrop(100n);   // committee post DropParam D = 100 LAMP
 
     // CLAIM: committee confirm A có entitlement 250 LAMP, start t0=0, dpe=1.
     const accA: Account = {
-      owner: "a1", entitlement: lampOil(250n), redeemed: 0n, startEpoch: 0n, dropsPerEpoch: 1n,
+      owner: "a1", entitlement: lampOildrop(250n), redeemed: 0n, startEpoch: 0n, dropsPerEpoch: 1n,
     };
 
     // epoch 1: vested=100 → redeem 100
     const r1 = simulateRedeem(accA, D, 1n);
-    expect(r1.amount).toBe(lampOil(100n));
+    expect(r1.amount).toBe(lampOildrop(100n));
     accA.redeemed = r1.newRedeemed;
 
     // double-redeem cùng epoch → vested=100, redeemed=100 → amount 0 → reject
@@ -46,12 +46,12 @@ describe("Full distribution flow (Capped Drop)", () => {
 
     // epoch 2: vested=200 → redeem thêm 100
     const r2 = simulateRedeem(accA, D, 2n);
-    expect(r2.amount).toBe(lampOil(100n));
+    expect(r2.amount).toBe(lampOildrop(100n));
     accA.redeemed = r2.newRedeemed;
 
     // epoch 3: vested=min(250, 300)=250 (cap E) → redeem 50 cuối
     const r3 = simulateRedeem(accA, D, 3n);
-    expect(r3.amount).toBe(lampOil(50n));
+    expect(r3.amount).toBe(lampOildrop(50n));
     accA.redeemed = r3.newRedeemed;
     expect(accA.redeemed).toBe(accA.entitlement);   // tổng nhận = E
 
@@ -60,33 +60,33 @@ describe("Full distribution flow (Capped Drop)", () => {
   });
 
   it("entitlement bảo toàn: bỏ lỡ epoch 1-4, redeem ở epoch 5 nhận gộp đủ", () => {
-    const D = lampOil(100n);
+    const D = lampOildrop(100n);
     const acc: Account = {
-      owner: "b2", entitlement: lampOil(1000n), redeemed: 0n, startEpoch: 0n, dropsPerEpoch: 1n,
+      owner: "b2", entitlement: lampOildrop(1000n), redeemed: 0n, startEpoch: 0n, dropsPerEpoch: 1n,
     };
     // không redeem ở epoch 1-4; epoch 5 redeem lần đầu → vested(5)=500, nhận đủ 500.
     const r = simulateRedeem(acc, D, 5n);
-    expect(r.amount).toBe(lampOil(500n));   // không mất 4 epoch trước (khác lottery)
+    expect(r.amount).toBe(lampOildrop(500n));   // không mất 4 epoch trước (khác lottery)
     acc.redeemed = r.newRedeemed;
     // tiếp tục tới cap
-    expect(acc.redeemed).toBe(lampOil(500n));
+    expect(acc.redeemed).toBe(lampOildrop(500n));
   });
 
   it("ví nhỏ E < D → nhận hết ngay epoch đầu", () => {
-    const D = lampOil(100n);
+    const D = lampOildrop(100n);
     const acc: Account = {
-      owner: "c3", entitlement: lampOil(30n), redeemed: 0n, startEpoch: 0n, dropsPerEpoch: 1n,
+      owner: "c3", entitlement: lampOildrop(30n), redeemed: 0n, startEpoch: 0n, dropsPerEpoch: 1n,
     };
     const r = simulateRedeem(acc, D, 1n);
-    expect(r.amount).toBe(lampOil(30n));    // min(30, 100) = 30 = full
+    expect(r.amount).toBe(lampOildrop(30n));    // min(30, 100) = 30 = full
     acc.redeemed = r.newRedeemed;
     expect(() => simulateRedeem(acc, D, 2n)).toThrow("C-RDM-1"); // hết
   });
 
   it("invariants xuyên suốt: redeemed đơn điệu, ≤ E, vested đơn điệu", () => {
-    const D = lampOil(100n);
+    const D = lampOildrop(100n);
     const acc: Account = {
-      owner: "d4", entitlement: lampOil(1000n), redeemed: 0n, startEpoch: 0n, dropsPerEpoch: 1n,
+      owner: "d4", entitlement: lampOildrop(1000n), redeemed: 0n, startEpoch: 0n, dropsPerEpoch: 1n,
     };
     let prevVested = -1n;
     let prevRedeemed = -1n;
@@ -107,21 +107,21 @@ describe("Full distribution flow (Capped Drop)", () => {
   });
 
   it("committee tăng entitlement (Claim) giữa chừng → drip tiếp phần mới", () => {
-    const D = lampOil(100n);
+    const D = lampOildrop(100n);
     const acc: Account = {
-      owner: "e5", entitlement: lampOil(200n), redeemed: 0n, startEpoch: 0n, dropsPerEpoch: 1n,
+      owner: "e5", entitlement: lampOildrop(200n), redeemed: 0n, startEpoch: 0n, dropsPerEpoch: 1n,
     };
     // epoch 1,2 redeem hết 200 (cap)
     acc.redeemed = simulateRedeem(acc, D, 2n).newRedeemed;
-    expect(acc.redeemed).toBe(lampOil(200n));
+    expect(acc.redeemed).toBe(lampOildrop(200n));
 
     // committee Claim thêm 300 → entitlement 500 (start_epoch giữ nguyên 0).
-    acc.entitlement += lampOil(300n);
+    acc.entitlement += lampOildrop(300n);
 
     // epoch 5: vested=min(500, 500)=500 → redeem thêm 300.
     const r = simulateRedeem(acc, D, 5n);
-    expect(r.amount).toBe(lampOil(300n));
+    expect(r.amount).toBe(lampOildrop(300n));
     acc.redeemed = r.newRedeemed;
-    expect(acc.redeemed).toBe(lampOil(500n));
+    expect(acc.redeemed).toBe(lampOildrop(500n));
   });
 });

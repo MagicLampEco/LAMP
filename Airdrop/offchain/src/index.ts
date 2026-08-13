@@ -7,6 +7,8 @@ export * from "./datum.js";
 export * from "./snapshotTool.js";
 export * from "./cs_score.js";
 export * from "./delegator_entitlement.js";
+export * from "./delegatorCrypto.js";
+export * from "./delegatorSnapshot.js";
 export * from "./deployBuilder.js";
 export * from "./claimBuilder.js";
 export * from "./sweepBuilder.js";

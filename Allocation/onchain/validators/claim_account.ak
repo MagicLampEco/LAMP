@@ -24,7 +24,7 @@ validator claim_account(
   ms_per_epoch      : Int,
   lamp_policy       : ByteArray,
   lamp_name         : ByteArray,
-  drop_value        : Int,           // D (oil/drop·epoch) — tham số hoá (tất định).
+  drop_value        : Int,           // D (oildrop/drop·epoch) — tham số hoá (tất định).
   budget_nft_policy : ByteArray,     // policy NFT budget beacon one-shot (name = channel_id).
                                      // PHÁ VÒNG: claim_account CHỈ phụ thuộc budget_nft_policy
                                      // (đáy DAG) — BỎ channel_budget_hash (param chéo gây vòng).
@@ -90,7 +90,7 @@ validator claim_account(
         //     CHÍNH channel_budget script (b_out.value == b_in.value) → NFT KHÔNG BAO GIỜ rời
         //     channel_budget script sau genesis (budget_nft genesis cũng ép NFT ra beacon).
         //   ⟹ "input mang NFT" ⟺ "channel_budget UTxO bị spend" ⟺ channel_budget.spend chạy
-        //      → remaining_oil bị trừ + kiểm amount khớp entitlement-delta (khoá chéo nguyên vẹn).
+        //      → remaining_oildrop bị trừ + kiểm amount khớp entitlement-delta (khoá chéo nguyên vẹn).
         //   Không cần biết hash channel_budget: authenticity NFT thay thế script-hash param chéo.
         expect
           util.count_inputs_with_nft(

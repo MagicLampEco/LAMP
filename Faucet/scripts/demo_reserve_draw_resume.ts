@@ -24,8 +24,8 @@ const AUTH_NAME = "5054";
 const INSTANCE_ID = "747265732d7265736576";
 const MS_PER_EPOCH = 432_000_000n;
 const PROPOSAL_POLICY = "00".repeat(28);
-const FLOOR_OIL = 1_000_000n;
-const DRAW_OIL = 1_000_000n;
+const FLOOR_OILDROP = 1_000_000n;
+const DRAW_OILDROP = 1_000_000n;
 const RESERVED_MIN_ADA = 2_000_000n;
 
 // 4 genesis ref CỐ ĐỊNH (từ lần deploy trước).
@@ -65,7 +65,7 @@ const authPid = mintingPolicyToId(authPolicy);
 const authUnit = toUnit(authPid, AUTH_NAME);
 const custodySeedPid = mintingPolicyToId({ type: "PlutusV3", script: applyParamsToScript(gt("custody_seed.custody_seed.mint"), [custodyRefData, custodyHash]) });
 const custodyNftUnit = toUnit(custodySeedPid, INSTANCE_ID);
-const gateScript: Validator = { type: "PlutusV3", script: applyParamsToScript(gt("reserve_gate.reserve_gate.spend"), [custodySeedPid, INSTANCE_ID, tlampPid, TOKEN_NAME, FLOOR_OIL, authPid, AUTH_NAME]) };
+const gateScript: Validator = { type: "PlutusV3", script: applyParamsToScript(gt("reserve_gate.reserve_gate.spend"), [custodySeedPid, INSTANCE_ID, tlampPid, TOKEN_NAME, FLOOR_OILDROP, authPid, AUTH_NAME]) };
 const gateHash = validatorToScriptHash(gateScript);
 const gateAddr = credentialToAddress("Preview", scriptHashToCredential(gateHash));
 const reserveDest = new Constr(0, [new Constr(1, [custodyHash]), new Constr(1, [])]);
@@ -91,36 +91,36 @@ const t = BigInt(Math.floor(loMs / Number(MS_PER_EPOCH)));
 if (BigInt(Math.floor(hiMs / Number(MS_PER_EPOCH))) !== t) hiMs = Number((t + 1n) * MS_PER_EPOCH) - 1000;
 if (!(t > lastEpoch)) throw new Error(`t=${t} ≤ last_epoch=${lastEpoch}`);
 console.log(`draw epoch t=${t} (last=${lastEpoch}) lo=${loMs} hi=${hiMs}`);
-const rOut = { start_epoch: start, total_oil: total, drawn_oil: drawn + DRAW_OIL, last_epoch: t };
+const rOut = { start_epoch: start, total_oildrop: total, drawn_oildrop: drawn + DRAW_OILDROP, last_epoch: t };
 const sIn = Data.from(supplyUtxo.datum!) as Constr<Data>;
-const sOut = new Constr(0, [sIn.fields[0], (sIn.fields[1] as bigint) + DRAW_OIL, sIn.fields[2], sIn.fields[3]]);
+const sOut = new Constr(0, [sIn.fields[0], (sIn.fields[1] as bigint) + DRAW_OILDROP, sIn.fields[2], sIn.fields[3]]);
 
 let txb = lucid.newTx()
   .collectFrom([reserveUtxo], drawRedeemerToCbor())
   .attach.SpendingValidator(reserveDrawScript)
   .pay.ToContract(reserveDrawAddr, { kind: "inline", value: reserveStateToCbor(rOut) }, { lovelace: RESERVED_MIN_ADA, [reserveThreadUnit]: 1n })
-  .mintAssets({ [lampUnit]: DRAW_OIL }, Data.to(new Constr(1, [])))
+  .mintAssets({ [lampUnit]: DRAW_OILDROP }, Data.to(new Constr(1, [])))
   .attach.MintingPolicy(tlampPolicy)
   .collectFrom([supplyUtxo], Data.to(new Constr(0, [])))
   .attach.SpendingValidator(ssScript)
   .pay.ToContract(ssAddr, { kind: "inline", value: Data.to(sOut) }, { lovelace: supplyUtxo.assets.lovelace, [threadUnit]: 1n })
-  .pay.ToAddress(custodyAddr, { lovelace: RESERVED_MIN_ADA, [lampUnit]: DRAW_OIL })
+  .pay.ToAddress(custodyAddr, { lovelace: RESERVED_MIN_ADA, [lampUnit]: DRAW_OILDROP })
   .validFrom(loMs).validTo(hiMs)
   .addSignerKey(pkh);
 
 txb = attachGateSpend(txb, {
   lucid, authUtxo, gateScript, gateAddress: gateAddr,
   authPolicyId: authPid, authName: AUTH_NAME,
-  custodyUtxo, lampPolicyId: tlampPid, tokenName: TOKEN_NAME, floorOil: FLOOR_OIL,
+  custodyUtxo, lampPolicyId: tlampPid, tokenName: TOKEN_NAME, floorOildrop: FLOOR_OILDROP,
 });
 
 const tx = await txb.complete({ coinSelection: true });
 const h = await (await tx.sign.withWallet().complete()).submit();
-console.log(`[DRAW] Reserve→Treasury pull ${DRAW_OIL} oil (t=${t}) ${link(h)}`);
+console.log(`[DRAW] Reserve→Treasury pull ${DRAW_OILDROP} oildrop (t=${t}) ${link(h)}`);
 await lucid.awaitTx(h);
 await writeFile(resolve(process.cwd(), "demo-reserve-e2e-out.json"), JSON.stringify({
   network: "Preview", tlampPid, reserveThreadPid, custodyAddr, gateAddr, reserveDrawAddr,
   deploy: { G1: "b784c0953f225c864485245dd77682c7e9369064f3c8721b3abe3ecae475c1d6", R1: "09847f047e8e8e3294b54e26c8477c03b90d513fb3d6b42beff838fb29bc1a02", T1: "b3d46e1c67b4525166daf21cf556c2d0a129b408bbe38e344305ec25ef611056", A1: "afcc994051af2420715dc1140a995f3f8c139f2a2c767b57a98ae1a1fa81c307" },
-  DRAW: { hash: h, link: link(h), deltaOil: DRAW_OIL.toString(), epoch: t.toString(), reserveDest: custodyAddr },
+  DRAW: { hash: h, link: link(h), deltaOildrop: DRAW_OILDROP.toString(), epoch: t.toString(), reserveDest: custodyAddr },
 }, null, 2) + "\n");
 console.log("DONE. DRAW submitted + out written.");

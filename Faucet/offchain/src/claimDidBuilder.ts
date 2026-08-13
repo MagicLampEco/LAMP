@@ -95,8 +95,8 @@ export async function buildClaimDidTx(params: ClaimDidParams): Promise<ClaimDidR
   // ── Decode pool config ───────────────────────────────────────────────
   if (!poolUtxo.datum) throw new Error("CLAIM-D-001: poolUtxo has no inline datum");
   const cfg: FaucetConfig = decodeFaucetConfig(Data.from(poolUtxo.datum));
-  const drip = cfg.drip_oil;
-  if (drip <= 0n) throw new Error("CLAIM-D-002: pool drip_oil must be > 0");
+  const drip = cfg.drip_oildrop;
+  if (drip <= 0n) throw new Error("CLAIM-D-002: pool drip_oildrop must be > 0");
 
   // DID NFT phải có mặt trong didUtxo (qty ≥1).
   if ((didUtxo.assets[didUnit] ?? 0n) < 1n) {
@@ -106,7 +106,7 @@ export async function buildClaimDidTx(params: ClaimDidParams): Promise<ClaimDidR
   // Pool đủ tLAMP?
   const poolLamp = poolUtxo.assets[tlampUnit] ?? 0n;
   if (poolLamp < drip) {
-    throw new Error(`CLAIM-D-004: pool còn ${poolLamp} oil < drip ${drip}. Pool cạn.`);
+    throw new Error(`CLAIM-D-004: pool còn ${poolLamp} oildrop < drip ${drip}. Pool cạn.`);
   }
 
   const poolAddress = credentialToAddress(
@@ -161,8 +161,8 @@ export async function buildClaimDidTx(params: ClaimDidParams): Promise<ClaimDidR
   const summary = [
     `═══ Faucet v2 Claim (DID-gated) ═══`,
     `DID name:     ${didName}`,
-    `Drip:         ${drip / 1_000_000n} tLAMP (${drip} oil)`,
-    `Pool tLAMP:   ${poolLamp} → ${poolAfter} oil`,
+    `Drip:         ${drip / 1_000_000n} tLAMP (${drip} oildrop)`,
+    `Pool tLAMP:   ${poolLamp} → ${poolAfter} oildrop`,
     `Account addr: ${accountAddress}`,
     `last_epoch:   ${currentEpoch}`,
     params.oldAccountUtxo ? `Re-claim:     spend account cũ (cooldown ${cfg.cooldown_epochs} epoch)` : `First-claim`,

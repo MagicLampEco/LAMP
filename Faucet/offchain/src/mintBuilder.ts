@@ -8,7 +8,7 @@
 //   - genesisUtxo: 1 UTxO bất kỳ của ví deploy → CONSUME để one-shot. policy đã
 //     parameterized bởi OutputReference của UTxO này (caller apply trước, ở scripts).
 // Mint:
-//   - (tLAMP, +TOTAL_SUPPLY_OIL) đúng tổng cung.
+//   - (tLAMP, +TOTAL_SUPPLY_OILDROP) đúng tổng cung.
 // Output:
 //   - Faucet pool UTxO: nhận TOÀN BỘ tLAMP + datum FaucetDatum{claim_amount}.
 //
@@ -24,7 +24,7 @@ import {
 } from "@lucid-evolution/lucid";
 import type { Network } from "@magiclamp/utils";
 
-import { TLAMP_ASSET_NAME, TOTAL_SUPPLY_OIL, CLAIM_AMOUNT_OIL } from "./constants.js";
+import { TLAMP_ASSET_NAME, TOTAL_SUPPLY_OILDROP, CLAIM_AMOUNT_OILDROP } from "./constants.js";
 import { faucetDatumToCbor, mintGenesisRedeemerToCbor } from "./datum.js";
 import type { FaucetDatum } from "./types.js";
 
@@ -43,10 +43,10 @@ export interface MintPoolParams {
   /** UTxO genesis BẮT BUỘC consume (one-shot). Phải khớp OutputReference đã apply. */
   genesisUtxo: UTxO;
 
-  /** Tổng cung (oil). Mặc định TOTAL_SUPPLY_OIL = 3.6e16. */
-  totalSupplyOil?: bigint;
-  /** claim_amount đặt vào pool datum (oil). Mặc định 100 LAMP. */
-  claimAmountOil?: bigint;
+  /** Tổng cung (oildrop). Mặc định TOTAL_SUPPLY_OILDROP = 3.6e16. */
+  totalSupplyOildrop?: bigint;
+  /** claim_amount đặt vào pool datum (oildrop). Mặc định 100 LAMP. */
+  claimAmountOildrop?: bigint;
   /** ADA (lovelace) kèm pool UTxO (min-ADA). Mặc định 5 tADA. */
   poolLovelace?: bigint;
   /** Asset name tLAMP. Mặc định "tLAMP". */
@@ -66,8 +66,8 @@ export async function buildMintPoolTx(params: MintPoolParams): Promise<MintPoolR
   const {
     lucid, network, tlampPolicy, tlampPolicyId, faucetScript, genesisUtxo,
   } = params;
-  const totalSupply  = params.totalSupplyOil ?? TOTAL_SUPPLY_OIL;
-  const claimAmount  = params.claimAmountOil ?? CLAIM_AMOUNT_OIL;
+  const totalSupply  = params.totalSupplyOildrop ?? TOTAL_SUPPLY_OILDROP;
+  const claimAmount  = params.claimAmountOildrop ?? CLAIM_AMOUNT_OILDROP;
   const poolLovelace = params.poolLovelace ?? 5_000_000n;
   const assetName    = params.tlampAssetName ?? TLAMP_ASSET_NAME;
 
@@ -105,9 +105,9 @@ export async function buildMintPoolTx(params: MintPoolParams): Promise<MintPoolR
     `═══ Deploy tLAMP pool (one-shot mint) ═══`,
     `Policy id:    ${tlampPolicyId}`,
     `tLAMP unit:   ${tlampUnit}`,
-    `Total supply: ${totalSupply} oil = ${totalSupply / 1_000_000n} LAMP`,
+    `Total supply: ${totalSupply} oildrop = ${totalSupply / 1_000_000n} LAMP`,
     `Pool address: ${poolAddress}`,
-    `claim_amount: ${claimAmount} oil = ${claimAmount / 1_000_000n} LAMP/claim`,
+    `claim_amount: ${claimAmount} oildrop = ${claimAmount / 1_000_000n} LAMP/claim`,
     `Genesis ref:  ${genesisUtxo.txHash}#${genesisUtxo.outputIndex} (consumed → locked)`,
   ].join("\n");
 

@@ -3,18 +3,18 @@
 **Doctype:** MagicLamp Protocol — Onchain Spec
 **Version:** v2 "Capped Drop" (thay Drop Lottery v0.1)
 **Updated:** 2026-06-06
-**Nguồn chuẩn (interface contract):** [`CONTRACT-CappedDrop.md`](./CONTRACT-CappedDrop.md)
+**Nguồn chuẩn (interface contract):** [`capped-drop/CONTRACT.md`](./capped-drop/CONTRACT.md)
 
 > **Đã thay cơ chế.** Bản v0.1 dùng **Probabilistic Drop Lottery** (random + Merkle +
 > committee nonce). Bản này thay bằng **Capped Drop** — tất định, O(1), permissionless,
 > không random/merkle/committee-chọn-winner. Lý do thay: Lottery có 2 lỗ hổng (proof hết
-> hạn → mất quyền redeem; committee nonce grinding). Xem [`SPEC-CappedDrop-FEAT.md`](./SPEC-CappedDrop-FEAT.md) §0.
+> hạn → mất quyền redeem; committee nonce grinding). Xem [`capped-drop/Feat-Spec.md`](./capped-drop/Feat-Spec.md) §0.
 
 Hai tài liệu con đặc tả đầy đủ:
 
-- **Hành vi:** [`SPEC-CappedDrop-FEAT.md`](./SPEC-CappedDrop-FEAT.md) — entitlement → drip →
+- **Hành vi:** [`capped-drop/Feat-Spec.md`](./capped-drop/Feat-Spec.md) — entitlement → drip →
   redeem; ví nhỏ (`E≤D` nhận hết)/ví lớn (nhỏ giọt); hooks DAO multi-drop/pause (post-MVP).
-- **Chứng minh:** [`SPEC-CappedDrop-MATH.md`](./SPEC-CappedDrop-MATH.md) — vested đơn điệu +
+- **Chứng minh:** [`capped-drop/Math-Spec.md`](./capped-drop/Math-Spec.md) — vested đơn điệu +
   cap `E`; số epoch `⌈E/D⌉`; đa-claim cộng dồn; entitlement bảo toàn.
 
 ---
@@ -41,7 +41,7 @@ redeemable = vested(t) − redeemed
 type ClaimAccountDatum {
   owner            : ByteArray,   // PKH chủ ví
   entitlement      : Int,         // E — tổng LAMP được phân bổ (cố định khi genesis/claim)
-  redeemed         : Int,         // đã nhận tích lũy (oil)
+  redeemed         : Int,         // đã nhận tích lũy (oildrop)
   start_epoch      : Int,         // t0
   drops_per_epoch  : Int,         // MVP = 1 (DAO chỉnh per-DID ở v.sau)
 }
@@ -80,8 +80,8 @@ Owner ký (`tx.extra_signatories`). Không cần committee, không proof, không
 
 ## 5. Invariants (normative — map test)
 
-Hành vi: bảng F-* trong [`SPEC-CappedDrop-FEAT.md`](./SPEC-CappedDrop-FEAT.md) §7.
-Toán: bảng M-* trong [`SPEC-CappedDrop-MATH.md`](./SPEC-CappedDrop-MATH.md) §6. Tóm tắt:
+Hành vi: bảng F-* trong [`capped-drop/Feat-Spec.md`](./capped-drop/Feat-Spec.md) §7.
+Toán: bảng M-* trong [`capped-drop/Math-Spec.md`](./capped-drop/Math-Spec.md) §6. Tóm tắt:
 
 | ID | Phát biểu |
 |---|---|
