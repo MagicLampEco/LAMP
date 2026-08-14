@@ -27,7 +27,7 @@ pub type AccountNftRedeemer {
 validator account_nft(committee: List<ByteArray>, threshold: Int) {
   mint(_redeemer: AccountNftRedeemer, policy_id: PolicyId, tx: Transaction) {
     // ── C-ACC-2: committee threshold ký (thứ chặn giả mạo) ──
-    expect util.count_committee_sigs(committee, tx.extra_signatories) >= threshold
+    expect util.committee_approved(committee, threshold, tx.extra_signatories)
 
     // ── Mint ĐÚNG 1 token của policy này, qty +1 ──
     let own_tokens = assets.tokens(tx.mint, policy_id)

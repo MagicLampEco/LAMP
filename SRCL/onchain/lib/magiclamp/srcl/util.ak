@@ -202,12 +202,31 @@ pub fn is_owned_by(addr: Address, pkh: ByteArray) -> Bool {
   }
 }
 
-/// Đếm chữ ký committee/admin có mặt trong extra_signatories.
-pub fn count_committee_sigs(
+/// Committee/admin M-of-N đã ký đủ chưa. THAY `count_committee_sigs` cũ — hàm đó
+/// trả Int nên ngưỡng phải kiểm ở call site, và không ai kiểm.
+///
+/// Hai lỗ nó bỏ (issue #21 B1):
+///   • `list.count(committee, …)` đếm **phần tử danh sách**, không đếm **người**.
+///     Admin bake nhầm `[a1, a1, a2]` threshold 2 → riêng a1 ký là đủ.
+///   • `threshold` không chặn cận: `threshold ≤ 0` thì 0 chữ ký cũng qua.
+///
+/// Cả hai là lỗi lúc DEPLOY (admin/admin_threshold là param validator, không phải
+/// datum) — không ai bên ngoài bịa được. Vẫn ép on-chain thay vì trông vào script
+/// deploy: script deploy sửa được sau, param đã bake thì không.
+/// Mẫu gốc: `Genesis/onchain/lib/magiclamp/genesis/registry.ak:96-101`.
+pub fn committee_approved(
   committee: List<ByteArray>,
+  threshold: Int,
   sigs: List<ByteArray>,
-) -> Int {
-  list.count(committee, fn(c) { list.has(sigs, c) })
+) -> Bool {
+  // chặn ExUnit DoS + bound chi phí list.unique (O(n²)).
+  expect list.length(committee) <= 16
+  let uniq = list.unique(committee)
+  and {
+    threshold >= 1,
+    threshold <= list.length(uniq),
+    list.count(uniq, fn(c) { list.has(sigs, c) }) >= threshold,
+  }
 }
 
 /// Phần tử thứ i của list (0-index). None nếu vượt độ dài.
@@ -254,4 +273,35 @@ pub fn mk_input(ref: OutputReference, out: Output) -> Input {
 
 pub fn mk_ref(ix: Int) -> OutputReference {
   OutputReference { transaction_id: #"00", output_index: ix }
+}
+
+// ── Tests: committee_approved (issue #21 B1) ──────────────────
+
+test committee_happy() {
+  committee_approved([#"a1", #"b2", #"c3"], 2, [#"a1", #"c3", #"ff"])
+}
+
+test committee_not_enough() {
+  !committee_approved([#"a1", #"b2"], 1, [#"ff"])
+}
+
+/// Admin trùng khoá KHÔNG được phá ngưỡng: `[a1, a1, a2]` threshold 2, chỉ a1 ký
+/// thì bản cũ `list.count` ra 2 ⇒ pass.
+test committee_dup_key_cannot_meet_threshold() {
+  !committee_approved([#"a1", #"a1", #"a2"], 2, [#"a1"])
+}
+
+/// Cùng admin đó, đủ hai người thật thì vẫn phải qua.
+test committee_dup_key_two_real_signers_pass() {
+  committee_approved([#"a1", #"a1", #"a2"], 2, [#"a1", #"a2"])
+}
+
+/// threshold ≤ 0 thì KHÔNG chữ ký nào cũng qua ở bản cũ.
+test committee_threshold_zero_rejected() {
+  !committee_approved([#"a1", #"a2", #"a3"], 0, [])
+}
+
+/// threshold vượt số NGƯỜI thật (sau dedupe) = khoá chết, chặn ngay lúc kiểm.
+test committee_threshold_above_unique_rejected() {
+  !committee_approved([#"a1", #"a1"], 2, [#"a1"])
 }

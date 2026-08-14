@@ -70,7 +70,7 @@ validator claim_account(
       // ── CLAIM (committee cấp/tăng entitlement, khoá chéo budget beacon) ──
       Claim { amount } -> {
         expect amount > 0
-        expect util.count_committee_sigs(committee, tx.extra_signatories) >= threshold
+        expect util.committee_approved(committee, threshold, tx.extra_signatories)
 
         // entitlement += amount; field khác (kể cả channel_id) bất biến.
         expect out_datum.owner == datum.owner
