@@ -10,7 +10,11 @@ import {
   supplyStateToCbor, supplyStateRedeemerToCbor, mintRouteToCbor,
 } from "../offchain/src/datum.js";
 import { genesisSupplyState, applyMint } from "../offchain/src/supplyState.js";
+import {
+  requiredHashParam, requiredHexParam, CONSEQUENCE_METER, CONSEQUENCE_DIST_DEST,
+} from "./_guards.js";
 
+const GUARD_IO = { env: process.env, warn: (m: string) => console.warn(m) };
 const TEST_MINT_OILDROP = BigInt(process.env.TEST_MINT_OILDROP ?? "100000000"); // 100 tLAMP
 const GENESIS_REF_HASH = "689c56e05a6c4cb97ea59c26f9b2bb271ca2cf6ae52ee3dba08fb9c7a9204973";
 const GENESIS_REF_IDX = 1;
@@ -22,10 +26,12 @@ const myAddr = await lucid.wallet().address();
 const genesisRef = new Constr(0, [GENESIS_REF_HASH, BigInt(GENESIS_REF_IDX)]);
 const threadPolicy: MintingPolicy = applyPolicy((await rawValidator("thread_nft.thread_nft.mint")).compiledCode, [genesisRef]);
 const threadPid = policyId(threadPolicy);
-const meterPid = process.env.METER_NFT_POLICY ?? "00".repeat(28);
-const meterNm = process.env.METER_NFT_NAME ?? "4d4554";
-if (!process.env.DIST_DEST) throw new Error("DIST_DEST chưa set: A-DEST sẽ ép LAMP vào Script(00*28) KẸT vĩnh viễn. Set DIST_DEST=hash kho.");
-const distDest = process.env.DIST_DEST; // A-DEST: hash KHO treasury
+// CỔNG GÁC apply-param — script này GỬI VÔ ĐIỀU KIỆN (dòng 72 `signed.submit()`, không có
+// nhánh SUBMIT), nên cả ba tham số đều gác ở mức submit=true: không có chế độ dựng-thử để
+// nới placeholder. Trước đây chỉ DIST_DEST được gác (`ddfa2c6`), METER_* thì không.
+const meterPid = requiredHashParam("METER_NFT_POLICY", { ...GUARD_IO, submit: true, consequence: CONSEQUENCE_METER }).value;
+const meterNm = requiredHexParam("METER_NFT_NAME", { ...GUARD_IO, submit: true, placeholder: "4d4554", consequence: CONSEQUENCE_METER }).value;
+const distDest = requiredHashParam("DIST_DEST", { ...GUARD_IO, submit: true, consequence: CONSEQUENCE_DIST_DEST }).value; // A-DEST: hash KHO treasury
 const distDestAddr = credentialToAddress("Preview", scriptHashToCredential(distDest));
 const tlampPolicy: MintingPolicy = applyPolicy((await rawValidator("lamp_mint.lamp_mint.mint")).compiledCode, [
   threadPid, SUPPLY_NAME, TOKEN_NAME, [pkh], 1n, distDest, meterPid, meterNm,

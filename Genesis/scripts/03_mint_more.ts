@@ -13,9 +13,13 @@ import {
 import dotenv from "dotenv";
 import { resolve } from "node:path";
 import { readFile } from "node:fs/promises";
+import {
+  requiredHashParam, requiredHexParam, CONSEQUENCE_METER, CONSEQUENCE_DIST_DEST,
+} from "./_guards.js";
 
 dotenv.config({ path: resolve(process.cwd(), "../../.env") });
 
+const GUARD_IO = { env: process.env, warn: (m: string) => console.warn(m) };
 const MINT_OILDROP = BigInt(process.env.MINT_OILDROP ?? "3000000000"); // 3000 tLAMP
 const SUPPLY_NAME = "535550504c59";
 const TOKEN_NAME = "744c414d50"; // tLAMP
@@ -36,11 +40,17 @@ const get = (t: string) => bp.validators.find((v: { title: string }) => v.title 
 const genesisRef = new Constr(0, [GENESIS_REF_HASH, GENESIS_REF_IDX]);
 const threadPolicy: MintingPolicy = { type: "PlutusV3", script: applyParamsToScript(get("thread_nft.thread_nft.mint"), [genesisRef]) };
 const threadPid = mintingPolicyToId(threadPolicy);
-// A-DEST: hash KHO treasury. 03 luôn submit thật → BẮT BUỘC set DIST_DEST (tránh kẹt LAMP vào 00*28).
-if (!process.env.DIST_DEST) throw new Error("DIST_DEST chưa set: A-DEST sẽ ép LAMP vào Script(00*28) KẸT vĩnh viễn. Set DIST_DEST=hash kho treasury.");
-const distDest = process.env.DIST_DEST;
+// CỔNG GÁC apply-param — 03 luôn submit thật (dòng 88 `signed.submit()`), nên gác submit=true
+// cho MỌI tham số hash/policy-id, không riêng DIST_DEST.
+//
+// Trước bản vá này `meter_nft_policy` là literal `"00".repeat(28)` NƯỚNG THẲNG vào lời gọi
+// applyParamsToScript — còn tệ hơn placeholder từ env: không có cách nào truyền giá trị thật
+// vào mà không sửa mã. Nay đọc từ METER_NFT_POLICY và bắt buộc phải có.
+const distDest = requiredHashParam("DIST_DEST", { ...GUARD_IO, submit: true, consequence: CONSEQUENCE_DIST_DEST }).value;
+const meterPid = requiredHashParam("METER_NFT_POLICY", { ...GUARD_IO, submit: true, consequence: CONSEQUENCE_METER }).value;
+const meterNm = requiredHexParam("METER_NFT_NAME", { ...GUARD_IO, submit: true, placeholder: "4d4554", consequence: CONSEQUENCE_METER }).value;
 const distDestAddr = credentialToAddress("Preview", scriptHashToCredential(distDest));
-const tlampPolicy: MintingPolicy = { type: "PlutusV3", script: applyParamsToScript(get("lamp_mint.lamp_mint.mint"), [threadPid, SUPPLY_NAME, TOKEN_NAME, [pkh], 1n, distDest, "00".repeat(28), "4d4554"]) };
+const tlampPolicy: MintingPolicy = { type: "PlutusV3", script: applyParamsToScript(get("lamp_mint.lamp_mint.mint"), [threadPid, SUPPLY_NAME, TOKEN_NAME, [pkh], 1n, distDest, meterPid, meterNm]) };
 const tlampPid = mintingPolicyToId(tlampPolicy);
 const ssScript: Validator = { type: "PlutusV3", script: applyParamsToScript(get("supply_state.supply_state.spend"), [tlampPid, threadPid, TOKEN_NAME]) };
 const ssAddr = credentialToAddress("Preview", scriptHashToCredential(validatorToScriptHash(ssScript)));

@@ -42,7 +42,22 @@ async function main(): Promise<void> {
   console.log();
 
   // ── Resolve lamp_policy ──────────────────────────────────────
-  const lampPolicy = (process.env.LAMP_POLICY_ID ?? "").trim() || nativeSigPolicyId(pkh);
+  // CỔNG GÁC (đối xứng với beacon_nft/treasury_nft ngay dưới, và với 03_genesis.ts:110-111):
+  // `lamp_policy` là apply-param của CẢ claim_account LẪN treasury → nó nằm trong script-hash
+  // của cả hai. Fallback `nativeSigPolicyId(pkh)` là policy của chính ví deploy, hợp lệ cho
+  // self-test Preview nhưng trên Mainnet nó dựng ra một cặp script neo vào SAI token: LAMP thật
+  // gửi vào kho đó không rút ra được (validator so lamp_policy khác) và LAMP KHÔNG burn.
+  // Module này không có cờ SUBMIT nên gác theo NETWORK — fail-closed đúng như beacon/treasury.
+  const envLampPolicy = (process.env.LAMP_POLICY_ID ?? "").trim();
+  if (NETWORK === "Mainnet" && !envLampPolicy) {
+    throw new Error(
+      "Mainnet KHÔNG cho lamp_policy fallback native-sig ví deploy. lamp_policy là apply-param " +
+      "của claim_account + treasury ⇒ sai giá trị = sai script-hash = LAMP rót vào kho KẸT vĩnh " +
+      "viễn (no-burn). Lấy policyId LAMP mainnet ở Genesis/offchain/src/deployed.ts (LAMP_MAINNET.policyId) " +
+      "rồi đặt LAMP_POLICY_ID=… trước khi chạy.",
+    );
+  }
+  const lampPolicy = envLampPolicy || nativeSigPolicyId(pkh);
   const lampName   = (process.env.LAMP_ASSET_NAME ?? "").trim() || LAMP_ASSET_NAME;
 
   // ── Resolve beacon_nft_policy (ONE-SHOT Aiken vs native-sig fallback) ──
