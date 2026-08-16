@@ -80,7 +80,8 @@ npx tsx ../scripts/build_tiger_snapshot.ts \
 ## Test
 
 ```bash
-cd TIGER/offchain && npm install && npm test     # 41/41 pass
+cd TIGER/offchain && npm install && npm test     # 47/47 pass (đo 2026-08-16)
+# check 6 · entitlement 15 · dripB 19 · snapshot 7
 ```
 
 Preview e2e (rút thật): `Distribution/scripts/05_tiger_redeem.ts` — create account
