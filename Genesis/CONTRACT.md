@@ -168,7 +168,11 @@ Ba cổng **trực giao** (WHO / WHERE / HOW-MUCH). Nguồn `lamp_mint.ak:177`.
 - **WHERE — A-DEST** (`lamp_mint.ak:199`): TOÀN BỘ `delta` LAMP phải rót vào **kho**.
   Kho định-danh bằng `kho_nft` (đọc hash động qua `util.script_hash_of_holder`, count==1 chống fake-NFT),
   KHÔNG bake hash kho → kho tự-bound (treasury param theo lamp_policy) không tạo vòng.
-  `qty_to_script(outputs, kho_hash, token_name) ≥ delta`. ⟹ authority chỉ **bơm vào kho**, không mint thẳng về ví.
+  `qty_delta_at_script(inputs, outputs, kho_hash, token_name) ≥ delta` — đo **ĐỘ TĂNG RÒNG** của kho
+  (tổng ở output − tổng ở input), KHÔNG đo tổng mặt output. Đo tổng cho phép **tái chế**: kho đang giữ X,
+  tx tiêu UTxO kho rồi trả lại đúng X và đưa delta mới về ví — "tổng ≥ delta" vẫn thoả khi X ≥ delta
+  trong khi kho không tăng một đồng. Test đối chứng: `adest_recycle_kho_balance_rejected` (đỏ trên luật cũ).
+  ⟹ authority chỉ **bơm vào kho**, không mint thẳng về ví.
 - **HOW MUCH — cap** (§6, luật 7 + D7).
 
 ### 7b. ReserveDraw (Constr 1) — quota 9,63 tỷ
@@ -176,6 +180,14 @@ Ba cổng **trực giao** (WHO / WHERE / HOW-MUCH). Nguồn `lamp_mint.ak:177`.
 Permissionless thật, **KHÔNG chữ ký**. Nguồn `lamp_mint.ak:204`.
 - Ép tx spend **đúng 1** UTxO mang meter NFT (= reserve_thread NFT); meter không mint/burn trong tx.
 - ⟹ tầng gate Reserve BẮT BUỘC chạy. Không keyholder nào quyết con số nhả → "nhả-thuật-toán, không ai rút tay".
+
+> 🔴 **RANH GIỚI PHẢI NÓI THẲNG — `lamp_mint` KHÔNG canh 9,63 tỷ, nó UỶ QUYỀN.**
+> Nhánh ReserveDraw (`lamp_mint.ak:213-219`) chỉ đòi đúng 1 input mang meter NFT. Nó **không có A-DEST**,
+> **không ép trần mỗi lượt**, **không đòi chữ ký**. Toàn bộ luật nhả nằm ở **script đang giữ meter NFT**.
+> Hệ quả vận hành: meter NFT ở `reserve_draw.ak` ⇒ nhả theo thuật toán; meter NFT ở **ví thường** ⇒ người
+> cầm ví đúc thẳng 9,63 tỷ về ví mình. Và `meter_nft_policy`/`meter_nft_name` là tham số apply-time ⇒
+> **nướng vào policy-id** ⇒ chọn sai lúc deploy là vĩnh viễn (mainnet `55d3e01b…` đã dính: 28 byte 0 ⇒
+> nhánh chết hẳn). Test ghi lại ranh giới: `reservedraw_lamp_mint_khong_ep_dich_den`.
 
 **Gate nhịp Reserve = THEO MỨC TREASURY, KHÔNG theo epoch (anh chốt 20/6 — SỬA thiết kế E/1000 cũ).**
 Reserve là **lớp đệm cung CUỐI CÙNG** (U→C một chiều, no-burn). Điều tiết cung-cầu chính thuộc Treasury
@@ -278,19 +290,86 @@ split-một-phần-ra-ví, SupplyState bẩn / double / rollback / reference-scr
 - **(a) Định hướng dài hạn:** registry + cap-param ⇒ một source audited phát hành mọi token hệ sinh thái;
   Q1 (không redeploy) bảo toàn policy-id qua đời dự án.
 - **(b) First-principles:** fixed-supply = đếm ≤ cap (không mint sẵn); quyền = danh tính (không khoá);
-  quyền-tạo ⊥ quyền-tiêu (A-DEST).
-- **(c) Tối ưu eUTXO/ExUnit/phí:** lazy-mint (không khoá min-ADA 36 tỷ); đọc-động qua NFT (không vòng,
+  quyền-tạo ⊥ quyền-tiêu (A-DEST) — **chỉ đúng khi hai vai do hai chủ thể khác nhau nắm**. Trực giao nằm
+  ở luật, không tự sinh ra ở người: mainnet `55d3e01b…` bake `dist_authority[0]` và authority của kho
+  `dist_treasury` là CÙNG một pkh, nên ở đó A-DEST chỉ là khúc vòng hai giao dịch, không phải khoá thứ hai.
+- **(c) Tối ưu eUTXO/ExUnit/phí:** đọc-động qua NFT (không vòng,
   không re-deploy); cap pkhs ≤ 16 (chặn ExUnit DoS).
-- **(d) Lợi ích user + bền vững:** seed lộ không mất pot (Q2); thu hồi/đổi quyền/token mà không gãy token khác;
+- **(d) Lợi ích user + bền vững:** seed lộ **không lấy được LAMP về ví kẻ tấn công** — A-DEST ép mọi lượt
+  DistributionVest vào kho, nên thiệt hại tối đa là **pha loãng tới cap**, không phải trộm. Sau lượt đúc
+  trọn quota (§16) thì kể cả pha loãng cũng hết đường. Đây là phát biểu đúng của "Q2"; câu "seed lộ
+  không mất pot" nói gọn quá tới mức sai — mất pot hay không còn phụ thuộc AI GIỮ KHOÁ KHO.
+  Thu hồi/đổi quyền/token mà không gãy token khác;
   cộng đồng verify cap từ policy-id.
 
 ---
 
 ## 15. Trạng thái triển khai
 
-- Aiken: **71/71 VM test pass**; plutus.json 12 param (đã build).
+- Aiken: **150/150 VM test pass** (Genesis); plutus.json 12 param (đã build, aiken v1.1.21+42babe5).
 - Off-chain: apply 12-param + genesis/mint/attack chạy thật trên Preview (§13).
 - **Chưa deploy mainnet.** Mainnet bootstrap hiện tại là bản TEST, sẽ thay bằng bản registry này
   (1 lần cuối, sau khi đóng băng nền TAAD + genesis OrgDID GreenSun).
 - **Pending trước mainnet:** đồng bộ deploy script sang 12-param + bước đúc kho/registry NFT;
   audit độc lập tập trung (one-shot + no-dup + policy-bất-biến).
+
+---
+
+## 16. ĐÚC MỘT LƯỢT CHẠM CAP — cổng chết bằng luật sổ cái (anh chốt 2026-08-18)
+
+**Điều kiện anh chốt, nguyên văn:** *"Đúc một lần chạm cap ⇒ cổng chết ngay sau đó ⇒ xoay khoá
+OrgDID bao nhiêu lần cũng không ảnh hưởng gì cả. Không được để registry sống mãi, vì chả để làm
+gì cả. Hơn nữa, nếu để OrgDID thì đang biến tôi trở thành mục tiêu tấn công của kẻ xấu."*
+Kèm ràng buộc: **tổng cung 36 tỷ là bắt buộc, không hạ.**
+
+### 16.1 Cách thoả — và vì sao nó là LUẬT, không phải lời hứa
+
+Đúc **trọn** `dist_cap` = 26,37 tỷ LAMP trong **đúng một giao dịch** DistributionVest. Sau lượt đó
+`dist_minted == dist_cap`, và hai luật sẵn có khoá chéo nhau:
+
+- `expect delta > 0` (A6, `lamp_mint.ak:104`) — không có lượt mint 0.
+- `expect s2.dist_minted <= s2.dist_cap` (A1, luật 7) — không vượt cap.
+
+Hai vế đó **không cùng đúng được nữa**. Không cần ai giữ lời, không cần ai đốt khoá: đường
+DistributionVest đóng bằng số học, vĩnh viễn. Registry còn sống hay đã thu hồi, khoá OrgDID xoay
+bao nhiêu lần, ai cầm seed — đều không đổi kết quả.
+
+**Chỗ này khác một lời hứa vận hành ở đâu:** "đúc dần rồi sẽ dừng khi chạm cap" cho phép đúc 1
+oildrop mỗi lượt, vô hạn lượt, giữ cổng sống mãi — cổng chỉ chết nếu người cầm khoá TỰ NGUYỆN đúc
+hết. Đúc trọn trong một lượt bỏ hẳn chữ "tự nguyện" ra khỏi câu.
+
+### 16.2 Bằng chứng trong mã (mỗi test đã bị làm ĐỎ đúng một lần)
+
+`Genesis/onchain/validators/lamp_mint.ak`, mục "CỔNG CHẾT":
+
+| test | khẳng định |
+|---|---|
+| `oneshot_full_dist_cap` | đúc 26.370.000.000.000.000 oildrop trong ĐÚNG một tx |
+| `gate_dead_authority_still_signs` | sau đó 1 oildrop cũng không đúc thêm, dù khoá vận hành ký đúng |
+| `gate_dead_even_after_key_rotation` | registry ghi khoá MỚI, khoá mới ký — vẫn không mở được |
+| `gate_dead_no_unbooked_mint` | không né được bằng mint-không-ghi-sổ |
+| `gate_dead_no_counter_rollback` | không quay ngược sổ để mở lại quota |
+| `gate_dead_no_quota_borrow` | không mượn quota Reserve để đúc tiếp đường Distribution |
+| `reserve_alive_after_dist_gate_dead` | 9,63 tỷ KHÔNG chết theo |
+| `both_quotas_exhausted_policy_closed` | cạn cả hai quota ⇒ policy đóng tuyệt đối |
+
+Đối chứng đột biến: nới trần cap ⇒ 2 test cổng chết đỏ; nới luật ghi sổ ⇒ 3 test đỏ; nới đơn điệu
+⇒ 2 test đỏ; đổi `<=` thành `<` ⇒ test đúc trọn đỏ. **Test xanh chưa từng đỏ thì chưa kiểm được gì.**
+
+### 16.3 Điều KHÔNG chết, và vì sao giữ nguyên
+
+9,63 tỷ Reserve **không** đi đường này. Nó ở lại quota `ReserveDraw` — nhánh không đọc registry,
+không đòi chữ ký, chỉ đòi spend meter NFT. Đó chính là "thuật toán nhả tự động không ai rút tay"
+(§7b). Ép nó vào lượt đúc một-lần sẽ **giết** đúng cái cơ chế cần giữ.
+
+⚠️ Nhưng xem RANH GIỚI ở §7b: bảo đảm đó **chỉ có thật khi meter NFT nằm ở đúng script nhả**.
+Đây là quyết định **bất khả hồi** tại thời điểm apply-param.
+
+### 16.4 Thu hồi registry
+
+Sau lượt đúc trọn, registry không còn tác dụng gì với LAMP. Thu hồi NFT (`registry_write.ak`,
+redeemer retire) làm cho điều đó **nhìn thấy được** thay vì phải suy luận — nhưng nó là **hệ quả**,
+không phải nguyên nhân: cổng đã chết trước khi registry bị thu hồi, và sẽ vẫn chết nếu registry
+còn sống.
+
+---

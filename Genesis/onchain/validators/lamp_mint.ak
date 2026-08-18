@@ -1205,3 +1205,36 @@ test adest_kho_input_still_ok_when_increase_real() {
     }
   run(DistributionVest, tx)
 }
+
+// ══════════════════════════════════════════════════════════════
+// RANH GIỚI ReserveDraw — lamp_mint KHÔNG bảo vệ 9,63 tỷ, nó UỶ QUYỀN
+//
+// Nhánh ReserveDraw (`lamp_mint.ak:213-219`) chỉ đòi ĐÚNG MỘT input mang meter NFT.
+// Nó KHÔNG ép đích đến (không có A-DEST), KHÔNG ép trần mỗi lượt, KHÔNG đòi chữ ký.
+// Toàn bộ luật nhả 9,63 tỷ nằm ở SCRIPT ĐANG GIỮ METER NFT — không nằm ở đây.
+//
+// Hệ quả VẬN HÀNH phải nói thẳng: meter NFT nằm ở đâu thì đó là luật của Reserve.
+//   • meter NFT ở `reserve_draw.ak` ⇒ nhả theo thuật toán, không ai rút tay.
+//   • meter NFT ở VÍ THƯỜNG ⇒ người cầm ví đúc thẳng 9,63 tỷ về ví mình.
+// Và meter_nft_policy/meter_nft_name là THAM SỐ apply-time ⇒ nướng vào policy-id ⇒
+// chọn sai lúc deploy là vĩnh viễn.
+//
+// Test dưới KHÔNG phải báo lỗi — nó GHI LẠI ranh giới đó bằng mã, để không ai đọc
+// lamp_mint rồi tưởng nó đang canh Reserve.
+// ══════════════════════════════════════════════════════════════
+
+test reservedraw_lamp_mint_khong_ep_dich_den() {
+  // Toàn bộ LAMP mint đường Reserve chảy về VÍ THƯỜNG. lamp_mint vẫn cho qua —
+  // đúng thiết kế (uỷ quyền), và đúng chỗ nguy hiểm nếu meter NFT đặt sai.
+  let s = fresh()
+  let s2 = SupplyState { ..s, reserve_minted: 5_000_000 }
+  let tx =
+    Transaction {
+      ..placeholder,
+      inputs: [ss_input(s), meter_input()],
+      outputs: [ss_output(s2), wallet_output(5_000_000)],
+      mint: mint_lamp(5_000_000),
+      extra_signatories: [],
+    }
+  run(ReserveDraw, tx)
+}
