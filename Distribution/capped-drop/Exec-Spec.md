@@ -314,7 +314,7 @@ Tương tự cho owner, start_epoch, drops_per_epoch.
 
 ```
 Claim TX chỉ 1 committee sig khi threshold=2.
-Validator: `expect util.count_committee_sigs(...) >= threshold` (claim_account.ak:60) → fail.
+Validator: `expect util.committee_approved(committee, threshold, tx.extra_signatories)` (claim_account.ak:89) → fail.
 Test: claim_insufficient_committee() fail trong claim_account.ak:203.
 ```
 

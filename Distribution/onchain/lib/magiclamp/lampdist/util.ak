@@ -75,7 +75,9 @@ pub fn output_at_script(outputs: List<Output>, script_hash: ByteArray) -> Output
 }
 
 /// Committee M-of-N đã ký đủ chưa (Byzantine). THAY `count_committee_sigs` cũ —
-/// hàm đó trả Int nên ngưỡng phải kiểm ở call site, và không ai kiểm.
+/// hàm đó trả Int nên ngưỡng phải kiểm ở call site: mọi call site ĐỀU kiểm
+/// (`expect count_committee_sigs(…) >= threshold`), nhưng phép kiểm rời rạc đó
+/// không nói gì về hai lỗ dưới, và mỗi call site mới là một cơ hội quên.
 ///
 /// Hai lỗ nó bỏ (issue #21 B1):
 ///   • `list.count(committee, …)` đếm **phần tử danh sách**, không đếm **người**.
@@ -91,10 +93,13 @@ pub fn committee_approved(
   threshold   : Int,
   signatories : List<ByteArray>,
 ) -> Bool {
-  // chặn ExUnit DoS + bound chi phí list.unique (O(n²)).
-  expect list.length(committee) <= 16
   let uniq = list.unique(committee)
   and {
+    // Bound chi phí list.unique (O(n²)). KHÔNG phải chống DoS: `committee` là param
+    // compile-time của validator, ngoài không bơm dài được. Là điều kiện chứ không
+    // `expect` — hàm phải TỔNG, trả False, không abort (xem did_stub.ak: signature
+    // `-> Bool` là hợp đồng cho verifier PhoenixKey thật sau này).
+    list.length(committee) <= 16,
     threshold >= 1,
     threshold <= list.length(uniq),
     list.count(uniq, fn(k) { list.has(signatories, k) }) >= threshold,
@@ -180,6 +185,27 @@ test committee_threshold_zero_rejected() {
 /// threshold vượt số NGƯỜI thật (sau dedupe) = khoá chết, chặn ngay lúc kiểm.
 test committee_threshold_above_unique_rejected() {
   !committee_approved([#"c1", #"c1"], 2, [#"c1"])
+}
+
+/// Cap 16: quá cap trả **False**, KHÔNG abort. Đây là điều đang được khoá lại —
+/// `expect` ở đây làm hàm thành riêng phần, phá hợp đồng `-> Bool` mà `did_stub`
+/// hứa giữ cho verifier PhoenixKey thật. 16 người vẫn phải qua (cận trên đúng bằng 16).
+test committee_over_cap_returns_false_not_abort() {
+  let over =
+    [
+      #"01", #"02", #"03", #"04", #"05", #"06", #"07", #"08", #"09", #"0a",
+      #"0b", #"0c", #"0d", #"0e", #"0f", #"10", #"11",
+    ]
+  !committee_approved(over, 1, [#"01"])
+}
+
+test committee_exactly_16_still_passes() {
+  let at_cap =
+    [
+      #"01", #"02", #"03", #"04", #"05", #"06", #"07", #"08", #"09", #"0a",
+      #"0b", #"0c", #"0d", #"0e", #"0f", #"10",
+    ]
+  committee_approved(at_cap, 2, [#"01", #"10"])
 }
 
 test beacon_name_dropparam() {

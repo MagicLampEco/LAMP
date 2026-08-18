@@ -5,7 +5,7 @@
 //   MINT 1 account NFT (policy accountNftPolicy, name = blake2b(owner‖channel)) — MintAccount.
 //   OUT  ClaimAccount UTxO → claim_account script, value = min-ADA + NFT,
 //        datum {owner, entitlement, redeemed=0, start_epoch, drops_per_epoch, channel_id}.
-//   SIGN ≥ threshold committee (account_nft.ak: count_committee_sigs ≥ threshold).
+//   SIGN ≥ threshold committee (account_nft.ak: util.committee_approved(committee, threshold, sigs)).
 //
 // Invariants ép TRƯỚC build:
 //   C-ACC-2  ≥ threshold committee signers.

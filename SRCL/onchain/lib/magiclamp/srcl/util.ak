@@ -203,7 +203,9 @@ pub fn is_owned_by(addr: Address, pkh: ByteArray) -> Bool {
 }
 
 /// Committee/admin M-of-N đã ký đủ chưa. THAY `count_committee_sigs` cũ — hàm đó
-/// trả Int nên ngưỡng phải kiểm ở call site, và không ai kiểm.
+/// trả Int nên ngưỡng phải kiểm ở call site: mọi call site ĐỀU kiểm
+/// (`expect count_committee_sigs(…) >= threshold`), nhưng phép kiểm rời rạc đó
+/// không nói gì về hai lỗ dưới, và mỗi call site mới là một cơ hội quên.
 ///
 /// Hai lỗ nó bỏ (issue #21 B1):
 ///   • `list.count(committee, …)` đếm **phần tử danh sách**, không đếm **người**.
@@ -219,10 +221,13 @@ pub fn committee_approved(
   threshold: Int,
   sigs: List<ByteArray>,
 ) -> Bool {
-  // chặn ExUnit DoS + bound chi phí list.unique (O(n²)).
-  expect list.length(committee) <= 16
   let uniq = list.unique(committee)
   and {
+    // Bound chi phí list.unique (O(n²)). KHÔNG phải chống DoS: `committee` là param
+    // compile-time của validator, ngoài không bơm dài được. Là điều kiện chứ không
+    // `expect` — hàm phải TỔNG, trả False, không abort (xem did_stub.ak: signature
+    // `-> Bool` là hợp đồng cho verifier PhoenixKey thật sau này).
+    list.length(committee) <= 16,
     threshold >= 1,
     threshold <= list.length(uniq),
     list.count(uniq, fn(c) { list.has(sigs, c) }) >= threshold,

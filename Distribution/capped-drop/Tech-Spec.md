@@ -240,7 +240,7 @@ pub type BeaconNftRedeemer {
 
 | ID | Phát biểu | Code |
 |---|---|---|
-| **C-BCN-1** | `count_committee_sigs ≥ threshold` (ít nhất threshold trong committee ký) | `beacon.ak:37` |
+| **C-BCN-1** | `committee_approved(committee, threshold, sigs)` (≥ threshold NGƯỜI trong committee ký) | `beacon.ak:37` |
 | **C-BCN-2** | `out_datum.epoch > datum.epoch` (epoch đơn điệu tăng, không update cùng epoch) | `beacon.ak:45` |
 | **C-BCN-3** | `out_datum.kind == datum.kind` (kind beacon không đổi) | `beacon.ak:46` |
 | **C-BCN-4** | `nft_in == 1` (NFT có trong input) | `beacon.ak:51` |
@@ -268,7 +268,7 @@ pub type BeaconNftRedeemer {
 | ID | Phát biểu | Code |
 |---|---|---|
 | **C-CLAIM-1** | `amount > 0` | `claim_account.ak:58` |
-| **C-CLAIM-2** | `count_committee_sigs ≥ threshold` | `claim_account.ak:60` |
+| **C-CLAIM-2** | `committee_approved(committee, threshold, sigs)` | `claim_account.ak:89` |
 | **C-CLAIM-3** | `out_datum.entitlement == datum.entitlement + amount` | `claim_account.ak:62` |
 | **C-CLAIM-4** | `out_datum.owner == datum.owner` (owner bất biến) | `claim_account.ak:61` |
 | **C-CLAIM-5** | `out_datum.redeemed == datum.redeemed` (redeemed không đổi khi Claim) | `claim_account.ak:63` |
