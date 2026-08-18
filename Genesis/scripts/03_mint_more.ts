@@ -14,7 +14,11 @@ import dotenv from "dotenv";
 import { resolve } from "node:path";
 import { readFile } from "node:fs/promises";
 
-dotenv.config({ path: resolve(process.cwd(), "../../.env") });
+// Secret: MỘT nguồn duy nhất — $AGENT_SECRETS (/Users/ductiger/Projects/Agents/.env).
+// .env trong repo con đã BỎ; không đọc, không tạo lại.
+dotenv.config({
+  path: process.env.AGENT_SECRETS ?? "/Users/ductiger/Projects/Agents/.env",
+});
 
 const MINT_OILDROP = BigInt(process.env.MINT_OILDROP ?? "3000000000"); // 3000 tLAMP
 const SUPPLY_NAME = "535550504c59";

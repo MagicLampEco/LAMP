@@ -27,7 +27,11 @@ import { claimAccountDatumToCbor, treasuryDatumToCbor } from "../offchain/src/da
 import type { ClaimAccountDatum, TreasuryDatum } from "../offchain/src/types.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-dotenv.config({ path: resolve(__dirname, "../../.env") });
+// Secret: MỘT nguồn duy nhất — $AGENT_SECRETS (/Users/ductiger/Projects/Agents/.env).
+// .env trong repo con đã BỎ; không đọc, không tạo lại.
+dotenv.config({
+  path: process.env.AGENT_SECRETS ?? "/Users/ductiger/Projects/Agents/.env",
+});
 
 const NETWORK = (process.env.NETWORK ?? "Preview") as Network;
 if (NETWORK !== "Preview") { console.error("❌ NETWORK != Preview — DỪNG."); process.exit(1); }

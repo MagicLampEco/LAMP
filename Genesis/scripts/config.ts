@@ -17,13 +17,40 @@ import { dirname, resolve } from "node:path";
 import { assertParamCount as assertParamCountGate } from "../offchain/src/applyGate.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-dotenv.config({ path: resolve(__dirname, "../../.env") });
+// Secret: MỘT nguồn duy nhất — $AGENT_SECRETS (/Users/ductiger/Projects/Agents/.env).
+// .env trong repo con đã BỎ; không đọc, không tạo lại.
+dotenv.config({
+  path: process.env.AGENT_SECRETS ?? "/Users/ductiger/Projects/Agents/.env",
+});
 
 export const NETWORK: Network = (process.env.NETWORK ?? "Preview") as Network;
 export const BLOCKFROST_URL = `https://cardano-${NETWORK.toLowerCase()}.blockfrost.io/api/v0`;
-export const BLOCKFROST_KEY = process.env.BLOCKFROST_KEY ?? process.env.BLOCKFROST_TOKEN_GREENSUN ?? "";
+
+// ── Tên biến trong $AGENT_SECRETS, tra THEO MẠNG ──────────────────────────
+// Không đoán, không hard-code khoá. Thiếu biến → assertEnv() ném lỗi nêu đúng tên.
+const BF_KEY_BY_NETWORK: Record<string, string> = {
+  Preprod: "Blockfrost_Aladin_Preprod",
+  Preview: "Blockfrost_GreenSun_Preview",
+  Mainnet: "Blockfrost_ThanhDuc_mainnet",
+};
+
+/** Ví deploy testnet + địa chỉ CÔNG KHAI tương ứng, để đối chiếu seed đúng ví. */
+const SEED_VAR_BY_NETWORK: Record<string, string> = {
+  Preprod: "CNODE_PUBLICED_SEED",
+  Preview: "CNODE_PUBLICED_SEED",
+};
+const EXPECTED_ADDR_VAR: Record<string, string> = {
+  Preprod: "CNODE_PREPROD_PAYMENT_ADDR",
+};
+
+export const BLOCKFROST_KEY =
+  process.env.BLOCKFROST_KEY ?? process.env[BF_KEY_BY_NETWORK[NETWORK] ?? ""] ?? "";
 export const PRIVATE_KEY = process.env.PRIVATE_KEY ?? "";
-export const WALLET_SEED = (process.env.WALLET_SEED ?? "").trim().replace(/\s+/g, " ");
+export const WALLET_SEED = (
+  process.env.WALLET_SEED ?? process.env[SEED_VAR_BY_NETWORK[NETWORK] ?? ""] ?? ""
+)
+  .trim()
+  .replace(/\s+/g, " ");
 
 /** SUBMIT=false (mặc định) → chỉ build tx + in CBOR, KHÔNG gửi chain. */
 export const SUBMIT = (process.env.SUBMIT ?? "false").toLowerCase() === "true";
@@ -51,11 +78,38 @@ export function tokenNameFor(network: Network): string {
 export const TOKEN_NAME = tokenNameFor(NETWORK);
 
 export function assertEnv(): void {
+  const src = process.env.AGENT_SECRETS ?? "/Users/ductiger/Projects/Agents/.env";
   if (!BLOCKFROST_KEY) {
-    throw new Error("thiếu BLOCKFROST_KEY trong .env — lấy từ https://blockfrost.io (Preview).");
+    throw new Error(
+      `thiếu khoá Blockfrost cho ${NETWORK}. Đặt BLOCKFROST_KEY, hoặc thêm ` +
+        `${BF_KEY_BY_NETWORK[NETWORK] ?? "<biến theo mạng>"} vào ${src}.`,
+    );
   }
   if (!PRIVATE_KEY && !WALLET_SEED) {
-    throw new Error("thiếu PRIVATE_KEY hoặc WALLET_SEED trong .env — ví deploy testnet.");
+    throw new Error(
+      `thiếu ví deploy cho ${NETWORK}. Đặt WALLET_SEED/PRIVATE_KEY, hoặc thêm ` +
+        `${SEED_VAR_BY_NETWORK[NETWORK] ?? "<biến seed>"} vào ${src}.`,
+    );
+  }
+}
+
+/**
+ * Chốt kiểm ví: địa chỉ SUY RA từ seed phải khớp địa chỉ công khai đã biết của mạng.
+ *
+ * Vì sao cần: seed sai vẫn dựng được ví hợp lệ — chỉ là ví KHÁC. Trên Preprod thì mất
+ * thời gian; trên mainnet thì đúc token vào ví không ai giữ khoá. Chốt ở đây để hỏng
+ * SỚM, trước khi có tx nào được dựng. Địa chỉ là dữ liệu công khai, in ra được.
+ */
+export function assertWalletMatches(derived: string): void {
+  const v = EXPECTED_ADDR_VAR[NETWORK];
+  if (!v) return; // mạng chưa khai địa chỉ đối chiếu — không đoán.
+  const expected = process.env[v];
+  if (!expected) return;
+  if (derived !== expected) {
+    throw new Error(
+      `SAI VÍ: seed suy ra ${derived} nhưng ${v} là ${expected}. ` +
+        `Dừng trước khi dựng tx — kiểm lại biến seed trong $AGENT_SECRETS.`,
+    );
   }
 }
 
@@ -69,6 +123,7 @@ export async function makeLucid(): Promise<LucidEvolution> {
 
 export async function walletPkh(lucid: LucidEvolution): Promise<string> {
   const addr = await lucid.wallet().address();
+  assertWalletMatches(addr);
   const { paymentCredential } = getAddressDetails(addr);
   if (!paymentCredential) throw new Error("không lấy được payment credential từ ví");
   return paymentCredential.hash;

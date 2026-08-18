@@ -33,7 +33,11 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 
 // Load .env từ repo root (../../.env so với LampDistribution/scripts/),
 // không phụ thuộc cwd lúc chạy tsx.
-dotenv.config({ path: resolve(__dirname, "../../.env") });
+// Secret: MỘT nguồn duy nhất — $AGENT_SECRETS (/Users/ductiger/Projects/Agents/.env).
+// .env trong repo con đã BỎ; không đọc, không tạo lại.
+dotenv.config({
+  path: process.env.AGENT_SECRETS ?? "/Users/ductiger/Projects/Agents/.env",
+});
 
 // ── Network + provider ─────────────────────────────────────────
 export const NETWORK: Network = (process.env.NETWORK ?? "Preview") as Network;

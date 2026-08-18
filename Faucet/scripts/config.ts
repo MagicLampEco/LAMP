@@ -19,7 +19,11 @@ import { dirname, resolve } from "node:path";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 // .env của MAGIC (theo yêu cầu task). Override bằng ENV_PATH nếu cần.
-dotenv.config({ path: process.env.ENV_PATH ?? "/Users/ductiger/Projects/MAGIC/.env" });
+// Secret: MỘT nguồn duy nhất — $AGENT_SECRETS (/Users/ductiger/Projects/Agents/.env).
+// .env trong repo con đã BỎ; không đọc, không tạo lại.
+dotenv.config({
+  path: process.env.AGENT_SECRETS ?? "/Users/ductiger/Projects/Agents/.env",
+});
 
 export const NETWORK: Network = (process.env.NETWORK ?? "Preview") as Network;
 export const BLOCKFROST_URL = `https://cardano-${NETWORK.toLowerCase()}.blockfrost.io/api/v0`;

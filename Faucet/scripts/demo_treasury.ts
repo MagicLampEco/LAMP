@@ -23,7 +23,11 @@ import { custodyDatumToCbor } from "../../Treasury/offchain/src/datum.js";
 import { buildCollectTx } from "../../Treasury/offchain/src/collectBuilder.js";
 import type { CustodyDatum, CollectItem } from "../../Treasury/offchain/src/types.js";
 
-dotenv.config({ path: resolve(process.cwd(), "../../.env") });
+// Secret: MỘT nguồn duy nhất — $AGENT_SECRETS (/Users/ductiger/Projects/Agents/.env).
+// .env trong repo con đã BỎ; không đọc, không tạo lại.
+dotenv.config({
+  path: process.env.AGENT_SECRETS ?? "/Users/ductiger/Projects/Agents/.env",
+});
 
 const LAMP_POLICY = "b1474a77c8867762efda418adda90ecf7bb5ca35b0be13a7bfbf0ebd";
 const LAMP_NAME = "744c414d50";

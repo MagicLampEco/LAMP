@@ -29,7 +29,11 @@ import {
   DRIP_OILDROP, COOLDOWN, RECLAIM, POOL_NFT_NAME, ACCT_NFT_NAME, MS_PER_EPOCH_PREVIEW,
 } from "../offchain/src/constants.js";
 
-dotenv.config({ path: resolve(process.cwd(), "../../.env") });
+// Secret: MỘT nguồn duy nhất — $AGENT_SECRETS (/Users/ductiger/Projects/Agents/.env).
+// .env trong repo con đã BỎ; không đọc, không tạo lại.
+dotenv.config({
+  path: process.env.AGENT_SECRETS ?? "/Users/ductiger/Projects/Agents/.env",
+});
 
 // tLAMP genesis DistributionVest.
 const LAMP_POLICY = "b1474a77c8867762efda418adda90ecf7bb5ca35b0be13a7bfbf0ebd";

@@ -25,7 +25,11 @@ import { reserveStateToCbor, drawRedeemerToCbor } from "../../Reserve/offchain/s
 import { buildReserveAuthMintTx } from "../../Treasury/offchain/src/reserveAuthBuilder.js";
 import { attachGateSpend } from "../../Treasury/offchain/src/reserveGateBuilder.js";
 
-dotenv.config({ path: resolve(process.cwd(), "../../.env") });
+// Secret: MỘT nguồn duy nhất — $AGENT_SECRETS (/Users/ductiger/Projects/Agents/.env).
+// .env trong repo con đã BỎ; không đọc, không tạo lại.
+dotenv.config({
+  path: process.env.AGENT_SECRETS ?? "/Users/ductiger/Projects/Agents/.env",
+});
 
 const TOKEN_NAME = "744c414d50"; // tLAMP
 const SUPPLY_NAME = "535550504c59";
