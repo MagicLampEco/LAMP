@@ -2,8 +2,12 @@
 //
 // DEPRECATED cho phần SPO: "Tổng stake × epoch" dưới đây CHỈ là thông tin tham
 // khảo về pool, KHÔNG còn là cơ sở chia phần SPO. Model 3-pot (chốt 2026-07-11):
-//   - SPO 5M LAMP: chia ĐỀU cho SPO qua cổng đủ-điều-kiện (không theo stake).
-//   - CS 15M LAMP: theo Community Supporter đo qua AffiSo/ProofChat (cs_score.ts).
+//   - SPO 5M LAMP: cổng đủ-điều-kiện quyết AI ĐƯỢC DỰ; phần chia ∝ stake CHẢY VÀO
+//     POOL (weight_SPO(i) = Σ accStake(d) ủy thác vào pool i — spo-cs.md §3.2,
+//     splitSpoPot). KHÔNG chia đều; mô hình chia đều đã bỏ 2026-07-11.
+//   - CS 15M LAMP: làn STAKE-WEIGHTED — trọng số = Σ phiếu-stake phân bổ cho người
+//     nhận; tự bỏ phiếu hợp lệ ⇒ cân bằng = chia theo stake (cs_score.ts, spo-cs.md
+//     §3.5). KHÔNG đo đóng góp cộng đồng.
 //   - Delegator 100M LAMP: ∝stake mọi pool (build_delegator_snapshot.ts / snapshot builder).
 // Xem spo-cs.md + CONTRACT.md.
 //
@@ -226,10 +230,13 @@ async function main(): Promise<void> {
   // Phần SPO KHÔNG còn tính theo stake (model 3-pot). Số liệu trên chỉ tham khảo.
   console.log();
   console.log(
-    "[Lưu ý] Model 3-pot: phần SPO 5M LAMP chia ĐỀU cho SPO qua cổng đủ-điều-kiện",
+    "[Lưu ý] Model 3-pot: phần SPO 5M LAMP chia ∝ STAKE CHẢY VÀO POOL, cổng đủ-điều-kiện",
   );
   console.log(
-    "        (không theo stake); phần CS 15M LAMP theo đóng góp cộng đồng (cần DID).",
+    "        (không theo stake); phần CS 15M LAMP là làn STAKE-WEIGHTED — tự bỏ phiếu",
+  );
+  console.log(
+    "        hợp lệ nên cân bằng là chia theo stake, KHÔNG đo đóng góp (cần DID).",
   );
   console.log("        Chi tiết: spo-cs.md.");
 

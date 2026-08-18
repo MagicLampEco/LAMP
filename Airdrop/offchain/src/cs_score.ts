@@ -10,8 +10,10 @@
 //
 //   • Pot SPO (5M)  — trọng số SPO(i) = Σ stake các delegator (đã đăng ký) ủy
 //     thác VÀO POOL của SPO i (delegation chảy vào pool).
-//   • Pot CS  (15M) — trọng số CS(j)  = Σ stake các delegator đã BÌNH CHỌN
-//     rằng j đã hỗ trợ họ (stake của người-được-giúp công nhận).
+//   • Pot CS  (15M) — trọng số CS(j)  = Σ phiếu-stake các delegator đã PHÂN BỔ
+//     cho j. Tự bỏ phiếu (j = d) HỢP LỆ và là chiến lược trội ⇒ điểm cân bằng
+//     là weight_CS(j) = accStake(j), tức pot CS = đợt chia-theo-stake thứ hai.
+//     LÀN NÀY LÀ STAKE-WEIGHTED, KHÔNG đo "đóng góp" (spo-cs.md §3.5).
 //   • Pot Delegator (100M) — GIỮ nguyên `delegator_entitlement.ts`
 //     (trọng số = stake của CHÍNH delegator).
 //
@@ -100,13 +102,16 @@ export function splitSpoPot(
   return splitByStake(spoWeights, potOildrop, capOildrop);
 }
 
-// ── Pot CS (Community Supporter) — trọng số = stake của người BÌNH CHỌN ──────
+// ── Pot CS (Community Supporter) — trọng số = Σ phiếu-stake phân bổ cho người nhận ──
 
-/** Chia pot CS ∝ tổng "phiếu-stake" bình chọn cho mỗi supporter.
- *  `csWeights[j].stake` = Σ stake của các delegator đã bình chọn rằng supporter j
- *  đã hỗ trợ họ (mỗi delegator có phiếu-stake = stake của mình, tổng phân bổ ≤ stake
- *  của họ — quy tắc chống double-count, xem SPO-CS-SPEC §Quy tắc bình chọn).
- *  Supporter KHÔNG cần là SPO — chỉ cần được stakeholder công nhận đã giúp. */
+/** Chia pot CS ∝ tổng "phiếu-stake" đã phân bổ cho mỗi người nhận.
+ *  `csWeights[j].stake` = Σ allocation_d(j) của các delegator d (mỗi delegator có
+ *  phiếu-stake = stake của mình, tổng phân bổ ≤ stake của họ — quy tắc chống
+ *  double-count, SPO-CS-SPEC §3.4). Ràng buộc đó là DUY NHẤT: KHÔNG có mệnh đề
+ *  `j ≠ d`, nên TỰ BỎ PHIẾU hợp lệ và là chiến lược trội tuyệt đối ⇒ điểm cân bằng
+ *  weight_CS(j) = accStake(j). Vì vậy pot CS được khai là STAKE-WEIGHTED, KHÔNG
+ *  phải phần thưởng cho "đóng góp được công nhận" (SPO-CS-SPEC §3.5).
+ *  Người nhận KHÔNG cần là SPO — chỉ cần có DID sinh trắc và stake/phiếu được phân bổ. */
 export function splitCsPot(
   csWeights: StakeWeight[],
   potOildrop: bigint = CS_POT_OILDROP,

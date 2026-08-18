@@ -143,8 +143,9 @@ describe("splitSpoPot — trọng số = stake chảy vào pool (mặc định 5
   });
 });
 
-describe("splitCsPot — trọng số = stake người bình chọn (mặc định 15M LAMP)", () => {
-  // supporter KHÔNG cần là SPO. weight_stake = Σ stake người bình chọn cho họ.
+describe("splitCsPot — trọng số = Σ phiếu-stake phân bổ cho người nhận (mặc định 15M LAMP)", () => {
+  // Người nhận KHÔNG cần là SPO. weight_stake = Σ allocation_d(j), kể cả d = j
+  // (tự bỏ phiếu hợp lệ — spo-cs.md §3.4/§3.5).
   const csWeights: StakeWeight[] = [
     { id: "sup1", stake: 200n },
     { id: "sup2", stake: 300n },
@@ -163,5 +164,85 @@ describe("splitCsPot — trọng số = stake người bình chọn (mặc đị
 
   it("bảo toàn: Σ = CS_POT_OILDROP = 15.000.000 LAMP", () => {
     expect(sum(rs)).toBe(CS_POT_OILDROP);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// GHIM NGỮ NGHĨA §3.5 — làn CS LÀ stake-weighted (Q10, phương án (c))
+//
+// Ràng buộc DUY NHẤT của làn CS: Σ_j allocation_d(j) ≤ accStake(d). KHÔNG có
+// mệnh đề `j ≠ d` ⇒ tự bỏ phiếu hợp lệ + là chiến lược trội tuyệt đối ⇒ điểm
+// cân bằng weight_CS(j) = accStake(j), tức pot CS = đợt chia-theo-stake thứ hai.
+// Test này ghim đúng hành vi đó để không ai lặng lẽ khôi phục ngữ nghĩa
+// "thưởng đóng góp được công nhận" (spo-cs.md §3.5).
+// ─────────────────────────────────────────────────────────────────────────
+describe("§3.5 — tự bỏ phiếu hợp lệ ⇒ làn CS thoái hoá thành chia theo stake", () => {
+  // 3 delegator đã đăng ký, accStake 200 : 300 : 500 (Σ = 1000).
+  const accStake = { d1: 200n, d2: 300n, d3: 500n };
+  const TOTAL = accStake.d1 + accStake.d2 + accStake.d3; // 1000n
+
+  const rewardOf = (ws: StakeWeight[], id: string) =>
+    splitCsPot(ws).find((r) => r.id === id)!.oildrop;
+
+  it("người nhận trùng người bầu (j = d) được chấp nhận — không có cổng `j ≠ d`", () => {
+    // d1 tự phân bổ toàn bộ phiếu-stake cho chính mình.
+    const ws: StakeWeight[] = [{ id: "d1", stake: accStake.d1 }];
+    expect(() => splitCsPot(ws)).not.toThrow();
+    expect(splitCsPot(ws)[0]!.oildrop).toBe(CS_POT_OILDROP); // 1 người ⇒ trọn pot
+  });
+
+  it("tự bỏ phiếu là chiến lược TRỘI: dồn phiếu về mình ⇒ reward tăng nghiêm ngặt", () => {
+    // Tổng trọng số toàn cục giữ nguyên = 1000 ở cả 3 kịch bản → so sánh sạch.
+    // (a) d1 tặng HẾT 200 phiếu-stake cho d2.
+    const giveAll: StakeWeight[] = [
+      { id: "d1", stake: 0n },
+      { id: "d2", stake: accStake.d2 + accStake.d1 }, // 500
+      { id: "d3", stake: accStake.d3 },
+    ];
+    // (b) d1 tặng một nửa (100), giữ lại 100.
+    const giveHalf: StakeWeight[] = [
+      { id: "d1", stake: 100n },
+      { id: "d2", stake: accStake.d2 + 100n }, // 400
+      { id: "d3", stake: accStake.d3 },
+    ];
+    // (c) d1 tự bỏ phiếu toàn bộ.
+    const selfVote: StakeWeight[] = [
+      { id: "d1", stake: accStake.d1 },
+      { id: "d2", stake: accStake.d2 },
+      { id: "d3", stake: accStake.d3 },
+    ];
+
+    const a = rewardOf(giveAll, "d1");
+    const b = rewardOf(giveHalf, "d1");
+    const c = rewardOf(selfVote, "d1");
+
+    expect(a).toBe(0n); // tặng đi ⇒ nhận 0 từ phần đã tặng
+    expect(b).toBeGreaterThan(a); // giữ lại một nửa ⇒ tăng nghiêm ngặt
+    expect(c).toBeGreaterThan(b); // giữ hết ⇒ tăng tiếp
+    // Cơ chế KHÔNG bù cho người tặng: phần d1 tặng đi chảy sang d2.
+    expect(rewardOf(giveAll, "d2")).toBeGreaterThan(rewardOf(selfVote, "d2"));
+  });
+
+  it("cân bằng (mọi người tự bỏ phiếu) ⇒ reward_CS = chia pot 15M ∝ accStake", () => {
+    const equilibrium: StakeWeight[] = [
+      { id: "d1", stake: accStake.d1 },
+      { id: "d2", stake: accStake.d2 },
+      { id: "d3", stake: accStake.d3 },
+    ];
+    const by = Object.fromEntries(splitCsPot(equilibrium).map((r) => [r.id, r.oildrop]));
+
+    // 15M LAMP × 200/1000 = 3.000.000 LAMP, v.v. — y hệt một đợt airdrop
+    // chia theo stake, chồng lên pot Delegator 100M (spo-cs.md §3.5).
+    expect(by.d1! / LAMP).toBe(3_000_000n);
+    expect(by.d2! / LAMP).toBe(4_500_000n);
+    expect(by.d3! / LAMP).toBe(7_500_000n);
+
+    // Bất biến: kết quả TRÙNG KHỚP splitByStake trên chính accStake — bằng
+    // chứng làn CS không thêm một đại lượng "đóng góp" nào ngoài stake.
+    expect(splitCsPot(equilibrium)).toEqual(
+      splitByStake(equilibrium, CS_POT_OILDROP),
+    );
+    expect(sum(splitCsPot(equilibrium))).toBe(CS_POT_OILDROP);
+    expect(TOTAL).toBe(1000n);
   });
 });
