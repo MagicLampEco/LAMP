@@ -11,7 +11,16 @@ import { LAMP_MAINNET } from "../offchain/src/deployed.js";
 
 const LAMP_POLICY = LAMP_MAINNET.policyId;
 const LAMP_NAME = LAMP_MAINNET.assetName;
-const KHO = LAMP_MAINNET.khoAddress;
+// Kho đếm theo PAYMENT CREDENTIAL, không theo một địa chỉ. A-DEST so bằng
+// payment_credential và BỎ QUA stake credential (util.ak:72,83-90), và có test khẳng định
+// biến thể staked vẫn PASS (lamp_mint.ak:605-625) ⇒ kho là một HỌ địa chỉ, không phải một
+// địa chỉ. Hỏi bằng `khoAddress` (biến thể enterprise) thì một lượt rót hợp lệ vào biến thể
+// có stake credential sẽ VÔ HÌNH ⇒ khoLamp thiếu ⇒ con số lưu hành công bố bị thổi phồng
+// đúng bằng lượng đó.
+const KHO_HASH = LAMP_MAINNET.khoHash;
+// supply_state thì NGƯỢC LẠI — hỏi bằng địa chỉ đầy đủ là đúng: validator ép
+// `s_out.address == s_in.address` (lamp_mint.ak:95), so cả stake part, nên nó đứng yên
+// một địa chỉ. Hai kho hai luật khác nhau; đừng đồng nhất cách hỏi.
 const SUPPLY_STATE = LAMP_MAINNET.supplyStateAddress;
 const SUPPLY_NFT_NAME = "535550504c59"; // "SUPPLY"
 
@@ -53,13 +62,36 @@ async function main() {
   console.log(`\n  TỔNG CAP       = ${lamp(totalCap)}  ${totalCap === 36_000_000_000n * OILDROP ? "✓ = 36 tỷ" : "✗ ≠ 36 tỷ"}`);
   console.log(`  ĐÃ MINT        = ${lamp(totalMinted)}`);
   console.log(`  CÒN MINT ĐƯỢC  = ${lamp(distCap - distMinted)} (distribution) + ${lamp(reserveCap - reserveMinted)} (reserve)`);
+  // "Còn mint được" ở cột reserve là headroom THEO DATUM, không phải theo đường đi thật.
+  // Nhánh ReserveDraw gác bằng meter NFT, mà meter_nft_policy của bản này = 28 byte 0
+  // (deployed.ts:92-93, 118-119) — không có tiền ảnh blake2b-224 ⇒ điều kiện
+  // count_inputs_holding_nft(...) == 1 không bao giờ thoả. Script này ĐỌC chain, nên nó
+  // phải nói ra chỗ con số của chain khác với con số rút được thật.
+  const meterParam = LAMP_MAINNET.mintParams.find((p) => p.name === "meter_nft_policy");
+  const meterIsZero = !!meterParam && /^581c0{56}$/.test(meterParam.cborHex);
+  if (meterIsZero && reserveCap > reserveMinted) {
+    console.log(
+      `  ⚠ CỘT RESERVE Ở TRÊN LÀ HEADROOM THEO DATUM, KHÔNG PHẢI LƯỢNG RÚT ĐƯỢC:\n` +
+      `    meter_nft_policy nướng vào policy này = 28 byte 0 ⇒ điều kiện\n` +
+      `    count_inputs_holding_nft(...) == 1 của nhánh ReserveDraw không bao giờ thoả.\n` +
+      `    Trần phát hành THỰC TẾ của policy ${LAMP_POLICY.slice(0, 8)}… = ${lamp(distCap)}, KHÔNG phải ${lamp(totalCap)}.`,
+    );
+  }
 
-  // 2) kho balance
-  const khoUtxos = await kpost<any[]>("/address_utxos", { _addresses: [KHO], _extended: true });
+  // 2) kho balance — quét THEO CREDENTIAL, gom mọi biến thể stake của cùng payment credential.
+  const khoUtxos = await kpost<any[]>("/credential_utxos", {
+    _payment_credentials: [KHO_HASH], _extended: true,
+  });
   let khoLamp = 0n;
   for (const u of khoUtxos) for (const a of u.asset_list || [])
     if (a.policy_id === LAMP_POLICY && a.asset_name === LAMP_NAME) khoLamp += BigInt(a.quantity);
-  console.log(`\nKHO (${KHO.slice(0, 20)}…) giữ: ${lamp(khoLamp)}`);
+  console.log(`\nKHO (credential ${KHO_HASH.slice(0, 16)}…) giữ: ${lamp(khoLamp)}`);
+  // Nói ra biến thể nào đang giữ: một biến thể lạ xuất hiện là tin cần biết, không phải nhiễu.
+  const khoVariants = [...new Set(khoUtxos.map((u) => u.address as string))];
+  console.log(`  ${khoUtxos.length} UTxO tại ${khoVariants.length} biến thể địa chỉ:`);
+  for (const v of khoVariants) {
+    console.log(`    ${v}${v === LAMP_MAINNET.khoAddress ? "  (enterprise — bản ghi ở deployed.ts)" : "  ⚠ BIẾN THỂ KHÁC"}`);
+  }
 
   // 3) headroom cho 3 đợt launch
   const need = { ETD: 12_000_000n, Airdrop: 120_000_000n, SRCL: 381_000_000n }; // LAMP
