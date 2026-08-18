@@ -86,7 +86,7 @@ validator claim_account(
       Claim { amount } -> {
         expect amount > 0
         // C-CLAIM-1
-        expect util.count_committee_sigs(committee, tx.extra_signatories) >= threshold
+        expect util.committee_approved(committee, threshold, tx.extra_signatories)
         // C-CLAIM-2/3/4: entitlement += amount; các field khác bất biến.
         expect out_datum.owner == datum.owner
         expect out_datum.entitlement == datum.entitlement + amount

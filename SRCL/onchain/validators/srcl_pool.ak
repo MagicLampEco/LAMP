@@ -113,7 +113,7 @@ validator srcl_pool(
         expect out_d: SrclDatum = od
 
         // Ngưỡng admin.
-        expect util.count_committee_sigs(admin, tx.extra_signatories) >= admin_threshold
+        expect util.committee_approved(admin, admin_threshold, tx.extra_signatories)
 
         // pool.value bảo toàn TUYỆT ĐỐI (SetRoot không đụng LAMP/ADA/NFT).
         expect pool_out.value == pool_in.value
@@ -139,7 +139,7 @@ validator srcl_pool(
         // GIỚI HẠN (xem header §GIỚI HẠN): on-chain KHÔNG kiểm tên slot khớp epoch
         // đang append (tên là hash, không có preimage). Việc bộ slot đúng leaf của
         // root + KHÔNG re-mint slot epoch cũ đã burn = TIN CẬY admin-threshold (ép
-        // bởi `count_committee_sigs >= admin_threshold` ở trên), KHÔNG ép on-chain.
+        // bởi `util.committee_approved(admin, admin_threshold, …)` ở trên), KHÔNG ép on-chain.
         expect
           util.policy_qty_outside_script(
             tx.outputs, srcl_nft_policy, slot_registry_hash,

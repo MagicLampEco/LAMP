@@ -57,7 +57,7 @@ validator claim_account_nft(
   mint(_redeemer: ClaimAccountNftRedeemer, policy_id: PolicyId, tx: Transaction) {
     // ── A-ACC-1: committee M-of-N ─────────────────────────────────────────
     // Mở tài khoản = cấp quyền rút LAMP của quỹ ⇒ không bao giờ permissionless.
-    expect util.count_committee_sigs(committee, tx.extra_signatories) >= threshold
+    expect util.committee_approved(committee, threshold, tx.extra_signatories)
 
     // ── A-ACC-2: đúng 1 asset name dưới policy này, qty +1 ─────────────────
     // Danh sách 1 phần tử ⇒ không gộp nhiều tài khoản trong 1 tx (mỗi lần mở phải đi
