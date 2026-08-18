@@ -65,6 +65,52 @@ pub fn value_only_nft_and_ada(v: Value, nft_policy: PolicyId) -> Bool {
   list.length(pols) == 2 && list.has(pols, nft_policy)
 }
 
+/// Tổng lượng (policy,name) nằm ở các INPUT có payment_credential == Script(dest_hash).
+/// Cặp với `qty_to_script` để đo ĐỘ TĂNG thật của kho, không phải tổng mặt output.
+pub fn qty_from_script(
+  inputs: List<Input>,
+  dest_hash: ByteArray,
+  policy: PolicyId,
+  name: AssetName,
+) -> Int {
+  list.foldl(
+    inputs,
+    0,
+    fn(i, acc) {
+      when i.output.address.payment_credential is {
+        Script(h) ->
+          if h == dest_hash {
+            acc + assets.quantity_of(i.output.value, policy, name)
+          } else {
+            acc
+          }
+        _ -> acc
+      }
+    },
+  )
+}
+
+/// ĐỘ TĂNG ròng của (policy,name) tại kho dest_hash = (tổng ở output) − (tổng ở input).
+///
+/// VÌ SAO KHÔNG DÙNG THẲNG `qty_to_script`: đo TỔNG mặt output cho phép TÁI CHẾ. Kho đã
+/// giữ sẵn X; tx mint thêm delta, tiêu UTxO kho (X) rồi trả lại đúng X về kho và đưa delta
+/// mới về ví — "tổng ở output = X ≥ delta" vẫn thoả nếu X ≥ delta, trong khi kho KHÔNG
+/// tăng một đồng nào. Đo ĐỘ TĂNG đóng đúng đường đó: trả lại X chỉ cho tăng 0.
+pub fn qty_delta_at_script(
+  inputs: List<Input>,
+  outputs: List<Output>,
+  dest_hash: ByteArray,
+  policy: PolicyId,
+  name: AssetName,
+) -> Int {
+  qty_to_script(outputs, dest_hash, policy, name) - qty_from_script(
+    inputs,
+    dest_hash,
+    policy,
+    name,
+  )
+}
+
 /// Tổng lượng (policy,name) đi tới các output có payment_credential == Script(dest_hash).
 /// A-DEST: ép DistributionVest chỉ rót LAMP vào KHO Distribution treasury (dest_hash) —
 /// 2-of-3 KHÔNG mint thẳng về ví cá nhân được (chống "cầm 2 khóa rút về cho mình").
