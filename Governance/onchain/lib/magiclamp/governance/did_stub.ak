@@ -23,12 +23,35 @@ pub type DidCommittee {
 
 // số chữ ký tối thiểu (M-of-N)
 
-/// Đếm số signer committee có mặt trong extra_signatories của tx.
-fn count_committee_sigs(
+/// Committee đã ký đủ ngưỡng chưa. THAY `count_committee_sigs` cũ (trả Int, ngưỡng
+/// kiểm ở call site — call site có kiểm `>= threshold`, nhưng không kiểm CẬN của
+/// chính threshold, và không thấy được chuyện danh sách có người trùng).
+///
+/// Hai lỗ nó bỏ (issue #21 B1):
+///   • `list.count(committee.signers, …)` đếm **phần tử danh sách**, không đếm
+///     **người**: `[a1, a1, a2]` threshold 2 → riêng a1 ký là đủ.
+///   • `threshold` không chặn cận: `threshold ≤ 0` thì 0 chữ ký cũng qua.
+///
+/// Ở đây nghiêm hơn ba module kia: hàm này gác cổng "1 DID = 1 người" của
+/// governance. `DidCommittee` là param của `vote` validator (`vote.ak:73`) nên vẫn
+/// là lỗi deploy chứ không phải datum bịa được — nhưng bất biến nó giữ thì cốt lõi.
+/// Mẫu gốc: `Genesis/onchain/lib/magiclamp/genesis/registry.ak:96-101`.
+fn committee_approved(
   committee: DidCommittee,
   signatories: List<ByteArray>,
-) -> Int {
-  list.count(committee.signers, fn(s) { list.has(signatories, s) })
+) -> Bool {
+  let uniq = list.unique(committee.signers)
+  and {
+    // Bound chi phí list.unique (O(n²)). KHÔNG phải chống DoS: `signers` là param
+    // compile-time của `vote` validator, ngoài không bơm dài được. Là điều kiện chứ
+    // không `expect` — `verify_did` hứa signature `-> Bool` cho verifier PhoenixKey
+    // thật; abort ở đây thì caller viết `if verify_did(…) {} else {}` sẽ crash chứ
+    // không rẽ được nhánh else.
+    list.length(committee.signers) <= 16,
+    committee.threshold >= 1,
+    committee.threshold <= list.length(uniq),
+    list.count(uniq, fn(s) { list.has(signatories, s) }) >= committee.threshold,
+  }
 }
 
 /// verify_did — STUB: did_commit "được chứng thực" khi committee ký đủ threshold.
@@ -43,7 +66,7 @@ pub fn verify_did(
   _did_commit: ByteArray,
   signatories: List<ByteArray>,
 ) -> Bool {
-  count_committee_sigs(committee, signatories) >= committee.threshold
+  committee_approved(committee, signatories)
 }
 
 // ════════════════════════════════════════════════════════════
@@ -65,6 +88,33 @@ test did_verify_threshold_exact() {
 test did_verify_too_few_sigs() fail {
   expect verify_did(cmt(), #"deadbeef", [#"a1"])
   True
+}
+
+// ── issue #21 B1 — dedupe + cận threshold ────────────────────
+
+/// Committee trùng khoá KHÔNG được phá ngưỡng. `[a1, a1, a2]` threshold 2, chỉ a1
+/// ký: bản cũ `list.count` ra 2 ⇒ pass ⇒ MỘT người tự thoả cổng "1 DID = 1 người".
+test did_dup_key_cannot_meet_threshold() {
+  let c = DidCommittee { signers: [#"a1", #"a1", #"a2"], threshold: 2 }
+  !verify_did(c, #"deadbeef", [#"a1"])
+}
+
+/// Cùng committee đó, đủ hai người thật thì vẫn phải qua.
+test did_dup_key_two_real_signers_pass() {
+  let c = DidCommittee { signers: [#"a1", #"a1", #"a2"], threshold: 2 }
+  verify_did(c, #"deadbeef", [#"a1", #"a2"])
+}
+
+/// threshold ≤ 0 thì KHÔNG chữ ký nào cũng qua ở bản cũ.
+test did_threshold_zero_rejected() {
+  let c = DidCommittee { signers: [#"a1", #"a2", #"a3"], threshold: 0 }
+  !verify_did(c, #"deadbeef", [])
+}
+
+/// threshold vượt số NGƯỜI thật (sau dedupe) = khoá chết, chặn ngay lúc kiểm.
+test did_threshold_above_unique_rejected() {
+  let c = DidCommittee { signers: [#"a1", #"a1"], threshold: 2 }
+  !verify_did(c, #"deadbeef", [#"a1"])
 }
 
 test did_verify_non_committee_sigs_ignored() fail {

@@ -11,9 +11,13 @@ export const NANOGIC_PER_MAGIC   = 1_000_000_000n;
 export const S_LAMP_TOTAL        = 36_000_000_000_000_000n;  // 36×10^15 oildrop
 
 // `slots_per_epoch` is network-specific (used for slot-based epoch math and SDK display).
+// Source: ShelleyGenesis `epochLength` of each network (book.world.dev.cardano.org +
+// input-output-hk/cardano-configurations — two independent sources, in agreement).
+// PREPROD MIRRORS MAINNET (5-day epochs). PREVIEW is the short-epoch network (1 day).
+// Do NOT group Preview and Preprod together — that grouping was the bug fixed here.
 export const SLOTS_PER_EPOCH_BY_NETWORK = {
   Preview:  86_400n,
-  Preprod:  86_400n,
+  Preprod:  432_000n,
   Mainnet:  432_000n,
 } as const;
 
@@ -25,11 +29,27 @@ export function slotsPerEpoch(network: Network): bigint {
 // `ms_per_epoch` is what the Aiken validator's epoch-from-validity-range math uses,
 // because PlutusV3 validity_range carries POSIX milliseconds (not slots).
 // All current Cardano networks use slot_length = 1000 ms, so ms_per_epoch = slots_per_epoch × 1000.
+// ms_per_epoch MUST stay = slots_per_epoch × 1000 for every network — `epochTablesAgree()`
+// below is the machine check, and the test suite asserts it for the whole table.
 export const MS_PER_EPOCH_BY_NETWORK = {
   Preview:  86_400_000n,
-  Preprod:  86_400_000n,
+  Preprod:  432_000_000n,
   Mainnet:  432_000_000n,
 } as const;
+
+/** slot_length is 1000 ms on every current Cardano network. */
+export const MS_PER_SLOT = 1_000n;
+
+/**
+ * True iff both epoch tables agree on every network (ms = slots × MS_PER_SLOT).
+ * The two tables are separate literals, so one can be edited without the other;
+ * this is what makes that silent divergence loud.
+ */
+export function epochTablesAgree(): boolean {
+  return (Object.keys(SLOTS_PER_EPOCH_BY_NETWORK) as Network[]).every(
+    (n) => MS_PER_EPOCH_BY_NETWORK[n] === SLOTS_PER_EPOCH_BY_NETWORK[n] * MS_PER_SLOT,
+  );
+}
 
 /** Milliseconds-per-epoch for a given Cardano network (used by validator + SDK). */
 export function msPerEpoch(network: Network): bigint {
@@ -60,8 +80,9 @@ export const GENESIS_UNIX: Record<"Preview" | "Preprod" | "Mainnet", number> = {
 export type Network = "Preview" | "Preprod" | "Mainnet";
 
 /** slot → epoch (integer division). Must pass the network because slots/epoch differs:
- *    Mainnet:        432_000
- *    Preview/Preprod: 86_400
+ *    Mainnet:  432_000
+ *    Preprod:  432_000   ← mirrors mainnet, NOT preview
+ *    Preview:   86_400
  */
 export function slotToEpoch(slot: bigint, network: Network): bigint {
   return slot / slotsPerEpoch(network);
