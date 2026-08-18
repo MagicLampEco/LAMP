@@ -17,6 +17,7 @@
 //   TreasuryRedeemer:
 //     ReleaseForRedeem = Constr(0, [])   // redeem: pool ↓ và sổ cái nợ ↓ (đi cặp)
 //     GrantEntitlement = Constr(1, [])   // claim: pool bất biến, nợ += granted ≤ pool
+//     Refill           = Constr(2, [])   // gộp N UTxO kho → 1 + nạp thêm LAMP (committee)
 
 import { Constr, Data } from "@lucid-evolution/lucid";
 import type { BeaconDatum, BeaconKind, ClaimAccountDatum, TreasuryDatum } from "./types.js";
@@ -199,8 +200,19 @@ export function treasuryDatumFromCbor(cbor: string): TreasuryDatum {
   return decodeTreasuryDatum(Data.from(cbor));
 }
 
-/** TreasuryRedeemer variants (mirror types.ak declaration order). */
-export const TREASURY_REDEEMER = { ReleaseForRedeem: 0, GrantEntitlement: 1 } as const;
+/**
+ * TreasuryRedeemer variants (mirror types.ak declaration order).
+ *
+ * `Refill` = 2 vì nó được khai CUỐI trong `types.ak` (chủ ý: giữ nguyên index 0/1 của hai
+ * redeemer cũ mà offchain đang neo theo). Thiếu nó thì SDK KHÔNG dựng nổi tx nạp LAMP vào
+ * kho — mà không redeemer nào khác làm pool TĂNG, nên tổng cấp phát suốt vòng đời sẽ bị
+ * chặn cứng ở số dư genesis và LAMP rót về kho qua A-DEST nằm chết tại địa chỉ script.
+ */
+export const TREASURY_REDEEMER = {
+  ReleaseForRedeem: 0,
+  GrantEntitlement: 1,
+  Refill:           2,
+} as const;
 
 /** TreasuryRedeemer: ReleaseForRedeem = Constr(0, []). */
 export function encodeTreasuryRedeemer(): Constr<Data> {
@@ -218,4 +230,16 @@ export function encodeGrantEntitlementRedeemer(): Constr<Data> {
 
 export function grantEntitlementRedeemerToCbor(): string {
   return Data.to(encodeGrantEntitlementRedeemer());
+}
+
+/**
+ * TreasuryRedeemer: Refill = Constr(2, []) — gộp N ≥ 1 UTxO ở địa chỉ kho vào ĐÚNG 1
+ * output + cho phép nạp thêm LAMP (committee ký). Đây là đường DUY NHẤT làm pool TĂNG.
+ */
+export function encodeRefillRedeemer(): Constr<Data> {
+  return new Constr(TREASURY_REDEEMER.Refill, []);
+}
+
+export function refillRedeemerToCbor(): string {
+  return Data.to(encodeRefillRedeemer());
 }

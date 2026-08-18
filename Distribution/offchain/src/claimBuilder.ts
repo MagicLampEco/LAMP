@@ -16,13 +16,15 @@
 //   C-CLAIM-3  out.owner == in.owner; redeemed/start_epoch/drops_per_epoch unchanged.
 //   C-SOLV-1   treasury.outstanding_entitlement_out = cum_in + amount (co-spend bắt buộc).
 //   C-SOLV-2   outstanding_entitlement_out ≤ treasury pool LAMP (ép on-chain ở treasury).
-//   C-MINT-0   tx.mint == 0 (builder không gọi .mintAssets).
+//   C-MINT-1   tập policy trong tx.mint ⊆ {account_nft_policy}
+//              → UPDATE: KHÔNG đúc gì (claim_account ép `is_zero(tx.mint)`).
+//              → CREATE: đúc ĐÚNG 1 NFT tên blake2b_256(owner) (C-ACC-1, A-ACC-2..6).
 //   C-VAL-0    assets bảo toàn (lovelace + dust) — chỉ datum đổi; treasury pool bất biến.
 
 import {
-  Data, toUnit,
+  Data, toUnit, mintingPolicyToId,
   credentialToAddress, scriptHashToCredential, validatorToScriptHash,
-  type LucidEvolution, type UTxO, type Validator, type TxSignBuilder,
+  type LucidEvolution, type UTxO, type Validator, type MintingPolicy, type TxSignBuilder,
 } from "@lucid-evolution/lucid";
 import type { Network } from "@magiclamp/utils";
 
@@ -31,6 +33,7 @@ import {
   claimAccountDatumToCbor, claimRedeemerToCbor, decodeClaimAccountDatum,
   decodeTreasuryDatum, treasuryDatumToCbor, grantEntitlementRedeemerToCbor,
 } from "./datum.js";
+import { accountNftName, mintAccountRedeemerToCbor } from "./accountNft.js";
 import { assertCommitteeSigners } from "./committee.js";
 import { DEFAULT_DROPS_PER_EPOCH, TREASURY_NFT_ASSET_NAME } from "./constants.js";
 
@@ -58,6 +61,27 @@ export interface ClaimParams {
 
   /** Min-ADA cho ClaimAccount UTxO mới (CREATE path). Mặc định 2 ADA. */
   accountLovelace?: bigint;
+
+  /**
+   * NFT XÁC THỰC TÀI KHOẢN — **BẮT BUỘC ở đường CREATE** (bỏ qua ở UPDATE).
+   *
+   * `treasury.GrantEntitlement` nhánh CREATE ép C-ACC-1:
+   *   `assets.quantity_of(tx.mint, account_nft_policy, blake2b_256(ca_out.owner)) == 1`
+   * ⇒ tx CREATE nào KHÔNG đúc NFT này là fail on-chain, không có đường vòng.
+   * Còn `claim_account` (C-ACC-0) đòi đúng NFT đó ở cả input lẫn output mỗi lần spend,
+   * nên tạo tài khoản không kèm NFT (hoặc NFT sai tên) = ghi nợ vào sổ cho một tài khoản
+   * VĨNH VIỄN không tiêu được: `outstanding_entitlement` phình mà không đường lùi, siết
+   * dần trần cấp phát về sau qua C-SOLV-2.
+   *
+   * Ở UPDATE thì ngược lại: `claim_account` ép `is_zero(tx.mint)` — truyền vào cũng không
+   * dùng, builder KHÔNG đúc gì.
+   */
+  accountNft?: {
+    /** Minting policy `claim_account_nft` ĐÃ apply đủ 3 tham số. */
+    script:    MintingPolicy;
+    /** Policy id; bỏ trống → suy từ `script`. Truyền vào chỉ để đối chiếu. */
+    policyId?: string;
+  };
 
   /**
    * TREASURY CO-SPEND (BẮT BUỘC on-chain solvency, C-SOLV-*). Mọi Claim spend treasury
@@ -117,6 +141,8 @@ export interface ClaimResult {
   /** Treasury datum mới (outstanding_entitlement += amount). Luôn có — treasury co-spend
    *  là BẮT BUỘC, xem `ClaimParams.treasury`. */
   newTreasuryDatum:  TreasuryDatum;
+  /** Unit NFT tài khoản đã đúc (chỉ CREATE; UPDATE không đúc gì — C-MINT-1). */
+  accountNftUnit?:  string;
   summary:          string;
 }
 
@@ -170,6 +196,8 @@ export async function buildClaimTx(params: ClaimParams): Promise<ClaimResult> {
   let newDatum: ClaimAccountDatum;
   let mode: "create" | "update";
   let outAssets: Record<string, bigint>;
+  /** Unit NFT tài khoản đúc trong tx này (chỉ CREATE). */
+  let mintedAccountNft: string | undefined;
 
   if (claimAccountUtxo) {
     // ── UPDATE path ────────────────────────────────────────────────
@@ -210,7 +238,33 @@ export async function buildClaimTx(params: ClaimParams): Promise<ClaimResult> {
       start_epoch:     currentEpoch,
       drops_per_epoch: params.dropsPerEpoch ?? DEFAULT_DROPS_PER_EPOCH,
     };
-    outAssets = { lovelace: accountLovelace };
+
+    // C-ACC-1 / A-ACC-2..A-ACC-4: đúc ĐÚNG 1 NFT tên blake2b_256(owner), hạ cánh ngay
+    // trên chính ClaimAccount output này. Thiếu → dựng ra tx chắc chắn fail, nên chặn
+    // TẠI ĐÂY thay vì để phát hiện lúc submit.
+    const nft = params.accountNft;
+    if (!nft) {
+      throw new Error(
+        "CLAIM-030: đường CREATE thiếu `accountNft` — treasury.GrantEntitlement (C-ACC-1) " +
+        "đòi tx đúc đúng 1 NFT tên blake2b_256(owner) dưới account_nft_policy. " +
+        "Truyền minting policy `claim_account_nft` đã apply đủ 3 tham số.",
+      );
+    }
+    const derivedPolicyId = mintingPolicyToId(nft.script);
+    if (nft.policyId !== undefined && normHex(nft.policyId) !== normHex(derivedPolicyId)) {
+      throw new Error(
+        `CLAIM-031: accountNft.policyId ${normHex(nft.policyId)} ≠ policy id suy từ script ` +
+        `${derivedPolicyId}. Script đã apply SAI tham số (xem APPLY-001) — dừng, đừng đúc.`,
+      );
+    }
+    const nftUnit = toUnit(derivedPolicyId, accountNftName(owner));
+    mintedAccountNft = nftUnit;
+
+    outAssets = { lovelace: accountLovelace, [nftUnit]: 1n };
+
+    txb = txb
+      .mintAssets({ [nftUnit]: 1n }, mintAccountRedeemerToCbor())
+      .attach.MintingPolicy(nft.script);
   }
 
   // SOLVENCY GUARD (off-chain pre-flight, over-collateralization) — cảnh báo sớm.
@@ -279,6 +333,7 @@ export async function buildClaimTx(params: ClaimParams): Promise<ClaimResult> {
 
   const summary = [
     `═══ Claim (${mode}) ═══`,
+    ...(mintedAccountNft ? [`Account NFT:  mint 1 × ${mintedAccountNft}`] : []),
     `Owner:        ${owner}`,
     `Amount:       ${amount / 1_000_000n} LAMP (${amount} oildrop)`,
     `Entitlement:  ${newDatum.entitlement} oildrop`,
@@ -289,5 +344,9 @@ export async function buildClaimTx(params: ClaimParams): Promise<ClaimResult> {
     `Claim addr:   ${claimAddress}`,
   ].join("\n");
 
-  return { tx, claimAddress, newDatum, mode, summary, newTreasuryDatum };
+  // `exactOptionalPropertyTypes`: thêm khoá bằng spread có điều kiện, KHÔNG gán undefined.
+  return {
+    tx, claimAddress, newDatum, mode, summary, newTreasuryDatum,
+    ...(mintedAccountNft !== undefined ? { accountNftUnit: mintedAccountNft } : {}),
+  };
 }

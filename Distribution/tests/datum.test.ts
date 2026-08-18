@@ -1,4 +1,6 @@
 import { describe, it, expect } from "vitest";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { Constr, Data } from "@lucid-evolution/lucid";
 import {
   // ClaimAccount
@@ -17,6 +19,7 @@ import {
   encodeTreasuryDatum, decodeTreasuryDatum,
   treasuryDatumToCbor, treasuryDatumFromCbor,
   encodeTreasuryRedeemer, encodeGrantEntitlementRedeemer,
+  encodeRefillRedeemer, refillRedeemerToCbor, TREASURY_REDEEMER,
 } from "../offchain/src/datum.js";
 import type {
   ClaimAccountDatum, BeaconDatum, BeaconKind, TreasuryDatum,
@@ -177,5 +180,53 @@ describe("unit redeemers (no fields)", () => {
     const c = encodeGrantEntitlementRedeemer();
     expect(c.index).toBe(1);
     expect(c.fields).toEqual([]);
+  });
+
+  it("TreasuryRedeemer Refill = Constr(2, [])", () => {
+    const c = encodeRefillRedeemer();
+    expect(c.index).toBe(2);
+    expect(c.fields).toEqual([]);
+  });
+
+  it("ba redeemer kho mã hoá ra ba CBOR KHÁC nhau", () => {
+    const cbors = [
+      encodeTreasuryRedeemer(), encodeGrantEntitlementRedeemer(), encodeRefillRedeemer(),
+    ].map((c) => Data.to(c));
+    expect(new Set(cbors).size).toBe(3);
+    expect(refillRedeemerToCbor()).toBe(cbors[2]);
+  });
+});
+
+// ── Chống lệch codec: index PHẢI khớp thứ tự khai báo trong types.ak ─────
+// Constr index của Aiken = thứ tự khai báo. Thêm/đổi chỗ một variant trên chuỗi mà
+// quên sửa off-chain thì tx gửi đi mang redeemer SAI ý — validator chạy nhánh khác.
+// Test này đọc thẳng file .ak, nên đổi thứ tự trên chuỗi là nó đỏ ngay.
+describe("TREASURY_REDEEMER khớp thứ tự khai báo trong types.ak", () => {
+  const TYPES_AK = fileURLToPath(new URL("../onchain/lib/magiclamp/lampdist/types.ak", import.meta.url));
+
+  /** Lấy tên các variant theo đúng thứ tự khai báo, bỏ chú thích và dòng trống. */
+  function variantsOf(typeName: string): string[] {
+    const src = readFileSync(TYPES_AK, "utf8");
+    const head = `pub type ${typeName} {`;
+    const at = src.indexOf(head);
+    if (at < 0) throw new Error(`không thấy \`${head}\` trong ${TYPES_AK}`);
+    const body = src.slice(at + head.length);
+    const end = body.indexOf("\n}");
+    if (end < 0) throw new Error(`không thấy dấu đóng khối của ${typeName}`);
+    return body.slice(0, end)
+      .split("\n")
+      .map((l) => l.trim())
+      .filter((l) => l.length > 0 && !l.startsWith("//"))
+      .map((l) => l.replace(/\s*\{.*$/, ""));   // variant có field → lấy phần tên
+  }
+
+  it("mỗi khoá trong TREASURY_REDEEMER trỏ đúng vị trí variant on-chain", () => {
+    const vs = variantsOf("TreasuryRedeemer");
+    expect(vs).toEqual(["ReleaseForRedeem", "GrantEntitlement", "Refill"]);
+    for (const [name, index] of Object.entries(TREASURY_REDEEMER)) {
+      expect(vs[index], `${name} phải ở vị trí ${index} trong types.ak`).toBe(name);
+    }
+    // off-chain KHÔNG được bỏ sót variant nào — bỏ sót = không dựng nổi tx đó.
+    expect(Object.keys(TREASURY_REDEEMER)).toHaveLength(vs.length);
   });
 });

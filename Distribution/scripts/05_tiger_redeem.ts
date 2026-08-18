@@ -11,9 +11,13 @@
 //   ⇒ vested(t) = min(E_i, 1·r_i·(t−cliff)) = kiểu B (xong đúng N epoch, có cliff).
 //
 // Flow (mỗi tx in hash + explorer + await):
-//   a. Create — operator seed 1 ClaimAccount TIGER-shaped: entitlement=0 (committee
-//      cấp sau), redeemed=0, start_epoch=cliff, drops_per_epoch=ceil(E/N).
-//   b. Claim  — committee 2/3 ký → entitlement 0 → E_i (drops_per_epoch BẤT BIẾN).
+//   a+b. Claim CREATE — committee ký → mở tài khoản TIGER-shaped (start_epoch=cliff,
+//      drops_per_epoch=ceil(E/N)) + cấp entitlement=E_i + ĐÚC NFT tên blake2b_256(owner),
+//      TẤT CẢ trong MỘT tx.
+//      Trước đây đây là 2 bước: operator seed một UTxO rỗng rồi committee cấp E. Bỏ bước
+//      seed vì sau PR #22 nó tạo ra UTxO CHẾT: `claim_account` (C-ACC-0) đòi NFT tài khoản
+//      ở mọi lần spend, mà UTxO seed không có NFT nào ⇒ không ai tiêu được nó nữa, và LAMP
+//      là hệ không burn nên không có đường lùi.
 //   c. Redeem — owner tự tính vested on-chain, nhận LAMP.
 //   d. Verify — redeemed on-chain == vested off-chain (TIGER module) → BIT-IDENTITY thật.
 //
@@ -25,9 +29,7 @@ import {
   makeLucid, walletPkh, loadDeployed, reapplyValidators,
   toUnit, explorerTx, awaitTx, currentEpoch, TREASURY_NFT_ASSET_NAME,
 } from "./config.js";
-import {
-  decodeClaimAccountDatum, claimAccountDatumToCbor,
-} from "../offchain/src/datum.js";
+import { decodeClaimAccountDatum } from "../offchain/src/datum.js";
 import { buildClaimTx }  from "../offchain/src/claimBuilder.js";
 import { buildRedeemTx } from "../offchain/src/redeemBuilder.js";
 // ── TIGER module: nguồn sự thật cho entitlement + drip kiểu B ──
@@ -95,7 +97,7 @@ async function main(): Promise<void> {
 
   const lucid = await makeLucid();
   const aPkh = await walletPkh(lucid);
-  const { claimScript, treasuryScript } = await reapplyValidators(state);
+  const { claimScript, treasuryScript, accountNftScript } = await reapplyValidators(state);
   const committee = state.committee.keyHashes;
   const threshold = state.committee.threshold;
 
@@ -126,29 +128,20 @@ async function main(): Promise<void> {
 
   await ensureCollateral(lucid);
 
-  // ── a. CREATE — seed account TIGER-shaped: entitlement=0, drops_per_epoch=r_i ──
-  console.log("── a. Create TIGER ClaimAccount (entitlement=0, drops/epoch=r_i) ──");
-  const seedCbor = claimAccountDatumToCbor({
-    owner: aPkh, entitlement: 0n, redeemed: 0n, start_epoch: cliff, drops_per_epoch: r_i,
-  });
-  const createTx = await lucid.newTx()
-    .pay.ToAddressWithData(state.claimAccount.address,
-      { kind: "inline", value: seedCbor }, { lovelace: 2_000_000n })
-    .complete();
-  await submit(lucid, createTx, "create TIGER account");
-
-  // ── b. CLAIM — committee cấp entitlement 0 → E_i ──
-  console.log("\n── b. Claim (committee cấp E_i, drops/epoch bất biến) ──");
-  const acc0 = await findAccountByOwnerStart(lucid, state.claimAccount.address, aPkh, cliff);
+  // ── a+b. CLAIM CREATE — mở tài khoản + cấp E_i + đúc NFT, trong MỘT tx ──
+  console.log("── a+b. Claim CREATE (start_epoch=cliff, drops/epoch=r_i, E=E_i, đúc NFT) ──");
   // Treasury co-spend BẮT BUỘC (C-SOLV-1): sổ cái nợ += E_i, ép ≤ pool. UTxO phải mang TRSY.
   const trsyUnit = toUnit(state.params.treasuryNftPolicy, TREASURY_NFT_ASSET_NAME);
   const treasuryClaimU = (await lucid.utxosAt(state.treasury.address))
     .find((x) => (x.assets[trsyUnit] ?? 0n) === 1n);
   if (!treasuryClaimU) throw new Error("không tìm thấy treasury UTxO mang NFT TRSY");
+  // `currentEpoch: cliff` → datum start_epoch = cliff (hình dạng kiểu B). `validFromMs`
+  // vẫn theo epoch THẬT: nó chỉ định validity_range của tx, không đi vào datum ở CREATE.
   const claimTx = await buildClaimTx({
     lucid, claimScript, network: NETWORK,
-    ownerPkh: aPkh, amount: E_i, currentEpoch: epoch,
-    claimAccountUtxo: acc0,
+    ownerPkh: aPkh, amount: E_i, currentEpoch: cliff,
+    dropsPerEpoch: r_i,
+    accountNft: { script: accountNftScript },
     committeeKeyHashes: committee, threshold, validFromMs,
     treasury: {
       utxo: treasuryClaimU, script: treasuryScript,
@@ -156,7 +149,7 @@ async function main(): Promise<void> {
     },
   });
   console.log(claimTx.summary);
-  await submit(lucid, claimTx.tx, "claim E_i");
+  await submit(lucid, claimTx.tx, "claim CREATE E_i");
 
   // ── c. REDEEM — owner tự tính vested(t), nhận LAMP ──
   console.log("\n── c. Redeem (owner self-compute vested kiểu B) ──");
@@ -166,9 +159,11 @@ async function main(): Promise<void> {
   const offchainVested = vestedAt(d1, rEpoch); // dự đoán off-chain (TIGER module)
   console.log(`   off-chain vested dự đoán @epoch ${rEpoch}: ${offchainVested / OILDROP_PER_LAMP} LAMP`);
 
+  // TRSY trước, số dư sau — kho là UTxO mang NFT, không phải UTxO nhiều LAMP nhất
+  // (claim_account.ak:138-148, C-SOLV-3/4/5).
   const treasuryU = (await lucid.utxosAt(state.treasury.address))
-    .find((u) => (u.assets[lampUnit] ?? 0n) >= offchainVested);
-  if (!treasuryU) throw new Error("treasury thiếu LAMP cho vested");
+    .find((u) => (u.assets[trsyUnit] ?? 0n) === 1n && (u.assets[lampUnit] ?? 0n) >= offchainVested);
+  if (!treasuryU) throw new Error("không tìm thấy treasury UTxO mang TRSY + đủ LAMP cho vested");
   const dropBeacon = (await lucid.utxosAt(state.beacon.address))
     .find((u) => (u.assets[dropNft] ?? 0n) === 1n);
   if (!dropBeacon) throw new Error("không thấy DropParam beacon");
@@ -190,6 +185,7 @@ async function main(): Promise<void> {
     dropBeaconUtxo: dropBeacon,
     currentEpoch: rEpoch, validFromMs: rEpoch * MS_PER_EPOCH,
     lampPolicyId: state.testLamp.policyId, lampAssetName: state.testLamp.assetName,
+    treasuryNftPolicy: state.params.treasuryNftPolicy,
   });
   console.log(redeem.summary);
   await submit(lucid, redeem.tx, "redeem TIGER");
