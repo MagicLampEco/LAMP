@@ -58,7 +58,25 @@ async function main(): Promise<void> {
     );
   }
   const lampPolicy = envLampPolicy || nativeSigPolicyId(pkh);
-  const lampName   = (process.env.LAMP_ASSET_NAME ?? "").trim() || LAMP_ASSET_NAME;
+
+  // ĐỐI XỨNG với guard ngay trên: `lamp_name` cũng là apply-param của CẢ claim_account LẪN
+  // treasury, nên gác một nửa cặp (policy) mà bỏ nửa kia (name) là tái lập đúng thế bất đối
+  // xứng đã đẻ ra bản mồi mainnet. Mặc định `LAMP_ASSET_NAME` của module này là hằng
+  // "744c414d50" = tLAMP, KHÔNG đổi theo network (khác Genesis/scripts/config.ts vốn có
+  // `tokenNameFor(network)`) — nên trên Mainnet cái mặc định đó là SAI: LAMP mainnet là
+  // "4c414d50" (Genesis/offchain/src/deployed.ts:64). Quên biến ⇒ hai validator nướng nhãn
+  // token không tồn tại ⇒ treasury không nhận ra LAMP thật ⇒ không nhả được đồng nào.
+  const envLampName = (process.env.LAMP_ASSET_NAME ?? "").trim();
+  if (NETWORK === "Mainnet" && !envLampName) {
+    throw new Error(
+      "Mainnet KHÔNG cho lamp_name mặc định. Hằng LAMP_ASSET_NAME của module này là tLAMP " +
+      "(744c414d50), trong khi LAMP mainnet là 4c414d50 — lamp_name là apply-param của " +
+      "claim_account + treasury ⇒ sai nhãn = sai script-hash = kho không nhận ra LAMP thật, " +
+      "LAMP rót vào KẸT vĩnh viễn (no-burn). Lấy assetName ở Genesis/offchain/src/deployed.ts " +
+      "(LAMP_MAINNET.assetName) rồi đặt LAMP_ASSET_NAME=… trước khi chạy.",
+    );
+  }
+  const lampName   = envLampName || LAMP_ASSET_NAME;
 
   // ── Resolve beacon_nft_policy (ONE-SHOT Aiken vs native-sig fallback) ──
   // Ưu tiên: (1) BEACON_NFT_POLICY env override (policy mint ngoài) → tin tưởng,
@@ -178,6 +196,9 @@ async function main(): Promise<void> {
   console.log(`   committee (${committee.keyHashes.length}-of-N, threshold ${committee.threshold}):`);
   committee.keyHashes.forEach((k, i) => console.log(`     [${i}] ${k}`));
   console.log(`   lamp_policy:        ${lampPolicy}`);
+  // lamp_name ĐÃ nằm trong checksum nhưng trước đây không được in — operator không đối
+  // chiếu được thứ mình đang ký. In ra kèm giải mã ASCII để thấy ngay tLAMP vs LAMP.
+  console.log(`   lamp_name:          ${lampName}  ("${Buffer.from(lampName, "hex").toString()}")`);
   console.log(`   beacon_nft_policy:  ${beaconNftPolicy}`);
   console.log(`   treasury_nft_policy:${treasuryNftPolicy}`);
   console.log(`   ms_per_epoch:       ${MS_PER_EPOCH}`);

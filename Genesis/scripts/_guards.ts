@@ -70,6 +70,21 @@ function missing(name: string, consequence: string): Error {
   );
 }
 
+function poisoned(name: string, value: string, consequence: string) {
+  return new Error(
+    `${name} = ${value.slice(0, 8)}…(${value.length / 2} byte) — GIÁ TRỊ CHẾT, không phải giá trị thật. ` +
+      `Toàn 0 / toàn f không có tiền ảnh blake2b-224, nên không UTxO nào mang được policy hay ` +
+      `credential đó. Cổng gác cũ chỉ chặn THIẾU biến; giá trị này thì "đúng dạng" nên đi lọt — ` +
+      `và đó chính xác là cách bản mồi mainnet ra đời (deployed.ts:92 ghi meter_nft_policy = 28 ` +
+      `byte 0). Hậu quả cụ thể: ${consequence}`,
+  );
+}
+
+/** Giá trị đúng dạng nhưng không thể có tiền ảnh: toàn 0 hoặc toàn f. */
+function isPoison(value: string): boolean {
+  return /^0+$/.test(value) || /^f+$/.test(value);
+}
+
 function malformed(name: string, value: string, want: string): Error {
   return new Error(
     `${name} sai dạng: cần ${want}, nhận ${value.length} ký tự ("${value.slice(0, 16)}…"). ` +
@@ -102,6 +117,9 @@ export function requiredHashParam(name: string, opts: HashParamOptions): Guarded
   if (!HEX.test(value) || value.length !== bytes * 2) {
     throw malformed(name, value, `${bytes * 2} ký tự hex (${bytes} byte)`);
   }
+  // Đúng dạng vẫn có thể là giá trị CHẾT. Chỉ chặn khi GỬI — chế độ dựng-thử vẫn cần
+  // đặt được 00×28 để xem CBOR.
+  if (opts.submit && isPoison(value)) throw poisoned(name, value, opts.consequence);
   return { name, value, source: "env" };
 }
 
@@ -128,6 +146,7 @@ export function requiredHexParam(name: string, opts: HexParamOptions): GuardedPa
   if (!HEX.test(value) || value.length % 2 !== 0) {
     throw malformed(name, value, "chuỗi hex độ dài chẵn");
   }
+  if (opts.submit && isPoison(value)) throw poisoned(name, value, opts.consequence);
   return { name, value, source: "env" };
 }
 

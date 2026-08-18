@@ -211,3 +211,73 @@ describe("ĐỐI XỨNG — hai tham số cùng loại phải hành xử y hệt
     ).toThrow();
   });
 });
+
+// ══════════════════════════════════════════════════════════════
+// GIÁ TRỊ CHẾT — cổng gác cũ chỉ chặn THIẾU biến, không chặn giá trị "đúng dạng
+// nhưng không thể có tiền ảnh". Đó chính xác là kẽ mà bản mồi mainnet chui qua:
+// deployed.ts:92 ghi meter_nft_policy = 28 byte 0, và nó ĐÃ đi qua mọi phép kiểm dạng.
+// ══════════════════════════════════════════════════════════════
+describe("giá trị CHẾT — đúng dạng vẫn phải bị chặn khi GỬI", () => {
+  it("METER_NFT_POLICY = 00×28 bị chặn khi submit=true (đây là ca đã giết mainnet)", () => {
+    expect(() =>
+      requiredHashParam("METER_NFT_POLICY", {
+        submit: true, consequence: CONSEQUENCE_METER,
+        env: { METER_NFT_POLICY: ZERO28 }, warn: silent,
+      }),
+    ).toThrow(/GIÁ TRỊ CHẾT/);
+  });
+
+  it("DIST_DEST = 00×28 cũng bị chặn — luật một, không có ngoại lệ theo tên biến", () => {
+    expect(() =>
+      requiredHashParam("DIST_DEST", {
+        submit: true, consequence: CONSEQUENCE_DIST_DEST,
+        env: { DIST_DEST: ZERO28 }, warn: silent,
+      }),
+    ).toThrow(/GIÁ TRỊ CHẾT/);
+  });
+
+  it("toàn f cũng là giá trị chết", () => {
+    expect(() =>
+      requiredHashParam("METER_NFT_POLICY", {
+        submit: true, consequence: CONSEQUENCE_METER,
+        env: { METER_NFT_POLICY: "f".repeat(56) }, warn: silent,
+      }),
+    ).toThrow(/GIÁ TRỊ CHẾT/);
+  });
+
+  it("asset-name cũng qua cùng cổng — gác nửa cặp là tái lập lỗi cũ", () => {
+    expect(() =>
+      requiredHexParam("METER_NFT_NAME", {
+        submit: true, consequence: CONSEQUENCE_METER, placeholder: "4d4554",
+        env: { METER_NFT_NAME: "0000" }, warn: silent,
+      }),
+    ).toThrow(/GIÁ TRỊ CHẾT/);
+  });
+
+  it("submit=false vẫn cho 00×28 — chế độ dựng-thử phải xem được CBOR", () => {
+    const got = requiredHashParam("METER_NFT_POLICY", {
+      submit: false, consequence: CONSEQUENCE_METER,
+      env: { METER_NFT_POLICY: ZERO28 }, warn: silent,
+    });
+    expect(got).toEqual({ name: "METER_NFT_POLICY", value: ZERO28, source: "env" });
+  });
+
+  it("giá trị thật KHÔNG bị chặn — guard không được bắt nhầm", () => {
+    expect(() =>
+      requiredHashParam("METER_NFT_POLICY", {
+        submit: true, consequence: CONSEQUENCE_METER,
+        env: { METER_NFT_POLICY: HASH28 }, warn: silent,
+      }),
+    ).not.toThrow();
+  });
+
+  it("hash có nhiều số 0 nhưng KHÔNG toàn 0 thì hợp lệ", () => {
+    const mostlyZero = "0".repeat(54) + "1a";
+    expect(() =>
+      requiredHashParam("DIST_DEST", {
+        submit: true, consequence: CONSEQUENCE_DIST_DEST,
+        env: { DIST_DEST: mostlyZero }, warn: silent,
+      }),
+    ).not.toThrow();
+  });
+});

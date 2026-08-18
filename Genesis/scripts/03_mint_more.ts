@@ -16,6 +16,7 @@ import { readFile } from "node:fs/promises";
 import {
   requiredHashParam, requiredHexParam, CONSEQUENCE_METER, CONSEQUENCE_DIST_DEST,
 } from "./_guards.js";
+import { assertParamCount } from "../offchain/src/applyGate.js";
 
 dotenv.config({ path: resolve(process.cwd(), "../../.env") });
 
@@ -35,24 +36,43 @@ const myAddr = await lucid.wallet().address();
 const pkh = getAddressDetails(myAddr).paymentCredential!.hash;
 
 const bp = JSON.parse(await readFile(resolve(process.cwd(), "../onchain/plutus.json"), "utf8"));
-const get = (t: string) => bp.validators.find((v: { title: string }) => v.title === t).compiledCode;
+const getV = (t: string) => bp.validators.find((v: { title: string }) => v.title === t);
+
+// CỔNG APPLY-001 — script này TỰ đọc plutus.json thay vì đi qua `config.ts::applyPolicy`,
+// nên trước bản vá này nó là đường DUY NHẤT trong Genesis đi vòng cổng gác.
+// `applyParamsToScript` KHÔNG báo lỗi khi thiếu tham số: nó apply một phần rồi trả về một
+// policy-id / script-hash KHÁC, im lặng. Mà 03 luôn submit thật (`signed.submit()` cuối tệp)
+// ⇒ "im lặng" ở đây nghĩa là ĐÚC TOKEN DƯỚI SAI POLICY, không một dòng cảnh báo.
+// Dùng chung `assertParamCount` với `config.ts` để hai đường không thể lệch luật.
+function applyChecked(title: string, params: unknown[]): string {
+  const v = getV(title);
+  assertParamCount(title, (v.parameters ?? []).length, params.length);
+  return applyParamsToScript(v.compiledCode, params as never);
+}
 
 const genesisRef = new Constr(0, [GENESIS_REF_HASH, GENESIS_REF_IDX]);
-const threadPolicy: MintingPolicy = { type: "PlutusV3", script: applyParamsToScript(get("thread_nft.thread_nft.mint"), [genesisRef]) };
+const threadPolicy: MintingPolicy = { type: "PlutusV3", script: applyChecked("thread_nft.thread_nft.mint", [genesisRef]) };
 const threadPid = mintingPolicyToId(threadPolicy);
-// CỔNG GÁC apply-param — 03 luôn submit thật (dòng 88 `signed.submit()`), nên gác submit=true
-// cho MỌI tham số hash/policy-id, không riêng DIST_DEST.
+// CỔNG GÁC apply-param — 03 luôn submit thật (`signed.submit()` cuối tệp), nên gác
+// submit=true cho MỌI tham số hash/policy-id, không riêng DIST_DEST.
 //
 // Trước bản vá này `meter_nft_policy` là literal `"00".repeat(28)` NƯỚNG THẲNG vào lời gọi
 // applyParamsToScript — còn tệ hơn placeholder từ env: không có cách nào truyền giá trị thật
 // vào mà không sửa mã. Nay đọc từ METER_NFT_POLICY và bắt buộc phải có.
+//
+// ⚠ ĐỪNG "SỬA" LỖI APPLY-001 BẰNG CÁCH ĐẶT METER_NFT_POLICY=00×28 VÀO .env.
+// Danh sách tham số dưới đây là hình dạng 8 tham số của bản `lamp_mint` CŨ; bản ở HEAD
+// khai 12 (thêm dist_cap, reserve_cap, registry_nft_*, token_tag, kho_nft_*), nên
+// `applyChecked` sẽ ném APPLY-001 — đó là hành vi ĐÚNG, không phải thiếu biến môi trường.
+// `.env` dùng chung ở gốc repo (`../../.env`), nên một giá trị chết nhét vào đây sẽ chảy
+// thẳng sang 01/02 mà không ai thấy. Muốn 03 chạy lại thì phải cập nhật cho khớp 12 tham số.
 const distDest = requiredHashParam("DIST_DEST", { ...GUARD_IO, submit: true, consequence: CONSEQUENCE_DIST_DEST }).value;
 const meterPid = requiredHashParam("METER_NFT_POLICY", { ...GUARD_IO, submit: true, consequence: CONSEQUENCE_METER }).value;
 const meterNm = requiredHexParam("METER_NFT_NAME", { ...GUARD_IO, submit: true, placeholder: "4d4554", consequence: CONSEQUENCE_METER }).value;
 const distDestAddr = credentialToAddress("Preview", scriptHashToCredential(distDest));
-const tlampPolicy: MintingPolicy = { type: "PlutusV3", script: applyParamsToScript(get("lamp_mint.lamp_mint.mint"), [threadPid, SUPPLY_NAME, TOKEN_NAME, [pkh], 1n, distDest, meterPid, meterNm]) };
+const tlampPolicy: MintingPolicy = { type: "PlutusV3", script: applyChecked("lamp_mint.lamp_mint.mint", [threadPid, SUPPLY_NAME, TOKEN_NAME, [pkh], 1n, distDest, meterPid, meterNm]) };
 const tlampPid = mintingPolicyToId(tlampPolicy);
-const ssScript: Validator = { type: "PlutusV3", script: applyParamsToScript(get("supply_state.supply_state.spend"), [tlampPid, threadPid, TOKEN_NAME]) };
+const ssScript: Validator = { type: "PlutusV3", script: applyChecked("supply_state.supply_state.spend", [tlampPid, threadPid, TOKEN_NAME]) };
 const ssAddr = credentialToAddress("Preview", scriptHashToCredential(validatorToScriptHash(ssScript)));
 
 const threadUnit = toUnit(threadPid, SUPPLY_NAME);
