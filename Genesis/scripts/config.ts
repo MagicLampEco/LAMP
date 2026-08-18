@@ -14,6 +14,7 @@ import {
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
+import { assertParamCount as assertParamCountGate } from "../offchain/src/applyGate.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: resolve(__dirname, "../../.env") });
@@ -107,27 +108,16 @@ export async function rawValidator(title: string): Promise<RawValidator> {
 }
 
 /**
- * ÉP đủ số tham số blueprint khai, trước khi apply.
+ * ÉP đủ số tham số blueprint khai, trước khi apply. Chốt ở tầng helper để MỌI script
+ * Genesis hưởng, không phải nhớ từng chỗ gọi.
  *
- * `applyParamsToScript` KHÔNG báo lỗi khi thiếu tham số: nó apply một phần rồi trả về
- * một script hash / policy id **khác**, im lặng. Với `lamp_mint` (12 tham số) điều đó
- * nghĩa là mint LAMP dưới một policy id sai — và LAMP không burn được, nên sai là
- * không sửa được. TypeScript không bắt được vì tham số đi theo `unknown[]`.
- *
- * Đây chính là lỗi làm `01_deploy_lazymint.ts` truyền 8 tham số v1 vào validator v2
- * suốt một thời gian mà không ai thấy. Chốt ở tầng helper để MỌI script Genesis
- * hưởng, không phải nhớ từng chỗ gọi.
+ * Phần ĐỌC blueprint ở đây; phần ÉP + thông điệp lỗi nằm ở `offchain/src/applyGate.ts`
+ * (thuần, không .env, không plutus.json) để test chạm được — xem lý do đầy đủ ở đó.
  */
 function assertParamCount(compiledCode: string, params: unknown[]): void {
   const meta = paramCountByCode.get(compiledCode);
   if (!meta) return; // code không từ blueprint này (vd module khác) — không đoán.
-  if (params.length !== meta.n) {
-    throw new Error(
-      `APPLY-001: ${meta.title} khai ${meta.n} tham số, chỗ gọi truyền ${params.length}. ` +
-      `Apply thiếu tham số KHÔNG báo lỗi — nó sinh policy id/script hash khác, im lặng. ` +
-      `Cập nhật danh sách tham số cho khớp blueprint trước khi chạy tiếp.`,
-    );
-  }
+  assertParamCountGate(meta.title, meta.n, params.length);
 }
 
 export function applyValidator(compiledCode: string, params: unknown[]): Validator {
