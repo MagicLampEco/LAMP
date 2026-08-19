@@ -41,7 +41,7 @@ import {
 } from "./datum.js";
 import { vested } from "./vested.js";
 
-const DEFAULT_LAMP_ASSET_NAME = "4c414d50"; // "LAMP"
+const DEFAULT_LAMP_ASSET_NAME = "744c414d50"; // "tLAMP" — canonical (khớp Genesis/Faucet)
 
 /** Strip leading 0x + lowercase. */
 function normHex(hex: string): string {
@@ -159,8 +159,13 @@ export async function buildRedeemTx(params: RedeemParams): Promise<RedeemResult>
     start_epoch:     claim.start_epoch,
     drops_per_epoch: claim.drops_per_epoch,
   };
-  // Treasury': datum bảo toàn (C-TRE-2).
-  const newTreasuryDatum: TreasuryDatum = { committee_hash: treasury.committee_hash };
+  // Treasury': committee_hash bảo toàn (C-TRE-2); sổ cái nợ GIẢM ĐÚNG `amount` cùng nhịp
+  // với pool (C-SOLV-3). Redeem = TRẢ NỢ, nên cả hai vế đi cặp — nếu chỉ pool giảm mà sổ
+  // cái đứng yên thì `nợ ≤ pool` siết dần tới bế tắc grant (xem đầu `treasury.ak`).
+  const newTreasuryDatum: TreasuryDatum = {
+    committee_hash:         treasury.committee_hash,
+    outstanding_entitlement: treasury.outstanding_entitlement - amount,
+  };
 
   // ── Output assets: bảo toàn TẤT CẢ (audit dust lesson, C-VAL-0) ────
   // ClaimAccount: chỉ datum đổi → clone toàn bộ assets.

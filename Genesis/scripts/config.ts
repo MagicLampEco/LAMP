@@ -14,6 +14,7 @@ import {
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
+import { assertParamCount as assertParamCountGate } from "../offchain/src/applyGate.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: resolve(__dirname, "../../.env") });
@@ -77,11 +78,26 @@ export async function walletPkh(lucid: LucidEvolution): Promise<string> {
 
 const PLUTUS_JSON_PATH = resolve(__dirname, "../onchain/plutus.json");
 
-interface RawValidator { title: string; compiledCode: string; hash: string; }
+interface RawValidator {
+  title: string;
+  compiledCode: string;
+  hash: string;
+  parameters?: unknown[];
+}
+
+/** Số tham số blueprint khai, tra theo compiledCode. Nạp một lần, giữ trong bộ nhớ. */
+const paramCountByCode = new Map<string, { title: string; n: number }>();
 
 async function loadBlueprint(): Promise<RawValidator[]> {
   const json = JSON.parse(await readFile(PLUTUS_JSON_PATH, "utf8"));
-  return json.validators as RawValidator[];
+  const vs = json.validators as RawValidator[];
+  for (const v of vs) {
+    // `.mint`/`.spend` và `.else` dùng CHUNG compiledCode; giữ tên của bản chính để
+    // thông điệp lỗi đọc ra đúng validator, không phải nhánh `.else`.
+    if (v.title.endsWith(".else") && paramCountByCode.has(v.compiledCode)) continue;
+    paramCountByCode.set(v.compiledCode, { title: v.title, n: (v.parameters ?? []).length });
+  }
+  return vs;
 }
 
 export async function rawValidator(title: string): Promise<RawValidator> {
@@ -91,12 +107,27 @@ export async function rawValidator(title: string): Promise<RawValidator> {
   return v;
 }
 
+/**
+ * ÉP đủ số tham số blueprint khai, trước khi apply. Chốt ở tầng helper để MỌI script
+ * Genesis hưởng, không phải nhớ từng chỗ gọi.
+ *
+ * Phần ĐỌC blueprint ở đây; phần ÉP + thông điệp lỗi nằm ở `offchain/src/applyGate.ts`
+ * (thuần, không .env, không plutus.json) để test chạm được — xem lý do đầy đủ ở đó.
+ */
+function assertParamCount(compiledCode: string, params: unknown[]): void {
+  const meta = paramCountByCode.get(compiledCode);
+  if (!meta) return; // code không từ blueprint này (vd module khác) — không đoán.
+  assertParamCountGate(meta.title, meta.n, params.length);
+}
+
 export function applyValidator(compiledCode: string, params: unknown[]): Validator {
+  assertParamCount(compiledCode, params);
   return { type: "PlutusV3", script: applyParamsToScript(compiledCode, params as never) };
 }
 
 /** Minting policy đã apply params (cùng cơ chế applyParamsToScript). */
 export function applyPolicy(compiledCode: string, params: unknown[]): MintingPolicy {
+  assertParamCount(compiledCode, params);
   return { type: "PlutusV3", script: applyParamsToScript(compiledCode, params as never) };
 }
 

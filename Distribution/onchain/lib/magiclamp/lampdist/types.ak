@@ -38,12 +38,33 @@ pub type BeaconRedeemer {
   PostBeacon
 }
 
-/// Treasury UTxO giữ LAMP pool (QĐ7).
+/// Treasury UTxO giữ LAMP pool (QĐ7) + sổ cái solvency.
+/// `outstanding_entitlement` = SỐ CÒN NỢ người dùng = Σ(entitlement − redeemed) toàn hệ
+/// thống, serial-hoá qua treasury singleton. TĂNG khi grant (+granted), GIẢM khi redeem
+/// (−released) — hai vế đi cặp với pool. Bất biến on-chain, ép tại mỗi Claim:
+///   outstanding_entitlement ≤ treasury_lamp (pool)  ⇒ quỹ luôn đủ trả, redeem không kẹt.
+/// ⚠ 2026-08-12: trước đây trường này tên `cumulative_entitlement` và mang nghĩa TỔNG CẤP
+/// SUỐT VÒNG ĐỜI (bất biến khi redeem). Sai: pool giảm mỗi redeem còn sổ cái thì không,
+/// nên `≤ pool` siết dần đến BẾ TẮC — không cấp thêm được dù quỹ không nợ ai. Xem ghi chú
+/// đầy đủ ở đầu `validators/treasury.ak`.
+/// NOTE: field ở CUỐI (giữ Constr index cũ cho field đầu — backward compatible decode).
 pub type TreasuryDatum {
-  committee_hash : ByteArray,
+  committee_hash        : ByteArray,
+  outstanding_entitlement: Int,        // oildrop — sổ cái CÒN NỢ (field mới, ở cuối)
 }
 
 pub type TreasuryRedeemer {
-  // release LAMP cho các Redeem trong cùng tx
+  // release LAMP cho các Redeem trong cùng tx (pool ↓ và sổ cái nợ ↓, ĐÚNG redeemed delta)
   ReleaseForRedeem
+  // committee cấp entitlement: pool LAMP bất biến, sổ cái nợ += granted,
+  // ép outstanding_entitlement_out ≤ treasury_lamp (solvency on-chain).
+  GrantEntitlement
+  // ⚠ THÊM 2026-08-12 (vá review PR #22, điểm 2) — ĐẶT Ở CUỐI để giữ nguyên Constr index
+  // của hai redeemer trên (0/1), offchain đang neo theo đó.
+  // Gộp N ≥ 1 UTxO đang nằm ở script treasury vào ĐÚNG 1 output + cho phép nạp thêm LAMP.
+  // VÌ SAO PHẢI CÓ: trước bản vá không redeemer nào làm pool TĂNG — Grant ép value bất biến,
+  // Release chỉ cho LAMP giảm, và `count_inputs_at_script == 1` chặn luôn đường gộp. Tổng
+  // cấp phát suốt vòng đời do đó ≤ số dư genesis, còn LAMP rót về kho sau này (A-DEST hạ
+  // cánh dưới dạng UTxO RIÊNG, thường KHÔNG datum) nằm chết tại địa chỉ script.
+  Refill
 }

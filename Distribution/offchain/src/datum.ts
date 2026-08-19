@@ -13,8 +13,10 @@
 //   BeaconDatum{epoch, kind, drop_value} = Constr(0, [int, kind, int])
 //   BeaconRedeemer: PostBeacon            = Constr(0, [])
 //
-//   TreasuryDatum{committee_hash}         = Constr(0, [bytes])
-//   TreasuryRedeemer: ReleaseForRedeem    = Constr(0, [])
+//   TreasuryDatum{committee_hash, outstanding_entitlement} = Constr(0, [bytes, int])
+//   TreasuryRedeemer:
+//     ReleaseForRedeem = Constr(0, [])   // redeem: pool ↓ và sổ cái nợ ↓ (đi cặp)
+//     GrantEntitlement = Constr(1, [])   // claim: pool bất biến, nợ += granted ≤ pool
 
 import { Constr, Data } from "@lucid-evolution/lucid";
 import type { BeaconDatum, BeaconKind, ClaimAccountDatum, TreasuryDatum } from "./types.js";
@@ -173,17 +175,20 @@ export function beaconRedeemerToCbor(): string {
 }
 
 // ── TreasuryDatum ──────────────────────────────────────────────────────
-// Constr(0, [committee_hash:bytes])
+// Constr(0, [committee_hash:bytes, outstanding_entitlement:int])
 
 export function encodeTreasuryDatum(d: TreasuryDatum): Constr<Data> {
-  return new Constr(0, [normHex(d.committee_hash)]);
+  return new Constr(0, [normHex(d.committee_hash), d.outstanding_entitlement]);
 }
 
 export function decodeTreasuryDatum(d: Data): TreasuryDatum {
   const c = asConstr(d, "TreasuryDatum");
   if (c.index !== 0) throw new Error(`DATUM-040: TreasuryDatum expects Constr 0, got ${c.index}`);
-  if (c.fields.length !== 1) throw new Error(`DATUM-041: TreasuryDatum expects 1 field, got ${c.fields.length}`);
-  return { committee_hash: asBytes(c.fields[0]!, "committee_hash") };
+  if (c.fields.length !== 2) throw new Error(`DATUM-041: TreasuryDatum expects 2 fields, got ${c.fields.length}`);
+  return {
+    committee_hash:         asBytes(c.fields[0]!, "committee_hash"),
+    outstanding_entitlement: asInt(c.fields[1]!, "outstanding_entitlement"),
+  };
 }
 
 export function treasuryDatumToCbor(d: TreasuryDatum): string {
@@ -194,11 +199,23 @@ export function treasuryDatumFromCbor(cbor: string): TreasuryDatum {
   return decodeTreasuryDatum(Data.from(cbor));
 }
 
+/** TreasuryRedeemer variants (mirror types.ak declaration order). */
+export const TREASURY_REDEEMER = { ReleaseForRedeem: 0, GrantEntitlement: 1 } as const;
+
 /** TreasuryRedeemer: ReleaseForRedeem = Constr(0, []). */
 export function encodeTreasuryRedeemer(): Constr<Data> {
-  return new Constr(0, []);
+  return new Constr(TREASURY_REDEEMER.ReleaseForRedeem, []);
 }
 
 export function treasuryRedeemerToCbor(): string {
   return Data.to(encodeTreasuryRedeemer());
+}
+
+/** TreasuryRedeemer: GrantEntitlement = Constr(1, []) — Claim cấp E co-spend treasury. */
+export function encodeGrantEntitlementRedeemer(): Constr<Data> {
+  return new Constr(TREASURY_REDEEMER.GrantEntitlement, []);
+}
+
+export function grantEntitlementRedeemerToCbor(): string {
+  return Data.to(encodeGrantEntitlementRedeemer());
 }

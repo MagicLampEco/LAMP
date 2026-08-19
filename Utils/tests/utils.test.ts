@@ -7,7 +7,10 @@ import {
   isqrt, isqrt10th, verifyVd, vDampened, mulQ, clamp,
   cmpBigIntAsc, cmpBigIntDesc, Q,
   DRM_LOOKBACK,
+  slotsPerEpoch, msPerEpoch, posixMsToEpoch, epochTablesAgree,
+  SLOTS_PER_EPOCH_BY_NETWORK, MS_PER_EPOCH_BY_NETWORK, MS_PER_SLOT,
 } from "../src/index.js";
+import type { Network } from "../src/index.js";
 
 const MAGIC = Q;
 
@@ -25,12 +28,63 @@ describe("Epoch utilities", () => {
     expect(slotToEpoch(172_799n, "Preview")).toBe(1n);
     expect(slotToEpoch(172_800n, "Preview")).toBe(2n);
   });
-  it("slotToEpoch Preprod: 86_400 slots = 1 epoch", () => {
-    expect(slotToEpoch(86_400n, "Preprod")).toBe(1n);
+  // Preprod mirrors MAINNET (ShelleyGenesis epochLength = 432_000), it does NOT mirror Preview.
+  // The previous version of this test asserted 86_400 and passed — a green test that pinned the bug.
+  it("slotToEpoch Preprod: 432_000 slots = 1 epoch (mirrors mainnet, not preview)", () => {
+    expect(slotToEpoch(432_000n, "Preprod")).toBe(1n);
+    expect(slotToEpoch(863_999n, "Preprod")).toBe(1n);
+    expect(slotToEpoch(864_000n, "Preprod")).toBe(2n);
+    // a Preview-length span is NOT a full Preprod epoch
+    expect(slotToEpoch(86_400n, "Preprod")).toBe(0n);
+  });
+  it("Preprod and Preview disagree — grouping them was the bug", () => {
+    expect(slotsPerEpoch("Preprod")).not.toBe(slotsPerEpoch("Preview"));
+    expect(slotsPerEpoch("Preprod")).toBe(slotsPerEpoch("Mainnet"));
   });
   it("lampToOildrop: 1 LAMP = 10^6 oildrop", () => {
     expect(lampToOildrop(1n)).toBe(1_000_000n);
     expect(lampToOildrop(1000n)).toBe(1_000_000_000n);
+  });
+});
+
+// ══════════════════════════════════════════════════════════════
+// Epoch tables — the two tables are separate literals, so they can drift apart
+// silently. These assert the whole table, not one network at a time: that is what
+// catches the CLASS of error rather than the one instance already known.
+// ══════════════════════════════════════════════════════════════
+describe("Epoch tables — ĐỐI XỨNG", () => {
+  const NETWORKS: Network[] = ["Preview", "Preprod", "Mainnet"];
+
+  it("ms = slots × 1000 for EVERY network", () => {
+    expect(epochTablesAgree()).toBe(true);
+    for (const n of NETWORKS) {
+      expect(msPerEpoch(n)).toBe(slotsPerEpoch(n) * MS_PER_SLOT);
+    }
+  });
+
+  it("neither table has a missing network", () => {
+    for (const n of NETWORKS) {
+      expect(SLOTS_PER_EPOCH_BY_NETWORK[n]).toBeDefined();
+      expect(MS_PER_EPOCH_BY_NETWORK[n]).toBeDefined();
+    }
+    expect(Object.keys(SLOTS_PER_EPOCH_BY_NETWORK).sort())
+      .toEqual(Object.keys(MS_PER_EPOCH_BY_NETWORK).sort());
+  });
+
+  it("values match ShelleyGenesis epochLength of each network", () => {
+    expect(slotsPerEpoch("Mainnet")).toBe(432_000n);
+    expect(slotsPerEpoch("Preprod")).toBe(432_000n);
+    expect(slotsPerEpoch("Preview")).toBe(86_400n);
+    expect(msPerEpoch("Mainnet")).toBe(432_000_000n);
+    expect(msPerEpoch("Preprod")).toBe(432_000_000n);
+    expect(msPerEpoch("Preview")).toBe(86_400_000n);
+  });
+
+  it("posixMsToEpoch follows the same table (Preprod ≠ Preview)", () => {
+    const oneDayMs = 86_400_000n;
+    expect(posixMsToEpoch(oneDayMs, "Preview")).toBe(1n);
+    expect(posixMsToEpoch(oneDayMs, "Preprod")).toBe(0n);
+    expect(posixMsToEpoch(oneDayMs * 5n, "Preprod")).toBe(1n);
   });
 });
 

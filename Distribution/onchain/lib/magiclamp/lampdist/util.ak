@@ -74,12 +74,36 @@ pub fn output_at_script(outputs: List<Output>, script_hash: ByteArray) -> Output
   o
 }
 
-/// Đếm chữ ký committee có mặt trong extra_signatories (Byzantine M-of-N).
-pub fn count_committee_sigs(
+/// Committee M-of-N đã ký đủ chưa (Byzantine). THAY `count_committee_sigs` cũ —
+/// hàm đó trả Int nên ngưỡng phải kiểm ở call site: mọi call site ĐỀU kiểm
+/// (`expect count_committee_sigs(…) >= threshold`), nhưng phép kiểm rời rạc đó
+/// không nói gì về hai lỗ dưới, và mỗi call site mới là một cơ hội quên.
+///
+/// Hai lỗ nó bỏ (issue #21 B1):
+///   • `list.count(committee, …)` đếm **phần tử danh sách**, không đếm **người**.
+///     Committee bake nhầm `[c1, c1, c2]` threshold 2 → riêng c1 ký là đủ.
+///   • `threshold` không chặn cận: `threshold ≤ 0` thì 0 chữ ký cũng qua.
+///
+/// Cả hai là lỗi lúc DEPLOY (committee/threshold là param validator, không phải
+/// datum) — không ai bên ngoài bịa được. Vẫn ép on-chain thay vì trông vào script
+/// deploy: script deploy sửa được sau, param đã bake thì không.
+/// Mẫu gốc: `Genesis/onchain/lib/magiclamp/genesis/registry.ak:96-101`.
+pub fn committee_approved(
   committee   : List<ByteArray>,
+  threshold   : Int,
   signatories : List<ByteArray>,
-) -> Int {
-  list.count(committee, fn(k) { list.has(signatories, k) })
+) -> Bool {
+  let uniq = list.unique(committee)
+  and {
+    // Bound chi phí list.unique (O(n²)). KHÔNG phải chống DoS: `committee` là param
+    // compile-time của validator, ngoài không bơm dài được. Là điều kiện chứ không
+    // `expect` — hàm phải TỔNG, trả False, không abort (xem did_stub.ak: signature
+    // `-> Bool` là hợp đồng cho verifier PhoenixKey thật sau này).
+    list.length(committee) <= 16,
+    threshold >= 1,
+    threshold <= list.length(uniq),
+    list.count(uniq, fn(k) { list.has(signatories, k) }) >= threshold,
+  }
 }
 
 /// payment credential của address có phải VerificationKey(pkh) không.
@@ -125,14 +149,63 @@ pub fn beacon_name(kind: BeaconKind) -> AssetName {
   }
 }
 
+/// Asset name treasury authenticity NFT — singleton sổ cái solvency.
+/// "TRSY". claim_account đọc treasury (cum_entitlement) qua NFT này → chống treasury giả.
+pub fn treasury_nft_name() -> AssetName {
+  #"54525359"  // "TRSY"
+}
+
 // ── Tests cho helper thuần ────────────────────────────────────
 
 test committee_sig_count() {
-  count_committee_sigs([#"a1", #"b2", #"c3"], [#"a1", #"c3", #"ff"]) == 2
+  committee_approved([#"a1", #"b2", #"c3"], 2, [#"a1", #"c3", #"ff"])
 }
 
 test committee_sig_none() {
-  count_committee_sigs([#"a1", #"b2"], [#"ff"]) == 0
+  !committee_approved([#"a1", #"b2"], 1, [#"ff"])
+}
+
+/// B1 (issue #21) — committee trùng khoá KHÔNG được phá ngưỡng.
+/// `[c1, c1, c2]` threshold 2: chỉ c1 ký thì bản cũ `list.count` ra 2 ⇒ pass.
+/// Ở module này nó gác cả `treasury.ak:122,192` (đường thả LAMP).
+test committee_dup_key_cannot_meet_threshold() {
+  !committee_approved([#"c1", #"c1", #"c2"], 2, [#"c1"])
+}
+
+/// Cùng committee đó, ĐỦ hai người thật thì vẫn phải qua.
+test committee_dup_key_two_real_signers_pass() {
+  committee_approved([#"c1", #"c1", #"c2"], 2, [#"c1", #"c2"])
+}
+
+/// B1 — threshold ≤ 0 thì KHÔNG chữ ký nào cũng qua ở bản cũ.
+test committee_threshold_zero_rejected() {
+  !committee_approved([#"c1", #"c2", #"c3"], 0, [])
+}
+
+/// threshold vượt số NGƯỜI thật (sau dedupe) = khoá chết, chặn ngay lúc kiểm.
+test committee_threshold_above_unique_rejected() {
+  !committee_approved([#"c1", #"c1"], 2, [#"c1"])
+}
+
+/// Cap 16: quá cap trả **False**, KHÔNG abort. Đây là điều đang được khoá lại —
+/// `expect` ở đây làm hàm thành riêng phần, phá hợp đồng `-> Bool` mà `did_stub`
+/// hứa giữ cho verifier PhoenixKey thật. 16 người vẫn phải qua (cận trên đúng bằng 16).
+test committee_over_cap_returns_false_not_abort() {
+  let over =
+    [
+      #"01", #"02", #"03", #"04", #"05", #"06", #"07", #"08", #"09", #"0a",
+      #"0b", #"0c", #"0d", #"0e", #"0f", #"10", #"11",
+    ]
+  !committee_approved(over, 1, [#"01"])
+}
+
+test committee_exactly_16_still_passes() {
+  let at_cap =
+    [
+      #"01", #"02", #"03", #"04", #"05", #"06", #"07", #"08", #"09", #"0a",
+      #"0b", #"0c", #"0d", #"0e", #"0f", #"10",
+    ]
+  committee_approved(at_cap, 2, [#"01", #"10"])
 }
 
 test beacon_name_dropparam() {

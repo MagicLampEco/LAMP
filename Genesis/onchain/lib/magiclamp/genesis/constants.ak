@@ -21,6 +21,18 @@ pub const default_token_name: ByteArray = #"744c414d50"
 /// asset name thread NFT SupplyState — "SUPPLY".
 pub const supply_name: ByteArray = #"535550504c59"
 
+/// token_tag LAMP trong Mint-Authority Registry — CHỐT 2026-07-10 (trước là đề xuất §6
+/// `Genesis/mint-core-adapter.md`). Giá trị = UTF-8 bytes "LAMP" (#"4c414d50"), khớp asset
+/// name LAMP mainnet (`default_token_name`/`LAMP_NAME` phía offchain là "tLAMP"/"LAMP" — token_tag
+/// KHÔNG bắt buộc trùng asset-name, nhưng dùng cùng chuỗi cho dễ vận hành/đối chiếu registry).
+/// `lamp_mint` nhận token_tag qua PARAM apply-time (không hằng trong logic), hằng này là NGUỒN
+/// giá trị canonical để deploy script + Core build registry entry.
+pub const lamp_token_tag: ByteArray = #"4c414d50"
+
+test lamp_token_tag_is_lamp_bytes() {
+  lamp_token_tag == #"4c414d50"
+}
+
 /// CAP Distribution: 26,370 tỷ LAMP × 10^6 (oildrop) — khớp allocation v17 (tất cả trừ Reserve).
 pub const dist_cap_oildrop: Int = 26_370_000_000_000_000
 

@@ -1,5 +1,7 @@
 // TIGER Airdrop constants — KHỚP onchain ledger.ak. 1 LAMP = 10^6 oildrop.
 
+import { MS_PER_EPOCH_BY_NETWORK as UTILS_MS_PER_EPOCH } from "@magiclamp/utils";
+
 /** 1 LAMP = 10^6 oildrop (decimals 6). Khớp @magiclamp/utils OILDROP_PER_LAMP. */
 export const OILDROP_PER_LAMP = 1_000_000n;
 
@@ -67,13 +69,17 @@ export const ROLE_MCS = 2;
 export const ROLE_ENGAGE = 3;
 export const ROLE_SPO = 4;
 
-/** ms mỗi epoch theo network — khớp @magiclamp/utils MS_PER_EPOCH_BY_NETWORK.
- *  Preview/Preprod = 1 ngày; Mainnet = 5 ngày. Truyền vào validator làm param. */
-export const MS_PER_EPOCH_BY_NETWORK = {
-  Preview: 86_400_000n,
-  Preprod: 86_400_000n,
-  Mainnet: 432_000_000n,
-} as const;
+/** ms mỗi epoch theo network. Truyền vào validator làm param.
+ *
+ *  KHÔNG khai lại số ở đây — TÁI XUẤT thẳng từ `@magiclamp/utils`. Bản khai lại trước đây
+ *  ghi `Preprod: 86_400_000n` (xếp Preprod cùng nhóm Preview) trong khi chú thích của chính
+ *  nó tự xưng là "khớp @magiclamp/utils" — một bản chép lệch mang nhãn đã-đối-chiếu.
+ *  Đúng: Preprod soi gương MAINNET (ShelleyGenesis epochLength = 432_000, epoch 5 ngày);
+ *  Preview mới là mạng epoch ngắn (86_400, 1 ngày).
+ *
+ *  Tái xuất thay vì chép: một bảng chép lệch KHÔNG làm trình biên dịch kêu và KHÔNG làm
+ *  test đỏ — nó trông y hệt một bảng đúng. Bỏ hẳn nơi khai thứ hai thì không còn gì để lệch. */
+export const MS_PER_EPOCH_BY_NETWORK = UTILS_MS_PER_EPOCH;
 
 /** LAMP → oildrop. */
 export function lampToOildrop(lamp: bigint): bigint {

@@ -23,9 +23,11 @@ import { srclDatumToCbor, mintPoolRedeemerToCbor } from "../offchain/src/datum.j
 import { buildSetRootTx } from "../offchain/src/setRootBuilder.js";
 import { buildClaimTx } from "../offchain/src/claimBuilder.js";
 import {
-  POOL_NFT_NAME, END_EPOCH, MS_PER_EPOCH_MAINNET, SRCL_CAMPAIGN_ID, ROLE_SPO,
+  POOL_NFT_NAME, END_EPOCH, msPerEpochFor, assertMsPerEpochMatchesNetwork,
+  SRCL_CAMPAIGN_ID, ROLE_SPO,
 } from "../offchain/src/constants.js";
 import type { SrclDatum, ClaimProof } from "../offchain/src/types.js";
+import type { Network } from "@magiclamp/utils";
 
 const ENV_PATH = "/Users/ductiger/Projects/LAMP-launch-wt/.env";
 for (const line of readFileSync(ENV_PATH, "utf8").split("\n")) {
@@ -135,8 +137,15 @@ const initDatum: SrclDatum = {
   distributed_total: 0n,
   end_epoch: END_EPOCH,
   treasury_dest: pkh,
-  ms_per_epoch: MS_PER_EPOCH_MAINNET,
+  // Lấy theo ĐÚNG mạng đang chạy. Bản trước nạp hằng MAINNET (432_000_000) trong khi script
+  // khoá cứng NETWORK === "Preview" (86_400_000) ⇒ lệch 5 lần trên chính mạng nó chạy.
+  ms_per_epoch: msPerEpochFor(NETWORK as Network),
 };
+
+// Cổng gác TRƯỚC khi ký: số sắp ghi vào datum phải khớp mạng đích. Sau khi ký thì nó
+// nằm trong datum on-chain, và pool đọc mốc epoch bằng chính nó.
+assertMsPerEpochMatchesNetwork(initDatum.ms_per_epoch, NETWORK as Network);
+console.log(`[srcl] ms_per_epoch=${initDatum.ms_per_epoch} (mạng ${NETWORK}) — cổng SRCL-EPOCH-001 qua`);
 
 // ─────────────────────────────────────────────────────────────────────────
 // Tx I1 — Deploy: mint POOL NFT one-shot + seed pool tLAMP

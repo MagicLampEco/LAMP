@@ -73,7 +73,8 @@ Permissionless: KHÔNG chữ ký; ép tx spend ĐÚNG 1 UTxO mang `meter_nft` (=
 
 ## 6. Tham số bake `lamp_mint` (12) — LAMP cấp khi deploy
 `thread_nft_policy/name` (SUPPLY NFT) · `token_name` ("LAMP") · `dist_cap` · `reserve_cap`
-(LAMP = 26,37 tỷ + 9,63 tỷ ×10⁶) · `registry_nft_policy/name` · **`token_tag`** (đề xuất `#"4c414d50"`)
+(LAMP = 26,37 tỷ + 9,63 tỷ ×10⁶) · `registry_nft_policy/name` · **`token_tag`** — **CHỐT 2026-07-10**:
+`#"4c414d50"` (UTF-8 "LAMP"), hằng số `constants.lamp_token_tag` (`Genesis/onchain/lib/magiclamp/genesis/constants.ak`)
 · `kho_nft_policy/name` · `meter_nft_policy/name`.
 
 ## 7. Đơn vị — cảnh báo 10⁶
@@ -84,6 +85,7 @@ Explorer hiện `decimals 0` (thiếu metadata) → hiển thị raw base. Core 
 | Phần | Trạng thái | Ai |
 |---|---|---|
 | `lamp_mint`+`supply_state`+`registry`(schema mirror rs) | on-chain sẵn (branch B), **chờ merge main** | LAMP |
+| `registry_write` (Registry write-side: Deploy genesis + Update entries + Burn/Retire thu hồi, gate qua TAAD anchor `controller_pkh`) | **on-chain sẵn 2026-07-10**, vá review 2026-08-12 (`Genesis/onchain/validators/registry_write.ak` + `lib/.../registry_write_logic.ak`, 55 test mới, `aiken check` 126/126), **chờ merge main** — `Deploy`/`Update` VẪN là empty-constr (constr 0) khớp byte-perfect `registry_mint.rs` (deploy §605-619, update §770-788), KHÔNG cần Core sửa builder; `Burn`/`Retire` là constr **1**, Core chỉ cần builder MỚI nếu muốn dùng đường thu hồi | LAMP |
 | `registry_mint.rs` (schema registry) | Core đã có (mirror) | Core |
 | `build_mint_lamp_via_did` route DistributionVest + Advance + A-DEST | sửa theo §4 (thêm registry+KHO ref, output KHO) | Core |
 | Intent `LAMP_MINT` + endpoint + gom m-of-n | thiếu | Long |

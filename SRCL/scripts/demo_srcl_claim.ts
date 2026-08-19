@@ -18,7 +18,7 @@ import { readFileSync } from "node:fs";
 import { buildTree, markerName } from "../offchain/src/merkle.js";
 import { decodeSrclDatum, srclDatumToCbor, claimRedeemerToCbor, burnSlotRedeemerToCbor } from "../offchain/src/datum.js";
 import {
-  POOL_NFT_NAME, END_EPOCH, MS_PER_EPOCH_MAINNET, SRCL_CAMPAIGN_ID, ROLE_SPO,
+  POOL_NFT_NAME, END_EPOCH, SRCL_CAMPAIGN_ID, ROLE_SPO,
 } from "../offchain/src/constants.js";
 import type { SrclDatum, ClaimProof } from "../offchain/src/types.js";
 
