@@ -7,7 +7,6 @@
 //
 // Bảo toàn: cap=null ⇒ Σ amount = budget (TIGER B4 gom hết phần lẻ).
 
-import { DELEGATOR_TOTAL_OILDROP } from "./constants.js";
 import type { SnapshotEntry } from "./types.js";
 import { computeEntitlements } from "../../../TIGER/offchain/src/entitlement.js";
 import { buildSnapshotSet } from "../../../TIGER/offchain/src/snapshot.js";
@@ -33,12 +32,18 @@ export interface DelegatorEntitlementResult {
 }
 
 /** Chia budget (oildrop) cho delegator ∝accStake. cap=null ⇒ bảo toàn tuyệt đối.
- *  Ném lỗi nếu 2 đăng ký trùng payment_address (buildSnapshotSet bắt trùng owner). */
+ *  Ném lỗi nếu 2 đăng ký trùng payment_address (buildSnapshotSet bắt trùng owner).
+ *
+ *  `budgetOildrop` **BẮT BUỘC** — không default về pot Delegator. Thuật toán ở đây generic
+ *  (adapter của computeEntitlements), nên pot khác (SPO…) tái dùng hàm này là đúng. Quên
+ *  truyền budget mà có default thì cây vẫn dựng được, tổng vẫn bảo toàn, mọi proof vẫn verify
+ *  — chỉ sai Ở CON SỐ, và pool nạp theo budget thật ⇒ claimer fail vĩnh viễn. Không test
+ *  nào bắt được; chỉ trình biên dịch bắt được — nên để nó bắt. */
 export function buildDelegatorEntitlements(
   regs: DelegatorReg[],
-  opts: { budgetOildrop?: bigint; capOildrop?: bigint | null } = {},
+  opts: { budgetOildrop: bigint; capOildrop?: bigint | null },
 ): DelegatorEntitlementResult {
-  const budgetOildrop = opts.budgetOildrop ?? DELEGATOR_TOTAL_OILDROP;
+  const { budgetOildrop } = opts;
   const capOildrop = opts.capOildrop ?? null;
 
   // 1 "epoch" tổng hợp: rows = payment_address ↦ accStake. buildSnapshotSet bỏ stake ≤ 0
