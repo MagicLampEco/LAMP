@@ -26,7 +26,8 @@ import {
   accountUseRedeemerToCbor,
 } from "../offchain/src/datum.js";
 import {
-  DRIP_OILDROP, COOLDOWN, RECLAIM, POOL_NFT_NAME, ACCT_NFT_NAME, MS_PER_EPOCH_PREVIEW,
+  DRIP_OILDROP, COOLDOWN, RECLAIM, POOL_NFT_NAME, ACCT_NFT_NAME,
+  msPerEpoch, assertMsPerEpochMatchesNetwork,
 } from "../offchain/src/constants.js";
 
 dotenv.config({ path: resolve(process.cwd(), "../../.env") });
@@ -37,7 +38,12 @@ const LAMP_NAME = "744c414d50";
 const lampUnit = toUnit(LAMP_POLICY, LAMP_NAME);
 
 const POOL_SEED_OILDROP = BigInt(process.env.POOL_SEED_OILDROP ?? "2500000000"); // 2500 tLAMP
-const MS_PER_EPOCH = MS_PER_EPOCH_PREVIEW;
+// ms/epoch lấy theo mạng đích, KHÔNG hardcode: số này vừa nướng vào script hash
+// (poolParams) vừa quyết last_epoch trong datum. Assert = tripwire cho lần ai đó
+// hardcode lại 432_000_000 (số của Preprod/Mainnet, lệch 5× trên Preview).
+const NETWORK = "Preview" as const;
+const MS_PER_EPOCH = msPerEpoch(NETWORK);
+assertMsPerEpochMatchesNetwork(MS_PER_EPOCH, NETWORK);
 
 const lucid = await Lucid(
   new Blockfrost(`https://cardano-preview.blockfrost.io/api/v0`, process.env.BLOCKFROST_KEY!),
