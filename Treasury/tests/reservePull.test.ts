@@ -36,9 +36,6 @@ function custodyUtxo(parkedLamp: bigint): UTxO {
     outputIndex: 0,
     address: "addr_test1xxx",
     assets: { lovelace: 2_000_000n, [custUnit]: 1n, [lampUnit]: parkedLamp },
-    datum: undefined,
-    datumHash: undefined,
-    scriptRef: undefined,
   };
 }
 
@@ -50,9 +47,6 @@ function authUtxo(authQty: bigint): UTxO {
     assets: authQty === 0n
       ? { lovelace: 2_000_000n }
       : { lovelace: 2_000_000n, [authUnit]: authQty },
-    datum: undefined,
-    datumHash: undefined,
-    scriptRef: undefined,
   };
 }
 

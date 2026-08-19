@@ -1,6 +1,5 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
 import { Constr, Data } from "@lucid-evolution/lucid";
 import {
   // ClaimAccount
@@ -202,7 +201,11 @@ describe("unit redeemers (no fields)", () => {
 // quên sửa off-chain thì tx gửi đi mang redeemer SAI ý — validator chạy nhánh khác.
 // Test này đọc thẳng file .ak, nên đổi thứ tự trên chuỗi là nó đỏ ngay.
 describe("TREASURY_REDEEMER khớp thứ tự khai báo trong types.ak", () => {
-  const TYPES_AK = fileURLToPath(new URL("../onchain/lib/magiclamp/lampdist/types.ak", import.meta.url));
+  // Đường dẫn tương đối theo cwd của vitest = `Distribution/offchain` (nơi có vitest.config).
+  // Cố ý KHÔNG dùng `import.meta.url`: tsconfig của offchain kéo `../tests/**` và build ra
+  // CommonJS, nên import.meta chỉ sinh TS1470 cho cả module. Sai đường thì `readFileSync`
+  // ném ENOENT — đỏ ồn ào, không im lặng xanh. (Cùng lý do như envGuards.test.ts.)
+  const TYPES_AK = "../onchain/lib/magiclamp/lampdist/types.ak";
 
   /** Lấy tên các variant theo đúng thứ tự khai báo, bỏ chú thích và dòng trống. */
   function variantsOf(typeName: string): string[] {

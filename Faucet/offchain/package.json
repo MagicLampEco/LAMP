@@ -23,6 +23,7 @@
     "@magiclamp/utils": "file:../../Utils"
   },
   "devDependencies": {
+    "@types/node": "^26.2.0",
     "typescript": "^5.4.0",
     "vitest":     "^1.6.0"
   }
