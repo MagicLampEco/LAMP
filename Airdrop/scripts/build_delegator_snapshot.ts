@@ -46,6 +46,8 @@ interface Args {
   n: number;
   eOpen?: number;
   eCut?: number;
+  /** Trần oildrop mỗi người nhận; null = KHÔNG trần. Chỉ đến từ campaign record. */
+  capOildrop: bigint | null;
   budgetLamp: bigint;
   excludedFile: string | null;
   noExcluded: boolean;
@@ -95,7 +97,7 @@ function parseArgs(): Args {
     else { console.error(`Tham số không nhận ra: ${a}`); process.exit(1); }
   }
   if (!regPath) { console.error("Bắt buộc: --reg <file|dir>. Chạy --help."); process.exit(1); }
-  return { regPath, campaignId, explicit, n, eOpen, eCut, budgetLamp, excludedFile, noExcluded, trustInput, outFile };
+  return { regPath, campaignId, explicit, n, eOpen, eCut, capOildrop: null, budgetLamp, excludedFile, noExcluded, trustInput, outFile };
 }
 
 function printHelp(): void {
@@ -179,6 +181,10 @@ async function applyCampaign(a: Args): Promise<void> {
   if (a.explicit.has("--n")) note("--n", p.nMinEpochs, a.n); else a.n = p.nMinEpochs;
   if (a.explicit.has("--budget-lamp")) note("--budget-lamp", p.potDelegatorLamp, a.budgetLamp);
   else a.budgetLamp = p.potDelegatorLamp;
+  // Trần PHẢI đi vào phép chia, không chỉ vào dòng in. Một `cap_oildrop` được kiểm kỹ ở
+  // `campaignParams.ts` rồi in ra "cap=…" mà không tới `buildDelegatorEntitlements` là đúng
+  // lớp lỗi PR này đi sửa: giao diện quản trị bật một cái trần, lượt chạy vẫn trả không trần.
+  a.capOildrop = p.capOildrop;
 
   if (a.explicit.has("--excluded") || a.explicit.has("--no-excluded")) {
     note("--excluded", p.excludedFile ?? "(không loại ai)", a.excludedFile ?? "(không loại ai)");
@@ -286,10 +292,14 @@ async function main(): Promise<void> {
   }
   if (eligible.length === 0) throw new Error("Không có đăng ký nào đủ điều kiện (accStake > 0). Dừng.");
 
-  // ── computeEntitlements (không cap) → snapshot ─────────────────────────
-  const ent = buildDelegatorEntitlements(eligible, { budgetOildrop, capOildrop: null });
+  // ── computeEntitlements (trần theo campaign record) → snapshot ─────────
+  const ent = buildDelegatorEntitlements(eligible, { budgetOildrop, capOildrop: a.capOildrop });
   console.log(`\nĐã phân bổ: ${fmtLamp(ent.distributed)} LAMP cho ${ent.snapshot.length} địa chỉ.`);
-  console.log(`Leftover (cap=null ⇒ 0): ${fmtLamp(ent.leftover)} LAMP.`);
+  console.log(
+    a.capOildrop === null
+      ? `Leftover (cap=null ⇒ 0): ${fmtLamp(ent.leftover)} LAMP.`
+      : `Leftover (cap=${a.capOildrop} oildrop ⇒ về Treasury): ${fmtLamp(ent.leftover)} LAMP.`,
+  );
 
   // ── BẢNG TẬP TRUNG TOP-10 (trước SETUP merkle) ─────────────────────────
   const sorted = [...ent.entitlements].sort((x, y) => (y.amount > x.amount ? 1 : y.amount < x.amount ? -1 : 0));

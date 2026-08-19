@@ -17,7 +17,8 @@ export function repoRoot(): string {
 }
 
 /** Tệp campaign mặc định = nguồn mà `PATCH /admin/campaigns/:id` ghi vào
- *  (`LaunchAPI/src/content.ts:10,28`) ⇒ đọc tệp này là đọc đúng thứ quản trị vừa sửa. */
+ *  (`LaunchAPI/src/content.ts` → `patchCampaign` → `save`, cùng biến `DATA_FILE` và cùng biến
+ *  môi trường `LAUNCH_CAMPAIGNS_FILE`) ⇒ đọc tệp này là đọc đúng thứ quản trị vừa sửa. */
 export function defaultCampaignsFile(): string {
   return process.env.LAUNCH_CAMPAIGNS_FILE
     ? resolve(process.cwd(), process.env.LAUNCH_CAMPAIGNS_FILE)

@@ -1,7 +1,11 @@
 // campaignParams.test.ts — luật của tham số đợt. Mọi ca ĐỎ ở đây là một đợt chia tiền
 // theo con số không ai duyệt; nên tất cả đều là ca fail-closed, không phải ca tiện dụng.
+import { readFileSync } from "node:fs";
 import { describe, it, expect } from "vitest";
 import { parseCampaignParams, SET_ROOT_MODES } from "../src/campaignParams.js";
+import {
+  DELEGATOR_TOTAL_LAMP, SPO_POT_LAMP, CS_POT_LAMP, AIRDROP_V2_TOTAL_LAMP, OILDROP_PER_LAMP,
+} from "../src/constants.js";
 
 /** Bản ghi tối thiểu ĐÚNG — mọi ca hỏng bên dưới đều bẻ đúng MỘT trường từ đây. */
 const KHONG_CO_SEALED = Symbol("bo-han-khoi-sealed");
@@ -91,8 +95,9 @@ describe("parseCampaignParams — FAIL-CLOSED", () => {
     expect(() => parseCampaignParams(ok({ cap_oildrop: 1000 }), "airdrop-v2")).toThrow();
   });
 
-  it("`excluded_file` bỏ trống kiểu sai ⇒ ném — 'không loại ai' phải là null tường minh", () => {
-    expect(() => parseCampaignParams(ok({ excluded_file: "" }), "airdrop-v2")).not.toThrow();
+  it("`excluded_file` bỏ trống ⇒ ném — 'không loại ai' phải là null tường minh", () => {
+    // `""` phân giải thành gốc repo (một thư mục), nên nếu lọt sẽ chết muộn ở lượt đọc tệp.
+    expect(() => parseCampaignParams(ok({ excluded_file: "" }), "airdrop-v2")).toThrow(/phải là đường dẫn hoặc null/);
     expect(() => parseCampaignParams(ok({ excluded_file: 0 }), "airdrop-v2")).toThrow(/phải là đường dẫn hoặc null/);
   });
 
@@ -103,5 +108,33 @@ describe("parseCampaignParams — FAIL-CLOSED", () => {
 
   it("sai id đợt ⇒ ném, có liệt kê id đang có", () => {
     expect(() => parseCampaignParams(ok(), "airdrop-v3")).toThrow(/Có: airdrop-v2/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// "MỘT NGUỒN" phải KIỂM ĐƯỢC, không chỉ tuyên bố
+//
+// Ngân sách pot sống ở HAI nơi và không thể gộp làm một: `constants.ts` là thứ TRẢ TIỀN
+// (mặc định của `splitSpoPot`/`splitCsPot`, và `DELEGATOR_TOTAL_LAMP` cho pot Delegator),
+// còn `campaigns.json` là thứ CÔNG BỐ (trang giới thiệu, webhook, SSE). Lệch một chữ số
+// giữa hai bên = công bố một con số rồi trả một con số khác — và không có gì trong trình
+// biên dịch kêu lên. Test này là chỗ kêu.
+// ─────────────────────────────────────────────────────────────────────────
+describe("campaigns.json THẬT khớp constants.ts", () => {
+  const list = JSON.parse(
+    readFileSync(new URL("../../../LaunchAPI/data/campaigns.json", import.meta.url), "utf8"),
+  ) as { id: string; pot_lamp?: string }[];
+  const p = parseCampaignParams(list, "airdrop-v2");
+  const c = list.find((x) => x.id === "airdrop-v2")!;
+
+  it("ba pot công bố = ba hằng số trả tiền", () => {
+    expect(p.potDelegatorLamp).toBe(DELEGATOR_TOTAL_LAMP);
+    expect(p.potSpoLamp).toBe(SPO_POT_LAMP);
+    expect(p.potCsLamp).toBe(CS_POT_LAMP);
+  });
+
+  it("`pot_lamp` (oildrop) trên trang = tổng ba pot — nhãn 120M không được rời số", () => {
+    expect(BigInt(c.pot_lamp!)).toBe(AIRDROP_V2_TOTAL_LAMP * OILDROP_PER_LAMP);
+    expect(p.potDelegatorLamp + p.potSpoLamp + p.potCsLamp).toBe(AIRDROP_V2_TOTAL_LAMP);
   });
 });

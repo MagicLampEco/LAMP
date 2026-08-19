@@ -227,13 +227,14 @@ async function main(): Promise<void> {
   console.log(`Saturation:                             ${fmtSat(info.live_saturation)}`);
   console.log(`Live delegators:                        ${info.live_delegators}`);
 
-  // Phần SPO KHÔNG còn tính theo stake (model 3-pot). Số liệu trên chỉ tham khảo.
+  // Phần SPO KHÔNG còn tính theo "stake × epoch" của bảng trên (model 3-pot) — nó tính theo
+  // stake CHẢY VÀO POOL. Số liệu trên chỉ tham khảo.
   console.log();
   console.log(
-    "[Lưu ý] Model 3-pot: phần SPO 5M LAMP chia ∝ STAKE CHẢY VÀO POOL, cổng đủ-điều-kiện",
+    "[Lưu ý] Model 3-pot: phần SPO 5M LAMP chia ∝ STAKE CHẢY VÀO POOL; cổng đủ-điều-kiện",
   );
   console.log(
-    "        (không theo stake); phần CS 15M LAMP là làn STAKE-WEIGHTED — tự bỏ phiếu",
+    "        chỉ quyết AI ĐƯỢC DỰ. Phần CS 15M LAMP là làn STAKE-WEIGHTED — tự bỏ phiếu",
   );
   console.log(
     "        hợp lệ nên cân bằng là chia theo stake, KHÔNG đo đóng góp (cần DID).",

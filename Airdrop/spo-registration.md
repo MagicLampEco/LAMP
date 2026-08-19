@@ -138,7 +138,7 @@ Kết quả VALID → payment address được thêm vào Merkle tree SPO share.
 
 ---
 
-## Phân bổ SPO 5M + CS 15M (KHÔNG theo stake)
+## Phân bổ SPO 5M + CS 15M (CẢ HAI đều ∝ trọng số stake)
 
 Model 3-pot: đăng ký SPO KHÔNG còn chia theo "stake × epoch". Hai phần tách bạch:
 
@@ -153,8 +153,10 @@ Model 3-pot: đăng ký SPO KHÔNG còn chia theo "stake × epoch". Hai phần t
 | Dedupe owner | 1 owner = 1 suất | multi-pool farm cùng chủ |
 | Ký đăng ký | reward stake key | mạo danh pool |
 
-→ Phần SPO của mỗi SPO qua cổng = `5.000.000 / N` LAMP (N = số SPO qua cổng). Stake lớn hay
-nhỏ nhận **như nhau**.
+→ Qua cổng rồi, phần SPO của mỗi SPO `i` = `Split({i ↦ weight_SPO(i)}, 5.000.000 LAMP)` với
+`weight_SPO(i) = Σ accStake(d)` của delegator đã đăng ký ủy thác vào pool `i`. Pool hút được
+nhiều delegation thật thì nhận nhiều hơn — **KHÔNG** phải `5.000.000 / N`, và stake lớn hay
+nhỏ **KHÔNG** nhận như nhau.
 
 **CS 15M — Community Supporter, làn stake-weighted.** Trọng số của một người nhận `j` là
 **tổng phiếu-stake được phân bổ cho `j`**: `weight_CS(j) = Σ_d allocation_d(j)`, với ràng buộc

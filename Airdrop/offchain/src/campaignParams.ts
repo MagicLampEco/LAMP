@@ -116,7 +116,10 @@ export function parseCampaignParams(list: unknown, campaignId: string): Campaign
   }
 
   const excludedRaw = pub.excluded_file;
-  if (excludedRaw !== null && typeof excludedRaw !== "string") {
+  // Chuỗi RỖNG bị từ chối cùng chỗ với kiểu sai: `""` phân giải thành CHÍNH thư mục gốc repo,
+  // nên nó không dừng ở đây mà chết muộn hơn với một lỗi đọc-tệp khó lần. Và về nghĩa nó là
+  // chỗ bỏ trống, đúng thứ `null` sinh ra để thay thế.
+  if (excludedRaw !== null && (typeof excludedRaw !== "string" || excludedRaw === "")) {
     throw new Error(
       "CAMPAIGN-PARAMS: `excluded_file` phải là đường dẫn hoặc null. " +
       "null = tường minh CHẤP NHẬN không loại ai — phải là lựa chọn, không phải chỗ bỏ trống.",

@@ -299,7 +299,7 @@ Kiểm: `LaunchAPI/tests/publicCampaign.check.ts` (`npm run check` trong `Launch
 
 Bảng VeData đề nghị *hạng 1–2 không trần · hạng 3 (CS) trần 1%*, với lý do **tư cách dự ở
 làn CS giả được rẻ**. Lý do đó **đã hết hiệu lực** sau khi làn CS được khai lại là
-stake-weighted (`cs_score.ts:104-115`, `spo-cs.md §3.5`): trọng số CS ở điểm cân bằng bằng
+stake-weighted (`cs_score.ts` → `splitCsPot`, `spo-cs.md §3.5`): trọng số CS ở điểm cân bằng bằng
 chính stake của người nhận, nên tư cách dự ở làn CS **tốn đúng bằng** hai làn kia. Tiền đề
 mất thì cái trần mất theo.
 
@@ -310,6 +310,8 @@ tuyệt đối, tự nó chặn. Có trần `c`: một ví lớn nhận `min(ph�
 `n·c` ⇒ **cái trần đặt ra để chặn cá voi chính là thứ trả tiền cho việc tách ví.** Cùng đại
 số với nghịch lý quadratic funding.
 
-Hiện trạng mã đã là `null` ở cả `splitSpoPot` lẫn `splitCsPot` (`cs_score.ts:98,113`) ⇒ chốt
-này **không phải sửa mã**, chỉ là ghi ra thành quyết định có lý do để lần sau không ai bật
-trần vì thấy nó "an toàn hơn".
+Mặc định `capOildrop = null` trong `cs_score.ts` (`splitSpoPot`, `splitCsPot`) ⇒ hai pot SPO/CS
+đã đúng chốt này sẵn. Pot Delegator thì **đọc `cap_oildrop` từ campaign record** và truyền
+thẳng vào `buildDelegatorEntitlements` (`build_delegator_snapshot.ts`) — đổi trần trên giao
+diện quản trị là đổi được phép chia, không phải sửa mã. Ghi ra thành quyết định có lý do để
+lần sau không ai bật trần vì thấy nó "an toàn hơn".

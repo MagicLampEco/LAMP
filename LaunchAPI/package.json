@@ -9,6 +9,7 @@
     "dev": "npx tsx --watch src/server.ts",
     "build": "tsc",
     "start:compiled": "node dist/server.js",
+    "test": "npm run check && npm run check:patch",
     "check": "npx tsx tests/publicCampaign.check.ts",
     "check:patch": "npx tsx tests/patchParams.check.ts"
   },
