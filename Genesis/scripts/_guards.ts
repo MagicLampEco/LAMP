@@ -159,6 +159,21 @@ export const CONSEQUENCE_METER =
   "policy này, mãi mãi. Đây đúng là thứ đã xảy ra với bản mồi mainnet " +
   "(Genesis/offchain/src/deployed.ts:92, :118-119).";
 
+/**
+ * Hậu quả khi `genesis_ref` (neo one-shot của `thread_nft`) sai.
+ *
+ * Đây là apply-param GỐC RỄ, không phải một tham số ngang hàng với `meter_*`/`dist_dest`:
+ * `genesis_ref` → `thread_nft` policy → `threadPid`, mà `threadPid` lại là apply-param của
+ * CẢ `lamp_mint` LẪN `supply_state`. Sai một byte ở đây ⇒ sai TOÀN BỘ ba script cùng lúc.
+ * Nó cũng là thứ DUY NHẤT bảo đảm tính một-lần: một OutputReference chỉ tồn tại một lần
+ * trong lịch sử chain (`mainnet-deploy-plan.md §C`).
+ */
+export const CONSEQUENCE_GENESIS_REF =
+  "genesis_ref sai ⇒ thread_nft ra policy khác ⇒ lamp_mint + supply_state cùng ra policy-id/" +
+  "script-hash khác ⇒ mint dưới SAI policy (LAMP không burn = kẹt vĩnh viễn), và SupplyState " +
+  "vừa dựng không phải cái UTxO nào trên chain đang mang thread NFT. Giá trị Preview cũ nướng " +
+  "cứng trong mã sẽ IM LẶNG sai trên Preprod/Mainnet — phải truyền UTxO one-shot thật.";
+
 /** Hậu quả khi `dist_dest` (A-DEST) là placeholder. */
 export const CONSEQUENCE_DIST_DEST =
   "A-DEST sẽ ép toàn bộ LAMP mint ra rót vào Script(00×28) — địa chỉ không có tiền ảnh script " +

@@ -14,7 +14,8 @@ import dotenv from "dotenv";
 import { resolve } from "node:path";
 import { readFile } from "node:fs/promises";
 import {
-  requiredHashParam, requiredHexParam, CONSEQUENCE_METER, CONSEQUENCE_DIST_DEST,
+  requiredHashParam, requiredHexParam,
+  CONSEQUENCE_METER, CONSEQUENCE_DIST_DEST, CONSEQUENCE_GENESIS_REF,
 } from "./_guards.js";
 import { assertParamCount } from "../offchain/src/applyGate.js";
 
@@ -24,8 +25,19 @@ const GUARD_IO = { env: process.env, warn: (m: string) => console.warn(m) };
 const MINT_OILDROP = BigInt(process.env.MINT_OILDROP ?? "3000000000"); // 3000 tLAMP
 const SUPPLY_NAME = "535550504c59";
 const TOKEN_NAME = "744c414d50"; // tLAMP
-const GENESIS_REF_HASH = "689c56e05a6c4cb97ea59c26f9b2bb271ca2cf6ae52ee3dba08fb9c7a9204973";
-const GENESIS_REF_IDX = 1n;
+// genesis_ref: xem chú thích cùng chỗ ở `02_mint_vest.ts`. Trước đây là literal Preview
+// nướng cứng — tham số gốc rễ nhất tệp này lại là tham số duy nhất không qua cổng gác,
+// đúng thứ mà chú thích "gác submit=true cho MỌI tham số hash/policy-id" bên dưới tự nhận
+// là đã làm. Nay lời đó đúng.
+const genesisRefHash = requiredHashParam("GENESIS_REF_HASH", {
+  ...GUARD_IO, submit: true, bytes: 32, consequence: CONSEQUENCE_GENESIS_REF,
+}).value;
+const idxRaw = (process.env.GENESIS_REF_IDX ?? "").trim();
+if (!/^\d+$/.test(idxRaw)) {
+  // `BigInt("")` = 0n ⇒ quên biến sẽ lặng lẽ trỏ vào output #0, một UTxO khác.
+  throw new Error(`GENESIS_REF_IDX chưa set / không phải số nguyên ≥ 0. ${CONSEQUENCE_GENESIS_REF}`);
+}
+const GENESIS_REF_IDX = BigInt(idxRaw);
 
 const lucid = await Lucid(
   new Blockfrost(`https://cardano-preview.blockfrost.io/api/v0`, process.env.BLOCKFROST_KEY!),
@@ -50,11 +62,14 @@ function applyChecked(title: string, params: unknown[]): string {
   return applyParamsToScript(v.compiledCode, params as never);
 }
 
-const genesisRef = new Constr(0, [GENESIS_REF_HASH, GENESIS_REF_IDX]);
+const genesisRef = new Constr(0, [genesisRefHash, GENESIS_REF_IDX]);
 const threadPolicy: MintingPolicy = { type: "PlutusV3", script: applyChecked("thread_nft.thread_nft.mint", [genesisRef]) };
 const threadPid = mintingPolicyToId(threadPolicy);
 // CỔNG GÁC apply-param — 03 luôn submit thật (`signed.submit()` cuối tệp), nên gác
-// submit=true cho MỌI tham số hash/policy-id, không riêng DIST_DEST.
+// submit=true cho MỌI tham số hash/policy-id đọc từ env, không riêng DIST_DEST — kể cả
+// `genesis_ref` ở trên (câu này từng SAI với chính tệp nó nằm trong: genesis_ref là literal
+// Preview, ungated). Còn lại cố ý là literal và KHÔNG phải hash/policy-id: `SUPPLY_NAME`/
+// `TOKEN_NAME` là asset-name hằng, `[pkh]`/`1n` là authority 1-of-1 self-test lấy từ ví.
 //
 // Trước bản vá này `meter_nft_policy` là literal `"00".repeat(28)` NƯỚNG THẲNG vào lời gọi
 // applyParamsToScript — còn tệ hơn placeholder từ env: không có cách nào truyền giá trị thật

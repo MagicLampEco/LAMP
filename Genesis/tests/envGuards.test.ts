@@ -7,6 +7,7 @@
 // phải một biến cụ thể nào.
 
 import { describe, it, expect, vi } from "vitest";
+import { readFileSync } from "node:fs";
 import {
   requiredHashParam, requiredHexParam, CONSEQUENCE_METER, CONSEQUENCE_DIST_DEST,
 } from "../scripts/_guards.js";
@@ -165,6 +166,31 @@ describe("requiredHexParam — asset-name cũng qua cổng (gác nửa cặp = t
     ).toThrow(/sai dạng/);
   });
 
+  // Trước đây chỉ có ca ĐỘ DÀI lẻ. Độ dài chẵn + ký tự không-hex là ca thật hay gặp hơn:
+  // `TOKEN_NAME=LAMP`, `METER_NFT_NAME=tLAMP` — gõ ASCII thay vì hex, dài chẵn, đi lọt
+  // mọi phép kiểm độ dài.
+  it("độ dài CHẴN nhưng có ký tự không-hex ⇒ ném (ASCII gõ nhầm vào ô hex)", () => {
+    for (const v of ["LAMP", "4d4554zz", "0x4d4554"]) {
+      expect(() =>
+        requiredHexParam("TOKEN_NAME", {
+          submit: true, placeholder: "4d4554", consequence: "x",
+          env: { TOKEN_NAME: v }, warn: silent,
+        }),
+      ).toThrow(/sai dạng/);
+    }
+  });
+
+  it("đường placeholder CÓ gọi warn (im lặng là cách lỗi cũ lọt)", () => {
+    const warn = vi.fn();
+    requiredHexParam("METER_NFT_NAME", {
+      submit: false, placeholder: "4d4554", consequence: CONSEQUENCE_METER,
+      env: {}, warn,
+    });
+    expect(warn).toHaveBeenCalledOnce();
+    expect(warn.mock.calls[0]![0]).toMatch(/METER_NFT_NAME chưa set/);
+    expect(warn.mock.calls[0]![0]).toMatch(/ReserveDraw/);   // cảnh báo phải nêu hậu quả
+  });
+
   it("độ dài tự do được chấp nhận (asset-name không cố định 28 byte)", () => {
     const got = requiredHexParam("METER_NFT_NAME", {
       submit: true, placeholder: "4d4554", consequence: CONSEQUENCE_METER,
@@ -279,5 +305,98 @@ describe("giá trị CHẾT — đúng dạng vẫn phải bị chặn khi GỬI
         env: { DIST_DEST: mostlyZero }, warn: silent,
       }),
     ).not.toThrow();
+  });
+});
+
+// ══════════════════════════════════════════════════════════════
+// CALL-SITE — bộ "ĐỐI XỨNG" ở trên khoá HÀM, không khoá NƠI GỌI.
+//
+// `HASH_PARAMS` của nó là danh sách CHÉP TAY ngay trong tệp test này: nó chứng minh
+// `requiredHashParam("METER_NFT_POLICY", …)` và `requiredHashParam("DIST_DEST", …)` hành xử
+// giống nhau, nhưng KHÔNG chứng minh script nào thật sự gọi chúng. Bằng chứng nó không khoá
+// được: `genesis_ref` — apply-param GỐC RỄ sinh ra `threadPid`, mà `threadPid` lại là
+// apply-param của cả `lamp_mint` lẫn `supply_state` — từng là literal Preview nướng cứng ở
+// `02`/`03`, hoàn toàn ngoài cổng gác, mà suite vẫn xanh 100%.
+//
+// Test dưới đọc THẲNG mã nguồn: mọi `process.env.<TÊN>` mà tên trông như tham số hash/hex
+// (hậu tố `_POLICY`/`_NAME`/`_HASH`/`_DEST`) phải xuất hiện trong một lời gọi
+// `requiredHashParam("<TÊN>"` / `requiredHexParam("<TÊN>"` trong CÙNG tệp. Regex là đủ: cái
+// cần bắt là "đọc env trần rồi nhét thẳng vào applyParamsToScript", không phải luồng dữ
+// liệu tinh vi — parse AST ở đây chỉ biến một tệp test thành một trình biên dịch nhỏ.
+// ══════════════════════════════════════════════════════════════
+describe("CALL-SITE — không apply-param nào đi vòng cổng gác", () => {
+  // Đường dẫn tương đối theo cwd của vitest = `Genesis/offchain` (nơi có vitest.config).
+  // Cố ý KHÔNG dùng `import.meta.url` + node:path: tsconfig của offchain build ra CommonJS
+  // và không nạp @types/node, nên chúng chỉ thêm lỗi `tsc --noEmit` cho module khác. Sai
+  // đường dẫn thì `readFileSync` ném ENOENT — đỏ ồn ào, không im lặng xanh.
+  const SCRIPTS_DIR = "../scripts";
+  const FILES = [
+    "01_deploy_lazymint.ts",
+    "02_mint_vest.ts",
+    "03_mint_more.ts",
+    "config.ts",   // nơi DUY NHẤT sinh token_name — cũng là apply-param của lamp_mint
+  ] as const;
+
+  /** Tên env trông như tham số hash / policy-id / asset-name ⇒ phải qua cổng gác. */
+  const LOOKS_LIKE_PARAM = /(_POLICY|_NAME|_HASH|_DEST)$/;
+  /** `process.env.X` và `process.env["X"]`. */
+  const ENV_READ = /process\.env(?:\.([A-Z][A-Z0-9_]*)|\[["']([A-Z][A-Z0-9_]*)["']\])/g;
+
+  const scan = (src: string): string[] =>
+    [...src.matchAll(ENV_READ)]
+      .map((m) => m[1] ?? m[2]!)
+      .filter((name) => LOOKS_LIKE_PARAM.test(name));
+
+  for (const file of FILES) {
+    it(`${file}: mọi env dạng hash/hex đều đi qua required*Param`, () => {
+      const src = readFileSync(`${SCRIPTS_DIR}/${file}`, "utf8");
+      const ungated = scan(src)
+        .filter((name) => !src.includes(`requiredHashParam("${name}"`))
+        .filter((name) => !src.includes(`requiredHexParam("${name}"`));
+
+      // Thông điệp lỗi phải NÊU TÊN biến sót — "có gì đó chưa gác" là vô dụng lúc 3h sáng.
+      expect(
+        [...new Set(ungated)],
+        `${file}: apply-param đọc từ env mà KHÔNG qua _guards.ts — nó nằm trong policy-id/` +
+        `script-hash, sai là không sửa được (LAMP không burn). Bọc bằng requiredHashParam/` +
+        `requiredHexParam, hoặc đổi tên biến nếu nó không phải apply-param.`,
+      ).toEqual([]);
+    });
+  }
+
+  // Nửa còn lại của cùng một lỗ: gác hết env vẫn chưa đủ nếu tham số KHÔNG đọc từ env mà
+  // nướng thẳng literal vào mã — đúng cách `GENESIS_REF_HASH` (64 hex, neo one-shot Preview)
+  // sống ngoài cổng gác ở `02`/`03`. Literal đủ dài để là hash/policy-id thì phải đi qua env
+  // + `_guards.ts`, không có ngoại lệ "giá trị này chắc đúng".
+  const LONG_HEX_LITERAL = /["'`]([0-9a-fA-F]{40,})["'`]/g;
+
+  for (const file of FILES) {
+    it(`${file}: không nướng cứng literal hash/policy-id vào mã`, () => {
+      const src = readFileSync(`${SCRIPTS_DIR}/${file}`, "utf8");
+      expect(
+        [...src.matchAll(LONG_HEX_LITERAL)].map((m) => m[1]!),
+        `${file}: hex ≥ 20 byte nướng cứng trong mã. Nếu nó là apply-param (genesis_ref, ` +
+        `policy-id, script-hash) thì nó ĐÚNG trên đúng một network và SAI im lặng trên mọi ` +
+        `network khác — đọc từ env qua requiredHashParam thay vì hard-code.`,
+      ).toEqual([]);
+    });
+  }
+
+  it("chính bộ dò này phải bắt được ca hồi quy (kẻo nó xanh vì regex hỏng)", () => {
+    // Literal Preview cũ ở 02/03 — bộ dò literal phải thấy nó.
+    const old = `const GENESIS_REF_HASH = "689c56e05a6c4cb97ea59c26f9b2bb271ca2cf6ae52ee3dba08fb9c7a9204973";`;
+    expect([...old.matchAll(LONG_HEX_LITERAL)]).toHaveLength(1);
+    // asset-name ngắn ("SUPPLY", "tLAMP") KHÔNG bị bắt nhầm.
+    expect([...`const S = "535550504c59";`.matchAll(LONG_HEX_LITERAL)]).toHaveLength(0);
+  });
+
+  it("bộ dò env phải bắt được ca hồi quy (kẻo nó xanh vì regex hỏng)", () => {
+    // Đúng hình dạng lỗi cũ: đọc env trần rồi nhét thẳng vào applyParamsToScript.
+    expect(scan(`const meterPid = process.env.METER_NFT_POLICY ?? "00".repeat(28);`))
+      .toEqual(["METER_NFT_POLICY"]);
+    expect(scan(`const nm = process.env["LAMP_ASSET_NAME"];`)).toEqual(["LAMP_ASSET_NAME"]);
+    // …và KHÔNG bắt nhầm biến không phải apply-param.
+    expect(scan(`BigInt(process.env.MINT_OILDROP ?? "0"); process.env.BLOCKFROST_KEY;`))
+      .toEqual([]);
   });
 });
