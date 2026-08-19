@@ -15,6 +15,7 @@
 
 use aiken/collection/dict
 use aiken/collection/list
+use aiken/primitive/bytearray
 use cardano/assets.{PolicyId}
 use cardano/transaction.{InlineDatum, Transaction, placeholder}
 use magiclamp/allocation/types.{ClaimAccountDatum}
@@ -47,6 +48,14 @@ validator account_nft(committee: List<ByteArray>, threshold: Int) {
     expect ad: ClaimAccountDatum = d
 
     // ── C-ACC-1: name buộc owner ‖ channel ──
+    // `account_nft_name` nối THẲNG owner ‖ channel, không length-prefix. Với owner độ dài
+    // tự do thì biên giữa hai trường mập mờ: (owner=#"0a0a", channel=#"0b0c") và
+    // (owner=#"0a0a0b", channel=#"0c") băm ra CÙNG một tên ⇒ NFT của account này xác thực
+    // được UTxO của account kia. Ghim owner = 28 byte (nó LÀ pkh, types.ak:21) làm biên
+    // trở nên xác định, và không phải đổi derivation — tức không phá vector byte-perfect
+    // với off-chain. Đây là cổng MINT duy nhất, nên pin ở đây là pin cho cả hệ:
+    // claim_account/treasury chỉ tính lại tên từ datum của chúng.
+    expect bytearray.length(ad.owner) == 28
     expect mint_name == util.account_nft_name(ad.owner, ad.channel_id)
 
     // ── C-ACC-3: account mới sạch ──
@@ -70,7 +79,9 @@ const t_threshold: Int = 2
 
 const t_policy: ByteArray = #"acac"
 
-const t_owner: ByteArray = #"0a0a"
+// owner LÀ pkh ⇒ 28 byte. Trước đây fixture dùng 2 byte, tức bộ test chưa từng chạy
+// qua hình dạng thật; ghim đúng 28 byte để cổng C-ACC-1 mới được đi qua thật sự.
+const t_owner: ByteArray = #"0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a"
 
 const t_channel: ByteArray = #"5445414d"
 
@@ -115,7 +126,7 @@ fn run_mint(tx: Transaction) -> Bool {
 test account_nft_name_xcheck_offchain() {
   // BYTE-PERFECT với off-chain (@noble/hashes blake2b, dkLen 32). CLAUDE.md invariant #1.
   // Vector: owner=#"0a0a", channel=#"5445414d" (TEAM). Đổi derivation → sửa cả 2 phía + vector.
-  util.account_nft_name(#"0a0a", #"5445414d") == #"75b5f639e77e2233a728fb07499d76b8931597dd836dca9de3d87a6e6f9b6847"
+  util.account_nft_name(t_owner, #"5445414d") == #"57cab37b93654b7afaec9e1bc9a1e9c37fd99ea4c57b47c04bd4f405991b3066"
 }
 
 test mint_requires_committee() fail {
@@ -151,4 +162,30 @@ test mint_to_wallet_rejected() fail {
   let d = genesis_datum(0, t_channel)
   let tx = genesis_tx(util.account_nft_name(t_owner, t_channel), d, [#"c1", #"c2"], False)
   run_mint(tx)
+}
+
+/// C-ACC-1 — owner PHẢI đúng 28 byte.
+///
+/// Vì sao ca này tồn tại: `account_nft_name` nối THẲNG owner ‖ channel. Owner độ dài tự do
+/// thì biên mập mờ, và hai account KHÁC nhau băm ra CÙNG một tên NFT — xem cặp ngay dưới.
+/// Cổng mint là nơi DUY NHẤT tên bị buộc vào datum, nên chặn ở đây là chặn cho cả hệ.
+test mint_owner_wrong_length_rejected() fail {
+  let short_owner = #"0a0a"
+  let d =
+    ClaimAccountDatum {
+      owner: short_owner,
+      entitlement: 1000,
+      redeemed: 0,
+      start_epoch: 0,
+      drops_per_epoch: 1,
+      channel_id: t_channel,
+    }
+  let tx = genesis_tx(util.account_nft_name(short_owner, t_channel), d, [#"c1", #"c2"], True)
+  run_mint(tx)
+}
+
+/// Đây là VA CHẠM mà việc ghim 28 byte loại bỏ: cùng một tên NFT cho hai cặp
+/// (owner, channel) khác nhau. Nếu ai đó bỏ ghim độ dài, ca này vẫn đúng và nhắc lý do.
+test account_nft_name_boundary_is_ambiguous_without_pin() {
+  util.account_nft_name(#"0a0a", #"0b0c") == util.account_nft_name(#"0a0a0b", #"0c")
 }
