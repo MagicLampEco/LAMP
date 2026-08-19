@@ -35,6 +35,19 @@ Pool nhả 100/claim, cạn dần. Refill = mint canonical thêm vào kho → re
 → FOUNDATION → `seed_canonical_pool.ts` nạp tiếp. KHÔNG có đường "rút bụng" (faucet.ak anti-drain).
 Đường trích tLAMP khỏi kho BẮT BUỘC qua claim_account redeem (đúng thiết kế treasury.ak).
 
+## Faucet v2 (faucet_pool / faucet_account) — CHƯA deploy canonical
+
+Bản đang sống ở trên là **v1 `faucet.ak`**, param `(tlamp_policy, tlamp_name)` — **KHÔNG có
+`ms_per_epoch`**. Pool/account của v2 chỉ tồn tại trong các run demo (`scripts/demo_faucet_v2.ts`
+đúc POOL NFT one-shot từ 1 UTxO ví chọn lúc chạy, ghi ra `demo-faucet-v2-out.json` — gitignored),
+KHÔNG có state file canonical.
+
+⇒ Sửa `ms_per_epoch` về đúng per-network (Preview 86_400_000, không phải 432_000_000) **không
+mồ côi deployment nào đang sống**. Trước đây off-chain nạp 432_000_000 cho Preview (số của
+Preprod/Mainnet): lệch 5× nhưng tx vẫn pass vì validator nhận cùng số ⇒ `COOLDOWN = 36 epoch`
+chạy thành 180 ngày, `RECLAIM = 1001 epoch` thành ~13,7 năm. Cổng gác
+`assertMsPerEpochMatchesNetwork` (`FAUCET-EPOCH-001`) chặn lần nạp sai kế tiếp.
+
 ## Reserve-Treasury (ngoài phạm vi faucet)
 - Faucet cho dev token canonical để test **downstream**: transfer, claim Distribution, **nạp Treasury custody**, vote.
 - **ReserveDraw** (mint E/1000 từ reserve) là hành vi NHÀ PHÁT HÀNH (cần reserve meter/thread NFT +
