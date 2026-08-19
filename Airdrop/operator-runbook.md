@@ -8,8 +8,9 @@ Hướng dẫn đầy đủ để operator deploy và vận hành TIGER Airdrop 
 
 > **Model 3-pot (chốt 2026-07-11):** tổng 120M LAMP = Delegator **100M** (∝stake, mọi pool) +
 > SPO (Staking Pool Operator) **5M** (∝ Σ stake delegator đã đăng ký chảy vào pool) + CS (Community
-> Supporter) **15M** (∝ Σ stake của delegator đã bình chọn; đo qua AffiSo). Cả hai ∝ trọng số stake.
-> Đặc tả: `CONTRACT.md` (tổng) + `spo-cs.md` (SPO+CS).
+> Supporter) **15M** (∝ Σ phiếu-stake phân bổ cho người nhận; tự bỏ phiếu hợp lệ ⇒ cân bằng =
+> **stake của chính họ**; dữ liệu phân bổ thu qua AffiSo). Cả hai ∝ trọng số stake.
+> Đặc tả: `CONTRACT.md` (tổng) + `spo-cs.md` (SPO+CS). Làn CS **không đo đóng góp** — `spo-cs.md` §3.5.
 
 ```
 Bước 1: Chọn cửa sổ snapshot → build snapshot delegator (∝stake, Blockfrost)
@@ -102,12 +103,17 @@ Xem `spo-registration.md` để hướng dẫn SPO operator, `spo-cs.md` cho cô
 
 Model 3-pot: đăng ký SPO **không** còn chia theo stake. Hai phần:
 
-- **SPO 5M** — chia ĐỀU cho mọi SPO qua **cổng đủ-điều-kiện** (đã sản xuất block ≥1 trong 5
-  epoch, tuổi pool ≥3 epoch, pledge ≥ ngưỡng, dedupe owner, ký reward stake key). Mỗi SPO qua
-  cổng = `5.000.000 / N` LAMP.
-- **CS 15M** — theo điểm Community Supporter đo qua **AffiSo/ProofChat** (số DID được SPO
-  mời thực delegate và giữ ≥2 epoch, hỗ trợ được-xác-nhận, giới thiệu, retention), log-dampen +
-  water-filling + cổng kích hoạt. Tính bằng `cs_score.ts`, cần **DID sinh trắc**.
+- **SPO 5M** — **cổng đủ-điều-kiện quyết AI ĐƯỢC DỰ** (đã sản xuất block ≥1 trong 5 epoch, tuổi
+  pool ≥3 epoch, pledge ≥ ngưỡng, dedupe owner, ký reward stake key); qua cổng rồi thì phần chia
+  **∝ stake CHẢY VÀO POOL**: `weight_SPO(i) = Σ accStake(d)` của delegator đã đăng ký ủy thác vào
+  pool i (`spo-cs.md` §3.2, hiện thực `splitSpoPot`). **KHÔNG** phải `5.000.000 / N` — mô hình chia
+  đều đã bỏ 2026-07-11.
+- **CS 15M** — **làn stake-weighted**. Trọng số = Σ **phiếu-stake phân bổ cho người nhận**
+  (mỗi delegator đã đăng ký có phiếu-stake = stake của mình, `Σ_j allocation_d(j) ≤ accStake(d)`).
+  **Tự bỏ phiếu hợp lệ và là chiến lược trội** ⇒ điểm cân bằng là chia theo stake. AffiSo/ProofChat
+  chỉ **thu & công bố** bảng phân bổ (gồm cả phiếu tự bỏ), operator chạy `splitCsPot` trong
+  `cs_score.ts`. Cần **DID sinh trắc** để dedupe danh tính người **nhận**. Làn này **KHÔNG đo
+  đóng góp cộng đồng** — `spo-cs.md` §3.5.
 
 Sau khi nhận file `spo_registration.json` từ SPO:
 

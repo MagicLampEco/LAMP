@@ -18,7 +18,7 @@ BigInt oildrop) — chỉ khác **NGUỒN** trọng số. Mô hình cũ "CS log-
 |---|---|---|---|---|
 | **Delegator** | **100.000.000 LAMP** | Delegator Cardano (mọi pool) đã đăng ký | stake của **CHÍNH họ** (accStake mọi pool) | §1–§5 (bản này) |
 | **SPO** (Staking Pool Operator) | **5.000.000 LAMP** | SPO đã đăng ký | Σ stake delegator (đã đăng ký) **CHẢY VÀO POOL** của họ | `spo-cs.md` |
-| **CS** (Community Supporter) | **15.000.000 LAMP** | Người hỗ trợ cộng đồng (bất kỳ ai, có DID) | Σ stake của delegator đã **BÌNH CHỌN** rằng họ đã giúp | `spo-cs.md` |
+| **CS** (Community Supporter) | **15.000.000 LAMP** | Bất kỳ ai có DID sinh trắc | Σ **phiếu-stake phân bổ cho họ**; tự bỏ phiếu hợp lệ ⇒ cân bằng = **stake của chính họ** | `spo-cs.md` §3.5 |
 
 Tỷ lệ **SPO:CS = 5:15 = 25:75**. Tổng SPO+CS = 20M.
 
@@ -150,11 +150,35 @@ Yêu cầu: "1 pot on-chain có thể nhiều nguồn entitlement nạp qua SetR
   §8/§10 nói "SetRoot" là **kiến trúc dự kiến**, không phải redeemer đã tồn tại.)
 - Hai cách khớp yêu cầu "nhiều nguồn" mà **KHÔNG viết validator mới**:
 
-  | Cách | Mô tả | Hợp validator hiện tại? |
-  |---|---|---|
-  | **A. Root gộp 1 lần** | Gộp toàn bộ leaf (delegator + SPO/CS) thành **1 snapshot → 1 root** tại genesis | ✅ Không đổi gì |
-  | **B. 2 pool-instance** | Deploy **2 UTxO của cùng `airdrop_pool`** (khác genesis NFT): 1 pool 100M root-delegator, 1 pool 20M root-SPO+CS (5M base + 15M CS gộp) | ✅ Cùng validator, chỉ khác param genesis |
-  | **C. SetRoot per-epoch** | Cập nhật root mỗi epoch (cho SPO/CS drip 20 epoch, SPO-CS §6) | ⚠️ **Cần bổ sung redeemer `SetRoot`** — mở rộng nhỏ, KHÔNG đổi datum schema |
+  Hình ảnh chung cho cả ba: **pot = một cái hũ**, `merkle_root` = **niêm** dán lên hũ. Niêm
+  quyết định ai mở được và mở bao nhiêu. Ba cách khác nhau ở chỗ **có mấy hũ** và **niêm dán
+  mấy lần** — tên gọi bên dưới đặt theo đúng hai câu đó (2026-08-18).
+
+  | Cách | Tên gọi | Mô tả | Hợp validator hiện tại? |
+  |---|---|---|---|
+  | **A** | **MỘT SỔ CHUNG** (`mot-so-chung`) | Gộp toàn bộ leaf (delegator + SPO/CS) thành **1 snapshot → 1 root** tại genesis. Một hũ, một niêm, dán một lần | ✅ Không đổi gì |
+  | **B** | **HAI HŨ RIÊNG** (`hai-hu-rieng`) | Deploy **2 UTxO của cùng `airdrop_pool`** (khác genesis NFT): 1 hũ 100M niêm-delegator, 1 hũ 20M niêm-SPO+CS (5M base + 15M CS gộp). Hai hũ, hai niêm, niêm độc lập | ✅ Cùng validator, chỉ khác param genesis |
+  | **C** | **HŨ THAY NIÊM MỖI KỲ** (`hu-thay-niem-moi-ky`) | Một hũ, **bóc niêm cũ dán niêm mới mỗi epoch** (cho SPO/CS drip 20 epoch, SPO-CS §6) | ⚠️ **Cần bổ sung redeemer `SetRoot`** — mở rộng nhỏ, KHÔNG đổi datum schema |
+
+  **ĐÃ CHỐT: B — HAI HŨ RIÊNG.** Vì sao, nói bằng hình ảnh cái hũ:
+
+  - **A thua vì thời điểm, không vì kỹ thuật.** Một niêm dán một lần đòi biết TẤT CẢ người
+    nhận tại genesis. Nhưng leaf delegator chỉ tính được **sau `E_cut`**, còn hũ SPO/CS đo
+    theo cửa sổ khác. Muốn gộp thì phải hoãn cả hai tới mốc muộn nhất — trả bằng lịch để mua
+    một thứ không cần.
+  - **C thua vì cái khuôn đã hỏng một lần.** Niêm bóc ra dán lại được nghĩa là **tồn tại một
+    đường ghi đè `merkle_root` của một hũ đang giữ tiền**. Ai giữ quyền dán niêm thì viết lại
+    được ai nhận bao nhiêu. Đó là quyền phải chứng minh an toàn trước, không phải quyền lấy
+    kèm theo tiện lợi. Và nó đòi thêm redeemer, tức thêm mã cho một validator đã chạy thật.
+  - **B thắng vì hai hũ vỡ độc lập.** Cùng validator (cùng kiểu hũ, đã kiểm), khác genesis NFT
+    (khác niêm). Sai một niêm thì hỏng một hũ; hũ kia không biết chuyện đó xảy ra. Với hai
+    pot đo bằng hai cách khác nhau trên hai cửa sổ khác nhau, cô lập sai sót đáng giá hơn
+    tiết kiệm một UTxO.
+  - Giá phải trả, nói rõ: **hai lần deploy, hai genesis NFT, hai hạn Sweep** phải theo dõi
+    riêng. Đây là chi phí vận hành thật, không phải chi phí bằng 0.
+
+  Giá trị máy đọc được: `set_root_mode` trong `params.public` của campaign record
+  (`LaunchAPI/src/types.ts` → `SetRootMode`); phần kiểm ở `Airdrop/offchain/src/campaignParams.ts`.
 
 - **Khuyến nghị cho pot Delegator (bản này):** snapshot tính **1 lần** sau `E_cut` → **1 root cố định**
   → khớp validator hiện tại **không cần thay đổi** (Cách A hoặc B). Delegator KHÔNG cần SetRoot.
@@ -196,13 +220,18 @@ phải đăng ký, cửa sổ riêng.
 
 ### 3.1. SPO (Staking Pool Operator) vs CS (Community Supporter) — cùng stake-weighted, khác NGUỒN trọng số
 
+> **Làn CS là stake-weighted, không phải thước đo đóng góp.** Quy tắc bình chọn cho phép
+> **tự bỏ phiếu** (`j = d` hợp lệ), nên tự bỏ phiếu là chiến lược trội và điểm cân bằng là
+> `weight_CS(j) = accStake(j)` — pot CS thành đợt chia-theo-stake thứ hai. Chứng minh + lý do
+> chốt: `spo-cs.md` §3.5. Đừng hứa "được công nhận đã giúp" ở bất kỳ đâu.
+
 | Trục | **SPO — Staking Pool Operator** (5M) | **CS — Community Supporter** (15M) |
 |---|---|---|
 | Vai trò | Nhà vận hành pool | Người hỗ trợ cộng đồng (**bất kỳ ai**, không cần vận hành pool) |
-| Trọng số neo vào | Stake **CHẢY VÀO POOL** (delegation đã đăng ký ủy thác vào pool họ) | Stake của người **ĐƯỢC-GIÚP** bình chọn (phiếu-stake ≤ stake mỗi người bầu) |
-| Thưởng điều gì | Thu hút & giữ được delegation | Được stakeholder công nhận đã giúp |
-| Cần DID? | Không | **Có** (dedupe danh tính người nhận) |
-| Chống sybil | Splitting pool làm loãng delegation → tự vô hiệu | Phiếu-stake ≤ stake thật → không bơm được |
+| Trọng số neo vào | Stake **CHẢY VÀO POOL** (delegation đã đăng ký ủy thác vào pool họ) | Σ **phiếu-stake phân bổ cho họ** (phiếu-stake ≤ stake mỗi người bầu) |
+| Thưởng điều gì | Thu hút & giữ được delegation | **Nắm stake ADA** — làn stake-weighted, KHÔNG đo sự giúp đỡ (`spo-cs.md` §3.5) |
+| Cần DID? | Không | **Có** (dedupe danh tính người nhận; **không** chặn tự bỏ phiếu) |
+| Chống sybil | Splitting pool làm loãng delegation → tự vô hiệu | Phiếu-stake ≤ stake thật → không bơm được (**không** chặn tự bỏ phiếu) |
 | Hàm chia (`cs_score.ts`) | `splitSpoPot` | `splitCsPot` |
 
 ---
@@ -214,8 +243,9 @@ phải đăng ký, cửa sổ riêng.
 - **Delegator KHÔNG cần DID** — claim bằng ví (`payment_address`), là phân phối theo hành vi
   kinh tế công khai (stake ADA), không phải bỏ phiếu.
 - **SPO KHÔNG cần DID** — reward neo delegation on-chain (đủ chữ ký pool). **CS CẦN DID** —
-  supporter có thể là bất kỳ ai, DID sinh trắc dedupe danh tính **người nhận** thưởng CS (dù
-  trọng số vẫn neo stake của người bình chọn). Ranh giới DID này là **có chủ đích** (SPO-CS §2).
+  người nhận có thể là bất kỳ ai, DID sinh trắc dedupe danh tính **người nhận** thưởng CS (dù
+  trọng số vẫn neo stake của người bỏ phiếu). Ranh giới DID này là **có chủ đích** (SPO-CS §2).
+  DID ở đây chỉ chặn **nhiều danh tính nhận**, KHÔNG chặn **tự bỏ phiếu** (SPO-CS §3.5).
 
 ---
 
@@ -235,10 +265,53 @@ nên trích thành util dùng chung hoặc import trực tiếp (giữ 1 nguồn
 
 ---
 
-## 6. Tham số cần chốt (giao quản trị / đợt-1)
+## 6. Tham số vận hành — ĐÃ CHỐT, và chỗ ở của chúng (2026-08-18)
 
-- `E_open`, `E_cut` — mốc cửa sổ đăng ký delegator (chưa chốt).
-- **N = 2** — số epoch giữ delegation tối thiểu (§1.5). Mặc định, đổi được.
-- `capOildrop` cho pot Delegator — mặc định không cap; bật nếu cần chống cá voi.
-- SetRoot cho SPO/CS drip per-epoch — chốt Cách A/B/C (§2).
-- Danh sách `excluded` ví self-dealing.
+**Chúng KHÔNG còn nằm trong mã.** Nguồn duy nhất là khối `params` của campaign record
+(`LaunchAPI/data/campaigns.json`, đợt `airdrop-v2`), sửa được qua
+`PATCH /admin/campaigns/:id` — tức sửa trên giao diện quản trị, không sửa mã rồi phát hành
+lại. `build_delegator_snapshot.ts --campaign airdrop-v2` đọc thẳng từ đó; cờ gõ tay vẫn đè
+được nhưng **in ra một dòng cảnh báo**, vì một lượt chạy lệch campaign record là một lượt
+chia tiền theo con số không ai duyệt.
+
+| Tham số | Giá trị | Ai chốt | Căn cứ |
+|---|---|---|---|
+| `e_open` | **654** | VeData (uỷ quyền) | epoch mở đo, sau mốc hạ tầng gần nhất còn đo được |
+| `e_cut` | **666** (`W` = 12) | VeData (uỷ quyền) | cửa sổ phải là QUÁ KHỨ lúc công bố — xem `sealed` bên dưới |
+| `n_min_epochs` | **2** | VeData (uỷ quyền) | nhỏ nhất phân biệt được *giữ suốt* với *đẹp đúng hôm chụp*; `N=1` = thuê stake một ngày |
+| `set_root_mode` | **`hai-hu-rieng`** (Cách B) | chủ nhân | §2 |
+| `cap_oildrop` | **`null` — KHÔNG trần, cả ba pot** | LAMP agent | xem ghi chú dưới |
+| `excluded_file` | `Airdrop/data/excluded-self.json` | LAMP agent (LUẬT); danh sách do người giữ bảng khoá điền | `Airdrop/data/excluded-self.md` |
+
+### `sealed` — cửa sổ đo KHÔNG được công bố trước khi nó đóng
+
+`e_open`/`e_cut` nằm trong `params.sealed`, và `publicCampaign()` **lược `sealed` khỏi mọi
+đường ra công khai** (GET public, SSE `/events` — vốn không có auth — và payload webhook).
+Lý do là chính lý do đã chọn `E_cut` lùi về quá khứ: công bố cửa sổ trước khi nó đóng là báo
+trước ngày cần đẹp sổ, ai cũng thuê stake đúng 12 epoch rồi rút, và đợt phát trả tiền cho
+đúng hành vi nó muốn chặn. Mở niêm = **một lượt sửa có chủ ý của quản trị** (chuyển hai
+trường lên `params.public`), không phải một phép so mốc thời gian tự chạy — cổng tự mở theo
+đồng hồ là cổng sẽ mở nhầm một lần nào đó.
+
+Kiểm: `LaunchAPI/tests/publicCampaign.check.ts` (`npm run check` trong `LaunchAPI/`).
+
+### Vì sao `cap_oildrop = null` ở CẢ BA pot — và vì sao đây là chỗ khác bảng của VeData
+
+Bảng VeData đề nghị *hạng 1–2 không trần · hạng 3 (CS) trần 1%*, với lý do **tư cách dự ở
+làn CS giả được rẻ**. Lý do đó **đã hết hiệu lực** sau khi làn CS được khai lại là
+stake-weighted (`cs_score.ts` → `splitCsPot`, `spo-cs.md §3.5`): trọng số CS ở điểm cân bằng bằng
+chính stake của người nhận, nên tư cách dự ở làn CS **tốn đúng bằng** hai làn kia. Tiền đề
+mất thì cái trần mất theo.
+
+Và đặt trần vào bất kỳ làn nào cũng **tạo ra** đúng thứ nó định chặn. Cả ba pot chia bằng
+`splitByStake` (∝ stake, largest-remainder). Không trần: tách một ví thành `n` ví giữ tổng
+stake không đổi ⇒ tổng phần nhận **không đổi**, mà chi phí giao dịch tăng ⇒ chia nhỏ bị trội
+tuyệt đối, tự nó chặn. Có trần `c`: một ví lớn nhận `min(phần, c)`, còn `n` ví nhận tới
+`n·c` ⇒ **cái trần đặt ra để chặn cá voi chính là thứ trả tiền cho việc tách ví.** Cùng đại
+số với nghịch lý quadratic funding.
+
+Mặc định `capOildrop = null` trong `cs_score.ts` (`splitSpoPot`, `splitCsPot`) ⇒ hai pot SPO/CS
+đã đúng chốt này sẵn. Pot Delegator thì **đọc `cap_oildrop` từ campaign record** và truyền
+thẳng vào `buildDelegatorEntitlements` (`build_delegator_snapshot.ts`) — đổi trần trên giao
+diện quản trị là đổi được phép chia, không phải sửa mã. Ghi ra thành quyết định có lý do để
+lần sau không ai bật trần vì thấy nó "an toàn hơn".

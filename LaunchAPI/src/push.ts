@@ -16,8 +16,22 @@ const GLOBAL_SIGNING_SECRET = process.env.LAUNCH_SIGNING_SECRET ?? "";
  *  campaign đi ra ngoài — payload webhook, SSE (`/events` KHÔNG có auth), và mọi
  *  GET public. MỘT bản cài đặt duy nhất: trước đây cùng phép lược này được viết
  *  tay 3 chỗ, sửa 1 chỗ là 2 chỗ kia còn rò. */
-export function publicCampaign<T extends { push_targets?: unknown }>(c: T): Omit<T, "push_targets"> {
+export function publicCampaign<
+  T extends { push_targets?: unknown; params?: { sealed?: unknown } | undefined },
+>(c: T): Omit<T, "push_targets"> {
   const { push_targets: _drop, ...rest } = c;
+  // `params.sealed` giữ cửa sổ đo `[e_open, e_cut)`. Lược ở ĐÂY — cùng một chỗ đã lược
+  // `push_targets` — vì đây là cửa duy nhất mọi campaign đi ra ngoài (GET public, SSE
+  // `/events` KHÔNG có auth, và payload webhook). Lược ở từng route thì thêm route là
+  // thêm một chỗ quên.
+  //
+  // Công bố cửa sổ đo TRƯỚC khi nó đóng = báo trước ngày cần đẹp sổ: thuê stake đúng
+  // 12 epoch rồi rút, nhận phần như người giữ thật. Cửa sổ chỉ có giá trị khi nó là
+  // QUÁ KHỨ đối với người đọc.
+  if (rest.params && typeof rest.params === "object" && "sealed" in rest.params) {
+    const { sealed: _sealed, ...paramsRest } = rest.params as { sealed?: unknown };
+    (rest as { params?: unknown }).params = paramsRest;
+  }
   return rest;
 }
 

@@ -3,7 +3,7 @@
 // + validation errors. CONTRACT v2 "Capped Drop".
 
 import { describe, it, expect } from "vitest";
-import { validatorToScriptHash, credentialToAddress, scriptHashToCredential, toUnit, Data } from "@lucid-evolution/lucid";
+import { validatorToScriptHash, credentialToAddress, scriptHashToCredential, mintingPolicyToId, toUnit, Data } from "@lucid-evolution/lucid";
 import type { UTxO, Validator } from "@lucid-evolution/lucid";
 
 import { buildClaimTx, assertClaimSolvency } from "../offchain/src/claimBuilder.js";
@@ -13,16 +13,20 @@ import {
   claimAccountDatumToCbor, beaconDatumToCbor, treasuryDatumToCbor,
   decodeTreasuryDatum, TREASURY_REDEEMER, grantEntitlementRedeemerToCbor,
 } from "../offchain/src/datum.js";
+import { accountNftName, mintAccountRedeemerToCbor } from "../offchain/src/accountNft.js";
 import {
   committeeThreshold, assertCommitteeShape, assertCommitteeSigners,
 } from "../offchain/src/committee.js";
 import { TREASURY_NFT_ASSET_NAME } from "../offchain/src/constants.js";
+import { applyValidator } from "../scripts/blueprint.js";
 import { lampOildrop } from "./helpers.js";
 
 // ── Mock Lucid tx-builder ──────────────────────────────────────────────
 interface Recorded {
   collectFrom: { utxos: UTxO[]; redeemer: string }[];
   attach:      Validator[];
+  attachMint:  Validator[];
+  mint:        { assets: Record<string, bigint>; redeemer: string }[];
   readFrom:    UTxO[][];
   payData:     { address: string; datum: string; assets: Record<string, bigint> }[];
   payAddr:     { address: string; assets: Record<string, bigint> }[];
@@ -32,11 +36,18 @@ interface Recorded {
 
 function mockLucid(walletAddress: string): { lucid: any; rec: Recorded } {
   const rec: Recorded = {
-    collectFrom: [], attach: [], readFrom: [], payData: [], payAddr: [], signers: [], validFrom: [],
+    collectFrom: [], attach: [], attachMint: [], mint: [], readFrom: [],
+    payData: [], payAddr: [], signers: [], validFrom: [],
   };
   const txb: any = {
     collectFrom(utxos: UTxO[], redeemer: string) { rec.collectFrom.push({ utxos, redeemer }); return txb; },
-    attach: { SpendingValidator(v: Validator) { rec.attach.push(v); return txb; } },
+    mintAssets(assets: Record<string, bigint>, redeemer: string) {
+      rec.mint.push({ assets, redeemer }); return txb;
+    },
+    attach: {
+      SpendingValidator(v: Validator) { rec.attach.push(v); return txb; },
+      MintingPolicy(v: Validator) { rec.attachMint.push(v); return txb; },
+    },
     readFrom(utxos: UTxO[]) { rec.readFrom.push(utxos); return txb; },
     pay: {
       ToAddressWithData(address: string, datum: { kind: string; value: string }, assets: Record<string, bigint>) {
@@ -61,6 +72,9 @@ function mockLucid(walletAddress: string): { lucid: any; rec: Recorded } {
 const FAKE_CLAIM:    Validator = { type: "PlutusV3", script: "49480100002221200101" };
 const FAKE_TREASURY: Validator = { type: "PlutusV3", script: "49480100002221200102" };
 const FAKE_BEACON:   Validator = { type: "PlutusV3", script: "49480100002221200103" };
+/** claim_account_nft đã apply (giả) — đường CREATE BẮT BUỘC có (C-ACC-1). */
+const FAKE_ACC_NFT:  Validator = { type: "PlutusV3", script: "49480100002221200104" };
+const accNft = { script: FAKE_ACC_NFT };
 
 const NETWORK = "Preview" as const;
 const OWNER   = "aabbccddeeff00112233445566778899aabbccddeeff001122334455";
@@ -110,6 +124,17 @@ describe("committeeThreshold ⌈2N/3⌉", () => {
 // `list.count(list.unique(committee), …)`). Off-chain đếm theo MỤC thì nó cho qua
 // đúng những bộ tham số mà on-chain từ chối — và committee/threshold là apply-param,
 // nên "cho qua" nghĩa là bake ra script hash không ai mở được.
+// Cổng APPLY-001 sống ở `scripts/blueprint.ts` — tách khỏi `config.ts` CHÍNH ĐỂ kiểm được
+// mà không cần .env. Nhưng bảng số-tham-số chỉ có dữ liệu sau khi `rawValidator()` nạp
+// plutus.json (artefact `aiken build`, gitignored), nên khi bảng RỖNG cổng phải fail-closed:
+// im lặng cho qua ở đó chính là lỗ mà `Genesis/scripts/03_mint_more.ts` vừa bị vá — tự đọc
+// blueprint, apply thẳng, `applyParamsToScript` trả policy id khác mà KHÔNG báo gì.
+describe("APPLY-002 — cổng apply-param fail-closed khi chưa nạp blueprint", () => {
+  it("từ chối apply thẳng compiledCode không đi qua rawValidator()", () => {
+    expect(() => applyValidator("590a1b" + "00".repeat(8), [1n])).toThrow(/APPLY-002/);
+  });
+});
+
 describe("assertCommitteeShape — cận bake vào script hash", () => {
   it("chặn keyhash trùng (on-chain đếm NGƯỜI, không đếm mục)", () => {
     expect(() => assertCommitteeShape(["c1", "c1", "c2"])).toThrow(/COMMITTEE-004/);
@@ -152,7 +177,7 @@ describe("buildClaimTx — CREATE path", () => {
     const res = await buildClaimTx({
       lucid, claimScript: FAKE_CLAIM, network: NETWORK,
       ownerPkh: OWNER, amount: lampOildrop(250n), currentEpoch: 5n,
-      committeeKeyHashes: COMMITTEE, treasury: trsyParam(0n),
+      committeeKeyHashes: COMMITTEE, treasury: trsyParam(0n), accountNft: accNft,
     });
     expect(res.mode).toBe("create");
     // CREATE: không spend ClaimAccount nào; treasury co-spend là input DUY NHẤT.
@@ -299,11 +324,14 @@ describe("buildRedeemTx — vested = min(E, D·dpe·Δ)", () => {
       }),
     };
   }
+  // Fixture PHẢI mang TRSY: claim_account.ak:138-148 (C-SOLV-3/4/5) đòi đúng 1 input mang TRSY ở
+  // MỌI lần redeem. Bản cũ không mang NFT nào ⇒ 8 ca redeem chạy trên hình dạng chuỗi TỪ CHỐI, và
+  // chính vì thế đường redeem chưa từng bị ép kiểm — bài test xanh đang GIỮ lỗ, không phải gác nó.
   function treasuryUtxo(lamp: bigint, extra: Record<string, bigint> = {}, cum = lampOildrop(1000n)): UTxO {
     return {
       txHash: "22".repeat(32), outputIndex: 0,
       address: scriptAddr(FAKE_TREASURY),
-      assets: { lovelace: 5_000_000n, [LAMP_UNIT]: lamp, ...extra },
+      assets: { lovelace: 5_000_000n, [TRSY_UNIT]: 1n, [LAMP_UNIT]: lamp, ...extra },
       datum: treasuryDatumToCbor({ committee_hash: "ee".repeat(28), outstanding_entitlement: cum }),
     };
   }
@@ -318,7 +346,7 @@ describe("buildRedeemTx — vested = min(E, D·dpe·Δ)", () => {
 
   const base = {
     network: NETWORK, claimScript: FAKE_CLAIM, treasuryScript: FAKE_TREASURY,
-    lampPolicyId: LAMP_POLICY,
+    lampPolicyId: LAMP_POLICY, treasuryNftPolicy: TRSY_POLICY,
   };
 
   it("releases vested−redeemed, preserves treasury dust + committee_hash, sets redeemed+=amount", async () => {
@@ -396,6 +424,50 @@ describe("buildRedeemTx — vested = min(E, D·dpe·Δ)", () => {
       dropBeaconUtxo: dropBeaconUtxo(D),
     });
     expect(rec.validFrom).toEqual([Number(2n * 86_400_000n)]);
+  });
+
+  // REDEEM-013 — đối xứng với CLAIM-021 ở đường claim. Địa chỉ kho KHÔNG phải một UTxO: A-DEST hạ
+  // cánh không datum và `Refill` (treasury.ak:177) tồn tại chính vì kho sẽ có nhiều UTxO. Chọn theo
+  // SỐ DƯ LAMP thì có ngày vớ trúng cái không mang TRSY ⇒ validator từ chối ⇒ mất collateral.
+  it("REDEEM-013: từ chối treasury UTxO KHÔNG mang NFT TRSY (dù thừa LAMP)", async () => {
+    const { lucid } = mockLucid("addr_user");
+    const noTrsy: UTxO = {
+      txHash: "22".repeat(32), outputIndex: 1,
+      address: scriptAddr(FAKE_TREASURY),
+      assets: { lovelace: 5_000_000n, [LAMP_UNIT]: lampOildrop(999_999n) }, // thừa LAMP, thiếu TRSY
+      datum: treasuryDatumToCbor({
+        committee_hash: "ee".repeat(28), outstanding_entitlement: lampOildrop(1000n),
+      }),
+    };
+    await expect(buildRedeemTx({
+      ...base, lucid, currentEpoch: 3n,
+      claimAccountUtxo: claimUtxo(lampOildrop(100n)),
+      treasuryUtxo: noTrsy,
+      dropBeaconUtxo: dropBeaconUtxo(D),
+    })).rejects.toThrow(/REDEEM-013/);
+  });
+
+  it("REDEEM-013: từ chối cả khi kho mang 2 TRSY (không mơ hồ carrier)", async () => {
+    const { lucid } = mockLucid("addr_user");
+    await expect(buildRedeemTx({
+      ...base, lucid, currentEpoch: 3n,
+      claimAccountUtxo: claimUtxo(lampOildrop(100n)),
+      treasuryUtxo: treasuryUtxo(lampOildrop(1000n), { [TRSY_UNIT]: 2n }),
+      dropBeaconUtxo: dropBeaconUtxo(D),
+    })).rejects.toThrow(/REDEEM-013/);
+  });
+
+  // REDEEM-014 — `treasury.ak:92-95` ép nợ_out == nợ_in − released VÀ nợ_out ≥ 0. Builder
+  // trước bản này trừ thẳng, dựng ra tx sổ cái ÂM: CBOR hợp lệ, chuỗi từ chối, mất collateral.
+  it("REDEEM-014: từ chối khi sổ cái nợ kho < amount (nợ_out sẽ âm)", async () => {
+    const { lucid } = mockLucid("addr_user");
+    // t=3 → vested=min(250, 100·1·3)=250, redeemed=100 → amount=150 LAMP; sổ cái chỉ 10.
+    await expect(buildRedeemTx({
+      ...base, lucid, currentEpoch: 3n,
+      claimAccountUtxo: claimUtxo(lampOildrop(100n)),
+      treasuryUtxo: treasuryUtxo(lampOildrop(1000n), {}, lampOildrop(10n)),
+      dropBeaconUtxo: dropBeaconUtxo(D),
+    })).rejects.toThrow(/REDEEM-014/);
   });
 
   it("rejects double-redeem (redeemable ≤ 0, đã redeem hết vested)", async () => {
@@ -488,7 +560,7 @@ describe("buildClaimTx — solvency guard tích hợp", () => {
     await expect(buildClaimTx({
       lucid, claimScript: FAKE_CLAIM, network: NETWORK,
       ownerPkh: OWNER, amount: lampOildrop(600n), currentEpoch: 5n,
-      committeeKeyHashes: COMMITTEE, treasury: trsyParam(0n),
+      committeeKeyHashes: COMMITTEE, treasury: trsyParam(0n), accountNft: accNft,
       solvency: { treasuryLamp: lampOildrop(1000n), otherOutstanding: lampOildrop(500n) },
     })).rejects.toThrow(/CLAIM-010/);  // 500 + 600 = 1100 > 1000
   });
@@ -498,7 +570,7 @@ describe("buildClaimTx — solvency guard tích hợp", () => {
     const res = await buildClaimTx({
       lucid, claimScript: FAKE_CLAIM, network: NETWORK,
       ownerPkh: OWNER, amount: lampOildrop(400n), currentEpoch: 5n,
-      committeeKeyHashes: COMMITTEE, treasury: trsyParam(0n),
+      committeeKeyHashes: COMMITTEE, treasury: trsyParam(0n), accountNft: accNft,
       solvency: { treasuryLamp: lampOildrop(1000n), otherOutstanding: lampOildrop(500n) },
     });
     expect(res.mode).toBe("create");         // 500 + 400 = 900 ≤ 1000
@@ -523,7 +595,7 @@ describe("buildClaimTx — solvency guard tích hợp", () => {
     const res = await buildClaimTx({
       lucid, claimScript: FAKE_CLAIM, network: NETWORK,
       ownerPkh: OWNER, amount: lampOildrop(999999n), currentEpoch: 5n,
-      committeeKeyHashes: COMMITTEE, treasury: trsyParam(0n),
+      committeeKeyHashes: COMMITTEE, treasury: trsyParam(0n), accountNft: accNft,
     });
     expect(res.mode).toBe("create");
     expect(rec.payData.filter(x => x.assets[TRSY_UNIT] !== 1n)).toHaveLength(1);
@@ -537,7 +609,7 @@ describe("buildClaimTx — treasury co-spend", () => {
     await buildClaimTx({
       lucid, claimScript: FAKE_CLAIM, network: NETWORK,
       ownerPkh: OWNER, amount: lampOildrop(400n), currentEpoch: 5n,
-      committeeKeyHashes: COMMITTEE, treasury: trsyParam(lampOildrop(100n)),
+      committeeKeyHashes: COMMITTEE, treasury: trsyParam(lampOildrop(100n)), accountNft: accNft,
     });
     const tre = rec.collectFrom.find(c => c.utxos[0]?.assets[TRSY_UNIT] === 1n);
     expect(tre).toBeDefined();
@@ -550,7 +622,7 @@ describe("buildClaimTx — treasury co-spend", () => {
     const res = await buildClaimTx({
       lucid, claimScript: FAKE_CLAIM, network: NETWORK,
       ownerPkh: OWNER, amount: lampOildrop(400n), currentEpoch: 5n,
-      committeeKeyHashes: COMMITTEE, treasury: trsyParam(lampOildrop(100n)),
+      committeeKeyHashes: COMMITTEE, treasury: trsyParam(lampOildrop(100n)), accountNft: accNft,
     });
     expect(res.newTreasuryDatum.outstanding_entitlement).toBe(lampOildrop(500n));
     const treOut = rec.payData.find(p => p.assets[TRSY_UNIT] === 1n)!;
@@ -565,8 +637,112 @@ describe("buildClaimTx — treasury co-spend", () => {
     await expect(buildClaimTx({
       lucid, claimScript: FAKE_CLAIM, network: NETWORK,
       ownerPkh: OWNER, amount: lampOildrop(400n), currentEpoch: 5n,
-      committeeKeyHashes: COMMITTEE,
+      committeeKeyHashes: COMMITTEE, accountNft: accNft,
       treasury: { utxo: noNft, script: FAKE_TREASURY, nftPolicy: TRSY_POLICY },
     })).rejects.toThrow(/CLAIM-021/);
+  });
+});
+
+// ── C-ACC-1: CREATE phải đúc NFT tài khoản đúng tên ────────────────────
+// treasury.GrantEntitlement đòi tx đúc ĐÚNG 1 NFT dưới account_nft_policy, tên
+// blake2b_256(owner), và NFT đó hạ cánh trên chính ClaimAccount output. Off-chain
+// dựng tx thiếu bước này thì tx chắc chắn fail lúc submit → chặn ngay ở builder.
+describe("buildClaimTx — CREATE đúc account NFT (C-ACC-1)", () => {
+  it("đúc ĐÚNG 1 NFT tên blake2b_256(owner) dưới policy suy từ script", async () => {
+    const { lucid, rec } = mockLucid("addr_wallet");
+    const res = await buildClaimTx({
+      lucid, claimScript: FAKE_CLAIM, network: NETWORK,
+      ownerPkh: OWNER, amount: lampOildrop(250n), currentEpoch: 5n,
+      committeeKeyHashes: COMMITTEE, treasury: trsyParam(0n), accountNft: accNft,
+    });
+
+    const pid  = mintingPolicyToId(FAKE_ACC_NFT);
+    const name = accountNftName(OWNER);
+    const unit = toUnit(pid, name);
+
+    // tên = blake2b-256 của owner pkh (32 byte = 64 hex) — KHÔNG phải chính pkh.
+    expect(name).toHaveLength(64);
+    expect(name).not.toBe(OWNER);
+
+    // đúng 1 lần mint, đúng 1 asset, đúng 1 đơn vị.
+    expect(rec.mint).toHaveLength(1);
+    expect(rec.mint[0]!.assets).toEqual({ [unit]: 1n });
+    expect(rec.mint[0]!.redeemer).toBe(mintAccountRedeemerToCbor());
+
+    // minting policy phải được attach, nếu không tx không có script để chạy.
+    expect(rec.attachMint).toContain(FAKE_ACC_NFT);
+
+    // NFT hạ cánh trên chính ClaimAccount output (A-ACC-4), không đi chỗ khác.
+    const accOut = rec.payData.find(p => p.assets[TRSY_UNIT] !== 1n)!;
+    expect(accOut.address).toBe(scriptAddr(FAKE_CLAIM));
+    expect(accOut.assets[unit]).toBe(1n);
+    expect(res.accountNftUnit).toBe(unit);
+  });
+
+  it("CLAIM-030: từ chối CREATE khi thiếu accountNft", async () => {
+    const { lucid } = mockLucid("addr_wallet");
+    await expect(buildClaimTx({
+      lucid, claimScript: FAKE_CLAIM, network: NETWORK,
+      ownerPkh: OWNER, amount: lampOildrop(250n), currentEpoch: 5n,
+      committeeKeyHashes: COMMITTEE, treasury: trsyParam(0n),
+    })).rejects.toThrow(/CLAIM-030/);
+  });
+
+  it("CLAIM-031: từ chối khi policyId khai báo lệch policy id suy từ script", async () => {
+    const { lucid } = mockLucid("addr_wallet");
+    await expect(buildClaimTx({
+      lucid, claimScript: FAKE_CLAIM, network: NETWORK,
+      ownerPkh: OWNER, amount: lampOildrop(250n), currentEpoch: 5n,
+      committeeKeyHashes: COMMITTEE, treasury: trsyParam(0n),
+      accountNft: { script: FAKE_ACC_NFT, policyId: "99".repeat(28) },
+    })).rejects.toThrow(/CLAIM-031/);
+  });
+
+  it("UPDATE KHÔNG đúc gì (claim_account ép is_zero(tx.mint))", async () => {
+    const { lucid, rec } = mockLucid("addr_wallet");
+    const prev = { owner: OWNER, entitlement: lampOildrop(100n), redeemed: 0n, start_epoch: 3n, drops_per_epoch: 1n };
+    await buildClaimTx({
+      lucid, claimScript: FAKE_CLAIM, network: NETWORK,
+      ownerPkh: OWNER, amount: lampOildrop(60n), currentEpoch: 9n,
+      claimAccountUtxo: {
+        txHash: "ab".repeat(32), outputIndex: 0, address: scriptAddr(FAKE_CLAIM),
+        assets: { lovelace: 2_000_000n }, datum: claimAccountDatumToCbor(prev),
+      },
+      committeeKeyHashes: COMMITTEE, treasury: trsyParam(0n),
+    });
+    expect(rec.mint).toHaveLength(0);
+    expect(rec.attachMint).toHaveLength(0);
+  });
+});
+
+// ── Vector đối chiếu blake2b_256 — NGOÀI hệ, không tự soi mình ────────────────
+//
+// Vì sao cần: mọi kiểm tra khác về tên NFT account đều gọi `accountNftName` ở CẢ HAI vế,
+// nên chúng xanh kể cả khi hàm băm sai loại (blake2b-512 cắt ngắn, sha256, có personal…).
+// Tên sai ⇒ `claim_account` (C-ACC-0) không tìm thấy NFT ⇒ account KHÔNG BAO GIỜ spend
+// được, mà LAMP là hệ KHÔNG BURN: số khoá trong đó chết vĩnh viễn.
+//
+// Giá trị kỳ vọng dưới đây KHÔNG chép từ mã off-chain. Nó là output thật của chính Aiken:
+//   test vector_khop_python() {
+//     blake2b_256(#"0000…00ab") == #"f9efbd6f…2127"
+//   }                                  → pass, mem 805 cpu 376479 (aiken check, 2026-08-18)
+// và trùng byte với `hashlib.blake2b(..., digest_size=32)` của Python — hai bản hiện thực
+// độc lập với @noble/hashes mà off-chain đang dùng.
+describe("accountNftName — vector đối chiếu Aiken blake2b_256", () => {
+  it("khớp ĐÚNG byte digest mà validator on-chain tính ra", () => {
+    expect(accountNftName("00".repeat(27) + "ab")).toBe(
+      "f9efbd6f7704806f47919961cd591dd70b0be92b10f9d44f9c2f561348fa2127",
+    );
+  });
+
+  it("chấp nhận tiền tố 0x và chữ HOA, ra cùng một tên", () => {
+    const want = "f9efbd6f7704806f47919961cd591dd70b0be92b10f9d44f9c2f561348fa2127";
+    expect(accountNftName("0x" + "00".repeat(27) + "AB")).toBe(want);
+  });
+
+  it("từ chối hex hỏng thay vì băm bừa ra một tên không spend được", () => {
+    expect(() => accountNftName("xyz")).toThrow(/ACCNFT-001/);
+    expect(() => accountNftName("abc")).toThrow(/ACCNFT-001/);
+    expect(() => accountNftName("")).toThrow(/ACCNFT-001/);
   });
 });
