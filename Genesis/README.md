@@ -94,7 +94,7 @@ Genesis/
 
 ```bash
 cd Genesis/onchain && aiken check      # 71 pass / 0 fail (đo 2026-07-29)
-cd Genesis/offchain && npm install && npx vitest run   # 41 pass / 0 fail (đo 2026-07-29)
+cd Genesis/offchain && npm install && npx vitest run   # 71 pass / 0 fail (đo 2026-08-16)
 ```
 
 ## Trạng thái thật — đọc trước khi dùng

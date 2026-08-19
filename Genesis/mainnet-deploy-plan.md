@@ -52,7 +52,26 @@ bước mint có giá trị, và cũng là căn cứ để chốt lại `Papers/
 10. **Backend (Long)**: merge endpoint `mint-lamp` + `submit-tx` + `claim/vesting-release`.
 
 ## C. Diễn tập Preprod (GATE — phải xanh mới lên mainnet)
-11. Chạy **trọn pipeline canonical** trên Preprod: deploy (thread + lamp_mint 12-param + registry NFT + supply_state + treasury.ak kho + kho-NFT) → mint DistributionVest → kho → claim entitlement → post beacon → redeem → treasury nhả tLAMP về ví. Verify byte-perfect với thiết kế mainnet. **(đang dựng)**
+11. Chạy **trọn pipeline canonical** trên Preprod: deploy (thread + lamp_mint 12-param + registry NFT + supply_state + treasury.ak kho + kho-NFT) → mint DistributionVest → kho → claim entitlement → post beacon → redeem → treasury nhả tLAMP về ví. **(đang dựng)**
+
+> **GATE này chứng minh cái gì, và KHÔNG chứng minh cái gì.**
+>
+> Diễn tập xanh chứng minh: các validator ăn khớp nhau, datum/redeemer đúng dạng, thứ tự
+> tham số dựng ra script chạy được, và pipeline đi hết từ mint tới nhả token.
+>
+> Diễn tập xanh **KHÔNG** chứng minh tính DUY NHẤT của thread NFT — thứ neo toàn bộ định danh
+> SupplyState. Lý do cụ thể, không phải lo xa: kịch bản diễn tập **không dùng** `thread_nft.ak`.
+> `Genesis/scripts/canonical_mint.ts:44` và `canonical_mint_resume.ts:37` dựng
+> `scriptFromNative({ type: "sig", keyHash: pkh })` rồi lấy `nPid` đó làm policy cho CẢ BỐN
+> mốc SUPPLY/REG/KHO/MET (`canonical_mint.ts:48-50`). Policy native-sig **mint lại được bao
+> nhiêu lần tuỳ ý** bằng chính khoá ví đó. `thread_nft.ak:20-26` mới là one-shot thật: nó đòi
+> tiêu đúng `genesis_ref` — một OutputReference chỉ tồn tại một lần trong lịch sử chain.
+>
+> Hệ quả: một lượt Preprod xanh nói được "đường ống thông", không nói được "chỉ có một
+> SupplyState". Trước khi lên mainnet phải có thêm bằng chứng RIÊNG cho tính one-shot: chạy
+> pipeline với `thread_nft.ak` áp `genesis_ref` thật, rồi thử mint lượt thứ hai bằng cùng
+> policy đó và **xác nhận nó bị chặn**. Chưa có phép thử đó thì mục C chưa xanh, dù mọi bước
+> khác đã chạy.
 
 ## D. Deploy mainnet (CHỈ sau A–C xanh)
 12. TAAD anchor OrgDID **Active trên mainnet** (PhoenixKey-Validator/Core).

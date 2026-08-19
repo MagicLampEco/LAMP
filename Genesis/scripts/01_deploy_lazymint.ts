@@ -34,6 +34,9 @@ import {
   supplyStateToCbor, supplyStateRedeemerToCbor, mintRouteToCbor, threadNftRedeemerToCbor,
 } from "../offchain/src/datum.js";
 import { genesisSupplyState, applyMint } from "../offchain/src/supplyState.js";
+import {
+  requiredHashParam, requiredHexParam, CONSEQUENCE_METER, CONSEQUENCE_DIST_DEST,
+} from "./_guards.js";
 
 // ⚠ SCRIPT NÀY ĐÃ LỖI THỜI — ĐỪNG DÙNG ĐỂ DEPLOY (ghi 2026-08-05).
 //
@@ -56,6 +59,7 @@ import { genesisSupplyState, applyMint } from "../offchain/src/supplyState.js";
 // Giữ tệp lại để truy vết đường v1, KHÔNG xoá vội — nhưng đừng sửa nó thành v2: việc đó
 // đã có `canonical_mint.ts` làm rồi.
 
+const GUARD_IO = { env: process.env, warn: (m: string) => console.warn(m) };
 const TEST_MINT_OILDROP = BigInt(process.env.TEST_MINT_OILDROP ?? "100000000"); // 100 tLAMP
 
 function encodeOutputRef(txHash: string, index: number): Constr<Data> {
@@ -95,19 +99,27 @@ async function main(): Promise<void> {
   // policyId KHÁC nhau giữa tLAMP và LAMP (2 token độc lập, đúng).
   // dist_authority stub MVP = ví deploy (1-of-1 self-test đường DistributionVest).
   // ĐƯỜNG ReserveDraw KHÔNG còn chữ ký: gate = spend ReserveMeter NFT (permissionless).
+  // ── CỔNG GÁC apply-param (xem `_guards.ts`) ─────────────────────────────────
+  // Cả BA tham số dưới là apply-param: chúng nằm TRONG policy-id, sửa sau khi gửi là đổi
+  // policy-id = token khác. Trước đây chỉ `DIST_DEST` có cổng (thêm ở `ddfa2c6`), còn
+  // `METER_NFT_POLICY`/`METER_NFT_NAME` ngay bên cạnh thì không — bất đối xứng đó đi thẳng
+  // vào bản mồi mainnet: `Genesis/offchain/src/deployed.ts:92` ghi meter_nft_policy = 28 byte 0,
+  // nhánh ReserveDraw chết vĩnh viễn (deployed.ts:118-119). Nay cả ba đi chung một cổng.
+  //
   // meter_nft_policy/name = ReserveMeter thread NFT (mint one-shot Ở MODULE Reserve trước
-  // — EXEC M2). Tx B dưới chỉ test DistributionVest nên không cần meter thật; nhận từ env,
-  // mặc định placeholder để harness typecheck. Deploy thật: điền METER_NFT_POLICY/NAME.
-  const meterPid = process.env.METER_NFT_POLICY ?? "00".repeat(28);
-  const meterNm = process.env.METER_NFT_NAME ?? "4d4554"; // "MET"
+  // — EXEC M2). Tx B dưới chỉ test DistributionVest nên không cần meter thật; ở chế độ
+  // SUBMIT=false vẫn cho placeholder để dựng tx/typecheck.
+  const meterPid = requiredHashParam("METER_NFT_POLICY", {
+    ...GUARD_IO, submit: SUBMIT, consequence: CONSEQUENCE_METER,
+  }).value;
+  const meterNm = requiredHexParam("METER_NFT_NAME", {
+    ...GUARD_IO, submit: SUBMIT, placeholder: "4d4554" /* "MET" */, consequence: CONSEQUENCE_METER,
+  }).value;
   // dist_dest = script hash KHO Distribution treasury. A-DEST: DistributionVest BẮT BUỘC
-  // rót toàn bộ LAMP vào đây (authority không mint thẳng về ví). Deploy THẬT: PHẢI điền
-  // DIST_DEST = hash treasury thật; placeholder 00*28 chỉ để harness typecheck (KHÔNG mint thật).
-  // GUARD (audit TRUNG-2): chặn submit khi chưa set → tránh kẹt LAMP vào Script(00*28) bất khả spend.
-  const distDest = process.env.DIST_DEST ?? "00".repeat(28);
-  if (SUBMIT && !process.env.DIST_DEST) {
-    throw new Error("DIST_DEST chưa set: A-DEST sẽ ép LAMP vào Script(00*28) KẸT vĩnh viễn (no-burn). Set DIST_DEST=hash kho treasury trước khi SUBMIT.");
-  }
+  // rót toàn bộ LAMP vào đây (authority không mint thẳng về ví).
+  const distDest = requiredHashParam("DIST_DEST", {
+    ...GUARD_IO, submit: SUBMIT, consequence: CONSEQUENCE_DIST_DEST,
+  }).value;
   const distDestAddr = credentialToAddress(NETWORK, scriptHashToCredential(distDest));
   const tlampRaw = await rawValidator("lamp_mint.lamp_mint.mint");
   const tlampPolicy: MintingPolicy = applyPolicy(tlampRaw.compiledCode, [
