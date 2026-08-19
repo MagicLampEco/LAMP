@@ -35,8 +35,18 @@ describe("buildDelegatorEntitlements ∝accStake", () => {
     expect(amt.addr_big).toBe(600_000n);
   });
 
-  it("budget mặc định = 100M LAMP oildrop, vẫn bảo toàn", () => {
-    const r = buildDelegatorEntitlements(regs);
+  it("budget PHẢI truyền tường minh — không còn default 100M LAMP", () => {
+    // Hàm này là hàm chia ∝stake DUY NHẤT trong repo, nên pot khác (SPO 5M…) sẽ tái dùng
+    // nó. Default im lặng về pot Delegator nghĩa là quên truyền budget ⇒ cây chia 100M thay
+    // vì 5M: tổng vẫn bảo toàn, mọi proof vẫn verify, test vẫn xanh — nhưng pool SPO chỉ nạp
+    // 5M nên ~95% claimer fail VĨNH VIỄN. Chỉ trình biên dịch bắt được ca này.
+    // @ts-expect-error — thiếu budgetOildrop là LỖI BIÊN DỊCH (hàng rào chính, thấy ngay
+    // trong IDE). Runtime bên dưới là lưới thứ hai cho đường JS thuần: không còn default
+    // thì destructure `opts` undefined ném ngay, thay vì lặng lẽ chia 100M.
+    expect(() => buildDelegatorEntitlements(regs)).toThrow();
+
+    // Truyền tường minh đúng pot Delegator thì vẫn bảo toàn như cũ.
+    const r = buildDelegatorEntitlements(regs, { budgetOildrop: DELEGATOR_TOTAL_OILDROP });
     const total = r.snapshot.reduce((s, e) => s + e.amount, 0n);
     expect(total).toBe(DELEGATOR_TOTAL_OILDROP);
     expect(r.leftover).toBe(0n);

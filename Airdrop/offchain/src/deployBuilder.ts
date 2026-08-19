@@ -30,6 +30,7 @@ import {
 
 import { airdropPoolToCbor, mintPoolRedeemerToCbor } from "./datum.js";
 import { POOL_NFT_NAME } from "./constants.js";
+import { totalOildrop } from "./snapshotTool.js";
 import type { AirdropPool, MerkleTree } from "./types.js";
 
 /** Asset name SETUP authority token = "ASETUP" (#"415345545550"). Khớp ledger.ak. */
@@ -56,7 +57,8 @@ export interface DeployParams {
 
   lamp_policy: string;
   lamp_name: string;
-  /** Tổng LAMP (oildrop) nạp vào pool = tổng snapshot. */
+  /** Tổng LAMP nạp vào pool, đơn vị **OILDROP** (tên "Lamp" là lịch sử — value on-chain
+   *  của LAMP luôn tính bằng oildrop). PHẢI == totalOildrop(tree.entries) — ép ở DEPLOY-001. */
   poolLampAmount: bigint;
 
   /** min-ADA kèm POOL UTxO. Mặc định 2 ADA. */
@@ -81,6 +83,22 @@ export async function buildDeployTx(params: DeployParams): Promise<DeployResult>
     lucid, genesisUtxo, airdropNftPolicy, airdropNftPolicyId,
     poolAddress, pool, tree, lamp_policy, lamp_name, poolLampAmount,
   } = params;
+
+  // DEPLOY-001 — kho pool PHẢI khớp ĐÚNG tổng cây. Đây là điểm hội tụ duy nhất của cả
+  // `tree` lẫn `poolLampAmount`, nên guard đứng ở đây phủ mọi đường deploy.
+  // Cả hai vế đều là OILDROP: `poolLampAmount` đi thẳng vào value LAMP của POOL UTxO
+  // (dòng `[lampUnit]: poolLampAmount` dưới) và `totalOildrop` cộng `entry.amount` mà
+  // parseSnapshot đã quy về oildrop — cùng đơn vị, so trực tiếp, không quy đổi.
+  const treeTotal = totalOildrop(tree.entries);
+  if (poolLampAmount !== treeTotal) {
+    throw new Error(
+      `DEPLOY-001: pool nạp ${poolLampAmount} oildrop nhưng cây Merkle tổng ${treeTotal} ` +
+      `oildrop (lệch ${poolLampAmount - treeTotal}). THIẾU ⇒ những claimer CUỐI fail VĨNH ` +
+      `VIỄN: airdrop_pool nhánh Claim ép pool_out == pool_in − amount, kho cạn thì không tx ` +
+      `nào thoả được, mà slot NFT đã đúc rồi. THỪA ⇒ phần dư kẹt trong pool tới hạn Sweep ` +
+      `rồi về treasury. Nạp đúng totalOildrop(tree.entries).`,
+    );
+  }
 
   const poolLovelace = params.poolLovelace ?? 2_000_000n;
   const slotLovelace = params.slotLovelace ?? 2_000_000n;
