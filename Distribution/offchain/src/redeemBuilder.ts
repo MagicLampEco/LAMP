@@ -40,6 +40,7 @@ import {
   decodeTreasuryDatum, treasuryDatumToCbor, treasuryRedeemerToCbor,
 } from "./datum.js";
 import { vested } from "./vested.js";
+import { TREASURY_NFT_ASSET_NAME } from "./constants.js";
 
 const DEFAULT_LAMP_ASSET_NAME = "744c414d50"; // "tLAMP" — canonical (khớp Genesis/Faucet)
 
@@ -78,6 +79,17 @@ export interface RedeemParams {
    * Bỏ trống → KHÔNG set (chỉ unit test off-chain; live sẽ fail get_epoch).
    */
   validFromMs?:     bigint;
+
+  /**
+   * Policy của NFT "TRSY" — BẮT BUỘC, không có mặc định.
+   * `claim_account.ak:138-148` (C-SOLV-3/4/5) đòi `find_treasury_in` thấy ĐÚNG MỘT input mang
+   * TRSY. Chọn nhầm UTxO ở địa chỉ kho ⇒ validator từ chối ⇒ MẤT COLLATERAL. Rủi ro đó TĂNG theo
+   * thời gian: `Refill` (`treasury.ak:177`) tồn tại chính vì địa chỉ kho sẽ có nhiều UTxO (A-DEST
+   * hạ cánh không datum). Để tuỳ chọn thì cổng tắt theo mặc định — đúng lớp lỗi "cổng gác bất
+   * đối xứng" đã trả giá ở METER_NFT_POLICY. Vậy nên BẮT BUỘC.
+   */
+  treasuryNftPolicy:    string;
+  treasuryNftAssetName?: string;
 
   /** LAMP policy + asset-name. */
   lampPolicyId:   string;
@@ -132,6 +144,23 @@ export async function buildRedeemTx(params: RedeemParams): Promise<RedeemResult>
 
   // ── Decode Treasury datum + đảm bảo đủ LAMP (C-TRE-1) ──────────────
   if (!treasuryUtxo.datum) throw new Error("REDEEM-011: treasuryUtxo has no inline datum");
+
+  // Authenticity: treasury UTxO PHẢI mang đúng 1 NFT "TRSY" (C-SOLV-3/4/5, claim_account.ak:138-148).
+  // Đối xứng với CLAIM-021 ở claimBuilder — trước bản này đường redeem KHÔNG có phép kiểm nào,
+  // nên mọi lỗi chọn nhầm kho chỉ lộ ra khi chuỗi từ chối, tức sau khi đã mất collateral.
+  {
+    const nftUnit = toUnit(
+      params.treasuryNftPolicy, params.treasuryNftAssetName ?? TREASURY_NFT_ASSET_NAME,
+    );
+    const nftQty = treasuryUtxo.assets[nftUnit] ?? 0n;
+    if (nftQty !== 1n) {
+      throw new Error(
+        `REDEEM-013: treasury UTxO phải giữ đúng 1 NFT authenticity (${nftUnit}); got ${nftQty}. ` +
+        `Địa chỉ kho có thể có nhiều UTxO — chọn đúng cái mang TRSY, đừng chọn theo số dư LAMP.`,
+      );
+    }
+  }
+
   const treasury: TreasuryDatum = decodeTreasuryDatum(Data.from(treasuryUtxo.datum));
   const treasuryLamp = treasuryUtxo.assets[lampUnit] ?? 0n;
   if (treasuryLamp < amount) {
@@ -162,6 +191,18 @@ export async function buildRedeemTx(params: RedeemParams): Promise<RedeemResult>
   // Treasury': committee_hash bảo toàn (C-TRE-2); sổ cái nợ GIẢM ĐÚNG `amount` cùng nhịp
   // với pool (C-SOLV-3). Redeem = TRẢ NỢ, nên cả hai vế đi cặp — nếu chỉ pool giảm mà sổ
   // cái đứng yên thì `nợ ≤ pool` siết dần tới bế tắc grant (xem đầu `treasury.ak`).
+  // `treasury.ak:92-95` ép `out.outstanding_entitlement == in − released` VÀ `>= 0`. Sổ cái
+  // thấp hơn amount nghĩa là nó đã lệch với các account đang mở (kho bị genesis/Refill sai,
+  // hoặc chọn nhầm UTxO kho của deployment khác). Không chặn ở đây thì builder vẫn dựng ra
+  // tx với sổ cái ÂM — hợp lệ về CBOR, chắc chắn bị chuỗi từ chối, MẤT COLLATERAL.
+  if (treasury.outstanding_entitlement < amount) {
+    throw new Error(
+      `REDEEM-014: sổ cái nợ kho = ${treasury.outstanding_entitlement} oildrop < amount ` +
+      `${amount}. Redeem là TRẢ NỢ nên nợ phải giảm đúng amount, mà treasury.ak ép nợ ≥ 0 ` +
+      `⇒ tx này chắc chắn fail. Kho đang lệch sổ (sai UTxO kho, hay genesis/Refill sai) — ` +
+      `soát lại trước khi submit.`,
+    );
+  }
   const newTreasuryDatum: TreasuryDatum = {
     committee_hash:         treasury.committee_hash,
     outstanding_entitlement: treasury.outstanding_entitlement - amount,

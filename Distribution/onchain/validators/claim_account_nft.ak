@@ -190,6 +190,17 @@ fn an_tx(
   }
 }
 
+// (a′) VECTOR ĐỐI CHIẾU OFF-CHAIN — neo `accountNftName` (offchain/src/accountNft.ts)
+//
+// Mọi test khác ở cả hai vế gọi hàm băm của CHÍNH vế mình, nên chúng vẫn xanh khi off-chain
+// dùng nhầm blake2b-512-cắt-ngắn / sha256 / có personal. Tên lệch một bit ⇒ C-ACC-0 không
+// thấy NFT ⇒ tài khoản KHÔNG BAO GIỜ spend được, mà LAMP không burn được: chết vĩnh viễn.
+// Cùng vai trò `leaf_hash_xcheck_offchain` với Merkle — hằng số này phải trùng byte với
+// test "accountNftName — vector đối chiếu Aiken blake2b_256" ở tests/builders.test.ts.
+test account_nft_name_xcheck_offchain() {
+  blake2b_256(#"000000000000000000000000000000000000000000000000000000ab") == #"f9efbd6f7704806f47919961cd591dd70b0be92b10f9d44f9c2f561348fa2127"
+}
+
 // (b) mint tài khoản đúng luật → PASS
 test acct_nft_mint_happy() {
   let name = blake2b_256(an_owner)

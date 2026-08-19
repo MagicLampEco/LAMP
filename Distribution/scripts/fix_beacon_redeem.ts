@@ -8,7 +8,7 @@ import {
 import { readFile } from "node:fs/promises";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { NETWORK, BLOCKFROST_URL, BLOCKFROST_KEY, makeLucid, walletPkh, explorerTx, awaitTx, tipPosixMs } from "./config.js";
+import { NETWORK, BLOCKFROST_URL, BLOCKFROST_KEY, makeLucid, walletPkh, explorerTx, awaitTx, tipPosixMs, MS_PER_EPOCH, TREASURY_NFT_ASSET_NAME } from "./config.js";
 import { beaconDatumToCbor, decodeClaimAccountDatum } from "../offchain/src/datum.js";
 import { buildRedeemTx } from "../offchain/src/redeemBuilder.js";
 
@@ -16,7 +16,11 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const SUPPLY_NAME = "535550504c59", TLAMP_NAME = "744c414d50", TOKEN_TAG = "4c414d50";
 const DIST_CAP = 26370000000000000n, RESERVE_CAP = 9630000000000000n;
 const REG = "524547", KHO = "4b484f", MET = "4d4554", DROP = "44524f50";
-const DELTA = 10_000n * 1_000_000n, MS_EPOCH = 432_000_000n;
+const DELTA = 10_000n * 1_000_000n;
+// ms_per_epoch là THAM SỐ #3 của claim_account (claim_account.ak:26) ⇒ nằm TRONG script hash.
+// Nướng cứng mainnet rồi chạy Preview/Preprod ⇒ apply ra hash khác bộ 01_deploy, mà APPLY-001
+// không bắt (đủ tham số, sai giá trị). Dẫn xuất theo mạng — bỏ một cửa.
+const MS_EPOCH = MS_PER_EPOCH;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const norm = (h: string) => (h.startsWith("0x") ? h.slice(2) : h).toLowerCase();
 
@@ -53,10 +57,24 @@ async function main() {
   const lampPid = validatorToScriptHash(lampMint);
   const lampUnit = u(lampPid, TLAMP_NAME);
   const committee = [pkh], threshold = 1n;
+  // treasury_nft (TRSY) one-shot: KHÔNG dựng lại được từ ví, phải lấy của deployment đang
+  // chạy. Nó là tham số của claim_account VÀ là tham số của claim_account_nft — thiếu nó
+  // thì mọi địa chỉ script dưới đây đều lệch (xem APPLY-001).
+  const TRSY_POLICY = (process.env.TREASURY_NFT_POLICY ?? "").trim();
+  if (!TRSY_POLICY) {
+    throw new Error(
+      "thiếu TREASURY_NFT_POLICY — lấy `params.treasuryNftPolicy` trong deployed.json của " +
+      "deployment đang chạy rồi đặt vào .env. Không có nó, script dựng ra địa chỉ khác hẳn.",
+    );
+  }
+  const accNftS = applyV(await gCode("Distribution", "claim_account_nft.claim_account_nft.mint"),
+    [committee, threshold, TRSY_POLICY]);
+  const accNftPid = mintingPolicyToId(accNftS);
   const claimS = applyV(await gCode("Distribution", "claim_account.claim_account.spend"),
-    [committee, threshold, MS_EPOCH, lampPid, TLAMP_NAME, nPid]);
+    [committee, threshold, MS_EPOCH, lampPid, TLAMP_NAME, nPid, TRSY_POLICY, accNftPid]);
   const claimAddr = credentialToAddress(NETWORK, scriptHashToCredential(validatorToScriptHash(claimS)));
-  const treS = applyV(await gCode("Distribution", "treasury.treasury.spend"), [validatorToScriptHash(claimS), lampPid, TLAMP_NAME]);
+  const treS = applyV(await gCode("Distribution", "treasury.treasury.spend"),
+    [validatorToScriptHash(claimS), lampPid, TLAMP_NAME, committee, threshold, accNftPid]);
   const treAddr = credentialToAddress(NETWORK, scriptHashToCredential(validatorToScriptHash(treS)));
   const beaconS = applyV(await gCode("Distribution", "beacon.beacon.spend"), [committee, threshold, nPid]);
   const beaconAddr = credentialToAddress(NETWORK, scriptHashToCredential(validatorToScriptHash(beaconS)));
@@ -96,7 +114,11 @@ async function main() {
     if (!x.datum) return false; try { return norm(decodeClaimAccountDatum(Data.from(x.datum)).owner) === norm(fPkh); } catch { return false; }
   });
   if (!accUtxo) throw new Error("không thấy claim_account FOUNDATION");
-  const treUtxo = (await fLucid.utxosAt(treAddr)).find((x) => (x.assets[lampUnit] ?? 0n) > 0n)!;
+  // Xác thực kho bằng NFT TRSY, không bằng số dư LAMP (claim_account.ak:138-148 — C-SOLV-3/4/5).
+  const trsyUnit = u(TRSY_POLICY, TREASURY_NFT_ASSET_NAME);
+  const treUtxo = (await fLucid.utxosAt(treAddr))
+    .find((x) => (x.assets[trsyUnit] ?? 0n) === 1n && (x.assets[lampUnit] ?? 0n) > 0n);
+  if (!treUtxo) throw new Error("không tìm thấy treasury UTxO mang TRSY + còn tLAMP");
   // Preview ô nhiễm đa-beacon → chọn beacon có drop_value LỚN NHẤT (bản đã set DELTA).
   const beacons = (await fLucid.utxosAt(beaconAddr)).filter((x) => (x.assets[dropNft] ?? 0n) === 1n && x.datum);
   const beaconNew = beacons.sort((a, b) => {
@@ -111,6 +133,7 @@ async function main() {
     lucid: fLucid, network: NETWORK, claimAccountUtxo: accUtxo, claimScript: claimS,
     treasuryUtxo: treUtxo, treasuryScript: treS, dropBeaconUtxo: beaconNew,
     currentEpoch: rEpoch, validFromMs: rEpoch * MS_EPOCH, lampPolicyId: lampPid, lampAssetName: TLAMP_NAME,
+    treasuryNftPolicy: TRSY_POLICY,
     destinationAddress: fAddr,
   });
   console.log(`redeem: vested=${redeem.vested} amount=${redeem.amount} oildrop (${redeem.amount / 1_000_000n} tLAMP)`);

@@ -42,11 +42,11 @@ function norm(h: string): string {
   return (h.startsWith("0x") ? h.slice(2) : h).toLowerCase();
 }
 
-/** Tìm ClaimAccount UTxO theo owner PKH (decode datum). Re-resolve sau mỗi spend.
+/** Tìm ClaimAccount UTxO theo owner PKH (decode datum). `null` = chưa có tài khoản.
  *  Nhiều account cùng owner → chọn cái entitlement cao nhất (account "hoạt động"). */
-async function findClaimAccount(
+async function findClaimAccountOpt(
   lucid: LucidEvolution, address: string, ownerPkh: string,
-): Promise<UTxO> {
+): Promise<UTxO | null> {
   const utxos = await lucid.utxosAt(address);
   let best: UTxO | null = null;
   let bestEnt = -1n;
@@ -59,8 +59,16 @@ async function findClaimAccount(
       }
     } catch { /* không phải ClaimAccountDatum */ }
   }
-  if (best) return best;
-  throw new Error(`không tìm thấy ClaimAccount cho owner ${ownerPkh} tại ${address}`);
+  return best;
+}
+
+/** Như trên nhưng BẮT BUỘC có (dùng sau khi đã Claim xong). */
+async function findClaimAccount(
+  lucid: LucidEvolution, address: string, ownerPkh: string,
+): Promise<UTxO> {
+  const u = await findClaimAccountOpt(lucid, address, ownerPkh);
+  if (!u) throw new Error(`không tìm thấy ClaimAccount cho owner ${ownerPkh} tại ${address}`);
+  return u;
 }
 
 /** Tìm beacon UTxO theo NFT asset. Re-resolve sau mỗi PostBeacon. */
@@ -136,7 +144,8 @@ async function main(): Promise<void> {
   }
   const bPkh = state.wallets.bPkh;
 
-  const { claimScript, beaconScript, treasuryScript } = await reapplyValidators(state);
+  const { claimScript, beaconScript, treasuryScript, accountNftScript } =
+    await reapplyValidators(state);
   const committee = state.committee.keyHashes;
   const threshold = state.committee.threshold;
 
@@ -165,12 +174,19 @@ async function main(): Promise<void> {
 
   // SOLVENCY co-spend (C-SOLV-*): mỗi Claim spend treasury (GrantEntitlement) →
   // outstanding_entitlement += amount ≤ pool. Treasury UTxO canonical mang NFT TRSY.
-  const accA0 = await findClaimAccount(lucid, state.claimAccount.address, aPkh);
+  //
+  // CREATE vs UPDATE: 03_genesis KHÔNG còn tạo tài khoản (xem đầu 03), nên lần chạy đầu
+  // đi đường CREATE — mở tài khoản + cấp E + ĐÚC NFT tên blake2b_256(owner) trong CÙNG
+  // MỘT tx (C-ACC-1). Chạy lại lần sau, tài khoản đã có → đường UPDATE, và lúc đó
+  // KHÔNG được đúc gì (claim_account ép `is_zero(tx.mint)`).
+  // `exactOptionalPropertyTypes`: thêm khoá bằng spread có điều kiện, không gán undefined.
+  const accA0 = await findClaimAccountOpt(lucid, state.claimAccount.address, aPkh);
   const treA  = await findTreasury(lucid, state.treasury.address, trsyUnit);
+  console.log(`   ví A: ${accA0 ? "đã có tài khoản → UPDATE" : "chưa có tài khoản → CREATE (đúc NFT)"}`);
   const claimA = await buildClaimTx({
     lucid, claimScript, network: NETWORK,
     ownerPkh: aPkh, amount: LAMP_A, currentEpoch: epoch,
-    claimAccountUtxo: accA0,
+    ...(accA0 ? { claimAccountUtxo: accA0 } : { accountNft: { script: accountNftScript } }),
     treasury: {
       utxo: treA, script: treasuryScript,
       nftPolicy: treasuryNftPolicy, nftAssetName: TREASURY_NFT_ASSET_NAME,
@@ -183,13 +199,13 @@ async function main(): Promise<void> {
 
   // Claim B (ví placeholder) — best-effort: lỗi không chặn flow chính (A → redeem).
   try {
-    const accB0 = await findClaimAccount(lucid, state.claimAccount.address, bPkh);
+    const accB0 = await findClaimAccountOpt(lucid, state.claimAccount.address, bPkh);
     // treasury đã bị Claim A spend → re-resolve UTxO mới (cum đã += LAMP_A).
     const treB  = await findTreasury(lucid, state.treasury.address, trsyUnit);
     const claimB = await buildClaimTx({
       lucid, claimScript, network: NETWORK,
       ownerPkh: bPkh, amount: LAMP_B, currentEpoch: epoch,
-      claimAccountUtxo: accB0,
+      ...(accB0 ? { claimAccountUtxo: accB0 } : { accountNft: { script: accountNftScript } }),
       treasury: {
         utxo: treB, script: treasuryScript,
         nftPolicy: treasuryNftPolicy, nftAssetName: TREASURY_NFT_ASSET_NAME,
@@ -251,6 +267,7 @@ async function main(): Promise<void> {
     currentEpoch: redeemEpoch,
     validFromMs: redeemValidFromMs,
     lampPolicyId: state.testLamp.policyId, lampAssetName: state.testLamp.assetName,
+    treasuryNftPolicy,
   });
   console.log(redeem.summary);
   await submit(lucid, redeem.tx, "redeem A");

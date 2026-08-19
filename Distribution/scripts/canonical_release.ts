@@ -12,7 +12,7 @@ import { fileURLToPath } from "node:url";
 import {
   NETWORK, BLOCKFROST_URL, BLOCKFROST_KEY, makeLucid, walletPkh, explorerTx, awaitTx, tipPosixMs,
 } from "./config.js";
-import { TREASURY_NFT_ASSET_NAME } from "./config.js";
+import { TREASURY_NFT_ASSET_NAME, MS_PER_EPOCH } from "./config.js";
 import { beaconDatumToCbor, decodeClaimAccountDatum } from "../offchain/src/datum.js";
 import { buildClaimTx } from "../offchain/src/claimBuilder.js";
 import { buildRedeemTx } from "../offchain/src/redeemBuilder.js";
@@ -22,7 +22,11 @@ const SUPPLY_NAME = "535550504c59", TLAMP_NAME = "744c414d50", TOKEN_TAG = "4c41
 const DIST_CAP = 26370000000000000n, RESERVE_CAP = 9630000000000000n;
 const REG = "524547", KHO = "4b484f", MET = "4d4554", DROP = "44524f50";
 const DELTA = 10_000n * 1_000_000n;
-const MS_EPOCH = 432_000_000n;                  // KHỚP canonical_mint
+// ms_per_epoch là THAM SỐ #3 của claim_account (claim_account.ak:26) ⇒ nó nằm TRONG script hash.
+// Nướng cứng 432_000_000n (mainnet) rồi chạy trên Preview/Preprod ⇒ apply ra claim_account KHÁC HASH
+// với bộ 01_deploy đã ghi vào deployed.json, mà cổng APPLY-001 KHÔNG bắt được (đủ 8 tham số, chỉ
+// SAI GIÁ TRỊ). Lấy DẪN XUẤT theo mạng thay vì chép tay — bỏ một cửa, không phải thêm một phép kiểm.
+const MS_EPOCH = MS_PER_EPOCH;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const norm = (h: string) => (h.startsWith("0x") ? h.slice(2) : h).toLowerCase();
 
@@ -77,12 +81,16 @@ async function main() {
     );
   }
   const trsyUnit = u(TRSY_POLICY, TREASURY_NFT_ASSET_NAME);
+  // account_nft_policy: tham số THỨ 8 của claim_account và THỨ 6 của treasury → dựng TRƯỚC.
+  const accNftS = applyV(await gCode("Distribution", "claim_account_nft.claim_account_nft.mint"),
+    [committee, threshold, TRSY_POLICY]);
+  const accNftPid = mintingPolicyToId(accNftS);
   const claimS = applyV(await gCode("Distribution", "claim_account.claim_account.spend"),
-    [committee, threshold, MS_EPOCH, lampPid, TLAMP_NAME, nPid, TRSY_POLICY]);
+    [committee, threshold, MS_EPOCH, lampPid, TLAMP_NAME, nPid, TRSY_POLICY, accNftPid]);
   const claimHash = validatorToScriptHash(claimS);
   const claimAddr = credentialToAddress(NETWORK, scriptHashToCredential(claimHash));
   const treS = applyV(await gCode("Distribution", "treasury.treasury.spend"),
-    [claimHash, lampPid, TLAMP_NAME, committee, threshold]);
+    [claimHash, lampPid, TLAMP_NAME, committee, threshold, accNftPid]);
   const treAddr = credentialToAddress(NETWORK, scriptHashToCredential(validatorToScriptHash(treS)));
   const beaconS = applyV(await gCode("Distribution", "beacon.beacon.spend"), [committee, threshold, nPid]);
   const beaconAddr = credentialToAddress(NETWORK, scriptHashToCredential(validatorToScriptHash(beaconS)));
@@ -139,6 +147,8 @@ async function main() {
         utxo: treClaimU, script: treS,
         nftPolicy: TRSY_POLICY, nftAssetName: TREASURY_NFT_ASSET_NAME,
       },
+      // CREATE: C-ACC-1 buộc tx phải đúc NFT tên blake2b_256(owner) — không có thì tx fail.
+      accountNft: { script: accNftS },
     });
     const ch = await (await claim.tx.sign.withWallet().complete()).submit();
     console.log(`   ${explorerTx(ch)}`); await awaitTx(lucid, ch, "claim"); await sleep(50_000);
@@ -150,13 +160,19 @@ async function main() {
     if (!x.datum) return false; try { return norm(decodeClaimAccountDatum(Data.from(x.datum)).owner) === norm(fPkh); } catch { return false; }
   });
   if (!accUtxo) throw new Error("không tìm thấy claim_account FOUNDATION");
-  const treUtxo = (await fLucid.utxosAt(treAddr)).find((x) => (x.assets[lampUnit] ?? 0n) > 0n)!;
+  // Kho được xác thực bằng NFT TRSY, KHÔNG bằng số dư LAMP: claim_account.ak:138-148 đòi đúng 1
+  // input mang TRSY. Địa chỉ kho có thể có nhiều UTxO (A-DEST hạ cánh không datum, Refill) ⇒ chọn
+  // theo số dư là có ngày vớ trúng cái không mang TRSY ⇒ tx bị từ chối, mất collateral.
+  const treUtxo = (await fLucid.utxosAt(treAddr))
+    .find((x) => (x.assets[trsyUnit] ?? 0n) === 1n && (x.assets[lampUnit] ?? 0n) > 0n);
+  if (!treUtxo) throw new Error("không tìm thấy treasury UTxO mang TRSY + còn tLAMP");
   const beaconUtxo = (await fLucid.utxosAt(beaconAddr)).find((x) => (x.assets[dropNft] ?? 0n) === 1n)!;
   const rEpoch = await epochNow();
   const redeem = await buildRedeemTx({
     lucid: fLucid, network: NETWORK, claimAccountUtxo: accUtxo, claimScript: claimS,
     treasuryUtxo: treUtxo, treasuryScript: treS, dropBeaconUtxo: beaconUtxo,
     currentEpoch: rEpoch, validFromMs: rEpoch * MS_EPOCH, lampPolicyId: lampPid, lampAssetName: TLAMP_NAME,
+    treasuryNftPolicy: TRSY_POLICY,
     destinationAddress: fAddr,
   });
   console.log(`   vested=${redeem.vested / 1_000_000n} amount=${redeem.amount / 1_000_000n} tLAMP`);
