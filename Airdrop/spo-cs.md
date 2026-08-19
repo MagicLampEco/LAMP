@@ -30,9 +30,10 @@ AffiSo". Stake-weighted **đảo lại đúng nền an ninh kinh tế của Card
 - Không còn "điểm" để cày, không còn AffiSo làm điểm-tin-cậy-đơn cho việc tính điểm — AffiSo
   chỉ **thu thập & công bố** dữ liệu stake/vote, ai cũng tính lại được (§7).
 
-Cái giá phải trả: mô hình không còn thưởng "nội dung/chat" trực tiếp. Nhưng phần công-nhận
-cộng đồng vẫn có, qua **bình chọn có-trọng-số-stake** (pot CS, §4) — người giúp cộng đồng
-được stakeholder công nhận, và sức nặng công nhận = stake của người được giúp.
+Cái giá phải trả: **mô hình không còn thưởng "đóng góp" theo bất kỳ nghĩa nào** — kể cả qua
+bình chọn. Kênh bình chọn của pot CS (§3.3–§3.5) cho phép **tự bỏ phiếu**, nên điểm cân bằng
+của nó là chia theo stake. Pot CS vì vậy được khai đúng là **stake-weighted**, KHÔNG phải
+thước đo công-nhận cộng đồng. Đọc §3.5 trước khi viết bất cứ câu nào về pot CS ra ngoài.
 
 ## 2. Đăng ký + DID (điều kiện vào pot)
 
@@ -42,7 +43,8 @@ cộng đồng vẫn có, qua **bình chọn có-trọng-số-stake** (pot CS, �
 - **CS (supporter)** cần **DID sinh trắc** (PhoenixKey) vì supporter có thể là **bất kỳ ai**
   (không nhất thiết vận hành pool) — DID chặn 1 người tạo nhiều supporter-id ảo để gom phiếu.
   *Lưu ý:* trọng số CS vẫn neo stake (của người bình chọn), DID chỉ dedupe danh tính người
-  **nhận** thưởng CS.
+  **nhận** thưởng CS. DID **không** ngăn một người tự bỏ phiếu cho chính mình (§3.5) — nó chỉ
+  ngăn một người dựng nhiều danh tính nhận.
 
 ## 3. Ba pot — công thức trọng số
 
@@ -70,30 +72,80 @@ reward_SPO(i) = Split({i ↦ weight_SPO(i)}, 5.000.000 LAMP)
 ```
 Hiện thực: `splitSpoPot(spoWeights, SPO_POT_OILDROP)`.
 
-### 3.3. Pot CS (15M) — trọng số = stake của người BÌNH CHỌN
+### 3.3. Pot CS (15M) — trọng số = tổng phiếu-stake được phân bổ cho người nhận
 
-Reward supporter tỉ lệ **tổng stake của các delegator đã bình chọn rằng họ được j giúp**:
+Reward supporter tỉ lệ **tổng phiếu-stake đã phân bổ cho họ** (phiếu-stake của mỗi delegator
+= stake của chính delegator đó, §3.4):
 
 ```
-weight_CS(j) = Σ_{d bình chọn j} allocation_d(j)          (xem quy tắc §3.4)
+weight_CS(j) = Σ_{d có phân bổ cho j} allocation_d(j)     (xem quy tắc §3.4)
 reward_CS(j) = Split({j ↦ weight_CS(j)}, 15.000.000 LAMP)
 ```
 Hiện thực: `splitCsPot(csWeights, CS_POT_OILDROP)`. `csWeights[{supporter_id, weight_stake}]` do
 AffiSo/ProofChat thu & xuất.
 
+**Không có ràng buộc `j ≠ d`** trong công thức — `d` được phân bổ cho chính mình. Hệ quả đầy
+đủ ở **§3.5**: điểm cân bằng của làn này là **chia theo stake**.
+
 ### 3.4. Quy tắc bình chọn — chống double-count
 
 Mỗi delegator đã đăng ký có **"phiếu-stake" = stake của họ** (`accStake(d)`), và phân bổ cho
-≥0 supporter:
+≥0 người nhận — **kể cả chính mình**:
 
 ```
 Σ_j allocation_d(j) ≤ accStake(d)        (tổng phân bổ 1 delegator ≤ stake của họ)
 ```
 
-- **Mặc định:** delegator dồn **toàn bộ phiếu-stake cho 1 supporter** (`allocation = accStake`).
-- **Tuỳ chọn:** chia đều cho k supporter họ chọn (`allocation = accStake / k` mỗi người).
+Đây là **ràng buộc DUY NHẤT** của làn CS. Cố ý **không** có mệnh đề `j ≠ d`.
+
+- **Tự bỏ phiếu (`j = d`) là HỢP LỆ** và không bị hạn chế gì thêm.
+- **Mặc định:** delegator dồn **toàn bộ phiếu-stake cho 1 người nhận** (`allocation = accStake`).
+- **Tuỳ chọn:** chia đều cho k người họ chọn (`allocation = accStake / k` mỗi người).
 - Trần trên bảo đảm **không delegator nào bơm phiếu vượt stake thật** → tổng trọng số CS toàn
   cục ≤ tổng stake đã đăng ký → không double-count, neo chặt vào stake.
+  **Trần này chặn BƠM PHIẾU, KHÔNG chặn TỰ BỎ PHIẾU** — hai chuyện khác nhau, đừng viện mệnh
+  đề này để nói làn CS "chống được người tự thưởng cho mình".
+
+### 3.5. Hệ quả đo được: làn CS LÀ stake-weighted
+
+Xét động cơ của một delegator `d` bất kỳ có `accStake(d) > 0`, dưới đúng ràng buộc §3.4:
+
+- `d` phân bổ cho `j ≠ d` ⇒ phần phiếu-stake đó làm tăng `weight_CS(j)`, **`d` nhận 0** từ nó.
+- `d` phân bổ cho chính mình ⇒ `weight_CS(d)` tăng đúng lượng đó ⇒ `d` nhận phần tương ứng của
+  pot CS.
+
+Chuyển bất kỳ đơn vị phiếu-stake nào từ người khác về chính mình đều làm phần thưởng của `d`
+**tăng nghiêm ngặt**, bất kể người khác chọn gì ⇒ **tự bỏ phiếu là chiến lược trội tuyệt đối**
+(strictly dominant strategy) với mọi `d` có stake > 0.
+
+Điểm cân bằng (mọi delegator chơi chiến lược trội của mình):
+
+```
+allocation_d(d) = accStake(d),  allocation_d(j ≠ d) = 0
+⇒ weight_CS(j) = accStake(j)
+⇒ reward_CS   = Split({j ↦ accStake(j)}, 15.000.000 LAMP)
+```
+
+Tức **pot CS 15M thoái hoá thành một đợt airdrop chia theo stake lần thứ hai**, chồng lên pot
+Delegator 100M — chỉ khác ở pot và ở điều kiện vào (CS cần DID sinh trắc, §2).
+
+**Do đó làn CS được KHAI ĐÚNG NHƯ NÓ LÀ: `stake-weighted`.** Ràng buộc với mọi tài liệu, trang
+giới thiệu, và phát ngôn đối ngoại:
+
+- **KHÔNG hứa** làn CS "thưởng người được stakeholder công nhận đã giúp", "đo đóng góp cộng
+  đồng", hay bất cứ diễn đạt nào ngụ ý cơ chế này đo được sự giúp đỡ. Nó không đo được.
+- Bình chọn chỉ là **kênh delegator tự khai trọng số stake của mình vào pot CS**. Ai dồn phiếu
+  cho người khác là **tặng cho tự nguyện** — cơ chế không bảo đảm, không khuyến khích, và
+  không bù lại cho người tặng.
+
+**Vì sao không thêm ràng buộc `j ≠ d` (hoặc `j ≠ d` + trần mỗi người)?** Cả hai phương án ấy
+chỉ có nghĩa khi có một **cổng khử trùng danh tính (DID uniqueness)** thật sự hoạt động —
+không có nó, người ta lách `j ≠ d` bằng hai danh tính bầu chéo cho nhau. Trạng thái cổng đó
+**hôm nay không đo được** (`PhoenixKey-Validator/deploy/.bootstrap` không tồn tại; `taad.ak`
+đọc `params.uniqueness_bootstrap_seed` nên hash đã công bố là hash **chưa apply** tham số).
+Phương án khai thẳng stake-weighted **không vay gì** của cổng chưa đo được ⇒ chốt phương án
+này. Nếu sau này cổng khử trùng đo được và xanh, việc siết `j ≠ d` là một quyết định MỚI, phải
+sửa lại §3.4 + §3.5 cùng lúc.
 
 ## 4. Phân biệt hai vai trò SPO (Staking Pool Operator) vs CS (Community Supporter) (BẢNG so sánh)
 
@@ -102,16 +154,18 @@ Cả hai đều stake-weighted (chống sybil), khác **NGUỒN** trọng số:
 | Trục | **SPO — Staking Pool Operator** (5M) | **CS — Community Supporter** (15M) |
 |---|---|---|
 | Ai đủ tư cách | Nhà vận hành pool (đăng ký reward stake key) | **Bất kỳ ai** hỗ trợ cộng đồng (không cần vận hành pool) |
-| Trọng số neo vào | **Stake CHẢY VÀO POOL** — delegation của người đã đăng ký ủy thác vào pool họ | **Stake của người ĐƯỢC-GIÚP** — tổng phiếu-stake bình chọn cho họ |
-| Thưởng điều gì | Thu hút & **giữ** được nhiều delegation | Được stakeholder **công nhận đã giúp** |
-| Cần DID? | Không (đủ chữ ký pool) | **Có** (supporter có thể là bất kỳ ai → DID dedupe danh tính nhận) |
-| Nguồn dữ liệu | Delegation on-chain (Blockfrost account history) | Vote có-trọng-số-stake (AffiSo/ProofChat, §3.4) |
-| Chống sybil bằng | Splitting pool làm loãng delegation → tự vô hiệu | Phiếu-stake ≤ stake thật của người bầu → không bơm được |
+| Trọng số neo vào | **Stake CHẢY VÀO POOL** — delegation của người đã đăng ký ủy thác vào pool họ | **Tổng phiếu-stake phân bổ cho họ**; tự bỏ phiếu hợp lệ ⇒ cân bằng = **stake của chính họ** (§3.5) |
+| Thưởng điều gì | Thu hút & **giữ** được nhiều delegation | **Nắm stake ADA** (làn stake-weighted) — KHÔNG đo được sự giúp đỡ |
+| Cần DID? | Không (đủ chữ ký pool) | **Có** (supporter có thể là bất kỳ ai → DID dedupe danh tính nhận; **không** chặn tự bỏ phiếu) |
+| Nguồn dữ liệu | Delegation on-chain (Blockfrost account history) | Phân bổ phiếu-stake tự khai (AffiSo/ProofChat, §3.4) |
+| Chống sybil bằng | Splitting pool làm loãng delegation → tự vô hiệu | Phiếu-stake ≤ stake thật của người bầu → không bơm được **(không chặn tự bỏ phiếu, §3.5)** |
 | Hàm chia | `splitSpoPot` | `splitCsPot` |
 
 Ý nghĩa: một SPO stake pledge nhỏ nhưng **hút được nhiều delegation thật** vẫn thắng lớn ở
-pot SPO; một người **không vận hành pool** nhưng được nhiều stakeholder lớn công nhận đã giúp
-vẫn thắng lớn ở pot CS. Cả hai không mua được bằng account giả.
+pot SPO — đó là đại lượng pot SPO thật sự đo. Pot CS thì **không** đo sự giúp đỡ: điểm cân
+bằng của nó là chia theo stake (§3.5), nên một người không vận hành pool vẫn nhận được phần
+theo **stake của chính mình**, và chỉ nhận thêm nếu người khác **tự nguyện tặng** phiếu-stake.
+Cả hai đều không mua được bằng account giả (trọng số neo stake ADA thật).
 
 ## 5. Cap tuỳ chọn mỗi-người (chống cá voi)
 
@@ -138,15 +192,19 @@ Mỗi đợt AffiSo công bố **weights snapshot** — mỗi dòng `(pot, id, s
   `H(id ‖ reward_oildrop)`; toàn bộ dữ liệu weights đăng công khai ở magiclamp.network/forum.
 - Công thức **tất định + neo stake on-chain** → **bất kỳ ai tự tính lại** `weight` từ dữ liệu
   delegation/vote công khai, chạy lại `splitByStake`, dựng lại cây, đối chiếu root on-chain.
-- Với CS: dữ liệu vote (delegator → supporter, allocation) công khai; ai cũng verify được
-  `Σ allocation_d ≤ accStake(d)` (không ai bơm phiếu vượt stake) và tổng weight mỗi supporter.
+- Với CS: dữ liệu vote (delegator → người nhận, allocation) công khai — **gồm cả các phiếu tự
+  bỏ cho chính mình**; ai cũng verify được `Σ allocation_d ≤ accStake(d)` (không ai bơm phiếu
+  vượt stake) và tổng weight mỗi người nhận.
 - **Cửa sổ khiếu nại 1 epoch** trước mint; AffiSo đặt **bond bị slash** nếu gian lận bị chứng minh.
 
 ## 8. Điểm còn phải chốt (giao quản trị / đợt-1 GreenSun)
 
 - `N` (số epoch giữ delegation tối thiểu cho accStake) — mặc định 2.
 - `capOildrop` mỗi pot SPO/CS — mặc định null; bật nếu cần chống cá voi.
-- Quy tắc allocation CS (§3.4): dồn-1 vs chia-đều — công bố mỗi đợt.
+- Quy tắc allocation CS (§3.4): dồn-1 vs chia-đều — công bố mỗi đợt. (Mặc định thực tế sẽ là
+  **tự bỏ phiếu** theo §3.5; hai tuỳ chọn này chỉ đổi cách người tặng phân bổ.)
+- **Có siết `j ≠ d` cho làn CS hay không** — chỉ mở lại khi cổng khử trùng DID đo được
+  trạng thái thật (§3.5). Chốt hiện tại: KHÔNG siết, khai thẳng stake-weighted.
 - Số bond AffiSo + luật slash + trọng tài khiếu nại.
 - SPO/CS drip 1 root tĩnh hay per-epoch (SetRoot) — xem AIRDROP-V2 §2.
 

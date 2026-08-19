@@ -117,7 +117,7 @@ A: Stake address gắn với delegation key — nếu bạn redelegate ra pool k
 | Tổng Airdrop | 120,000,000 LAMP |
 | Phần delegator (pot này) | 100,000,000 LAMP (∝stake, mọi pool) |
 | Phần SPO | 5,000,000 LAMP (∝ Σ stake delegator đã đăng ký chảy vào pool) |
-| Phần CS (Community Supporter) | 15,000,000 LAMP (đóng góp cộng đồng, cần DID) |
+| Phần CS (Community Supporter) | 15,000,000 LAMP (làn stake-weighted qua phiếu-stake, cần DID — `spo-cs.md` §3.5) |
 | Thời hạn claim | 360 epoch sau SETUP |
 | Điều kiện (delegator) | Delegate mọi pool + đăng ký + giữ ≥ N epoch |
 | Phí claim | ~0.2 ADA |

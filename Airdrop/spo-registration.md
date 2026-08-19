@@ -2,16 +2,20 @@
 
 > **Model 3-pot (chốt 2026-07-11).** Tổng Airdrop **120.000.000 LAMP** = Delegator **100M** +
 > SPO (Staking Pool Operator) **5M** + CS (Community Supporter) **15M**. Đăng ký SPO ở dưới mở khoá **hai pot**:
-> **SPO 5M** (tư cách pool hợp lệ) + **CS 15M** (đóng góp cộng đồng, cần DID).
+> **SPO 5M** (tư cách pool hợp lệ) + **CS 15M** (làn **stake-weighted**, cần DID).
 > Đặc tả công thức: **`spo-cs.md`**. Tổng quan 3 pot: **`CONTRACT.md`**.
 
 Đăng ký SPO nhắm tới **hai phần**:
 
-- **SPO 5.000.000 LAMP** — phần theo **tư cách SPO hợp lệ**. SPO qua cổng đủ-điều-kiện
-  (đã sản xuất block, đủ tuổi pool, pledge tối thiểu, dedupe owner) nhận phần này **chia ĐỀU**,
-  KHÔNG theo lượng stake.
-- **CS 15.000.000 LAMP** — Community Supporter, đo qua AffiSo/ProofChat theo đóng góp cộng
-  đồng (mời người thật delegate và giữ delegation…). Cần **DID sinh trắc**. KHÔNG theo lượng stake.
+- **SPO 5.000.000 LAMP** — cổng đủ-điều-kiện (đã sản xuất block, đủ tuổi pool, pledge tối thiểu,
+  dedupe owner) quyết **ai được dự**; phần chia thì **∝ stake CHẢY VÀO POOL** của họ
+  (`weight_SPO(i) = Σ accStake(d)` của delegator đã đăng ký ủy thác vào pool i — `spo-cs.md` §3.2,
+  hiện thực `splitSpoPot`). Mô hình cũ "chia ĐỀU cho mọi SPO qua cổng" **đã bỏ 2026-07-11**.
+- **CS 15.000.000 LAMP** — Community Supporter, **làn stake-weighted**. Mỗi delegator đã đăng ký
+  có một **phiếu-stake = stake của chính mình** và phân bổ cho ai tuỳ ý — **kể cả cho chính mình**.
+  Vì tự bỏ phiếu luôn hợp lệ (và là chiến lược trội), điểm cân bằng của làn này là **chia theo
+  stake**. Cần **DID sinh trắc** (dedupe danh tính người nhận). Làn này **KHÔNG đo đóng góp cộng
+  đồng** — xem `spo-cs.md` §3.5.
 
 > Phần delegator (**100M**) là pot RIÊNG: ∝stake ở bất kỳ pool Cardano, delegator tự đăng ký
 > ký reward stake key (xem `delegator-guide.md`). Đăng ký SPO dưới đây KHÔNG liên quan pot delegator.
@@ -134,11 +138,12 @@ Kết quả VALID → payment address được thêm vào Merkle tree SPO share.
 
 ---
 
-## Phân bổ SPO 5M + CS 15M (KHÔNG theo stake)
+## Phân bổ SPO 5M + CS 15M (CẢ HAI đều ∝ trọng số stake)
 
 Model 3-pot: đăng ký SPO KHÔNG còn chia theo "stake × epoch". Hai phần tách bạch:
 
-**SPO 5M — tư cách hợp lệ, chia ĐỀU.** Mọi SPO qua **cổng đủ-điều-kiện** (AND tất cả):
+**SPO 5M — cổng quyết TƯ CÁCH, stake quyết PHẦN.** Qua cổng rồi thì chia ∝ stake chảy vào pool
+(`spo-cs.md` §3.2), KHÔNG chia đều. Cổng đủ-điều-kiện (AND tất cả):
 
 | Điều kiện | Ngưỡng gợi ý | Chặn |
 |---|---|---|
@@ -148,17 +153,24 @@ Model 3-pot: đăng ký SPO KHÔNG còn chia theo "stake × epoch". Hai phần t
 | Dedupe owner | 1 owner = 1 suất | multi-pool farm cùng chủ |
 | Ký đăng ký | reward stake key | mạo danh pool |
 
-→ Phần SPO của mỗi SPO qua cổng = `5.000.000 / N` LAMP (N = số SPO qua cổng). Stake lớn hay
-nhỏ nhận **như nhau**.
+→ Qua cổng rồi, phần SPO của mỗi SPO `i` = `Split({i ↦ weight_SPO(i)}, 5.000.000 LAMP)` với
+`weight_SPO(i) = Σ accStake(d)` của delegator đã đăng ký ủy thác vào pool `i`. Pool hút được
+nhiều delegation thật thì nhận nhiều hơn — **KHÔNG** phải `5.000.000 / N`, và stake lớn hay
+nhỏ **KHÔNG** nhận như nhau.
 
-**CS 15M — Community Supporter, đo qua AffiSo/ProofChat.** Điểm CS mỗi SPO tính từ số DID
-sinh trắc được SPO mời thực sự delegate và giữ ≥2 epoch (costly signal, neo on-chain), hỗ trợ
-được-xác-nhận, giới thiệu bậc-2, retention — qua log-dampen + water-filling. Có **cổng kích hoạt**:
-SPO stake khổng lồ nhưng không hỗ trợ cộng đồng (CS=0) nhận **0**. Cần **DID sinh trắc**.
+**CS 15M — Community Supporter, làn stake-weighted.** Trọng số của một người nhận `j` là
+**tổng phiếu-stake được phân bổ cho `j`**: `weight_CS(j) = Σ_d allocation_d(j)`, với ràng buộc
+DUY NHẤT `Σ_j allocation_d(j) ≤ accStake(d)` (không ai bơm phiếu vượt stake thật của mình).
 
-> Công thức đầy đủ (trọng số, cap κ=40%, drip T=20 epoch, largest-remainder): **`spo-cs.md`**.
-> "Một SPO stake tối thiểu nhưng hỗ trợ cộng đồng mạnh nhận phần lớn thưởng" — bảo đảm bằng toán,
-> không phải chia theo stake.
+**Không có mệnh đề `j ≠ d`** — tự bỏ phiếu là **hợp lệ** và là **chiến lược trội tuyệt đối**:
+mỗi đơn vị phiếu-stake chuyển cho người khác là phần `d` nhận 0. Điểm cân bằng vì vậy là
+`weight_CS(j) = accStake(j)`, tức pot CS **chia theo stake**. Ai dồn phiếu cho người khác là
+**tặng cho tự nguyện** — cơ chế không bù lại cho người tặng. Cần **DID sinh trắc** để dedupe
+danh tính người **nhận** (DID **không** chặn tự bỏ phiếu).
+
+> Công thức đầy đủ (`splitCsPot`, largest-remainder, `capOildrop` tuỳ chọn): **`spo-cs.md`** §3.3–§3.5.
+> **KHÔNG hứa** làn CS "thưởng người được cộng đồng công nhận đã giúp" hay "đo đóng góp" — cơ chế
+> không đo được điều đó, và đây là ràng buộc với mọi phát ngôn đối ngoại (`spo-cs.md` §3.5).
 
 ---
 

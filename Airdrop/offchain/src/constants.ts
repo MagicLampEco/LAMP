@@ -24,8 +24,10 @@ export const SPO_POT_LAMP = 5_000_000n;
 /** Pot SPO tính oildrop = 5e6 × 1e6 = 5e12 oildrop. */
 export const SPO_POT_OILDROP = SPO_POT_LAMP * OILDROP_PER_LAMP;
 
-/** Pot CS (CS = Community Supporter — người hỗ trợ cộng đồng, đo qua bình chọn
- *  có-trọng-số-stake) = 15 triệu LAMP. SPO-CS-SPEC §4. Chia ∝ stake người bình chọn. */
+/** Pot CS (CS = Community Supporter) = 15 triệu LAMP. SPO-CS-SPEC §3.3.
+ *  Chia ∝ tổng phiếu-stake phân bổ cho người nhận. LÀN NÀY LÀ STAKE-WEIGHTED:
+ *  tự bỏ phiếu hợp lệ ⇒ chiến lược trội ⇒ cân bằng weight_CS(j) = accStake(j)
+ *  (SPO-CS-SPEC §3.5). KHÔNG mô tả pot này như phần thưởng cho đóng góp. */
 export const CS_POT_LAMP = 15_000_000n;
 /** Pot CS tính oildrop = 15e6 × 1e6 = 1,5e13 oildrop. */
 export const CS_POT_OILDROP = CS_POT_LAMP * OILDROP_PER_LAMP;

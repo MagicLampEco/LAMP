@@ -35,12 +35,19 @@ import {
 } from "../offchain/src/constants.js";
 import type { MerkleParams } from "../offchain/src/types.js";
 import { loadRegistrations, sortByEarliestSigned } from "./registrations_io.js";
+import { loadCampaignParams } from "./campaign_io.js";
 
 interface Args {
   regPath: string;
+  /** Đợt để lấy tham số vận hành (nguồn duy nhất). Bỏ trống = phải khai đủ bằng cờ. */
+  campaignId: string | null;
+  /** Cờ NGƯỜI DÙNG gõ thật — để phân biệt "đè lên campaign" với "chưa khai". */
+  explicit: Set<string>;
   n: number;
   eOpen?: number;
   eCut?: number;
+  /** Trần oildrop mỗi người nhận; null = KHÔNG trần. Chỉ đến từ campaign record. */
+  capOildrop: bigint | null;
   budgetLamp: bigint;
   excludedFile: string | null;
   noExcluded: boolean;
@@ -63,6 +70,8 @@ function int(flag: string, raw: string): number {
 function parseArgs(): Args {
   const args = process.argv.slice(2);
   let regPath = "";
+  let campaignId: string | null = null;
+  const explicit = new Set<string>();
   let n = 2;
   let eOpen: number | undefined;
   let eCut: number | undefined;
@@ -75,19 +84,20 @@ function parseArgs(): Args {
   for (let i = 0; i < args.length; i++) {
     const a = args[i]!;
     if (a === "--reg" && args[i + 1]) regPath = args[++i]!;
-    else if (a === "--n" && args[i + 1]) n = int(a, args[++i]!);
-    else if (a === "--e-open" && args[i + 1]) eOpen = int(a, args[++i]!);
-    else if (a === "--e-cut" && args[i + 1]) eCut = int(a, args[++i]!);
-    else if (a === "--budget-lamp" && args[i + 1]) budgetLamp = BigInt(args[++i]!);
-    else if (a === "--excluded" && args[i + 1]) excludedFile = args[++i]!;
-    else if (a === "--no-excluded") noExcluded = true;
+    else if (a === "--campaign" && args[i + 1]) campaignId = args[++i]!;
+    else if (a === "--n" && args[i + 1]) { n = int(a, args[++i]!); explicit.add(a); }
+    else if (a === "--e-open" && args[i + 1]) { eOpen = int(a, args[++i]!); explicit.add(a); }
+    else if (a === "--e-cut" && args[i + 1]) { eCut = int(a, args[++i]!); explicit.add(a); }
+    else if (a === "--budget-lamp" && args[i + 1]) { budgetLamp = BigInt(args[++i]!); explicit.add(a); }
+    else if (a === "--excluded" && args[i + 1]) { excludedFile = args[++i]!; explicit.add(a); }
+    else if (a === "--no-excluded") { noExcluded = true; explicit.add(a); }
     else if (a === "--trust-input") trustInput = true;
     else if ((a === "--out" || a === "-o") && args[i + 1]) outFile = resolve(process.cwd(), args[++i]!);
     else if (a === "--help" || a === "-h") { printHelp(); process.exit(0); }
     else { console.error(`Tham số không nhận ra: ${a}`); process.exit(1); }
   }
   if (!regPath) { console.error("Bắt buộc: --reg <file|dir>. Chạy --help."); process.exit(1); }
-  return { regPath, n, eOpen, eCut, budgetLamp, excludedFile, noExcluded, trustInput, outFile };
+  return { regPath, campaignId, explicit, n, eOpen, eCut, capOildrop: null, budgetLamp, excludedFile, noExcluded, trustInput, outFile };
 }
 
 function printHelp(): void {
@@ -95,6 +105,9 @@ function printHelp(): void {
 Dùng: npx tsx build_delegator_snapshot.ts --reg <file|dir> (--excluded <f> | --no-excluded)
 
   --reg <path>       Đăng ký ĐÃ VERIFY (đầu ra verify_delegator.ts): file mảng/1-bản hoặc thư mục
+  --campaign <id>    Lấy tham số vận hành từ campaign record (vd: airdrop-v2) — CÁCH NÊN DÙNG.
+                     Sửa tham số ở giao diện quản trị (PATCH /admin/campaigns/:id), không sửa mã.
+                     Cờ gõ tay bên dưới ĐÈ LÊN campaign và sẽ được in ra rõ ràng.
   --n <N>            Chuỗi giữ liên tiếp tối thiểu (§1.5, mặc định 2)
   --e-open <E>       Đầu cửa sổ (bao gồm). Bỏ qua → không giới hạn
   --e-cut <E>        Cuối cửa sổ (KHÔNG bao gồm). Cần luật E_cut − E_open ≥ N+1
@@ -124,6 +137,17 @@ async function loadExcluded(a: Args): Promise<Set<string>> {
     if (!Array.isArray(arr) || !arr.every((x) => typeof x === "string")) {
       throw new Error(`EXCLUDED-FAIL-CLOSED: ${a.excludedFile} phải là MẢNG chuỗi địa chỉ`);
     }
+    // Mảng RỖNG bị từ chối: nó đọc giống hệt "đã cân nhắc và không loại ai", nhưng thực tế
+    // nó là chỗ chưa ai điền. Muốn không loại ai thì nói ra bằng `--no-excluded` (hoặc
+    // `excluded_file: null` ở campaign record) — một lựa chọn có người ký tên, không phải
+    // một tệp trống.
+    if (arr.length === 0) {
+      throw new Error(
+        `EXCLUDED-FAIL-CLOSED: ${a.excludedFile} rỗng. Tệp rỗng KHÔNG phải là "không loại ai" — ` +
+        `nó là danh sách chưa điền. Điền địa chỉ dự án tự kiểm soát (xem Airdrop/data/excluded-self.md), ` +
+        `hoặc dùng --no-excluded nếu THỰC SỰ chấp nhận không loại ai.`,
+      );
+    }
     return new Set(arr as string[]);
   }
   if (a.noExcluded) return new Set();
@@ -141,8 +165,44 @@ function fmtLamp(oildrop: bigint): string {
   return oildropToLamp(oildrop).toLocaleString("en");
 }
 
+/** Nạp tham số từ campaign record làm MẶC ĐỊNH; cờ gõ tay đè lên và được in ra.
+ *
+ *  Đè được, nhưng KHÔNG đè lặng lẽ: một lượt chạy khác campaign record là một lượt
+ *  chia tiền theo con số không ai duyệt trên giao diện. In ra là điều kiện tối thiểu
+ *  để chuyện đó còn truy được sau này. */
+async function applyCampaign(a: Args): Promise<void> {
+  if (!a.campaignId) return;
+  const p = await loadCampaignParams(a.campaignId);
+  const note = (flag: string, from: unknown, to: unknown) =>
+    console.log(`   ⚠ ${flag} gõ tay ĐÈ campaign: ${from} → ${to}`);
+
+  if (a.explicit.has("--e-open")) note("--e-open", p.eOpen, a.eOpen); else a.eOpen = p.eOpen;
+  if (a.explicit.has("--e-cut")) note("--e-cut", p.eCut, a.eCut); else a.eCut = p.eCut;
+  if (a.explicit.has("--n")) note("--n", p.nMinEpochs, a.n); else a.n = p.nMinEpochs;
+  if (a.explicit.has("--budget-lamp")) note("--budget-lamp", p.potDelegatorLamp, a.budgetLamp);
+  else a.budgetLamp = p.potDelegatorLamp;
+  // Trần PHẢI đi vào phép chia, không chỉ vào dòng in. Một `cap_oildrop` được kiểm kỹ ở
+  // `campaignParams.ts` rồi in ra "cap=…" mà không tới `buildDelegatorEntitlements` là đúng
+  // lớp lỗi PR này đi sửa: giao diện quản trị bật một cái trần, lượt chạy vẫn trả không trần.
+  a.capOildrop = p.capOildrop;
+
+  if (a.explicit.has("--excluded") || a.explicit.has("--no-excluded")) {
+    note("--excluded", p.excludedFile ?? "(không loại ai)", a.excludedFile ?? "(không loại ai)");
+  } else if (p.excludedFile === null) {
+    a.noExcluded = true;
+  } else {
+    a.excludedFile = p.excludedFile;
+  }
+
+  console.log(
+    `Tham số từ đợt \`${a.campaignId}\`: E_open=${p.eOpen} E_cut=${p.eCut} N=${p.nMinEpochs} ` +
+    `budget=${p.potDelegatorLamp} LAMP cap=${p.capOildrop ?? "KHÔNG trần"} setRoot=${p.setRootMode}`,
+  );
+}
+
 async function main(): Promise<void> {
   const a = parseArgs();
+  await applyCampaign(a);
   if (!BLOCKFROST_KEY) throw new Error("thiếu BLOCKFROST_KEY — cấu hình .env");
   if (a.n < 1) throw new Error("--n phải ≥ 1");
   if (a.eOpen !== undefined && a.eCut !== undefined) {
@@ -232,10 +292,14 @@ async function main(): Promise<void> {
   }
   if (eligible.length === 0) throw new Error("Không có đăng ký nào đủ điều kiện (accStake > 0). Dừng.");
 
-  // ── computeEntitlements (không cap) → snapshot ─────────────────────────
-  const ent = buildDelegatorEntitlements(eligible, { budgetOildrop, capOildrop: null });
+  // ── computeEntitlements (trần theo campaign record) → snapshot ─────────
+  const ent = buildDelegatorEntitlements(eligible, { budgetOildrop, capOildrop: a.capOildrop });
   console.log(`\nĐã phân bổ: ${fmtLamp(ent.distributed)} LAMP cho ${ent.snapshot.length} địa chỉ.`);
-  console.log(`Leftover (cap=null ⇒ 0): ${fmtLamp(ent.leftover)} LAMP.`);
+  console.log(
+    a.capOildrop === null
+      ? `Leftover (cap=null ⇒ 0): ${fmtLamp(ent.leftover)} LAMP.`
+      : `Leftover (cap=${a.capOildrop} oildrop ⇒ về Treasury): ${fmtLamp(ent.leftover)} LAMP.`,
+  );
 
   // ── BẢNG TẬP TRUNG TOP-10 (trước SETUP merkle) ─────────────────────────
   const sorted = [...ent.entitlements].sort((x, y) => (y.amount > x.amount ? 1 : y.amount < x.amount ? -1 : 0));

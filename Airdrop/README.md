@@ -5,8 +5,9 @@
 > - **Pot Delegator = 100M LAMP** — delegator **PHẢI ĐĂNG KÝ** (ký reward stake key), thưởng
 >   **∝stake ở bất kỳ pool Cardano**, cửa sổ snapshot mới, giữ ≥ N epoch. Xem `CONTRACT.md` §1.
 > - **Pot SPO/CS = 20M LAMP** = **SPO (Staking Pool Operator) 5M** (∝ Σ stake delegator đã đăng ký
->   chảy vào pool của họ) + **CS (Community Supporter) 15M** (∝ Σ stake của delegator đã bình chọn
->   rằng họ đã giúp; đo qua AffiSo, cần DID). **Cả hai đều ∝ trọng số stake** — mô hình cũ
+>   chảy vào pool của họ) + **CS (Community Supporter) 15M** (∝ Σ phiếu-stake được phân bổ cho
+>   họ; **tự bỏ phiếu hợp lệ ⇒ cân bằng = chia theo stake của chính họ**, `spo-cs.md` §3.5;
+>   thu qua AffiSo, cần DID). **Cả hai đều ∝ trọng số stake** — mô hình cũ
 >   "CS log-score" và "SPO chia đều" đã bỏ hoàn toàn (2026-07-11). Xem `spo-cs.md`.
 >
 > **ĐỪNG NHẦM với ETD** (module `TIGER/`): ETD = pot RIÊNG 12M, hồi tố, **chỉ pool TIGER**,
