@@ -34,7 +34,7 @@ validator beacon(
     expect util.count_outputs_at_script(tx.outputs, own_hash) == 1
 
     // C-BCN-1: committee 2/3 đồng thuận
-    expect util.count_committee_sigs(committee, tx.extra_signatories) >= threshold
+    expect util.committee_approved(committee, threshold, tx.extra_signatories)
 
     let beacon_in = util.input_at_script(tx.inputs, own_hash)
     let beacon_out = util.output_at_script(tx.outputs, own_hash)

@@ -24,6 +24,7 @@ import {
   type LucidEvolution, type Validator, type MintingPolicy,
 } from "@lucid-evolution/lucid";
 import { msPerEpoch, type Network } from "@magiclamp/utils";
+import { assertCommitteeShape } from "../offchain/src/committee.js";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
@@ -98,12 +99,15 @@ export async function resolveCommittee(lucid: LucidEvolution): Promise<Committee
         throw new Error(`COMMITTEE_KEYHASHES: keyhash không hợp lệ (cần 28-byte hex): ${k}`);
       }
     }
+    // GUARD (no-undo genesis): cận hình dạng committee sống ở offchain/src/committee.ts
+    // để khớp một-đối-một với `committee_approved` on-chain VÀ để có test — module
+    // scripts/ không có test runner. Ném COMMITTEE-004 (key trùng) / -005 (>16).
+    assertCommitteeShape(keyHashes);
     const n = keyHashes.length;
     const byzantine = Math.ceil((2 * n) / 3); // ⌈2N/3⌉
     const th = process.env.COMMITTEE_THRESHOLD
       ? Number(process.env.COMMITTEE_THRESHOLD)
       : byzantine;
-    // GUARD (no-undo genesis): threshold sai → 3 validator hash sai, vốn khoá vĩnh viễn.
     if (!Number.isInteger(th) || th < 1 || th > n) {
       throw new Error(
         `COMMITTEE_THRESHOLD không hợp lệ: ${process.env.COMMITTEE_THRESHOLD} ` +

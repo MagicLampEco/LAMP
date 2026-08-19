@@ -119,7 +119,7 @@ validator treasury(
         // C-CLAIM-1 (mirror): treasury cũng ép ngưỡng committee → CREATE path
         // (không có claim_account input → claim_account validator KHÔNG chạy) vẫn
         // được treasury gác chữ ký + solvency.
-        expect util.count_committee_sigs(committee, tx.extra_signatories) >= threshold
+        expect util.committee_approved(committee, threshold, tx.extra_signatories)
 
         // Đúng 1 ClaimAccount OUTPUT (account được cấp). INPUT ∈ {0 (CREATE), 1 (UPDATE)}.
         let ca_in_count =
@@ -189,7 +189,7 @@ validator treasury(
 
         // Không permissionless: singleton kho là UTxO đơn, ai cũng gộp được thì kẻ phá
         // quấy chiếm nó liên tục (churn UTxO, đua chèn tx) mà không tốn gì ngoài phí.
-        expect util.count_committee_sigs(committee, tx.extra_signatories) >= threshold
+        expect util.committee_approved(committee, threshold, tx.extra_signatories)
 
         // Refill KHÔNG có lý do đụng mint (không tạo tài khoản, không đúc TRSY).
         expect assets.is_zero(tx.mint)

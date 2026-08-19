@@ -14,7 +14,9 @@ import {
   decodeTreasuryDatum, TREASURY_REDEEMER, grantEntitlementRedeemerToCbor,
 } from "../offchain/src/datum.js";
 import { accountNftName, mintAccountRedeemerToCbor } from "../offchain/src/accountNft.js";
-import { committeeThreshold } from "../offchain/src/committee.js";
+import {
+  committeeThreshold, assertCommitteeShape, assertCommitteeSigners,
+} from "../offchain/src/committee.js";
 import { TREASURY_NFT_ASSET_NAME } from "../offchain/src/constants.js";
 import { lampOildrop } from "./helpers.js";
 
@@ -113,6 +115,46 @@ describe("committeeThreshold ⌈2N/3⌉", () => {
     expect(committeeThreshold(5)).toBe(4);
     expect(committeeThreshold(7)).toBe(5);
     expect(committeeThreshold(1)).toBe(1);
+  });
+});
+
+// ── Cận committee phải khớp `committee_approved` on-chain ───────────────
+// Cả ba phép đếm dưới đây on-chain làm trên list ĐÃ khử trùng (util.ak:
+// `list.count(list.unique(committee), …)`). Off-chain đếm theo MỤC thì nó cho qua
+// đúng những bộ tham số mà on-chain từ chối — và committee/threshold là apply-param,
+// nên "cho qua" nghĩa là bake ra script hash không ai mở được.
+describe("assertCommitteeShape — cận bake vào script hash", () => {
+  it("chặn keyhash trùng (on-chain đếm NGƯỜI, không đếm mục)", () => {
+    expect(() => assertCommitteeShape(["c1", "c1", "c2"])).toThrow(/COMMITTEE-004/);
+  });
+  it("chặn committee > 16 — quá cap thì committee_approved trả False", () => {
+    const seventeen = Array.from({ length: 17 }, (_, i) => `k${i}`);
+    expect(() => assertCommitteeShape(seventeen)).toThrow(/COMMITTEE-005/);
+    expect(() => assertCommitteeShape(seventeen.slice(0, 16))).not.toThrow();
+  });
+  it("chặn committee rỗng", () => {
+    expect(() => assertCommitteeShape([])).toThrow(/COMMITTEE-001/);
+  });
+});
+
+describe("assertCommitteeSigners — đếm NGƯỜI, không đếm mục", () => {
+  it("signer trùng KHÔNG được tính hai lần", () => {
+    // On-chain: list.count(uniq_committee, đã ký) = 1 < 2. Off-chain cũ đếm 2 mục
+    // ⇒ cho qua ⇒ fail phase-2 ⇒ cháy collateral thay vì lỗi pre-flight.
+    expect(() => assertCommitteeSigners(["c1", "c2", "c3"], ["c1", "c1"], 2))
+      .toThrow(/COMMITTEE-002/);
+  });
+  it("hai người thật thì qua", () => {
+    expect(assertCommitteeSigners(["c1", "c2", "c3"], ["c1", "c2"], 2)).toBe(2);
+  });
+  it("threshold mặc định lấy theo số NGƯỜI trong committee, không theo số mục", () => {
+    // [c1,c1,c2] = 2 người ⇒ ⌈2·2/3⌉ = 2, không phải ⌈2·3/3⌉ = 2… dùng 4 mục/2 người
+    // để hai cách đếm ra số khác nhau: 2 người → th=2; 4 mục → th=3.
+    expect(assertCommitteeSigners(["c1", "c1", "c2", "c2"], ["c1", "c2"])).toBe(2);
+  });
+  it("signer ngoài committee vẫn bị chặn (COMMITTEE-003 giữ nguyên)", () => {
+    expect(() => assertCommitteeSigners(["c1", "c2"], ["c1", "ff"], 1))
+      .toThrow(/COMMITTEE-003/);
   });
 });
 

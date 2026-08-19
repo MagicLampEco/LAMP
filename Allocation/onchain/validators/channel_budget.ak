@@ -68,7 +68,7 @@ validator channel_budget(
     expect out_datum.remaining_oildrop == datum.remaining_oildrop - amount
 
     // Committee threshold ký.
-    expect util.count_committee_sigs(committee, tx.extra_signatories) >= threshold
+    expect util.committee_approved(committee, threshold, tx.extra_signatories)
 
     // KHOÁ CHÉO: đúng 1 ClaimAccount input + 1 output cùng tx; cùng kênh;
     // entitlement-delta == amount (chống trừ remaining khống/replay).

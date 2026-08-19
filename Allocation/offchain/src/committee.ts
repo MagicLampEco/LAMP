@@ -1,7 +1,7 @@
 // LAMP Allocation committee helpers — M-of-N native multisig.
 //
 // Claim (cấp entitlement) + ChannelBudget Decrement đều đòi ≥ threshold chữ ký committee
-// (claim_account.ak + channel_budget.ak: count_committee_sigs ≥ threshold).
+// (claim_account.ak + channel_budget.ak: util.committee_approved(committee, threshold, sigs)).
 // Redeem KHÔNG cần committee (chỉ owner sign — permissionless).
 //
 // threshold là THAM SỐ COMPILE-TIME của validator (committee.ak bake List + threshold).
@@ -25,9 +25,17 @@ export function assertCommitteeSigners(
   if (committeeKeyHashes.length === 0) {
     throw new Error("COMMITTEE-001: committeeKeyHashes must be non-empty");
   }
-  const th = threshold ?? committeeThreshold(committeeKeyHashes.length);
-  if (signerKeyHashes.length < th) {
-    throw new Error(`COMMITTEE-002: need ≥ ${th} signers, got ${signerKeyHashes.length}`);
+  // Đếm theo NGƯỜI, không theo mục — khớp `committee_approved` on-chain
+  // (util.ak: list.count(list.unique(committee), …)). Đếm theo mục thì committee
+  // `[c1,c1,c2]` hoặc signer `[c1,c1]` qua được ở đây rồi fail phase-2, tức cháy
+  // collateral thay vì lỗi pre-flight sạch.
+  // (Vòng lặp COMMITTEE-003 bên dưới ép mọi signer ∈ committee, nên đếm signer
+  // duy nhất ở đây là đúng bằng phép đếm on-chain.)
+  const uniqCommittee = new Set(committeeKeyHashes).size;
+  const uniqSigners = new Set(signerKeyHashes).size;
+  const th = threshold ?? committeeThreshold(uniqCommittee);
+  if (uniqSigners < th) {
+    throw new Error(`COMMITTEE-002: need ≥ ${th} signers, got ${uniqSigners}`);
   }
   for (const s of signerKeyHashes) {
     if (!committeeKeyHashes.includes(s)) {
