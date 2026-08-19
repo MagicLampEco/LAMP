@@ -406,7 +406,32 @@ export async function reapplyValidators(state: DeployedState): Promise<{
   const p = state.params;
   const committee  = state.committee.keyHashes;
   const threshold  = BigInt(state.committee.threshold);
-  const msPerEpoch = BigInt(p.msPerEpoch);
+  const msPerEpochBaked = BigInt(p.msPerEpoch);
+
+  // ── deployed.json ĐÃ CŨ so với bảng epoch hiện tại (fail-closed) ─────────────
+  // Không phép kiểm hash nào bên dưới bắt được chuyện này: `ms_per_epoch` là tham số #3 của
+  // claim_account nên nó nằm TRONG script hash, và ở đây ta re-apply bằng CHÍNH giá trị cũ
+  // đọc từ file ⇒ hash khớp hoàn hảo. Nhưng `currentEpoch()`/`validFromMs` của 04/05 lại
+  // tính bằng MS_PER_EPOCH suy từ NETWORK. Với deployed.json Preprod ghi trước PR #27
+  // (86_400_000, nay là 432_000_000): off-chain gửi lower_bound = epoch·432_000_000 còn
+  // validator đọc current_epoch = lower_bound/86_400_000 ⇒ lệch 5 lần ⇒ vested off-chain ≠
+  // on-chain ⇒ tx bị từ chối sau khi đã submit, MẤT COLLATERAL. Cùng lý do phải chặn khi
+  // chạy sai mạng: NETWORK=Preprod trên state deploy ở Preview thì mọi địa chỉ đều lệch.
+  if (state.network !== NETWORK) {
+    throw new Error(
+      `deployed.json là của mạng ${state.network} nhưng đang chạy NETWORK=${NETWORK}. ` +
+      `Địa chỉ script network-specific — dừng, đừng gửi tiền đi.`,
+    );
+  }
+  if (msPerEpochBaked !== MS_PER_EPOCH) {
+    throw new Error(
+      `deployed.json ĐÃ CŨ: params.msPerEpoch=${msPerEpochBaked} nhưng bảng epoch của ` +
+      `${NETWORK} nay là ${MS_PER_EPOCH}. Giá trị cũ nướng trong script hash nên re-apply ` +
+      `vẫn khớp hash — desync này chỉ lộ ra trên chuỗi, sau khi mất collateral: off-chain ` +
+      `gửi validity_range theo ${MS_PER_EPOCH} còn validator chia cho ${msPerEpochBaked}. ` +
+      `Chạy lại 'npm run deploy' để sinh bộ địa chỉ khớp bảng mới.`,
+    );
+  }
 
   if (!p.accountNftPolicy) {
     throw new Error(
@@ -425,7 +450,7 @@ export async function reapplyValidators(state: DeployedState): Promise<{
 
   const rawClaim = await rawValidator("claim_account.claim_account.spend");
   const claimScript = applyValidator(rawClaim.compiledCode, [
-    committee, threshold, msPerEpoch, p.lampPolicy, p.lampName,
+    committee, threshold, msPerEpochBaked, p.lampPolicy, p.lampName,
     p.beaconNftPolicy, p.treasuryNftPolicy, p.accountNftPolicy,
   ]);
   const rawBeacon = await rawValidator("beacon.beacon.spend");

@@ -68,9 +68,21 @@ export async function rawValidator(title: string): Promise<RawValidator> {
  * Distribution hưởng, không phải nhớ từng chỗ gọi.
  *
  * Lưu ý: cổng chỉ biết những compiledCode đã đi qua `rawValidator` (tức đã nạp blueprint).
- * Code lạ → không đoán, cho qua.
+ * Code lạ NHƯNG blueprint đã nạp → không đoán, cho qua (có thể là script ngoài module).
+ * Blueprint CHƯA nạp lần nào → cổng không có dữ liệu để gác, và im lặng cho qua ở đây là
+ * đúng lỗ mà `Genesis/scripts/03_mint_more.ts` vừa bị vá: tự đọc plutus.json rồi apply
+ * thẳng, đi vòng cổng gác, `applyParamsToScript` trả script hash khác KHÔNG BÁO GÌ. Nên
+ * trường hợp đó FAIL-CLOSED (APPLY-002) thay vì fail-open.
  */
 export function assertParamCount(compiledCode: string, params: unknown[]): void {
+  if (paramCountByCode.size === 0) {
+    throw new Error(
+      "APPLY-002: cổng APPLY-001 chưa nạp blueprint nên không gác được gì. " +
+      "Lấy compiledCode qua `rawValidator(title)` trước khi apply — đừng tự đọc plutus.json " +
+      "rồi gọi thẳng `applyParamsToScript`: apply thiếu tham số KHÔNG báo lỗi, nó sinh " +
+      "script hash / policy id khác, im lặng.",
+    );
+  }
   const meta = paramCountByCode.get(compiledCode);
   if (!meta) return; // code không từ blueprint này — không đoán.
   if (params.length !== meta.n) {

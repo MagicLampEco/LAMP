@@ -191,6 +191,18 @@ export async function buildRedeemTx(params: RedeemParams): Promise<RedeemResult>
   // Treasury': committee_hash bảo toàn (C-TRE-2); sổ cái nợ GIẢM ĐÚNG `amount` cùng nhịp
   // với pool (C-SOLV-3). Redeem = TRẢ NỢ, nên cả hai vế đi cặp — nếu chỉ pool giảm mà sổ
   // cái đứng yên thì `nợ ≤ pool` siết dần tới bế tắc grant (xem đầu `treasury.ak`).
+  // `treasury.ak:92-95` ép `out.outstanding_entitlement == in − released` VÀ `>= 0`. Sổ cái
+  // thấp hơn amount nghĩa là nó đã lệch với các account đang mở (kho bị genesis/Refill sai,
+  // hoặc chọn nhầm UTxO kho của deployment khác). Không chặn ở đây thì builder vẫn dựng ra
+  // tx với sổ cái ÂM — hợp lệ về CBOR, chắc chắn bị chuỗi từ chối, MẤT COLLATERAL.
+  if (treasury.outstanding_entitlement < amount) {
+    throw new Error(
+      `REDEEM-014: sổ cái nợ kho = ${treasury.outstanding_entitlement} oildrop < amount ` +
+      `${amount}. Redeem là TRẢ NỢ nên nợ phải giảm đúng amount, mà treasury.ak ép nợ ≥ 0 ` +
+      `⇒ tx này chắc chắn fail. Kho đang lệch sổ (sai UTxO kho, hay genesis/Refill sai) — ` +
+      `soát lại trước khi submit.`,
+    );
+  }
   const newTreasuryDatum: TreasuryDatum = {
     committee_hash:         treasury.committee_hash,
     outstanding_entitlement: treasury.outstanding_entitlement - amount,

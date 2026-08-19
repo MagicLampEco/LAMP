@@ -18,6 +18,7 @@ import {
   committeeThreshold, assertCommitteeShape, assertCommitteeSigners,
 } from "../offchain/src/committee.js";
 import { TREASURY_NFT_ASSET_NAME } from "../offchain/src/constants.js";
+import { applyValidator } from "../scripts/blueprint.js";
 import { lampOildrop } from "./helpers.js";
 
 // ── Mock Lucid tx-builder ──────────────────────────────────────────────
@@ -123,6 +124,17 @@ describe("committeeThreshold ⌈2N/3⌉", () => {
 // `list.count(list.unique(committee), …)`). Off-chain đếm theo MỤC thì nó cho qua
 // đúng những bộ tham số mà on-chain từ chối — và committee/threshold là apply-param,
 // nên "cho qua" nghĩa là bake ra script hash không ai mở được.
+// Cổng APPLY-001 sống ở `scripts/blueprint.ts` — tách khỏi `config.ts` CHÍNH ĐỂ kiểm được
+// mà không cần .env. Nhưng bảng số-tham-số chỉ có dữ liệu sau khi `rawValidator()` nạp
+// plutus.json (artefact `aiken build`, gitignored), nên khi bảng RỖNG cổng phải fail-closed:
+// im lặng cho qua ở đó chính là lỗ mà `Genesis/scripts/03_mint_more.ts` vừa bị vá — tự đọc
+// blueprint, apply thẳng, `applyParamsToScript` trả policy id khác mà KHÔNG báo gì.
+describe("APPLY-002 — cổng apply-param fail-closed khi chưa nạp blueprint", () => {
+  it("từ chối apply thẳng compiledCode không đi qua rawValidator()", () => {
+    expect(() => applyValidator("590a1b" + "00".repeat(8), [1n])).toThrow(/APPLY-002/);
+  });
+});
+
 describe("assertCommitteeShape — cận bake vào script hash", () => {
   it("chặn keyhash trùng (on-chain đếm NGƯỜI, không đếm mục)", () => {
     expect(() => assertCommitteeShape(["c1", "c1", "c2"])).toThrow(/COMMITTEE-004/);
@@ -443,6 +455,19 @@ describe("buildRedeemTx — vested = min(E, D·dpe·Δ)", () => {
       treasuryUtxo: treasuryUtxo(lampOildrop(1000n), { [TRSY_UNIT]: 2n }),
       dropBeaconUtxo: dropBeaconUtxo(D),
     })).rejects.toThrow(/REDEEM-013/);
+  });
+
+  // REDEEM-014 — `treasury.ak:92-95` ép nợ_out == nợ_in − released VÀ nợ_out ≥ 0. Builder
+  // trước bản này trừ thẳng, dựng ra tx sổ cái ÂM: CBOR hợp lệ, chuỗi từ chối, mất collateral.
+  it("REDEEM-014: từ chối khi sổ cái nợ kho < amount (nợ_out sẽ âm)", async () => {
+    const { lucid } = mockLucid("addr_user");
+    // t=3 → vested=min(250, 100·1·3)=250, redeemed=100 → amount=150 LAMP; sổ cái chỉ 10.
+    await expect(buildRedeemTx({
+      ...base, lucid, currentEpoch: 3n,
+      claimAccountUtxo: claimUtxo(lampOildrop(100n)),
+      treasuryUtxo: treasuryUtxo(lampOildrop(1000n), {}, lampOildrop(10n)),
+      dropBeaconUtxo: dropBeaconUtxo(D),
+    })).rejects.toThrow(/REDEEM-014/);
   });
 
   it("rejects double-redeem (redeemable ≤ 0, đã redeem hết vested)", async () => {
