@@ -1,5 +1,10 @@
 # Treasury — Kho bạc đa thuê bao (trang chỉ mục)
 
+> **Phiên bản:** v1.0 — 2026-06-05. Lần đầu khai phiên bản — tệp trước đây chỉ có dòng `Trạng thái`,
+> không có số hiệu để tham chiếu; nội dung không đổi so với ngày đóng khung.
+> **Vai:** view điều phối — trang chỉ mục, KHÔNG PHẢI nguồn chuẩn. Khi lệch với
+> [`CONTRACT.md`](./CONTRACT.md), CONTRACT.md thắng.
+
 **Trạng thái:** mô hình đã đóng khung 2026-06-05. Nguồn chuẩn = [`CONTRACT.md`](./CONTRACT.md),
 chi tiết hóa thành 4 spec:
 

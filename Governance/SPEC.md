@@ -1,5 +1,12 @@
 # Governance — Quản trị Foundation (trang chỉ mục)
 
+> **Phiên bản:** v1.0 — 2026-06-05. Lần đầu khai phiên bản — tệp trước đây chỉ có dòng `Trạng thái`,
+> không có số hiệu để tham chiếu; nội dung không đổi so với ngày duyệt khung.
+> **Vai:** view điều phối — trang chỉ mục Governance nói chung. Phần Voting Power KHÔNG PHẢI nguồn
+> chuẩn ở đây: khi lệch với [`VotingPower/CONTRACT.md`](./VotingPower/CONTRACT.md), CONTRACT.md
+> thắng. Phần "bầu cử, hội đồng, KPI" (ngoài Voting Power) chưa có nguồn chuẩn khác — vẫn ở mức
+> outline.
+
 **Trạng thái:** mô hình Voting Power đã được duyệt khung 2026-06-05. Phần còn lại (bầu cử,
 hội đồng, KPI) vẫn ở mức outline.
 

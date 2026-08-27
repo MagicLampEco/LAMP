@@ -1,5 +1,10 @@
 # Treasury — CONTRACT (interface đa thuê bao)
 
+> **Phiên bản:** v1.0 — 2026-06-05. Lần đầu khai phiên bản — tệp trước đây chỉ có dòng `Trạng thái`,
+> không có số hiệu để tham chiếu; nội dung không đổi so với ngày đóng khung.
+> **Vai:** spec build-fact — nguồn chuẩn (interface contract) cho Treasury đa thuê bao. Khi lệch với
+> [`SPEC.md`](./SPEC.md) (trang chỉ mục) hay tài liệu đối ngoại (`Papers/`), CONTRACT.md này thắng.
+
 **Trạng thái:** khung interface 2026-06-05 (chờ anh duyệt). Đây là **xương sống** mà 2 nhóm build
 song song phải bám: **(A) `collectToTreasury`** (lớp thu) và **(B) Treasury core** (custody + bucket
 + release). KHÔNG nhóm nào tự đổi schema/bất biến ở đây.
