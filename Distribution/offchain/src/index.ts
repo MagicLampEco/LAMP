@@ -4,6 +4,7 @@
 export * from "./constants.js";
 export * from "./types.js";
 export * from "./vested.js";
+export * from "./applyGate.js";
 
 // ── tx builders (Lucid Evolution off-chain) ──
 export * from "./datum.js";

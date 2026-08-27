@@ -47,7 +47,7 @@ async function main() {
 
   const hasNft = (su.asset_list || []).some((a: any) => a.policy_id === LAMP_POLICY ? false : a.asset_name === SUPPLY_NFT_NAME) ||
     (su.asset_list || []).some((a: any) => a.asset_name === SUPPLY_NFT_NAME);
-  const fields = su.inline_datum.value.fields.map((f: any) => BigInt(f.int));
+  const fields: bigint[] = su.inline_datum.value.fields.map((f: any) => BigInt(f.int));
   const [distMinted, reserveMinted, distCap, reserveCap] = fields;
 
   console.log(`\nSUPPLY thread NFT có mặt: ${hasNft ? "CÓ ✓" : "KHÔNG ✗"}`);

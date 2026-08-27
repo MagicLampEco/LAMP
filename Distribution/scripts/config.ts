@@ -25,6 +25,7 @@ import {
 } from "@lucid-evolution/lucid";
 import { msPerEpoch, type Network } from "@magiclamp/utils";
 import { assertCommitteeShape } from "../offchain/src/committee.js";
+import { assertParamCount as assertParamCountGate } from "../offchain/src/applyGate.js";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
@@ -199,10 +200,7 @@ export async function rawBeaconNft(): Promise<RawValidator> {
 /** Applied one-shot minting policy (Validator) từ genesis ref. */
 export async function beaconNftPolicyFromRef(ref: GenesisRef): Promise<MintingPolicy> {
   const raw = await rawBeaconNft();
-  return {
-    type: "PlutusV3",
-    script: applyParamsToScript(raw.compiledCode, [outputRefToData(ref)] as never),
-  };
+  return applyPolicy(raw.compiledCode, [outputRefToData(ref)]);
 }
 
 /** Policy id của one-shot beacon_nft cho genesis ref. */
@@ -228,15 +226,44 @@ export async function rawTreasuryNft(): Promise<RawValidator> {
 /** Applied one-shot treasury_nft minting policy (Validator) từ genesis ref. */
 export async function treasuryNftPolicyFromRef(ref: GenesisRef): Promise<MintingPolicy> {
   const raw = await rawTreasuryNft();
-  return {
-    type: "PlutusV3",
-    script: applyParamsToScript(raw.compiledCode, [outputRefToData(ref)] as never),
-  };
+  return applyPolicy(raw.compiledCode, [outputRefToData(ref)]);
 }
 
 /** Policy id của one-shot treasury_nft cho genesis ref. */
 export async function treasuryNftPolicyIdFromRef(ref: GenesisRef): Promise<string> {
   return mintingPolicyToId(await treasuryNftPolicyFromRef(ref));
+}
+
+// ── Account authenticity NFT (Aiken minting validator `claim_account_nft`) ─────
+// KHÔNG one-shot theo genesis_ref như beacon_nft/treasury_nft — tham số hoá bởi
+// [committee, threshold, treasury_nft_policy] (onchain/validators/claim_account_nft.ak;
+// blueprint `claim_account_nft.claim_account_nft.mint` khai đúng 3 tham số này). Policy
+// id của nó là `account_nft_policy` — tham số CUỐI (thứ 8) của `claim_account` và tham
+// số CUỐI (thứ 6) của `treasury`, thêm 2026-08-12 (vá review PR #22, điểm 1). Trước bản
+// vá NÀY, giá trị này CHƯA TỪNG được tính ở 01_deploy.ts — 01_deploy chỉ biết 3
+// validator cũ (claim_account/beacon/treasury), không hề gọi tới claim_account_nft.
+// Phải tính TRƯỚC claim_account/treasury vì cả hai bake policy id này vào hash.
+
+/** Compiled code (chưa apply) của minting validator claim_account_nft. */
+export async function rawClaimAccountNft(): Promise<RawValidator> {
+  return rawValidator("claim_account_nft.claim_account_nft.mint");
+}
+
+/** Applied claim_account_nft minting policy (Validator) từ committee/threshold/treasuryNftPolicy. */
+export async function accountNftPolicyFromCommittee(
+  committee: string[], threshold: bigint, treasuryNftPolicy: string,
+): Promise<MintingPolicy> {
+  const raw = await rawClaimAccountNft();
+  return applyPolicy(raw.compiledCode, [committee, threshold, treasuryNftPolicy]);
+}
+
+/** Policy id (= account_nft_policy dùng làm tham số cuối của claim_account/treasury). */
+export async function accountNftPolicyId(
+  committee: string[], threshold: bigint, treasuryNftPolicy: string,
+): Promise<string> {
+  return mintingPolicyToId(
+    await accountNftPolicyFromCommittee(committee, threshold, treasuryNftPolicy),
+  );
 }
 
 /**
@@ -259,11 +286,59 @@ export async function pickGenesisRef(lucid: LucidEvolution): Promise<GenesisRef>
 
 const PLUTUS_JSON_PATH = resolve(__dirname, "../onchain/plutus.json");
 
-interface RawValidator { title: string; compiledCode: string; hash: string; }
+interface RawValidator {
+  title: string;
+  compiledCode: string;
+  hash: string;
+  parameters?: unknown[];
+}
+
+/** Blueprint mà cổng APPLY-001 phải tra được (Distribution tự áp param cho chính nó). */
+const BLUEPRINT_SOURCES: ReadonlyArray<{ label: string; path: string }> = [
+  { label: "Distribution", path: PLUTUS_JSON_PATH },
+];
+
+/** Số tham số blueprint khai, tra theo compiledCode. Nạp một lần, giữ trong bộ nhớ. */
+const paramCountByCode = new Map<string, { title: string; n: number; source: string }>();
+/** Blueprint nạp hụt (thường vì chưa `aiken build`) — nêu trong lỗi để chẩn đúng chỗ. */
+const blueprintLoadErrors: string[] = [];
+
+async function readBlueprint(path: string): Promise<RawValidator[]> {
+  const json = JSON.parse(await readFile(path, "utf8"));
+  return json.validators as RawValidator[];
+}
+
+function indexBlueprint(vs: RawValidator[], source: string): void {
+  for (const v of vs) {
+    // `.mint`/`.spend` và `.else` dùng CHUNG compiledCode; giữ tên của bản chính để
+    // thông điệp lỗi đọc ra đúng validator, không phải nhánh `.else`.
+    if (v.title.endsWith(".else") && paramCountByCode.has(v.compiledCode)) continue;
+    paramCountByCode.set(v.compiledCode, {
+      title: v.title, n: (v.parameters ?? []).length, source,
+    });
+  }
+}
+
+let blueprintsIndexed = false;
+async function indexAllBlueprints(): Promise<void> {
+  if (blueprintsIndexed) return;
+  blueprintsIndexed = true;
+  for (const src of BLUEPRINT_SOURCES) {
+    try {
+      indexBlueprint(await readBlueprint(src.path), src.label);
+    } catch (e) {
+      blueprintLoadErrors.push(`${src.label} (${src.path}): ${(e as Error).message}`);
+    }
+  }
+}
+
+// Nạp NGAY lúc module load: applyValidator/applyPolicy là hàm ĐỒNG BỘ, bảng tra phải đầy
+// TRƯỚC lần apply đầu tiên kể cả khi chỗ gọi không đi qua rawValidator().
+await indexAllBlueprints();
 
 async function loadBlueprint(): Promise<RawValidator[]> {
-  const json = JSON.parse(await readFile(PLUTUS_JSON_PATH, "utf8"));
-  return json.validators as RawValidator[];
+  await indexAllBlueprints();
+  return readBlueprint(PLUTUS_JSON_PATH);
 }
 
 /** Lấy compiledCode chưa apply cho validator theo title (spend variant). */
@@ -278,8 +353,43 @@ export async function rawValidator(title: string): Promise<RawValidator> {
   return v;
 }
 
+/**
+ * ÉP đủ số tham số blueprint khai, trước khi apply. Chốt ở tầng helper để MỌI đường
+ * apply trong `Distribution/scripts/` hưởng, không phải nhớ từng chỗ gọi — cùng khuôn
+ * `Genesis/scripts/config.ts::assertParamCount`. Phần ĐỌC blueprint ở đây; phần ÉP +
+ * thông điệp lỗi nằm ở `offchain/src/applyGate.ts` (thuần, test chạm được).
+ */
+function assertParamCount(compiledCode: string, params: unknown[]): void {
+  const meta = paramCountByCode.get(compiledCode);
+  if (!meta) {
+    // FAIL-CLOSED: không tra được ⇒ không biết blueprint khai mấy tham số ⇒ DỪNG.
+    // (`return` ở đây là fail-open — cổng lặng lẽ cho qua đúng ca nguy hiểm nhất.)
+    const known = BLUEPRINT_SOURCES.map((b) => b.label).join(", ");
+    throw new Error(
+      `APPLY-002: compiledCode (${params.length} tham số truyền vào) không có trong ` +
+      `blueprint nào đã nạp (${known}) — cổng APPLY-001 KHÔNG kiểm được số tham số nên ` +
+      `DỪNG (fail-closed). Apply thiếu tham số KHÔNG báo lỗi: nó sinh script hash/policy ` +
+      `id khác, im lặng.` +
+      (blueprintLoadErrors.length
+        ? ` Blueprint nạp hụt: ${blueprintLoadErrors.join("; ")} — chạy 'aiken build' rồi thử lại.`
+        : ` Lấy compiledCode qua rawValidator(), hoặc thêm blueprint vào BLUEPRINT_SOURCES.`),
+    );
+  }
+  assertParamCountGate(meta.title, meta.n, params.length);
+}
+
 /** Plutus Data hex của 1 param list → applied Validator. */
 export function applyValidator(compiledCode: string, params: unknown[]): Validator {
+  assertParamCount(compiledCode, params);
+  return {
+    type: "PlutusV3",
+    script: applyParamsToScript(compiledCode, params as never),
+  };
+}
+
+/** Applied minting policy (cùng cơ chế applyParamsToScript, đi qua cùng cổng). */
+export function applyPolicy(compiledCode: string, params: unknown[]): MintingPolicy {
+  assertParamCount(compiledCode, params);
   return {
     type: "PlutusV3",
     script: applyParamsToScript(compiledCode, params as never),
@@ -340,6 +450,10 @@ export interface DeployedState {
     beaconNftPolicy: string;
     treasuryNftPolicy: string;
     claimAccountHash: string;
+    // tham số CUỐI (thứ 8 claim_account / thứ 6 treasury), thêm 2026-08-12 (PR #22
+    // điểm 1) — policy id của claim_account_nft. XEM applyGate.ts / báo cáo vá
+    // APPLY-001: thiếu trường này ở CẢ HAI validator là chính lỗi cổng này chặn.
+    accountNftPolicy: string;
   };
   // test-LAMP token (02)
   testLamp?: { policyId: string; assetName: string; minted: string };
@@ -398,7 +512,7 @@ export async function reapplyValidators(state: DeployedState): Promise<{
   const rawClaim = await rawValidator("claim_account.claim_account.spend");
   const claimScript = applyValidator(rawClaim.compiledCode, [
     committee, threshold, msPerEpoch, p.lampPolicy, p.lampName,
-    p.beaconNftPolicy, p.treasuryNftPolicy,
+    p.beaconNftPolicy, p.treasuryNftPolicy, p.accountNftPolicy,
   ]);
   const rawBeacon = await rawValidator("beacon.beacon.spend");
   const beaconScript = applyValidator(rawBeacon.compiledCode, [
@@ -406,7 +520,7 @@ export async function reapplyValidators(state: DeployedState): Promise<{
   ]);
   const rawTreasury = await rawValidator("treasury.treasury.spend");
   const treasuryScript = applyValidator(rawTreasury.compiledCode, [
-    p.claimAccountHash, p.lampPolicy, p.lampName, committee, threshold,
+    p.claimAccountHash, p.lampPolicy, p.lampName, committee, threshold, p.accountNftPolicy,
   ]);
 
   // verify hash khớp

@@ -1,14 +1,25 @@
-// LampDistribution/scripts/01_deploy.ts — Apply params cho 3 validator + in hash/address.
+// LampDistribution/scripts/01_deploy.ts — Apply params cho 4 validator + in hash/address.
 //
 // Chạy: npm run deploy
 //
-// Validator params (theo onchain/plutus.json):
-//   beacon.beacon.spend          : [committee:List<ByteArray>, threshold:Int, beacon_nft_policy:ByteArray]
+// Validator params (theo onchain/plutus.json — nguồn thật, đối chiếu bằng cổng
+// APPLY-001 ở config.ts::applyValidator/applyPolicy, KHÔNG chép tay chỗ khác):
+//   beacon.beacon.spend           : [committee, threshold, beacon_nft_policy]                (3)
+//   claim_account_nft.claim_account_nft.mint
+//        : [committee, threshold, treasury_nft_policy]                                       (3)
 //   claim_account.claim_account.spend
-//        : [committee, threshold, ms_per_epoch:Int, lamp_policy:ByteArray, lamp_name:ByteArray, beacon_nft_policy:ByteArray]
-//   treasury.treasury.spend      : [claim_account_hash:ByteArray, lamp_policy:ByteArray, lamp_name:ByteArray]
+//        : [committee, threshold, ms_per_epoch, lamp_policy, lamp_name,
+//           beacon_nft_policy, treasury_nft_policy, account_nft_policy]                       (8)
+//   treasury.treasury.spend       : [claim_account_hash, lamp_policy, lamp_name,
+//                                    committee, threshold, account_nft_policy]                (6)
+//
+// account_nft_policy = policy id của claim_account_nft (áp CHÍNH validator này ở đây, KHÔNG
+// bịa) — tham số CUỐI thêm 2026-08-12 (vá review PR #22, điểm 1) cho cả claim_account VÀ
+// treasury; xem lý do tồn tại ở onchain/validators/claim_account_nft.ak.
 //
 // Phụ thuộc compile-time:
+//   - claim_account_nft cần treasury_nft_policy → apply SAU treasury_nft_policy.
+//   - claim_account/treasury cần account_nft_policy → apply claim_account_nft TRƯỚC.
 //   - treasury cần claim_account_hash → apply claim_account TRƯỚC để lấy hash.
 //   - claim_account/beacon cần beacon_nft_policy + lamp_policy → tính TRƯỚC từ ví deploy
 //     (native one-shot sig policy, id deterministic theo keyhash). Self-test:
@@ -23,6 +34,7 @@ import {
   makeLucid, walletPkh, resolveCommittee,
   rawValidator, applyValidator, scriptAddress, scriptHash,
   nativeSigPolicyId, beaconNftPolicyIdFromRef, treasuryNftPolicyIdFromRef,
+  accountNftPolicyId,
   pickGenesisRef, saveDeployed, type DeployedState, type GenesisRef,
 } from "./config.js";
 
@@ -92,12 +104,21 @@ async function main(): Promise<void> {
   console.log(`   genesis_ref:      ${treasuryNftGenesisRef.txHash}#${treasuryNftGenesisRef.outputIndex}`);
   console.log("   (supply = 1 TUYỆT ĐỐI; 03_genesis PHẢI consume đúng UTxO này khi mint TRSY)");
 
+  const committeeData = committee.keyHashes;   // List<ByteArray> = array of hex strings
+  const thresholdData = BigInt(committee.threshold);
+
+  // ── Resolve account_nft_policy (claim_account_nft, param CUỐI của claim_account
+  // VÀ treasury — thêm 2026-08-12, PR #22 điểm 1) ──
+  // KHÔNG one-shot: tham số hoá bởi [committee, threshold, treasury_nft_policy], nên
+  // deterministic ngay khi biết committee + treasuryNftPolicy — tính ở đây, apply
+  // CHÍNH validator claim_account_nft (không bịa giá trị, không hard-code hash).
+  const accountNftPolicy = await accountNftPolicyId(committeeData, thresholdData, treasuryNftPolicy);
+  console.log(`account_nft_policy: ${accountNftPolicy}  (claim_account_nft — cổng mở tài khoản)`);
+  console.log();
+
   console.log(`lamp_policy:       ${lampPolicy}`);
   console.log(`lamp_name:         ${lampName} ("${Buffer.from(lampName, "hex").toString("utf8")}")`);
   console.log();
-
-  const committeeData = committee.keyHashes;   // List<ByteArray> = array of hex strings
-  const thresholdData = BigInt(committee.threshold);
 
   // ── claim_account (apply trước để lấy hash cho treasury) ─────
   const rawClaim = await rawValidator("claim_account.claim_account.spend");
@@ -109,6 +130,7 @@ async function main(): Promise<void> {
     lampName,
     beaconNftPolicy,
     treasuryNftPolicy,
+    accountNftPolicy,
   ]);
   const claimHash = scriptHash(claimScript);
   const claimAddr = scriptAddress(claimScript);
@@ -131,6 +153,7 @@ async function main(): Promise<void> {
     lampName,
     committeeData,
     thresholdData,
+    accountNftPolicy,
   ]);
   const treasuryHash = scriptHash(treasuryScript);
   const treasuryAddr = scriptAddress(treasuryScript);
@@ -152,7 +175,7 @@ async function main(): Promise<void> {
     .update([
       committee.keyHashes.join(","),
       String(committee.threshold),
-      lampPolicy, lampName, beaconNftPolicy, treasuryNftPolicy,
+      lampPolicy, lampName, beaconNftPolicy, treasuryNftPolicy, accountNftPolicy,
       MS_PER_EPOCH.toString(),
       claimHash, beaconHash, treasuryHash,
     ].join("|"))
@@ -165,6 +188,7 @@ async function main(): Promise<void> {
   console.log(`   lamp_policy:        ${lampPolicy}`);
   console.log(`   beacon_nft_policy:  ${beaconNftPolicy}`);
   console.log(`   treasury_nft_policy:${treasuryNftPolicy}`);
+  console.log(`   account_nft_policy: ${accountNftPolicy}`);
   console.log(`   ms_per_epoch:       ${MS_PER_EPOCH}`);
   console.log(`   3-hash checksum:    ${checksum}`);
   console.log();
@@ -197,6 +221,7 @@ async function main(): Promise<void> {
       beaconNftPolicy,
       treasuryNftPolicy,
       claimAccountHash: claimHash,
+      accountNftPolicy,
     },
     beaconNftMode,
     ...(beaconNftGenesisRef ? { beaconNftGenesisRef } : {}),

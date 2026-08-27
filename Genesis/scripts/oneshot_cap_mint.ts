@@ -33,13 +33,17 @@
 import {
   Data, Constr, fromText, toUnit, mintingPolicyToId,
   credentialToAddress, scriptHashToCredential, validatorToScriptHash, applyParamsToScript,
-  type Validator, type MintingPolicy, type UTxO,
+  type Script, type Validator, type MintingPolicy, type UTxO,
 } from "@lucid-evolution/lucid";
 import { readFile, writeFile } from "node:fs/promises";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { NETWORK, makeLucid, walletPkh, applyPolicy, policyId, rawValidator, explorerTx } from "./config.js";
-import { supplyStateToCbor, mintRouteToCbor } from "../offchain/src/datum.js";
+import {
+  NETWORK, makeLucid, walletPkh, applyPolicy, applyValidator, policyId, scriptAddress,
+  rawValidator, explorerTx,
+} from "./config.js";
+import { supplyStateToCbor, mintRouteToCbor, supplyStateRedeemerToCbor } from "../offchain/src/datum.js";
+import { assertParamCount as assertParamCountGate } from "../offchain/src/applyGate.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -56,11 +60,42 @@ const MS_PER_EPOCH = 432_000_000n;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-async function distCode(title: string): Promise<string> {
-  const bp = JSON.parse(await readFile(resolve(__dirname, "../../Distribution/onchain/plutus.json"), "utf8"));
-  const v = (bp.validators as { title: string; compiledCode: string }[]).find((x) => x.title === title);
+type DistRaw = { title: string; compiledCode: string; parameters?: unknown[] };
+
+let distBlueprint: DistRaw[] | undefined;
+async function distValidators(): Promise<DistRaw[]> {
+  if (!distBlueprint) {
+    const bp = JSON.parse(await readFile(resolve(__dirname, "../../Distribution/onchain/plutus.json"), "utf8"));
+    distBlueprint = bp.validators as DistRaw[];
+  }
+  return distBlueprint;
+}
+
+/**
+ * Áp tham số cho validator Distribution, ÉP ĐÚNG số tham số blueprint khai (APPLY-001).
+ *
+ * VÌ SAO CỔNG NÀY BẮT BUỘC: `applyParamsToScript` KHÔNG ném lỗi khi truyền thiếu tham số.
+ * Nó áp một phần rồi trả về một script hash / policy id KHÁC, im lặng. TypeScript cũng
+ * không bắt được vì tham số đi theo `unknown[]`. Thiếu tham số chỉ lộ ra khi tiền đã nằm
+ * ở địa chỉ không ai mở được.
+ *
+ * Cổng sẵn có ở `config.ts::assertParamCount` chỉ tra được blueprint của GENESIS
+ * (`paramCountByCode` nạp từ `Genesis/onchain/plutus.json`) và FAIL-OPEN với code lạ
+ * (`if (!meta) return`). compiledCode của Distribution rơi đúng vào khe fail-open đó,
+ * nên phải có bản FAIL-CLOSED tại chỗ, đọc `parameters` từ blueprint của Distribution.
+ */
+async function applyDist(title: string, params: unknown[]): Promise<Script> {
+  const v = (await distValidators()).find((x) => x.title === title);
   if (!v) throw new Error(`Distribution '${title}' không có trong plutus.json`);
-  return v.compiledCode;
+  // FAIL-CLOSED: blueprint không khai `parameters` → KHÔNG coi là 0, dừng ngay.
+  if (!Array.isArray(v.parameters)) {
+    throw new Error(
+      `APPLY-001: blueprint KHÔNG khai 'parameters' cho '${title}' — không suy đoán số tham số. ` +
+      `Chạy lại 'aiken build' trong Distribution/onchain/ rồi thử lại.`,
+    );
+  }
+  assertParamCountGate(title, v.parameters.length, params.length);
+  return { type: "PlutusV3", script: applyParamsToScript(v.compiledCode, params as never) };
 }
 
 /** Dựng tx và mong nó HỎNG. Trả về thông điệp lỗi. Dựng được = hỏng cả kế hoạch. */
@@ -118,10 +153,38 @@ async function main() {
   const lampPid = policyId(lampMint);
   const lampUnit = toUnit(lampPid, TLAMP_NAME);
 
+  // ⚠ PREPROD-ONLY — "M-of-N" ở đây là GIẢ: 1-of-1 với CHÍNH khoá đang ký giao dịch này.
+  //   Không có tách quyền nào cả; mất một khoá là mất tất cả. Cố ý để vậy vì thứ diễn tập
+  //   này cần chứng minh là CỔNG SỐ HỌC (cap), không phải cổng chữ ký.
+  //   TUYỆT ĐỐI KHÔNG chép cặp giá trị này sang mainnet. Mainnet phải là M-of-N thật, N khoá
+  //   do N người khác nhau giữ. Cap không cứu được một committee 1-of-1 bị lộ khoá.
   const committee = [pkh]; const threshold = 1n;
-  const claimS: Validator = { type: "PlutusV3", script: applyParamsToScript(await distCode("claim_account.claim_account.spend"), [committee, threshold, MS_PER_EPOCH, lampPid, TLAMP_NAME, khoPid] as never) };
+
+  // Ba policy NFT của Distribution — DERIVE từ nguồn, KHÔNG bịa, vì thiếu/sai một cái là
+  // claimHash/treHash lệch mà không ai báo (xem `applyDist` ở trên).
+  //   • treasury_nft_policy = khoPid — KHO NFT ở trên CHÍNH LÀ NFT đánh dấu treasury.
+  //   • beacon_nft_policy   — one-shot theo genesis_ref (`beacon_nft.ak:42`).
+  //   • account_nft_policy  — claim_account_nft(committee, threshold, treasury_nft_policy)
+  //                           (`claim_account_nft.ak:52-56`).
+  // RANH GIỚI: diễn tập này KHÔNG đúc beacon NFT (seed tiêu hết ở tx a) ⇒ đường Claim/Redeem
+  // không chạy được sau đó. Chấp nhận được: script này chứng minh cổng mint Distribution
+  // chết + A-DEST, không diễn vòng đời vesting.
+  const beaconPol = await applyDist("beacon_nft.beacon_nft.mint", [genesisRef]);
+  const beaconPid = policyId(beaconPol);
+  const accountPol = await applyDist("claim_account_nft.claim_account_nft.mint", [committee, threshold, khoPid]);
+  const accountPid = policyId(accountPol);
+
+  // claim_account: 8 tham số (`claim_account.ak:23-35`) — committee, threshold, ms_per_epoch,
+  // lamp_policy, lamp_name, beacon_nft_policy, treasury_nft_policy, account_nft_policy.
+  const claimS: Validator = await applyDist("claim_account.claim_account.spend", [
+    committee, threshold, MS_PER_EPOCH, lampPid, TLAMP_NAME, beaconPid, khoPid, accountPid,
+  ]);
   const claimHash = validatorToScriptHash(claimS);
-  const treS: Validator = { type: "PlutusV3", script: applyParamsToScript(await distCode("treasury.treasury.spend"), [claimHash, lampPid, TLAMP_NAME] as never) };
+  // treasury: 6 tham số (`treasury.ak:38-49`) — claim_account_hash, lamp_policy, lamp_name,
+  // committee, threshold, account_nft_policy.
+  const treS: Validator = await applyDist("treasury.treasury.spend", [
+    claimHash, lampPid, TLAMP_NAME, committee, threshold, accountPid,
+  ]);
   const treHash = validatorToScriptHash(treS);
   const treAddr = credentialToAddress(NETWORK, scriptHashToCredential(treHash));
 
@@ -136,10 +199,61 @@ async function main() {
   const metUnit = toUnit(metPid, MET_NAME);
   console.log(`marker one-shot: SUPPLY ${supplyPid}\n                 REG    ${regPid}\n                 KHO    ${khoPid}\n                 MET    ${metPid}\n`);
 
+  // ── Tầng 3: supply_state — NƠI SupplyState UTxO BẮT BUỘC NGỒI ──
+  // apply(lamp_policy, thread_nft_policy, token_name) — 3 tham số, `supply_state.ak:25-29`.
+  // VÌ SAO KHÔNG ĐƯỢC ĐỂ Ở VÍ: trần phân phối nằm TRONG datum SupplyState. Datum ngồi ở địa
+  // chỉ VÍ thì KHÔNG validator nào canh nó — chủ ví tự viết lại dist_minted về 0 rồi đúc trọn
+  // 26,37 tỷ lần nữa, và cả màn "cổng chết" ở bước d chỉ là diễn. Ngồi ở script này thì mỗi
+  // lần tiêu SupplyState đều buộc kèm mint LAMP (Δ>0) ⇒ lamp_mint LUÔN chạy ⇒ transition LUÔN
+  // bị kiểm. Cap chỉ có nghĩa từ đây.
+  const ssScript: Validator = applyValidator(
+    (await rawValidator("supply_state.supply_state.spend")).compiledCode,
+    [lampPid, supplyPid, TLAMP_NAME],
+  );
+  const ssAddr = scriptAddress(ssScript);
+  console.log(`supply_state addr: ${ssAddr}`);
+
+  // ── MET (meter NFT) — CŨNG KHÔNG ĐƯỢC Ở VÍ ──
+  // Nhánh ReserveDraw của lamp_mint KHÔNG đòi chữ ký. Nó chỉ đòi tx SPEND đúng 1 UTxO mang
+  // meter NFT (`lamp_mint.ak:214-218`). Cái ép nhịp δ ≤ E/1000 là validator NGỒI DƯỚI UTxO đó:
+  // reserve_draw (`reserve_draw.ak:44-54`; orchestrator chốt meter_nft = reserve_thread, xem
+  // `reserve_thread.ak:10-18`). MET nằm ở ví ⇒ chủ ví tự tiêu nó ⇒ KHÔNG validator nào chạy
+  // ⇒ rút trọn 9,63 tỷ Reserve trong đúng một giao dịch. Nên MET phải hạ cánh ở reserve_draw.
+  //
+  // Script này KHÔNG tự dựng được reserve_draw: 9 tham số của nó gồm reserve_dest,
+  // treasury_auth_policy/name và gate_script_hash (reserve_gate của Treasury,
+  // `Treasury/onchain/validators/reserve_gate.ak:55-62`) — chưa nơi nào trong repo chốt giá
+  // trị. FAIL-CLOSED: đòi RESERVE_DRAW_HASH, thiếu thì DỪNG, KHÔNG rơi ngược về ví.
+  const reserveDrawHash = (process.env.RESERVE_DRAW_HASH ?? "").trim().toLowerCase();
+  if (!/^[0-9a-f]{56}$/.test(reserveDrawHash)) {
+    throw new Error(
+      "RESERVE_DRAW_HASH chưa set (phải là script hash 56 ký tự hex của reserve_draw). " +
+      "MET = meter NFT: nhánh ReserveDraw của lamp_mint KHÔNG đòi chữ ký, chỉ đòi spend 1 UTxO " +
+      "mang MET. Rót MET về ví = tự tay mở đường rút trọn 9,63 tỷ Reserve. Deploy reserve_draw " +
+      "(module Reserve) trước, rồi truyền script hash của nó vào biến môi trường này.",
+    );
+  }
+  const meterAddr = credentialToAddress(NETWORK, scriptHashToCredential(reserveDrawHash));
+  console.log(`meter (reserve_draw) addr: ${meterAddr}\n`);
+
+  // ReserveState kèm MET — thiếu inline datum thì UTxO đó KHÔNG spend nổi
+  // (`reserve_draw.ak` đọc `expect s: ReserveState = util.inline_datum(own_out)`) và 9,63 tỷ
+  // Reserve chết cứng. Constr(0, [start_epoch, total_oildrop, drawn_oildrop, last_epoch])
+  // theo `Reserve/onchain/lib/magiclamp/reserve/types.ak:19-24`.
+  // last_epoch = epoch hiện tại ⇒ draw đầu tiên sớm nhất là epoch kế (luật t > last_epoch).
+  const nowEpoch = BigInt(Date.now()) / MS_PER_EPOCH;
+  const reserveStateDatum = Data.to(new Constr(0, [nowEpoch, RESERVE_CAP, 0n, nowEpoch]));
+
   const ssFresh = supplyStateToCbor({ dist_minted: 0n, reserve_minted: 0n, dist_cap: DIST_CAP, reserve_cap: RESERVE_CAP });
   const ssFull  = supplyStateToCbor({ dist_minted: DIST_CAP, reserve_minted: 0n, dist_cap: DIST_CAP, reserve_cap: RESERVE_CAP });
   const regDatum = Data.to(new Constr(0, [fromText("did:phoenix:org:greensun"), [new Constr(0, [TOKEN_TAG, new Constr(0, [pkh])])]]));
-  const treDatum = Data.to(new Constr(0, [pkh]));
+  // TreasuryDatum = Constr(0, [committee_hash: ByteArray, outstanding_entitlement: Int]) —
+  // HAI trường (`Distribution/onchain/lib/magiclamp/lampdist/types.ak:51-53`, mirror offchain
+  // `Distribution/offchain/src/datum.ts:178-181`). Bản cũ chỉ có 1 trường: kho nhận trọn
+  // 26,37 tỷ với datum KHÔNG decode được ⇒ `expect out_datum: TreasuryDatum` hỏng ở MỌI nhánh
+  // của treasury.spend ⇒ toàn bộ số đó nằm chết tại địa chỉ script (LAMP không burn được).
+  // outstanding_entitlement = 0 vì chưa cấp entitlement cho ai.
+  const treDatum = Data.to(new Constr(0, [pkh, 0n]));
 
   // ── a. genesis: 4 marker NFT + SupplyState trắng + registry + kho-NFT@treasury ──
   console.log("── a. genesis (4 marker + SupplyState + registry + kho-NFT) ──");
@@ -149,20 +263,22 @@ async function main() {
     .mintAssets({ [regUnit]: 1n }, Data.void()).attach.MintingPolicy(regPol)
     .mintAssets({ [khoUnit]: 1n }, Data.void()).attach.MintingPolicy(khoPol)
     .mintAssets({ [metUnit]: 1n }, Data.void()).attach.MintingPolicy(metPol)
-    .pay.ToAddressWithData(walletAddr, { kind: "inline", value: ssFresh }, { lovelace: 2_000_000n, [threadUnit]: 1n })
+    // SupplyState → ĐỊA CHỈ SCRIPT supply_state, KHÔNG phải ví (xem ghi chú ở ssScript).
+    .pay.ToAddressWithData(ssAddr, { kind: "inline", value: ssFresh }, { lovelace: 2_000_000n, [threadUnit]: 1n })
     // Registry NFT PHẢI nằm ở địa chỉ script == chính policy của nó (`registry.ak:148`),
     // không phải ví. Và `oneshot_nft` có `else(_) { fail }` nên UTxO đó KHÔNG tiêu được:
     // registry đóng băng ngay từ lúc sinh — không ai viết lại authority, kể cả anh.
     .pay.ToAddressWithData(regAddr, { kind: "inline", value: regDatum }, { lovelace: 2_000_000n, [regUnit]: 1n })
     .pay.ToAddress(treAddr, { lovelace: 2_000_000n, [khoUnit]: 1n })
-    .pay.ToAddress(walletAddr, { lovelace: 2_000_000n, [metUnit]: 1n })
+    // MET → reserve_draw kèm ReserveState, KHÔNG phải ví (xem ghi chú ở meterAddr).
+    .pay.ToAddressWithData(meterAddr, { kind: "inline", value: reserveStateDatum }, { lovelace: 2_000_000n, [metUnit]: 1n })
     .complete();
   const gh = await (await genTx.sign.withWallet().complete()).submit();
   console.log(`   TX: ${gh}\n   ${explorerTx(gh)}`); await lucid.awaitTx(gh); await sleep(20_000);
 
   const findAt = async (addr: string, unit: string) =>
     (await lucid.utxosAt(addr)).find((u) => (u.assets[unit] ?? 0n) === 1n);
-  let ssU = await findAt(walletAddr, threadUnit);
+  let ssU = await findAt(ssAddr, threadUnit);
   const regU = await findAt(regAddr, regUnit);
   const khoU = await findAt(treAddr, khoUnit);
   if (!ssU || !regU || !khoU) throw new Error("không resolve được UTxO genesis");
@@ -170,11 +286,12 @@ async function main() {
   // ── b. ĐÚC TRỌN 26,37 TỶ TRONG ĐÚNG MỘT GIAO DỊCH ──
   console.log(`\n── b. đúc TRỌN ${DIST_CAP / 1_000_000n} tLAMP trong MỘT tx → KHO ──`);
   const mintTx = await lucid.newTx()
-    .collectFrom([ssU])
+    .collectFrom([ssU], supplyStateRedeemerToCbor())   // Advance — SupplyState nay ở SCRIPT
+    .attach.SpendingValidator(ssScript)
     .mintAssets({ [lampUnit]: DIST_CAP }, mintRouteToCbor("DistributionVest"))
     .attach.MintingPolicy(lampMint)
     .readFrom([regU, khoU])
-    .pay.ToAddressWithData(walletAddr, { kind: "inline", value: ssFull }, { lovelace: 2_000_000n, [threadUnit]: 1n })
+    .pay.ToAddressWithData(ssAddr, { kind: "inline", value: ssFull }, { lovelace: 2_000_000n, [threadUnit]: 1n })
     .pay.ToAddressWithData(treAddr, { kind: "inline", value: treDatum }, { lovelace: 2_000_000n, [lampUnit]: DIST_CAP })
     .addSigner(walletAddr)
     .complete();
@@ -187,7 +304,7 @@ async function main() {
   console.log(`   ✓ trọn quota Distribution nằm trong kho, đúng MỘT giao dịch`);
 
   // ── c. sổ on-chain đã chạm cap ──
-  ssU = await findAt(walletAddr, threadUnit);
+  ssU = await findAt(ssAddr, threadUnit);
   if (!ssU) throw new Error("mất SupplyState sau khi đúc");
   console.log(`\n── c. SupplyState on-chain: dist_minted == dist_cap ──`);
   console.log(`   datum: ${ssU.datum}`);
@@ -199,22 +316,24 @@ async function main() {
 
   rejects.plus_one = await mustFail("d1. đúc thêm 1 oildrop, khoá vận hành ký đúng", () =>
     lucid.newTx()
-      .collectFrom([ssU!])
+      .collectFrom([ssU!], supplyStateRedeemerToCbor())
+      .attach.SpendingValidator(ssScript)
       .mintAssets({ [lampUnit]: 1n }, mintRouteToCbor("DistributionVest"))
       .attach.MintingPolicy(lampMint)
       .readFrom([regU, khoU])
-      .pay.ToAddressWithData(walletAddr, { kind: "inline", value: ssOver }, { lovelace: 2_000_000n, [threadUnit]: 1n })
+      .pay.ToAddressWithData(ssAddr, { kind: "inline", value: ssOver }, { lovelace: 2_000_000n, [threadUnit]: 1n })
       .pay.ToAddressWithData(treAddr, { kind: "inline", value: treDatum }, { lovelace: 2_000_000n, [lampUnit]: 1n })
       .addSigner(walletAddr)
       .complete());
 
   rejects.unbooked = await mustFail("d2. đúc thêm mà KHÔNG ghi sổ (giữ nguyên dist_minted)", () =>
     lucid.newTx()
-      .collectFrom([ssU!])
+      .collectFrom([ssU!], supplyStateRedeemerToCbor())
+      .attach.SpendingValidator(ssScript)
       .mintAssets({ [lampUnit]: 1_000_000n }, mintRouteToCbor("DistributionVest"))
       .attach.MintingPolicy(lampMint)
       .readFrom([regU, khoU])
-      .pay.ToAddressWithData(walletAddr, { kind: "inline", value: ssFull }, { lovelace: 2_000_000n, [threadUnit]: 1n })
+      .pay.ToAddressWithData(ssAddr, { kind: "inline", value: ssFull }, { lovelace: 2_000_000n, [threadUnit]: 1n })
       .pay.ToAddressWithData(treAddr, { kind: "inline", value: treDatum }, { lovelace: 2_000_000n, [lampUnit]: 1_000_000n })
       .addSigner(walletAddr)
       .complete());
@@ -222,11 +341,12 @@ async function main() {
   const ssRollback = supplyStateToCbor({ dist_minted: DIST_CAP - 1_000_000n, reserve_minted: 0n, dist_cap: DIST_CAP, reserve_cap: RESERVE_CAP });
   rejects.rollback = await mustFail("d3. quay ngược sổ để mở lại quota", () =>
     lucid.newTx()
-      .collectFrom([ssU!])
+      .collectFrom([ssU!], supplyStateRedeemerToCbor())
+      .attach.SpendingValidator(ssScript)
       .mintAssets({ [lampUnit]: 1_000_000n }, mintRouteToCbor("DistributionVest"))
       .attach.MintingPolicy(lampMint)
       .readFrom([regU, khoU])
-      .pay.ToAddressWithData(walletAddr, { kind: "inline", value: ssRollback }, { lovelace: 2_000_000n, [threadUnit]: 1n })
+      .pay.ToAddressWithData(ssAddr, { kind: "inline", value: ssRollback }, { lovelace: 2_000_000n, [threadUnit]: 1n })
       .pay.ToAddressWithData(treAddr, { kind: "inline", value: treDatum }, { lovelace: 2_000_000n, [lampUnit]: 1_000_000n })
       .addSigner(walletAddr)
       .complete());
@@ -249,7 +369,9 @@ async function main() {
     network: NETWORK,
     genesisSeedUtxo: `${seed.txHash}#${seed.outputIndex}`,
     markerPolicies: { supply: supplyPid, registry: regPid, kho: khoPid, meter: metPid },
+    distNftPolicies: { beacon: beaconPid, treasury: khoPid, account: accountPid },
     lampPid, lampUnit, treHash, treAddr, claimHash,
+    supplyStateAddr: ssAddr, meterAddr, reserveDrawHash,
     distCap: DIST_CAP.toString(), reserveCap: RESERVE_CAP.toString(), totalCap: TOTAL_CAP.toString(),
     genesisTx: gh, oneshotMintTx: mh,
     khoHolds: khoLamp.toString(), supplyStateDatum: ssU.datum, gateDeathRejects: rejects,

@@ -140,19 +140,62 @@ interface RawValidator {
   parameters?: unknown[];
 }
 
-/** Số tham số blueprint khai, tra theo compiledCode. Nạp một lần, giữ trong bộ nhớ. */
-const paramCountByCode = new Map<string, { title: string; n: number }>();
+/**
+ * Blueprint mà cổng APPLY-001 phải tra được. KHÔNG chỉ Genesis: script trong thư mục này
+ * áp param cho CẢ validator của Distribution (`claim_account` / `treasury`, lấy qua
+ * `distCode()` ở canonical_mint.ts / canonical_mint_resume.ts / oneshot_cap_mint.ts).
+ * Chỉ nạp blueprint Genesis thì mọi compiledCode Distribution KHÔNG có `meta` — cổng mù
+ * đúng con đường cần canh nhất.
+ */
+const BLUEPRINT_SOURCES: ReadonlyArray<{ label: string; path: string }> = [
+  { label: "Genesis",      path: PLUTUS_JSON_PATH },
+  { label: "Distribution", path: resolve(__dirname, "../../Distribution/onchain/plutus.json") },
+];
 
-async function loadBlueprint(): Promise<RawValidator[]> {
-  const json = JSON.parse(await readFile(PLUTUS_JSON_PATH, "utf8"));
-  const vs = json.validators as RawValidator[];
+/** Số tham số blueprint khai, tra theo compiledCode. Nạp một lần, giữ trong bộ nhớ. */
+const paramCountByCode = new Map<string, { title: string; n: number; source: string }>();
+/** Blueprint nạp hụt (thường vì chưa `aiken build`) — nêu trong lỗi để chẩn đúng chỗ. */
+const blueprintLoadErrors: string[] = [];
+
+async function readBlueprint(path: string): Promise<RawValidator[]> {
+  const json = JSON.parse(await readFile(path, "utf8"));
+  return json.validators as RawValidator[];
+}
+
+function indexBlueprint(vs: RawValidator[], source: string): void {
   for (const v of vs) {
     // `.mint`/`.spend` và `.else` dùng CHUNG compiledCode; giữ tên của bản chính để
     // thông điệp lỗi đọc ra đúng validator, không phải nhánh `.else`.
     if (v.title.endsWith(".else") && paramCountByCode.has(v.compiledCode)) continue;
-    paramCountByCode.set(v.compiledCode, { title: v.title, n: (v.parameters ?? []).length });
+    paramCountByCode.set(v.compiledCode, {
+      title: v.title, n: (v.parameters ?? []).length, source,
+    });
   }
-  return vs;
+}
+
+let blueprintsIndexed = false;
+async function indexAllBlueprints(): Promise<void> {
+  if (blueprintsIndexed) return;
+  blueprintsIndexed = true;
+  for (const src of BLUEPRINT_SOURCES) {
+    try {
+      indexBlueprint(await readBlueprint(src.path), src.label);
+    } catch (e) {
+      // Không ném ở đây: blueprint thiếu chỉ thành lỗi KHI có script thật cần tra mà
+      // không tra được (assertParamCount ném, kèm đúng danh sách này).
+      blueprintLoadErrors.push(`${src.label} (${src.path}): ${(e as Error).message}`);
+    }
+  }
+}
+
+// Nạp NGAY lúc module load. `applyValidator`/`applyPolicy` là hàm ĐỒNG BỘ — không có chỗ
+// await bên trong — nên bảng tra phải đầy TRƯỚC lần apply đầu tiên, kể cả khi chỗ gọi
+// không đi qua `rawValidator()`.
+await indexAllBlueprints();
+
+async function loadBlueprint(): Promise<RawValidator[]> {
+  await indexAllBlueprints();
+  return readBlueprint(PLUTUS_JSON_PATH);
 }
 
 export async function rawValidator(title: string): Promise<RawValidator> {
@@ -171,8 +214,23 @@ export async function rawValidator(title: string): Promise<RawValidator> {
  */
 function assertParamCount(compiledCode: string, params: unknown[]): void {
   const meta = paramCountByCode.get(compiledCode);
-  if (!meta) return; // code không từ blueprint này (vd module khác) — không đoán.
-  assertParamCountGate(meta.title, meta.n, params.length);
+  if (!meta) {
+    // FAIL-CLOSED. Bản cũ `return` ở đây — tức cổng LẶNG LẼ cho qua mọi compiledCode
+    // không tra được, mà đó CHÍNH LÀ trường hợp nguy hiểm nhất: không tra được thì
+    // không biết blueprint khai bao nhiêu tham số, apply thiếu vẫn chạy trơn và sinh
+    // script hash / policy id KHÁC, im lặng. Không tra được ⇒ DỪNG, không đoán.
+    const known = BLUEPRINT_SOURCES.map((b) => b.label).join(", ");
+    throw new Error(
+      `APPLY-002: compiledCode (${params.length} tham số truyền vào) không có trong ` +
+      `blueprint nào đã nạp (${known}) — cổng APPLY-001 KHÔNG kiểm được số tham số nên ` +
+      `DỪNG (fail-closed). Apply thiếu tham số KHÔNG báo lỗi: nó sinh script hash/policy ` +
+      `id khác, im lặng, và tiền vào địa chỉ đó thì không ai mở được.` +
+      (blueprintLoadErrors.length
+        ? ` Blueprint nạp hụt: ${blueprintLoadErrors.join("; ")} — chạy 'aiken build' rồi thử lại.`
+        : ` Thêm blueprint chứa script này vào BLUEPRINT_SOURCES, hoặc lấy compiledCode qua rawValidator().`),
+    );
+  }
+  assertParamCountGate(`${meta.source}:${meta.title}`, meta.n, params.length);
 }
 
 export function applyValidator(compiledCode: string, params: unknown[]): Validator {
