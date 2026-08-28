@@ -12,9 +12,12 @@
 > validator phân phối duy nhất hiện có = `srcl_pool` (SetRoot / Claim / Sweep, Merkle **schema C**,
 > claim-slot spend-once). Nguồn entitlement đã hiện thực = **∝ stake per-epoch**
 > (`computeSrclEntitlements`, mỗi epoch một pot độc lập chia theo tỷ lệ stake của chính epoch đó).
-> Biến thể **∝ phần thưởng đã đóng góp** (thiết kế ở [`Papers/srcl.md`](../Papers/srcl.md), dự kiến
-> tách thành validator `srcl_stake`) **CHƯA có trong cây** — là ý hướng thiết kế, KHÔNG phải mã đang
-> chạy, và không kèm mốc hứa. Mọi mô tả "∝ stake" bên dưới = **đúng hiện trạng mã**.
+> Biến thể **∝ phần thưởng đã đóng góp** (thiết kế ở [`Papers/srcl.md`](../Papers/srcl.md)) nay ĐÃ
+> có mã trong cây: `onchain/validators/srcl_stake.ak` (274 dòng, 9 test Aiken xanh). Nhưng **chưa
+> nối vào đường phân phối nào**: không script deploy nào áp tham số cho nó, không builder off-chain
+> nào dựng tx chạm nó, và `srcl_pool` không biết nó tồn tại — grep `srcl_stake` trong `offchain/`,
+> `scripts/` ra rỗng. Nên **đường phân phối đang chạy vẫn chỉ có một**: `srcl_pool` ∝ stake
+> per-epoch. Mọi mô tả "∝ stake" bên dưới = **đúng hiện trạng mã**.
 
 Module phân phối **360 triệu LAMP** (pot SRCL trong bảng 18-pot, `Papers/pot-catalog.md`)
 cho delegator của pool SRCL theo **tỷ lệ stake**, đều trong **36 epoch**
