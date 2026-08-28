@@ -56,7 +56,25 @@ const TOTAL_CAP   = DIST_CAP + RESERVE_CAP;    // 36 tỷ, bất biến
 const REG_NAME = fromText("REG");
 const KHO_NAME = fromText("KHO");
 const MET_NAME = fromText("MET");
-const MS_PER_EPOCH = 432_000_000n;
+// ms mỗi epoch — PHẢI theo mạng, không nướng cứng. Dòng chặn mạng bên dưới cho phép CẢ
+// Preview, mà Preview có epoch 1 ngày (86 400 000 ms) chứ không phải 5 ngày. Số này đi vào
+// `ReserveState.start_epoch/last_epoch` VÀ vào apply-param của `claim_account` — tức nó bị
+// nướng vào script hash, sai là sai vĩnh viễn. Fail-closed với mạng lạ.
+const MS_PER_EPOCH_BY_NETWORK: Record<string, bigint> = {
+  Mainnet: 432_000_000n,
+  Preprod: 432_000_000n,
+  Preview:  86_400_000n,
+};
+const MS_PER_EPOCH = (() => {
+  const v = MS_PER_EPOCH_BY_NETWORK[NETWORK];
+  if (v === undefined) {
+    throw new Error(
+      `EPOCH-001: không biết ms/epoch của mạng '${NETWORK}'. Số này nướng vào apply-param của ` +
+      `claim_account ⇒ sai thì ra script hash khác, im lặng, không sửa được sau khi gửi.`,
+    );
+  }
+  return v;
+})();
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -192,6 +210,18 @@ async function main() {
   console.log(`KHO (treasury.ak): ${treAddr}`);
   console.log(`cap: dist ${DIST_CAP} + reserve ${RESERVE_CAP} = ${TOTAL_CAP} oildrop (36 tỷ LAMP)\n`);
 
+  // 🔴 REG nằm ở ĐỊA CHỈ SCRIPT của `oneshot_nft` — mà `oneshot_nft` KHÔNG có nhánh `spend`
+  // (`oneshot_nft.ak:32` chỉ có `mint`, `:42` là `else(_) { fail }`). Nghĩa là UTxO registry
+  // này **không bao giờ tiêu được**. Đọc làm reference input thì vẫn chạy, nên cổng WHO của
+  // `lamp_mint` vẫn đúng — nhưng lời hứa ở `lamp_mint.ak` ("xoay khoá vận hành = sửa entry
+  // registry, KHÔNG phải redeploy") thì CHẾT trong lượt deploy này.
+  //
+  // Ở đây là CỐ Ý và vô hại: lượt này đúc trọn cap trong đúng một tx ⇒ nhánh DistributionVest
+  // chết ngay sau đó ⇒ không còn gì để xoay khoá cho. Dòng chặn mạng ở trên đã cấm Mainnet.
+  //
+  // ĐỪNG CHÉP CÁCH NÀY SANG MAINNET. `registry.ak:137-138` đòi `Registry-NFT policy ≡ registry
+  // script hash`, và `:148-150` ép carrier nằm ở `Script(policy)` — nên REG mainnet phải do
+  // CHÍNH validator `registry` đúc, không phải do `oneshot_nft`.
   const regAddr = credentialToAddress(NETWORK, scriptHashToCredential(regPid));
   const threadUnit = toUnit(supplyPid, SUPPLY_NAME);
   const regUnit = toUnit(regPid, REG_NAME);

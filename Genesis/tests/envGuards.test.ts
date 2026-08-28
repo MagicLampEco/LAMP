@@ -10,6 +10,7 @@ import { describe, it, expect, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import {
   requiredHashParam, requiredHexParam, CONSEQUENCE_METER, CONSEQUENCE_DIST_DEST,
+  assertOneShotMarkers, REMINTABLE_ACK,
 } from "../scripts/_guards.js";
 
 const HASH28 = "ab".repeat(28);
@@ -398,5 +399,112 @@ describe("CALL-SITE — không apply-param nào đi vòng cổng gác", () => {
     // …và KHÔNG bắt nhầm biến không phải apply-param.
     expect(scan(`BigInt(process.env.MINT_OILDROP ?? "0"); process.env.BLOCKFROST_KEY;`))
       .toEqual([]);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MARKER-001 — marker đúc dưới native-sig thì KHÔNG one-shot.
+//
+// Ca gốc (hồi quy): `0630c28` vá đúng MỘT tệp (`oneshot_cap_mint.ts`) và để nguyên bốn tệp
+// bên cạnh vẫn nhét `nPid` (native-sig ví deploy) vào cả bốn khe marker của `lamp_mint`.
+// Cùng một mẫu "vá bản sao đang nhìn, để nguyên bản sống bên cạnh" đã đẻ ra chính `_guards.ts`.
+// Bộ test dưới ép CẢ BỐN tệp phải đi qua cổng — đó mới là thứ hỏng, không phải một tệp nào.
+
+describe("assertOneShotMarkers — MARKER-001", () => {
+  // Cùng quy ước đường dẫn với khối CALL-SITE ở trên: tương đối theo cwd của vitest
+  // (`Genesis/offchain`), KHÔNG dùng `import.meta.url` — xem lý do ghi ở đó.
+  const SCRIPTS_DIR = "../scripts";
+  const NATIVE = "cd".repeat(28);
+  const ONESHOT = "ef".repeat(28);
+  const io = (env: Record<string, string | undefined>, warn = silent) => ({
+    submit: true, nativePolicyId: NATIVE, env, warn,
+  });
+
+  it("bốn khe đều one-shot ⇒ im lặng đi tiếp", () => {
+    const warn = vi.fn();
+    expect(() => assertOneShotMarkers(
+      { thread: ONESHOT, registry: ONESHOT, kho: ONESHOT, meter: ONESHOT },
+      { ...io({}), warn },
+    )).not.toThrow();
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it("cả bốn khe là native-sig + sắp GỬI ⇒ ném, và nêu đủ bốn khe", () => {
+    let msg = "";
+    try {
+      assertOneShotMarkers(
+        { thread: NATIVE, registry: NATIVE, kho: NATIVE, meter: NATIVE }, io({}),
+      );
+    } catch (e) { msg = (e as Error).message; }
+    expect(msg).toContain("MARKER-001");
+    for (const slot of ["thread", "registry", "kho", "meter"]) expect(msg).toContain(slot);
+    expect(msg).toContain(REMINTABLE_ACK);
+  });
+
+  it("CHỈ khe meter lệch cũng phải ném — 9,63 tỷ Reserve treo ở đúng khe đó", () => {
+    expect(() => assertOneShotMarkers(
+      { thread: ONESHOT, registry: ONESHOT, kho: ONESHOT, meter: NATIVE }, io({}),
+    )).toThrow(/MARKER-001[\s\S]*meter/);
+  });
+
+  it("CHỈ khe thread lệch cũng phải ném — SUPPLY NFT thứ hai = bộ đếm về 0", () => {
+    expect(() => assertOneShotMarkers(
+      { thread: NATIVE, registry: ONESHOT, kho: ONESHOT, meter: ONESHOT }, io({}),
+    )).toThrow(/MARKER-001[\s\S]*thread/);
+  });
+
+  it("so khớp KHÔNG phân biệt hoa/thường — hex viết HOA vẫn phải bị bắt", () => {
+    expect(() => assertOneShotMarkers(
+      { thread: NATIVE.toUpperCase(), registry: ONESHOT, kho: ONESHOT, meter: ONESHOT }, io({}),
+    )).toThrow(/MARKER-001/);
+  });
+
+  it("chế độ KHÔNG gửi ⇒ cảnh báo chứ không ném", () => {
+    const warn = vi.fn();
+    expect(() => assertOneShotMarkers(
+      { thread: NATIVE, registry: NATIVE, kho: NATIVE, meter: NATIVE },
+      { submit: false, nativePolicyId: NATIVE, env: {}, warn },
+    )).not.toThrow();
+    expect(warn).toHaveBeenCalledOnce();
+    expect(warn.mock.calls[0]![0]).toContain("MARKER-001");
+  });
+
+  it("gõ ĐÚNG chuỗi xác nhận ⇒ đi tiếp, nhưng phải kêu to", () => {
+    const warn = vi.fn();
+    expect(() => assertOneShotMarkers(
+      { thread: NATIVE, registry: NATIVE, kho: NATIVE, meter: NATIVE },
+      { ...io({ ALLOW_REMINTABLE_MARKERS: REMINTABLE_ACK }), warn },
+    )).not.toThrow();
+    expect(warn).toHaveBeenCalledOnce();
+    expect(warn.mock.calls[0]![0]).toContain("KHÔNG dùng cho mainnet");
+  });
+
+  it("gõ GẦN ĐÚNG chuỗi xác nhận ⇒ vẫn ném (không nhận biến thể)", () => {
+    for (const v of ["yes", "1", "true", REMINTABLE_ACK.toUpperCase(), REMINTABLE_ACK + " "]) {
+      expect(() => assertOneShotMarkers(
+        { thread: NATIVE, registry: NATIVE, kho: NATIVE, meter: NATIVE },
+        io({ ALLOW_REMINTABLE_MARKERS: v }),
+      )).toThrow(/MARKER-001/);
+    }
+  });
+
+  it("HỒI QUY: cả bốn script dùng scriptFromNative đều phải đi qua cổng", () => {
+    // Đây là phép kiểm thật của bài này. Bảy test trên chỉ chứng minh cổng hoạt động;
+    // test này chứng minh cổng ĐƯỢC MẮC VÀO — thứ mà `0630c28` đã bỏ sót.
+    const files = [
+      "canonical_mint.ts", "canonical_mint_resume.ts",
+      "canonical_compute.ts", "preview_registry_e2e.ts",
+    ];
+    for (const f of files) {
+      const src = readFileSync(`${SCRIPTS_DIR}/${f}`, "utf8");
+      if (!src.includes("scriptFromNative")) continue; // đã chuyển sang one-shot ⇒ khỏi cần cổng
+      // Đếm LỜI GỌI, không đếm chuỗi: dòng `import { assertOneShotMarkers }` cũng chứa tên
+      // đó, nên `includes(...)` vẫn xanh sau khi lời gọi bị gỡ — đã kiểm bằng đột biến.
+      const calls = src.split("\n")
+        .filter((l: string) => !l.trimStart().startsWith("import"))
+        .filter((l: string) => /\bassertOneShotMarkers\s*\(/.test(l));
+      expect(calls.length, `${f} đúc marker bằng native-sig mà KHÔNG GỌI assertOneShotMarkers`)
+        .toBeGreaterThan(0);
+    }
   });
 });

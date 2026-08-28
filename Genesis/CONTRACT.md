@@ -63,7 +63,7 @@ Apply-param là một DAG; vòng phụ thuộc = không deploy được. Thiết
 
 ```
 Tầng 1 — NFT one-shot (mint TRƯỚC, độc lập, neo genesis_ref):
-    thread_nft  (SUPPLY)   registry_nft   kho_nft   meter_nft (= reserve_thread)
+    thread_nft  (SUPPLY)   registry_nft   kho_nft   meter_nft (NFT one-shot BẤT KỲ)
         │            │          │            │
         └──── bake policy+name của chúng vào params của ─────┐
                                                              ▼
@@ -99,7 +99,27 @@ Nguồn: `Genesis/onchain/validators/lamp_mint.ak:57`. Thứ tự = hợp đồn
 | 8 | `token_tag` (`action_tag`) | ByteArray | khoá tra cứu authority trong bảng |
 | 9 | `kho_nft_policy` | PolicyId | A-DEST: đánh dấu địa chỉ kho |
 | 10 | `kho_nft_name` | ByteArray | — |
-| 11 | `meter_nft_policy` | PolicyId | gate nhịp Reserve (= reserve_thread NFT) |
+| 11 | `meter_nft_policy` | PolicyId | gate nhịp Reserve — NFT one-shot bất kỳ, xem ghi chú dưới bảng |
+
+> **`meter_nft` là một TÍNH CHẤT, không phải một danh tính.** Chỗ này trước đây viết
+> `meter_nft (= reserve_thread)`, đọc ra thành "phải do `Reserve/reserve_thread.ak` đúc". Không
+> phải. `lamp_mint` chỉ đòi đúng hai điều: tx spend đúng 1 UTxO mang NFT đó, và tx không đúc lại
+> nó. `reserve_draw` nhận `reserve_thread_policy` như một **tham số tự do** — nó không biết và
+> không quan tâm ai đúc. Điều kiện thật là **one-shot**, và `oneshot_nft.ak` với
+> `reserve_thread.ak` đúng bằng nhau từng mệnh đề (tiêu `genesis_ref` · đúng 1 tên ·
+> `qty == 1` · `else fail`).
+>
+> Ràng buộc THẬT nằm ở chỗ khác: **ba giá trị phải bằng nhau** — `meter_nft_policy`/`_name`
+> nướng vào `lamp_mint`, `reserve_thread_policy`/`_name` nướng vào `reserve_draw`, và
+> policy/name của NFT thật sự hạ cánh ở địa chỉ `reserve_draw`. Cả ba đều là apply-param,
+> khoá cứng khi gửi tx đầu. Lệch một byte ⇒ `reserve_draw.ak:66-67` gãy vĩnh viễn ⇒ 9,63 tỷ
+> không phát hành được, mà LAMP không burn nên không có đường dọn sổ.
+>
+> Ranh giới tổng quát dùng lại được cho mọi marker sau này: **người đúc chỉ quan trọng khi có
+> validator suy ra ĐỊA CHỈ từ policy-id của marker.** Với `meter` thì không ⇒ người đúc không
+> quan trọng. Với `registry` thì CÓ — `registry.ak:137-138` đòi `policy-id ≡ registry script
+> hash` và `:148-150` ép carrier nằm ở `Script(policy)` ⇒ REG **bắt buộc** do chính validator
+> `registry` đúc. Đừng chép cách làm của `meter` sang `registry`.
 | 12 | `meter_nft_name` | ByteArray | — |
 
 > **token_name là param** ⇒ tLAMP và LAMP có **policy-id KHÁC nhau** (2 token độc lập), cùng một code.
@@ -178,7 +198,7 @@ Ba cổng **trực giao** (WHO / WHERE / HOW-MUCH). Nguồn `lamp_mint.ak:177`.
 ### 7b. ReserveDraw (Constr 1) — quota 9,63 tỷ
 
 Permissionless thật, **KHÔNG chữ ký**. Nguồn `lamp_mint.ak:204`.
-- Ép tx spend **đúng 1** UTxO mang meter NFT (= reserve_thread NFT); meter không mint/burn trong tx.
+- Ép tx spend **đúng 1** UTxO mang meter NFT (NFT one-shot bất kỳ); meter không mint/burn trong tx.
 - ⟹ tầng gate Reserve BẮT BUỘC chạy. Không keyholder nào quyết con số nhả → "nhả-thuật-toán, không ai rút tay".
 
 > 🔴 **RANH GIỚI PHẢI NÓI THẲNG — `lamp_mint` KHÔNG canh 9,63 tỷ, nó UỶ QUYỀN.**

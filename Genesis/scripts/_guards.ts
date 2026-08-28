@@ -178,3 +178,84 @@ export const CONSEQUENCE_GENESIS_REF =
 export const CONSEQUENCE_DIST_DEST =
   "A-DEST sẽ ép toàn bộ LAMP mint ra rót vào Script(00×28) — địa chỉ không có tiền ảnh script " +
   "nên KHÔNG AI spend được. LAMP không burn ⇒ số đó mất khỏi lưu hành vĩnh viễn.";
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CỔNG MARKER ĐÚC-LẠI-ĐƯỢC
+//
+// VÌ SAO CÓ (nguyên nhân gốc, cùng họ với chính tệp này):
+//   `0630c28` ("marker NFT phải one-shot") vá ĐÚNG MỘT tệp — `oneshot_cap_mint.ts` — và để
+//   nguyên bốn tệp bên cạnh vẫn đúc cả bốn marker bằng `scriptFromNative({type:"sig"})`:
+//   `canonical_mint.ts:108`, `canonical_mint_resume.ts:94`, `canonical_compute.ts:41`,
+//   `preview_registry_e2e.ts:53`. Đúng lại một lần nữa cái mẫu đã đẻ ra tệp này: vá bản sao
+//   đang nhìn, để nguyên bản sống bên cạnh.
+//
+// VÌ SAO NÓ NGUY HIỂM (hai đường, không phải một):
+//   Native-sig KHÔNG one-shot — người giữ khoá đúc lại CÙNG một NFT bao nhiêu lần cũng được.
+//   (a) Đúc SUPPLY NFT thứ hai ⇒ có `SupplyState` thứ hai ⇒ bộ đếm `dist_minted` về 0 ⇒ đúc
+//       lại TRỌN cap. Trần 36 tỷ tụt xuống thành một lời hứa vận hành.
+//   (b) Đúc MET rồi giữ ở VÍ ⇒ nhánh `ReserveDraw` (`lamp_mint.ak:213-219`) chỉ đòi "tx spend
+//       đúng 1 UTxO mang meter NFT" — không A-DEST, không trần mỗi lượt, không chữ ký. UTxO ở
+//       địa chỉ ví thì KHÔNG validator nào chạy, mà điều kiện vẫn thoả ⇒ rút trọn 9,63 tỷ
+//       trong một tx, chi phí bằng phí mạng.
+//
+// VÌ SAO KHÔNG CẤM THẲNG:
+//   `canonical_mint_resume.ts` phải nối tiếp được một lượt chạy ĐANG SỐNG trên Preprod, mà
+//   lượt đó đã đúc marker dưới native-sig rồi. Cấm cứng là chặn luôn đường thu dọn. Nên cổng
+//   này biến một lỗ IM LẶNG thành một lựa chọn phải GÕ RA — và gõ ra thì có vết.
+
+/** Bốn khe marker của `lamp_mint`, theo đúng thứ tự tham số (#1, #6, #9, #11). */
+export interface MarkerSlots {
+  thread: string;
+  registry: string;
+  kho: string;
+  meter: string;
+}
+
+export interface MarkerGateOptions {
+  /** true = tx sẽ được GỬI LÊN CHAIN ⇒ marker đúc-lại-được là lỗi, không phải cảnh báo. */
+  submit: boolean;
+  /** Policy-id của native-sig ví deploy. Khe nào bằng giá trị này = đúc lại được. */
+  nativePolicyId: string;
+  env: Record<string, string | undefined>;
+  warn: (msg: string) => void;
+}
+
+/** Chuỗi phải gõ đúng vào `ALLOW_REMINTABLE_MARKERS` để đi tiếp. Dài có chủ ý. */
+export const REMINTABLE_ACK = "toi-hieu-tran-36-ty-chi-con-la-loi-hua";
+
+export const CONSEQUENCE_REMINTABLE_MARKERS =
+  "marker đúc dưới native-sig KHÔNG one-shot: người giữ khoá ví deploy đúc SUPPLY NFT thứ hai " +
+  "⇒ SupplyState thứ hai ⇒ dist_minted về 0 ⇒ đúc lại trọn cap; và đúc MET giữ ở ví ⇒ nhánh " +
+  "ReserveDraw thoả mà không validator nào chạy ⇒ rút trọn 9,63 tỷ trong một tx. Dùng " +
+  "`oneshot_nft.ak` (genesis_ref + asset_name) thay cho scriptFromNative.";
+
+/**
+ * ÉP mọi khe marker của `lamp_mint` phải one-shot trước khi apply-param.
+ *
+ * Ném nếu có khe nào trỏ vào policy native-sig và tx sắp được gửi — trừ khi người chạy gõ
+ * đúng `ALLOW_REMINTABLE_MARKERS=<REMINTABLE_ACK>`, khi đó chỉ cảnh báo thật to.
+ * Ở chế độ không gửi (dựng tx để xem CBOR) thì luôn chỉ cảnh báo.
+ */
+export function assertOneShotMarkers(slots: MarkerSlots, opts: MarkerGateOptions): void {
+  const hit = (Object.keys(slots) as Array<keyof MarkerSlots>)
+    .filter((k) => slots[k].toLowerCase() === opts.nativePolicyId.toLowerCase());
+  if (hit.length === 0) return;
+
+  const head =
+    `MARKER-001: ${hit.length} khe marker (${hit.join(", ")}) đúc dưới policy native-sig ` +
+    `${opts.nativePolicyId} — KHÔNG one-shot. ${CONSEQUENCE_REMINTABLE_MARKERS}`;
+
+  if (!opts.submit) {
+    opts.warn(`⚠ ${head}\n  (chế độ KHÔNG gửi ⇒ chỉ cảnh báo)`);
+    return;
+  }
+  if (opts.env.ALLOW_REMINTABLE_MARKERS === REMINTABLE_ACK) {
+    opts.warn(`🔴 ${head}\n  ĐI TIẾP vì ALLOW_REMINTABLE_MARKERS đã gõ đúng. Lượt chạy này KHÔNG dùng cho mainnet.`);
+    return;
+  }
+  throw new Error(
+    `${head}\n` +
+    `Cách đi tiếp có chủ ý (chỉ dùng cho testnet / nối tiếp một lượt đã lỡ đúc native-sig):\n` +
+    `  ALLOW_REMINTABLE_MARKERS=${REMINTABLE_ACK}`,
+  );
+}
