@@ -28,6 +28,7 @@ import {
 } from "../offchain/src/constants.js";
 import type { SrclDatum, ClaimProof } from "../offchain/src/types.js";
 import type { Network } from "@magiclamp/utils";
+import { assertSweepDest } from "../offchain/src/sweepDestGuard.js";
 
 const ENV_PATH = "/Users/ductiger/Projects/LAMP-launch-wt/.env";
 for (const line of readFileSync(ENV_PATH, "utf8").split("\n")) {
@@ -131,12 +132,37 @@ const root0 = tree.root;
 const poolSeedOildrop = MY_OILDROP + OTHER_OILDROP; // 3 LAMP
 console.log(`[srcl] root0: ${root0}, pool seed: ${poolSeedOildrop} oildrop`);
 
-// ── Datum khởi tạo (treasury_dest = payment-cred hash ví mình) ──────────────
+// ── Datum khởi tạo ──────────────────────────────────────────────────────────
+// `treasury_dest` là đích của `Sweep` — đường ra DUY NHẤT của pool, và nó ghi một lần vào datum
+// rồi bị `srcl_pool.ak:125,179` ép bảo toàn ở mọi redeemer khác ⇒ không sửa được sau.
+//
+// Bản trước đặt `treasury_dest: pkh` — CÙNG giá trị với `ADMIN = [pkh]` ở trên. Hai chỗ hỏng
+// chồng lên nhau, cả hai im lặng:
+//   (1) đích trùng người gác ⇒ Sweep chuyển LAMP từ chỗ người giữ khoá admin với tới được sang
+//       chỗ CŨNG với tới được. Không phải một đường ra.
+//   (2) `pkh` là khoá VÍ, mà `srcl_pool.ak:210` → `util.is_at_script:23-27` đòi
+//       `payment_credential == Script(h)` ⇒ Sweep đòi trả LAMP tới `Script(<khoá ví>)`, một địa
+//       chỉ script KHÔNG CÓ TIỀN ẢNH. Tx vẫn lên chuỗi "thành công", LAMP thì không ai spend
+//       được nữa — và LAMP không burn nên không có đường dọn sổ.
+// Cùng họ với `meter_nft_policy = 28 byte 0` đã giết nhánh ReserveDraw của bản mồi mainnet:
+// một giá trị đúng hình dạng, sai tiền ảnh, nướng vào chỗ không sửa được sau.
+//
+// Nay đòi khai tường minh qua env, và cổng ép hai điều kiện trước khi ghi.
+const SWEEP_DEST = process.env.SRCL_TREASURY_DEST ?? "";
+if (!SWEEP_DEST) {
+  throw new Error(
+    "SWEEP-000: thiếu SRCL_TREASURY_DEST — đích của Sweep, ghi một lần vào datum, không sửa " +
+    "được sau. Phải là SCRIPT hash của kho nhận, nằm dưới tập khoá RỜI với ADMIN. Bản trước " +
+    "mặc định lấy khoá ví đang chạy, vừa trùng admin vừa sai kiểu hash.",
+  );
+}
+assertSweepDest(SWEEP_DEST, { admin: ADMIN, willWrite: true, isScriptHash: true });
+
 const initDatum: SrclDatum = {
   epoch_roots: [],
   distributed_total: 0n,
   end_epoch: END_EPOCH,
-  treasury_dest: pkh,
+  treasury_dest: SWEEP_DEST,
   // Lấy theo ĐÚNG mạng đang chạy. Bản trước nạp hằng MAINNET (432_000_000) trong khi script
   // khoá cứng NETWORK === "Preview" (86_400_000) ⇒ lệch 5 lần trên chính mạng nó chạy.
   ms_per_epoch: msPerEpochFor(NETWORK as Network),
