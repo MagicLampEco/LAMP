@@ -143,8 +143,8 @@
     "claim_deadline_epoch": 1060,
     "pot_lamp": "120000000000000",
     "lamp_source": "AIRDROP_POT",
-    "summary_md": "120.000.000 LAMP chia 3 pot theo trọng số stake: Delegator đăng ký nhận theo stake của mình (100M); SPO nhận theo stake delegator đã đăng ký uỷ thác vào pool (5M); Community Supporter nhận theo stake của những delegator bình chọn cho sự hỗ trợ của họ (15M). Không điểm tương tác, không farm được — thước đo duy nhất là stake ADA thật.",
-    "description_md": "## Airdrop v2 — 120M LAMP, 3 pot stake-weighted\n\nMọi pot chia **tỉ lệ trọng số stake** — đại lượng chi-phí-giả-mạo cao, không nguỵ tạo được. Không đếm tin nhắn, không đo lượt xem, không có \"điểm\" để cày.\n\n| Pot | LAMP | Trọng số |\n|---|---|---|\n| **Delegator** | 100.000.000 | stake của **chính bạn** (mọi pool Cardano, phải đăng ký) |\n| **SPO** | 5.000.000 | stake của delegator đã đăng ký **uỷ thác vào pool của bạn** |\n| **CS — Community Supporter** | 15.000.000 | stake của delegator **bình chọn rằng bạn đã hỗ trợ họ** |\n\n### Hai vai trò SPO vs CS — khác nhau ở đâu?\n\n- **SPO** vận hành **hạ tầng** (chạy node, sản xuất block). Được đo bằng nơi stake **đang đứng**: delegation nằm sẵn on-chain, không cần ai khai.\n- **CS** hỗ trợ **con người** (hướng dẫn stake, onboard ví, giải đáp, viết tài liệu) — không cần vận hành pool. Được đo bằng nơi stake **lên tiếng**: delegator chủ động bình chọn \"người này đã giúp tôi\", sức nặng phiếu = stake của người bầu.\n\nCùng một đồng stake phát hai tín hiệu độc lập — bạn không phải chọn giữa hai.\n\n### Tham gia thế nào\n\n1. **Delegator**: stake vào bất kỳ pool Cardano nào (giữ ≥ 2 epoch liên tiếp), rồi đăng ký bằng chữ ký reward stake key trong cửa sổ đăng ký. Không phí, không di chuyển tài sản, không cần DID.\n2. **SPO**: đăng ký pool bằng reward stake key. Phần thưởng tự tính theo delegation đã đăng ký chảy vào pool.\n3. **CS**: tạo hồ sơ với PhoenixKey DID sinh trắc (một người một hồ sơ — chống giả mạo người nhận). Hỗ trợ cộng đồng trong nhóm Launch; delegator được bạn giúp sẽ bình chọn cho bạn khi đăng ký.\n\n### Minh bạch\n\nCông thức tất định + dữ liệu công khai → bất kỳ ai tự tính lại toàn bộ kết quả chia, dựng lại cây Merkle, đối chiếu root on-chain. Phần dư về Treasury — LAMP tổng cung cố định 36 tỷ, không đốt.",
+    "summary_md": "120.000.000 LAMP chia 3 pot theo trọng số stake: Delegator đăng ký nhận theo stake của mình (100M); SPO nhận theo stake delegator đã đăng ký uỷ thác vào pool (5M); Community Supporter nhận theo tổng phiếu-stake được phân bổ cho họ — tự bỏ phiếu bằng stake của chính mình là hợp lệ, nên làn này chia theo stake (15M). Không điểm tương tác, không farm được — thước đo duy nhất là stake ADA thật.",
+    "description_md": "## Airdrop v2 — 120M LAMP, 3 pot stake-weighted\n\nMọi pot chia **tỉ lệ trọng số stake** — đại lượng chi-phí-giả-mạo cao, không nguỵ tạo được. Không đếm tin nhắn, không đo lượt xem, không có \"điểm\" để cày.\n\n| Pot | LAMP | Trọng số |\n|---|---|---|\n| **Delegator** | 100.000.000 | stake của **chính bạn** (mọi pool Cardano, phải đăng ký) |\n| **SPO** | 5.000.000 | stake của delegator đã đăng ký **uỷ thác vào pool của bạn** |\n| **CS — Community Supporter** | 15.000.000 | tổng **phiếu-stake phân bổ cho bạn** — tự bỏ phiếu hợp lệ ⇒ chia theo **stake của chính bạn** |\n\n### Hai vai trò SPO vs CS — khác nhau ở đâu?\n\n- **SPO** vận hành **hạ tầng** (chạy node, sản xuất block). Được đo bằng nơi stake **đang đứng**: delegation nằm sẵn on-chain, không cần ai khai.\n- **CS** là làn mở cho **bất kỳ ai có DID sinh trắc**, không cần vận hành pool. Mỗi delegator có một **phiếu-stake = stake của chính mình** và phân bổ nó cho ai tuỳ ý — **kể cả cho chính mình**. Vì tự bỏ phiếu luôn hợp lệ, trên thực tế làn CS **chia theo stake**; nếu ai đó dồn phiếu cho người khác thì đó là **tặng cho tự nguyện**, không phải phần thưởng cơ chế bảo đảm.\n\nCùng một đồng stake vào được cả hai pot — bạn không phải chọn giữa hai.\n\n### Tham gia thế nào\n\n1. **Delegator**: stake vào bất kỳ pool Cardano nào (giữ ≥ 2 epoch liên tiếp), rồi đăng ký bằng chữ ký reward stake key trong cửa sổ đăng ký. Không phí, không di chuyển tài sản, không cần DID.\n2. **SPO**: đăng ký pool bằng reward stake key. Phần thưởng tự tính theo delegation đã đăng ký chảy vào pool.\n3. **CS**: tạo hồ sơ với PhoenixKey DID sinh trắc (một người một hồ sơ — chống giả mạo người nhận), rồi phân bổ phiếu-stake của mình khi đăng ký. Mặc định là tự bỏ phiếu cho chính mình; bạn có thể tặng một phần cho người đã giúp bạn, nhưng phần tặng đi thì bạn không nhận lại.\n\n### Minh bạch\n\nCông thức tất định + dữ liệu công khai → bất kỳ ai tự tính lại toàn bộ kết quả chia, dựng lại cây Merkle, đối chiếu root on-chain. Phần dư về Treasury — LAMP tổng cung cố định 36 tỷ, không đốt.",
     "docs_url": "https://magiclamp.network/launch/airdrop-v2",
     "chat_url": "superapp://chat/launch-airdrop-v2",
     "participate_url": "https://affiso.net/launch/MagicLamp/airdrop-v2",
@@ -180,6 +180,21 @@
         "eligibility": "Mọi người có tên trong snapshot đã chốt"
       }
     ],
+    "params": {
+      "public": {
+        "n_min_epochs": 2,
+        "cap_oildrop": null,
+        "set_root_mode": "hai-hu-rieng",
+        "pot_delegator_lamp": "100000000",
+        "pot_spo_lamp": "5000000",
+        "pot_cs_lamp": "15000000",
+        "excluded_file": "Airdrop/data/excluded-self.json"
+      },
+      "sealed": {
+        "e_open": 654,
+        "e_cut": 666
+      }
+    },
     "stats": {
       "participants": 0,
       "total_contribution_lovelace": "0",
@@ -192,6 +207,6 @@
     "requires_wallet_connect": true,
     "push_targets": [],
     "created_at": "2026-07-11T00:00:00Z",
-    "updated_at": "2026-07-11T00:00:00Z"
+    "updated_at": "2026-08-18T00:00:00Z"
   }
 ]

@@ -23,7 +23,7 @@ import {
 import type { Network } from "@magiclamp/utils";
 
 import {
-  TLAMP_ASSET_NAME, ACCT_NFT_NAME, MS_PER_EPOCH_PREVIEW,
+  TLAMP_ASSET_NAME, ACCT_NFT_NAME, assertMsPerEpochMatchesNetwork,
 } from "./constants.js";
 import {
   decodeFaucetConfig, faucetConfigToCbor, faucetAccountToCbor,
@@ -63,7 +63,9 @@ export interface ClaimDidParams {
 
   /** epoch hiện tại (offchain tính từ tip). Account.last_epoch = giá trị này. */
   currentEpoch: bigint;
-  /** ms mỗi epoch (khớp param validator). Mặc định Preview. */
+  /** ms mỗi epoch dùng để tính `currentEpoch` + đã nạp làm param của faucetPoolScript /
+   *  faucetAccountScript. Truyền vào thì builder gác nó khớp `network` (FAUCET-EPOCH-001);
+   *  bỏ trống thì mặc định lấy đúng theo `network`. */
   msPerEpoch?: bigint;
 
   /** ADA min kèm account UTxO. Mặc định 2 tADA. */
@@ -85,6 +87,10 @@ export async function buildClaimDidTx(params: ClaimDidParams): Promise<ClaimDidR
     faucetAccountScript, didUtxo, didNftPolicyId, didName, tlampPolicyId,
     currentEpoch,
   } = params;
+
+  // Cổng gác trước khi ký: ms/epoch caller dùng (để tính currentEpoch, và đã nướng vào
+  // param của pool/account script) phải khớp mạng đích — lệch thì tx vẫn pass, chỉ sai mốc.
+  if (params.msPerEpoch !== undefined) assertMsPerEpochMatchesNetwork(params.msPerEpoch, network);
 
   const assetName = params.tlampAssetName ?? TLAMP_ASSET_NAME;
   const tlampUnit = toUnit(tlampPolicyId, assetName);
@@ -168,6 +174,6 @@ export async function buildClaimDidTx(params: ClaimDidParams): Promise<ClaimDidR
     params.oldAccountUtxo ? `Re-claim:     spend account cũ (cooldown ${cfg.cooldown_epochs} epoch)` : `First-claim`,
   ].join("\n");
 
-  void fromText; void MS_PER_EPOCH_PREVIEW;
+  void fromText;
   return { tx, drip, poolAfter, accountDatum, accountAddress, summary };
 }

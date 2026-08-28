@@ -22,6 +22,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import { custodyDatumToCbor } from "../../Treasury/offchain/src/datum.js";
 import { buildCollectTx } from "../../Treasury/offchain/src/collectBuilder.js";
 import type { CustodyDatum, CollectItem } from "../../Treasury/offchain/src/types.js";
+import { msPerEpoch, assertMsPerEpochMatchesNetwork } from "../offchain/src/constants.js";
 
 // Secret: MỘT nguồn duy nhất — $AGENT_SECRETS (/Users/ductiger/Projects/Agents/.env).
 // .env trong repo con đã BỎ; không đọc, không tạo lại.
@@ -34,7 +35,11 @@ const LAMP_NAME = "744c414d50";
 const lampUnit = toUnit(LAMP_POLICY, LAMP_NAME);
 
 const PROPOSAL_POLICY = "00".repeat(28);   // placeholder (Collect KHÔNG đọc proposal_policy)
-const MS_PER_EPOCH = 432_000_000n;
+// ms/epoch theo mạng đích (Preview = 86_400_000, KHÔNG phải 432_000_000 của Preprod/Mainnet).
+// Là param của custody ⇒ nướng vào script hash. Assert = tripwire cho lần ai đó hardcode lại.
+const NETWORK = "Preview" as const;
+const MS_PER_EPOCH = msPerEpoch(NETWORK);
+assertMsPerEpochMatchesNetwork(MS_PER_EPOCH, NETWORK);
 const INSTANCE_ID = "74726561737572792d6c616d70"; // "treasury-lamp" hex
 const RESERVED_MIN_ADA = 3_000_000n;       // ADA giữ cho min-UTxO (không ghi sổ)
 const SEED_LEDGER_OILDROP = 100_000_000n;      // 100 tLAMP seed vào bucket 0

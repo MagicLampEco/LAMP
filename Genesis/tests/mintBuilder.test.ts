@@ -24,6 +24,7 @@ import {
   type MintParams, type MintParamsV8, type MintParamsV12,
 } from "../offchain/src/mintBuilder.js";
 import { assertParamCount } from "../offchain/src/applyGate.js";
+import { deployedLamp, type DeployedLamp } from "../offchain/src/deployed.js";
 import { supplyStateToCbor } from "../offchain/src/datum.js";
 import { SUPPLY_NAME } from "../offchain/src/constants.js";
 import { genesisSupplyState } from "../offchain/src/supplyState.js";
@@ -330,5 +331,64 @@ describe("readSupplyState", () => {
 
   it("ném GMB-001 khi UTxO thiếu inline datum", () => {
     expect(() => readSupplyState(utxo(KHO_ADDR, {}))).toThrow(/GMB-001/);
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+// Lời khuyên trong GMB-008/GMB-009 phải BIÊN DỊCH ĐƯỢC.
+//
+// Vì sao có nhóm này: `deployedLamp(n).mintParamCount` có kiểu `8 | 12`, nên cách dùng
+// hiển nhiên — spread thẳng nó vào một lời gọi `buildMintTx` duy nhất — là TS2345. Người
+// tích hợp gặp lỗi đó dễ chữa bằng `as unknown as MintParams`, và thế là toàn bộ hàng rào
+// `?: never` bốc hơi. Test này viết ĐÚNG cách mà thông điệp lỗi khuyên — không một chỗ
+// `as` nào — nên nó đỏ ở `tsc` nếu lời khuyên ấy ngừng đúng, và đỏ ở vitest nếu nhánh
+// nào dựng sai hình dạng tx.
+// ────────────────────────────────────────────────────────────────────────────
+
+/** Đúng hình dạng dữ liệu mà chỗ tích hợp có: `mintParamCount` kiểu `8 | 12`, chưa thu hẹp. */
+type DeployedGate = Pick<DeployedLamp, "mintParamCount" | "khoAddress">;
+
+/** CÁCH VIẾT ĐƯỢC KHUYÊN, chép nguyên từ thông điệp GMB-008. Không `as`, không ép kiểu. */
+async function mintTheoDeployed(d: DeployedGate, lucid: MintParams["lucid"]) {
+  const common = { ...commonParams(), lucid, recipient: d.khoAddress };
+  if (d.mintParamCount === 8) {
+    return buildMintTx({
+      ...common,
+      mintParamCount: d.mintParamCount,
+      distDestAddress: d.khoAddress,
+    });
+  }
+  return buildMintTx({
+    ...common,
+    mintParamCount: d.mintParamCount,
+    registryRefUtxo: utxo("addr_test1wregistry", { [`${REG_PID}524547`]: 1n }, "d87980"),
+    registryNftPolicyId: REG_PID,
+    khoRefUtxo: utxo(d.khoAddress, { [`${KHO_PID}4b484f`]: 1n }),
+    khoNftPolicyId: KHO_PID,
+  });
+}
+
+describe("buildMintTx — cách dùng mà GMB-008/009 khuyên (thu hẹp bằng if)", () => {
+  it("nhánh 8 từ deployedLamp('mainnet') THẬT: dựng được, KHÔNG ref-input", async () => {
+    const { trace, lucid } = fakeLucid();
+    const d = deployedLamp("mainnet"); // mintParamCount: 8 | 12 — chưa thu hẹp
+    const { nextState } = await mintTheoDeployed(d, lucid);
+
+    expect(d.mintParamCount).toBe(8);
+    expect(trace.readFrom).toHaveLength(0);
+    expect(trace.completed).toBe(1);
+    expect(trace.toContract[1]?.address).toBe(d.khoAddress);
+    expect(nextState.dist_minted).toBe(10_000n * 1_000_000n);
+  });
+
+  it("nhánh 12 cùng một khuôn: gắn đủ hai ref-input", async () => {
+    const { trace, lucid } = fakeLucid();
+    // Cùng kiểu `DeployedGate` ⇒ `mintParamCount` vẫn là `8 | 12` ở đầu vào, `if` thu hẹp nó.
+    const d: DeployedGate = { mintParamCount: 12, khoAddress: KHO_ADDR };
+    await mintTheoDeployed(d, lucid);
+
+    expect(trace.readFrom).toHaveLength(1);
+    expect(trace.readFrom[0]).toHaveLength(2);
+    expect(trace.completed).toBe(1);
   });
 });

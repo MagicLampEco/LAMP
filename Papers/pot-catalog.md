@@ -171,9 +171,10 @@
 
 **Nhóm phân phối sớm (snapshot, hết trong thời gian đầu)**
 - **13. ETD (12.000)** — ghi nhận **delegator sớm pool TIGER**; redeem TRƯỚC làm **bài test toàn cầu** cho hệ claim.
-- **14. Airdrop (120.000)** — **dành tặng cộng đồng SPO và Delegator** dựa trên stake + sự hỗ trợ; **ghi nhận đóng góp
-  vào cơ chế bền vững của mạng blockchain Cardano**. Chia **3 pot**: Delegator **100M** · SPO **5M** ·
-  CS (Community Supporter) **15M**, cả ba đều **∝ trọng số stake**. Đặc tả hiệu lực:
+- **14. Airdrop (120.000)** — **dành tặng cộng đồng Delegator và SPO** dựa trên **stake**; ghi nhận việc góp phần
+  vào an ninh kinh tế của mạng Cardano. Chia **3 pot**: Delegator **100M** · SPO **5M** ·
+  CS (Community Supporter) **15M**, cả ba đều **∝ trọng số stake** (làn CS cho phép tự bỏ phiếu nên điểm cân bằng
+  cũng là chia theo stake — `Airdrop/spo-cs.md` §3.5; KHÔNG mô tả làn CS như phần thưởng cho đóng góp). Đặc tả hiệu lực:
   [`Airdrop/CONTRACT.md`](../Airdrop/CONTRACT.md). (Mô hình cũ 5 epoch ×24.000 tỉ lệ
   20:100 đã bị thay ngày 2026-07-10.)
 - **15. SRCL (360.000)** — **redirect staking-reward ADA ↔ LAMP** (delegator tự nguyện đổi % reward), 36 epoch.

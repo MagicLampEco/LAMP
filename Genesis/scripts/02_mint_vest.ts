@@ -10,22 +10,46 @@ import {
   supplyStateToCbor, supplyStateRedeemerToCbor, mintRouteToCbor,
 } from "../offchain/src/datum.js";
 import { genesisSupplyState, applyMint } from "../offchain/src/supplyState.js";
+import {
+  requiredHashParam, requiredHexParam,
+  CONSEQUENCE_METER, CONSEQUENCE_DIST_DEST, CONSEQUENCE_GENESIS_REF,
+} from "./_guards.js";
 
+const GUARD_IO = { env: process.env, warn: (m: string) => console.warn(m) };
 const TEST_MINT_OILDROP = BigInt(process.env.TEST_MINT_OILDROP ?? "100000000"); // 100 tLAMP
-const GENESIS_REF_HASH = "689c56e05a6c4cb97ea59c26f9b2bb271ca2cf6ae52ee3dba08fb9c7a9204973";
-const GENESIS_REF_IDX = 1;
+
+// CỔNG GÁC apply-param GỐC RỄ — `genesis_ref` neo one-shot của `thread_nft`.
+// Trước bản vá này nó là literal Preview nướng cứng
+// (`689c56e0…4973#1`, deploy Preview 2026-06) và KHÔNG qua cổng nào, trong khi `threadPid`
+// sinh từ nó lại là apply-param của cả `lamp_mint` lẫn `supply_state` — tức tham số ĐỘC
+// HẠI NHẤT tệp này lại là tham số duy nhất không được gác. Chạy trên Preprod/Mainnet với
+// literal đó thì cả ba script ra hash khác, im lặng. Nay bắt buộc truyền qua env
+// (`bytes: 32` = tx-hash, khác 28 byte của policy-id/script-hash).
+const genesisRefHash = requiredHashParam("GENESIS_REF_HASH", {
+  ...GUARD_IO, submit: true, bytes: 32, consequence: CONSEQUENCE_GENESIS_REF,
+}).value;
+// Nửa còn lại của OutputReference. KHÔNG dùng `BigInt(env ?? "")`: `BigInt("")` = 0n, tức
+// quên biến sẽ lặng lẽ trỏ vào output #0 của đúng tx đó — một UTxO khác, một policy khác.
+const idxRaw = (process.env.GENESIS_REF_IDX ?? "").trim();
+if (!/^\d+$/.test(idxRaw)) {
+  throw new Error(`GENESIS_REF_IDX chưa set / không phải số nguyên ≥ 0. ${CONSEQUENCE_GENESIS_REF}`);
+}
+const genesisRefIdx = BigInt(idxRaw);
 
 const lucid = await makeLucid();
 const pkh = await walletPkh(lucid);
 const myAddr = await lucid.wallet().address();
 
-const genesisRef = new Constr(0, [GENESIS_REF_HASH, BigInt(GENESIS_REF_IDX)]);
+const genesisRef = new Constr(0, [genesisRefHash, genesisRefIdx]);
 const threadPolicy: MintingPolicy = applyPolicy((await rawValidator("thread_nft.thread_nft.mint")).compiledCode, [genesisRef]);
 const threadPid = policyId(threadPolicy);
-const meterPid = process.env.METER_NFT_POLICY ?? "00".repeat(28);
-const meterNm = process.env.METER_NFT_NAME ?? "4d4554";
-if (!process.env.DIST_DEST) throw new Error("DIST_DEST chưa set: A-DEST sẽ ép LAMP vào Script(00*28) KẸT vĩnh viễn. Set DIST_DEST=hash kho.");
-const distDest = process.env.DIST_DEST; // A-DEST: hash KHO treasury
+// CỔNG GÁC apply-param — script này GỬI VÔ ĐIỀU KIỆN (`signed.submit()` cuối tệp, không có
+// nhánh SUBMIT), nên MỌI tham số hash/hex đọc từ env đều gác ở mức submit=true: không có chế
+// độ dựng-thử để nới placeholder. Trước đây chỉ DIST_DEST được gác (`ddfa2c6`), METER_* thì
+// không, và `genesis_ref` (gốc rễ của cả ba script) cũng không.
+const meterPid = requiredHashParam("METER_NFT_POLICY", { ...GUARD_IO, submit: true, consequence: CONSEQUENCE_METER }).value;
+const meterNm = requiredHexParam("METER_NFT_NAME", { ...GUARD_IO, submit: true, placeholder: "4d4554", consequence: CONSEQUENCE_METER }).value;
+const distDest = requiredHashParam("DIST_DEST", { ...GUARD_IO, submit: true, consequence: CONSEQUENCE_DIST_DEST }).value; // A-DEST: hash KHO treasury
 const distDestAddr = credentialToAddress("Preview", scriptHashToCredential(distDest));
 const tlampPolicy: MintingPolicy = applyPolicy((await rawValidator("lamp_mint.lamp_mint.mint")).compiledCode, [
   threadPid, SUPPLY_NAME, TOKEN_NAME, [pkh], 1n, distDest, meterPid, meterNm,

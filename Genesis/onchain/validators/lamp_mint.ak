@@ -1,3 +1,40 @@
+// ┌──────────────────────────────────────────────────────────────────────────────┐
+// │ ⚠ TỆP NÀY KHÔNG PHẢI THỨ ĐANG CHẠY TRÊN MAINNET. ĐỪNG ĐỌC NÓ ĐỂ SUY RA MAINNET.│
+// └──────────────────────────────────────────────────────────────────────────────┘
+//
+// Policy LAMP mainnet đúc từ `457f312`, KHÁC bản dưới đây ở ba chỗ ĐỔI HÀNH VI —
+// không phải khác cách viết. Ai đọc bản này rồi dựng lời gọi cho mainnet sẽ ra một
+// policy-id khác (tham số nằm TRONG policy-id), tức một token khác, một kho khác.
+//
+//   1. SỐ THAM SỐ: bản dưới 12 (dòng 97-108), mainnet 8
+//      (`git show 457f312:Genesis/onchain/validators/lamp_mint.ak` dòng 53-61).
+//      Vị trí `meter_nft_policy` KHÁC NHAU: ở đây là tham số #11, mainnet là #7.
+//      Truyền theo thứ tự bản này vào script mainnet = lệch mọi tham số từ #4 trở đi.
+//
+//   2. CAP: bản dưới nhận `dist_cap`/`reserve_cap` làm THAM SỐ (dòng 100-101). Mainnet
+//      không có hai tham số đó — cap là HẰNG biên dịch, kiểm bằng
+//      `expect s.dist_cap == constants.dist_cap_oil` (457f312:lamp_mint.ak:93-94).
+//      Nghĩa là mainnet KHÔNG đổi cap được bằng cách truyền tham số khác.
+//
+//   3. WHO-GATE: bản dưới gác quyền qua Registry NFT đọc on-chain
+//      (`registry_nft_policy`/`registry_nft_name`, dòng 102-103). Mainnet gác bằng DANH
+//      SÁCH pkh NƯỚNG SẴN + ngưỡng chữ ký (`dist_authority: List<ByteArray>`,
+//      `auth_threshold` — 457f312:lamp_mint.ak:57-58); `Genesis/offchain/src/deployed.ts:71-76`
+//      ghi `mintAuthority.kind: "baked-pkh-list"`. Sửa danh sách người ký = đúc lại
+//      policy khác, không có đường cập nhật.
+//
+// NGUỒN SỰ THẬT CHO MAINNET: `Genesis/offchain/src/deployed.ts` — policyId (:63),
+// `mintParamCount: 8` (:65), giá trị từng tham số đã dùng, `byteMatch: true` đối chiếu
+// với `sourceCommit: "457f312"` (:99-100). Cần dựng tx chạm policy mainnet thì đọc tệp
+// đó, KHÔNG đọc tệp này.
+//
+// LƯU Ý ĐÃ THÀNH SỰ THẬT: tham số `meter_nft_policy` của mainnet là 28 byte 0
+// (deployed.ts:92) — không có tiền ảnh ⇒ nhánh ReserveDraw không bao giờ thoả ⇒ 9,63 tỷ
+// LAMP Reserve không rút được qua policy đó (deployed.ts:118-119). Bản dưới đây KHÔNG
+// khắc phục điều đó cho policy đã đúc; apply-param không sửa được sau khi gửi.
+//
+// ─────────────────────────────────────────────────────────────────────────────
+//
 // lamp_mint — minting policy LAZY-MINT token LAMP, gated bởi SupplyState (CONTRACT §5).
 //
 // FIRST-PRINCIPLES — fixed-supply không cần mint sẵn:

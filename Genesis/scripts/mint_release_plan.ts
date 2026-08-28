@@ -27,8 +27,8 @@ const SUPPLY_STATE_HASH = D.supplyStateHash;
 const SUPPLY_NFT_NAME = "535550504c59"; // "SUPPLY"
 
 /** KHO dist_treasury (A-DEST: Δ mint DistributionVest BẮT BUỘC chảy vào đây). */
-const KHO_ADDR = "addr1w827sry6t2y9744ndkg4ks6nct57v7tm8pz46ywsq98dhdsf76slu";
-const KHO_HASH = "d5e80c9a5a885f56b36d915b4353c2e9e6797b38455d11d0014edbb6";
+const KHO_ADDR = D.khoAddress;
+const KHO_HASH = D.khoHash;
 
 /** Datum supply_state ĐÃ XÁC MINH trên mainnet (dùng làm điểm xuất phát kế hoạch). */
 const MAINNET_SUPPLY_STATE_CBOR =

@@ -24,6 +24,7 @@ import type { CustodyDatum } from "../../Treasury/offchain/src/types.js";
 import { reserveStateToCbor, drawRedeemerToCbor } from "../../Reserve/offchain/src/datum.js";
 import { buildReserveAuthMintTx } from "../../Treasury/offchain/src/reserveAuthBuilder.js";
 import { attachGateSpend } from "../../Treasury/offchain/src/reserveGateBuilder.js";
+import { msPerEpoch, assertMsPerEpochMatchesNetwork } from "../offchain/src/constants.js";
 
 // Secret: MỘT nguồn duy nhất — $AGENT_SECRETS (/Users/ductiger/Projects/Agents/.env).
 // .env trong repo con đã BỎ; không đọc, không tạo lại.
@@ -36,7 +37,12 @@ const SUPPLY_NAME = "535550504c59";
 const RESERVE_THREAD_NAME = "524553564d4554"; // "RESVMET"
 const AUTH_NAME = "5054"; // "PT" (pull-auth)
 const INSTANCE_ID = "747265732d7265736576"; // "tres-resev"
-const MS_PER_EPOCH = 432_000_000n;
+// ms/epoch theo mạng đích (Preview = 86_400_000, KHÔNG phải 432_000_000 của Preprod/Mainnet).
+// Số này là param của custody + reserve_draw ⇒ nướng vào script hash, và là mẫu số quy đổi
+// epoch cho trần-mỗi-epoch. Assert = tripwire cho lần ai đó hardcode lại.
+const NETWORK = "Preview" as const;
+const MS_PER_EPOCH = msPerEpoch(NETWORK);
+assertMsPerEpochMatchesNetwork(MS_PER_EPOCH, NETWORK);
 const PROPOSAL_POLICY = "00".repeat(28);
 const RESERVE_TOTAL_OILDROP = 9_630_000_000_000_000n;
 const MAX_PER_EPOCH = RESERVE_TOTAL_OILDROP / 1000n;

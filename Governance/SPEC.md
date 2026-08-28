@@ -1,5 +1,19 @@
 # Governance — Quản trị Foundation (trang chỉ mục)
 
+> ## ⚠️ CHƯA DÙNG ĐƯỢC — mã on-chain chưa có đường dựng tx
+>
+> Thư mục này có **6 validator sinh script hash thật** (`vote`, `tally`, `proposal`,
+> `nullifier`, `proposal_nft`, `tally_nft`) nhưng **không có `offchain/` và không có
+> `scripts/`** — nghĩa là luồng `Vote → Tally → Record → Execute → Release` hiện
+> **không có tx hợp lệ nào**, kể cả trên testnet. 94 test Aiken ở đây là test đơn vị của
+> validator, không phải bằng chứng luồng chạy được.
+>
+> Repo này Apache-2.0 công khai. Nếu bạn đang tìm một nền governance dùng được cho
+> Cardano thì **đây chưa phải**. Đừng đọc `Governance/` để suy ra Treasury Release đã
+> khép vòng — nó chưa.
+>
+> Theo dõi ở issue #21 mục C.
+
 > **Phiên bản:** v1.0 — 2026-06-05. Lần đầu khai phiên bản — tệp trước đây chỉ có dòng `Trạng thái`,
 > không có số hiệu để tham chiếu; nội dung không đổi so với ngày duyệt khung.
 > **Vai:** view điều phối — trang chỉ mục Governance nói chung. Phần Voting Power KHÔNG PHẢI nguồn

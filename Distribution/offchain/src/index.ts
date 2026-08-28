@@ -8,6 +8,7 @@ export * from "./applyGate.js";
 
 // ── tx builders (Lucid Evolution off-chain) ──
 export * from "./datum.js";
+export * from "./accountNft.js";
 export * from "./committee.js";
 export * from "./beaconBuilder.js";
 export * from "./claimBuilder.js";

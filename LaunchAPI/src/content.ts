@@ -7,7 +7,11 @@ import { fileURLToPath } from "node:url";
 import type { LaunchCampaign, LaunchStats } from "./types.js";
 
 const __dir = dirname(fileURLToPath(import.meta.url));
-const DATA_FILE = resolve(__dir, "../data/campaigns.json");
+// Cho phép trỏ sang tệp khác — dùng cho kiểm tự động, và để `Airdrop/scripts/campaign_io.ts`
+// (đọc cùng tệp này) và bên ghi luôn nói về CÙNG một đường dẫn khi vận hành đổi chỗ dữ liệu.
+const DATA_FILE = process.env.LAUNCH_CAMPAIGNS_FILE
+  ? resolve(process.cwd(), process.env.LAUNCH_CAMPAIGNS_FILE)
+  : resolve(__dir, "../data/campaigns.json");
 
 let cache: LaunchCampaign[] | null = null;
 
@@ -66,7 +70,26 @@ export async function patchCampaign(
   const all = await load();
   const idx = all.findIndex((c) => c.id === id);
   if (idx < 0) return null;
-  const updated = { ...all[idx]!, ...patch, id, updated_at: new Date().toISOString() };
+  // `params` phải gộp SÂU, không nông. Gộp nông ở đây nghĩa là: quản trị sửa MỘT tham số
+  // công khai trên giao diện → gửi `{params:{public:{…}}}` → khối `sealed` (cửa sổ đo) biến
+  // mất khỏi đĩa mà không ai bấm nút xoá. Mất lặng lẽ, và mất đúng thứ quyết định ai được
+  // chia tiền. Xoá `sealed` (mở niêm) vẫn làm được, nhưng phải nói ra: gửi `sealed: null`.
+  const prev = all[idx]!;
+  const params = patch.params
+    ? {
+        public: { ...prev.params?.public, ...patch.params.public },
+        ...(patch.params.sealed === null
+          ? {}
+          : patch.params.sealed || prev.params?.sealed
+            ? { sealed: { ...prev.params?.sealed, ...patch.params.sealed } }
+            : {}),
+      }
+    : prev.params;
+  const updated = {
+    ...prev, ...patch, id,
+    ...(params ? { params } : {}),
+    updated_at: new Date().toISOString(),
+  } as LaunchCampaign;
   all[idx] = updated;
   cache = all;
   await save();

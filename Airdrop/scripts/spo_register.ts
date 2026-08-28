@@ -268,9 +268,13 @@ async function main(): Promise<void> {
   console.log("LUẬT CHƠI AIRDROP SPO REGISTRATION (model 3-pot):");
   console.log("  1. Đăng ký để CHỨNG MINH tư cách SPO hợp lệ (đã sản xuất block, đủ");
   console.log("     tuổi pool, pledge tối thiểu, dedupe owner) → nhận phần SPO");
-  console.log("     5.000.000 LAMP chia ĐỀU cho mọi SPO qua cổng — KHÔNG theo stake.");
-  console.log("  2. Đăng ký cũng mở nhóm ProofChat để đo Community Supporter");
-  console.log("     (CS 15.000.000 LAMP) theo đóng góp cộng đồng — cần DID sinh trắc.");
+  console.log("     5.000.000 LAMP. Cổng quyết AI ĐƯỢC DỰ; phần chia thì ∝ STAKE");
+  console.log("     CHẢY VÀO POOL của bạn (delegation đã đăng ký ủy thác vào pool).");
+  console.log("  2. Đăng ký cũng mở nhóm ProofChat để thu bảng phân bổ phiếu-stake");
+  console.log("     của làn Community Supporter (CS 15.000.000 LAMP) — cần DID sinh trắc.");
+  console.log("     CS là làn STAKE-WEIGHTED: mỗi delegator có phiếu-stake = stake của");
+  console.log("     mình, tự bỏ phiếu cho chính mình HỢP LỆ, nên làn này chia theo stake.");
+  console.log("     Làn CS KHÔNG đo đóng góp cộng đồng (spo-cs.md §3.5).");
   console.log("  3. Operator phải ký xác nhận bằng reward stake key (KHÔNG cần cold key)");
   console.log("  4. Payment address đăng ký sẽ KHÔNG thay đổi sau khi nộp");
   console.log("  5. Deadline đăng ký: xem magiclamp.network/airdrop");

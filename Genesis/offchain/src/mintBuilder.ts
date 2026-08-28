@@ -191,6 +191,25 @@ export interface MintParamsV8 extends MintParamsCommon {
  * Hợp đồng gọi `buildMintTx` — union phân biệt theo `mintParamCount`. Gọi sai nhánh là
  * LỖI BIÊN DỊCH: nhánh 8 khai bốn trường ref-input là `never`, nhánh 12 khai
  * `distDestAddress` là `never`.
+ *
+ * ⚠ **CÁCH VIẾT DUY NHẤT BIÊN DỊCH ĐƯỢC** — `deployedLamp(network).mintParamCount` có kiểu
+ * `8 | 12`, nên spread thẳng nó vào lời gọi là TS2345 ("Type '8 | 12' is not assignable to
+ * type '8'"). Phải THU HẸP bằng `if` trước, mỗi nhánh một lời gọi riêng:
+ *
+ * ```ts
+ * const d = deployedLamp(network);
+ * if (d.mintParamCount === 8) {
+ *   await buildMintTx({ ...common, mintParamCount: d.mintParamCount, distDestAddress: d.khoAddress });
+ * } else {
+ *   await buildMintTx({ ...common, mintParamCount: d.mintParamCount,
+ *     registryRefUtxo, registryNftPolicyId, khoRefUtxo, khoNftPolicyId });
+ * }
+ * ```
+ *
+ * Hai nhánh KHÔNG gộp được thành một lời gọi vì chúng đòi trường KHÁC NHAU (A-DEST tĩnh
+ * vs hai ref-input) — đó là điểm, không phải phiền toái. Đừng phá hàng rào bằng
+ * `as unknown as MintParams`: làm thế là vứt sạch `?: never`, và chiều 12 (thiếu/sai
+ * ref-input) KHÔNG còn lưới runtime nào ngoài GMB-005.
  */
 export type MintParams = MintParamsV8 | MintParamsV12;
 
@@ -249,7 +268,12 @@ export async function buildMintTx(p: MintParams): Promise<{
     throw new Error(
       `GMB-008: mintParamCount phải là 8 (bản mồi ĐANG CHẠY mainnet) hoặc 12 ` +
       `(registry-gate, chưa deploy), nhận ${String((p as { mintParamCount?: unknown }).mintParamCount)}. ` +
-      `Đọc số này từ 'deployedLamp(network).mintParamCount', đừng đoán.`,
+      `Đọc số này từ 'deployedLamp(network).mintParamCount', đừng đoán — nhưng ĐừNG spread thẳng ` +
+      `nó vào lời gọi (kiểu nó là '8 | 12' ⇒ TS2345). Thu hẹp bằng if, mỗi nhánh một lời gọi: ` +
+      `const d = deployedLamp(network); ` +
+      `if (d.mintParamCount === 8) buildMintTx({ ...common, mintParamCount: d.mintParamCount, distDestAddress: d.khoAddress }); ` +
+      `else buildMintTx({ ...common, mintParamCount: d.mintParamCount, registryRefUtxo, registryNftPolicyId, khoRefUtxo, khoNftPolicyId }); ` +
+      `Đừng chữa TS2345 bằng 'as unknown as MintParams' — làm thế là vứt sạch hàng rào kiểu.`,
     );
   }
 
@@ -294,8 +318,10 @@ export async function buildMintTx(p: MintParams): Promise<{
     if (!p.distDestAddress) {
       throw new Error(
         `GMB-009: nhánh 8 tham số thiếu distDestAddress. A-DEST của bản mồi là hash ` +
-        `dist_dest NƯỚNG SẴN trong policy — builder không suy ra được từ tx. Lấy từ ` +
-        `'deployedLamp("mainnet").khoAddress' (deployed.ts:69).`,
+        `dist_dest NƯỚNG SẴN trong policy — builder không suy ra được từ tx. Viết: ` +
+        `const d = deployedLamp("mainnet"); ` +
+        `if (d.mintParamCount === 8) buildMintTx({ ...common, mintParamCount: d.mintParamCount, distDestAddress: d.khoAddress }); ` +
+        `(đừng spread thẳng d.mintParamCount ngoài if — kiểu '8 | 12' ⇒ TS2345.)`,
       );
     }
     khoAddress = p.distDestAddress;

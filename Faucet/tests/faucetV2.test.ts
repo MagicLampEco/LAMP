@@ -11,7 +11,7 @@ import {
 } from "../offchain/src/datum.js";
 import {
   DRIP_OILDROP, DRIP_LAMP, COOLDOWN, RECLAIM, OILDROP_PER_LAMP,
-  POOL_NFT_NAME, ACCT_NFT_NAME, MS_PER_EPOCH_PREVIEW,
+  POOL_NFT_NAME, ACCT_NFT_NAME, msPerEpoch, assertMsPerEpochMatchesNetwork,
 } from "../offchain/src/constants.js";
 
 function hexToAscii(hex: string): string {
@@ -93,8 +93,29 @@ describe("constants — drip 1001, cooldown 36, reclaim 1001", () => {
     expect(hexToAscii(POOL_NFT_NAME)).toBe("POOL");
     expect(hexToAscii(ACCT_NFT_NAME)).toBe("ACCT");
   });
-  it("MS_PER_EPOCH_PREVIEW = 432_000_000 (5 ngày)", () => {
-    expect(MS_PER_EPOCH_PREVIEW).toBe(432_000_000n);
+  // Hằng cũ `MS_PER_EPOCH_PREVIEW = 432_000_000n` mang tên Preview nhưng giữ số của
+  // Preprod/Mainnet — lệch 5×. Test cũ khoá chặt đúng con số sai đó, nên ai sửa hằng cho
+  // khớp tên sẽ thấy test đỏ rồi revert. Thay bằng: ms/epoch phải THEO MẠNG.
+  it("ms/epoch lấy theo mạng: Preview 86_400_000 · Preprod/Mainnet 432_000_000", () => {
+    expect(msPerEpoch("Preview")).toBe(86_400_000n);
+    expect(msPerEpoch("Preprod")).toBe(432_000_000n);
+    expect(msPerEpoch("Mainnet")).toBe(432_000_000n);
+  });
+
+  it("FAUCET-EPOCH-001: cổng gác chặn nạp 432_000_000 (Preprod) vào Preview", () => {
+    expect(() => assertMsPerEpochMatchesNetwork(432_000_000n, "Preview"))
+      .toThrow(/FAUCET-EPOCH-001/);
+    // và ngược lại — 86_400_000 nạp vào Preprod cũng phải chặn.
+    expect(() => assertMsPerEpochMatchesNetwork(86_400_000n, "Preprod"))
+      .toThrow(/FAUCET-EPOCH-001/);
+    // đúng mạng thì im lặng đi qua.
+    expect(() => assertMsPerEpochMatchesNetwork(86_400_000n, "Preview")).not.toThrow();
+  });
+
+  it("cooldown/reclaim quy ra ngày thật trên Preview (36 epoch = 36 ngày, không phải 180)", () => {
+    const day = 86_400_000n;
+    expect(COOLDOWN * msPerEpoch("Preview") / day).toBe(36n);
+    expect(RECLAIM * msPerEpoch("Preview") / day).toBe(1001n);
   });
 });
 

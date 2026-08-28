@@ -93,7 +93,8 @@ toàn cung: token idle quay lại pool, không bốc hơi, không vào ví keepe
 
 ## Offchain SDK (`offchain/src/`)
 
-- `constants.ts` — `DRIP_OILDROP`, `COOLDOWN`, `RECLAIM`, NFT names, `MS_PER_EPOCH_PREVIEW`.
+- `constants.ts` — `DRIP_OILDROP`, `COOLDOWN`, `RECLAIM`, NFT names, `msPerEpoch(network)`
+  (tái xuất từ `@magiclamp/utils`) + cổng gác `assertMsPerEpochMatchesNetwork`.
 - `datum.ts` — codec `FaucetConfig` / `FaucetAccount` + redeemers (PoolRedeemer,
   AccountRedeemer, FaucetNftRedeemer).
 - `claimDidBuilder.ts` — `buildClaimDidTx` (claim dùng DID NFT, re-claim tùy chọn).
@@ -105,7 +106,7 @@ toàn cung: token idle quay lại pool, không bốc hơi, không vào ví keepe
 
 ```
 cd Faucet/onchain && aiken check          # 55/55 pass (v2: 28)
-cd Faucet/offchain && npx vitest run        # 40/40 pass (v2: 23)
+cd Faucet/offchain && npx vitest run        # 42/42 pass (v2: 25)
 ```
 
 ## Điểm cần orchestrator chốt

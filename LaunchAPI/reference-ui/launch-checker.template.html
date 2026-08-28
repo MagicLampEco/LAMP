@@ -275,16 +275,16 @@
         <div class="pot">
           <div class="amt">15M<small> LAMP</small></div>
           <div class="nm" data-i18n="role_cs">CS · Community Supporter</div>
-          <div class="ds" data-i18n="pot_cs">∝ tổng stake của delegator đã BÌNH CHỌN cho sự hỗ trợ của bạn. Không cần vận hành pool.</div>
+          <div class="ds" data-i18n="pot_cs">∝ tổng phiếu-stake được phân bổ cho bạn. Bạn được tự bỏ phiếu bằng stake của chính mình → làn này chia theo STAKE. Không cần vận hành pool.</div>
         </div>
       </div>
       <div class="vsbox">
         <div class="vshead" data-i18n="vs_head">SPO khác CS ở đâu?</div>
         <div class="vsrow">
           <div><span class="vstag">SPO</span> <span data-i18n="vs_spo">Staking Pool Operator — đo bằng stake CHẢY VÀO pool bạn vận hành. Thưởng việc thu hút & giữ delegation.</span></div>
-          <div><span class="vstag cs">CS</span> <span data-i18n="vs_cs">Community Supporter — đo bằng stake của người ĐƯỢC BẠN GIÚP bình chọn. Thưởng được stakeholder công nhận đã hỗ trợ — không cần pool.</span></div>
+          <div><span class="vstag cs">CS</span> <span data-i18n="vs_cs">Community Supporter — đo bằng tổng phiếu-stake phân bổ cho bạn. Tự bỏ phiếu là hợp lệ, nên trên thực tế làn này chia theo STAKE của chính bạn — không cần pool, cần DID.</span></div>
         </div>
-        <div class="vsnote" data-i18n="vs_note">Cả hai đều neo theo STAKE (tốn kém, khó giả) — chỉ khác nguồn: SPO = stake vào pool · CS = stake bình chọn.</div>
+        <div class="vsnote" data-i18n="vs_note">Cả hai đều neo theo STAKE (tốn kém, khó giả) — chỉ khác nguồn: SPO = stake vào pool · CS = phiếu-stake (mặc định tự bỏ cho chính mình).</div>
       </div>
       <p class="muted" data-i18n="ad_note">Chưa stake? Hãy ủy thác vào pool TIGER hoặc bất kỳ pool nào, rồi đăng ký tại affiso.net/launch. Công cụ tra cứu số LAMP dự kiến sẽ bật khi snapshot chốt.</p>
     </div>
@@ -362,11 +362,11 @@ const I18N = {
     role_del:"Delegator · Người ủy thác", role_spo:"SPO · Staking Pool Operator", role_cs:"CS · Community Supporter",
     pot_del:"∝ số stake của CHÍNH bạn, ở bất kỳ pool nào. Đăng ký, claim bằng ví.",
     pot_spo:"∝ tổng stake của delegator (đã đăng ký) ủy thác VÀO pool của bạn.",
-    pot_cs:"∝ tổng stake của delegator đã BÌNH CHỌN cho sự hỗ trợ của bạn. Không cần vận hành pool.",
+    pot_cs:"∝ tổng phiếu-stake được phân bổ cho bạn. Bạn được tự bỏ phiếu bằng stake của chính mình → làn này chia theo STAKE. Không cần vận hành pool.",
     vs_head:"SPO khác CS ở đâu?",
     vs_spo:"Staking Pool Operator — đo bằng stake CHẢY VÀO pool bạn vận hành. Thưởng việc thu hút & giữ delegation.",
-    vs_cs:"Community Supporter — đo bằng stake của người ĐƯỢC BẠN GIÚP bình chọn. Thưởng được stakeholder công nhận đã hỗ trợ — không cần pool.",
-    vs_note:"Cả hai đều neo theo STAKE (tốn kém, khó giả) — chỉ khác nguồn: SPO = stake vào pool · CS = stake bình chọn.",
+    vs_cs:"Community Supporter — đo bằng tổng phiếu-stake phân bổ cho bạn. Tự bỏ phiếu là hợp lệ, nên trên thực tế làn này chia theo STAKE của chính bạn — không cần pool, cần DID.",
+    vs_note:"Cả hai đều neo theo STAKE (tốn kém, khó giả) — chỉ khác nguồn: SPO = stake vào pool · CS = phiếu-stake (mặc định tự bỏ cho chính mình).",
     srcl_mock:"⚠ Mẫu minh hoạ luồng — lệnh/CBOR THẬT (cho đúng ví của bạn) chỉ sinh ra khi đợt mở, sau khi validator SRCL deploy. Cú pháp bên dưới là đại diện.",
     ad_note:"Chưa stake? Hãy ủy thác vào pool TIGER hoặc bất kỳ pool nào, rồi đăng ký tại affiso.net/launch. Công cụ tra cứu số LAMP dự kiến sẽ bật khi snapshot chốt.",
     srcl_lock:"Sắp mở — ký MỘT LẦN để tham gia. Vốn gốc luôn thuộc về bạn.", srcl_h:"SRCL — Staking Reward Contribution Launch",
@@ -402,11 +402,11 @@ const I18N = {
     role_del:"Delegator", role_spo:"SPO · Staking Pool Operator", role_cs:"CS · Community Supporter",
     pot_del:"∝ YOUR OWN stake, at any pool. Register, claim with your wallet.",
     pot_spo:"∝ total stake of registered delegators delegating TO YOUR pool.",
-    pot_cs:"∝ total stake of delegators who VOTED for your support. No pool needed.",
+    pot_cs:"∝ total stake-votes allocated to you. You may vote with your own stake for yourself → this lane splits by STAKE. No pool needed.",
     vs_head:"How does SPO differ from CS?",
     vs_spo:"Staking Pool Operator — measured by stake FLOWING INTO the pool you operate. Rewards attracting & retaining delegation.",
-    vs_cs:"Community Supporter — measured by the stake of those YOU HELPED who voted for you. Rewards being recognized by stakeholders as helpful — no pool needed.",
-    vs_note:"Both are anchored to STAKE (costly, hard to fake) — only the source differs: SPO = stake into pool · CS = stake of voters.",
+    vs_cs:"Community Supporter — measured by total stake-votes allocated to you. Self-voting is valid, so in practice this lane splits by YOUR OWN stake — no pool needed, DID required.",
+    vs_note:"Both are anchored to STAKE (costly, hard to fake) — only the source differs: SPO = stake into pool · CS = stake-votes (self-vote by default).",
     srcl_mock:"⚠ Illustrative flow — the REAL command/CBOR (for your specific wallet) is generated when the launch opens, after the SRCL validator is deployed. Syntax below is representative.",
     ad_note:"Not staking yet? Delegate to TIGER or any pool, then register at affiso.net/launch. The LAMP checker opens when the snapshot is finalized.",
     srcl_lock:"Opening soon — sign ONCE to join. Your principal always stays yours.", srcl_h:"SRCL — Staking Reward Contribution Launch",

@@ -14,6 +14,7 @@ import { readFile, writeFile } from "node:fs/promises";
 
 import { reserveStateToCbor, drawRedeemerToCbor } from "../../Reserve/offchain/src/datum.js";
 import { attachGateSpend } from "../../Treasury/offchain/src/reserveGateBuilder.js";
+import { msPerEpoch, assertMsPerEpochMatchesNetwork } from "../offchain/src/constants.js";
 
 // Secret: MỘT nguồn duy nhất — $AGENT_SECRETS (/Users/ductiger/Projects/Agents/.env).
 // .env trong repo con đã BỎ; không đọc, không tạo lại.
@@ -26,7 +27,14 @@ const SUPPLY_NAME = "535550504c59";
 const RESERVE_THREAD_NAME = "524553564d4554";
 const AUTH_NAME = "5054";
 const INSTANCE_ID = "747265732d7265736576";
-const MS_PER_EPOCH = 432_000_000n;
+// ms/epoch theo mạng đích (Preview = 86_400_000). Là param của custody + reserve_draw
+// ⇒ nướng vào script hash ⇒ ĐỔI SỐ = ĐỔI ĐỊA CHỈ.
+// ⚠ 4 genesis ref hardcode bên dưới là của lần deploy CŨ chạy bằng 432_000_000 (số của
+//   Preprod/Mainnet, lệch 5× trên Preview). Bản deploy đó nay mồ côi: muốn resume thì
+//   chạy lại `demo_reserve_e2e.ts` rồi thay 4 ref bên dưới bằng ref của run mới.
+const NETWORK = "Preview" as const;
+const MS_PER_EPOCH = msPerEpoch(NETWORK);
+assertMsPerEpochMatchesNetwork(MS_PER_EPOCH, NETWORK);
 const PROPOSAL_POLICY = "00".repeat(28);
 const FLOOR_OILDROP = 1_000_000n;
 const DRAW_OILDROP = 1_000_000n;

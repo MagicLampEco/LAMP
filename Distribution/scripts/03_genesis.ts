@@ -6,9 +6,19 @@
 //   - Mint 1 beacon NFT one-shot (DropParam, asset name "DROP") bằng native sig policy.
 //   - 1 beacon UTxO tại beacon address giữ NFT + BeaconDatum{epoch, DropParam, drop_value=D}.
 //   - 1 treasury UTxO giữ test-LAMP pool + TreasuryDatum{committee_hash}.
-//   - 2 ClaimAccount UTxO (ví A, B) datum v2 {owner, entitlement=0, redeemed=0,
-//     start_epoch=epoch, drops_per_epoch=1} — genesis empty accounts; entitlement
-//     được committee cấp ở 04 (Claim), redeem tất định theo vested(t).
+//
+// GENESIS KHÔNG CÒN TẠO TÀI KHOẢN (đổi 2026-08-14, theo PR #22). Trước đây bước này tạo
+// sẵn 2 ClaimAccount UTxO rỗng (entitlement=0). Nay KHÔNG dựng nổi nữa, và cũng không nên:
+//   1. Tài khoản phải mang NFT tên blake2b_256(owner) mới spend được (claim_account C-ACC-0).
+//      Tài khoản rỗng không NFT = UTxO chết ở địa chỉ script, đúng loại mất-vĩnh-viễn mà
+//      hệ KHÔNG BURN không có đường lùi.
+//   2. Đúc NFT đó (claim_account_nft A-ACC-6) đòi tx có MỘT INPUT mang TRSY — mà trong
+//      chính tx genesis, TRSY vừa được ĐÚC nên chưa tồn tại input nào. Bất khả thi trong
+//      cùng một tx, không phải chuyện xếp lại thứ tự output.
+//   3. Và đường đúc còn đi kèm `treasury.GrantEntitlement` với `granted > 0` — tức tài
+//      khoản phải được cấp entitlement NGAY lúc mở, không có khái niệm "mở rỗng trước".
+// ⇒ Tài khoản nay mở ở 04_e2e qua đường CREATE của claimBuilder (mở + cấp E + đúc NFT
+//   trong cùng một tx). `deployed.json.genesis.claimAccountA/B` thành tuỳ chọn.
 //
 // committee_hash (TreasuryDatum): MVP self-test committee 1 key → committee_hash =
 // keyhash[0] (28-byte). Production: hash native multisig script. Treasury validator
@@ -28,13 +38,12 @@ import {
   loadDeployed, saveDeployed, toUnit, explorerTx, awaitTx, currentEpoch,
 } from "./config.js";
 import {
-  beaconDatumToCbor, treasuryDatumToCbor, claimAccountDatumToCbor,
+  beaconDatumToCbor, treasuryDatumToCbor,
 } from "../offchain/src/datum.js";
-import { D_GENESIS, DEFAULT_DROPS_PER_EPOCH } from "../offchain/src/constants.js";
+import { D_GENESIS } from "../offchain/src/constants.js";
 
 const BEACON_MIN_ADA   = 2_000_000n;
 const TREASURY_MIN_ADA = 2_000_000n;
-const ACCOUNT_MIN_ADA  = 2_000_000n;
 
 // test-LAMP fund vào treasury pool (oildrop). Mặc định 500_000 LAMP — dư cho redeem demo.
 const TREASURY_FUND = BigInt(process.env.TREASURY_FUND_OILDROP ?? (500_000n * 1_000_000n).toString());
@@ -150,16 +159,6 @@ async function main(): Promise<void> {
     outstanding_entitlement: 0n,
   });
 
-  // ── claim account datums v2 (genesis empty: entitlement=0, redeemed=0) ──
-  const accA = claimAccountDatumToCbor({
-    owner: aPkh, entitlement: 0n, redeemed: 0n,
-    start_epoch: epoch, drops_per_epoch: DEFAULT_DROPS_PER_EPOCH,
-  });
-  const accB = claimAccountDatumToCbor({
-    owner: b.pkh, entitlement: 0n, redeemed: 0n,
-    start_epoch: epoch, drops_per_epoch: DEFAULT_DROPS_PER_EPOCH,
-  });
-
   console.log(`Treasury fund: ${TREASURY_FUND / 1_000_000n} LAMP`);
   const utxos   = await lucid.wallet().getUtxos();
   const lampBal = utxos.reduce((s, u) => s + (u.assets[lampUnit] ?? 0n), 0n);
@@ -169,7 +168,7 @@ async function main(): Promise<void> {
   }
   console.log();
 
-  // ── 1 tx: mint 2 NFT (DROP beacon + TRSY treasury) + tạo 4 output ──
+  // ── 1 tx: mint 2 NFT (DROP beacon + TRSY treasury) + tạo 2 output ──
   // one-shot: redeemer MintGenesis = Constr(0, []), và PHẢI consume đúng genesis_ref
   //           (validator ép `list.any(inputs, == genesis_ref)`).
   // native-sig (beacon fallback Preview): Data.void(), không cần consume ref cụ thể.
@@ -215,11 +214,6 @@ async function main(): Promise<void> {
     // treasury UTxO (pool LAMP + TRSY authenticity NFT)
     .pay.ToAddressWithData(state.treasury.address, { kind: "inline", value: trDatum },
       { lovelace: TREASURY_MIN_ADA, [lampUnit]: TREASURY_FUND, [trsyNft]: 1n })
-    // 2 claim account UTxO (empty)
-    .pay.ToAddressWithData(state.claimAccount.address, { kind: "inline", value: accA },
-      { lovelace: ACCOUNT_MIN_ADA })
-    .pay.ToAddressWithData(state.claimAccount.address, { kind: "inline", value: accB },
-      { lovelace: ACCOUNT_MIN_ADA })
     .complete();
 
   const signed = await tx.sign.withWallet().complete();
@@ -235,7 +229,6 @@ async function main(): Promise<void> {
   console.log("\n   resolve genesis UTxO indices…");
   const beaconUtxos   = await lucid.utxosAt(state.beacon.address);
   const treasuryUtxos = await lucid.utxosAt(state.treasury.address);
-  const accountUtxos  = await lucid.utxosAt(state.claimAccount.address);
 
   const dropRef = (() => {
     const u = beaconUtxos.find((x) => (x.assets[dropNft] ?? 0n) === 1n && x.txHash === txHash);
@@ -247,34 +240,18 @@ async function main(): Promise<void> {
     if (!u) throw new Error("không tìm thấy treasury UTxO");
     return { txHash: u.txHash, outputIndex: u.outputIndex };
   })();
-  // 2 account UTxO: phân biệt theo datum (cbor đúng owner).
-  const accUtxosThisTx = accountUtxos.filter((x) => x.txHash === txHash);
-  const accountARef = (() => {
-    const u = accUtxosThisTx.find((x) => x.datum && x.datum === accA);
-    if (!u) throw new Error("không tìm thấy ClaimAccount A");
-    return { txHash: u.txHash, outputIndex: u.outputIndex };
-  })();
-  const accountBRef = (() => {
-    const u = accUtxosThisTx.find((x) => x.datum && x.datum === accB);
-    if (!u) throw new Error("không tìm thấy ClaimAccount B");
-    return { txHash: u.txHash, outputIndex: u.outputIndex };
-  })();
-
   state.beaconNftPolicy = nftPolicyId;
   state.wallets = { aPkh, bPkh: b.pkh };
   state.genesis = {
     dropParamBeacon: dropRef,
     treasuryUtxo:    treasuryRef,
-    claimAccountA:   accountARef,
-    claimAccountB:   accountBRef,
   };
   await saveDeployed(state);
 
   console.log("\n── Genesis UTxO map ──");
   console.log(`   DropParam beacon:  ${state.genesis.dropParamBeacon.txHash}#${state.genesis.dropParamBeacon.outputIndex}`);
   console.log(`   Treasury:          ${state.genesis.treasuryUtxo.txHash}#${state.genesis.treasuryUtxo.outputIndex}`);
-  console.log(`   ClaimAccount A:    ${state.genesis.claimAccountA.txHash}#${state.genesis.claimAccountA.outputIndex}`);
-  console.log(`   ClaimAccount B:    ${state.genesis.claimAccountB.txHash}#${state.genesis.claimAccountB.outputIndex}`);
+  console.log("   ClaimAccount:      chưa có — 04_e2e mở tài khoản (CREATE + đúc NFT + cấp E).");
   console.log("\n✅ Đã cập nhật deployed.json. Tiếp theo: npm run e2e");
 }
 

@@ -15,6 +15,7 @@ import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import { assertParamCount as assertParamCountGate } from "../offchain/src/applyGate.js";
+import { requiredHexParam } from "./_guards.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 // Secret: MỘT nguồn duy nhất — $AGENT_SECRETS (/Users/ductiger/Projects/Agents/.env).
@@ -70,8 +71,22 @@ export const LAMP_NAME = "4c414d50";
 /** Chọn token_name theo network: Mainnet → LAMP, còn lại (testnet) → tLAMP. */
 export function tokenNameFor(network: Network): string {
   const override = (process.env.TOKEN_NAME ?? "").trim();
-  if (override) return override;
-  return network === "Mainnet" ? LAMP_NAME : TLAMP_NAME;
+  if (!override) return network === "Mainnet" ? LAMP_NAME : TLAMP_NAME;
+  // Override PHẢI qua cổng gác: `token_name` là apply-param của CẢ `lamp_mint` LẪN
+  // `supply_state` ⇒ nó nằm trong policy-id + script-hash của cả hai. Trước bản vá này
+  // override chỉ `.trim()`, nên `TOKEN_NAME=LAMP` (ASCII, không phải hex) đi thẳng vào
+  // `applyParamsToScript` và sinh ra một policy-id khác, im lặng — cùng đúng một lớp lỗi
+  // với `meter_nft_policy` = 28 byte 0 ở bản mồi mainnet. Đây là chỗ DUY NHẤT mọi script
+  // Genesis lấy token_name, nên gác ở đây là gác hết.
+  return requiredHexParam("TOKEN_NAME", {
+    env: process.env,
+    warn: (m: string) => console.warn(m),
+    submit: true,              // có override = có chủ ý dùng nhãn này để đúc thật
+    placeholder: "",           // không dùng: nhánh thiếu-biến đã return ở trên
+    consequence:
+      "token_name sai dạng ⇒ lamp_mint + supply_state nướng một nhãn token KHÁC ⇒ mint ra " +
+      "một token không ai nhận là LAMP, và LAMP KHÔNG burn nên số đó kẹt vĩnh viễn.",
+  }).value;
 }
 
 /** asset name LAMP áp dụng cho deploy hiện tại (theo NETWORK). */
