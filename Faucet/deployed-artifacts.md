@@ -1,5 +1,10 @@
 # Faucet tLAMP — DEPLOYED ARTIFACTS (Preview + Preprod)
 
+> ⚠️ **Tệp này là ẢNH CHỤP tại thời điểm ghi, KHÔNG phải trạng thái đang sống.** Số dư pool ở
+> dưới đúng cho lượt claim được ghi, không đúng cho hôm nay: faucet nhả theo lượt, nên **mỗi
+> lượt claim đổi cả số dư lẫn UTxO của pool**. Muốn biết trạng thái thật thì **tra theo địa chỉ
+> pool**, đừng đọc số ở đây. Vế UTxO cũng vậy — xem cảnh báo trong `scripts/deployed-faucet.*.json`.
+
 > Cập nhật 2026-07-14. **Faucet nhả tLAMP CANONICAL** (`lamp_mint` registry-gate + A-DEST),
 > KHÔNG còn dùng token one-shot. Lý do: token one-shot khác policy → validator hệ
 > (Distribution / Treasury custody / Governance) từ chối, và KHÔNG test được Reserve-Treasury.
@@ -14,7 +19,13 @@
   không phải one-shot genesis-ref. ⇒ Preprod và Preview cùng 1 policy + cùng faucet address.
 - **Faucet pool address (cả 2 mạng):** `addr_test1wq5kway3ng4amxt47l2ugk7h0cvr7zyfp706uacqqmqcg7sg80hqc`
 - Faucet hash: `296774919a2bdd9975f7d5c45bd77e183f08890f9fae770006c1847a`
-- claim_amount: **100 tLAMP/claim** (permissionless on-chain; DID-gate ở tầng offchain/API — `claimDidBuilder.ts`).
+- claim_amount: **100 tLAMP/claim**, permissionless on-chain — pool đang sống là **bản v1**
+  (`faucet.ak`, datum chỉ có `claim_amount`, không POOL NFT). Đường dựng tx đúng cho nó là
+  **`offchain/src/claimBuilder.ts`**.
+  > ⚠️ **KHÔNG phải `claimDidBuilder.ts`.** Tệp đó là **Faucet v2**: drip **1001** tLAMP và bắt
+  > buộc claimer mang một UTxO chứa **DID NFT** (`claimDidBuilder.ts:1,7`). Pool v1 đang sống
+  > không có POOL NFT và datum là 100 tLAMP ⇒ tx dựng bằng v2 sẽ bị chính validator từ chối.
+  > Dòng này trước đây gộp hai thiết kế vào một câu, nên người đọc đi thẳng vào v2 và tắc.
 
 ## Preprod
 - Seed pool tx: `51f8944d795f874791fd11375fe8441f5e12894f75053fae7718af36d153a4c7` (9.000 tLAMP)
