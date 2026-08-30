@@ -194,20 +194,13 @@ async function main(): Promise<void> {
   // KHÔNG one-shot: tham số hoá bởi [committee, threshold, treasury_nft_policy], nên
   // deterministic ngay khi biết committee + treasuryNftPolicy — tính ở đây, apply
   // CHÍNH validator claim_account_nft (không bịa giá trị, không hard-code hash).
+  // Phải apply TRƯỚC NHẤT: policy id này là tham số của 2 validator kia.
   const accountNftPolicy = await accountNftPolicyId(committeeData, thresholdData, treasuryNftPolicy);
   console.log(`account_nft_policy: ${accountNftPolicy}  (claim_account_nft — cổng mở tài khoản)`);
   console.log();
 
   console.log(`lamp_policy:       ${lampPolicy}`);
   console.log(`lamp_name:         ${lampName} ("${Buffer.from(lampName, "hex").toString("utf8")}")`);
-  console.log();
-
-  const committeeData = committee.keyHashes;   // List<ByteArray> = array of hex strings
-  const thresholdData = BigInt(committee.threshold);
-
-  // ── claim_account_nft (apply TRƯỚC NHẤT: policy id là tham số của 2 validator kia) ──
-  const accountNftPolicy = await accountNftPolicyId(committeeData, thresholdData, treasuryNftPolicy);
-  console.log(`account_nft_policy: ${accountNftPolicy}  (claim_account_nft — NFT xác thực tài khoản)`);
   console.log();
 
   // ── claim_account (apply trước để lấy hash cho treasury) ─────
