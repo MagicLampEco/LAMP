@@ -687,7 +687,7 @@ tấn công của nhánh chi.
 > generators bằng **adapter off-chain (b-ii)** đi qua nhánh `Collect` đã có (không cần MigrateIn).
 
 Generators MAGIC (Vacuum/Instant/Schedule…) hiện trả LAMP về một `treasury_addr` đơn giản (bất biến
-`treasury_receives_lamp >= lamp_paid`, [vault.ak](https://github.com/MagicLampNetwork/MAGIC/blob/main/VacuumGen/onchain/validators/vault.ak) (repo MAGIC)).
+`treasury_receives_lamp >= lamp_paid`, [vault.ak](https://github.com/MagicLampEco/MAGIC/blob/main/VacuumGen/onchain/validators/vault.ak) (repo MAGIC)).
 Hai con đường tích hợp:
 
 **(a) Migrate value cũ (một lần) — `MigrateIn`:** (param thêm `old_treasury_hash: ByteArray` cho instance)

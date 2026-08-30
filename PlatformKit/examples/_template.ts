@@ -6,7 +6,7 @@
 // ╚══════════════════════════════════════════════════════════════════════════╝
 //
 // HƯỚNG DẪN: xem kho Registry → Specs/ONBOARDING.md (nguồn sự thật từ 2026-08-04,
-// https://github.com/MagicLampNetwork/Registry) để biết toàn bộ quy trình onboard
+// https://github.com/MagicLampEco/Registry) để biết toàn bộ quy trình onboard
 // (copy template → viết config → seed custody → đăng ký registry → tích hợp collect).
 //
 // Hai thứ phải định nghĩa cho platform của bạn:
