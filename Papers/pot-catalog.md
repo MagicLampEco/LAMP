@@ -3,8 +3,14 @@
 > **Paper class**: A — Positioning — giải thích 18 pot cho người ngoài.
 > Đây là tài liệu **đối ngoại** (bản phái sinh), không phải đặc tả nội bộ. Chuẩn: `../CONVENTIONS.md`.
 
-> **DRAFT — chủ repo sẽ còn thay đổi.** Mục đích: để mọi người hiểu **mỗi pot là gì,
-> dùng làm gì, bị khoá hay nhỏ-giọt thế nào, và có sinh MAGIC hay không.**
+> **Trạng thái**: ĐÃ CHỐT — bảng 18 pot (§1), phân loại gen-MAGIC ba mức (§0, §2), thuyết minh
+> từng pot (§3) và kết luận về hệ-số-gen (§4) là quyết định của chủ repo, chốt **2026-08-30**.
+> **Còn mở, và chỉ còn chỗ này**: quy tắc claim chi tiết của ba pot phân phối sớm (§5). Một mục
+> đã chốt vẫn sửa được, nhưng sửa bằng một quyết định mới có ngày — không phải vì tài liệu này
+> tự nhận là nháp.
+>
+> Mục đích: để mọi người hiểu **mỗi pot là gì, dùng làm gì, bị khoá hay nhỏ-giọt thế nào, và có
+> sinh MAGIC hay không.**
 > Số liệu bám `TOKENOMICS-v17`. **Đơn vị: NGHÌN LAMP** (tổng 36.000.000 nghìn = 36 tỷ).
 > Dùng nghìn LAMP để PhoenixKey (142.857) và RedBack (21.143) thành SỐ NGUYÊN, hết lẻ.
 
@@ -224,4 +230,6 @@ governance đầy đủ chưa lên → giao DAO sau.
 
 ---
 
-*Hết catalog draft. §4 (cap gen-MAGIC) + quy tắc claim chi tiết chờ phản biện toán + chủ repo chốt.*
+*Hết catalog. §4 (hệ-số-gen) đã có kết luận sau phản biện toán + game-theory — `μ_pot` là tham số
+điều chỉnh được theo thiết kế, không phải mục còn treo. Chỗ duy nhất còn treo là quy tắc claim chi
+tiết của ETD / Airdrop / SRCL ở §5.*
