@@ -176,11 +176,14 @@ Mục tiêu là *"không ai, kể cả đội dự án, rút tắt được"*. �
   hết hạn thì `Sweep` toàn bộ LAMP còn lại về Treasury. **Sau khi nạp, không ai thêm được người
   nhận.** Điểm tin cậy duy nhất còn lại là "soạn root đúng" — và điểm đó công khai kiểm được bằng
   snapshot.
-- **`SRCL/onchain/validators/srcl_pool.ak` CHƯA ĐẠT.** `SetRoot` cho admin **append một root mới
-  mỗi epoch** (`:117-122`, trần `end_epoch + 1` root). Value được bảo toàn tuyệt đối trong
-  `SetRoot`, nên đây không phải cửa rút tiền — nhưng nó **là** quyền thêm người nhận về sau.
-  Nặng hơn: **ba lỗ đang MỞ**, chính `SRCL/README.md:140-157` ghi rõ, kèm câu phải vá **cùng một
-  lượt** vì cả ba đổi script hash:
+- **SRCL — mã đã GỠ khỏi repo này 2026-08-30, đoạn dưới giữ làm bằng chứng.** Bản từng nằm ở
+  `SRCL/onchain/validators/srcl_pool.ak` CHƯA ĐẠT, và đó là một lý do gỡ: giữ một bản có lỗ mở
+  bên cạnh một bản đã vá thì sớm muộn có người dựng pot từ bản sai. Tra bản cũ bằng
+  `git show 6df96ae:SRCL/<đường-dẫn>`. `SetRoot` cho admin **append một root mới mỗi epoch**
+  (`:117-122`, trần `end_epoch + 1` root). Value được bảo toàn tuyệt đối trong `SetRoot`, nên
+  đây không phải cửa rút tiền — nhưng nó **là** quyền thêm người nhận về sau. Nặng hơn:
+  **bốn lỗ**, ba lỗ đầu chính `SRCL/README.md:140-157` của bản cũ ghi rõ, kèm câu phải vá
+  **cùng một lượt** vì cả bốn đổi script hash:
   - **S1 — cửa `Sweep` mở ngay từ ngày đầu.** `util.get_epoch` trả epoch POSIX **tuyệt đối**
     (~4132 hiện nay) trong khi `end_epoch = 35` là epoch **tương đối của chiến dịch** ⇒ `4132 > 35`
     ⇒ **bất kỳ ai cũng quét sạch pot về Treasury, không cần chữ ký**. Không mất tiền (tiền về
@@ -192,8 +195,20 @@ Mục tiêu là *"không ai, kể cả đội dự án, rút tắt được"*. �
   - **S3 — tái tạo slot vô hạn** (`srcl_nft.ak:77-84` không cấm đúc tên KHÁC cùng policy trong tx
     `Claim`) ⇒ claim lặp. Bản vá đối chiếu có sẵn ở `Airdrop/onchain/validators/airdrop_nft.ak:122-131`.
 
-  🔴 **ĐỪNG NẠP LAMP THẬT VÀO SRCL** trước khi vá cả ba. Lưu ý cơ chế SRCL **đã bàn giao cho Launch
-  agent** (chốt 2026-08-04); `SRCL/` giữ nguyên trong repo này tới khi Launch port xong.
+  - **S4 — `Claim` ràng SỐ LƯỢNG, không ràng ĐÍCH ĐẾN** (phát hiện 2026-08-30). Cả validator chỉ
+    có MỘT phép so địa chỉ và nó so **input** (`srcl_pool.ak:102-103`). `pool_out` lấy bằng
+    `util.output_with_nft` = `list.find` theo NFT, khớp output mang POOL NFT ở **bất kỳ địa chỉ
+    nào** (`util.ak:85-92`). `:169-170` ép `pool_out.value == pool_in.value − amount` — trả lời
+    *bao nhiêu* rời pool, **không** trả lời *đi đâu*. Một claimer hợp lệ dựng được tx vừa nhận
+    đúng phần mình, vừa đặt phần pool còn lại kèm POOL NFT vào ví riêng: value đúng, datum đúng,
+    slot cháy đúng, không cần admin, không cần chờ `end_epoch`.
+
+    Đáng nói hơn bản thân lỗ: `SRCL/README.md` của bản cũ liệt "Drain pool: value-eq tuyệt đối"
+    vào mục ĐÃ CHỐNG ĐƯỢC. Một câu khẳng định an toàn SAI nguy hơn một lỗ chưa ai biết — nó
+    khiến người soi sau bỏ qua đúng chỗ cần soi.
+
+  🔴 **ĐỪNG NẠP LAMP THẬT VÀO SRCL** trước khi vá cả bốn. Cơ chế SRCL **đã bàn giao ra ngoài repo
+  này** (chốt 2026-08-04, gỡ mã 2026-08-30). Bản được duy trì ở nơi khác đã đóng cả bốn lỗ.
 - **`Distribution/` (Capped Drop) — phụ thuộc PR #22.** Trên nhánh chính hiện nay `TreasuryDatum`
   chỉ có `committee_hash`, **không có sổ cái solvency**, và `Claim { amount }` không có trần nào.
   Sổ cái `outstanding_entitlement` + bất biến `≤ pool` chỉ tồn tại trên nhánh **PR #22 chưa merge**.
