@@ -34,11 +34,17 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 
 // Load .env từ repo root (../../.env so với LampDistribution/scripts/),
 // không phụ thuộc cwd lúc chạy tsx.
-// Secret: MỘT nguồn duy nhất — $AGENT_SECRETS (/Users/ductiger/Projects/Agents/.env).
-// .env trong repo con đã BỎ; không đọc, không tạo lại.
-dotenv.config({
-  path: process.env.AGENT_SECRETS ?? "/Users/ductiger/Projects/Agents/.env",
-});
+// Secret: MỘT nguồn duy nhất — $AGENT_SECRETS. KHÔNG có đường dự phòng nướng cứng.
+// Đường dự phòng cũ trỏ vào bộ nhà agent ở chỗ cũ — chỗ đó đã dời, nên hằng số ấy là
+// một con trỏ chết. Con trỏ chết im lặng theo HAI chiều: dotenv KHÔNG báo khi tệp
+// không tồn tại (script chỉ gãy muộn hơn, ở một chỗ không liên quan), và nếu về sau có
+// tệp thật mọc đúng đường đó thì nó được đọc mà không ai chọn.
+if (!process.env.AGENT_SECRETS) {
+  throw new Error(
+    "SECRETS-001: thiếu $AGENT_SECRETS. Secret CHỈ đọc từ biến này, không có đường dự phòng.",
+  );
+}
+dotenv.config({ path: process.env.AGENT_SECRETS });
 
 // ── Network + provider ─────────────────────────────────────────
 export const NETWORK: Network = (process.env.NETWORK ?? "Preview") as Network;
