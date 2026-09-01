@@ -88,10 +88,13 @@ redeem). Đó mới là thứ khiến nó không thể bị rút sạch.
 > Đường đi đã chốt là phát hành policy mới khi bật được mint uỷ quyền bằng OrgDID, không phải
 > "trỏ kho sang chỗ khác".
 >
-> Về việc đối chiếu mã: mã `lamp_mint` chạy trên mainnet **đã được đối chiếu** (2026-08-09) — dựng
-> lại từ commit `457f312` rồi áp 8 tham số cho ra **CBOR trùng byte, hash trùng**. Hai script còn
-> lại (`supply_state`, `dist_treasury`) **chưa** đối chiếu; việc đó phải xong trước khi mint giá
-> trị thật.
+> Về việc đối chiếu mã: `lamp_mint` **đã đối chiếu** (2026-08-09) — dựng lại từ commit `457f312`
+> rồi áp 8 tham số cho ra **CBOR trùng byte, hash trùng**. `supply_state` cũng **đã đối chiếu từng
+> byte** (2026-08-12, cùng commit nguồn, 528 byte trên chuỗi). Script thứ ba, `dist_treasury`, thì
+> **không thể** đối chiếu byte hôm nay: trên Cardano byte của script chỉ lên chuỗi khi script được
+> tiêu, mà kho này **chưa từng bị tiêu lần nào** — không có byte trên chuỗi để so. Nó được đối
+> chiếu bằng **hash**: dựng lại từ `60f7e3a` rồi áp authority ⇒ ra đúng `d5e80c9a…`. Nguồn số:
+> `Genesis/offchain/src/deployed.ts` khối `provenance`.
 >
 > Chúng tôi để nguyên đoạn này trong tài liệu công khai thay vì viết một câu nghe an toàn hơn.
 > Ai đang cân nhắc tin vào LAMP thì cần biết đúng chỗ nó chưa xong.
