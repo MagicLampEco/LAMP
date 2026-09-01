@@ -84,13 +84,10 @@ Quy ước đặt tên + phân biệt Spec/Paper: [`CONVENTIONS.md`](CONVENTIONS
 | `Distribution/` | Engine Capped Drop (claim → vesting → redeem) + treasury pool | ổn định | Preview |
 | `Treasury/` | Kho bạc custody sổ-kế-toán đa-bucket (collect / release theo quản trị) | đang phát triển | chưa |
 | `Reserve/` | Đệm phát hành, trần mỗi epoch, demand-gated qua Treasury-pull | ổn định | chưa |
-| `Airdrop/` | Bộ máy Merkle-airdrop dùng chung (pool NFT, nullifier, sweep) | ổn định | chưa |
-| `TIGER/` | ETD — pot hồi tố cho người đã ủy thác pool TIGER | ổn định (còn tham số placeholder) | chưa |
-| `SRCL/` | Hạ tầng phân phối cho cơ chế ra mắt SRCL | ⚠️ có lỗi mở | chưa |
 | `Faucet/` | Vòi tLAMP cho dev (chỉ testnet) | ổn định | chỉ testnet |
 | `Governance/` | Voting Power on-chain v1 (cử tri = cá nhân, ≥4 tham số có cap). iVoteSpace · bầu 3 hội đồng · Recall mới có spec | VP: ổn định · phần còn lại: spec | chưa |
 | `PlatformKit/` | Bộ ráp cho bên tích hợp — **đang chuyển sang repo `Registry`**, xem `PlatformKit/README.md` | spec + adapter off-chain | chưa |
-| `LaunchAPI/` | API + UI tham chiếu cho đợt ra mắt (`src/server.ts`, `src/etd.ts`, `reference-ui/`) | có mã chạy, chưa ổn định | chưa |
+| ~~`Airdrop/` `TIGER/` `LaunchAPI/` `SRCL/`~~ | **ĐÃ BÀN GIAO ra ngoài repo này** — SRCL 2026-08-30, ba module còn lại 2026-09-01. Bốn cơ chế **chạy một vài lần rồi thôi** (một đợt phát hành có ngày kết thúc), nên chúng thuộc về kho chiến dịch chứ không thuộc kho token core — kho này giữ thứ chạy lâu dài. Lịch sử còn nguyên: tra bằng `git show 6df96ae:<đường-dẫn>` hoặc `git log --diff-filter=D -- Airdrop TIGER LaunchAPI SRCL`. Mọi dẫn chiếu tới bốn đường đó còn lại trong repo đọc theo lối đó. |
 | ~~`Legacy/`~~ | **ĐÃ GỠ khỏi cây làm việc 2026-08-12.** Bản đã bị thay thế + tài liệu nội bộ giai đoạn đầu. Vẫn còn nguyên trong lịch sử git để làm bằng chứng — tra bằng `git show be14728:Legacy/<đường-dẫn>` hoặc `git log --diff-filter=D -- Legacy/`. Mọi dẫn chiếu `Legacy/…` còn lại trong repo đọc theo lối đó. |
 
 ## Trạng thái thật — đọc trước khi dùng

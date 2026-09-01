@@ -22,7 +22,7 @@ Hệ quả cho LAMP:
   "đặc tả dành cho công chúng" — trái Rule 6 ("ALL INTERNAL BY DEFAULT"). Chính chỗ lệch đó là
   **nguyên nhân cấu trúc** khiến câu chữ nội bộ rò ra tài liệu công khai: không có bước phái sinh nào
   để dừng lại và soát.
-- **Spec nội bộ nằm trong thư mục module** (`Treasury/`, `Genesis/`, `Airdrop/`, …).
+- **Spec nội bộ nằm trong thư mục module** (`Treasury/`, `Genesis/`, `Distribution/`, …).
 - Không có file nào vừa là spec vừa là paper. Muốn công bố → viết một paper phái sinh.
 
 ## 2. Tên file
@@ -55,7 +55,7 @@ Ví dụ: `kho-a-dest.md`, `spo-cs.md`, `operator-runbook.md`, `paymaster-design
 | Phiên bản (`V2`, `v1.7`) | hết version là phải đổi tên + sửa mọi liên kết | header + §Change Log + git |
 | Trạng thái (`DRAFT`, `DEPRECATED`) | trạng thái đổi thường xuyên hơn nội dung | dòng `> Trạng thái:` ở đầu file |
 | Nhãn ngôn ngữ (`-Vi`) | không phân biệt được gì khi mọi file cùng một ngôn ngữ | thư mục, nếu thật cần |
-| Tên module đã có trong đường dẫn | `Airdrop/AIRDROP-…` lặp thừa | đường dẫn đã nói rồi |
+| Tên module đã có trong đường dẫn | `Treasury/TREASURY-…` lặp thừa | đường dẫn đã nói rồi |
 
 ### 2.4 Dấu ngăn cách
 

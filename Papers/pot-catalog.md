@@ -174,8 +174,10 @@
 - **14. Airdrop (120.000)** — **dành tặng cộng đồng Delegator và SPO** dựa trên **stake**; ghi nhận việc góp phần
   vào an ninh kinh tế của mạng Cardano. Chia **3 pot**: Delegator **100M** · SPO **5M** ·
   CS (Community Supporter) **15M**, cả ba đều **∝ trọng số stake** (làn CS cho phép tự bỏ phiếu nên điểm cân bằng
-  cũng là chia theo stake — `Airdrop/spo-cs.md` §3.5; KHÔNG mô tả làn CS như phần thưởng cho đóng góp). Đặc tả hiệu lực:
-  [`Airdrop/CONTRACT.md`](../Airdrop/CONTRACT.md). (Mô hình cũ 5 epoch ×24.000 tỉ lệ
+  cũng là chia theo stake — `Airdrop/spo-cs.md` §3.5; KHÔNG mô tả làn CS như phần thưởng cho đóng góp).
+  Đặc tả hiệu lực: `Airdrop/CONTRACT.md`. Module `Airdrop/` đã **bàn giao ra ngoài repo này 2026-09-01** và không
+  còn trong cây làm việc này; bản cuối ở kho này tra bằng `git show 6df96ae:Airdrop/CONTRACT.md` (và
+  `git show 6df96ae:Airdrop/spo-cs.md`). (Mô hình cũ 5 epoch ×24.000 tỉ lệ
   20:100 đã bị thay ngày 2026-07-10.)
 - **15. SRCL (360.000)** — **redirect staking-reward ADA ↔ LAMP** (delegator tự nguyện đổi % reward), 36 epoch.
 

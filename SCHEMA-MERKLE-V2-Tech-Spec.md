@@ -5,6 +5,12 @@
 > ("Airdrop + SRCL là một bộ máy, đa vai") + 2 thư AffiSo (29–30/07). aiken-dev + off-chain + AffiSo
 > (reward-engine) PHẢI khớp byte-perfect với spec này. Đổi spec = đổi mọi root đã phát → cấm sửa số role.
 
+> ⚠️ **Đường dẫn hiện thực trong tài liệu này KHÔNG còn trong cây làm việc.** `Airdrop/`, `SRCL/`,
+> `TIGER/`, `LaunchAPI/` đã **bàn giao ra ngoài repo này** (SRCL 2026-08-30, ba module còn lại
+> 2026-09-01) — chúng là cơ chế chạy một vài lần rồi thôi, còn kho này giữ phần chạy lâu dài. Spec thì **ở lại**, vì nó ràng buộc byte của mọi
+> pot Merkle sau này, kể cả pot chưa ai dựng. Mọi dẫn chiếu dạng `Airdrop/…` · `SRCL/…` dưới đây
+> đọc bằng `git show 6df96ae:<đường-dẫn>`; bản đang được bảo trì nằm ở kho của đội launch.
+
 ## 0. Vì sao đổi (schema A/B cũ → C)
 
 - **A (Airdrop cũ):** `leaf = blake2b(0x00 ‖ cbor(address) ‖ amount_be8)` — không epoch, không role,
