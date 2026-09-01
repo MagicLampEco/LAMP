@@ -950,7 +950,7 @@ trong `c_sunk`. **Đã gỡ 2026-09-01.** Bốn lý do độc lập, mỗi lý d
    tới 1 đúng theo mức được chi tiêu Treasury** — mà chi tiêu Treasury do chính quản trị này quyết
    (CONTRACT D2/D3). Nên khoản ấy hoàn lại **có điều kiện là kẻ tấn công thắng**. Một lập luận an
    toàn tựa lên nó thì **tự tham chiếu: mạnh khi hệ còn an toàn, yếu đi đúng lúc bị tấn công.**
-   Không phải chi phí chìm. *(Khung `γ` do MAGIC agent đề xuất 2026-09-01.)*
+   Không phải chi phí chìm. *(Khung `γ` đến từ phía kho MAGIC, 2026-09-01.)*
 
    **Phạm vi của lập luận này, phải nói rõ kẻo đọc quá mạnh:** `γ` ở đây là `γ` **điều kiện theo
    kết cục THẮNG**, và đó đúng là điều kiện mà (9a) cần — vì (9a) chặn dưới chi phí của một tấn
