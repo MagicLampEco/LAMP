@@ -970,7 +970,7 @@ trong `c_sunk`. **Đã gỡ 2026-09-01.** Bốn lý do độc lập, mỗi lý d
 
 **Hệ quả phải nói thẳng, và bản trước của chính mục này nói quá nhẹ.** `c_sunk` mất một số hạng.
 Bản đầu (cùng ngày) viết *"đây là sửa một phép đếm sai, không phải hạ tiêu chuẩn"* và giao phần
-chống-mua-bằng-tiền cho **D8**. Hội đồng phản biện bác cả hai vế, và bác đúng:
+chống-mua-bằng-tiền cho **D8**. Rà lại lần hai bác cả hai vế, và bác đúng:
 
 - **D8 KHÔNG lấp được chỗ trống.** Số hạng bị gỡ là **chi phí chìm cộng dồn theo `N`** — mỗi danh
   tính giả thêm vào phải trả thêm. D8 là **ràng buộc tỷ lệ số mũ bên trong một công thức**, không
@@ -989,7 +989,7 @@ Rà bất biến cung phải lọc `đốt.*LAMP`, đừng lọc `đốt`.
 ### 10.5c Sau khi gỡ thì `c_sunk` thật sự còn gì — soát từng hạng, và bảy chỗ CHƯA đóng
 
 Mục này tồn tại vì một lý do: bản đầu của §10.5b thay một khẳng định an toàn sai bằng một khẳng
-định an toàn khác chưa kiểm. Hội đồng phản biện đo lại từng hạng, và kết quả đủ nghiêm để phải
+định an toàn khác chưa kiểm. Rà lại lần hai đo từng hạng, và kết quả đủ nghiêm để phải
 viết ra thay vì để người đọc sau tự phát hiện.
 
 **Soát từng hạng của `c_DID` (đo 2026-09-01, kho MAGIC đọc trực tiếp):**
