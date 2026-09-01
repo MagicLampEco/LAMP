@@ -24,8 +24,9 @@ Nguyên lý nền (từ contract §2, KHÔNG vi phạm):
 1. **Quyền tham gia ≠ quyền lực.** Ai có DID đều bỏ phiếu được; trọng số phải kiếm.
 2. **Chi phí thâu tóm = chi phí đóng góp thật.** Không có đường tắt mua quyền lực.
 3. **Token đơn thuần bị vô hiệu hóa** (cap C4 + công thức nhân).
-4. **Sybil chết từ gốc** (DID sinh trắc + lịch sử C1 + uy tín C3 — ba lớp khóa nhau, cộng D8
-   (contract §5) chặn hai yếu tố mua được).
+4. **Sybil — HAI TRỤC khác bản chất:** chi phí-mỗi-DID (cộng dồn theo `N`: DID sinh trắc + C1 +
+   C3) và đòn bẩy-trong-công-thức (KHÔNG phụ thuộc `N`: D8, contract §5). D8 **không thay được**
+   một lớp ở trục đầu. Mức tuyên bố thật của C1/C3: contract §2 nguyên lý 2.
 5. **Sàn phi tập trung Byzantine — không thực thể/nhóm nhỏ nào chiếm đa số.** Khi kiểm
    phiếu, VP hiệu dụng mỗi DID bị clamp `1/BFT_FLOOR` (mặc định `1/21`); quyết định trọng
    yếu cần **điều kiện kép**: đủ tỉ lệ VP **và** đủ số DID độc lập thuận (§3.6).
@@ -618,7 +619,7 @@ sự chú ý của cộng đồng, hoặc ép đối tượng liên tục tự b
 
 - Cường giàu, mua 12 tỷ LAMP. Nhưng cap C4 = 100 triệu → Cường chỉ được tính như **một cử
   tri 100 triệu**. Muốn dùng hết, phải chia cho ~120 DID người-thật, mỗi DID cần lịch sử
-  tiêu MAGIC (C1) + uy tín (C3) — hai thứ đòi thời gian thật (contract §2.3).
+  tiêu MAGIC (C1) + uy tín (C3) — hai thứ đòi thời gian **và tiền** (contract §2 nguyên lý 2 — đọc cả khối ⚠️ mức tuyên bố).
 - Giả sử Cường gom được vài DID VP cực lớn. Vẫn vô ích cho việc lớn: clamp `1/21` (§3.6) chặn
   mỗi DID ở `4,76%`, và **sàn cứng đòi ≥ 21 DID độc lập THUẬN**. Cường buộc phải có **21 con
   người độc lập** thật sự đóng góp đồng thuận — đúng chi phí Byzantine, không có đường tắt.
