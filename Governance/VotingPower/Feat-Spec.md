@@ -24,7 +24,8 @@ Nguyên lý nền (từ contract §2, KHÔNG vi phạm):
 1. **Quyền tham gia ≠ quyền lực.** Ai có DID đều bỏ phiếu được; trọng số phải kiếm.
 2. **Chi phí thâu tóm = chi phí đóng góp thật.** Không có đường tắt mua quyền lực.
 3. **Token đơn thuần bị vô hiệu hóa** (cap C4 + công thức nhân).
-4. **Sybil chết từ gốc** (DID sinh trắc + lịch sử + uy tín + đốt LAMP, bốn lớp khóa nhau).
+4. **Sybil chết từ gốc** (DID sinh trắc + lịch sử C1 + uy tín C3 — ba lớp khóa nhau, cộng D8
+   (contract §5) chặn hai yếu tố mua được).
 5. **Sàn phi tập trung Byzantine — không thực thể/nhóm nhỏ nào chiếm đa số.** Khi kiểm
    phiếu, VP hiệu dụng mỗi DID bị clamp `1/BFT_FLOOR` (mặc định `1/21`); quyết định trọng
    yếu cần **điều kiện kép**: đủ tỉ lệ VP **và** đủ số DID độc lập thuận (§3.6).
@@ -65,7 +66,7 @@ Tồn tại một tài liệu cũ ở cấp trên — `Governance/SPEC.md` — v
 **mâu thuẫn CONTRACT** ở hai điểm:
 
 1. **Thiếu cap.** CONTRACT §1 buộc `VP_i = ∏_k min(C_{k,i}, cap_k)^(w_k)` — mỗi tham số bị
-   **chặn trần** trước khi nhân. SPEC.md cũ không cap → vốn lớn (C4) hoặc đốt nhiều LAMP (C1)
+   **chặn trần** trước khi nhân. SPEC.md cũ không cap → vốn lớn (C4) hoặc khóa nhiều LAMP (C2)
    có thể kéo VP lên vô hạn, phá đúng nguyên lý "token đơn thuần không mua được quyền lực"
    (CONTRACT §2.3). Cap là cốt lõi chống thâu tóm, không được bỏ.
 2. **Thiếu C4 và weight DAO chỉnh.** SPEC.md cũ chỉ có 3 tham số mũ `1/3` cố định; CONTRACT
@@ -616,8 +617,8 @@ sự chú ý của cộng đồng, hoặc ép đối tượng liên tục tự b
 ### 7.4 KẺ TẤN CÔNG (Cường — muốn thâu tóm)
 
 - Cường giàu, mua 12 tỷ LAMP. Nhưng cap C4 = 100 triệu → Cường chỉ được tính như **một cử
-  tri 100 triệu**. Muốn dùng hết, phải chia cho ~120 DID người-thật, mỗi DID cần lịch sử +
-  uy tín + đốt LAMP (contract §2.3).
+  tri 100 triệu**. Muốn dùng hết, phải chia cho ~120 DID người-thật, mỗi DID cần lịch sử
+  tiêu MAGIC (C1) + uy tín (C3) — hai thứ đòi thời gian thật (contract §2.3).
 - Giả sử Cường gom được vài DID VP cực lớn. Vẫn vô ích cho việc lớn: clamp `1/21` (§3.6) chặn
   mỗi DID ở `4,76%`, và **sàn cứng đòi ≥ 21 DID độc lập THUẬN**. Cường buộc phải có **21 con
   người độc lập** thật sự đóng góp đồng thuận — đúng chi phí Byzantine, không có đường tắt.

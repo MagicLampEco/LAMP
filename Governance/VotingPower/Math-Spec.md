@@ -207,9 +207,14 @@ trần vẫn đạt **3/4 quyền lực tối đa** mà **không cần một ch�
 **Chứng minh.** Đặt `ŷ_3 = 0` (bỏ uy tín), `ŷ_k = 1` cho `k≠3` (mua tới trần). Khi đó
 `VP^{add} = Σ_{k≠3} w_k = (Σ_k w_k) − w_3`. Chia cho `VP^{add}_max = Σ_k w_k`. ∎
 
-→ Additive cho phép **thay thế** (substitution) hoàn toàn giữa các yếu tố: tiền mua được `C4`,
-đốt LAMP đẩy `C1`, khóa LAMP đẩy `C2` — ba yếu tố này mua được, gánh trọn phần `1 − w_3/Σw`.
-Uy tín (`C3`) trở nên **không bắt buộc**. Đây đúng là cảnh báo trong CONTRACT §1 dòng 30.
+→ Additive cho phép **thay thế** (substitution) hoàn toàn giữa các yếu tố: uy tín (`C3`) trở nên
+**không bắt buộc**, và phần `1 − w_3/Σw` vẫn đạt được. Đó là lỗ hổng, và nó **không** phụ thuộc
+vào việc yếu tố nào mua được — chỉ cần chúng thay thế nhau.
+
+Phân tầng chi phí của phần thay thế đó: `C4` mua ngay bằng tiền, `C2` mua bằng khóa vốn qua `N_2`
+epoch (hoàn lại) — **hai** yếu tố này mua được, và D8 ép `w_2 + w_4 ≤ w_1 + w_3` nên chúng gánh
+tối đa **một nửa**. `C1` thì không mua tắt: nó đòi tiêu MAGIC qua nhiều epoch thật. Nhưng additive
+vẫn hỏng dù `C1` đắt, vì nó cho phép **bỏ hẳn** `C3`. Đây đúng là cảnh báo trong CONTRACT §1 dòng 30.
 
 ### 5.3 Định lý "một yếu tố thấp kéo sụp" — geometric đứng
 
@@ -830,14 +835,13 @@ từng yếu tố — đây là điểm cốt lõi: **không phải mọi yếu 
 | `C1` (MAGIC tiêu thụ, cửa sổ quá khứ) | **chìm + thời gian** — phải tiêu MAGIC qua nhiều epoch | KHÔNG | KHÔNG (cần thời gian thật) |
 | `C2` (LAMP cam kết tương lai) | **khóa vốn qua `N_2` epoch** (cơ hội-thời-gian) — LAMP khóa trong ScheduleGen, chỉ tính nếu duy trì khóa ≥ `N_2` epoch (D8/W2, §6B.4) | một phần (khi mãn hạn) | một phần (khóa LAMP, NHƯNG phải qua `N_2` epoch — không khóa-tức-thời) |
 | `C3` (uy tín) | **thời gian + công nhận xã hội** | KHÔNG | KHÔNG (cộng đồng phải công nhận) |
-| đốt LAMP | **chìm tuyệt đối** | KHÔNG | có tiền là đốt được, nhưng mất hẳn |
 | `C4` (LAMP nắm giữ hiện tại) | **vốn HOÀN LẠI** — chỉ là chi phí cơ hội của khóa vốn trong cửa sổ snapshot | **CÓ** (rút ngay sau snapshot) | có (xem §10.6 flash-fill) |
 
 **Định nghĩa `c_DID` (chi phí đạt `VP_max` cho một DID).** Tách hai phần:
 
 ```
 c_DID  =  c_sunk  +  c_lock ,
-   c_sunk = chi_phí_con_người + cost_C1(cap_1) + cost_C3(cap_3) + LAMP_đốt   (phần CHÌM, không hoàn lại)
+   c_sunk = chi_phí_con_người + cost_C1(cap_1) + cost_C3(cap_3)   (phần CHÌM, không hoàn lại)
    c_lock = chi_phí_cơ_hội( khóa LAMP cho C2 + khóa C4 tới cap trong cửa sổ snapshot )  (HOÀN LẠI)
 ```
 
@@ -882,8 +886,8 @@ Tách rõ vì sao `c_sunk` không nén được bằng tiền (mô hình thời-
 ### 10.4 Vì sao collusion (thuê 120 người vote hộ) không phải lỗ hổng
 
 Hai lớp, theo CONTRACT §2.2:
-1. **Để 120 người đó có VP>0**, kẻ thuê vẫn phải khiến mỗi người **đóng góp thật** (lịch sử, uy
-   tín, đốt LAMP) — tức vẫn trả đủ `c_DID` mỗi người. Thuê người không bỏ qua được chi phí đóng
+1. **Để 120 người đó có VP>0**, kẻ thuê vẫn phải khiến mỗi người **đóng góp thật** (lịch sử `C1`,
+   uy tín `C3`) — tức vẫn trả đủ `c_DID` mỗi người. Thuê người không bỏ qua được chi phí đóng
    góp; nó chỉ chuyển ai trả.
 2. **Lộ thiên on-chain:** 120 DID cùng phục vụ một thực thể để lại dấu vết tương quan (cùng nguồn
    LAMP nạp, cùng nhịp vote) — cộng đồng phát hiện và phản ứng (recall, xem FEAT). Và đối thủ
@@ -915,10 +919,41 @@ vô hiệu:
    số LAMP giữ qua **N epoch** liên tục, hoặc yêu cầu **khóa** LAMP một số epoch để được tính. Cận
    dưới đúng khi đó là chi phí cơ hội khóa qua **N epoch** thật, không phải một mốc.
 2. Nếu TECH giữ snapshot một-mốc cho v1 (đơn giản, ít UTxO), MATH cảnh báo rõ: **`C4` phần này là
-   vốn hoàn lại** → đừng tính vào lập luận "chi phí chìm cao"; sức mạnh chống thâu tóm dồn vào
-   `C1,C3` (thời gian) + đốt LAMP (chìm), KHÔNG vào `C4`.
+   vốn hoàn lại** → đừng tính vào lập luận "chi phí chìm cao"; sức mạnh chống thâu tóm dồn **trọn vẹn** vào
+   `C1,C3` (thời gian), KHÔNG vào `C4` — xem §10.5b vì sao không còn số hạng chìm nào khác.
 
 `N` (độ dài cửa sổ ổn định cho `C4`) là **tham số mở (DAO định)**; MATH chốt rằng đo một-mốc thì
+### 10.5b Vì sao KHÔNG có số hạng "đốt LAMP" trong `c_sunk` — và vì sao đừng thêm lại
+
+Bản trước của mục này liệt "đốt LAMP" thành một dòng trong bảng §10.3 và một số hạng `LAMP_đốt`
+trong `c_sunk`. **Đã gỡ 2026-09-01.** Ba lý do độc lập, mỗi lý do đủ để gỡ:
+
+1. **Nó phá bất biến cung của LAMP.** LAMP **không burn** — giảm lưu hành là **chuyển vào Treasury**,
+   một bút toán, không phải một lần đốt (`Treasury/CONTRACT.md §5`; và chính module này đã ghi đúng
+   ở `Exec-Spec.md:441`, `Tech-Spec.md:1087`, `Feat-Spec.md:852`, và §16 dưới đây). Một cận dưới an
+   ninh tựa lên thao tác mà hệ **không có** thì không phải cận dưới.
+2. **Nó không phải một tham số VP.** Công thức là `VP_i = ∏_k min(C_k, cap_k)^{w_k}` với **bốn**
+   yếu tố `C1..C4`. "Đốt LAMP" không có đầu vào nào: không validator nào đo nó, không datum nào
+   mang nó. Bảng chi phí liệt **năm** dòng cho một công thức **bốn** yếu tố — dòng thứ năm là dòng
+   duy nhất không nối vào đâu.
+3. **Phương án thay thế "đốt-tương-đương" cũng KHÔNG dùng được.** Đề xuất tự nhiên là chuyển một
+   chiều vào Treasury để giữ tính chìm mà không phá bất biến. Đặt `γ` = phần giá trị kẻ tấn công
+   thu lại được từ khoản đã nộp: đốt cho `γ = 0`; **gửi-Treasury cho `γ` nằm giữa 0 và 1, và tiến
+   tới 1 đúng theo mức được chi tiêu Treasury** — mà chi tiêu Treasury do chính quản trị này quyết
+   (CONTRACT D2/D3). Nên khoản ấy hoàn lại **có điều kiện là kẻ tấn công thắng**. Một lập luận an
+   toàn tựa lên nó thì **tự tham chiếu: mạnh khi hệ còn an toàn, yếu đi đúng lúc bị tấn công.**
+   Không phải chi phí chìm. *(Khung `γ` do MAGIC agent đề xuất 2026-09-01.)*
+
+**Hệ quả phải nói thẳng: cận dưới mới YẾU HƠN cận dưới cũ.** `c_sunk` mất một số hạng, và phát biểu
+"bốn lớp khóa lẫn nhau" ở CONTRACT §2.4 xuống còn **ba** (DID sinh trắc · `C1` · `C3`). Đổi lại,
+ba lớp còn lại **đo được**, và lớp thứ tư cũ thì không tồn tại — nên đây là sửa một phép đếm sai,
+không phải hạ tiêu chuẩn. Phần chống "mua bằng tiền" nay do **D8** gánh: `w_2 + w_4 ≤ w_1 + w_3`
+(CONTRACT §5) là ràng buộc **máy ép được**, khác hẳn một số hạng chỉ tồn tại trong văn bản.
+
+**Cảnh báo cho lần rà sau:** `grep 'đốt'` trần trong module này trả ~40 kết quả về **đốt nullifier
+token** (§6.4, `nullifier.ak`, `tally.ak`, `vote.ak`) — chống bỏ phiếu hai lần, **đúng và phải giữ**.
+Rà bất biến cung phải lọc `đốt.*LAMP`, đừng lọc `đốt`.
+
 `C4` không đóng góp vào cận dưới chi phí chìm.
 
 ### 10.6 Ví dụ số minh họa (dùng ĐÚNG mẫu số `W(base)` của §8.2 — KHÔNG dùng "tổng")
@@ -935,7 +970,7 @@ muốn **thông qua** với `θ = 2/3`, mẫu số `W(base) = W_att + W_honest` 
 `VP_max`. (Lưu ý: con số phụ thuộc mẫu số `W(base)` của §8.2 — KHÔNG dùng "tổng toàn cử tri" như
 bản cũ.)
 
-Mỗi DID đòi lịch sử nhiều epoch (`C1`) + uy tín (`C3`) + đốt LAMP → chi phí **thời gian** (không
+Mỗi DID đòi lịch sử nhiều epoch (`C1`) + uy tín (`C3`) → chi phí **thời gian** (không
 rút ngắn bằng tiền, §10.3b) làm tấn công **chậm và lộ**. So với token-weighted (mua token là phủ
 quyết tức thì), mô hình này nâng chi phí từ "một giao dịch mua token" lên "hàng trăm–nghìn con
 người thật, nhiều epoch, không mua tắt". ∎

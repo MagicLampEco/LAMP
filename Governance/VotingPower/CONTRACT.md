@@ -26,8 +26,8 @@ VP_i = ∏_k  min( C_{k,i}, cap_k )^( w_k )
 
 - **Tất cả cap và weight do DAO chỉnh.** Đây là hệ DAO — không có "người canh" tập trung.
 - **Công thức NHÂN (geometric), không CỘNG.** Yếu một tham số là kéo sụp toàn bộ VP → token
-  đơn thuần không mua được quyền lực. (Cộng thì người giàu max C4 + đốt LAMP đẩy C1 + khóa LAMP
-  đẩy C2 → 3/4 yếu tố mua được; nhân thì C3 thấp làm sụp tất.)
+  đơn thuần không mua được quyền lực. (Cộng thì người giàu max C4 + khóa LAMP đẩy C2
+  → hai yếu tố mua được cộng dồn vẫn cao dù C3 = 0; nhân thì C3 thấp làm sụp tất.)
 
 ## 2. Bốn nguyên lý (KHÔNG được vi phạm trong mọi spec)
 
@@ -36,18 +36,20 @@ VP_i = ∏_k  min( C_{k,i}, cap_k )^( w_k )
    vào làm, thực tập trước khi tốt nghiệp). VP≈0 của người mới là TÍNH NĂNG, không phải bug.
 
 2. **Chi phí thâu tóm = chi phí đóng góp thật.** Muốn có quyền lực phải nuôi hệ thống bằng đúng
-   giá trị tương đương (đốt LAMP, tiêu MAGIC qua thời gian, tích uy tín). Không có đường tắt.
+   giá trị tương đương: **tiêu MAGIC qua nhiều epoch** (C1) và **tích uy tín được cộng đồng
+   công nhận** (C3). Cả hai đòi thời gian thật, không rút ngắn bằng tiền. Không có đường tắt.
    Collusion (thuê 120 người thật vote hộ) không phải lỗ hổng: để 120 người đó có quyền lực thật,
    kẻ tấn công phải khiến họ đóng góp thật bằng đúng giá trị thu được — và hành vi cùng phục vụ
    một thực thể là lộ thiên on-chain, cộng đồng phát hiện được; bên kia cũng huy động được người.
 
 3. **Token đơn thuần vô hiệu hóa.** Cap C4 = 100 triệu LAMP: ai giữ 12 tỷ chỉ được tính như
    **một cử tri 100 triệu**; muốn dùng hết phải chia cho ~120 cử tri — mà mỗi cử tri phải là
-   người thật (DID sinh trắc) có lịch sử + uy tín + đã đốt LAMP. Cộng với công thức nhân.
+   người thật (DID sinh trắc) có lịch sử tiêu MAGIC (C1) + uy tín (C3). Cộng với công thức nhân.
 
 4. **Sybil chết từ gốc — phòng thủ nhiều lớp liên kết:** DID sinh trắc PhoenixKey (1 người =
-   1 DID, không nhân bản) + buộc có lịch sử (C1) + uy tín (C3) + đốt LAMP. Bốn lớp khóa lẫn nhau,
-   không soi rời từng cái.
+   1 DID, không nhân bản) + buộc có lịch sử (C1) + uy tín (C3). **Ba** lớp khóa lẫn nhau, không
+   soi rời từng cái — cộng ràng buộc cứng **D8** (§5) chặn hai yếu tố MUA ĐƯỢC (C2, C4) không bao
+   giờ nặng hơn hai yếu tố phải-kiếm.
 
 5. **Sàn phi tập trung Byzantine — không thực thể nào chiếm đa số.** Cap mỗi DID chỉ chặn một
    cá nhân; nguyên lý 5 chặn **mọi nhóm nhỏ**. Khi kiểm phiếu, VP hiệu dụng mỗi DID bị clamp:
