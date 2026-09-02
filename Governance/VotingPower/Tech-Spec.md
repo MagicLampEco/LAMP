@@ -176,7 +176,8 @@ pub type ProposalDatum {
   snapshot_epoch  : Int,         // epoch khóa snapshot C4 (= vote_open_epoch; xem §5.4)
   // snapshot tham chiếu (chống đổi luật giữa chừng — xem §5.6):
   weight_param_ref: OutputReference, // UTxO bảng weight/cap dùng cho đề xuất này
-  // --- interface Gov→Treasury (CONTRACT §5 D2 + Treasury §9 T1) — HARD BLOCKER cho Release ---
+  // --- interface Gov→Treasury (CONTRACT §5 D2 + Treasury §9 T1) — ĐÃ THỰC THI 2026-09-02 ---
+  //     (ba field dưới có thật trong lib/.../types.ak; Treasury ép ở custody.ak:166-173)
   spend_spec_hash    : ByteArray, // hash canonical danh sách (bucket, asset, amount, to) đã duyệt;
                                   //   = b"" nếu proposal không chi kho bạc. Treasury so khớp (T1).
   released_cumulative: Int,       // tổng đã giải ngân qua nhiều tx — chống chi vượt spend_spec_hash.

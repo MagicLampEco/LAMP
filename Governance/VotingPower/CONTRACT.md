@@ -98,7 +98,23 @@ Sau rà soát đối kháng, các interface dưới đây được **ghim cứng
   số (mặc định 2/3). KÈM sàn cứng `số DID thuận ≥ BFT_FLOOR`. TECH §9.4 BỎ `yes>no`; MATH §8.2 là chuẩn.
 - **D2 — ProposalDatum (interface Gov→Treasury).** Thêm field: `spend_spec_hash` (hash canonical
   danh sách `(bucket, asset, amount, to)` đã duyệt), `released_cumulative` (chống chi vượt qua nhiều
-  tx), `execute_after_epoch` (mốc time-lock). 3 field này là HARD BLOCKER cho Treasury Release.
+  tx), `execute_after_epoch` (mốc time-lock). 3 field này là HARD BLOCKER cho Treasury Release —
+  ✅ **ĐÃ ĐÓNG (đo 2026-09-02)**: cả ba có ở `onchain/lib/magiclamp/governance/types.ak`
+  (`ProposalDatum` field 7/8/9) và được chiếu ra `ProposalResult` 5 field; vế Treasury ép ở
+  `Treasury/onchain/validators/custody.ak:166-173`.
+
+  🔴 **CÒN MỘT MÂU THUẪN INTERFACE CHƯA ĐÓNG, và nó chặn mainnet (đo 2026-09-02).**
+  `onchain/validators/proposal_nft.ak:29` là policy **one-shot MỖI PROPOSAL**
+  (`proposal_nft(genesis_ref, asset_name)`, mint đòi tiêu đúng `genesis_ref`) ⇒ policy id đổi theo
+  từng proposal. Nhưng `Treasury/onchain/validators/custody.ak:47` nhận **MỘT** `proposal_policy`
+  làm tham số — mà tham số nướng vào script hash. Hệ quả: **một kho custody chỉ giải ngân được cho
+  đúng một proposal**; proposal thứ hai đòi dựng custody mới và chuyển toàn bộ kho sang script hash
+  khác. Đường Gov→Treasury Release không chạy quá một lần.
+  Hướng đã chốt ở `Treasury/Tech-Spec.md` (LỖ #1A): Proposal NFT là **một policy chung
+  per-governance**, asset name = `proposal_id`. Vế Treasury đã sẵn sàng cho hình dạng đó
+  (`release.read_proposal` ép `nft_name == proposal_id`). Việc còn lại thuộc module này: đổi tham số
+  `proposal_nft` sang per-governance, và chuyển tính duy nhất của `proposal_id` thành van của
+  Governance (policy chung KHÔNG tự ép asset-name duy nhất).
 - **D3 — Release-gate = Model A.** Treasury KHÔNG tự tính ngưỡng; chỉ kiểm `status==Executed` +
   Proposal NFT + `spend_spec_hash`. Governance `ExecuteProposal` ép TOÀN BỘ ngưỡng (gồm clamp BFT
   `VP_eff` + sàn cứng `|S|≥F`) TRƯỚC. Đóng lỗ hổng "release bỏ qua clamp" (GAME-1).

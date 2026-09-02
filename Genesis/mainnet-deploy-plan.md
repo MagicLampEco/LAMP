@@ -79,10 +79,17 @@ bước mint có giá trị, và cũng là căn cứ để chốt lại `Papers/
 14. Mint thật: `DistributionVest`, authority M-of-N ký → LAMP vào kho.
 15. Verify on-chain + publish artefacts (policy-id, kho addr, registry NFT) cho SuperApp / PhoenixKey / Long ráp + bật cờ.
 
-## Anh cần làm gì (tóm tắt)
-- **Chốt A1–A4** (chiến lược — không ai quyết thay được).
+## Anh cần làm gì (tóm tắt — soát lại 2026-09-02)
+
+Mục A **không còn treo**: A1/A2/A3 đã ghi "ĐÃ CHỐT" ngay trong mục A của chính tệp này, A4 là hệ quả
+trực tiếp của A1 (tham số đã nướng vào policy-id ⇒ không xoay khoá được). Bản trước vẫn liệt "Chốt
+A1–A4" ở đây, tức bảo chủ dự án đi quyết lại thứ đã quyết — đó là một cổng chặn giả, gỡ.
+
+Việc thật còn lại, theo thứ tự:
+- **A' — đối chiếu CBOR script mainnet với bản dựng lại từ mã nguồn.** Chưa ai làm. Đây là điều
+  kiện tiên quyết của mọi bước mint có giá trị.
 - **Duyệt merge B5–B10** (điều phối nhiều đội: LAMP/Tuân, Core/Thư, SuperApp, Long).
-- **Chờ Preprod rehearsal xanh (C11)**.
+- **Chờ Preprod rehearsal xanh (C11)** — kèm phép thử one-shot `thread_nft.ak` nêu ở khung mục C.
 - **Rồi mới D12–D15.**
 
 Em (agent) KHÔNG thực thi bước mainnet nào (token thật, bất khả nghịch) — anh + đội làm, em chuẩn bị code + verify + diễn tập Preprod.
