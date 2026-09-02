@@ -81,13 +81,22 @@ bước mint có giá trị, và cũng là căn cứ để chốt lại `Papers/
 
 ## Anh cần làm gì (tóm tắt — soát lại 2026-09-02)
 
-Mục A **không còn treo**: A1/A2/A3 đã ghi "ĐÃ CHỐT" ngay trong mục A của chính tệp này, A4 là hệ quả
-trực tiếp của A1 (tham số đã nướng vào policy-id ⇒ không xoay khoá được). Bản trước vẫn liệt "Chốt
-A1–A4" ở đây, tức bảo chủ dự án đi quyết lại thứ đã quyết — đó là một cổng chặn giả, gỡ.
+Bản trước liệt gọn "Chốt A1–A4" như một khối. Soát từng mục thì khối đó sai theo **hai chiều
+ngược nhau**, nên tách ra:
+
+| Mã | Trạng thái thật | Bằng chứng |
+|---|---|---|
+| A2 `token_tag` | **ĐÓNG** | mục A2 tệp này + `kho-a-dest.md` |
+| A3 kho A-DEST = `treasury.ak` | **ĐÓNG** | mục A3 tệp này |
+| A1 policy mainnet | **MỞ** | `Papers/Whitepaper.md` đính chính 2026-08-26 rút lại câu "chốt … chính thức": policy đang chạy là bản **khởi tạo (bootstrap)**, hai đường vẫn song song (giữ vĩnh viễn / phát hành policy mới khi mint uỷ quyền qua OrgDID sẵn sàng — §8–§9). Muộn hơn mục A1 của tệp này gần một tháng ⇒ bản muộn thắng |
+| A4 authority | **MỞ, dẫn xuất từ A1** | lập luận "tham số đã nướng vào policy-id ⇒ không xoay khoá được" chỉ đứng khi A1 đóng theo đường (a). A1 mở ⇒ cửa MultiSig M-of-N (spec §11) vẫn mở |
+
+**Ràng buộc TẠM đang giữ an toàn trong lúc A1/A4 mở:** cổng A' dưới đây chặn mọi bước mint giá trị
+thật, và nó chặn **cả hai** đường của A1 — nên để A1 mở không mở thêm rủi ro nào.
 
 Việc thật còn lại, theo thứ tự:
 - **A' — đối chiếu CBOR script mainnet với bản dựng lại từ mã nguồn.** Chưa ai làm. Đây là điều
-  kiện tiên quyết của mọi bước mint có giá trị.
+  kiện tiên quyết của mọi bước mint có giá trị, và là cổng đang giữ A1/A4 an toàn.
 - **Duyệt merge B5–B10** (điều phối nhiều đội: LAMP/Tuân, Core/Thư, SuperApp, Long).
 - **Chờ Preprod rehearsal xanh (C11)** — kèm phép thử one-shot `thread_nft.ak` nêu ở khung mục C.
 - **Rồi mới D12–D15.**
