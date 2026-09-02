@@ -105,8 +105,19 @@ Repo này ưu tiên nói thật hơn nói đẹp:
   dựng pot từ đó. Repo này vẫn mô tả **cơ chế** SRCL ở [`Papers/srcl.md`](Papers/srcl.md) và
   vẫn giữ pot SRCL trong bảng 18 pot — chỉ không giữ mã. Bản cũ tra được bằng
   `git show 6df96ae:SRCL/<đường-dẫn>`.
-- **Mã script `lamp_mint` đang chạy trên mainnet chưa được đối chiếu từng byte** với mã nguồn
-  trong repo. Việc đó phải xong trước khi mint thêm bất kỳ lượng nào có giá trị.
+- **Ba script mainnet: hai đã đối chiếu TỪNG BYTE, một chỉ đối chiếu được bằng HASH.** Số đo và
+  lý do ở [`Genesis/offchain/src/deployed.ts`](Genesis/offchain/src/deployed.ts) khối
+  `provenance` — đó là nguồn duy nhất, đừng chép số sang chỗ khác.
+  - `lamp_mint` (`55d3e01b…180f0`) — dựng lại từ `457f312`, áp 8 tham số, **CBOR trùng byte**.
+  - `supply_state` (`84f6d84f…34084`) — cùng commit nguồn, **trùng byte**, 528 byte trên chuỗi.
+  - `dist_treasury` (`d5e80c9a…edbb6`) — **chưa trùng byte, và hôm nay KHÔNG THỂ trùng byte**:
+    trên Cardano byte của script chỉ lên chuỗi khi script được tiêu, mà kho này **chưa từng bị
+    tiêu lần nào**. Không có byte trên chuỗi để so. Đối chiếu bằng hash: dựng `dist_treasury.ak`
+    từ `60f7e3a` rồi áp authority ⇒ ra đúng `d5e80c9a…`.
+
+  ⚠️ Vì thế câu "phải đối chiếu từng byte trước khi mint giá trị thật" **không mở được** cho
+  script thứ ba — nó là một cổng không có chìa. Cổng thật cho lần mint tới phải đặt điều kiện
+  theo **hash + commit nguồn**, không theo byte trên chuỗi.
 - **Chưa module nào ngoài `Genesis/` chạy trên mainnet.** Những chỗ ghi "live Preview" là mạng
   thử nghiệm, token ở đó là tLAMP, không có giá trị.
 
