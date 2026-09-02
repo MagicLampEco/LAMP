@@ -26,28 +26,38 @@ VP_i = ∏_k  min( C_{k,i}, cap_k )^( w_k )
 
 - **Tất cả cap và weight do DAO chỉnh.** Đây là hệ DAO — không có "người canh" tập trung.
 - **Công thức NHÂN (geometric), không CỘNG.** Yếu một tham số là kéo sụp toàn bộ VP → token
-  đơn thuần không mua được quyền lực. (Cộng thì người giàu max C4 + đốt LAMP đẩy C1 + khóa LAMP
-  đẩy C2 → 3/4 yếu tố mua được; nhân thì C3 thấp làm sụp tất.)
+  đơn thuần không mua được quyền lực. (Cộng thì người giàu max C4 + khóa LAMP đẩy C2
+  → hai yếu tố mua được cộng dồn vẫn cao dù C3 = 0; nhân thì C3 thấp làm sụp tất.)
 
-## 2. Bốn nguyên lý (KHÔNG được vi phạm trong mọi spec)
+## 2. Năm nguyên lý (KHÔNG được vi phạm trong mọi spec)
 
 1. **Quyền tham gia ≠ quyền lực.** Ai có DID đều được bỏ phiếu. Trọng số (power) phải kiếm.
    Người mới VP ≈ 0, tích lũy dần qua nhiều epoch — **mô hình tập sự** (như thử việc trước khi
    vào làm, thực tập trước khi tốt nghiệp). VP≈0 của người mới là TÍNH NĂNG, không phải bug.
 
 2. **Chi phí thâu tóm = chi phí đóng góp thật.** Muốn có quyền lực phải nuôi hệ thống bằng đúng
-   giá trị tương đương (đốt LAMP, tiêu MAGIC qua thời gian, tích uy tín). Không có đường tắt.
+   giá trị tương đương: **tiêu MAGIC qua nhiều epoch** (C1) và **tích uy tín được cộng đồng
+   công nhận** (C3).
+   ⚠️ **Mức tuyên bố — đo 2026-09-01, đừng đọc mạnh hơn.** Câu "không rút ngắn bằng tiền" **đã
+   rút**: `MAGIC/GetMAGIC` bán quyền nhận MAGIC **bằng tiền pháp định** (`GetMAGIC/FEAT.md:8`),
+   nên C1 là **tiền × thời gian**, không phải thời gian thuần. Và cơ chế đo C3 **chưa chốt**
+   (`Tech-Spec.md` §5.5, `Feat-Spec.md` §8) ⇒ C3 hiện là **nợ thiết kế, chưa phải một lớp**.
+   Phòng tuyến ĐO ĐƯỢC hôm nay: DID sinh trắc + độ dài cửa sổ tích luỹ. Chi tiết `Math-Spec.md` §10.5c.
    Collusion (thuê 120 người thật vote hộ) không phải lỗ hổng: để 120 người đó có quyền lực thật,
    kẻ tấn công phải khiến họ đóng góp thật bằng đúng giá trị thu được — và hành vi cùng phục vụ
    một thực thể là lộ thiên on-chain, cộng đồng phát hiện được; bên kia cũng huy động được người.
 
 3. **Token đơn thuần vô hiệu hóa.** Cap C4 = 100 triệu LAMP: ai giữ 12 tỷ chỉ được tính như
    **một cử tri 100 triệu**; muốn dùng hết phải chia cho ~120 cử tri — mà mỗi cử tri phải là
-   người thật (DID sinh trắc) có lịch sử + uy tín + đã đốt LAMP. Cộng với công thức nhân.
+   người thật (DID sinh trắc) có lịch sử tiêu MAGIC (C1) + uy tín (C3). Cộng với công thức nhân.
 
-4. **Sybil chết từ gốc — phòng thủ nhiều lớp liên kết:** DID sinh trắc PhoenixKey (1 người =
-   1 DID, không nhân bản) + buộc có lịch sử (C1) + uy tín (C3) + đốt LAMP. Bốn lớp khóa lẫn nhau,
-   không soi rời từng cái.
+4. **Sybil — HAI TRỤC phòng thủ khác bản chất, KHÔNG được gộp:**
+   - *Trục chi phí-mỗi-DID (**cộng dồn theo `N`**):* DID sinh trắc PhoenixKey (1 người = 1 DID,
+     không nhân bản) + lịch sử C1 + uy tín C3. Đây là thứ **tăng lên** khi kẻ tấn công thêm một
+     danh tính. Xem mức tuyên bố thật của C1/C3 ở nguyên lý 2.
+   - *Trục đòn bẩy-trong-công-thức (**KHÔNG phụ thuộc `N`**):* **D8** (§5) ép `w_2 + w_4 ≤ w_1 + w_3`.
+   D8 **không** làm tăng chi phí biên của một DID Sybil thêm vào, nên nó **không thay thế được**
+   một lớp ở trục thứ nhất. Hai trục phải soát riêng. (D8 hiện chưa có chủ ép — xem §5.)
 
 5. **Sàn phi tập trung Byzantine — không thực thể nào chiếm đa số.** Cap mỗi DID chỉ chặn một
    cá nhân; nguyên lý 5 chặn **mọi nhóm nhỏ**. Khi kiểm phiếu, VP hiệu dụng mỗi DID bị clamp:
@@ -105,6 +115,20 @@ Sau rà soát đối kháng, các interface dưới đây được **ghim cứng
 - **D8 — Chống đòn bẩy mua-bằng-tiền (C2+C4).** Ràng buộc cứng `w_2 + w_4 ≤ w_1 + w_3` (tổng weight
   yếu tố mua-được-bằng-tiền ≤ tổng weight yếu tố cần-thời-gian). C2 chỉ tính nếu LAMP **đã khóa** qua
   đủ N epoch tương lai (biến C2 thành chi-phí-cơ-hội-thời-gian như C1, không phải khóa-tức-thì).
+
+  ⚠️ **Ba giới hạn của D8 phải đọc kèm, nếu không sẽ giao cho nó việc nó không làm được**
+  (đo 2026-09-01):
+  1. **Chưa có chủ ép.** `Math-Spec.md` §6B.1 viết *"validator tham số từ chối"* (TECH ép); `Tech-Spec.md` §5.3
+     và §"Phản hồi reconcile" viết ngược: *"MATH ràng… TECH chỉ tiêu thụ bảng"*. Vòng đùn đẩy ⇒ D8 hiện là **bất biến
+     giấy**. Cần chỉ định MỘT validator tham số + test âm "nạp bảng vi phạm D8 → fail".
+  2. **Dạng TỔNG không chặn được `w_3 = 0`.** Bảng `w = (0.5, 0, 0, 0.5)` **thoả** D8 (`0.5 ≤ 0.5`)
+     nhưng theo quy ước `x^0 = 1` thì thừa số C3 **bằng 1 với mọi người** — lớp uy tín tắt hẳn, và
+     `cost_C3` biến khỏi `c_sunk`. Quy tắc "`w_3` không lép vế `w_4`" hiện chỉ nằm ở **văn xuôi**
+     `Feat-Spec.md` §2.5, máy không kiểm. Dạng vá đề nghị: `w_3 ≥ w_4` **và** `w_1 ≥ w_2` **và**
+     `w_k ≥ w_min > 0 ∀k`.
+  3. **D8 ép TỶ LỆ SỐ MŨ (không thứ nguyên), không ép CHI PHÍ (tiền/thời gian).** `cost_k(·)` và
+     `cap_k` nằm hoàn toàn ngoài phạm vi D8 — bảng tham số §12.1 xác nhận `cap_1, cap_3` chỉ ràng
+     `> 0`. Nên D8 **một mình không** làm cận dưới `c_sunk` khác 0.
 - **D9 — Interface cross-repo MAGIC (CẦN MAGIC xác nhận).** Beacon C1/C2 của MAGIC PHẢI nhúng
   `did_commit` đọc byte-perfect trong datum để ràng (b) chống-mượn-C_k thực thi được. Cho tới khi MAGIC
   xác nhận → đánh dấu chống-mượn-C1/C2 là "phụ thuộc xác nhận MAGIC", không coi là đã chặn.
