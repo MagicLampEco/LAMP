@@ -24,6 +24,7 @@ import {
 } from "../offchain/src/constants.js";
 import { supplyStateToCbor } from "../offchain/src/datum.js";
 import type { LucidEvolution } from "@lucid-evolution/lucid";
+import { assertOneShotMarkers } from "./_guards.js";
 
 const REG_NAME = fromText("REG");   // registry NFT asset name
 const KHO_NAME = fromText("KHO");   // kho NFT asset name
@@ -52,6 +53,13 @@ async function main() {
   // ── native sig policy (CHỈ để đúc marker NFT) ──
   const native = scriptFromNative({ type: "sig", keyHash: pkh });
   const nPid = mintingPolicyToId(native);
+  // MARKER-001 — bốn khe marker dưới đây đều là `nPid` (native-sig ví deploy), tức KHÔNG
+  // one-shot. Cổng chặn trước khi apply-param, vì apply-param nướng vào policy-id: gửi rồi
+  // thì không sửa được. Xem `_guards.ts` mục "CỔNG MARKER ĐÚC-LẠI-ĐƯỢC".
+  assertOneShotMarkers(
+    { thread: nPid, registry: nPid, kho: nPid, meter: nPid },
+    { submit: true, nativePolicyId: nPid, env: process.env, warn: (m: string) => console.warn(m) },
+  );
   // SupplyState + registry để ở ĐỊA CHỈ VÍ (spend bằng chữ ký, không redeemer/script) —
   // lamp_mint chỉ cần thread NFT + so s_in.address==s_out.address, KHÔNG đòi ở script.
   const walletAddr = await lucid.wallet().address();

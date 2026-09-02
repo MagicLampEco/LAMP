@@ -1,9 +1,10 @@
 name    = "magiclamp/genesis"
 version = "0.0.1"
 plutus  = "v3"
+compiler = "v1.1.21"
 license = "Apache-2.0"
 
 [[dependencies]]
 name    = "aiken-lang/stdlib"
-version = "v3.1.0"
+version = "7d5cee54b2bb4eea211ae3bd806c7c39e5fd899d"
 source  = "github"

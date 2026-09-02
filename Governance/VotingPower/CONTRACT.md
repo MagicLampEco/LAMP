@@ -1,5 +1,12 @@
 # Voting Power — CONTRACT (mô hình đã duyệt)
 
+> **Phiên bản:** v1.0 — 2026-06-05. Lần đầu khai phiên bản — tệp trước đây chỉ có dòng `Trạng thái`,
+> không có số hiệu để tham chiếu; nội dung không đổi so với ngày duyệt khung.
+> **Vai:** spec build-fact — nguồn chuẩn (interface contract) cho mô hình Voting Power. Khi lệch với
+> [`Feat-Spec.md`](./Feat-Spec.md) / [`Math-Spec.md`](./Math-Spec.md) / [`Tech-Spec.md`](./Tech-Spec.md) /
+> [`Exec-Spec.md`](./Exec-Spec.md), [`../SPEC.md`](../SPEC.md) (trang chỉ mục), hay `Papers/`,
+> CONTRACT.md này thắng.
+
 **Trạng thái:** ✅ anh đã duyệt khung 2026-06-05. Đây là **interface contract** — nguồn chuẩn
 mà 4 spec (FEAT / MATH / TECH / EXEC) phải bám. KHÔNG spec nào được mâu thuẫn file này.
 

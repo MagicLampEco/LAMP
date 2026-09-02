@@ -105,8 +105,14 @@ E_i        = floor(budget × accStake_i / Σ accStake)   // budget = 100M LAMP (
   giữ đúng con số 100M của `AIRDROP_TOTAL_LAMP`; 120M là **tổng 2 pot**, không phải 1 pot).
 - Largest-remainder (Hamilton) trong `computeEntitlements` → **bảo toàn tuyệt đối**:
   `Σ E_i + leftover = budget`. Dư floor gom về ví stake lớn nhất chưa cap.
-- Cap/ví tùy chọn (chống cá voi): truyền `capOildrop` → water-filling sẵn có. Mặc định không cap;
-  nếu cần cap là *tham số quản trị*.
+- **Trần mỗi-ví: `capOildrop` PHẢI luôn `null`** — ràng buộc bất biến, KHÔNG phải mặc định bật/tắt
+  được. Tham số còn trong chữ ký hàm vì máy chia dùng chung với ETD (`TIGER/offchain/src/entitlement.ts`),
+  nhưng ở pot chia-theo-stake **không có trường hợp hợp lệ nào để truyền khác `null`**.
+  Lý do: `accStake` là **trục bảo-toàn** — tách `n` ví giữ tổng stake không đổi thì không trần ⇒
+  tổng nhận KHÔNG ĐỔI trong khi chi phí tăng theo `n` (tách bị trội tuyệt đối); có trần `c` ⇒
+  `n` ví nhận tới `n·c` ⇒ **chính cái trần đặt ra để chặn cá voi là thứ trả tiền cho việc tách ví**.
+  Bất biến: *trần trên trục giả-được thì an toàn; trần trên trục bảo-toàn thì tự mở cửa tách.*
+  Đại số đầy đủ + điều kiện duy nhất để đưa lại: `Airdrop/spo-cs.md` §5.
 - Loại ví self-dealing (sáng lập/đối tác) qua `excluded` trước khi chia (chống tư lợi).
 
 ### 1.7. Nạp on-chain + claim — **schema C (role-tag), chốt 2026-07-31**

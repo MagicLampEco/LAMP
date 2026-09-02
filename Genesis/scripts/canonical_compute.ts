@@ -6,6 +6,7 @@ import { readFile } from "node:fs/promises";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { makeLucid, walletPkh, rawValidator, applyPolicy, policyId, NETWORK } from "./config.js";
+import { assertOneShotMarkers } from "./_guards.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -40,6 +41,13 @@ async function main() {
   // native-sig policy (deploy wallet) — đúc 4 marker NFT: thread/registry/kho/meter
   const native = scriptFromNative({ type: "sig", keyHash: pkh });
   const nPid = mintingPolicyToId(native);
+  // MARKER-001 — bốn khe marker dưới đây đều là `nPid` (native-sig ví deploy), tức KHÔNG
+  // one-shot. Cổng chặn trước khi apply-param, vì apply-param nướng vào policy-id: gửi rồi
+  // thì không sửa được. Xem `_guards.ts` mục "CỔNG MARKER ĐÚC-LẠI-ĐƯỢC".
+  assertOneShotMarkers(
+    { thread: nPid, registry: nPid, kho: nPid, meter: nPid },
+    { submit: false, nativePolicyId: nPid, env: process.env, warn: (m: string) => console.warn(m) },
+  );
 
   // ── Genesis: lamp_mint 12-param → lamp_policy canonical ──
   const lampMint = applyPolicy((await rawValidator("lamp_mint.lamp_mint.mint")).compiledCode, [

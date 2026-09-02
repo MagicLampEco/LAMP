@@ -235,7 +235,16 @@ validator lamp_mint(
           ) && {
             let kho_hash =
               util.script_hash_of_holder(tx.reference_inputs, kho_nft_policy, kho_nft_name)
-            util.qty_to_script(tx.outputs, kho_hash, policy_id, token_name) >= delta
+            // Đo ĐỘ TĂNG ròng của kho, KHÔNG đo tổng mặt output. Đo tổng cho phép tái chế:
+            // kho đang giữ X, tx tiêu UTxO kho rồi trả lại đúng X, đưa delta mới về ví —
+            // "tổng ≥ delta" vẫn thoả khi X ≥ delta dù kho không tăng đồng nào.
+            util.qty_delta_at_script(
+              tx.inputs,
+              tx.outputs,
+              kho_hash,
+              policy_id,
+              token_name,
+            ) >= delta
           }
         }
         ReserveDraw -> {
@@ -470,7 +479,7 @@ test mint_exceed_dist_cap() fail {
 
 test mint_exceed_reserve_cap() fail {
   let s = SupplyState { ..fresh(), reserve_minted: constants.reserve_cap_oildrop }
-  let s2 = SupplyState { ..s, reserve_minted: constants.reserve_cap_oildrop + 1 }
+  let s2 = SupplyState { ..s, reserve_minted: s.reserve_minted + 1 }
   run(ReserveDraw, build_tx_reserve(s, s2, 1))
 }
 
@@ -1078,4 +1087,191 @@ test registry_dup_tag_in_datum() fail {
       ],
     }
   run(DistributionVest, build_tx_anchor(s, s2, 1_000_000, [ctrl_pkh], [registry_ref(dup)]))
+}
+
+// ══════════════════════════════════════════════════════════════
+// CỔNG CHẾT — đúc MỘT LƯỢT chạm cap ⇒ policy đóng vĩnh viễn
+//
+// Điều kiện anh chốt (2026-08-18): "Đúc một lần chạm cap ⇒ cổng chết ngay sau đó
+// ⇒ xoay khoá OrgDID bao nhiêu lần cũng không ảnh hưởng gì cả."
+//
+// Đây là chỗ chứng minh mệnh đề đó bằng LUẬT SỔ CÁI, không bằng lời hứa vận hành:
+// sau khi dist_minted == dist_cap, MỌI đường DistributionVest đều chết vì số học
+// (delta > 0 ∧ dist_minted + delta ≤ dist_cap không cùng đúng được). Registry còn
+// sống hay chết, khoá OrgDID xoay bao nhiêu lần, ai cầm seed — đều không đổi kết quả.
+//
+// Điều KHÔNG chết: ReserveDraw. Nhánh đó KHÔNG đọc registry, KHÔNG đòi chữ ký —
+// nó đòi spend meter NFT (= reserve_thread NFT) nên bị reserve_draw ép trần
+// E/1000 mỗi epoch. Đó là "thuật toán nhả không ai rút tay", giữ nguyên chủ đích.
+// ══════════════════════════════════════════════════════════════
+
+/// Trạng thái SAU lượt đúc trọn quota Distribution — dist_minted == dist_cap.
+fn saturated_dist() -> SupplyState {
+  SupplyState { ..fresh(), dist_minted: constants.dist_cap_oildrop }
+}
+
+// ── ĐÚC TRỌN QUOTA TRONG MỘT LƯỢT (từ 0 → dist_cap) ──────────────────
+// 26,37 tỷ LAMP = 26_370_000_000_000_000 oildrop trong ĐÚNG một giao dịch.
+test oneshot_full_dist_cap() {
+  let s = fresh()
+  let s2 = SupplyState { ..s, dist_minted: constants.dist_cap_oildrop }
+  run(DistributionVest, build_tx(s, s2, constants.dist_cap_oildrop, [ctrl_pkh]))
+}
+
+// ── SAU ĐÓ: 1 oildrop cũng không đúc thêm được, DÙ khoá vận hành ký đúng ──
+test gate_dead_authority_still_signs() fail {
+  let s = saturated_dist()
+  let s2 = SupplyState { ..s, dist_minted: s.dist_minted + 1 }
+  run(DistributionVest, build_tx(s, s2, 1, [ctrl_pkh]))
+}
+
+// ── XOAY KHOÁ OrgDID KHÔNG CỨU ĐƯỢC CỔNG ĐÃ CHẾT ─────────────────────
+// Registry ghi authority MỚI (khoá vừa xoay), khoá mới ký đúng. Vẫn fail.
+// Đây là bằng chứng trực tiếp cho "xoay khoá bao nhiêu lần cũng không ảnh hưởng":
+// registry_rotated_key_ok() ở trên chứng minh xoay khoá MỞ được cổng khi còn quota;
+// test này chứng minh khi hết quota thì xoay khoá KHÔNG mở được nữa.
+test gate_dead_even_after_key_rotation() fail {
+  let s = saturated_dist()
+  let s2 = SupplyState { ..s, dist_minted: s.dist_minted + 1_000_000 }
+  let rotated = registry_ref(reg_datum(lamp_tag, SinglePkh { pkh: #"deadbeef" }))
+  run(DistributionVest, build_tx_anchor(s, s2, 1_000_000, [#"deadbeef"], [rotated]))
+}
+
+// ── KHÔNG "ĐI VÒNG" QUA SỔ SÁCH: mint mà không ghi sổ cũng chết ───────
+// Kẻ cầm khoá thử mint 1 triệu nhưng để nguyên dist_minted (không cộng) —
+// luật 5 (delta_mismatch) chặn. Cổng chết KHÔNG né được bằng cách gian sổ.
+test gate_dead_no_unbooked_mint() fail {
+  let s = saturated_dist()
+  run(DistributionVest, build_tx(s, s, 1_000_000, [ctrl_pkh]))
+}
+
+// ── KHÔNG QUAY NGƯỢC SỔ ĐỂ MỞ LẠI QUOTA ──────────────────────────────
+// Hạ dist_minted xuống rồi mint lại — luật 6 (đơn điệu) chặn.
+test gate_dead_no_counter_rollback() fail {
+  let s = saturated_dist()
+  let s2 = SupplyState { ..s, dist_minted: s.dist_minted - 1_000_000 }
+  run(DistributionVest, build_tx(s, s2, 1_000_000, [ctrl_pkh]))
+}
+
+// ── KHÔNG MƯỢN QUOTA RESERVE ĐỂ ĐÚC TIẾP ĐƯỜNG DISTRIBUTION ───────────
+// Quota Distribution hết; thử ghi delta sang reserve_minted nhưng vẫn đi
+// redeemer DistributionVest — luật 5 (A5) khoá chéo, chặn.
+test gate_dead_no_quota_borrow() fail {
+  let s = saturated_dist()
+  let s2 = SupplyState { ..s, reserve_minted: 1_000_000 }
+  run(DistributionVest, build_tx(s, s2, 1_000_000, [ctrl_pkh]))
+}
+
+// ── CÁI KHÔNG CHẾT: nhánh nhả 9,63 tỷ vẫn sống, KHÔNG chữ ký, KHÔNG registry ──
+// Sau khi cổng Distribution chết, Reserve vẫn rút được qua meter NFT. Đây là
+// phần "nhả nhỏ giọt tự động" — không ai ký, không ai xoay khoá được nó.
+test reserve_alive_after_dist_gate_dead() {
+  let s = saturated_dist()
+  let s2 = SupplyState { ..s, reserve_minted: 5_000_000 }
+  run(ReserveDraw, build_tx_reserve(s, s2, 5_000_000))
+}
+
+// ── VÀ KHI CẢ HAI QUOTA CẠN: policy đóng tuyệt đối, không đường nào mở ──
+test both_quotas_exhausted_policy_closed() fail {
+  let s =
+    SupplyState {
+      ..fresh(),
+      dist_minted: constants.dist_cap_oildrop,
+      reserve_minted: constants.reserve_cap_oildrop,
+    }
+  let s2 = SupplyState { ..s, reserve_minted: s.reserve_minted + 1 }
+  run(ReserveDraw, build_tx_reserve(s, s2, 1))
+}
+
+// ══════════════════════════════════════════════════════════════
+// A-DEST đo ĐỘ TĂNG, KHÔNG đo tổng — chống TÁI CHẾ LAMP đã nằm trong kho
+//
+// Đường tấn công (chỉ sống khi cổng còn quota): kho đang giữ X LAMP. Kẻ cầm khoá
+// vận hành dựng tx tiêu UTxO kho (X), mint thêm delta, trả về kho ĐÚNG X, đưa
+// delta mới về ví riêng. Luật cũ đo TỔNG mặt output ở kho = X ≥ delta ⇒ PASS,
+// trong khi kho KHÔNG tăng một đồng. Luật mới đo (output − input) = 0 < delta ⇒ REJECT.
+// ══════════════════════════════════════════════════════════════
+
+/// UTxO kho đang giữ sẵn `qty` LAMP (bị TIÊU trong tx tấn công).
+fn kho_input_holding(qty: Int) -> Input {
+  let v =
+    assets.from_lovelace(2_000_000)
+      |> assets.add(lamp_pol, constants.default_token_name, qty)
+  util.mk_input(util.mk_ref(11), util.mk_output_no_datum(util.script_address(dist_dest_hash), v))
+}
+
+/// Output về ví thường giữ `qty` LAMP (nơi kẻ tấn công muốn LAMP mới chảy tới).
+fn wallet_output(qty: Int) -> Output {
+  let v =
+    assets.from_lovelace(2_000_000)
+      |> assets.add(lamp_pol, constants.default_token_name, qty)
+  util.mk_output_no_datum(util.vk_address(#"beef01"), v)
+}
+
+test adest_recycle_kho_balance_rejected() fail {
+  // Kho đang giữ 10 triệu oildrop. Mint thêm 10 triệu, trả kho đúng 10 triệu cũ,
+  // 10 triệu MỚI về ví. Tổng mặt output ở kho = 10 triệu ≥ delta → luật CŨ cho qua.
+  let s = fresh()
+  let s2 = SupplyState { ..s, dist_minted: 10_000_000 }
+  let tx =
+    Transaction {
+      ..placeholder,
+      inputs: [ss_input(s), kho_input_holding(10_000_000)],
+      reference_inputs: [registry_ok(), kho_ref()],
+      outputs: [ss_output(s2), dest_output(10_000_000), wallet_output(10_000_000)],
+      mint: mint_lamp(10_000_000),
+      extra_signatories: [ctrl_pkh],
+    }
+  run(DistributionVest, tx)
+}
+
+test adest_kho_input_still_ok_when_increase_real() {
+  // Đối chứng: cũng tiêu UTxO kho (10 triệu) nhưng trả về kho 20 triệu = cũ + delta.
+  // Độ tăng ròng = 10 triệu = delta ⇒ hợp lệ. Luật mới KHÔNG cấm tiêu UTxO kho,
+  // chỉ cấm kho không tăng.
+  let s = fresh()
+  let s2 = SupplyState { ..s, dist_minted: 10_000_000 }
+  let tx =
+    Transaction {
+      ..placeholder,
+      inputs: [ss_input(s), kho_input_holding(10_000_000)],
+      reference_inputs: [registry_ok(), kho_ref()],
+      outputs: [ss_output(s2), dest_output(20_000_000)],
+      mint: mint_lamp(10_000_000),
+      extra_signatories: [ctrl_pkh],
+    }
+  run(DistributionVest, tx)
+}
+
+// ══════════════════════════════════════════════════════════════
+// RANH GIỚI ReserveDraw — lamp_mint KHÔNG bảo vệ 9,63 tỷ, nó UỶ QUYỀN
+//
+// Nhánh ReserveDraw (`lamp_mint.ak:213-219`) chỉ đòi ĐÚNG MỘT input mang meter NFT.
+// Nó KHÔNG ép đích đến (không có A-DEST), KHÔNG ép trần mỗi lượt, KHÔNG đòi chữ ký.
+// Toàn bộ luật nhả 9,63 tỷ nằm ở SCRIPT ĐANG GIỮ METER NFT — không nằm ở đây.
+//
+// Hệ quả VẬN HÀNH phải nói thẳng: meter NFT nằm ở đâu thì đó là luật của Reserve.
+//   • meter NFT ở `reserve_draw.ak` ⇒ nhả theo thuật toán, không ai rút tay.
+//   • meter NFT ở VÍ THƯỜNG ⇒ người cầm ví đúc thẳng 9,63 tỷ về ví mình.
+// Và meter_nft_policy/meter_nft_name là THAM SỐ apply-time ⇒ nướng vào policy-id ⇒
+// chọn sai lúc deploy là vĩnh viễn.
+//
+// Test dưới KHÔNG phải báo lỗi — nó GHI LẠI ranh giới đó bằng mã, để không ai đọc
+// lamp_mint rồi tưởng nó đang canh Reserve.
+// ══════════════════════════════════════════════════════════════
+
+test reservedraw_lamp_mint_khong_ep_dich_den() {
+  // Toàn bộ LAMP mint đường Reserve chảy về VÍ THƯỜNG. lamp_mint vẫn cho qua —
+  // đúng thiết kế (uỷ quyền), và đúng chỗ nguy hiểm nếu meter NFT đặt sai.
+  let s = fresh()
+  let s2 = SupplyState { ..s, reserve_minted: 5_000_000 }
+  let tx =
+    Transaction {
+      ..placeholder,
+      inputs: [ss_input(s), meter_input()],
+      outputs: [ss_output(s2), wallet_output(5_000_000)],
+      mint: mint_lamp(5_000_000),
+      extra_signatories: [],
+    }
+  run(ReserveDraw, tx)
 }

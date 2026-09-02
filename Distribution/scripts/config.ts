@@ -25,6 +25,7 @@ import {
 } from "@lucid-evolution/lucid";
 import { msPerEpoch, type Network } from "@magiclamp/utils";
 import { assertCommitteeShape } from "../offchain/src/committee.js";
+import { assertParamCount as assertParamCountGate } from "../offchain/src/applyGate.js";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
@@ -33,7 +34,17 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 
 // Load .env từ repo root (../../.env so với LampDistribution/scripts/),
 // không phụ thuộc cwd lúc chạy tsx.
-dotenv.config({ path: resolve(__dirname, "../../.env") });
+// Secret: MỘT nguồn duy nhất — $AGENT_SECRETS. KHÔNG có đường dự phòng nướng cứng.
+// Đường dự phòng cũ trỏ vào bộ nhà agent ở chỗ cũ — chỗ đó đã dời, nên hằng số ấy là
+// một con trỏ chết. Con trỏ chết im lặng theo HAI chiều: dotenv KHÔNG báo khi tệp
+// không tồn tại (script chỉ gãy muộn hơn, ở một chỗ không liên quan), và nếu về sau có
+// tệp thật mọc đúng đường đó thì nó được đọc mà không ai chọn.
+if (!process.env.AGENT_SECRETS) {
+  throw new Error(
+    "SECRETS-001: thiếu $AGENT_SECRETS. Secret CHỈ đọc từ biến này, không có đường dự phòng.",
+  );
+}
+dotenv.config({ path: process.env.AGENT_SECRETS });
 
 // ── Network + provider ─────────────────────────────────────────
 export const NETWORK: Network = (process.env.NETWORK ?? "Preview") as Network;
@@ -345,6 +356,10 @@ export interface DeployedState {
     /** claim_account_nft policy id — tham số 8 của claim_account, 6 của treasury. */
     accountNftPolicy: string;
     claimAccountHash: string;
+    // tham số CUỐI (thứ 8 claim_account / thứ 6 treasury), thêm 2026-08-12 (PR #22
+    // điểm 1) — policy id của claim_account_nft. XEM applyGate.ts / báo cáo vá
+    // APPLY-001: thiếu trường này ở CẢ HAI validator là chính lỗi cổng này chặn.
+    accountNftPolicy: string;
   };
   // test-LAMP token (02)
   testLamp?: { policyId: string; assetName: string; minted: string };

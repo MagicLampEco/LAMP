@@ -99,6 +99,18 @@ export function splitSpoPot(
   potOildrop: bigint = SPO_POT_OILDROP,
   capOildrop: bigint | null = null,
 ): StakeReward[] {
+  // BẤT BIẾN: trần trên pot chia-theo-stake là TỰ MỞ CỬA TÁCH VÍ.
+  // accStake là trục BẢO-TOÀN (tách ví không sinh thêm stake). Không trần ⇒ tách n ví giữ
+  // tổng stake thì tổng nhận KHÔNG ĐỔI còn chi phí tăng theo n ⇒ tách bị trội tuyệt đối.
+  // Có trần c ⇒ n ví nhận tới n·c ⇒ chính cái trần đặt ra để chặn cá voi trả tiền cho việc tách.
+  // Trần chỉ an toàn trên trục GIẢ-ĐƯỢC, cần một-người-một-DID ép được on-chain (chưa có).
+  // Đại số đầy đủ: Airdrop/spo-cs.md §5. Máy chia splitByStake vẫn nhận cap (dùng chung ETD);
+  // cấm là ở TẦNG POT của Airdrop, nên chặn tại đây.
+  if (capOildrop !== null) {
+    throw new Error(
+      "AIRDROP-CAP: pot SPO CẤM đặt trần — capOildrop phải là null. Xem Airdrop/spo-cs.md §5.",
+    );
+  }
   return splitByStake(spoWeights, potOildrop, capOildrop);
 }
 
@@ -117,5 +129,17 @@ export function splitCsPot(
   potOildrop: bigint = CS_POT_OILDROP,
   capOildrop: bigint | null = null,
 ): StakeReward[] {
+  // BẤT BIẾN: trần trên pot chia-theo-stake là TỰ MỞ CỬA TÁCH VÍ.
+  // accStake là trục BẢO-TOÀN (tách ví không sinh thêm stake). Không trần ⇒ tách n ví giữ
+  // tổng stake thì tổng nhận KHÔNG ĐỔI còn chi phí tăng theo n ⇒ tách bị trội tuyệt đối.
+  // Có trần c ⇒ n ví nhận tới n·c ⇒ chính cái trần đặt ra để chặn cá voi trả tiền cho việc tách.
+  // Trần chỉ an toàn trên trục GIẢ-ĐƯỢC, cần một-người-một-DID ép được on-chain (chưa có).
+  // Đại số đầy đủ: Airdrop/spo-cs.md §5. Máy chia splitByStake vẫn nhận cap (dùng chung ETD);
+  // cấm là ở TẦNG POT của Airdrop, nên chặn tại đây.
+  if (capOildrop !== null) {
+    throw new Error(
+      "AIRDROP-CAP: pot CS CẤM đặt trần — capOildrop phải là null. Xem Airdrop/spo-cs.md §5.",
+    );
+  }
   return splitByStake(csWeights, potOildrop, capOildrop);
 }
