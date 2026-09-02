@@ -397,7 +397,10 @@ một người vote được.
   nhận encoding → chống-mượn-C2 là **"phụ thuộc xác nhận MAGIC"**, chưa coi là đã chặn.
 - **CONTRACT §5 D8 (chống đòn bẩy mua-bằng-tiền):** C2 chỉ tính nếu LAMP **đã khóa qua đủ N epoch
   tương lai** (biến C2 thành chi-phí-cơ-hội-thời-gian như C1, không phải khóa-tức-thì). Ngoài ra
-  MATH ràng `w_2 + w_4 ≤ w_1 + w_3` ở tầng bảng weight (TECH chỉ tiêu thụ bảng).
+  ràng weight ép **TRÊN CHUỖI, tầng TECH**: `validators/tally.ak:read_weight_param` gọi
+  `weight_guard.d8_ok` → `w_1 ≥ w_2` ∧ `w_3 ≥ w_4` ∧ `w_k > 0` (dạng TỪNG CẶP, không phải tổng —
+  dạng tổng nhận cả `w_3 = 0`). Bảng vi phạm ⇒ tx fail. Trước 2026-09-02 tệp này và `Math-Spec.md`
+  §6B.1 đùn chủ ép cho nhau nên D8 không được ép ở đâu cả.
 
 ### 5.4 C4 — LAMP nắm giữ (repo LAMP) — **registry gắn DID, KHÔNG reference input ví** (sửa audit #2)
 
@@ -1108,7 +1111,8 @@ vẫn "tham số mở (DAO định)" trừ cái CONTRACT đã chốt (`cap4 = 10
   (bounded ≤ F−1) cho pha Clamped trừ đúng phần vượt trần. Thêm type `TopEntry`. Cập nhật **min-ADA**
   UTxO Tally theo bytes heap đầy (cận trên xác định, `O(F)` hằng số).
 - **D8 — chống đòn bẩy mua-bằng-tiền (§5.3).** Ghi C2 chỉ tính nếu LAMP đã khóa đủ N epoch tương lai
-  (chi-phí-cơ-hội-thời-gian); ràng weight `w_2 + w_4 ≤ w_1 + w_3` ở tầng bảng (MATH định, TECH tiêu thụ).
+  (chi-phí-cơ-hội-thời-gian); ràng weight `w_1 ≥ w_2` ∧ `w_3 ≥ w_4` ∧ `w_k > 0` ép trên chuỗi tại
+  `validators/tally.ak:read_weight_param` (`weight_guard.d8_ok`), kèm test âm tầng validator.
 - **D9 — interface MAGIC beacon `did_commit` byte-perfect (§5.2, §5.3, §12).** Beacon C1/C2 của MAGIC
   PHẢI nhúng `did_commit` đọc byte-perfect (cùng encoding VoteDatum) để điều kiện (b) chống-mượn-C_k
   chạy. **Phụ thuộc xác nhận MAGIC** — tới khi MAGIC xác nhận encoding, chống-mượn-C1/C2 chưa coi là

@@ -1023,7 +1023,10 @@ chặn cho tới khi có bằng chứng:**
    đề xuất hạ `cap_1`/`cap_3` xuống mức chạm được trong một epoch làm **cả hai số hạng còn lại**
    của `c_sunk` sụp về ~0. (9a) vẫn đúng về toán, nhưng vế phải tiến tới 0 ⇒ cận dưới mất nghĩa.
    D8 không cứu được: nó ép tỷ lệ số mũ, không ép giá trị `cap`.
-3. **D8 chưa có chủ ép, và dạng TỔNG cho phép `w_3 = 0`.** Chi tiết CONTRACT §5.
+3. ~~**D8 chưa có chủ ép, và dạng TỔNG cho phép `w_3 = 0`.**~~ **ĐÃ ĐÓNG 2026-09-02** — cổng ép trên
+   chuỗi (`validators/tally.ak:read_weight_param` gọi `weight_guard.d8_ok`), dạng TỪNG CẶP
+   `w_1 ≥ w_2` ∧ `w_3 ≥ w_4` ∧ `w_k > 0`. Chi tiết CONTRACT §5. **Nhưng nó không đụng tới lỗ 2**:
+   D8 ép tỷ lệ số mũ, `cap_k` vẫn không có sàn.
 4. **`C3` là nợ thiết kế.** Chừng nào chưa có cơ chế đo phi tập trung thì mọi câu "C3 rất khó mua"
    mới là chốt về **nguyên tắc** (chống herding), chưa chốt về **cơ chế**.
 5. **Chợ danh tính.** Xác thực DID lúc bỏ phiếu là **registry-membership tĩnh** (`Tech-Spec.md`
@@ -1266,7 +1269,10 @@ on-chain) + **FEAT** (định loại quyết định trọng yếu áp (14) + ch
 **I-5 (Trần weight nhóm mua-bằng-tiền + C2 phải khóa-thời-gian — D8).** (i) Mọi bảng weight phải
 thỏa **`w_2 + w_4 ≤ w_1 + w_3`** (W1, §6B.1) — tổng trọng số nhóm mua-được-bằng-tiền `MONEY={2,4}`
 KHÔNG vượt tổng trọng số nhóm cần-thời-gian `TIME={1,3}` (tổng quát `K>4`:
-`Σ_{MONEY} w_k ≤ Σ_{TIME} w_k`). Bảng vi phạm là **không hợp lệ** → validator tham số từ chối.
+`Σ_{MONEY} w_k ≤ Σ_{TIME} w_k`). Bảng vi phạm là **không hợp lệ** → giao dịch fail tại
+`Governance/onchain/validators/tally.ak:read_weight_param` (gọi `weight_guard.d8_ok`). Dạng ép thực
+tế là TỪNG CẶP `w_1 ≥ w_2` ∧ `w_3 ≥ w_4` ∧ `w_k > 0` — chặt hơn dạng tổng viết ở trên, vì dạng tổng
+nhận cả `w = (0.5, 0, 0, 0.5)` (CONTRACT §5).
 (ii) `C2` **chỉ tính dương nếu LAMP cam kết đã khóa thật và duy trì khóa ≥ `N_2` epoch** (W2,
 §6B.4); khóa-tức-thời → `C2 = 0`. Biến C2 từ vốn-hoàn-lại-tức-thời thành chi-phí-cơ-hội-thời-gian
 (như C1). Lý do: §6B.2 (weight = độ co giãn VP; chặn đòn bẩy vốn) + §10.5 (chống flash-fill). Thực

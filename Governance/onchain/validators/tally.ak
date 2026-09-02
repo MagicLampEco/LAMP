@@ -25,6 +25,7 @@ use magiclamp/governance/types.{
   Clamped, Summing, TallyDatum, VoteDatum, WeightParam,
 }
 use magiclamp/governance/util
+use magiclamp/governance/weight_guard
 
 pub type TallyRedeemer {
   // cộng một lô phiếu vào acc (pha Summing). DERIVE power từ Vote inputs thật + đốt nullifier.
@@ -78,6 +79,10 @@ fn read_weight_param(
   expect qty == 1
   expect InlineDatum(d) = ref.output.datum
   expect wp: WeightParam = d
+  // Cổng D8 — ÉP TẠI ĐÂY, không phải off-chain. Đây là đường DUY NHẤT bảng knots đi vào phép
+  // tính VP, nên chặn ở đây là chặn được mọi lối. Bảng vi phạm ⇒ tx fail.
+  // Vì sao dạng TỪNG CẶP chứ không dạng TỔNG: `weight_guard.ak` đầu tệp.
+  expect weight_guard.d8_ok(wp.k1, wp.k2, wp.k3, wp.k4)
   wp
 }
 
