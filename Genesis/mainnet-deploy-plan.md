@@ -79,10 +79,26 @@ bước mint có giá trị, và cũng là căn cứ để chốt lại `Papers/
 14. Mint thật: `DistributionVest`, authority M-of-N ký → LAMP vào kho.
 15. Verify on-chain + publish artefacts (policy-id, kho addr, registry NFT) cho SuperApp / PhoenixKey / Long ráp + bật cờ.
 
-## Anh cần làm gì (tóm tắt)
-- **Chốt A1–A4** (chiến lược — không ai quyết thay được).
+## Anh cần làm gì (tóm tắt — soát lại 2026-09-02)
+
+Bản trước liệt gọn "Chốt A1–A4" như một khối. Soát từng mục thì khối đó sai theo **hai chiều
+ngược nhau**, nên tách ra:
+
+| Mã | Trạng thái thật | Bằng chứng |
+|---|---|---|
+| A2 `token_tag` | **ĐÓNG** | mục A2 tệp này + `kho-a-dest.md` |
+| A3 kho A-DEST = `treasury.ak` | **ĐÓNG** | mục A3 tệp này |
+| A1 policy mainnet | **MỞ** | `Papers/Whitepaper.md` đính chính 2026-08-26 rút lại câu "chốt … chính thức": policy đang chạy là bản **khởi tạo (bootstrap)**, hai đường vẫn song song (giữ vĩnh viễn / phát hành policy mới khi mint uỷ quyền qua OrgDID sẵn sàng — §8–§9). Muộn hơn mục A1 của tệp này gần một tháng ⇒ bản muộn thắng |
+| A4 authority | **MỞ, dẫn xuất từ A1** | lập luận "tham số đã nướng vào policy-id ⇒ không xoay khoá được" chỉ đứng khi A1 đóng theo đường (a). A1 mở ⇒ cửa MultiSig M-of-N (spec §11) vẫn mở |
+
+**Ràng buộc TẠM đang giữ an toàn trong lúc A1/A4 mở:** cổng A' dưới đây chặn mọi bước mint giá trị
+thật, và nó chặn **cả hai** đường của A1 — nên để A1 mở không mở thêm rủi ro nào.
+
+Việc thật còn lại, theo thứ tự:
+- **A' — đối chiếu CBOR script mainnet với bản dựng lại từ mã nguồn.** Chưa ai làm. Đây là điều
+  kiện tiên quyết của mọi bước mint có giá trị, và là cổng đang giữ A1/A4 an toàn.
 - **Duyệt merge B5–B10** (điều phối nhiều đội: LAMP/Tuân, Core/Thư, SuperApp, Long).
-- **Chờ Preprod rehearsal xanh (C11)**.
+- **Chờ Preprod rehearsal xanh (C11)** — kèm phép thử one-shot `thread_nft.ak` nêu ở khung mục C.
 - **Rồi mới D12–D15.**
 
 Em (agent) KHÔNG thực thi bước mainnet nào (token thật, bất khả nghịch) — anh + đội làm, em chuẩn bị code + verify + diễn tập Preprod.

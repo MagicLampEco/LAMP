@@ -45,6 +45,18 @@ export function buildDelegatorEntitlements(
 ): DelegatorEntitlementResult {
   const { budgetOildrop } = opts;
   const capOildrop = opts.capOildrop ?? null;
+  // BẤT BIẾN: trần trên pot chia-theo-stake là TỰ MỞ CỬA TÁCH VÍ.
+  // accStake là trục BẢO-TOÀN (tách ví không sinh thêm stake). Không trần ⇒ tách n ví giữ
+  // tổng stake thì tổng nhận KHÔNG ĐỔI còn chi phí tăng theo n ⇒ tách bị trội tuyệt đối.
+  // Có trần c ⇒ n ví nhận tới n·c ⇒ chính cái trần đặt ra để chặn cá voi trả tiền cho việc tách.
+  // Trần chỉ an toàn trên trục GIẢ-ĐƯỢC, cần một-người-một-DID ép được on-chain (chưa có).
+  // Đại số đầy đủ: Airdrop/spo-cs.md §5. Máy chia splitByStake vẫn nhận cap (dùng chung ETD);
+  // cấm là ở TẦNG POT của Airdrop, nên chặn tại đây.
+  if (capOildrop !== null) {
+    throw new Error(
+      "AIRDROP-CAP: pot Delegator CẤM đặt trần — capOildrop phải là null. Xem Airdrop/spo-cs.md §5.",
+    );
+  }
 
   // 1 "epoch" tổng hợp: rows = payment_address ↦ accStake. buildSnapshotSet bỏ stake ≤ 0
   // và ném lỗi nếu payment_address trùng (chống thổi phồng accStake).

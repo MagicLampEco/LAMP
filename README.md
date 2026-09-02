@@ -50,7 +50,7 @@ Pháp nhân phát hành: **GreenSun Tech Inc** (Việt Nam).
 ```
 
 LAMP = giá trị nền + quản trị. MAGIC = tiêu dùng ở tầng ứng dụng.
-Repo MAGIC: <https://github.com/MagicLampNetwork/MAGIC>
+Repo MAGIC: <https://github.com/MagicLampEco/MAGIC>
 
 ## Bắt đầu đọc từ đâu
 

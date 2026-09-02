@@ -1,7 +1,9 @@
 # PlatformKit — đặc tả đã chuyển sang kho Registry, mã còn ở đây
 
 **Nguồn sự thật của đặc tả PlatformKit/Registry nay là kho riêng:**
-<https://github.com/MagicLampNetwork/Registry> → `Specs/{CONTRACT,TECH,FEAT,EXEC,ONBOARDING}.md`
+<https://github.com/MagicLampEco/Registry> → `Specs/{CONTRACT,Tech-Spec,Feat-Spec,Math-Spec,Exec-Spec}.md`
+và `Specs/onboarding.md` (tên đúng như trên máy chủ, hỏi 2026-09-02 —
+GitHub phân biệt HOA/thường, máy này thì không, nên tên sai vẫn mở được ở local rồi 404 khi công bố).
 
 Năm tệp đặc tả từng nằm ở thư mục này (`CONTRACT.md`, `Tech-Spec.md`, `Feat-Spec.md`, `Exec-Spec.md`,
 `onboarding.md`) đã chuyển vào

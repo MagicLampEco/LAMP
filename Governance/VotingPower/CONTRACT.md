@@ -1,5 +1,12 @@
 # Voting Power — CONTRACT (mô hình đã duyệt)
 
+> **Phiên bản:** v1.0 — 2026-06-05. Lần đầu khai phiên bản — tệp trước đây chỉ có dòng `Trạng thái`,
+> không có số hiệu để tham chiếu; nội dung không đổi so với ngày duyệt khung.
+> **Vai:** spec build-fact — nguồn chuẩn (interface contract) cho mô hình Voting Power. Khi lệch với
+> [`Feat-Spec.md`](./Feat-Spec.md) / [`Math-Spec.md`](./Math-Spec.md) / [`Tech-Spec.md`](./Tech-Spec.md) /
+> [`Exec-Spec.md`](./Exec-Spec.md), [`../SPEC.md`](../SPEC.md) (trang chỉ mục), hay `Papers/`,
+> CONTRACT.md này thắng.
+
 **Trạng thái:** ✅ anh đã duyệt khung 2026-06-05. Đây là **interface contract** — nguồn chuẩn
 mà 4 spec (FEAT / MATH / TECH / EXEC) phải bám. KHÔNG spec nào được mâu thuẫn file này.
 
@@ -26,28 +33,39 @@ VP_i = ∏_k  min( C_{k,i}, cap_k )^( w_k )
 
 - **Tất cả cap và weight do DAO chỉnh.** Đây là hệ DAO — không có "người canh" tập trung.
 - **Công thức NHÂN (geometric), không CỘNG.** Yếu một tham số là kéo sụp toàn bộ VP → token
-  đơn thuần không mua được quyền lực. (Cộng thì người giàu max C4 + đốt LAMP đẩy C1 + khóa LAMP
-  đẩy C2 → 3/4 yếu tố mua được; nhân thì C3 thấp làm sụp tất.)
+  đơn thuần không mua được quyền lực. (Cộng thì người giàu max C4 + khóa LAMP đẩy C2
+  → hai yếu tố mua được cộng dồn vẫn cao dù C3 = 0; nhân thì C3 thấp làm sụp tất.)
 
-## 2. Bốn nguyên lý (KHÔNG được vi phạm trong mọi spec)
+## 2. Năm nguyên lý (KHÔNG được vi phạm trong mọi spec)
 
 1. **Quyền tham gia ≠ quyền lực.** Ai có DID đều được bỏ phiếu. Trọng số (power) phải kiếm.
    Người mới VP ≈ 0, tích lũy dần qua nhiều epoch — **mô hình tập sự** (như thử việc trước khi
    vào làm, thực tập trước khi tốt nghiệp). VP≈0 của người mới là TÍNH NĂNG, không phải bug.
 
 2. **Chi phí thâu tóm = chi phí đóng góp thật.** Muốn có quyền lực phải nuôi hệ thống bằng đúng
-   giá trị tương đương (đốt LAMP, tiêu MAGIC qua thời gian, tích uy tín). Không có đường tắt.
+   giá trị tương đương: **tiêu MAGIC qua nhiều epoch** (C1) và **tích uy tín được cộng đồng
+   công nhận** (C3).
+   ⚠️ **Mức tuyên bố — đo 2026-09-01, đừng đọc mạnh hơn.** Câu "không rút ngắn bằng tiền" **đã
+   rút**: `MAGIC/GetMAGIC` bán quyền nhận MAGIC **bằng tiền pháp định** (`GetMAGIC/FEAT.md:8`),
+   nên C1 là **tiền × thời gian**, không phải thời gian thuần. Và cơ chế đo C3 **chưa chốt**
+   (`Tech-Spec.md` §5.5, `Feat-Spec.md` §8) ⇒ C3 hiện là **nợ thiết kế, chưa phải một lớp**.
+   Phòng tuyến ĐO ĐƯỢC hôm nay: DID sinh trắc + độ dài cửa sổ tích luỹ. Chi tiết `Math-Spec.md` §10.5c.
    Collusion (thuê 120 người thật vote hộ) không phải lỗ hổng: để 120 người đó có quyền lực thật,
    kẻ tấn công phải khiến họ đóng góp thật bằng đúng giá trị thu được — và hành vi cùng phục vụ
    một thực thể là lộ thiên on-chain, cộng đồng phát hiện được; bên kia cũng huy động được người.
 
 3. **Token đơn thuần vô hiệu hóa.** Cap C4 = 100 triệu LAMP: ai giữ 12 tỷ chỉ được tính như
    **một cử tri 100 triệu**; muốn dùng hết phải chia cho ~120 cử tri — mà mỗi cử tri phải là
-   người thật (DID sinh trắc) có lịch sử + uy tín + đã đốt LAMP. Cộng với công thức nhân.
+   người thật (DID sinh trắc) có lịch sử tiêu MAGIC (C1) + uy tín (C3). Cộng với công thức nhân.
 
-4. **Sybil chết từ gốc — phòng thủ nhiều lớp liên kết:** DID sinh trắc PhoenixKey (1 người =
-   1 DID, không nhân bản) + buộc có lịch sử (C1) + uy tín (C3) + đốt LAMP. Bốn lớp khóa lẫn nhau,
-   không soi rời từng cái.
+4. **Sybil — HAI TRỤC phòng thủ khác bản chất, KHÔNG được gộp:**
+   - *Trục chi phí-mỗi-DID (**cộng dồn theo `N`**):* DID sinh trắc PhoenixKey (1 người = 1 DID,
+     không nhân bản) + lịch sử C1 + uy tín C3. Đây là thứ **tăng lên** khi kẻ tấn công thêm một
+     danh tính. Xem mức tuyên bố thật của C1/C3 ở nguyên lý 2.
+   - *Trục đòn bẩy-trong-công-thức (**KHÔNG phụ thuộc `N`**):* **D8** (§5) ép `w_1 ≥ w_2`, `w_3 ≥ w_4`,
+     `w_k > 0`. Đã ép trên chuỗi ở `validators/tally.ak` (không còn là bất biến giấy — xem §5).
+   D8 **không** làm tăng chi phí biên của một DID Sybil thêm vào, nên nó **không thay thế được**
+   một lớp ở trục thứ nhất. Hai trục phải soát riêng.
 
 5. **Sàn phi tập trung Byzantine — không thực thể nào chiếm đa số.** Cap mỗi DID chỉ chặn một
    cá nhân; nguyên lý 5 chặn **mọi nhóm nhỏ**. Khi kiểm phiếu, VP hiệu dụng mỗi DID bị clamp:
@@ -87,7 +105,23 @@ Sau rà soát đối kháng, các interface dưới đây được **ghim cứng
   số (mặc định 2/3). KÈM sàn cứng `số DID thuận ≥ BFT_FLOOR`. TECH §9.4 BỎ `yes>no`; MATH §8.2 là chuẩn.
 - **D2 — ProposalDatum (interface Gov→Treasury).** Thêm field: `spend_spec_hash` (hash canonical
   danh sách `(bucket, asset, amount, to)` đã duyệt), `released_cumulative` (chống chi vượt qua nhiều
-  tx), `execute_after_epoch` (mốc time-lock). 3 field này là HARD BLOCKER cho Treasury Release.
+  tx), `execute_after_epoch` (mốc time-lock). 3 field này là HARD BLOCKER cho Treasury Release —
+  ✅ **ĐÃ ĐÓNG (đo 2026-09-02)**: cả ba có ở `onchain/lib/magiclamp/governance/types.ak`
+  (`ProposalDatum` field 7/8/9) và được chiếu ra `ProposalResult` 5 field; vế Treasury ép ở
+  `Treasury/onchain/validators/custody.ak:166-173`.
+
+  🔴 **CÒN MỘT MÂU THUẪN INTERFACE CHƯA ĐÓNG, và nó chặn mainnet (đo 2026-09-02).**
+  `onchain/validators/proposal_nft.ak:29` là policy **one-shot MỖI PROPOSAL**
+  (`proposal_nft(genesis_ref, asset_name)`, mint đòi tiêu đúng `genesis_ref`) ⇒ policy id đổi theo
+  từng proposal. Nhưng `Treasury/onchain/validators/custody.ak:47` nhận **MỘT** `proposal_policy`
+  làm tham số — mà tham số nướng vào script hash. Hệ quả: **một kho custody chỉ giải ngân được cho
+  đúng một proposal**; proposal thứ hai đòi dựng custody mới và chuyển toàn bộ kho sang script hash
+  khác. Đường Gov→Treasury Release không chạy quá một lần.
+  Hướng đã chốt ở `Treasury/Tech-Spec.md` (LỖ #1A): Proposal NFT là **một policy chung
+  per-governance**, asset name = `proposal_id`. Vế Treasury đã sẵn sàng cho hình dạng đó
+  (`release.read_proposal` ép `nft_name == proposal_id`). Việc còn lại thuộc module này: đổi tham số
+  `proposal_nft` sang per-governance, và chuyển tính duy nhất của `proposal_id` thành van của
+  Governance (policy chung KHÔNG tự ép asset-name duy nhất).
 - **D3 — Release-gate = Model A.** Treasury KHÔNG tự tính ngưỡng; chỉ kiểm `status==Executed` +
   Proposal NFT + `spend_spec_hash`. Governance `ExecuteProposal` ép TOÀN BỘ ngưỡng (gồm clamp BFT
   `VP_eff` + sàn cứng `|S|≥F`) TRƯỚC. Đóng lỗ hổng "release bỏ qua clamp" (GAME-1).
@@ -102,9 +136,45 @@ Sau rà soát đối kháng, các interface dưới đây được **ghim cứng
 - **D7 — Thuật toán VP on-chain (chốt khả thi).** Bảng 1-chiều `pow_k[c] = round(c^{w_k}·SCALE)` cho
   từng yếu tố (nội suy tuyến tính giữa mốc) rồi `power = (pow_1·pow_2·pow_3·pow_4)/SCALE^3` trên
   Aiken `Int` (bignum, không overflow). Đặc tả SCALE + sai số nội suy + property test VP_int vs VP_float.
-- **D8 — Chống đòn bẩy mua-bằng-tiền (C2+C4).** Ràng buộc cứng `w_2 + w_4 ≤ w_1 + w_3` (tổng weight
-  yếu tố mua-được-bằng-tiền ≤ tổng weight yếu tố cần-thời-gian). C2 chỉ tính nếu LAMP **đã khóa** qua
-  đủ N epoch tương lai (biến C2 thành chi-phí-cơ-hội-thời-gian như C1, không phải khóa-tức-thì).
+- **D8 — Chống đòn bẩy mua-bằng-tiền (C2+C4).** Ràng buộc cứng: weight của yếu tố mua-được-bằng-tiền
+  không vượt weight của yếu tố cần-thời-gian. C2 chỉ tính nếu LAMP **đã khóa** qua đủ N epoch tương lai
+  (biến C2 thành chi-phí-cơ-hội-thời-gian như C1, không phải khóa-tức-thì).
+
+  **Dạng ép là TỪNG CẶP, không phải tổng** (đổi 2026-09-02 — dạng tổng `w_2+w_4 ≤ w_1+w_3` có lỗ, xem
+  giới hạn 2 cũ ở dưới):
+
+  | Cổng | Ràng | Ý |
+  |---|---|---|
+  | G1 | `w_1 ≥ w_2` | lịch sử tiêu MAGIC ≥ khoá LAMP |
+  | G2 | `w_3 ≥ w_4` | uy tín ≥ vốn nắm giữ |
+  | G3 | `w_k > 0 ∀k` | không yếu tố nào bị tắt |
+
+  **Chủ ép: on-chain.** `weight_guard.d8_ok` gọi trong `Governance/onchain/validators/tally.ak`
+  hàm `read_weight_param` — đường DUY NHẤT bảng knots đi vào phép tính VP, nên chặn ở đó là chặn mọi
+  lối. Bảng vi phạm ⇒ giao dịch fail. Kiểm được quan hệ `w_k` thẳng trên bảng knots mà không cần thêm
+  trường vào datum: với `c ≥ 1`, `w_a ≥ w_b ⟺ pow_a(c) ≥ pow_b(c)`, và kiểm tại tập mốc gộp của hai
+  bảng là **đủ** (giữa hai mốc kề nhau cả hai hàm đều tuyến tính). Lập luận đầy đủ:
+  `Governance/onchain/lib/magiclamp/governance/weight_guard.ak` đầu tệp.
+
+  ⚠️ **Giới hạn CÒN LẠI của D8 — phải đọc kèm, nếu không sẽ giao cho nó việc nó không làm được:**
+  **D8 ép TỶ LỆ SỐ MŨ (không thứ nguyên), không ép CHI PHÍ (tiền/thời gian).** `cost_k(·)` và
+  `cap_k` nằm hoàn toàn ngoài phạm vi D8 — bảng tham số §12.1 xác nhận `cap_1, cap_3` chỉ ràng
+  `> 0`. Nên D8 **một mình không** làm cận dưới `c_sunk` khác 0. Cổng trên chuỗi KHÔNG đụng tới
+  giới hạn này; sàn dương cho `cap_1`/`cap_3` vẫn là việc chưa làm.
+
+  <details><summary>Hai giới hạn đã đóng bằng mã (đo 2026-09-01, vá 2026-09-02) — giữ để lượt rà sau đối chiếu</summary>
+
+  1. ~~**Chưa có chủ ép.**~~ `Math-Spec.md` §6B.1 viết *"validator tham số từ chối"* (TECH ép);
+     `Tech-Spec.md` §5.3 viết ngược: *"MATH ràng… TECH chỉ tiêu thụ bảng"*. Vòng đùn đẩy ⇒ D8 từng là
+     **bất biến giấy**. Đã đóng: cổng ở `tally.ak:read_weight_param` + test âm tầng validator
+     `finalize_rejects_d8_violating_weight_table` (gỡ cổng ra thì đúng test đó đỏ, 105 test còn lại
+     giữ nguyên — cổng gánh việc thật, không phải trang trí).
+  2. ~~**Dạng TỔNG không chặn được `w_3 = 0`.**~~ Bảng `w = (0.5, 0, 0, 0.5)` **thoả** dạng tổng
+     (`0.5 ≤ 0.5`) nhưng theo quy ước `x^0 = 1` thì thừa số C3 **bằng 1 với mọi người** — lớp uy tín
+     tắt hẳn, và `cost_C3` biến khỏi `c_sunk`. Đã đóng bằng G1∧G2∧G3 ở trên (dạng từng cặp CHẶT HƠN
+     dạng tổng); test `d8_rejects_the_sum_form_loophole` giữ đúng phản ví dụ này.
+
+  </details>
 - **D9 — Interface cross-repo MAGIC (CẦN MAGIC xác nhận).** Beacon C1/C2 của MAGIC PHẢI nhúng
   `did_commit` đọc byte-perfect trong datum để ràng (b) chống-mượn-C_k thực thi được. Cho tới khi MAGIC
   xác nhận → đánh dấu chống-mượn-C1/C2 là "phụ thuộc xác nhận MAGIC", không coi là đã chặn.

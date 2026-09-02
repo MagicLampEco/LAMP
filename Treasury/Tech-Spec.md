@@ -577,10 +577,14 @@ C-REL-3  Khớp đích chi (HARD BLOCKER — sửa audit finding 7; vá lần 2 
              P8). Domain tag 0x02 tách khỏi merkle leaf(0x00)/node(0x01). Khóa CẢ đích chi (ai/bao nhiêu)
              LẪN instance đích → proposal instance A không dùng được cho instance B (đóng #1B, xem trên).
            Chống chi sai địa chỉ/sai số so với điều đã duyệt.
-           ⛔ HARD BLOCKER: field `spend_spec_hash` (+ `released_cumulative` nếu vesting) CHƯA tồn tại
-           trong Governance ProposalDatum → validator Release như đặc tả KHÔNG THỂ build cho tới khi
-           Governance thêm field. PHẢI chốt với Governance TRƯỚC khi code Release (nâng Câu hỏi treo #1
-           thành điều kiện chặn DoD — §12). Thiếu spend_spec_hash ⇒ Release = KÉT KHÔNG KHÓA ĐÍCH
+           ✅ **ĐÃ ĐÓNG (đo 2026-09-02).** Field `spend_spec_hash`, `released_cumulative`,
+           `execute_after_epoch` NAY CÓ trong `Governance/onchain/lib/magiclamp/governance/types.ak`
+           (`ProposalDatum` field 7/8/9, và cả ba được chiếu ra `ProposalResult` 5 field mà Treasury
+           đọc). Vế Treasury cũng đã ép thật: `validators/custody.ak:170` so
+           `release.spend_spec_hash(instance_id, draws) == proposal.spend_spec_hash`, `:173` ép
+           time-lock. `aiken check` ở `Treasury/onchain`: **137 pass / 0 fail, exit 0**.
+           Giữ đoạn dưới để hiểu vì sao ràng buộc này tồn tại — KHÔNG còn là điều kiện chặn DoD.
+           Thiếu spend_spec_hash ⇒ Release = KÉT KHÔNG KHÓA ĐÍCH
            (cho chi sai địa chỉ/sai số). Trong giai đoạn beacon-giả-lập (EXEC §6.1 M3): KHÔNG được merge
            Release thiếu spend_spec_hash check vào nhánh có thể lên Preview/Mainnet — beacon giả lập
            PHẢI mang một field tương đương để C-REL-3 thực thi thật, nếu không Release vô nghĩa.
@@ -645,8 +649,8 @@ C-REL-13 Draws KHÔNG rỗng (vá lần 2 LỖ #F2):  draws != []
   nguyên (CIP-31): [CIP-31 reference inputs](https://cips.cardano.org/cip/CIP-31).
 - Nếu proposal cho phép chi nhiều đợt (vesting), mỗi đợt là một Release đọc cùng proposal ref +
   time-lock tăng dần; sổ bucket giảm dần. Proposal datum cần `released_cumulative` để chống chi vượt
-  tổng duyệt → ⛔ **HARD BLOCKER** (sửa audit finding 7): field này CHƯA có trong Governance
-  ProposalDatum, phải chốt với Governance TRƯỚC khi code Release vesting (§12, không chỉ [cần verify]).
+  tổng duyệt → ✅ **ĐÃ ĐÓNG (đo 2026-09-02)**: `released_cumulative` là field 8 của `ProposalDatum`
+  (`Governance/onchain/lib/magiclamp/governance/types.ak`) và có mặt trong `ProposalResult`.
   Đây là mẫu `redeemed_cumulative` của Distribution áp cho release.
 
 > **Race liveness — CHỐT MODEL A (sửa audit finding 5):** Execute và Release là HAI tx tuần tự, KHÔNG
@@ -687,7 +691,7 @@ tấn công của nhánh chi.
 > generators bằng **adapter off-chain (b-ii)** đi qua nhánh `Collect` đã có (không cần MigrateIn).
 
 Generators MAGIC (Vacuum/Instant/Schedule…) hiện trả LAMP về một `treasury_addr` đơn giản (bất biến
-`treasury_receives_lamp >= lamp_paid`, [vault.ak](https://github.com/MagicLampNetwork/MAGIC/blob/main/VacuumGen/onchain/validators/vault.ak) (repo MAGIC)).
+`treasury_receives_lamp >= lamp_paid`, `VacuumGen/onchain/validators/vault.ak` (kho MAGIC, module CHƯA công bố)).
 Hai con đường tích hợp:
 
 **(a) Migrate value cũ (một lần) — `MigrateIn`:** (param thêm `old_treasury_hash: ByteArray` cho instance)
@@ -855,14 +859,29 @@ Evidence bắt buộc: `aiken check` output pass FULL (như chuẩn build mode �
 ## Phụ thuộc
 - **Governance / VotingPower** — phơi `ProposalDatum{status, yes/no_power, voter_count}` +
   Proposal authenticity NFT (policy `proposal_policy`). Treasury đọc qua reference input
-  ([Governance TECH](../Governance/VotingPower/Tech-Spec.md)). ⛔ **HARD BLOCKER (finding 7): cần thêm field**
-  `spend_spec_hash` (+ `released_cumulative` nếu vesting) vào ProposalDatum — phải chốt với Governance
-  TRƯỚC khi code Release (không chỉ phối hợp; thiếu → Release = két không khóa đích).
+  ([Governance TECH](../Governance/VotingPower/Tech-Spec.md)). ✅ **finding 7 ĐÃ ĐÓNG (đo 2026-09-02)**:
+  `spend_spec_hash`, `released_cumulative`, `execute_after_epoch` đã có trong `ProposalDatum` và được
+  chiếu ra `ProposalResult` 5 field; `custody.ak:166-173` ép cả hai vế.
   - ⛔ **CHỐT INTERFACE (hardening v1 LỖ #1A): Proposal NFT = MỘT policy chung per-governance**
     (asset name = `proposal_id`), **KHÔNG one-shot-by-seed per-proposal**. Custody param `proposal_policy`
     là một policy id đơn → chỉ đúng khi policy **ổn định per-DAO**. Nếu mỗi proposal mint policy riêng
     (one-shot theo seed) thì `proposal_policy` không cố định → C-REL-1(a) vô nghĩa. Đây là **mâu thuẫn
     interface** phải chốt với Governance trước khi code Release thật.
+
+    🔴 **CÒN MỞ, và nay đo được là mâu thuẫn THẬT — không phải rủi ro giả định (2026-09-02).**
+    `Governance/onchain/validators/proposal_nft.ak:29` khai
+    `validator proposal_nft(genesis_ref: OutputReference, asset_name: ByteArray)` và mint chỉ hợp lệ
+    khi tx tiêu đúng `genesis_ref` — tức **one-shot MỖI PROPOSAL**, policy id đổi theo từng proposal.
+    Vế Treasury thì `validators/custody.ak:47` nhận **một** `proposal_policy` là tham số, và
+    `release.read_proposal` đòi proposal UTxO mang token của ĐÚNG policy đó.
+    Hệ quả cụ thể: `proposal_policy` nướng vào script hash của custody ⇒ **một instance custody chỉ
+    giải ngân được cho MỘT proposal duy nhất**; proposal thứ hai đòi một custody mới, tức phải chuyển
+    toàn bộ kho sang script hash khác. Đường Governance→Treasury Release **không chạy được quá một
+    lần** — đây là chặn mainnet, không phải nợ kỹ thuật.
+    Hướng đã chốt ở chính mục này (policy chung per-governance, asset name = `proposal_id`) khớp sẵn
+    với vế Treasury: `read_proposal` đã ép `nft_name == result.proposal_id`. Việc còn lại nằm ở
+    Governance: đổi tham số `proposal_nft` sang per-governance và chuyển tính duy nhất của
+    `proposal_id` thành van của Governance (đúng như F11 dưới đã ghi).
   - **LỖ #1B — ĐÓNG (vá lần 2 F10):** `spend_spec_hash` NAY gồm `instance_id` (C-REL-3) → replay chéo
     giữa hai instance Treasury **CÙNG** `governance_ref` đã bị chặn (hash khác instance ⇒ C-REL-3 không
     khớp). Known-gap #1B chuyển **"MỞ (chờ Governance)" → ĐÓNG**. ⛔ **YÊU CẦU INTERFACE thay thế (Governance
@@ -889,15 +908,13 @@ Evidence bắt buộc: `aiken check` output pass FULL (như chuẩn build mode �
 - **Aiken stdlib** assets/transaction/dict/crypto; **CIP-31/33/55/1694**.
 
 ## Câu hỏi còn treo
-1. ⛔ **HARD BLOCKER — DoD chặn (finding 7): `spend_spec_hash` trong ProposalDatum** — Governance ghi
-   hash danh sách draw để Release khớp (C-REL-3). PHẢI Governance thêm field TRƯỚC khi code Release.
-   Thiếu ⇒ Release không biết proposal duyệt chi cho ai/bao nhiêu → KÉT KHÔNG KHÓA ĐÍCH (chi sai).
-   Không được merge Release thiếu check này vào nhánh lên được Preview/Mainnet (kể cả giai đoạn
-   beacon-giả-lập M3 — beacon giả lập phải mang field tương đương). **Điều kiện chặn DoD.**
-2. ⛔ **Vesting / chi nhiều đợt (finding 7): `released_cumulative` trong ProposalDatum** (mẫu
-   Distribution) — HARD BLOCKER nếu v1 hỗ trợ vesting. Nếu v1 CHỈ chi một lần (không vesting) → có thể
-   hoãn field này nhưng phải ép `released_cumulative` ngầm = toàn bộ (một Release dùng hết proposal).
-   Chốt: v1 có vesting hay chỉ chi một lần?
+1. ✅ **ĐÃ ĐÓNG (đo 2026-09-02) — `spend_spec_hash` trong ProposalDatum.** Field 7 của `ProposalDatum`,
+   chiếu ra `ProposalResult`; `custody.ak:170` ép `release.spend_spec_hash(instance_id, draws) ==
+   proposal.spend_spec_hash`. Két ĐÃ khóa đích. Không còn là điều kiện chặn DoD.
+2. ✅ **ĐÃ ĐÓNG (đo 2026-09-02) — `released_cumulative` trong ProposalDatum.** Field 8; có trong
+   `ProposalResult`. Câu hỏi CÒN LẠI thuộc phạm vi sản phẩm, không phải phạm vi interface: **v1 có
+   vesting hay chỉ chi một lần?** `release.ak:297` hiện chốt "một Release dùng hết proposal"
+   (không vesting). Muốn vesting thì mở thêm đường cộng dồn, field đã sẵn.
 3. **Custody shard — QUYẾT-ĐỊNH-CÓ-SỐ-ĐO (T4, không còn treo mở):** một UTxO custody là điểm contention
    tuần tự. EXEC **phải đo throughput** (batch N/tx × tx/block so tải tổng nhiều thuê bao) TRƯỚC khi
    chốt; nếu nghẽn → **shard-by-asset** (mỗi shard 1 UTxO, bất biến per-shard, off-chain cộng tổng cho
@@ -931,7 +948,7 @@ Evidence bắt buộc: `aiken check` output pass FULL (như chuẩn build mode �
 | 4 | major | C-COL-7: bỏ cửa hậu "tx generator mint riêng"; thay ràng buộc per-asset `mint.quantity_of(p,n)==0 ∀ accepted ∪ {LAMP}`. Áp cả MigrateIn (C-MIG-5). | §4.2 C-COL-7, §9 |
 | 5 | major | Chốt Model A: Execute (Governance, tx riêng) trước, Release đọc proposal Executed qua ref input. C-REL-2 chỉ `Executed` (bỏ Tallied). Bỏ đề xuất gói chung phá C-REL-1. | §7.1 C-REL-2, §7.2 |
 | 6 | major | MigrateIn: param `old_treasury_hash`, C-MIG-2 khóa Σ source theo hash (chống input lạ); C-MIG-4 chốt multisig council + one-shot guard (bỏ "HOẶC" mơ hồ). | §9 |
-| 7 | major | `spend_spec_hash` + `released_cumulative` nâng từ [cần verify] → ⛔ HARD BLOCKER DoD; cấm merge Release thiếu check vào nhánh Preview/Mainnet (kể cả beacon giả lập). | §7.1 C-REL-3, §7.2, Phụ thuộc, Câu hỏi treo #1/#2 |
+| 7 | major | `spend_spec_hash` + `released_cumulative` nâng từ [cần verify] → HARD BLOCKER DoD. ✅ **ĐÃ ĐÓNG 2026-09-02**: cả hai (+ `execute_after_epoch`) có trong `ProposalDatum`/`ProposalResult`; `custody.ak:166-173` ép. | §7.1 C-REL-3, §7.2, Phụ thuộc, Câu hỏi treo #1/#2 |
 | 8 | major | C-REL-7: đối chiếu TỔNG per (to,asset) (gộp draw trước), thay "tồn tại 1 output ≥ amount" — chống double-satisfaction recipient. | §7.1 C-REL-7 |
 | 9 | minor | Emergency = instance riêng `I_emg`; circulating = S_total − Σ_{I ∈ T, kể cả I_emg} bal_I. Off-chain phải cộng emergency. MATH §5.1 cần sửa (đồng bộ). | §1 |
 | 10 | minor | `cut_bps` chuyển từ param validator → DATUM (DAO đổi không đổi script hash). | §2, datum, C-COL-4 |
