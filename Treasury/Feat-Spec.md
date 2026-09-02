@@ -151,7 +151,7 @@ Với **mọi** asset, sau một settlement tx thu (bất biến áp cho **`Σ c
 ```
 
 Đây là **tổng quát hóa theo HAI chiều** của bất biến `treasury_receives_lamp >= lamp_paid` đã có ở
-generators MAGIC ([InstantGen vault.ak L298-313](https://github.com/MagicLampNetwork/MAGIC/blob/main/InstantGen/onchain/validators/vault.ak) (repo MAGIC)):
+generators MAGIC (`InstantGen/onchain/validators/vault.ak` L298-313 (kho MAGIC, module CHƯA công bố)):
 
 1. **Đa-asset** — generators chỉ áp cho LAMP; Treasury áp cho **mọi** asset trong `accepted_assets`.
 2. **Đếm theo payment script hash** — generators hiện đếm theo **FULL ADDRESS**
