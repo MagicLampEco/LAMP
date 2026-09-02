@@ -33,11 +33,33 @@
    dụng được cho policy mới**, tức đã hết hiệu lực với lựa chọn A1. Bù lại bằng quy trình giữ khoá
    ngoại tuyến + trần on-chain + A-DEST.
 
-## A'. VIỆC PHẢI LÀM TRƯỚC MỌI THỨ — đối chiếu script on-chain
-Chưa ai đối chiếu **CBOR script đang chạy trên mainnet** với bản dựng lại từ mã nguồn. Cần biết
-chắc nó là bản **8 tham số (authority khoá thường, threshold 1)** hay **12 tham số (registry-gate
-theo DID)**, và A-DEST có được ép on-chain thật không. Đây là **điều kiện tiên quyết** của mọi
-bước mint có giá trị, và cũng là căn cứ để chốt lại `Papers/Whitepaper.md §8`.
+## A'. Đối chiếu script on-chain — HAI PHẦN BA ĐÃ XONG, phần còn lại KHÔNG làm được theo cách cổng đòi
+
+> **Sửa 2026-09-02.** Bản trước ghi *"chưa ai đối chiếu"*. Phát biểu đó sai theo **hai chiều cùng
+> lúc**: đã làm nhiều hơn thế, và phần còn lại thì không thể làm theo cách cổng phát biểu.
+> Nguồn số duy nhất: `Genesis/offchain/src/deployed.ts` khối `provenance` — đừng chép số sang chỗ khác.
+
+| Script | Trạng thái đối chiếu | Cách đo |
+|---|---|---|
+| `lamp_mint` (`55d3e01b…180f0`) | ✅ **trùng byte** (2026-08-09) | dựng lại từ commit `457f312`, áp **8 tham số** ⇒ CBOR trùng byte, hash trùng |
+| `supply_state` (`84f6d84f…34084`) | ✅ **trùng byte** (2026-08-12) | cùng commit nguồn; 528 byte trên chuỗi |
+| `dist_treasury` (`d5e80c9a…edbb6`) | ⚠️ **chỉ hash** — trùng byte KHÔNG khả thi hôm nay | dựng `dist_treasury.ak` từ `60f7e3a`, áp authority ⇒ ra đúng `d5e80c9a…` |
+
+**Vì sao phần thứ ba không làm được:** trên Cardano, byte của script chỉ lên chuỗi khi script **được
+tiêu**. Kho `dist_treasury` chưa từng bị tiêu lần nào ⇒ **không có byte trên chuỗi để so**. Đây
+không phải "chưa ai làm", mà là "không mở được": cổng viết *"đối chiếu từng byte trước khi mint giá
+trị thật"* là **một cổng không có chìa**.
+
+**Câu hỏi 8-hay-12 tham số đã có đáp án:** bản đang chạy dựng từ `457f312` với **8 tham số**
+(authority khoá thường, threshold 1) — không phải bản 12 tham số registry-gate theo DID. Kéo theo:
+A-DEST **không** được ép on-chain ở bản đang chạy, và bản 12 tham số ở mục B5 là bản **thiết kế**,
+merge nó không đổi script đã deploy.
+
+**Việc thật còn lại của mục này** không phải đi đo lại, mà là **phát biểu lại cổng**: điều kiện cho
+lần mint tới phải đặt theo **hash + commit nguồn**, không theo byte trên chuỗi. Chừng nào cổng còn
+viết theo byte thì nó vẫn đóng với `dist_treasury` — đó chính là ràng buộc fail-closed đang giữ A1
+và A4 an toàn trong lúc hai mục đó còn mở (xem bảng ở cuối tệp). Phát biểu lại cổng **mở** ràng buộc
+đó ra, nên hai việc phải đi cùng nhau, không làm lẻ.
 
 ## B. Code phải merge (hiện ở nhánh/worktree, chưa lên main)
 5. **LAMP**: `lamp_mint` 12-param + registry read-side đã nằm trọn trong nhánh PR #17
@@ -95,8 +117,11 @@ ngược nhau**, nên tách ra:
 thật, và nó chặn **cả hai** đường của A1 — nên để A1 mở không mở thêm rủi ro nào.
 
 Việc thật còn lại, theo thứ tự:
-- **A' — đối chiếu CBOR script mainnet với bản dựng lại từ mã nguồn.** Chưa ai làm. Đây là điều
-  kiện tiên quyết của mọi bước mint có giá trị, và là cổng đang giữ A1/A4 an toàn.
+- **A' — phát biểu lại cổng đối chiếu theo `hash + commit nguồn`.** Việc ĐO đã xong hai phần ba
+  (`lamp_mint`, `supply_state` trùng byte); phần thứ ba không đo được theo byte vì kho chưa từng bị
+  tiêu. Cái còn thiếu là câu chữ của cổng, không phải phép đo — chi tiết ở mục A'.
+  ⚠️ Phát biểu lại cổng này **mở** ràng buộc đang giữ A1/A4 an toàn, nên phải làm CÙNG lúc với việc
+  khép A1/A4, không làm lẻ.
 - **Duyệt merge B5–B10** (điều phối nhiều đội: LAMP/Tuân, Core/Thư, SuperApp, Long).
 - **Chờ Preprod rehearsal xanh (C11)** — kèm phép thử one-shot `thread_nft.ak` nêu ở khung mục C.
 - **Rồi mới D12–D15.**
