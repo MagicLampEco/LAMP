@@ -6,6 +6,12 @@
   "description": "Deploy lazy-mint Genesis trên Cardano Preview (SUBMIT=false an toàn)",
   "scripts": {
     "deploy":    "tsx 01_deploy_lazymint.ts",
+    "v2:dry":     "tsx v2_wiring_dry.ts",
+    "v2:genesis": "tsx 20_canonical_genesis.ts",
+    "v2:vest":    "tsx 21_vest_to_kho.ts",
+    "v2:reserve": "tsx 22_reserve_draw.ts",
+    "v2:oneshot": "tsx 23_prove_oneshot.ts",
+    "v2:verify":  "tsx verify_canonical_v2.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
