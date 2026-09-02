@@ -1023,7 +1023,10 @@ chặn cho tới khi có bằng chứng:**
    đề xuất hạ `cap_1`/`cap_3` xuống mức chạm được trong một epoch làm **cả hai số hạng còn lại**
    của `c_sunk` sụp về ~0. (9a) vẫn đúng về toán, nhưng vế phải tiến tới 0 ⇒ cận dưới mất nghĩa.
    D8 không cứu được: nó ép tỷ lệ số mũ, không ép giá trị `cap`.
-3. **D8 chưa có chủ ép, và dạng TỔNG cho phép `w_3 = 0`.** Chi tiết CONTRACT §5.
+3. ~~**D8 chưa có chủ ép, và dạng TỔNG cho phép `w_3 = 0`.**~~ **ĐÃ ĐÓNG 2026-09-02** — cổng ép trên
+   chuỗi (`validators/tally.ak:read_weight_param` gọi `weight_guard.d8_ok`), dạng TỪNG CẶP
+   `w_1 ≥ w_2` ∧ `w_3 ≥ w_4` ∧ `w_k > 0`. Chi tiết CONTRACT §5. **Nhưng nó không đụng tới lỗ 2**:
+   D8 ép tỷ lệ số mũ, `cap_k` vẫn không có sàn.
 4. **`C3` là nợ thiết kế.** Chừng nào chưa có cơ chế đo phi tập trung thì mọi câu "C3 rất khó mua"
    mới là chốt về **nguyên tắc** (chống herding), chưa chốt về **cơ chế**.
 5. **Chợ danh tính.** Xác thực DID lúc bỏ phiếu là **registry-membership tĩnh** (`Tech-Spec.md`
@@ -1039,11 +1042,27 @@ chặn cho tới khi có bằng chứng:**
    danh **vừa là số danh tính kẻ tấn công cần mua**. DAO càng lớn thì hằng số này càng **không**
    an toàn hơn.
 
-**Một câu hỏi thủ tục, không phải câu hỏi toán, và nó thuộc về chủ dự án chứ không thuộc MATH:**
-khung này được duyệt 2026-06-05, và bản được duyệt lúc đó **chứa** khẳng định "bốn lớp". Nếu có
-tham số nào đã chốt (`BFT_FLOOR = 21`, `cap_4 = 100 triệu`, `N_min`) từng được hiệu chỉnh dựa một
-phần vào lớp thứ tư hư cấu, thì việc gỡ **không** kết thúc ở sửa văn bản. MATH không tự trả lời
-được câu này — nó cần người đã duyệt xác nhận.
+#### Ba tham số đã chốt có phải hiệu chỉnh lại sau khi gỡ lớp thứ tư không — ĐÃ TRUY, KHÔNG
+
+Khung này được duyệt 2026-06-05, và bản được duyệt lúc đó **có chứa** khẳng định "bốn lớp"
+(`9eb6199`, CONTRACT bản đầu, bốn chỗ nhắc "đốt LAMP"). Nên câu hỏi đúng là: có tham số nào lấy
+giá trị **từ** lớp đó không. Truy từng tham số theo đường dẫn xuất, không theo trí nhớ:
+
+| Tham số | Dẫn xuất từ | Có số hạng chi phí / đốt không | Kết luận |
+|---|---|---|---|
+| `BFT_FLOOR = 21` | chuẩn BFT `n ≥ 3f+1`: `⌊(21−1)/3⌋ = 6` ⇒ chịu `f=6` (§8B.6) | không — chỉ đếm **danh tính** | không đụng |
+| `cap_4 = 100 triệu` | tỷ lệ với lượng nắm giữ: `12 tỷ / 100 triệu = 120` DID mới dùng hết (CONTRACT nguyên lý 3) | không — chỉ là **phép chia** | không đụng |
+| `N_min` | **không phải tham số chốt** — là đại lượng dẫn xuất, công thức (8): `⌈(θ/(1−θ))·W_honest/VP_max⌉` | không — chỉ `θ`, `W_honest`, `VP_max` | không đụng |
+
+Số hạng `LAMP_đốt` chỉ từng xuất hiện **một chỗ duy nhất**: bên trong `c_sunk` ở §9 — tức trong
+mô hình **CHI PHÍ**, không trong mô hình đếm danh tính hay chia hạn mức. Ba tham số trên không lấy
+đầu vào nào từ `c_sunk`. Gỡ số hạng ⇒ **không số nào phải tính lại**; hệ quả duy nhất là cận dưới
+`(9a)` yếu đi (bỏ một số hạng không âm khỏi vế phải), đúng như §9 đã ghi.
+
+**Phần KHÔNG khép được bằng truy vết, và nó hẹp hơn nhiều:** bản duyệt 2026-06-05 mô tả nguyên lý
+3 và nguyên lý 4 mạnh hơn thực tế (thêm một lớp không tồn tại). Số không đổi, nhưng **sức thuyết
+phục của thiết kế lúc được gật thì đã đổi**. Đó là câu hỏi "khung này còn đủ sức không", không
+phải câu hỏi "tham số có sai không" — và nó đã có chỗ trả lời riêng: bảy lỗ hở liệt kê ngay trên.
 
 
 ### 10.6 Ví dụ số minh họa (dùng ĐÚNG mẫu số `W(base)` của §8.2 — KHÔNG dùng "tổng")
@@ -1266,7 +1285,10 @@ on-chain) + **FEAT** (định loại quyết định trọng yếu áp (14) + ch
 **I-5 (Trần weight nhóm mua-bằng-tiền + C2 phải khóa-thời-gian — D8).** (i) Mọi bảng weight phải
 thỏa **`w_2 + w_4 ≤ w_1 + w_3`** (W1, §6B.1) — tổng trọng số nhóm mua-được-bằng-tiền `MONEY={2,4}`
 KHÔNG vượt tổng trọng số nhóm cần-thời-gian `TIME={1,3}` (tổng quát `K>4`:
-`Σ_{MONEY} w_k ≤ Σ_{TIME} w_k`). Bảng vi phạm là **không hợp lệ** → validator tham số từ chối.
+`Σ_{MONEY} w_k ≤ Σ_{TIME} w_k`). Bảng vi phạm là **không hợp lệ** → giao dịch fail tại
+`Governance/onchain/validators/tally.ak:read_weight_param` (gọi `weight_guard.d8_ok`). Dạng ép thực
+tế là TỪNG CẶP `w_1 ≥ w_2` ∧ `w_3 ≥ w_4` ∧ `w_k > 0` — chặt hơn dạng tổng viết ở trên, vì dạng tổng
+nhận cả `w = (0.5, 0, 0, 0.5)` (CONTRACT §5).
 (ii) `C2` **chỉ tính dương nếu LAMP cam kết đã khóa thật và duy trì khóa ≥ `N_2` epoch** (W2,
 §6B.4); khóa-tức-thời → `C2 = 0`. Biến C2 từ vốn-hoàn-lại-tức-thời thành chi-phí-cơ-hội-thời-gian
 (như C1). Lý do: §6B.2 (weight = độ co giãn VP; chặn đòn bẩy vốn) + §10.5 (chống flash-fill). Thực

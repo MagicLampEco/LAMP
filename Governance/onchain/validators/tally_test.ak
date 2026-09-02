@@ -57,6 +57,33 @@ fn wp_input(bft: Int) -> Input {
   }
 }
 
+// ── Bảng lõm w≈0.5 (pow[c]=√c·SCALE) — dùng để dựng bảng weight VI PHẠM D8 ──
+fn sqrt_knots() -> List<Knot> {
+  [
+    Knot { c: 0, pow: 0 },
+    Knot { c: 250_000_000, pow: 15_811 * scale },
+    Knot { c: 1_000_000_000, pow: 31_623 * scale },
+  ]
+}
+
+/// Bảng weight VI PHẠM D8: `w_4` (vốn, mua được) NẶNG HƠN `w_3` (uy tín, phải kiếm).
+/// k3 lõm (w≈0.5), k4 tuyến tính (w=1) ⇒ `dominates(k3, k4)` sai ⇒ cổng phải chặn.
+fn wp_datum_d8_violating(bft: Int) -> WeightParam {
+  WeightParam { ..wp_datum(bft), k3: sqrt_knots(), k4: lin_knots() }
+}
+
+fn wp_input_d8_violating(bft: Int) -> Input {
+  let val = assets.from_lovelace(2_000_000) |> assets.add(wp_policy, #"50", 1)
+  Input {
+    output_reference: wp_ref_or(),
+    output: util.mk_output(
+      util.script_address(#"a0"),
+      val,
+      wp_datum_d8_violating(bft),
+    ),
+  }
+}
+
 fn summing(
   yes_raw: Int,
   no_raw: Int,
@@ -709,4 +736,37 @@ test sum_merge_inherit_plus_batch() {
   let burn = burn_all([vb])
   let tx = sum_tx_bft(d_in, d_out, [vote_input(vb, 1)], burn, 3)
   run_sum(tx, d_in)
+}
+
+// ════════════════════════════════════════════════════════════
+// Cổng D8 ở TẦNG VALIDATOR — bảng weight vi phạm thì tx fail
+// ════════════════════════════════════════════════════════════
+
+// Giao dịch Y HỆT TC1, chỉ thay bảng knots trong WeightParam. TC1 xanh ⇒ mọi thành phần
+// còn lại (clamp, NFT, datum) đều hợp lệ, nên test này đỏ CHỈ vì cổng D8.
+//
+// BẰNG CHỨNG CỔNG GÁNH VIỆC THẬT: gỡ dòng `expect weight_guard.d8_ok(...)` khỏi
+// `tally.ak:read_weight_param` rồi chạy lại — đúng một test này chuyển từ pass sang fail
+// (`aiken check` báo "expected 'finalize_rejects_d8_violating_weight_table' to fail"),
+// mọi test khác giữ nguyên. Nghĩa là bảng "vốn nặng hơn uy tín" nạp lọt trước bản vá này.
+test finalize_rejects_d8_violating_weight_table() fail {
+  let top = [TopEntry { vp_raw: 400, choice: Yes }]
+  let d_in = summing(700, 200, 100, 30, 25, top)
+  let d_out =
+    TallyDatum {
+      ..d_in,
+      phase: Clamped,
+      yes_power_eff: 400,
+      no_power_eff: 200,
+      abstain_power_eff: 100,
+    }
+  let tx =
+    Transaction {
+      ..placeholder,
+      inputs: [tally_input(d_in)],
+      reference_inputs: [wp_input_d8_violating(10)],
+      outputs: [tally_out(d_out)],
+    }
+  expect run_finalize(tx, d_in)
+  True
 }

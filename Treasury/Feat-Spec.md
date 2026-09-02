@@ -151,7 +151,7 @@ Với **mọi** asset, sau một settlement tx thu (bất biến áp cho **`Σ c
 ```
 
 Đây là **tổng quát hóa theo HAI chiều** của bất biến `treasury_receives_lamp >= lamp_paid` đã có ở
-generators MAGIC ([InstantGen vault.ak L298-313](https://github.com/MagicLampNetwork/MAGIC/blob/main/InstantGen/onchain/validators/vault.ak) (repo MAGIC)):
+generators MAGIC (`InstantGen/onchain/validators/vault.ak` L298-313 (kho MAGIC, module CHƯA công bố)):
 
 1. **Đa-asset** — generators chỉ áp cho LAMP; Treasury áp cho **mọi** asset trong `accepted_assets`.
 2. **Đếm theo payment script hash** — generators hiện đếm theo **FULL ADDRESS**
@@ -185,14 +185,12 @@ Thu **từng** micro-fee on-chain là **bất khả thi**: mỗi UTxO Cardano c�
 ### 2.4 Định giá KHÔNG ở Treasury
 
 Treasury **không biết** bò đắt hơn gà. Nó nhận `amount` đã tính. Logic "phí bao nhiêu cho loài
-nào" nằm ở app (OriLife `animal_fee` —
-[AnimalIdentity-Trust-Fee.md](../../OriLifeTrace/OriLife-Specs/AnimalIdentify/AnimalIdentity-Trust-Fee.md)).
+nào" nằm ở app (ví dụ `animal_fee` của OriLife — spec ở kho RIÊNG, không nằm trong kho này).
 Quy đổi LAMP↔USD/ADA (oracle TWAP) cũng ở phía app. Lý do first-principles: **một kho bạc đa thuê
 bao không thể biết mô hình giá của mọi app** — nếu nhúng định giá vào Treasury thì mỗi app mới
 phải sửa Treasury, phá tính open SDK.
 
-⚠️ **Đừng trộn hai tỷ lệ.** `animal_fee` 7% của OriLife
-([AnimalIdentity-Trust-Fee.md](../../OriLifeTrace/OriLife-Specs/AnimalIdentify/AnimalIdentity-Trust-Fee.md))
+⚠️ **Đừng trộn hai tỷ lệ.** `animal_fee` 7% của OriLife (spec ở kho RIÊNG)
 là **phí APP-LEVEL** (OriLife tự định, do app thu của người dùng), KHÔNG phải `protocol_cut_bps`
 của Treasury. Luồng đúng: app tính `amount` (đã gồm hoặc chưa gồm phí app — do app quyết) → gọi
 `collectToTreasury(amount)` → Treasury mới cắt **`protocol_cut_bps`** (tham số mở, DAO định) **lên
