@@ -157,7 +157,9 @@ Chi tiết + lệnh chạy: `Genesis/canonical-preprod-runbook.md`.
 | 3 | Tx C — `ReserveDraw` (nhánh chết ở mainnet) | ✅ `11438d3a…fc91` — `reserve_minted` 0 → **1.000 LAMP** |
 | 4 | bằng chứng one-shot (phủ định) | ✅ đúc SUPPLY lượt hai **bị chặn**; hạt giống đã tiêu ⇒ phủ định mọi lượt về sau |
 | — | `v2:verify` | ✅ **toàn bộ mục xanh** |
-| — | **Lớp 2**: MET dưới `reserve_draw.ak`, thử vượt trần nhịp phải bị chặn | ❌ **chưa dựng** |
+| 5 | **Lớp 2** — MET xuống `reserve_draw.ak`: custody NFT + auth NFT + `ReserveState` | ✅ `fdc93cb2…a84b` · `3b61c2a4…b3d7` · `28c494a4…b6c0` |
+| 6 | Lớp 2 — một lượt rút THẬT đi qua cổng (4 validator trong 1 giao dịch) | ✅ `a1d64ec2…026e` — 1.000 LAMP, `drawn` 0→1e9, `last_epoch` 0→4139 |
+| 7 | Lớp 2 — 3 phép PHỦ ĐỊNH + 1 đối chứng dương | ✅ P0 dựng được; P1 (δ = trần+1), P2 (lượt hai cùng epoch), P3 (không qua cổng) **đều bị chặn** |
 
 > **Phát hiện của chính màn diễn tập: REG ở ví thì cổng WHO KHÔNG mở.**
 > Bản đầu đặt REG NFT ở ví, và giới hạn ghi trong tài liệu chỉ là "chưa chứng minh xoay khoá".
@@ -168,11 +170,25 @@ Chi tiết + lệnh chạy: `Genesis/canonical-preprod-runbook.md`.
 > Giới hạn ghi trong bản trước **nhẹ hơn sự thật**. Đây đúng là loại lỗi đọc mã không ra: mã dựng
 > tx trông hợp lệ, chỉ validator mới từ chối. Chi tiết + bản vá: `canonical-preprod-runbook.md`.
 
-> **Lớp 1 chứng minh nhánh Reserve MỞ ĐƯỢC, không chứng minh nó CÓ PHANH.** Ở Lớp 1, MET nằm
-> ở ví, nên khi nó bị tiêu thì không validator nào chạy — trần nhịp δ ≤ E/1000 chưa được ép
-> ở đâu cả. Phát hành mainnet với MET ở ví thì ai giữ khoá rút trọn 9,63 tỷ trong một giao
-> dịch, chi phí bằng phí mạng (đúng đường (b) mà cổng MARKER-001 mô tả). Lớp 2 phải xanh
-> trước khi bàn tới mainnet.
+> **Lớp 2 ĐÃ XANH (2026-09-03) — trần nhịp là phanh THẬT, cổng cầu thì CHƯA.**
+>
+> Lớp 1 để MET ở ví: tiêu nó không kích validator nào, tức nhánh Reserve mở nhưng không phanh.
+> Lớp 2 đưa MET xuống `reserve_draw.ak`, và ba phép phủ định (kèm đối chứng dương ở cùng epoch,
+> nên mỗi phép chỉ khác đối chứng đúng một chiều) xác nhận validator **chặn thật**: vượt trần
+> nhịp, rút lượt hai cùng epoch, và rút mà không kích cổng — cả ba đều bị từ chối ở bước dựng
+> giao dịch.
+>
+> **Nhưng cổng CẦU (`parked < sàn`) chưa đóng lại được, và lý do là cấu trúc.** `reserve_draw`
+> Luật 9 đếm LAMP tới *payment credential* của đích, còn `reserve_gate` đọc `parked` từ *UTxO
+> mang custody NFT*. Δ rút về nằm ở một UTxO RIÊNG bên cạnh UTxO đó ⇒ `parked` không nhích.
+> Không vá được bằng cách rót thẳng vào UTxO custody: cùng một UTxO không thể vừa là reference
+> input (gate đòi) vừa bị tiêu. ⇒ Lượt rút Reserve **không bao giờ tự nâng `parked` qua sàn**;
+> cổng cầu chỉ đóng khi một `Collect` của Treasury nạp vào chính UTxO custody — mà `Collect`
+> chưa dựng, và nguồn thu cho nó vừa bị gỡ ở phía MAGIC (`Treasury/Exec-Spec.md §1` đính chính
+> 2026-09-03).
+>
+> Nói gọn cho người quyết: thứ đang giữ 9,63 tỷ LAMP là **trần nhịp ≥1000 epoch (~13,7 năm)**,
+> không phải "chỉ nhả khi Treasury cạn". Đừng ghi cổng cầu vào cột "đã có".
 
 ## D. Deploy mainnet (CHỈ sau A–C xanh)
 12. TAAD anchor OrgDID **Active trên mainnet** (PhoenixKey-Validator/Core).
@@ -209,7 +225,14 @@ Việc thật còn lại, theo thứ tự:
 - **Duyệt merge B5–B10** (điều phối nhiều đội: LAMP/Tuân, Core/Thư, SuperApp, Long).
 - **Cho phép gửi Tx A trên Preprod** để bước 2-4 của runbook chạy được — Tx A tiêu hạt giống
   và không làm lại được, nên nó không tự chạy.
-- **Dựng Lớp 2** (MET dưới `reserve_draw.ak`) — chưa có, và đây là cổng nặng nhất còn lại.
+- ~~**Dựng Lớp 2**~~ — **XONG 2026-09-03**, xanh trên Preprod (bảng C-bis bước 5-7).
+- **Quyết: cổng cầu Reserve có phải điều kiện phát hành không.** Trần nhịp đã ép được; cổng
+  `parked < sàn` thì KHÔNG tự đóng theo cấu trúc (lý do ở C-bis) và chỉ sống lại khi Treasury
+  có `Collect` — mà nguồn thu cho `Collect` vừa bị gỡ ở phía MAGIC
+  (`Treasury/Exec-Spec.md §1` đính chính 2026-09-03). Hai đường:
+  (a) phát hành với trần nhịp là phanh duy nhất, và **nói thẳng điều đó ra** trong Whitepaper;
+  (b) chặn phát hành tới khi Treasury có `Collect` + một nguồn thu đã chốt.
+  Đây là quyết định sản phẩm, không phải việc dev tự chọn.
 - **Rồi mới D12–D15.**
 
 Em (agent) KHÔNG thực thi bước mainnet nào (token thật, bất khả nghịch) — anh + đội làm, em chuẩn bị code + verify + diễn tập Preprod.

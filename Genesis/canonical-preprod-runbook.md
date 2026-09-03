@@ -60,7 +60,7 @@ chỉ tiêu được một lần trong lịch sử chuỗi. Marker nào không �
 |---|---|---|---|
 | SUPPLY | `oneshot_nft` | `supply_state` | neo định danh bộ đếm cap |
 | REG | `oneshot_nft` | ví (xem hạn chế bên dưới) | bảng `token_tag` → authority |
-| MET | `oneshot_nft` | ví (Lớp 1) | cửa DUY NHẤT của nhánh `ReserveDraw` |
+| MET | `oneshot_nft` | ví ở Lớp 1 → **`reserve_draw` ở Lớp 2** | cửa DUY NHẤT của nhánh `ReserveDraw`; ở ví là cửa KHÔNG KHOÁ |
 | TRSY | `treasury_nft` | `treasury.ak` (KHO) | đích A-DEST, đọc hash kho động |
 | DROP | `beacon_nft` | `beacon.ak` | beacon Distribution, cần cho claim/redeem |
 
@@ -119,7 +119,8 @@ bộ policy-id được **dựng lại và so** với state — lệch một ch�
 
 | chưa có | vì sao | ai làm |
 |---|---|---|
-| **Trần nhịp Reserve δ ≤ E/1000** | Lớp 1 để MET ở ví, nên khi MET bị tiêu **không validator nào chạy**. Nhánh mở được ≠ nhánh có phanh. Để MET ở ví lúc lên mainnet thì ai giữ khoá rút trọn 9,63 tỷ trong một giao dịch, chi phí bằng phí mạng. | Lớp 2 — đặt MET dưới `reserve_draw.ak` (module Reserve, 9 tham số) |
+| ~~**Trần nhịp Reserve δ ≤ E/1000**~~ | **ĐÃ XONG 2026-09-03** — Lớp 2 chạy xanh trên Preprod, xem mục Lớp 2 bên dưới. | — |
+| **Cổng cầu `parked < sàn` đóng lại được** | Lớp 2 chứng minh cổng MỞ khi két dưới sàn, và chứng minh không rút được nếu bỏ qua cổng. Nhưng **chưa chứng minh cổng ĐÓNG**, và lý do là cấu trúc chứ không phải thiếu công sức — xem "cổng cầu không tự đóng lại" bên dưới. | Treasury — `Collect` (chưa dựng) |
 | **Xoay khoá authority** | REG nằm dưới `oneshot_nft`, mà `oneshot_nft` có `else(_) { fail }` ⇒ UTxO đó **không tiêu được** ⇒ bảng registry BẤT BIẾN. Đúng ý cho diễn tập, nhưng nghĩa là chưa chạy thử được đường sửa bảng. Mainnet dùng `registry_write` — tiêu được, gác bằng TAAD/OrgDID | `mainnet-deploy-plan.md` mục D12 |
 | **Authority M-of-N** | committee của màn diễn tập là 1-of-1 (chính ví deploy) | mục A4, đang MỞ |
 | **Đường claim → redeem** | DROP NFT đã đúc và đặt đúng chỗ, nhưng chuỗi claim/beacon/redeem chưa chạy trong runbook này | Distribution |
@@ -128,7 +129,8 @@ bộ policy-id được **dựng lại và so** với state — lệch một ch�
 
 1. Bước 1-4 xanh trên Preprod, có tx hash ghi trong `canonical-v2-state.json`.
 2. `v2:verify` xanh toàn bộ mục.
-3. Lớp 2 xanh: MET dưới `reserve_draw`, và một lượt `ReserveDraw` vượt trần nhịp **bị chặn**.
+3. ~~Lớp 2 xanh: MET dưới `reserve_draw`, và một lượt `ReserveDraw` vượt trần nhịp **bị chặn**.~~
+   **XONG 2026-09-03** — `npm run v2:l2` → `v2:l2draw` → `v2:l2brake`, cả ba xanh (bảng dưới).
 4. Quyết định A1/A4 của `mainnet-deploy-plan.md` được chốt, cùng với việc phát biểu lại cổng
    A' theo `hash + commit nguồn` — hai việc đó ràng nhau, không làm lẻ (lý do ghi ở mục A').
 5. Công bố rõ: 1.000.000 LAMP đã đúc dưới policy mồi **không đốt được**
@@ -183,5 +185,88 @@ tx nên hỏng sớm với thông điệp đọc được thay vì "Mint[0] cras
 - Đọc trạng thái ngay sau `awaitTx` ra **bản cũ**: Tx C thành công trên chuỗi (`reserve_minted`
   = 1.000 LAMP) nhưng script đọc ra 0 rồi ném. Vá bằng `waitFor` — đọc lại theo nhịp, và khi hết
   hạn thì nói rõ "có thể tx ĐÃ thành công, kiểm bằng `v2:verify` trước khi kết luận là hỏng".
+
+## Lớp 2 — đặt phanh lên nhánh Reserve (chạy 2026-09-03, XANH)
+
+Lớp 1 chứng minh nhánh `ReserveDraw` **mở được**. Nó không chứng minh nhánh đó **có phanh**:
+MET nằm ở ví, nên tiêu nó không kích validator nào. Lớp 2 đưa MET xuống `reserve_draw.ak`.
+Từ đó một lượt rút phải làm hài lòng **bốn validator trong một giao dịch**:
+
+| validator | ép cái gì |
+|---|---|
+| `reserve_draw.spend` | ≤1 lượt/epoch · δ ≤ tổng/1000 · δ ≤ pot còn lại · δ về đúng đích · ReserveState tái tạo đúng · phải có auth NFT tiêu TỪ gate |
+| `reserve_gate.spend` | `parked` của két < sàn (cổng CẦU) · auth NFT quay về gate · auth không mint/burn |
+| `lamp_mint.mint` | nhánh `ReserveDraw`: đúng 1 input mang MET · MET không mint/burn |
+| `supply_state.spend` | `reserve_minted += δ` ≤ cap, đơn điệu |
+
+```bash
+AGENT_SECRETS=<đường dẫn> NETWORK=Preprod npm run v2:l2       # lắp phanh (3 tx)
+AGENT_SECRETS=<đường dẫn> NETWORK=Preprod npm run v2:l2draw   # rút thật QUA cổng
+AGENT_SECRETS=<đường dẫn> NETWORK=Preprod npm run v2:l2brake  # 3 phép PHỦ ĐỊNH + 1 đối chứng
+```
+
+| bước | giao dịch | kết quả |
+|---|---|---|
+| L2a custody seed | `fdc93cb2…a84b` | custody NFT → két, `parked` = 0 (dưới sàn ⇒ cổng cầu mở) |
+| L2b auth mint | `3b61c2a4…b3d7` | auth NFT → `reserve_gate`, **bị khoá ở đó** |
+| L2c meter park | `28c494a4…b6c0` | MET ví → `reserve_draw` + `ReserveState(start=4139, total=9,63e15, drawn=0, last=0)` |
+| DRAW qua cổng | `a1d64ec2…026e` | 1.000 LAMP · `drawn` 0 → 1e9 · `last_epoch` 0 → 4139 · `start`/`total` giữ nguyên |
+
+Ba phép **phủ định** dựng-nhưng-không-gửi, kèm một **đối chứng dương** P0 dựng được ở cùng
+epoch. Đối chứng là thứ làm ba phép kia nói được điều gì: cả bốn dùng CÙNG khuôn giao dịch,
+nên mỗi phép phủ định chỉ khác đối chứng **đúng một chiều**, và chiều đó là nguyên nhân.
+
+| phép | khác đối chứng ở | kết quả |
+|---|---|---|
+| P0 đối chứng | — | **dựng được** |
+| P1 | δ = trần + 1 (`9.630.000.000.001`) | **bị chặn** — Luật 4 |
+| P2 | epoch = `last_epoch` | **bị chặn** — Luật 3 |
+| P3 | không tiêu auth NFT từ gate | **bị chặn** — Luật 5 |
+
+Không có đối chứng thì ba dòng này vô nghĩa: cả ba trả về **cùng một chuỗi lỗi**
+(`failed script execution Spend[0] the validator crashed`), nên chuỗi đó không nói được luật
+nào đã chặn. Lượt chạy đầu mắc đúng bẫy đó — P1 dựng ở epoch đã rút, nên nó thật ra đang đo
+lại Luật 3 chứ không đo Luật 4. Đã sửa: P1 và P3 dựng ở `last_epoch + 1`.
+
+### Phát hiện — cổng cầu KHÔNG TỰ ĐÓNG LẠI ĐƯỢC
+
+Số đo sau lượt rút:
+
+```
+parked (UTxO mang custody NFT) = 0 LAMP      · sàn = 1.000 LAMP
+LAMP tại ĐỊA CHỈ két           = 1.000 LAMP
+```
+
+Hai số này lệch nhau, và đó là **hình dạng của thiết kế**, không phải lỗi lượt chạy:
+
+- `reserve_draw` Luật 9 đếm LAMP tới **payment credential** của đích ⇒ Δ vào đúng địa chỉ két, xanh.
+- `reserve_gate` G-CUST-1 + G-FLOOR-1 đọc `parked` từ **UTxO mang custody NFT** ⇒ Δ nằm ở một
+  UTxO RIÊNG bên cạnh, không tính vào `parked`.
+- Không sửa được bằng cách rót thẳng vào UTxO custody: cùng một UTxO **không thể vừa là
+  reference input** (gate đòi) **vừa bị tiêu** (rót vào thì phải tiêu) trong một giao dịch.
+
+⇒ Theo **cấu trúc**, một lượt rút Reserve không bao giờ tự nâng `parked` qua sàn. Cổng cầu chỉ
+đóng khi một tiến trình KHÁC nạp LAMP vào chính UTxO custody — tức một `Collect` của Treasury,
+**chưa dựng**. Chừng đó, thứ đang chặn là **trần nhịp** (≥1000 epoch để cạn pot ≈ 13,7 năm),
+không phải cổng cầu. Đừng ghi cổng cầu vào cột "đã có".
+
+### Ba thứ chỉ lộ khi chạy thật, lần này
+
+1. **`custody_seed.ak` luật S-MINT-2 cấm gộp.** `list.length(assets.policies(tx.mint)) == 1` —
+   giao dịch đúc custody không được mang thêm policy mint nào khác. Nên "một hạt giống, mọi
+   marker" của Lớp 1 **không nối dài sang Lớp 2 được**: custody phải có hạt giống riêng.
+2. **Hạt giống thứ hai phải chọn SAU khi giao dịch thứ nhất lên chuỗi.** Chọn cả hai trước thì
+   coin-selection của giao dịch đầu có quyền tiêu chính cái đang để dành. Lượt chạy đầu dính
+   đúng vậy — chỉ mục ví còn trả về UTxO vừa tiêu, và hạt giống auth trùng hạt giống custody.
+3. **Đọc sớm cắn thêm một lần nữa, ở một chỉ mục khác.** Địa chỉ két và địa chỉ `reserve_draw`
+   là hai chỉ mục riêng, nhà cung cấp cập nhật không đồng thời. Hậu-kiểm báo `LUẬT 9 HỎNG: két
+   chỉ tăng 0` trong khi trên chuỗi Δ nằm đúng chỗ. Hai lớp vá: bọc `waitFor`, và **ghi state
+   NGAY sau khi giao dịch xác nhận, trước mọi phép đo** — giao dịch không quay lui được, nên
+   một lỗi đo không được phép làm mất bản ghi của một lượt chạy thành công.
+
+Ngoài ra, bản demo cũ `Faucet/scripts/demo_reserve_e2e.ts` **không còn chạy được** với mã hiện
+hành và nên đọc như tài liệu lịch sử: nó truyền 2 tham số cho `custody.custody.spend` (blueprint
+khai 3), 2 cho `custody_seed.custody_seed.mint` (khai 1), và ghi custody NFT thành một dòng sổ —
+mà `collect.seed_value_ok` cộng NFT **ngoài** sổ, nên ghi thế là đếm hai lần.
 
 — LAMP agent
