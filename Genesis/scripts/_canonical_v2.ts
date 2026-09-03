@@ -148,6 +148,16 @@ export interface CanonicalWiring {
   /** Địa chỉ SupplyState (tầng 3) — nơi thread NFT sống. */
   ssHash: string;
   ssAddr: string;
+  /**
+   * Nơi REG NFT PHẢI nằm: địa chỉ script có payment credential ĐÚNG BẰNG `regPid`.
+   *
+   * Không phải lựa chọn thiết kế của bên gọi — `registry.ak::find_registry_datum` ép
+   * `i.output.address.payment_credential == Script(policy)`, và chú thích tại chỗ nói rõ vì sao
+   * không được gỡ: reference input KHÔNG cần chữ ký của ai, nên hễ registry NFT nằm ở một ví thì
+   * người giữ nó tự viết `entries` bất kỳ ⇒ tự cấp quyền đúc LAMP. Đặt REG ở ví thì cổng WHO
+   * KHÔNG mở — validator từ chối, không phải cảnh báo.
+   */
+  regAddr: string;
   /** KHO A-DEST = `treasury.ak`. DistributionVest bắt buộc rót LAMP vào đây. */
   treHash: string;
   treAddr: string;
@@ -279,6 +289,12 @@ export async function deriveWiring(
       khoUnit:    toUnit(khoPid, KHO_NAME),
       ssHash,
       ssAddr:  addrOf(ssHash, network),
+      // `oneshot_nft` là PlutusV3 một-script: policy-id của nhánh mint ≡ script hash của nhánh
+      // spend. Nên `Script(regPid)` là một địa chỉ có thật, và nó đúng là địa chỉ mà
+      // `find_registry_datum` đòi. Nhánh `else(_) { fail }` của `oneshot_nft` khiến UTxO ở đó
+      // KHÔNG BAO GIỜ tiêu được — bảng registry thành bất biến. Với màn diễn tập thì đó là điều
+      // muốn có; mainnet dùng `registry_write` (tiêu được, gác bằng TAAD) để xoay khoá được.
+      regAddr: addrOf(regPid, network),
       treHash,
       treAddr: addrOf(treHash, network),
       claimHash,
@@ -325,8 +341,20 @@ export interface CanonicalState {
   oneshotProof?: { attemptedAt: string; blocked: boolean; error: string };
 }
 
+/**
+ * Ghi state — BigInt phải đổi sang chuỗi TRƯỚC khi `JSON.stringify` chạm vào nó.
+ *
+ * Vì sao đáng một chú thích: `JSON.stringify` ném `TypeError: Do not know how to serialize a
+ * BigInt` với BigInt, và ở đây lỗi đó rơi vào chỗ tệ nhất — SAU khi giao dịch đã gửi lên chuỗi.
+ * Lượt chạy Tx A đầu tiên trên Preprod (2026-09-03) gặp đúng vậy: giao dịch thành công, marker
+ * nằm đúng chỗ, nhưng state không ghi được nên các bước sau không có `genesis_ref` để dựng lại
+ * policy-id. Việc trên chuỗi thì không quay lui được, nên một lỗi ghi tệp biến thành một lượt
+ * chạy mắc kẹt. Hai lớp vá: đổi kiểu ở đây, và cho `20_canonical_genesis.ts` chạy lại được để
+ * nhặt lại state (xem nhánh "hạt giống đã tiêu" ở tệp đó).
+ */
 export async function writeState(s: CanonicalState): Promise<void> {
-  await writeFile(STATE_PATH, JSON.stringify(s, null, 2) + "\n");
+  const json = JSON.stringify(s, (_k, v) => (typeof v === "bigint" ? v.toString() : v), 2);
+  await writeFile(STATE_PATH, json + "\n");
 }
 
 export async function readState(): Promise<CanonicalState> {
@@ -368,13 +396,62 @@ export async function rehydrate(): Promise<{
       .map((k) => `markers.${k}`),
   ];
   if (drift.length) {
+    // Hai nguyên nhân RẤT khác nhau, và gộp chúng vào một câu là đẩy người đọc đi sai đường:
+    //   • state THIẾU HẲN trường → bản wiring đã thêm trường mới sau lượt genesis. Vô hại,
+    //     nhặt lại state là xong; không policy-id nào đổi.
+    //   • state CÓ trường nhưng giá trị KHÁC → mã/blueprint đã đổi. Đây mới là chỗ phải dừng.
+    const thieu = drift.filter((k) => {
+      const v = k.startsWith("markers.")
+        ? state.wiring.markers?.[k.slice(8) as keyof CanonicalWiring["markers"]]
+        : state.wiring[k as keyof CanonicalWiring];
+      return v === undefined;
+    });
+    if (thieu.length === drift.length) {
+      throw new Error(
+        `STATE CŨ: tệp state không có trường ${thieu.join(", ")} — bản wiring đã thêm trường sau ` +
+        `lượt genesis. Không policy-id nào đổi, chỉ cần nhặt lại state:\n` +
+        `  ADOPT_GENESIS_TX=${state.wiring.genesisRef.txHash} ` +
+        `ADOPT_GENESIS_IDX=${state.wiring.genesisRef.outputIndex} tsx 20_canonical_genesis.ts`,
+      );
+    }
     throw new Error(
-      `DRIFT: dựng lại từ genesis_ref ra khác state đã ghi ở ${drift.join(", ")}. ` +
+      `DRIFT: dựng lại từ genesis_ref ra KHÁC GIÁ TRỊ đã ghi ở ${drift.filter((k) => !thieu.includes(k)).join(", ")}. ` +
       `Mã hoặc blueprint đã đổi sau lượt genesis. Đi tiếp = dựng tx cho một policy KHÁC ` +
       `cái đang giữ token. Kiểm 'git status' trong Genesis/onchain và Distribution/onchain.`,
     );
   }
   return { state, wiring, scripts };
+}
+
+/**
+ * Chờ tới khi nhà cung cấp TRẢ VỀ trạng thái sau giao dịch, không chỉ tới khi giao dịch xác nhận.
+ *
+ * `awaitTx` bảo "tx đã vào khối", nhưng chỉ mục UTxO của nhà cung cấp có thể còn chậm hơn một
+ * nhịp. Đọc ngay lúc đó thì ra bản CŨ — và bản cũ trông hoàn toàn hợp lệ, nên phép đối chiếu
+ * ngay sau khi gửi báo "không khớp" trong khi trên chuỗi mọi thứ đúng. Đã xảy ra thật ở lượt Tx C
+ * đầu tiên trên Preprod (2026-09-03): `reserve_minted` trên chuỗi là 1.000 LAMP, script đọc ra 0
+ * rồi ném — một lượt chạy THÀNH CÔNG bị báo là hỏng.
+ *
+ * Đọc lại theo nhịp cho tới khi `ok()` đúng, hoặc hết hạn thì ném với thông điệp nói rõ đây là
+ * chuyện đọc chậm chứ không phải giao dịch hỏng.
+ */
+export async function waitFor<T>(
+  what: string,
+  read: () => Promise<T>,
+  ok: (v: T) => boolean,
+  { tries = 12, delayMs = 5_000 }: { tries?: number; delayMs?: number } = {},
+): Promise<T> {
+  let last: T | undefined;
+  for (let i = 0; i < tries; i++) {
+    last = await read();
+    if (ok(last)) return last;
+    if (i === 0) console.log(`   (chờ chỉ mục nhà cung cấp bắt kịp — ${what})`);
+    await new Promise((r) => setTimeout(r, delayMs));
+  }
+  throw new Error(
+    `hết ${(tries * delayMs) / 1000}s chờ ${what}. Giao dịch có thể ĐÃ thành công trên chuỗi mà ` +
+    `chỉ mục nhà cung cấp chưa bắt kịp — kiểm bằng 'npm run v2:verify' trước khi kết luận là hỏng.`,
+  );
 }
 
 /** In wiring ra màn hình theo một khuôn duy nhất, để log các bước đối chiếu được nhau. */

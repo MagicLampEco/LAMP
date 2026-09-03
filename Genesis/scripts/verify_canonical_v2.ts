@@ -37,7 +37,10 @@ async function main(): Promise<void> {
   check(count(atSs,  wiring.threadUnit) === 1n, `SUPPLY NFT: 1 bản tại supply_state`);
   check(count(atTre, wiring.khoUnit)    === 1n, `TRSY NFT:   1 bản tại KHO (treasury.ak)`);
   check(count(atBcn, wiring.markers.beaconPid + "44524f50") === 1n, `DROP NFT:   1 bản tại beacon`);
-  check(count(atWlt, wiring.regUnit)    === 1n, `REG NFT:    1 bản (ví — mainnet sẽ dưới registry_write)`);
+  // REG phải ở `Script(regPid)`, không phải ở ví: `registry.ak::find_registry_datum` lọc theo
+  // NFT **và** theo `payment_credential == Script(policy)`. Ở ví thì cổng WHO đóng câm.
+  const atReg = await lucid.utxosAt(wiring.regAddr);
+  check(count(atReg, wiring.regUnit)    === 1n, `REG NFT:    1 bản tại Script(regPid) — cổng WHO đọc được`);
   check(count(atWlt, wiring.metUnit)    === 1n, `MET NFT:    1 bản (ví — Lớp 2 sẽ đưa xuống reserve_draw)`);
 
   // ── SupplyState ──────────────────────────────────────────────────────────

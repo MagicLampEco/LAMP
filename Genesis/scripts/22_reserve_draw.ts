@@ -27,7 +27,7 @@
 import { type UTxO } from "@lucid-evolution/lucid";
 import { NETWORK, makeLucid, walletPkh, explorerTx } from "./config.js";
 import { supplyStateToCbor, supplyStateFromCbor, supplyStateRedeemerToCbor, mintRouteToCbor } from "../offchain/src/datum.js";
-import { rehydrate, writeState } from "./_canonical_v2.js";
+import { rehydrate, writeState, waitFor } from "./_canonical_v2.js";
 
 const NFT_ADA = 2_000_000n;
 const RESERVE_LAMP = BigInt(process.env.RESERVE_LAMP ?? "1000");
@@ -84,11 +84,13 @@ async function main(): Promise<void> {
   console.log(`\n📤 Tx C: ${hash}\n   ${explorerTx(hash)}`);
   await lucid.awaitTx(hash);
 
-  const ssAfter = theOneHolding(await lucid.utxosAt(wiring.ssAddr), wiring.threadUnit, "SUPPLY NFT");
-  const s2 = supplyStateFromCbor(ssAfter.datum!);
-  if (s2.reserve_minted !== s1.reserve_minted) {
-    throw new Error(`SupplyState sau tx ghi reserve_minted=${s2.reserve_minted}, mong đợi ${s1.reserve_minted}.`);
-  }
+  const s2 = await waitFor(
+    `SupplyState.reserve_minted = ${s1.reserve_minted}`,
+    async () => supplyStateFromCbor(
+      theOneHolding(await lucid.utxosAt(wiring.ssAddr), wiring.threadUnit, "SUPPLY NFT").datum!,
+    ),
+    (s) => s.reserve_minted === s1.reserve_minted,
+  );
   console.log(`\n✓ reserve_minted: ${s0.reserve_minted} → ${s2.reserve_minted} oildrop`);
   console.log(`✓ NHÁNH ReserveDraw MỞ ĐƯỢC trên policy này.`);
   console.log(`  Trần phát hành thật = ${s2.dist_cap + s2.reserve_cap} oildrop = 36 tỷ LAMP,`);

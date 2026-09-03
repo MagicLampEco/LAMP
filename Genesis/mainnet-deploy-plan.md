@@ -145,14 +145,28 @@ và A4 an toàn trong lúc hai mục đó còn mở (xem bảng ở cuối tệp
 
 Chi tiết + lệnh chạy: `Genesis/canonical-preprod-runbook.md`.
 
+**Lượt chạy 2026-09-03 trên Preprod — Lớp 1 XANH TOÀN BỘ.**
+`lamp_policy` = `d9c09230079b810ab5ed92e8db4c190d42efc42db6aac028656f7e07`
+
 | bước | việc | trạng thái |
 |---|---|---|
-| 0 | `v2:dry` — wiring khô, không chạm mạng | ✅ sạch: 5 marker ra 5 policy-id khác nhau, cổng APPLY-001/002 im |
-| 1 | Tx A — đúc 5 marker one-shot | ⏳ **dựng + eval script OK trên Preprod** (CBOR 3.885 byte), **CHƯA gửi** |
-| 2 | Tx B — `DistributionVest` → KHO | ⏳ chưa chạy (cần UTxO do Tx A tạo) |
-| 3 | Tx C — `ReserveDraw` (nhánh chết ở mainnet) | ⏳ chưa chạy |
-| 4 | bằng chứng one-shot (phủ định) | ⏳ chưa chạy |
+| 0 | `v2:dry` — wiring khô, không chạm mạng | ✅ 5 marker ra 5 policy-id khác nhau, cổng APPLY-001/002 im |
+| 1 | Tx A — đúc 5 marker one-shot | ✅ `5d615fa7…a05d` — cả năm hạ cánh đúng chỗ |
+| 1b | dời REG về `Script(regPid)` | ✅ `0cca4708…bdf8` — xem phát hiện dưới bảng |
+| 2 | Tx B — `DistributionVest` → KHO | ✅ `44b73727…801a` — `dist_minted` 0 → 10.000 LAMP, KHO tăng đúng bằng Δ |
+| 3 | Tx C — `ReserveDraw` (nhánh chết ở mainnet) | ✅ `11438d3a…fc91` — `reserve_minted` 0 → **1.000 LAMP** |
+| 4 | bằng chứng one-shot (phủ định) | ✅ đúc SUPPLY lượt hai **bị chặn**; hạt giống đã tiêu ⇒ phủ định mọi lượt về sau |
+| — | `v2:verify` | ✅ **toàn bộ mục xanh** |
 | — | **Lớp 2**: MET dưới `reserve_draw.ak`, thử vượt trần nhịp phải bị chặn | ❌ **chưa dựng** |
+
+> **Phát hiện của chính màn diễn tập: REG ở ví thì cổng WHO KHÔNG mở.**
+> Bản đầu đặt REG NFT ở ví, và giới hạn ghi trong tài liệu chỉ là "chưa chứng minh xoay khoá".
+> Chạy thật thì Tx B đỏ ngay (`failed script execution Mint[0]`):
+> `registry.ak::find_registry_datum` lọc reference input theo NFT **và** theo
+> `payment_credential == Script(policy)` — ràng buộc cố ý, vì reference input không cần chữ ký
+> của ai nên registry NFT nằm ở ví là người giữ nó tự viết `entries` và tự cấp quyền đúc LAMP.
+> Giới hạn ghi trong bản trước **nhẹ hơn sự thật**. Đây đúng là loại lỗi đọc mã không ra: mã dựng
+> tx trông hợp lệ, chỉ validator mới từ chối. Chi tiết + bản vá: `canonical-preprod-runbook.md`.
 
 > **Lớp 1 chứng minh nhánh Reserve MỞ ĐƯỢC, không chứng minh nó CÓ PHANH.** Ở Lớp 1, MET nằm
 > ở ví, nên khi nó bị tiêu thì không validator nào chạy — trần nhịp δ ≤ E/1000 chưa được ép

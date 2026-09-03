@@ -48,7 +48,18 @@ async function main(): Promise<void> {
   console.log(`Δ = ${DELTA_LAMP} LAMP (${delta} oildrop)\n`);
 
   const ssU  = theOneHolding(await lucid.utxosAt(wiring.ssAddr),  wiring.threadUnit, "SUPPLY NFT");
-  const regU = theOneHolding(await lucid.wallet().getUtxos(),     wiring.regUnit,    "REG NFT");
+  // REG phải đọc ở `Script(regPid)`, KHÔNG phải ở ví: `registry.ak::find_registry_datum` lọc
+  // reference input theo NFT **và** theo `payment_credential == Script(policy)`. Tìm nó ở ví thì
+  // dựng được tx nhưng validator từ chối — lỗi hiện ra là "Mint[0] validator crashed", không nói
+  // một chữ nào về địa chỉ. Nên gác ở đây, hỏng sớm với thông điệp đọc được.
+  const atReg = await lucid.utxosAt(wiring.regAddr);
+  if (atReg.filter((u) => (u.assets[wiring.regUnit] ?? 0n) === 1n).length !== 1) {
+    throw new Error(
+      `REG NFT không nằm ở ${wiring.regAddr}. Cổng WHO đòi nó ở ĐÚNG địa chỉ này ` +
+      `(registry.ak::find_registry_datum) — ở ví thì cổng KHÔNG mở. Chạy 20b_place_registry.ts.`,
+    );
+  }
+  const regU = theOneHolding(atReg, wiring.regUnit, "REG NFT");
   const khoU = theOneHolding(await lucid.utxosAt(wiring.treAddr), wiring.khoUnit,    "TRSY NFT");
 
   // Đọc SupplyState THẬT từ chuỗi, không lấy số trong state file: state file là bản ghi

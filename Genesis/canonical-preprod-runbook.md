@@ -120,7 +120,7 @@ bộ policy-id được **dựng lại và so** với state — lệch một ch�
 | chưa có | vì sao | ai làm |
 |---|---|---|
 | **Trần nhịp Reserve δ ≤ E/1000** | Lớp 1 để MET ở ví, nên khi MET bị tiêu **không validator nào chạy**. Nhánh mở được ≠ nhánh có phanh. Để MET ở ví lúc lên mainnet thì ai giữ khoá rút trọn 9,63 tỷ trong một giao dịch, chi phí bằng phí mạng. | Lớp 2 — đặt MET dưới `reserve_draw.ak` (module Reserve, 9 tham số) |
-| **Xoay khoá authority** | REG nằm ở ví trong màn diễn tập; mainnet đặt nó dưới `registry_write` do OrgDID/TAAD gác | `mainnet-deploy-plan.md` mục D12 |
+| **Xoay khoá authority** | REG nằm dưới `oneshot_nft`, mà `oneshot_nft` có `else(_) { fail }` ⇒ UTxO đó **không tiêu được** ⇒ bảng registry BẤT BIẾN. Đúng ý cho diễn tập, nhưng nghĩa là chưa chạy thử được đường sửa bảng. Mainnet dùng `registry_write` — tiêu được, gác bằng TAAD/OrgDID | `mainnet-deploy-plan.md` mục D12 |
 | **Authority M-of-N** | committee của màn diễn tập là 1-of-1 (chính ví deploy) | mục A4, đang MỞ |
 | **Đường claim → redeem** | DROP NFT đã đúc và đặt đúng chỗ, nhưng chuỗi claim/beacon/redeem chưa chạy trong runbook này | Distribution |
 
@@ -135,13 +135,53 @@ bộ policy-id được **dựng lại và so** với state — lệch một ch�
    (`lamp_mint.ak:157` ép `delta > 0`; `Treasury/CONTRACT.md §5`). Chúng ở lại như tài sản
    của một policy đã khai tử, nên phải nói thẳng policy-id nào là LAMP thật.
 
-## Trạng thái đo được
+## Trạng thái đo được — lượt chạy 2026-09-03 trên Preprod, XANH TOÀN BỘ
 
-- Bước 0 (`v2:dry`) chạy sạch: 5 marker ra 5 policy-id khác nhau, cổng APPLY-001/002 im.
-- Bước 1 ở chế độ **không gửi** dựng xong và **eval script OK** trên Preprod
-  (CBOR 3.885 byte) — tức cả năm validator đúc marker qua được Plutus, gồm ràng buộc
-  "TRSY NFT phải hạ cánh ở một Script, mang TreasuryDatum, nợ mở = 0" (`treasury_nft.ak:50-56`).
-- Bước 2-4 **chưa chạy**: chúng cần các UTxO do Tx A tạo ra, nên chỉ chạy được sau khi Tx A
-  được gửi thật.
+`genesis_ref` = `525b80f4…e301#1` · `lamp_policy` = `d9c09230079b810ab5ed92e8db4c190d42efc42db6aac028656f7e07`
+
+| bước | giao dịch | kết quả |
+|---|---|---|
+| 0 `v2:dry` | — | 5 marker ra 5 policy-id khác nhau, cổng APPLY-001/002 im |
+| 1 Tx A | `5d615fa7…a05d` | 5 marker one-shot đúc trong MỘT giao dịch, hạ cánh đúng chỗ |
+| 1b dời REG | `0cca4708…bdf8` | REG về `Script(regPid)` — xem "phát hiện" bên dưới |
+| 2 Tx B | `44b73727…801a` | `dist_minted` 0 → 10.000 LAMP; KHO tăng đúng 10.000, **không đồng nào ra ví** |
+| 3 Tx C | `11438d3a…fc91` | `reserve_minted` 0 → **1.000 LAMP** — nhánh chết ở mainnet **chạy được ở đây** |
+| 4 one-shot | (không gửi) | đúc SUPPLY NFT lượt hai **bị chặn**; hạt giống đã tiêu ⇒ phủ định mọi lượt về sau |
+| — `v2:verify` | — | **toàn bộ mục xanh** |
+
+`SupplyState` trên chuỗi sau lượt chạy: `dist_minted` 10.000 · `reserve_minted` 1.000 ·
+`dist_cap` 26.370.000.000 · `reserve_cap` 9.630.000.000 · **tổng cap 36 tỷ**.
+
+### Phát hiện của chính màn diễn tập — REG ở ví thì cổng WHO KHÔNG mở
+
+Bản đầu đặt REG NFT ở ví và runbook chỉ ghi giới hạn là *"chưa chứng minh được việc xoay khoá
+authority"*. Chạy thật thì Tx B **đỏ ngay**: `failed script execution Mint[0]`.
+
+Nguyên nhân: `registry.ak::find_registry_datum` lọc reference input theo NFT **và** theo địa chỉ —
+`payment_credential == Script(policy)`. REG ở ví ⇒ bộ lọc rỗng ⇒ `None` ⇒ cổng WHO đóng.
+
+Ràng buộc đó **cố ý**, và chú thích tại chỗ nói vì sao không được gỡ: reference input không cần
+chữ ký của ai, nên registry NFT nằm ở một ví thì người giữ nó tự viết `entries` — kể cả
+`authority = SinglePkh(ví_mình)` — và tự cấp quyền đúc LAMP. Bản v1 thiếu đúng mệnh đề này và một
+PoC đã đúc LAMP không giới hạn từ anchor đặt ở ví thường.
+
+**Giới hạn ghi trong bản trước nhẹ hơn sự thật**: không phải "chưa chứng minh xoay khoá" mà là
+"cổng WHO không mở được". Đây đúng là loại lỗi một màn diễn tập sinh ra để bắt — đọc mã không ra,
+vì mã dựng tx trông hợp lệ và chỉ validator mới từ chối.
+
+Bản vá: `20_canonical_genesis.ts` nay đặt REG thẳng vào `Script(regPid)`;
+`20b_place_registry.ts` dời giúp một lượt đã lỡ đặt ở ví; `21_vest_to_kho.ts` gác trước khi dựng
+tx nên hỏng sớm với thông điệp đọc được thay vì "Mint[0] crashed".
+
+### Hai lỗi công cụ cũng chỉ lộ khi chạy thật
+
+- `JSON.stringify` ném với BigInt **sau khi Tx A đã gửi** — giao dịch thành công nhưng state
+  không ghi được, các bước sau mất `genesis_ref`. Vá hai lớp: đổi kiểu lúc ghi, và cho
+  `20_canonical_genesis.ts` **chạy lại được** (`ADOPT_GENESIS_TX=…`) để nhặt lại state.
+- `explorerTx` nướng cứng `preview.` cho mọi mạng ⇒ lượt Preprod in ra đường dẫn Preview, mở lên
+  thành "không tìm thấy giao dịch" — nghe như tx hỏng chứ không nghe như link sai.
+- Đọc trạng thái ngay sau `awaitTx` ra **bản cũ**: Tx C thành công trên chuỗi (`reserve_minted`
+  = 1.000 LAMP) nhưng script đọc ra 0 rồi ném. Vá bằng `waitFor` — đọc lại theo nhịp, và khi hết
+  hạn thì nói rõ "có thể tx ĐÃ thành công, kiểm bằng `v2:verify` trước khi kết luận là hỏng".
 
 — LAMP agent
