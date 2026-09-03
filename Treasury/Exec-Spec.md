@@ -62,15 +62,42 @@ Mục tiêu cuối của cả dự án: **làm LAMP có giá trị**. Treasury p
 > như §1 điểm 1 dưới đây mô tả — nó bị **xoá**. Hệ quả trực tiếp:
 >
 > - Việc "Migrate 3 generators" (§0 mục 2, §4.2 đường b-ii, §4.5) đang lập kế hoạch di trú một
->   chân thu **không tồn tại ở phía nguồn**. Adapter off-chain ráp datum cho một tx không còn
->   chuyển LAMP thì không có gì để ráp.
+>   chân thu **không còn ở nơi nó nhắm tới**. Adapter off-chain ráp datum cho một giao dịch
+>   generator thì không có gì để ráp — xem khối "chân thu ĐỔI CHỖ" ngay dưới để biết nó đi đâu.
 > - Mọi câu "tổng quát hoá bất biến đã có ở generators" (`CONTRACT.md:43`, `Feat-Spec.md:153,379`,
 >   `Math-Spec.md:127`, `SPEC.md:39`, `Tech-Spec.md:22,694`) nói đúng về **nguồn gốc ý tưởng**,
 >   nhưng sai thì: phải đọc là "từng có", không phải "đang có".
 >
-> Đây là câu hỏi thiết kế, không phải lỗi chính tả: **Treasury lấy LAMP từ đâu?** Chưa ai chốt,
-> nên tệp này KHÔNG tự đặt ra một nguồn thu mới. Trước khi viết dòng mã `treasury_core` nào,
-> câu đó phải có trả lời.
+> **Chân thu KHÔNG mất — nó ĐỔI CHỖ.** (bổ sung cùng ngày, sau khi hỏi lại kho MAGIC và tự đo)
+>
+> Đường LAMP về Treasury vẫn còn, nhưng nằm ở một module **không phải generator** nên lần quét
+> đầu không thấy: `Paymaster/onchain/validators/paymaster.ak:122-137` ép
+> `lamp_to_treasury >= lamp_this`, với `treasury_addr` là apply-param (`:57`, chú thích
+> *"SEC-01 fix: ép LAMP đến đúng Treasury"*). Đó là **cùng một hình** với bất biến cũ.
+>
+> Ý nghĩa kiến trúc: chân thu dời từ hành vi **SINH** sang hành vi **BẢO TRỢ**. Trước I-ACT-7,
+> Treasury thu khi ai đó sinh MAGIC. Sau I-ACT-7, sinh MAGIC không đụng LAMP; Treasury thu khi
+> một **app trả phí hộ người dùng**.
+>
+> ⇒ Hạng mục "Migrate 3 generators" (§0 mục 2, §4.2 đường b-ii, §4.5) **không sai đường dẫn, mà
+> sai ĐỐI TƯỢNG**: bên nguồn không phải ba generator, mà là **một Paymaster**. Adapter off-chain
+> vẫn có việc để làm — nhưng phải ráp cho Paymaster.
+>
+> **Ba giới hạn, ghi ra để không ai dựng lên nền quá tay:**
+>
+> 1. **Paymaster CHƯA deploy ở bất kỳ mạng nào** (`MAGIC/scripts/DEPLOYED.md` không có dòng nào).
+>    Mã có, test có; giao dịch thật thì chưa. Đây là **thiết kế đã hiện thực, chưa vận hành**.
+> 2. **Chưa có tệp CHỐT ở tầng SPEC** cho "Treasury thu bằng gì". Điều trên là **đo được từ mã
+>    đang sống**, không phải trích một quyết định đã ghi — nên đừng viết nó vào spec ở thì hiện
+>    tại, đúng cái bẫy khối này vừa gỡ ra khỏi sáu tệp.
+> 3. Mới quét `*.ak` ngoài `Legacy/` của kho MAGIC. CARP và PhoenixKey chưa quét; có thể còn chân
+>    thu song song.
+>
+> **Một điều ĐÃ kiểm và KHÔNG phải lỗ:** lo ngại Paymaster thừa hưởng lỗ double-satisfaction
+> C1/C2 của generator cũ (đếm theo full-address) là **sai** — `paymaster.ak:76-77` ép
+> `count_inputs_at_script == 1` và `count_outputs_at_script == 1`, kèm test phủ định
+> `pm_neg_double_meter` (`:849-850`). Nên khi Paymaster thành chân thu duy nhất, nó **không**
+> mang theo lỗ cũ.
 
 | Thành phần | Trạng thái | Bằng chứng |
 |---|---|---|
