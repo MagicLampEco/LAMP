@@ -41,6 +41,11 @@ Cả hai chỉ tham chiếu **1 param chung `faucet_nft_policy`** (tính từ `g
 
 > `validators/faucet.ak` + `tlamp_policy.ak` (v1) giữ làm **legacy** (pool nhả 100
 > tLAMP không DID-gated). Không phá; v2 độc lập.
+>
+> ⚠️ **"Legacy" ở đây là về THIẾT KẾ, không phải về cái đang chạy.** Pool đang sống trên
+> Preprod và Preview là **v1**; v2 **chưa deploy canonical** (chỉ có run demo, không có state
+> file). Muốn dựng tx cho pool thật thì đi đường v1 — xem
+> [`deployed-artifacts.md`](./deployed-artifacts.md).
 
 ### Param signature
 
@@ -100,7 +105,9 @@ toàn cung: token idle quay lại pool, không bốc hơi, không vào ví keepe
 - `claimDidBuilder.ts` — `buildClaimDidTx` (claim dùng DID NFT, re-claim tùy chọn).
 - `useBuilder.ts` — `buildUseTx`.
 - `reclaimBuilder.ts` — `buildReclaimTx`.
-- `mintBuilder.ts` + `claimBuilder.ts` — legacy v1.
+- `mintBuilder.ts` + `claimBuilder.ts` — legacy v1 về thiết kế, **nhưng là đường đúng cho pool
+  đang sống trên Preprod/Preview** (xem [`deployed-artifacts.md`](./deployed-artifacts.md)).
+  `claimDidBuilder.ts` gặp datum v1 sẽ ném `FAUCET-DATUM-031` ngay ở offchain.
 
 ## Test
 

@@ -24,8 +24,11 @@
   **`offchain/src/claimBuilder.ts`**.
   > ⚠️ **KHÔNG phải `claimDidBuilder.ts`.** Tệp đó là **Faucet v2**: drip **1001** tLAMP và bắt
   > buộc claimer mang một UTxO chứa **DID NFT** (`claimDidBuilder.ts:1,7`). Pool v1 đang sống
-  > không có POOL NFT và datum là 100 tLAMP ⇒ tx dựng bằng v2 sẽ bị chính validator từ chối.
-  > Dòng này trước đây gộp hai thiết kế vào một câu, nên người đọc đi thẳng vào v2 và tắc.
+  > không có POOL NFT và datum chỉ có một trường ⇒ `buildClaimDidTx` **chết ngay ở offchain,
+  > trước khi dựng nổi tx**: `decodeFaucetConfig` ném `FAUCET-DATUM-031: FaucetConfig expects
+  > 3 fields, got 1` (`offchain/src/datum.ts:64`, gọi từ `claimDidBuilder.ts:103`). Lỗi này
+  > may là lỗi kêu thành tiếng — nhưng nó không nói "bạn đang dùng nhầm bản", nên vẫn tốn một
+  > vòng dò. Dòng này trước đây gộp hai thiết kế vào một câu, nên người đọc đi thẳng vào v2 và tắc.
 
 ## Preprod
 - Seed pool tx: `51f8944d795f874791fd11375fe8441f5e12894f75053fae7718af36d153a4c7` (9.000 tLAMP)
