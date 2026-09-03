@@ -12,6 +12,9 @@
     "v2:vest":    "tsx 21_vest_to_kho.ts",
     "v2:reserve": "tsx 22_reserve_draw.ts",
     "v2:oneshot": "tsx 23_prove_oneshot.ts",
+    "v2:l2":      "tsx 24_reserve_layer2_init.ts",
+    "v2:l2draw":  "tsx 25_gated_draw.ts",
+    "v2:l2brake": "tsx 26_prove_brake.ts",
     "v2:verify":  "tsx verify_canonical_v2.ts",
     "typecheck": "tsc --noEmit"
   },

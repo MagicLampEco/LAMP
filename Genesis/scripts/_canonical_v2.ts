@@ -334,11 +334,37 @@ export const STATE_PATH = resolve(__dirname, "canonical-v2-state.json");
 export interface CanonicalState {
   wiring: CanonicalWiring;
   /** Giao dịch đã gửi, theo thứ tự các bước. Thiếu bước nào = bước đó chưa chạy. */
-  tx: Partial<Record<"genesis" | "vest" | "reserveDraw", string>>;
+  tx: Partial<Record<
+    "genesis" | "placeReg" | "vest" | "reserveDraw"
+    | "custodySeed" | "authMint" | "meterPark" | "gatedDraw" | "fillFloor",
+    string
+  >>;
   /** Số oildrop đã đúc theo từng đường, để verify đối chiếu với datum on-chain. */
   minted: { dist: string; reserve: string };
   /** Bằng chứng phủ định: đúc marker lượt hai bị chặn. */
   oneshotProof?: { attemptedAt: string; blocked: boolean; error: string };
+
+  /**
+   * Lớp 2 — hai hạt giống riêng cho custody NFT và auth NFT.
+   *
+   * Trường TÙY CHỌN vì Lớp 2 CỘNG THÊM lên bản Lớp 1 đã chạy: một state chưa có mục này là
+   * state hợp lệ của một bản mới đi tới Lớp 1. `rehydrate()` không đụng tới nó — wiring Lớp 2
+   * dựng lại bằng `deriveReserveWiring()` ở `_reserve_layer2.ts`.
+   */
+  reserve?: {
+    custodyRef: { txHash: string; outputIndex: number };
+    authRef: { txHash: string; outputIndex: number };
+    /** Bằng chứng phủ định của phanh: vượt trần nhịp và rút hai lượt cùng epoch đều bị chặn. */
+    brakeProof?: {
+      attemptedAt: string;
+      overCapBlocked: boolean;
+      overCapError: string;
+      sameEpochBlocked: boolean;
+      sameEpochError: string;
+      noGateBlocked: boolean;
+      noGateError: string;
+    };
+  };
 }
 
 /**
