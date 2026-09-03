@@ -19,7 +19,8 @@ Tái dùng nền: [`Distribution/onchain/validators/treasury.ak`](../Distributio
 - 3 validator on-chain: **Custody** (giữ value + sổ bucket), **Collect** (cổng thu `collectToTreasury`),
   **Release** (cổng chi qua Governance). Datum + redeemer + bất biến từng cái.
 - **Bucket accounting trong datum** — sổ, KHÔNG mỗi bucket một UTxO (chống bloat + min-ADA).
-- Bất biến **bảo-toàn-value PER-ASSET** (tổng quát hóa `treasury_receives_lamp >= lamp_paid`).
+- Bất biến **bảo-toàn-value PER-ASSET** (tổng quát hóa `treasury_receives_lamp >= lamp_paid` mà
+  generators TỪNG có — đã gỡ 2026-09-03, `Exec-Spec.md §1`).
 - Chống **double-satisfaction** theo **payment script hash** (bài học C1/C2/M1).
 - **Batch settlement tx** (gộp nhiều collect/micro-fee trong 1 tx).
 - **Multi-asset** (LAMP/ADA/token doanh nghiệp), **địa chỉ Treasury tách ví**.
@@ -690,8 +691,11 @@ tấn công của nhánh chi.
 > v1.x; khi mở phải bổ sung C-NFT-1 (seed NFT trên custody_out) + C-EPOCH + C-POS/C-SORT. v1 nạp
 > generators bằng **adapter off-chain (b-ii)** đi qua nhánh `Collect` đã có (không cần MigrateIn).
 
-Generators MAGIC (Vacuum/Instant/Schedule…) hiện trả LAMP về một `treasury_addr` đơn giản (bất biến
-`treasury_receives_lamp >= lamp_paid`, `VacuumGen/onchain/validators/vault.ak` (kho MAGIC, module CHƯA công bố)).
+Generators MAGIC (Vacuum/Instant/Schedule…) TỪNG trả LAMP về một `treasury_addr` đơn giản (bất biến
+`treasury_receives_lamp >= lamp_paid`, `Legacy/VacuumGen/onchain/validators/vault.ak` — kho MAGIC nay
+công khai, nhưng module ĐÃ KHAI TỬ và dời vào `Legacy/`; đường cũ `VacuumGen/…` trả 404). ⛔ Xem
+`Exec-Spec.md §1` khối đính chính: cả ba generator đã gỡ chân Treasury, nên đoạn migrate dưới đây
+đang di trú một chân thu không còn tồn tại ở phía nguồn.
 Hai con đường tích hợp:
 
 **(a) Migrate value cũ (một lần) — `MigrateIn`:** (param thêm `old_treasury_hash: ByteArray` cho instance)

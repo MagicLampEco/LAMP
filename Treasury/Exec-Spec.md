@@ -46,18 +46,46 @@ Mục tiêu cuối của cả dự án: **làm LAMP có giá trị**. Treasury p
 
 ## 1. Trạng thái thật hiện tại (bám sự thật, không trí nhớ)
 
+> ### ⛔ ĐÍNH CHÍNH 2026-09-03 — nguồn thu mà cả tệp này giả định KHÔNG CÒN TỒN TẠI
+>
+> Toàn bộ họ spec Treasury dựng trên bất biến `treasury_receives_lamp >= lamp_paid` của
+> generators MAGIC, và mô tả nó ở thì hiện tại ("đã có", "đã live"). Đo lại hôm nay bằng cách
+> hỏi máy chủ, ở commit `2ced26fe8eb9b7ffceb904c24ac502f433c16965` của `MagicLampEco/MAGIC`:
+>
+> | Generator | Chân Treasury hôm nay | Bằng chứng nguyên văn |
+> |---|---|---|
+> | InstantGen | **đã gỡ** | `InstantGen/onchain/validators/vault.ak:6-9` — "I-ACT-7 LAMP NEVER MOVES when MAGIC is generated… There is no Treasury leg any more"; `:1144` — "the former `treasury_receives_lamp` helper is GONE" |
+> | ScheduleGen | **đã gỡ** | `ScheduleGen/onchain/validators/vault.ak:11-14` — "A fire no longer transfers LAMP to a Treasury… The `treasury_addr` apply-parameter is gone"; `:1195-1197` |
+> | VacuumGen | **đã khai tử**, dời sang `Legacy/VacuumGen/` | `MagicLampEco/MAGIC/contents/VacuumGen` → HTTP 404; bia mộ có chủ ý ở `BOUNDARIES.md §2` (giữ `BatchSource::Vacuum` vì chỉ số constructor Plutus Data là hợp đồng nhị phân) |
+>
+> Nghĩa là: **không còn generator nào trả LAMP về Treasury.** Bất biến cũ không bị *siết chặt*
+> như §1 điểm 1 dưới đây mô tả — nó bị **xoá**. Hệ quả trực tiếp:
+>
+> - Việc "Migrate 3 generators" (§0 mục 2, §4.2 đường b-ii, §4.5) đang lập kế hoạch di trú một
+>   chân thu **không tồn tại ở phía nguồn**. Adapter off-chain ráp datum cho một tx không còn
+>   chuyển LAMP thì không có gì để ráp.
+> - Mọi câu "tổng quát hoá bất biến đã có ở generators" (`CONTRACT.md:43`, `Feat-Spec.md:153,379`,
+>   `Math-Spec.md:127`, `SPEC.md:39`, `Tech-Spec.md:22,694`) nói đúng về **nguồn gốc ý tưởng**,
+>   nhưng sai thì: phải đọc là "từng có", không phải "đang có".
+>
+> Đây là câu hỏi thiết kế, không phải lỗi chính tả: **Treasury lấy LAMP từ đâu?** Chưa ai chốt,
+> nên tệp này KHÔNG tự đặt ra một nguồn thu mới. Trước khi viết dòng mã `treasury_core` nào,
+> câu đó phải có trả lời.
+
 | Thành phần | Trạng thái | Bằng chứng |
 |---|---|---|
 | `Distribution/treasury.ak` | ✅ **live Preview**, 4 test (happy + double_release + ada_drain + zero_release) | [`treasury.ak`](../Distribution/onchain/validators/treasury.ak) L141–174; commit `1fbd78a4` |
 | Harness e2e tuần tự 00→04 | ✅ chạy thật Preview (mint→genesis→beacon→redeem, in tx hash + explorer) | [`Distribution/scripts/04_e2e.ts`](../Distribution/scripts/04_e2e.ts), [`live-deploy-preview.md`](../Distribution/scripts/live-deploy-preview.md) |
-| 3 generators trả Treasury | ✅ **đã trả Treasury trên Preview** — bất biến `treasury_receives_lamp >= lamp_paid` | `InstantGen/onchain/validators/vault.ak` (kho MAGIC, module CHƯA công bố) L173–174, L298–313; VacuumGen/ScheduleGen tương tự |
-| AppEconomics W/distribute | ✅ engine reward + test (math.ts) | `AppEconomics/offchain/src/math.ts` (kho MAGIC, module CHƯA công bố) |
+| 3 generators trả Treasury | ⛔ **KHÔNG CÒN ĐÚNG từ 2026-09-03** — cả ba đã gỡ chân Treasury (xem khối đính chính trên). Từng đúng trên Preview, và bản ghi đó vẫn đúng *tại thời điểm đo cũ*. | `InstantGen/…/vault.ak:6-9,1144`; `ScheduleGen/…/vault.ak:11-14`; `VacuumGen` → 404 (kho MAGIC public, commit `2ced26fe`) |
+| AppEconomics W/distribute | ✅ engine reward + test (math.ts) | `AppEconomics/offchain/src/math.ts` (kho MAGIC — nay ĐÃ công bố, PR #30 merge 2026-09-03T02:46:40Z) |
 | Treasury (collect + core) | 🔜 chỉ `CONTRACT.md` + `SPEC.md` outline | thư mục này |
 | Governance release gate | 🔜 CONTRACT VP đã duyệt; chưa có beacon kết quả vote on-chain | [`Governance/VotingPower/CONTRACT.md`](../Governance/VotingPower/CONTRACT.md) |
 
 **Hai sự thật quyết định lộ trình:**
 
-1. **Generators ĐÃ trả Treasury** — nhưng trả vào một `treasury_addr` *câm*: chỉ kiểm `lamp_at_treasury >= lamp_paid` **đếm theo FULL ADDRESS** `o.address == treasury_addr` (gồm stake cred, `vault.ak` L298–313 (kho MAGIC — `InstantGen/onchain/validators/vault.ak`, module CHƯA công bố)). Chưa có split cut, chưa bucket-sổ, chưa receipt, **và output câm KHÔNG mang datum**. ⇒ Migrate KHÔNG đơn thuần đổi addr: custody `Collect` validator yêu cầu output có **inline datum collect**, mà vault câm không build datum. Đường chốt: **adapter off-chain** (TECH §9 b-ii) — generator giữ logic cũ, adapter ráp datum + phát `Collect` (chi tiết §4.1). ⚠️ Bất biến mới **siết chặt hơn** bất biến cũ theo HAI chiều — per-asset thay vì chỉ LAMP, và đếm theo **payment script hash** thay vì full-address — KHÔNG phải quan hệ "tập con" thuần: cách đếm khác nhau (full-addr → script-hash) nên migrate **phải nâng cách đếm**, không chỉ đổi giá trị `treasury_addr`; đếm full-address hiện tại còn hở double-satisfaction qua stake cred (lỗ C1/C2 generators CHƯA sửa). Lưu ý thêm: quan hệ tập con (nếu xét riêng VALUE) cũng **CHỈ đúng cho ràng buộc VALUE** (`Σ out ≥ Σ in + cut`), KHÔNG đúng cho ràng buộc DATUM.
+1. **Generators TỪNG trả Treasury** (đã gỡ 2026-09-03 — xem khối đính chính đầu §1; đoạn dưới
+   giữ lại vì nó mô tả đúng khuôn cũ và lý do vì sao migrate không bao giờ chỉ là "đổi addr")
+   — nhưng trả vào một `treasury_addr` *câm*: chỉ kiểm `lamp_at_treasury >= lamp_paid` **đếm theo FULL ADDRESS** `o.address == treasury_addr` (gồm stake cred, `vault.ak` L298–313 — kho MAGIC nay ĐÃ công bố, và chân Treasury này ĐÃ GỠ (§1 đính chính); số dòng L298–313 là của bản CŨ, bản hiện tại không còn hàm đó). Chưa có split cut, chưa bucket-sổ, chưa receipt, **và output câm KHÔNG mang datum**. ⇒ Migrate KHÔNG đơn thuần đổi addr: custody `Collect` validator yêu cầu output có **inline datum collect**, mà vault câm không build datum. Đường chốt: **adapter off-chain** (TECH §9 b-ii) — generator giữ logic cũ, adapter ráp datum + phát `Collect` (chi tiết §4.1). ⚠️ Bất biến mới **siết chặt hơn** bất biến cũ theo HAI chiều — per-asset thay vì chỉ LAMP, và đếm theo **payment script hash** thay vì full-address — KHÔNG phải quan hệ "tập con" thuần: cách đếm khác nhau (full-addr → script-hash) nên migrate **phải nâng cách đếm**, không chỉ đổi giá trị `treasury_addr`; đếm full-address hiện tại còn hở double-satisfaction qua stake cred (lỗ C1/C2 generators CHƯA sửa). Lưu ý thêm: quan hệ tập con (nếu xét riêng VALUE) cũng **CHỈ đúng cho ràng buộc VALUE** (`Σ out ≥ Σ in + cut`), KHÔNG đúng cho ràng buộc DATUM.
 
 2. **`Distribution/treasury.ak` đã chứng minh khuôn release an toàn** (C-TRE-1 đếm theo script hash; C-VAL-0 bảo toàn tuyệt đối mọi asset; reject double-release + ada-drain). ⇒ `treasury_core` **mở rộng từ đây**: thay "release kích hoạt bởi Redeem hợp lệ" bằng "release kích hoạt bởi proposal Governance pass (đọc beacon)".
 
@@ -112,7 +140,7 @@ Mục tiêu cuối của cả dự án: **làm LAMP có giá trị**. Treasury p
 
 ## 4. Migrate 3 generators (Instant / Vacuum / Schedule)
 
-**Hiện trạng:** mỗi vault validator có param `treasury_addr` và kiểm `treasury_receives_lamp(outputs, treasury_addr, lamp_policy, lamp_paid) ⇒ lamp_at_treasury >= lamp_paid` (`vault.ak` L298–313 (kho MAGIC — `InstantGen/onchain/validators/vault.ak`, module CHƯA công bố)). Treasury hiện là **addr câm** (ví trên Preview).
+**Hiện trạng (bản CŨ — hết hiệu lực 2026-09-03, giữ để đối chiếu):** mỗi vault validator có param `treasury_addr` và kiểm `treasury_receives_lamp(outputs, treasury_addr, lamp_policy, lamp_paid) ⇒ lamp_at_treasury >= lamp_paid` (`vault.ak` L298–313 — kho MAGIC nay ĐÃ công bố, và chân Treasury này ĐÃ GỠ (§1 đính chính); số dòng L298–313 là của bản CŨ, bản hiện tại không còn hàm đó). Treasury hiện là **addr câm** (ví trên Preview).
 
 **Đích:** `treasury_addr` trỏ tới **`treasury_core` script address** (instance MagicLamp), và output vào đó mang **datum hợp lệ** (sổ bucket cập nhật + receipt). Generator KHÔNG cần biết bucket logic — nó chỉ cần đẩy LAMP + ghi `app_id`/`category` vào output datum theo schema collect.
 
@@ -150,7 +178,7 @@ OriLife đang **chờ một spec settlement**: làm sao phí thu từ app (vd `a
 |---|---|---|
 | 5.1 | OriLife tính `animal_fee` (định giá theo loài) + quy đổi qua **oracle** (`MAGIC/oracle`). | **APP + oracle**, NGOÀI Treasury (CONTRACT §3.5, §7). Treasury chỉ nhận `amount`. |
 | 5.2 | OriLife gọi `collectToTreasury(LAMP, fee, app_id="orilife", category)`. | Lớp thu (M2). Split cut → bucket; receipt ghi `app_id="orilife"`. |
-| 5.3 | AppEconomics `computeW`/`distribute` (`AppEconomics/offchain/src/math.ts` (kho MAGIC, module CHƯA công bố)) tính **pool reward** từ W mỗi app (dùng receipt làm input `V`/util). | **MAGIC/AppEconomics**. Treasury KHÔNG tính reward — chỉ **giữ** pool + **chi** theo output của `distribute()`. |
+| 5.3 | AppEconomics `computeW`/`distribute` (`AppEconomics/offchain/src/math.ts` (kho MAGIC — nay ĐÃ công bố, PR #30 merge 2026-09-03)) tính **pool reward** từ W mỗi app (dùng receipt làm input `V`/util). | **MAGIC/AppEconomics**. Treasury KHÔNG tính reward — chỉ **giữ** pool + **chi** theo output của `distribute()`. |
 | 5.4 | Chi reward: `Release` redeemer (M3) chi từ bucket reward theo `distribute()` output, qua cổng Governance (proposal "phân bổ reward epoch e" pass). | Lớp chi (M3). Cap 30%/app (`MAX_SINGLE_APP_REWARD_BPS`) đã ở AppEconomics — Treasury chỉ chấp hành số liệu. |
 
 **DoD tích hợp OriLife:** e2e Preview — mint test-LAMP cho ví "OriLife user" → `collectToTreasury(fee)` → custody tăng + receipt `orilife` → (giả proposal pass) → `Release` chi reward theo `distribute()` → verify on-chain. Đây là **bằng chứng settlement spec mà OriLife chờ đã đóng**.
