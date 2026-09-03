@@ -4,10 +4,19 @@
 > Đây là tài liệu **đối ngoại** (bản phái sinh), không phải đặc tả nội bộ. Chuẩn: `../CONVENTIONS.md`.
 
 > **Trạng thái**: ĐÃ CHỐT — bảng 18 pot (§1), phân loại gen-MAGIC ba mức (§0, §2), thuyết minh
-> từng pot (§3) và kết luận về hệ-số-gen (§4) là quyết định của chủ repo, chốt **2026-08-30**.
-> **Còn mở, và chỉ còn chỗ này**: quy tắc claim chi tiết của ba pot phân phối sớm (§5). Một mục
-> đã chốt vẫn sửa được, nhưng sửa bằng một quyết định mới có ngày — không phải vì tài liệu này
-> tự nhận là nháp.
+> từng pot (§3) và kết luận về hệ-số-gen (§4) là quyết định của chủ repo.
+> `[NEEDS-EVIDENCE: ngày chốt bảng 18 pot — quyết định có thật, nhưng chưa có bản ghi nào trong
+> repo để tra; theo CONVENTIONS.md Rule 3 thì phải dẫn được nguồn mới ghi ngày ra đây]`
+>
+> **Còn mở** — hai chỗ, không phải một:
+> - **§5** — quy tắc claim chi tiết của **ETD** và **SRCL**. Airdrop thì KHÔNG còn mở nữa: schema
+>   nạp/claim chốt 2026-07-31 và tham số vận hành chốt 2026-08-18
+>   ([`Airdrop/CONTRACT.md`](../Airdrop/CONTRACT.md) §1.7 và §6); phần duy nhất còn treo của
+>   Airdrop là **nghĩa `owner` của vai SPO** (CONTRACT.md §1.7).
+> - **§3, pot 18 (Liquidity)** — cơ chế, thời điểm và điều kiện pháp lý để kích hoạt.
+>
+> Một mục đã chốt vẫn sửa được, nhưng sửa bằng một quyết định mới có ngày — không phải vì tài
+> liệu này tự nhận là nháp.
 >
 > Mục đích: để mọi người hiểu **mỗi pot là gì, dùng làm gì, bị khoá hay nhỏ-giọt thế nào, và có
 > sinh MAGIC hay không.**
@@ -222,14 +231,15 @@ governance đầy đủ chưa lên → giao DAO sau.
 
 ---
 
-## 5. Ba pot phân phối cộng đồng sớm (chi tiết claim — chốt sau)
+## 5. Ba pot phân phối cộng đồng sớm (chi tiết claim — ETD/SRCL chốt sau, Airdrop đã chốt)
 
 - **ETD (12.000 nghìn)** — delegator sớm pool TIGER redeem TRƯỚC làm test toàn cầu. Rút theo claim_account vesting permissionless.
-- **Airdrop (120.000 nghìn)** — **3 pot**: Delegator 100M · SPO 5M · CS 15M, cả ba ∝ trọng số stake (v2, chốt 10/7). Đăng ký bắt buộc; claim Merkle sau snapshot.
+- **Airdrop (120.000 nghìn)** — **3 pot**: Delegator 100M · SPO 5M · CS 15M, cả ba ∝ trọng số stake (v2, chốt 10/7). Đăng ký bắt buộc; claim Merkle sau snapshot. **Quy tắc claim đã chốt**, đặc tả hiệu lực [`Airdrop/CONTRACT.md`](../Airdrop/CONTRACT.md) §1.7 (schema C, 2026-07-31) + §6 (tham số vận hành, 2026-08-18); chỉ còn nghĩa `owner` của vai **SPO** là chưa chốt.
 - **SRCL (360.000 nghìn)** — 36 epoch ×10.000 nghìn. Delegator tự nguyện định tuyến phần thưởng staking về pot; LAMP được **ghi nhận** ∝ phần thưởng đã đóng góp (việc đã xảy ra), theo công thức tất định công khai; **SPO tự đặt bonus rate**. SPO chỉ đăng-ký + đặt-rate 1 lần (decouple, không ký mỗi epoch). Phần thưởng ADA thuộc doanh thu vận hành pool của bên vận hành đợt, tách bạch với phân bổ LAMP.
 
 ---
 
 *Hết catalog. §4 (hệ-số-gen) đã có kết luận sau phản biện toán + game-theory — `μ_pot` là tham số
-điều chỉnh được theo thiết kế, không phải mục còn treo. Chỗ duy nhất còn treo là quy tắc claim chi
-tiết của ETD / Airdrop / SRCL ở §5.*
+điều chỉnh được theo thiết kế, không phải mục còn treo. Hai chỗ còn treo: quy tắc claim chi tiết của
+ETD / SRCL cùng nghĩa `owner` vai SPO của Airdrop (§5), và điều kiện kích hoạt pot Liquidity (§3,
+pot 18).*
