@@ -11,7 +11,8 @@
 > **Còn mở** — hai chỗ, không phải một:
 > - **§5** — quy tắc claim chi tiết của **ETD** và **SRCL**. Airdrop thì KHÔNG còn mở nữa: schema
 >   nạp/claim chốt 2026-07-31 và tham số vận hành chốt 2026-08-18
->   ([`Airdrop/CONTRACT.md`](../Airdrop/CONTRACT.md) §1.7 và §6); phần duy nhất còn treo của
+>   (`Airdrop/CONTRACT.md` §1.7 và §6 — module đã bàn giao ra ngoài repo này
+>   2026-09-01, tra bằng `git show adf2a0e:Airdrop/CONTRACT.md`); phần duy nhất còn treo của
 >   Airdrop là **nghĩa `owner` của vai SPO** (CONTRACT.md §1.7).
 > - **§3, pot 18 (Liquidity)** — cơ chế, thời điểm và điều kiện pháp lý để kích hoạt.
 >
@@ -189,8 +190,10 @@
 - **14. Airdrop (120.000)** — **dành tặng cộng đồng Delegator và SPO** dựa trên **stake**; ghi nhận việc góp phần
   vào an ninh kinh tế của mạng Cardano. Chia **3 pot**: Delegator **100M** · SPO **5M** ·
   CS (Community Supporter) **15M**, cả ba đều **∝ trọng số stake** (làn CS cho phép tự bỏ phiếu nên điểm cân bằng
-  cũng là chia theo stake — `Airdrop/spo-cs.md` §3.5; KHÔNG mô tả làn CS như phần thưởng cho đóng góp). Đặc tả hiệu lực:
-  [`Airdrop/CONTRACT.md`](../Airdrop/CONTRACT.md). (Mô hình cũ 5 epoch ×24.000 tỉ lệ
+  cũng là chia theo stake — `Airdrop/spo-cs.md` §3.5; KHÔNG mô tả làn CS như phần thưởng cho đóng góp).
+  Đặc tả hiệu lực: `Airdrop/CONTRACT.md`. Module `Airdrop/` đã **bàn giao ra ngoài repo này 2026-09-01** và không
+  còn trong cây làm việc này; bản cuối ở kho này tra bằng `git show adf2a0e:Airdrop/CONTRACT.md` (và
+  `git show adf2a0e:Airdrop/spo-cs.md`). (Mô hình cũ 5 epoch ×24.000 tỉ lệ
   20:100 đã bị thay ngày 2026-07-10.)
 - **15. SRCL (360.000)** — **redirect staking-reward ADA ↔ LAMP** (delegator tự nguyện đổi % reward), 36 epoch.
 
@@ -234,7 +237,7 @@ governance đầy đủ chưa lên → giao DAO sau.
 ## 5. Ba pot phân phối cộng đồng sớm (chi tiết claim — ETD/SRCL chốt sau, Airdrop đã chốt)
 
 - **ETD (12.000 nghìn)** — delegator sớm pool TIGER redeem TRƯỚC làm test toàn cầu. Rút theo claim_account vesting permissionless.
-- **Airdrop (120.000 nghìn)** — **3 pot**: Delegator 100M · SPO 5M · CS 15M, cả ba ∝ trọng số stake (v2, chốt 10/7). Đăng ký bắt buộc; claim Merkle sau snapshot. **Quy tắc claim đã chốt**, đặc tả hiệu lực [`Airdrop/CONTRACT.md`](../Airdrop/CONTRACT.md) §1.7 (schema C, 2026-07-31) + §6 (tham số vận hành, 2026-08-18); chỉ còn nghĩa `owner` của vai **SPO** là chưa chốt.
+- **Airdrop (120.000 nghìn)** — **3 pot**: Delegator 100M · SPO 5M · CS 15M, cả ba ∝ trọng số stake (v2, chốt 10/7). Đăng ký bắt buộc; claim Merkle sau snapshot. **Quy tắc claim đã chốt**, đặc tả hiệu lực `Airdrop/CONTRACT.md` §1.7 (schema C, 2026-07-31) + §6 (tham số vận hành, 2026-08-18) — module đã bàn giao ra ngoài repo này, tra bằng `git show adf2a0e:Airdrop/CONTRACT.md`; chỉ còn nghĩa `owner` của vai **SPO** là chưa chốt.
 - **SRCL (360.000 nghìn)** — 36 epoch ×10.000 nghìn. Delegator tự nguyện định tuyến phần thưởng staking về pot; LAMP được **ghi nhận** ∝ phần thưởng đã đóng góp (việc đã xảy ra), theo công thức tất định công khai; **SPO tự đặt bonus rate**. SPO chỉ đăng-ký + đặt-rate 1 lần (decouple, không ký mỗi epoch). Phần thưởng ADA thuộc doanh thu vận hành pool của bên vận hành đợt, tách bạch với phân bổ LAMP.
 
 ---
