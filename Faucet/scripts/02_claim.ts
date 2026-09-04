@@ -27,7 +27,8 @@ async function main(): Promise<void> {
   console.log(`Faucet address: ${faucetAddr}`);
   console.log(`tLAMP policy:   ${state.tlamp.policyId}\n`);
 
-  // resolve pool UTxO: ưu tiên ref đã lưu; nếu không có thì quét địa chỉ faucet.
+  // resolve pool UTxO: LUÔN quét địa chỉ faucet, KHÔNG đọc state.poolUtxo — faucet nhả theo
+  // lượt nên UTxO đã lưu hết hạn ngay sau lượt claim đầu tiên.
   const poolUtxos = await lucid.utxosAt(faucetAddr);
   if (poolUtxos.length === 0) {
     throw new Error(`pool trống tại ${faucetAddr} — chạy 01_mint_pool.ts (SUBMIT=true) trước.`);

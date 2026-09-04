@@ -47,13 +47,16 @@ trị** (open SDK: 1 policy id tLAMP chia sẻ toàn mạng test cho mọi Carda
 | SDK offchain (datum/mint/claim builder) | ✅ code xong + test viết | [`offchain/src/`](./offchain/src/), [`tests/`](./tests/) |
 | Unit test offchain (vitest) | ⚠️ **chưa chạy được trong sandbox** (vitest chưa cài) | §3.2 |
 | Harness deploy `00/01/02` | ✅ code xong, **SUBMIT=false mặc định** | [`scripts/`](./scripts/) |
-| Deploy live Preview | ❌ **CHƯA chạy** — chưa có `deployed-faucet.json`, chưa có tx hash | §5 (gap) |
+| Deploy live Preview | ✅ **đã chạy** (sau khi bảng này viết) — có tx hash | [`deployed-artifacts.md`](./deployed-artifacts.md) |
 
-> **Lưu ý quan trọng — KHÔNG có tx hash thật.** Khác với mô tả "dẫn chứng deploy Preview" trong
-> task, **module này CHƯA deploy live**: `scripts/deployed-faucet.json` chưa tồn tại (gitignored,
-> sinh khi chạy `01_mint_pool.ts`), `01_mint_pool.ts` mặc định `SUBMIT=false` (chỉ build + log, ghi
-> state khô — [`01_mint_pool.ts:71-76`](./scripts/01_mint_pool.ts)). Không bịa tx hash. Việc deploy
-> + lấy tx hash là **gap còn lại** ở §5.
+> **Lưu ý — khối cảnh báo cũ ở đây đã HẾT HIỆU LỰC.** Bản draft 2026-06-09 viết "module này CHƯA
+> deploy live, không bịa tx hash". Điều đó đúng lúc viết, và sai kể từ khi seed pool + claim thử
+> chạy thật trên cả hai mạng: tx hash có ở
+> [`deployed-artifacts.md`](./deployed-artifacts.md) (Preprod `51f8944d…` / `d6570a36…`, Preview
+> `6a375e47…` / `4697f899…`). Vẫn đúng hai điều: `scripts/deployed-faucet.json` là tệp gitignored
+> sinh lúc chạy, và `01_mint_pool.ts` mặc định `SUBMIT=false`
+> ([`01_mint_pool.ts:71-76`](./scripts/01_mint_pool.ts)) — nên cây mã sạch vẫn không có state file.
+> Nguồn sự thật về deploy là `deployed-artifacts.md`, không phải bảng này.
 
 ---
 

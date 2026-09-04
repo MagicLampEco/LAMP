@@ -14,6 +14,8 @@
   "claimAmountOildrop": "100000000",
   "poolUtxo": {
     "txHash": "6a375e47d0c3cbcff696f3d71be7915bba42bd44a713c48df17f82a6456d144f",
-    "outputIndex": 0
-  }
+    "outputIndex": 0,
+    "_CANH_BAO": "CHỈ ĐÚNG CHO LƯỢT CLAIM ĐẦU TIÊN. Faucet nhả theo lượt: mỗi Claim tiêu UTxO này và tạo UTxO mới ⇒ trường này hết hạn ngay sau lần dùng đầu. Dựng tx theo nó sẽ hỏng với lỗi 'UTxO không tồn tại' — nghe như lỗi mạng, không nghe như lỗi tệp trạng thái. Tra UTxO sống theo faucet.address."
+  },
+  "_LUU_Y": "ẢNH CHỤP lúc deploy, KHÔNG phải trạng thái sống. totalSupplyOildrop là số nạp ban đầu, không phải số dư hiện tại."
 }
