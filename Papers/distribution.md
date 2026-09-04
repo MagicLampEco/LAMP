@@ -176,7 +176,7 @@ Chi tiết ở spec Governance riêng. Điểm giao với phân phối: **gen-MA
 > **Delegator 100M + SPO 5M + CS 15M**, cả ba pot đều chia **∝ trọng số stake**.
 > Đặc tả hiệu lực: `Airdrop/CONTRACT.md` + `Airdrop/spo-cs.md`. Module `Airdrop/` đã **bàn giao ra ngoài repo
 > này 2026-09-01** và không còn trong cây làm việc này — bản cuối ở kho này tra bằng
-> `git show 6df96ae:Airdrop/CONTRACT.md`.
+> `git show adf2a0e:Airdrop/CONTRACT.md`.
 > Phần dưới là mô hình v1 (tỉ lệ 20:100, SPO 20M, chưa có pot CS) — **giữ để truy vết, đừng lấy số**.
 - **Tổng:** 120.000 nghìn = 5 epoch × **24.000 nghìn/epoch**.
 - **Chia 20:100** mỗi epoch: `B_spo = 24.000 × 20/120 = 4.000` (SPO) + `B_del = 24.000 × 100/120 = 20.000` (Delegator).
