@@ -91,8 +91,12 @@ pub type ProposalDatum {
 /// PHẢI đọc đúng UTxO này (token xác thực + khớp ref đã cam kết).
 ///
 /// k1..k4: bảng knots pow_k cho 4 yếu tố (D7, nội suy). bft_floor/quorum/θ: ngưỡng pass (D1).
-/// Ràng D8 (w_2+w_4 ≤ w_1+w_3) thực thi off-chain khi DAO dựng bảng knots; on-chain chốt
-/// nguồn ngưỡng DUY NHẤT là UTxO này.
+/// Ràng D8 ép TRÊN CHUỖI, không off-chain: `weight_guard.d8_ok` gọi trong
+/// `validators/tally.ak:read_weight_param` — đường DUY NHẤT bảng knots đi vào phép tính VP.
+/// Ép dạng TỪNG CẶP (`w_1 ≥ w_2` ∧ `w_3 ≥ w_4`) chứ không dạng tổng `w_2+w_4 ≤ w_1+w_3`:
+/// dạng tổng nhận cả `w = (0.5, 0, 0, 0.5)`, mà `w_3 = 0` tắt hẳn thừa số uy tín. Lập luận
+/// đầy đủ + cách kiểm quan hệ w_k thẳng trên bảng knots: `lib/.../weight_guard.ak` đầu tệp.
+/// on-chain chốt nguồn ngưỡng DUY NHẤT là UTxO này.
 pub type WeightParam {
   k1: List<Knot>,
   k2: List<Knot>,

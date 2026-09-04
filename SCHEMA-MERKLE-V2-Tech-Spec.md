@@ -106,7 +106,8 @@ phần của nạn nhân. Đây là **hồi quy do chính schema C**, không t�
 1. **On-chain** — validator rút `owner` từ address PHẢI ép tier key, fail-closed:
    `expect VerificationKey(h) = addr.payment_credential`.
    Hiện thực: `Airdrop/onchain/lib/magiclamp/airdrop/util.ak::payment_credential_hash`;
-   SRCL đã đúng sẵn qua `SRCL/onchain/lib/magiclamp/srcl/util.ak::is_owned_by` (nhánh `Script` → `False`).
+   SRCL cũng đã đúng sẵn, qua `is_owned_by` (nhánh `Script` → `False`) — mã SRCL đã gỡ khỏi repo
+   này 2026-08-30, tra bằng `git show 6df96ae:SRCL/onchain/lib/magiclamp/srcl/util.ak`.
 2. **Off-chain** — builder snapshot PHẢI loại địa chỉ script **ngay lúc dựng lá**, không đợi tới claim:
    `Airdrop/offchain/src/merkle.ts::ownerBytes` ném `MERKLE-026`. Thiếu bước này thì lá script vẫn vào
    cây, nhưng validator không cho claim ⇒ phần LAMP đó kẹt trong pot tới hạn quét, và người đăng ký

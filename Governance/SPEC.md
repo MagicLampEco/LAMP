@@ -14,6 +14,13 @@
 >
 > Theo dõi ở issue #21 mục C.
 
+> **Phiên bản:** v1.0 — 2026-06-05. Lần đầu khai phiên bản — tệp trước đây chỉ có dòng `Trạng thái`,
+> không có số hiệu để tham chiếu; nội dung không đổi so với ngày duyệt khung.
+> **Vai:** view điều phối — trang chỉ mục Governance nói chung. Phần Voting Power KHÔNG PHẢI nguồn
+> chuẩn ở đây: khi lệch với [`VotingPower/CONTRACT.md`](./VotingPower/CONTRACT.md), CONTRACT.md
+> thắng. Phần "bầu cử, hội đồng, KPI" (ngoài Voting Power) chưa có nguồn chuẩn khác — vẫn ở mức
+> outline.
+
 **Trạng thái:** mô hình Voting Power đã được duyệt khung 2026-06-05. Phần còn lại (bầu cử,
 hội đồng, KPI) vẫn ở mức outline.
 
@@ -68,7 +75,7 @@ thêm cap + weight + C4 không". Bốn tính chất toán dưới đây trả l�
 ### 1. Tính bị chặn trên (bounded) — điều kiện sống còn
 
 - **Cũ:** `lim_{C_k → ∞} (C1·C2·C3)^{1/3} = ∞`. Không có trần. Một cá nhân đẩy một yếu tố đủ lớn
-  (vd đốt thật nhiều LAMP để bơm C1) → VP lớn tùy ý → có thể vượt tổng VP cộng đồng. Đây đúng là
+  (vd dồn vốn vào một yếu tố mua được) → VP lớn tùy ý → có thể vượt tổng VP cộng đồng. Đây đúng là
   thất bại của **bỏ phiếu theo vốn** mà Buterin phê phán
   ([Moving beyond coin voting governance](https://vitalik.eth.limo/general/2021/08/16/voting3.html)).
 - **Mới:** `min(C_k, cap_k) ≤ cap_k` nên `VP_i ≤ ∏_k cap_k^{w_k}` = **trần cứng, hữu hạn**, giống
@@ -83,15 +90,15 @@ Gọi `VP_max = ∏_k cap_k^{w_k}`. Một thực thể nắm `H` LAMP muốn t�
 - **Không cap (cũ):** ảnh hưởng ∝ tăng theo `H` không giới hạn → 1 ví đủ giàu thắng.
 - **Có cap (mới):** mỗi DID chỉ đạt tối đa `VP_max`; phần `H` vượt `cap_4 = 100 triệu` **vô giá trị
   về phiếu**. Muốn dùng hết `H = 12 tỷ` phải chia cho `≥ H/cap_4 ≈ 120` **DID người-thật**, mỗi DID
-  còn phải có C1/C2/C3 thật (lịch sử + uy tín + đốt LAMP). Chi phí thâu tóm vì thế **= chi phí đóng
+  còn phải có C1/C2/C3 thật (lịch sử tiêu MAGIC + cam kết + uy tín). Chi phí thâu tóm vì thế **= chi phí đóng
   góp thật**, và bị chặn sybil bởi DID sinh trắc
   ([proof of personhood](https://en.wikipedia.org/wiki/Proof_of_personhood);
   [Sybil attack — Douceur 2002](https://www.microsoft.com/en-us/research/publication/the-sybil-attack/)).
 
 ### 3. Vì sao NHÂN (geometric) chứ không CỘNG (additive)
 
-- **Cộng** `VP = Σ w_k C_k`: các yếu tố **thay thế** nhau. Ai mạnh tiền có thể max C4 + đốt LAMP đẩy
-  C1 + khóa LAMP đẩy C2 → 3/4 yếu tố mua được, cộng dồn vẫn cao **dù uy tín C3 = 0**.
+- **Cộng** `VP = Σ w_k C_k`: các yếu tố **thay thế** nhau. Ai mạnh tiền có thể max C4 + khóa LAMP đẩy
+  C2 → **hai** yếu tố mua được, cộng dồn vẫn cao **dù uy tín C3 = 0**.
 - **Nhân** (Cobb–Douglas): các yếu tố **bổ trợ**, không thay thế. Nếu `C3 → 0` thì `VP → 0` bất kể
   các yếu tố khác lớn cỡ nào (vì số mũ dương). Buộc cử tri mạnh **cả bốn** mặt → token đơn thuần
   bất lực. Nền tảng là bất đẳng thức **AM–GM**: trung bình nhân ≤ trung bình cộng, và trung bình

@@ -70,11 +70,22 @@ Chỉ `-`. **Không** `_`.
 
 Luôn dùng **đường dẫn tương đối đầy đủ**, không viết tên trần.
 
-- Đúng: ``xem [`../Papers/pot-catalog.md`](../Papers/pot-catalog.md)``
-- Sai: ``xem `CONTRACT.md``` — có 5 file `CONTRACT.md` trong repo, người đọc phải đoán.
+Viết từ trong một thư mục module:
+
+```markdown
+Đúng:  xem [`../Papers/pot-catalog.md`](../Papers/pot-catalog.md)
+Sai:   xem `CONTRACT.md`        ← có 5 file CONTRACT.md trong kho, người đọc phải đoán
+```
 
 Trỏ sang **repo khác** (MAGIC, Registry, PhoenixKey) thì dùng **URL tuyệt đối**, đừng dùng
 `../../MAGIC/...`. Ai clone LAMP đơn lẻ sẽ không có thư mục đó — và LAMP là repo public.
+Điều đó áp cho **mọi** kho khác, kể cả kho không thuộc hệ MagicLamp: `Treasury/Feat-Spec.md`
+từng trỏ `../../OriLifeTrace/...` — vừa gãy với người clone, vừa phơi đường dẫn nội bộ ra kho công khai.
+
+⚠️ **URL tuyệt đối phải HỎI MÁY CHỦ trước khi gắn**, đừng suy từ đĩa:
+`gh api repos/<org>/<repo>/contents/<đường-dẫn>`. Máy này không phân biệt HOA/thường, GitHub thì có
+— nên `ONBOARDING.md` mở được ở local rồi 404 với người ngoài. Và thư mục có trên đĩa chưa chắc đã
+đẩy lên kho công khai. Đường dẫn chưa hỏi được thì **trích dẫn bằng chữ**, đừng gắn liên kết.
 
 ## 4. Vài rule cứng của StandardSpec hay bị vi phạm ở repo này
 

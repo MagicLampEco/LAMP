@@ -4,20 +4,36 @@
 > Đây là tài liệu **đối ngoại** (bản phái sinh), không phải đặc tả nội bộ. Chuẩn: `../CONVENTIONS.md`.
 
 > Nội dung CÔNG KHAI cho cộng đồng. Viết tuân thủ: token tiện ích, không hứa giá, không "đầu tư/lợi nhuận".
-> Cập nhật 2026-07-29: **chốt policy `55d3e01b…180f0` là token LAMP chính thức trên mainnet** — không
-> có policy nào khác thay thế. Mọi số liệu cung ở đây đọc trực tiếp từ chuỗi, kiểm chứng được
-> (`Genesis/scripts/verify_mainnet_supply.ts`, read-only, không cần khoá).
+> Cập nhật 2026-07-29: policy `55d3e01b…180f0` là token LAMP **duy nhất đang lưu hành trên mainnet
+> hôm nay** — không có policy nào khác song song hoạt động. Mọi số liệu cung ở đây đọc trực tiếp từ
+> chuỗi, kiểm chứng được (`Genesis/scripts/verify_mainnet_supply.ts`, read-only, không cần khoá).
+>
+> **Đính chính 2026-08-26 — bỏ chữ "chốt … chính thức" ở trên, vì tự mâu thuẫn với §8–§9 của
+> chính tài liệu này.** Bản đang chạy là policy **khởi tạo (bootstrap)**, không phải quyết định
+> cuối cùng.
+>
+> **Cập nhật 2026-09-02 — đã chọn đường (b): sẽ phát hành policy mới, bản khởi tạo sẽ được khai
+> tử.** Hai đường từng để ngỏ ở bản trước là (a) giữ nguyên policy này vĩnh viễn, (b) phát hành
+> policy mới. Đường (a) bị loại vì một ngõ cụt kỹ thuật không sửa được, phát hiện 2026-08-12:
+> **policy đang chạy không rút được phần Reserve — 9,63 tỷ LAMP, tức 26,75% tổng cung.** Trần phát
+> hành THỰC TẾ của nó là **26,37 tỷ**, không phải 36 tỷ. Chi tiết ở §8; kiểm chứng được bằng
+> `Genesis/scripts/verify_mainnet_supply.ts` (read-only).
+>
+> **Ngày phát hành chưa định.** Policy mới chưa tồn tại; đường triển khai và bài diễn tập trên
+> mạng thử nghiệm đang được dựng. Tới lúc đó, `55d3e01b…180f0` vẫn là policy LAMP duy nhất trên
+> mainnet — không có token thứ hai nào đang song song.
 
 ## 0. Tra cứu nhanh (on-chain, mainnet Cardano)
 
 | Mục | Giá trị |
 |---|---|
-| **Policy LAMP** | `55d3e01bb6c469e02665e4b6573ce65bbaf7a50ad2024e247eb180f0` |
+| **Policy LAMP** (bản **khởi tạo**, sẽ được thay — xem §8–§9) | `55d3e01bb6c469e02665e4b6573ce65bbaf7a50ad2024e247eb180f0` |
 | Link policy | https://cexplorer.io/policy/55d3e01bb6c469e02665e4b6573ce65bbaf7a50ad2024e247eb180f0 |
 | Asset (LAMP) | `55d3e01b….4c414d50` |
 | Tên hiển thị / mã | **MagicLamp** / **LAMP** |
 | Tổng cung tối đa | **36.000.000.000 LAMP** (cố định, không đổi, không burn) |
 | Trần ghi trong chuỗi | `dist_cap` **26.370.000.000** + `reserve_cap` **9.630.000.000** = **36 tỷ** |
+| Trần đúc được THẬT trên policy khởi tạo | **26.370.000.000** — phần `reserve_cap` không rút được qua policy này (§8) |
 | Đã mint tới nay | **1.000.000 LAMP** (nằm trong kho, chưa phân phối) |
 | Đơn vị con | **oildrop** — 1 LAMP = 1.000.000 oildrop (decimals = 6) |
 | Website | https://magiclamp.network/ |
@@ -85,13 +101,34 @@ redeem). Đó mới là thứ khiến nó không thể bị rút sạch.
 > hành**. Bản `lamp_mint` **đang chạy trên mainnet** nướng thẳng địa chỉ kho (`dist_dest`) vào
 > tham số script, mà tham số thì đi vào hash ⇒ **đổi kho = đổi script hash = một policy-id KHÁC**.
 > Nói cách khác: policy LAMP hiện tại và kho 1-chữ-ký ở trên **dính liền nhau, không tách rời được**.
-> Đường đi đã chốt là phát hành policy mới khi bật được mint uỷ quyền bằng OrgDID, không phải
-> "trỏ kho sang chỗ khác".
+> Đường kỹ thuật khả thi duy nhất để thay kho là phát hành **policy mới** khi bật được mint uỷ quyền
+> bằng OrgDID — không có đường "trỏ kho sang chỗ khác" cho policy hiện tại. **Quyết định 2026-09-02:
+> sẽ phát hành policy mới** (xem §9). Ngày phát hành chưa định.
 >
-> Về việc đối chiếu mã: mã `lamp_mint` chạy trên mainnet **đã được đối chiếu** (2026-08-09) — dựng
-> lại từ commit `457f312` rồi áp 8 tham số cho ra **CBOR trùng byte, hash trùng**. Hai script còn
-> lại (`supply_state`, `dist_treasury`) **chưa** đối chiếu; việc đó phải xong trước khi mint giá
-> trị thật.
+> **Đính chính 2026-09-02 — một giới hạn nữa của policy đang chạy, nặng hơn chuyện kho.**
+> `lamp_mint` có hai đường đúc: `DistributionVest` (đường phân phối) và `ReserveDraw` (đường nhả
+> Reserve). Đường thứ hai đòi giao dịch phải tiêu đúng một UTxO mang **meter NFT**, và tham số
+> `meter_nft_policy` nướng vào policy đang chạy là **28 byte 0** — một chuỗi không phải kết quả
+> băm của bất cứ script nào, nên không token nào tồn tại được dưới nó. Điều kiện ấy vì thế **không
+> bao giờ thoả được**, bởi bất kỳ ai, mãi mãi.
+>
+> Hệ quả bằng số: **9,63 tỷ LAMP thuộc phần Reserve không rút được qua policy này.** Datum trên
+> chuỗi vẫn khai tổng trần 36 tỷ, nhưng phần đúc được thật chỉ là 26,37 tỷ. Vì tham số nằm trong
+> policy-id, không có bản vá nào cho policy đã phát hành — đây là lý do quyết định phát hành policy
+> mới, chứ không phải một lựa chọn về sở thích thiết kế.
+>
+> Số đã đúc tới nay là **1.000.000 LAMP** (0,0028%), nằm trong kho và **chưa từng rời kho**, nên
+> chưa ai đang giữ LAMP để bị ảnh hưởng bởi việc đổi policy. Một điều phải nói thẳng: LAMP **không
+> đốt được** (validator chặn mọi lượt đúc âm), nên 1 triệu đó sẽ ở lại như tài sản của một policy đã
+> khai tử. Khi policy mới ra, tài liệu này sẽ ghi rõ policy-id nào là LAMP, để không ai nhầm.
+>
+> Về việc đối chiếu mã: `lamp_mint` **đã đối chiếu** (2026-08-09) — dựng lại từ commit `457f312`
+> rồi áp 8 tham số cho ra **CBOR trùng byte, hash trùng**. `supply_state` cũng **đã đối chiếu từng
+> byte** (2026-08-12, cùng commit nguồn, 528 byte trên chuỗi). Script thứ ba, `dist_treasury`, thì
+> **không thể** đối chiếu byte hôm nay: trên Cardano byte của script chỉ lên chuỗi khi script được
+> tiêu, mà kho này **chưa từng bị tiêu lần nào** — không có byte trên chuỗi để so. Nó được đối
+> chiếu bằng **hash**: dựng lại từ `60f7e3a` rồi áp authority ⇒ ra đúng `d5e80c9a…`. Nguồn số:
+> `Genesis/offchain/src/deployed.ts` khối `provenance`.
 >
 > Chúng tôi để nguyên đoạn này trong tài liệu công khai thay vì viết một câu nghe an toàn hơn.
 > Ai đang cân nhắc tin vào LAMP thì cần biết đúng chỗ nó chưa xong.
@@ -100,12 +137,27 @@ redeem). Đó mới là thứ khiến nó không thể bị rút sạch.
 
 - Khoá được quyền mint đã **nướng vào chính policy** ngay khi tạo. Đây là đặc tính của Cardano:
   đổi tham số ⇒ đổi luôn policy ID ⇒ **thành một token khác**.
-- ⇒ **Không thể xoay khoá mà vẫn giữ nguyên token này.** Chúng tôi chọn giữ nguyên policy
-  `55d3e01b…` làm LAMP chính thức, nên chấp nhận ràng buộc đó thay vì phát hành lại token mới và
-  bắt cộng đồng đổi.
-- Bảo vệ thay thế cho việc không xoay được khoá: (a) trần 36 tỷ nằm trong chuỗi, khoá không phá
-  được trần; (b) A-DEST ép token vừa mint vào kho script, không ra ví; (c) quy trình vận hành giữ
-  khoá ngoại tuyến.
+- ⇒ **Không thể xoay khoá mà vẫn giữ nguyên token này.** Hai đường từng để ngỏ: (a) giữ nguyên
+  policy `55d3e01b…`, chấp nhận sống với ràng buộc khoá hiện tại; (b) phát hành policy mới khi mint
+  uỷ quyền qua OrgDID sẵn sàng.
+- **Quyết định 2026-09-02: đường (b).** Đường (a) không còn khả thi — không phải vì bất tiện, mà vì
+  policy đang chạy không với tới được 9,63 tỷ LAMP phần Reserve (§8). Giữ nó vĩnh viễn là chấp nhận
+  trần thật 26,37 tỷ thay cho 36 tỷ đã công bố. Policy mới sẽ có policy-id khác; tài liệu này sẽ
+  ghi rõ policy-id nào là LAMP khi việc đó xảy ra. **Ngày phát hành chưa định.**
+
+**Đính chính 2026-09-02 — ba "bảo vệ thay thế" mà bản trước liệt kê, hai cái không đứng vững.**
+Để nguyên một câu nghe an toàn nhưng sai thì nguy hơn không viết gì: người đọc sau sẽ bỏ qua đúng
+chỗ đáng soi.
+
+| bản trước viết | thực tế đo được |
+|---|---|
+| trần 36 tỷ nằm trong chuỗi, khoá không phá được trần | Trần **có** nằm trong chuỗi và khoá **không** phá được — phần này đúng. Nhưng trần thật của policy đang chạy là **26,37 tỷ**, không phải 36 tỷ (§8) |
+| A-DEST ép token vừa mint vào kho script, không ra ví | Kho đó là `dist_treasury` **một chữ ký**, và chữ ký ấy **cùng một khoá** với khoá được quyền đúc. Nên A-DEST ở bản đang chạy là một khúc vòng hai giao dịch, **không phải một cái khoá thứ hai** |
+| quy trình vận hành giữ khoá ngoại tuyến | vẫn đúng — nhưng đây là biện pháp con người, không phải ràng buộc của chuỗi |
+
+Policy mới sẽ sửa cả hai chỗ trên: kho đích là `treasury.ak` (nhả theo quy trình, không có lối
+"người có khoá gửi đi đâu tuỳ ý"), và quyền đúc đọc từ một bảng uỷ quyền do OrgDID quản thay vì
+nướng cứng một khoá — nên xoay khoá không còn phải phát hành lại token.
 - Tổng cung 36 tỷ, no-burn, trần, đơn vị — **bất biến**. Tầng phân phối phía trên kho thì nâng cấp được.
 
 ## 10. Pháp lý & tuân thủ
@@ -211,7 +263,10 @@ lần đều làm tăng `dist_minted`/`reserve_minted` trong chuỗi nên ai cũ
 
 64. **LAMP dùng hợp đồng gì?** Aiken/PlutusV3 trên Cardano.
 65. **Policy ID đến từ đâu?** Neo bởi một giao dịch genesis one-shot → DUY NHẤT, không trùng lặp được.
-66. **Có thể giả LAMP không?** Kẻ xấu có thể đúc token TRÙNG TÊN nhưng **policy ID sẽ khác** — luôn xác minh theo policy ID `55d3e01b…`, không theo tên.
+66. **Có thể giả LAMP không?** Kẻ xấu có thể đúc token TRÙNG TÊN nhưng **policy ID sẽ khác** — luôn
+    đối chiếu **đủ 56 ký tự hex** của policy ID (bảng ở §0), không dừng ở vài ký tự đầu
+    (`55d3e01b…` chỉ là cách viết tắt cho dễ đọc — so 8 ký tự đầu tương đương 32 bit, máy để bàn
+    dựng được va chạm tiền ảnh cỡ đó trong vài phút), và không xác minh theo tên hiển thị.
 67. **Cap 36 tỷ enforce ở đâu?** On-chain trong validator mint (chặn vượt cap, no-burn, đơn điệu).
 68. **A-DEST là gì?** Luật ép LAMP phân phối phải vào kho kiểm soát, không ra ví người vận hành.
 69. **Người giữ khóa có tự mint cho mình được không?** Mint phân phối bị ép vào kho (A-DEST); không rút thẳng về ví.
@@ -219,9 +274,26 @@ lần đều làm tăng `dist_minted`/`reserve_minted` trong chuỗi nên ai cũ
 71. **Đã kiểm thử chưa?** Đã proven trên testnet Preview (mint sai → bị chặn, vượt cap → bị chặn) + audit nội bộ.
 72. **Mã nguồn mở chưa?** Theo lộ trình công khai (mục tiêu open SDK cho mọi đội Cardano).
 73. **Lỡ mint nhầm thì sao?** Validator chặn các trường hợp sai (Δ lệch, vượt cap, sai quota…).
-74. **Reserve là gì?** Lớp đệm phát hành (9,63 tỷ) nhả có nhịp, có trần mỗi epoch, không ai rút tay.
+74. **Reserve là gì?** Theo thiết kế, lớp đệm phát hành (9,63 tỷ) nhả có nhịp, có trần mỗi epoch,
+    không ai rút tay bằng một chữ ký đơn — cơ chế này tên là `ReserveDraw`. **Nhưng trên policy đang
+    chạy mainnet hôm nay, nhánh `ReserveDraw` không dùng được:** tham số `meter_nft_policy` được
+    nướng bằng 28 byte 0 (không có tiền ảnh), nên điều kiện bắt buộc của nhánh này không bao giờ
+    thoả. Kết quả: 9,63 tỷ Reserve **hiện không rút được qua policy này**, dù đúng nhịp hay sai
+    nhịp. Nguồn: `Genesis/offchain/src/deployed.ts:92-93,118-119`.
 75. **Token có thể bị đóng băng/khóa ví của tôi không?** Không — LAMP trong ví của bạn do bạn kiểm soát hoàn toàn.
-76. **Hợp đồng có thể đổi sau khi deploy không?** Policy (cap/đơn vị) bất biến; tầng phân phối nâng cấp được mà không đụng policy.
+76. **Hợp đồng có thể đổi sau khi deploy không?** Một policy đã phát hành thì **không sửa được** —
+    trên Cardano, đổi tham số là đổi luôn policy ID, tức thành một token khác. Tầng phân phối phía
+    trên thì nâng cấp được mà không đụng policy.
+76b. **Vậy policy `55d3e01b…` có được giữ mãi không?** Không. Quyết định 2026-09-02: **sẽ phát hành
+    một policy mới và khai tử bản khởi tạo hiện tại**, vì bản hiện tại không rút được 9,63 tỷ LAMP
+    phần Reserve (§8, và câu 75). Không sửa được nên phải thay. **Ngày phát hành chưa định**, và tới
+    lúc đó `55d3e01b…` vẫn là policy LAMP duy nhất trên mainnet.
+76c. **Khi có policy mới thì làm sao biết cái nào là LAMP thật?** Tài liệu này sẽ ghi policy ID mới
+    ở bảng §0 và nói rõ bản cũ đã khai tử. Trong thời gian chuyển tiếp, **đừng tin một policy ID chỉ
+    vì nó xuất hiện ở đâu đó** — đối chiếu với bảng §0 của bản tài liệu mới nhất, đủ 56 ký tự hex.
+    Số LAMP đã đúc dưới bản khởi tạo (1.000.000, hiện chưa rời kho) **không đốt được**, nên chúng sẽ
+    còn tồn tại trên chuỗi sau khi bản đó khai tử — đó là lý do phải đối chiếu policy ID chứ không
+    đối chiếu tên hiển thị.
 77. **Có rủi ro hợp đồng không?** Như mọi smart contract; đã kiểm thử + audit, công khai mã theo lộ trình.
 78. **Ví nào giữ được LAMP?** Mọi ví Cardano chuẩn (Eternl, Lace, Vespr…).
 
@@ -232,7 +304,9 @@ lần đều làm tăng `dist_minted`/`reserve_minted` trong chuỗi nên ai cũ
 81. **LAMP có giá bao nhiêu?** Dự án không công bố/hứa hẹn giá; LAMP định vị tiện ích.
 82. **Chuyển LAMP cho người khác được không?** Được — LAMP là token chuẩn, chuyển tự do giữa ví.
 83. **Phí chuyển LAMP?** Phí mạng Cardano thông thường (ADA), không phí riêng.
-84. **Có token giả "LAMP/MagicLamp" không?** Có thể có — luôn xác minh **policy ID** `55d3e01b…`.
+84. **Có token giả "LAMP/MagicLamp" không?** Có thể có — luôn đối chiếu **đủ 56 ký tự hex** của
+    policy ID (bảng ở §0), không dừng ở vài ký tự đầu (`55d3e01b…` là cách viết tắt, không đủ để
+    xác minh — xem câu 66).
 85. **Làm sao biết LAMP thật?** Đối chiếu policy ID trên explorer chính thức, không tin theo tên hiển thị.
 86. **LAMP có stake/delegate được không?** LAMP là token; staking ADA của ví vẫn bình thường. LAMP tham gia hệ qua MAGIC/quản trị.
 87. **Mất ví thì mất LAMP?** Như mọi tài sản Cardano — tự quản seed/khóa cẩn thận.

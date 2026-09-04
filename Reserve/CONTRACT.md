@@ -1,4 +1,27 @@
-# LAMP Reserve — Demand-Gated Draw Engine (v3, ghim)
+# LAMP Reserve — Demand-Gated Draw Engine (v3 — luật E/1000, **chưa phải luật cuối**)
+
+> ## 🔴 ĐỌC TRƯỚC KHI DEPLOY — tệp này và `Genesis/CONTRACT.md` mô tả HAI luật loại trừ nhau
+>
+> Tệp này mô tả **trần cứng E/1000 mỗi epoch**. `Genesis/CONTRACT.md §7b` mô tả một luật KHÁC
+> HẲN — gate theo **mức Treasury** (trần `2%·C`, sàn `1%·C`, giữa hai mức thì nội suy, không
+> giới hạn số epoch) — và nói thẳng: *"Reserve module hiện tại (`reserve_draw.ak`, trần
+> E/1000/epoch) là thiết kế **CŨ** — cần thiết kế lại"*.
+>
+> Mã hiện có (`reserve_draw.ak:94`, `lib/.../math.ak:13,17-19`) hiện thực luật E/1000 của tệp
+> này, **không** hiện thực §7b: grep `bps|nội suy|interpolat|circulating|lưu hành` trong
+> `Reserve/onchain/` ra rỗng, và `reserve_draw` không nhận `SupplyState` nên **không đọc được
+> `C`**.
+>
+> Vì sao chỗ này đắt: cả 9 tham số của `reserve_draw` là **apply-param** — nướng vào script
+> hash. `reserve_draw.ak:125` ép `s_out.address == own_out.address` và redeemer duy nhất là
+> `Draw` (`:150-152` `else fail`) ⇒ **meter NFT không bao giờ rời được địa chỉ đó**. Gửi meter
+> NFT vào một instance là khoá luật đó cho toàn bộ vòng đời 9,63 tỷ, không có redeemer
+> `Migrate`, không có đường nâng cấp. LAMP không burn ⇒ không có đường dọn sổ làm lại.
+>
+> **Chưa chốt §7b là luật cuối thì chưa được gửi meter NFT vào bất kỳ `reserve_draw` nào.**
+> §7b cũng còn một lỗ ở tầng thiết kế: nó nói `1%`/`2%` của `C` (lưu hành) nhưng **chưa định
+> nghĩa `C` đo bằng gì on-chain** — `C` ≠ `dist_minted + reserve_minted`, vì phần nằm trong
+> Treasury thì đã đúc mà chưa lưu hành.
 
 Mô hình **đệm phát hành demand-gated** (allocation v3, đông kết 2026-06-14). Reserve là
 **lớp đệm phát hành SAU CÙNG** của LAMP: 9,630 tỷ LAMP (26,75%) nhả từ U-space (chưa mint)

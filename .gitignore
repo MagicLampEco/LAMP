@@ -9,6 +9,10 @@ dist/
 **/onchain/plutus.json
 # Deploy state (env-specific, có thể chứa địa chỉ ví)
 **/scripts/deployed.json
+# State lượt diễn tập — mỗi mạng/mỗi lượt một bản, không phải nguồn sự thật chung.
+# Provenance chính thức chép tay sang Genesis/offchain/src/deployed.ts.
+**/scripts/canonical-state.json
+**/scripts/canonical-v2-state.json
 
 # mọi biến môi trường/seed
 .env*

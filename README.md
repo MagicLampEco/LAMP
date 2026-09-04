@@ -50,7 +50,7 @@ Pháp nhân phát hành: **GreenSun Tech Inc** (Việt Nam).
 ```
 
 LAMP = giá trị nền + quản trị. MAGIC = tiêu dùng ở tầng ứng dụng.
-Repo MAGIC: <https://github.com/MagicLampNetwork/MAGIC>
+Repo MAGIC: <https://github.com/MagicLampEco/MAGIC>
 
 ## Bắt đầu đọc từ đâu
 
@@ -98,13 +98,24 @@ Repo này ưu tiên nói thật hơn nói đẹp:
   nguồn tự khai `BOOTSTRAP: authority = 1 pkh` — một chữ ký chuyển được LAMP ra khỏi kho. Đang giữ
   1.000.000 LAMP (0,0028% tổng cung, chưa phân phối). **Phải thay bằng `treasury.ak` trước khi mint
   thêm giá trị** — xem [`Genesis/kho-a-dest.md`](Genesis/kho-a-dest.md).
-- **`SRCL/` có BA lỗi CRITICAL đang mở (S1, S2, S3).** S1: cửa `Sweep` mở sẵn từ ngày đầu và
-  không đòi chữ ký. S2: `Sweep` không ràng lovelace và **POOL NFT** — mất NFT là phải deploy
-  lại toàn bộ. S3: `Claim` không cấm đúc tên khác cùng policy ⇒ tái tạo slot, claim lặp.
-  **Đừng nạp LAMP thật vào SRCL pot trước khi vá cả ba.** Cả ba đổi script hash nên phải vá
-  cùng một lượt. Cơ chế + cách vá: [`SRCL/README.md`](SRCL/README.md).
-- **Mã script `lamp_mint` đang chạy trên mainnet chưa được đối chiếu từng byte** với mã nguồn
-  trong repo. Việc đó phải xong trước khi mint thêm bất kỳ lượng nào có giá trị.
+- **`SRCL/` KHÔNG còn trong repo này** (gỡ 2026-08-30). Bản hiện thực SRCL được duy trì ở nơi
+  khác, và bản từng nằm ở đây có lỗ mở nên giữ lại chỉ tạo ra một bản thứ hai để người ta lỡ
+  dựng pot từ đó. Repo này vẫn mô tả **cơ chế** SRCL ở [`Papers/srcl.md`](Papers/srcl.md) và
+  vẫn giữ pot SRCL trong bảng 18 pot — chỉ không giữ mã. Bản cũ tra được bằng
+  `git show 6df96ae:SRCL/<đường-dẫn>`.
+- **Ba script mainnet: hai đã đối chiếu TỪNG BYTE, một chỉ đối chiếu được bằng HASH.** Số đo và
+  lý do ở [`Genesis/offchain/src/deployed.ts`](Genesis/offchain/src/deployed.ts) khối
+  `provenance` — đó là nguồn duy nhất, đừng chép số sang chỗ khác.
+  - `lamp_mint` (`55d3e01b…180f0`) — dựng lại từ `457f312`, áp 8 tham số, **CBOR trùng byte**.
+  - `supply_state` (`84f6d84f…34084`) — cùng commit nguồn, **trùng byte**, 528 byte trên chuỗi.
+  - `dist_treasury` (`d5e80c9a…edbb6`) — **chưa trùng byte, và hôm nay KHÔNG THỂ trùng byte**:
+    trên Cardano byte của script chỉ lên chuỗi khi script được tiêu, mà kho này **chưa từng bị
+    tiêu lần nào**. Không có byte trên chuỗi để so. Đối chiếu bằng hash: dựng `dist_treasury.ak`
+    từ `60f7e3a` rồi áp authority ⇒ ra đúng `d5e80c9a…`.
+
+  ⚠️ Vì thế câu "phải đối chiếu từng byte trước khi mint giá trị thật" **không mở được** cho
+  script thứ ba — nó là một cổng không có chìa. Cổng thật cho lần mint tới phải đặt điều kiện
+  theo **hash + commit nguồn**, không theo byte trên chuỗi.
 - **Chưa module nào ngoài `Genesis/` chạy trên mainnet.** Những chỗ ghi "live Preview" là mạng
   thử nghiệm, token ở đó là tLAMP, không có giá trị.
 
