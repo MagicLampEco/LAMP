@@ -277,6 +277,17 @@ export function scriptHashOf(script: Validator): string {
   return validatorToScriptHash(script);
 }
 
+/**
+ * Đường tra giao dịch trên explorer, THEO MẠNG đang chạy.
+ *
+ * Bản cũ nướng cứng `preview.` cho mọi mạng, nên một lượt chạy Preprod in ra đường dẫn Preview —
+ * mở lên thì "không tìm thấy giao dịch", nghe như tx hỏng chứ không nghe như link sai. Đây là
+ * loại lỗi tự nó không kêu: nó chỉ làm người đọc kết luận sai về một việc đã thành công.
+ */
 export function explorerTx(hash: string): string {
-  return `https://preview.cexplorer.io/tx/${hash}`;
+  const host =
+    NETWORK === "Mainnet" ? "cexplorer.io"
+    : NETWORK === "Preprod" ? "preprod.cexplorer.io"
+    : "preview.cexplorer.io";
+  return `https://${host}/tx/${hash}`;
 }

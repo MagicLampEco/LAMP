@@ -5,15 +5,21 @@
 
 ## Sự thật cứng (verify lại on-chain 2026-07-29 — `scripts/verify_mainnet_supply.ts`, Koios read-only)
 
-- Policy mainnet `55d3e01bb6c469e02665e4b6573ce65bbaf7a50ad2024e247eb180f0` **LÀ token LAMP
-  canonical 36 tỷ** — anh chốt 2026-07-29, không đẻ policy mới.
+- Policy mainnet `55d3e01bb6c469e02665e4b6573ce65bbaf7a50ad2024e247eb180f0` là bản **KHỞI TẠO
+  (bootstrap)**, KHÔNG phải token canonical.
+  > **Sửa 2026-09-02.** Bản trước ghi nó "LÀ token LAMP canonical 36 tỷ … không đẻ policy mới".
+  > Sai theo hai chiều: datum khai cap 36 tỷ, nhưng **trần phát hành THỰC TẾ chỉ 26,37 tỷ** vì
+  > nhánh `ReserveDraw` chết (`deployed.ts:92`, `:118-119`) — và A1 đã chốt phát hành policy
+  > mới. Giữ lại câu cũ để không ai đọc bản trước rồi kết luận ngược.
 - `supply_state` (`addr1wxz0dkz0v3rg6zeqz9c7cyxz9lg3ynkrlkqrapfkj7e5ppqexy5d3`) mang thread NFT
   `SUPPLY`, inline datum constructor 0, **4 field**:
   `dist_minted` = 1.000.000 LAMP · `reserve_minted` = 0 · `dist_cap` = 26.370.000.000 ·
   `reserve_cap` = 9.630.000.000 → **tổng cap 36 tỷ**, còn mint được **26,369 tỷ + 9,63 tỷ**.
 - Kho (`addr1w827sry6t2y9744ndkg4ks6nct57v7tm8pz46ywsq98dhdsf76slu`) đang giữ đúng 1.000.000 LAMP.
-- ⇒ **Lazy-mint đã wired thật trên mainnet.** "Mint LAMP vào kho" = dùng đường đã có, KHÔNG phải
-  deploy policy mới.
+- ⇒ **Lazy-mint đã wired thật trên mainnet** — nhưng chỉ MỘT trong hai đường. Đường
+  `DistributionVest` chạy được (đã đúc 1 triệu LAMP vào kho); đường `ReserveDraw` chết từ lúc
+  đúc. Nên "mint LAMP vào kho" đi được qua policy này, còn 9,63 tỷ Reserve thì không —
+  đó là lý do A1 chốt phát hành policy mới.
 
 > **SỬA MỘT KHẲNG ĐỊNH SAI CỦA BẢN CŨ.** Bản 13/07 ghi: *"`55d3e01b…180f0` = 1e12 base
 > (1 triệu LAMP), `mint_or_burn_count=1` → CỐ ĐỊNH, không mint thêm. Đây KHÔNG phải token 36 tỷ
@@ -23,15 +29,44 @@
 > "phải làm token mới" là bị dẫn sai. Giữ đoạn này lại để không ai lặp lỗi.
 
 ## A. Quyết định chiến lược
-1. ~~Token mainnet chính thức là cái nào~~ → **ĐÃ CHỐT 2026-07-29: `55d3e01b…180f0`.** Không
-   migrate, không khai tử, không phát hành token thứ hai.
+1. **ĐÃ CHỐT 2026-09-02: PHÁT HÀNH POLICY MỚI, khai tử bản mồi `55d3e01b…180f0`.**
+   Thời điểm phát hành **chưa chốt** — phải diễn tập trọn vẹn trên Preprod trước
+   (`Genesis/canonical-preprod-runbook.md`).
+
+   > Bản chốt 2026-07-29 ghi ngược lại ("không migrate, không khai tử"). Nó không sai vì ai
+   > cẩu thả — nó được chốt khi chưa ai biết lỗ dưới đây, đo được **2026-08-12**, tức muộn
+   > hơn hai tuần. Giữ lại đoạn này để không ai đọc bản cũ rồi kết luận ngược.
+
+   Lý do quyết định, theo thứ tự sức nặng:
+   - **Ngõ cụt cứng.** `meter_nft_policy` nướng vào policy này là **28 byte 0**
+     (`Genesis/offchain/src/deployed.ts:92`, đọc ngược từ bytecode trên chuỗi). Chuỗi đó
+     không có tiền ảnh blake2b-224 nên không UTxO nào mang nổi NFT dưới nó ⇒ điều kiện
+     `count_inputs_holding_nft(...) == 1` của nhánh `ReserveDraw` không bao giờ thoả ⇒
+     **9,63 tỷ LAMP Reserve (26,75% tổng cung) không rút được, mãi mãi**
+     (deployed.ts:118-119). Trần phát hành THỰC TẾ của policy này là **26,37 tỷ**, không
+     phải 36 tỷ — `scripts/verify_mainnet_supply.ts` in ra đúng câu đó.
+     apply-param không sửa được sau khi gửi (`onchain/validators/lamp_mint.ak:34`).
+   - **Một khoá hai cổng.** `dist_authority` là danh sách MỘT pkh, ngưỡng 1-of-1, và pkh đó
+     TRÙNG authority của kho `dist_treasury` (`deployed.ts` khối `caveats`). A-DEST vì thế
+     là một khúc vòng hai giao dịch, không phải cái khoá thứ hai. Khoá nướng vào tham số
+     nên không xoay được.
+   - **Thời điểm rẻ nhất là bây giờ.** Mới đúc **1.000.000 LAMP** (0,0028%), nằm trong kho,
+     và kho **chưa từng bị tiêu** ⇒ chưa một LAMP nào tới tay ai ⇒ không người nắm giữ nào
+     bị ảnh hưởng. Mỗi đợt phân phối mở dưới policy mồi làm chi phí chuyển đổi nhân lên.
+   - **Cái giá phải trả, nói thẳng.** `lamp_mint.ak:157` ép `delta > 0` nên 1 triệu LAMP đó
+     **không đốt được**. Chúng ở lại như tài sản của một policy đã khai tử. Đây là vấn đề
+     KHAI BÁO, không phải vấn đề tiền — xem cổng 5 ở cuối runbook.
 2. **token_tag = `4c414d50`** — đã chốt (xem `kho-a-dest.md`).
 3. **Kho A-DEST = `treasury.ak` vesting** — đã chốt. Kho mainnet hiện tại là `dist_treasury` 1-pkh
    (đang giữ 1 triệu LAMP) → **phải thay bằng `treasury.ak` TRƯỚC khi mint giá trị**.
-4. **Authority**: hệ quả trực tiếp của quyết định A1 — tham số đã **nướng vào policy-id**, nên
-   **không xoay khoá được** mà vẫn giữ token này. Khuyến nghị MultiSig M-of-N ở spec §11 **chỉ áp
-   dụng được cho policy mới**, tức đã hết hiệu lực với lựa chọn A1. Bù lại bằng quy trình giữ khoá
-   ngoại tuyến + trần on-chain + A-DEST.
+4. **Authority**: hệ quả trực tiếp của A1. A1 chốt theo đường "policy mới" ⇒ **cửa MultiSig
+   M-of-N (spec §11) mở lại**, và bản canonical 12 tham số còn đi xa hơn: WHO-gate đọc bảng
+   registry theo `token_tag`, nên xoay khoá vận hành = sửa entry registry, KHÔNG redeploy.
+   Con số M/N và danh sách người giữ khoá **chưa chốt** — quyết định vận hành, không phải
+   quyết định kỹ thuật.
+
+   > Bản trước ghi "không xoay khoá được ⇒ khuyến nghị M-of-N đã hết hiệu lực". Câu đó chỉ
+   > đúng khi A1 đóng theo đường "giữ bản mồi". A1 đã đóng theo đường ngược lại.
 
 ## A'. Đối chiếu script on-chain — HAI PHẦN BA ĐÃ XONG, phần còn lại KHÔNG làm được theo cách cổng đòi
 
@@ -67,7 +102,11 @@ và A4 an toàn trong lúc hai mục đó còn mở (xem bảng ở cuối tệp
    `feat/lamp-mint-compose-anchor-cap` đã ghim tag `archive/feat-lamp-mint-compose-anchor-cap`.
    **Lưu ý:** bản 12-param này là bản THIẾT KẾ; policy đang chạy trên mainnet có thể là bản 8-param
    — xem mục A'. Merge code không tự động đổi script đã deploy.
-6. **LAMP**: dựng script deploy 12-param **production** (hiện chỉ có demo Preview khoá cứng + bản v1 8-param) — gồm bước phá-vòng + đặt kho-NFT tại `treasury.ak`.
+6. ~~**LAMP**: dựng script deploy 12-param **production**~~ → **ĐÃ CÓ (2026-09-02)**, lớp Preprod:
+   `scripts/_canonical_v2.ts` (wiring), `20_canonical_genesis.ts` … `23_prove_oneshot.ts`,
+   `verify_canonical_v2.ts`, `v2_wiring_dry.ts`. Runbook: `Genesis/canonical-preprod-runbook.md`.
+   Bốn marker đi qua `oneshot_nft.ak` / `treasury_nft.ak` (one-shot thật), kho-NFT đặt tại
+   `treasury.ak` đúng như mục A3. Chưa gửi giao dịch nào; bước 1 mới ở mức dựng + eval xanh.
 7. **LAMP**: dựng **route kho→pot** (nối Genesis mint ↔ Distribution treasury) — item #9, chưa có. (Chính là pipeline đang diễn tập trên Preprod.)
 8. **PhoenixKey-Core**: merge `registry_mint.rs` (write-side, đã có 4-field) → main; build + deploy Registry NFT cho OrgDID.
 9. **SuperApp**: đồng bộ enclave core copy sang **4-field** (bản hiện 3-field → sẽ bị validator chặn); ráp `buildAndSignTx` native (Thư); bật cờ `ORG_MINT_ENABLED`.
@@ -91,9 +130,65 @@ và A4 an toàn trong lúc hai mục đó còn mở (xem bảng ở cuối tệp
 >
 > Hệ quả: một lượt Preprod xanh nói được "đường ống thông", không nói được "chỉ có một
 > SupplyState". Trước khi lên mainnet phải có thêm bằng chứng RIÊNG cho tính one-shot: chạy
-> pipeline với `thread_nft.ak` áp `genesis_ref` thật, rồi thử mint lượt thứ hai bằng cùng
+> pipeline với marker one-shot áp `genesis_ref` thật, rồi thử mint lượt thứ hai bằng cùng
 > policy đó và **xác nhận nó bị chặn**. Chưa có phép thử đó thì mục C chưa xanh, dù mọi bước
 > khác đã chạy.
+>
+> **Cập nhật 2026-09-02 — phép thử đó nay có script, chưa có kết quả.**
+> `scripts/23_prove_oneshot.ts` kiểm hai chiều: (1) UTxO hạt giống đã biến mất khỏi tập UTxO
+> sống ⇒ điều kiện one-shot không giao dịch nào về sau thoả được — phủ định cho MỌI lượt thử,
+> không riêng lượt được dựng; (2) dựng thật một giao dịch đúc SUPPLY NFT thứ hai và xác nhận
+> bị chặn (không ký, không gửi). Đường chạy mới KHÔNG dùng `scriptFromNative` cho khe marker
+> nào, nên cổng MARKER-001 (`_guards.ts`) im — đo được ở lượt dựng khô, ghi trong runbook.
+
+## C-bis. Diễn tập canonical v2 — trạng thái đo được (2026-09-02)
+
+Chi tiết + lệnh chạy: `Genesis/canonical-preprod-runbook.md`.
+
+**Lượt chạy 2026-09-03 trên Preprod — Lớp 1 XANH TOÀN BỘ.**
+`lamp_policy` = `d9c09230079b810ab5ed92e8db4c190d42efc42db6aac028656f7e07`
+
+| bước | việc | trạng thái |
+|---|---|---|
+| 0 | `v2:dry` — wiring khô, không chạm mạng | ✅ 5 marker ra 5 policy-id khác nhau, cổng APPLY-001/002 im |
+| 1 | Tx A — đúc 5 marker one-shot | ✅ `5d615fa7…a05d` — cả năm hạ cánh đúng chỗ |
+| 1b | dời REG về `Script(regPid)` | ✅ `0cca4708…bdf8` — xem phát hiện dưới bảng |
+| 2 | Tx B — `DistributionVest` → KHO | ✅ `44b73727…801a` — `dist_minted` 0 → 10.000 LAMP, KHO tăng đúng bằng Δ |
+| 3 | Tx C — `ReserveDraw` (nhánh chết ở mainnet) | ✅ `11438d3a…fc91` — `reserve_minted` 0 → **1.000 LAMP** |
+| 4 | bằng chứng one-shot (phủ định) | ✅ đúc SUPPLY lượt hai **bị chặn**; hạt giống đã tiêu ⇒ phủ định mọi lượt về sau |
+| — | `v2:verify` | ✅ **toàn bộ mục xanh** |
+| 5 | **Lớp 2** — MET xuống `reserve_draw.ak`: custody NFT + auth NFT + `ReserveState` | ✅ `fdc93cb2…a84b` · `3b61c2a4…b3d7` · `28c494a4…b6c0` |
+| 6 | Lớp 2 — một lượt rút THẬT đi qua cổng (4 validator trong 1 giao dịch) | ✅ `a1d64ec2…026e` — 1.000 LAMP, `drawn` 0→1e9, `last_epoch` 0→4139 |
+| 7 | Lớp 2 — 3 phép PHỦ ĐỊNH + 1 đối chứng dương | ✅ P0 dựng được; P1 (δ = trần+1), P2 (lượt hai cùng epoch), P3 (không qua cổng) **đều bị chặn** |
+
+> **Phát hiện của chính màn diễn tập: REG ở ví thì cổng WHO KHÔNG mở.**
+> Bản đầu đặt REG NFT ở ví, và giới hạn ghi trong tài liệu chỉ là "chưa chứng minh xoay khoá".
+> Chạy thật thì Tx B đỏ ngay (`failed script execution Mint[0]`):
+> `registry.ak::find_registry_datum` lọc reference input theo NFT **và** theo
+> `payment_credential == Script(policy)` — ràng buộc cố ý, vì reference input không cần chữ ký
+> của ai nên registry NFT nằm ở ví là người giữ nó tự viết `entries` và tự cấp quyền đúc LAMP.
+> Giới hạn ghi trong bản trước **nhẹ hơn sự thật**. Đây đúng là loại lỗi đọc mã không ra: mã dựng
+> tx trông hợp lệ, chỉ validator mới từ chối. Chi tiết + bản vá: `canonical-preprod-runbook.md`.
+
+> **Lớp 2 ĐÃ XANH (2026-09-03) — trần nhịp là phanh THẬT, cổng cầu thì CHƯA.**
+>
+> Lớp 1 để MET ở ví: tiêu nó không kích validator nào, tức nhánh Reserve mở nhưng không phanh.
+> Lớp 2 đưa MET xuống `reserve_draw.ak`, và ba phép phủ định (kèm đối chứng dương ở cùng epoch,
+> nên mỗi phép chỉ khác đối chứng đúng một chiều) xác nhận validator **chặn thật**: vượt trần
+> nhịp, rút lượt hai cùng epoch, và rút mà không kích cổng — cả ba đều bị từ chối ở bước dựng
+> giao dịch.
+>
+> **Nhưng cổng CẦU (`parked < sàn`) chưa đóng lại được, và lý do là cấu trúc.** `reserve_draw`
+> Luật 9 đếm LAMP tới *payment credential* của đích, còn `reserve_gate` đọc `parked` từ *UTxO
+> mang custody NFT*. Δ rút về nằm ở một UTxO RIÊNG bên cạnh UTxO đó ⇒ `parked` không nhích.
+> Không vá được bằng cách rót thẳng vào UTxO custody: cùng một UTxO không thể vừa là reference
+> input (gate đòi) vừa bị tiêu. ⇒ Lượt rút Reserve **không bao giờ tự nâng `parked` qua sàn**;
+> cổng cầu chỉ đóng khi một `Collect` của Treasury nạp vào chính UTxO custody — mà `Collect`
+> chưa dựng, và nguồn thu cho nó vừa bị gỡ ở phía MAGIC (`Treasury/Exec-Spec.md §1` đính chính
+> 2026-09-03).
+>
+> Nói gọn cho người quyết: thứ đang giữ 9,63 tỷ LAMP là **trần nhịp ≥1000 epoch (~13,7 năm)**,
+> không phải "chỉ nhả khi Treasury cạn". Đừng ghi cổng cầu vào cột "đã có".
 
 ## D. Deploy mainnet (CHỈ sau A–C xanh)
 12. TAAD anchor OrgDID **Active trên mainnet** (PhoenixKey-Validator/Core).
@@ -110,20 +205,34 @@ ngược nhau**, nên tách ra:
 |---|---|---|
 | A2 `token_tag` | **ĐÓNG** | mục A2 tệp này + `kho-a-dest.md` |
 | A3 kho A-DEST = `treasury.ak` | **ĐÓNG** | mục A3 tệp này |
-| A1 policy mainnet | **MỞ** | `Papers/Whitepaper.md` đính chính 2026-08-26 rút lại câu "chốt … chính thức": policy đang chạy là bản **khởi tạo (bootstrap)**, hai đường vẫn song song (giữ vĩnh viễn / phát hành policy mới khi mint uỷ quyền qua OrgDID sẵn sàng — §8–§9). Muộn hơn mục A1 của tệp này gần một tháng ⇒ bản muộn thắng |
-| A4 authority | **MỞ, dẫn xuất từ A1** | lập luận "tham số đã nướng vào policy-id ⇒ không xoay khoá được" chỉ đứng khi A1 đóng theo đường (a). A1 mở ⇒ cửa MultiSig M-of-N (spec §11) vẫn mở |
+| A1 policy mainnet | **ĐÓNG 2026-09-02 — phát hành policy mới** | mục A1 ở đầu tệp: `deployed.ts:92` + `:118-119` (Reserve 9,63 tỷ không rút được), `lamp_mint.ak:34` (apply-param không sửa được). Đường này khớp `Papers/Whitepaper.md` đính chính 2026-08-26 (bản đang chạy là **khởi tạo**, §8–§9) |
+| A4 authority | **MỞ — nhưng đã đổi bản chất** | A1 đóng theo đường "policy mới" ⇒ M-of-N khả thi trở lại, và bản 12 tham số cho xoay khoá qua registry mà không redeploy. Còn phải chốt: **con số M/N + danh sách người giữ khoá** (quyết định vận hành) |
+| Thời điểm phát hành | **MỞ** | phải qua trọn `Genesis/canonical-preprod-runbook.md` (bước 1-4 + Lớp 2) trước khi bàn tới ngày |
 
-**Ràng buộc TẠM đang giữ an toàn trong lúc A1/A4 mở:** cổng A' dưới đây chặn mọi bước mint giá trị
-thật, và nó chặn **cả hai** đường của A1 — nên để A1 mở không mở thêm rủi ro nào.
+**Ràng buộc đang giữ an toàn:** cổng A' dưới đây chặn mọi bước mint giá trị thật.
+A1 đóng theo đường "policy mới" làm cổng đó rơi vào một trạng thái khác về chất: kho
+`dist_treasury` cũ — chỗ duy nhất cổng không mở được vì chưa từng bị tiêu — **không còn nằm
+trên đường mint giá trị thật nữa**. Policy mới dùng `treasury.ak` làm kho, và TRSY NFT bị
+`treasury_nft.ak:50-56` ép hạ cánh ở một Script mang `TreasuryDatum` nợ mở = 0. Nên việc
+phát biểu lại cổng theo `hash + commit nguồn` giờ **áp cho lần deploy mới**, không còn là
+thứ ràng với A1 nữa.
 
 Việc thật còn lại, theo thứ tự:
-- **A' — phát biểu lại cổng đối chiếu theo `hash + commit nguồn`.** Việc ĐO đã xong hai phần ba
-  (`lamp_mint`, `supply_state` trùng byte); phần thứ ba không đo được theo byte vì kho chưa từng bị
-  tiêu. Cái còn thiếu là câu chữ của cổng, không phải phép đo — chi tiết ở mục A'.
-  ⚠️ Phát biểu lại cổng này **mở** ràng buộc đang giữ A1/A4 an toàn, nên phải làm CÙNG lúc với việc
-  khép A1/A4, không làm lẻ.
+- **A' — phát biểu lại cổng đối chiếu theo `hash + commit nguồn`.** Nay áp cho **lần deploy
+  mới**, không còn ràng với A1: kho `dist_treasury` cũ đã rời khỏi đường mint giá trị thật
+  (lý do ở bảng trạng thái trên). Việc còn lại là câu chữ của cổng, không phải phép đo.
+- **A4 — chốt M/N và danh sách người giữ khoá** cho authority của policy mới.
 - **Duyệt merge B5–B10** (điều phối nhiều đội: LAMP/Tuân, Core/Thư, SuperApp, Long).
-- **Chờ Preprod rehearsal xanh (C11)** — kèm phép thử one-shot `thread_nft.ak` nêu ở khung mục C.
+- **Cho phép gửi Tx A trên Preprod** để bước 2-4 của runbook chạy được — Tx A tiêu hạt giống
+  và không làm lại được, nên nó không tự chạy.
+- ~~**Dựng Lớp 2**~~ — **XONG 2026-09-03**, xanh trên Preprod (bảng C-bis bước 5-7).
+- **Quyết: cổng cầu Reserve có phải điều kiện phát hành không.** Trần nhịp đã ép được; cổng
+  `parked < sàn` thì KHÔNG tự đóng theo cấu trúc (lý do ở C-bis) và chỉ sống lại khi Treasury
+  có `Collect` — mà nguồn thu cho `Collect` vừa bị gỡ ở phía MAGIC
+  (`Treasury/Exec-Spec.md §1` đính chính 2026-09-03). Hai đường:
+  (a) phát hành với trần nhịp là phanh duy nhất, và **nói thẳng điều đó ra** trong Whitepaper;
+  (b) chặn phát hành tới khi Treasury có `Collect` + một nguồn thu đã chốt.
+  Đây là quyết định sản phẩm, không phải việc dev tự chọn.
 - **Rồi mới D12–D15.**
 
 Em (agent) KHÔNG thực thi bước mainnet nào (token thật, bất khả nghịch) — anh + đội làm, em chuẩn bị code + verify + diễn tập Preprod.
