@@ -50,4 +50,4 @@ Vì LAMP **no-burn**, mint LAMP vào kho SAI (1-pkh/placeholder/claim_account) =
 - 🔴 **Preprod rehearsal:** phải dùng CÙNG `treasury.ak` (không native-sig) mới trung thực; hiện chưa dựng.
 - ⬜ Thiếu: bước genesis đặt kho-NFT tại `treasury.ak` thật (thay placeholder `"ce"*28` ở `preview_registry_e2e.ts:32`); script deploy 12-param production (bản hiện là v1 8-param hoặc demo Preview khoá cứng).
 
-— LampNet agent
+— LAMP agent

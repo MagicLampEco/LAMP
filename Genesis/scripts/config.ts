@@ -123,7 +123,19 @@ export function assertEnv(): void {
  */
 export function assertWalletMatches(derived: string): void {
   const v = EXPECTED_ADDR_VAR[NETWORK];
-  if (!v) return; // mạng chưa khai địa chỉ đối chiếu — không đoán.
+  // FAIL-CLOSED trên mạng thật. Bản trước `return` khi mạng chưa khai địa chỉ đối chiếu — và
+  // Mainnet chính là mạng chưa khai, nên chốt kiểm ví KHÔNG chạy đúng ở mạng duy nhất mà
+  // chú thích trên vừa nói hậu quả là "đúc token vào ví không ai giữ khoá". Cổng hỏng-mà-
+  // cho-qua thì không ai biết; ở đây phải hỏng-mà-chặn.
+  if (NETWORK === "Mainnet" && (!v || !process.env[v])) {
+    throw new Error(
+      `WALLET-001: chạy trên Mainnet mà chưa khai địa chỉ ví đối chiếu. Chốt kiểm ví không có ` +
+        `gì để so, nên nó KHÔNG đo được — và trên mainnet thì seed sai nghĩa là đúc token vào ví ` +
+        `không ai giữ khoá, không quay lui được. Khai biến địa chỉ công khai cho Mainnet trong ` +
+        `EXPECTED_ADDR_VAR rồi đặt biến đó, hoặc đừng chạy mạng này.`,
+    );
+  }
+  if (!v) return; // testnet chưa khai địa chỉ đối chiếu — không đoán.
   const expected = process.env[v];
   if (!expected) return;
   if (derived !== expected) {

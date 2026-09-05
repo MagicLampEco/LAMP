@@ -228,7 +228,7 @@ Không có đối chứng thì ba dòng này vô nghĩa: cả ba trả về **c�
 nào đã chặn. Lượt chạy đầu mắc đúng bẫy đó — P1 dựng ở epoch đã rút, nên nó thật ra đang đo
 lại Luật 3 chứ không đo Luật 4. Đã sửa: P1 và P3 dựng ở `last_epoch + 1`.
 
-### Phát hiện — cổng cầu KHÔNG TỰ ĐÓNG LẠI ĐƯỢC
+### Phát hiện — cổng cầu không tự đóng lại ở bản đang chạy
 
 Số đo sau lượt rút:
 
@@ -242,12 +242,15 @@ Hai số này lệch nhau, và đó là **hình dạng của thiết kế**, kh�
 - `reserve_draw` Luật 9 đếm LAMP tới **payment credential** của đích ⇒ Δ vào đúng địa chỉ két, xanh.
 - `reserve_gate` G-CUST-1 + G-FLOOR-1 đọc `parked` từ **UTxO mang custody NFT** ⇒ Δ nằm ở một
   UTxO RIÊNG bên cạnh, không tính vào `parked`.
-- Không sửa được bằng cách rót thẳng vào UTxO custody: cùng một UTxO **không thể vừa là
-  reference input** (gate đòi) **vừa bị tiêu** (rót vào thì phải tiêu) trong một giao dịch.
+**Đính chính 2026-09-05.** Bản trước của mục này viết "không sửa được… cùng một UTxO không thể
+vừa là reference input vừa bị tiêu", và gọi đó là ràng buộc **cấu trúc**. Cả hai đều sai. Bản vá
+không cần custody vừa-tham-chiếu-vừa-tiêu — chỉ cần gate đọc `parked` ở vế bị tiêu. Thứ thật sự
+chặn là một dòng trong validator **chưa lên mainnet**: `Treasury/onchain/validators/custody.ak:65`
+`expect assets.is_zero(tx.mint)` (C-MINT-0) ⇒ `Collect` không nằm cùng tx với lượt mint Δ.
 
-⇒ Theo **cấu trúc**, một lượt rút Reserve không bao giờ tự nâng `parked` qua sàn. Cổng cầu chỉ
-đóng khi một tiến trình KHÁC nạp LAMP vào chính UTxO custody — tức một `Collect` của Treasury,
-**chưa dựng**. Chừng đó, thứ đang chặn là **trần nhịp** (≥1000 epoch để cạn pot ≈ 13,7 năm),
+⇒ Một lượt rút Reserve **ở bản đang chạy** không tự nâng `parked` qua sàn, và đó là thuộc tính
+của bản này, không phải của thiết kế eUTXO. Ba đường vá còn mở, ghi ở `mainnet-deploy-plan.md`
+mục C-bis. Chừng nào chưa vá, thứ đang chặn là **trần nhịp** (≥1000 epoch để cạn pot ≈ 13,7 năm),
 không phải cổng cầu. Đừng ghi cổng cầu vào cột "đã có".
 
 ### Ba thứ chỉ lộ khi chạy thật, lần này
@@ -268,5 +271,33 @@ Ngoài ra, bản demo cũ `Faucet/scripts/demo_reserve_e2e.ts` **không còn ch�
 hành và nên đọc như tài liệu lịch sử: nó truyền 2 tham số cho `custody.custody.spend` (blueprint
 khai 3), 2 cho `custody_seed.custody_seed.mint` (khai 1), và ghi custody NFT thành một dòng sổ —
 mà `collect.seed_value_ok` cộng NFT **ngoài** sổ, nên ghi thế là đếm hai lần.
+
+## 🔴 2026-09-05 — bản Lớp 2 trên Preprod ĐÃ LỖI THỜI, phải dựng lại
+
+Một lượt soi có dựng PoC chạy thật tìm được bốn khuyết tật trong `reserve_gate.ak` và một trong
+`custody_seed.ak`. Đã vá. **Vá validator là đổi script hash**, nên bốn địa chỉ + hai policy-id
+ghi ở bảng trên **không còn ứng với mã trong cây**. Mọi số đo ở mục "Lớp 2" là số đo của bản CŨ.
+
+| Luật thêm | Tệp | Nếu không có thì hỏng thế nào |
+|---|---|---|
+| `G-DATUM-1` | `reserve_gate.ak` | auth re-output nhận datum-hash không kèm tiền ảnh ⇒ UTxO gate không tiêu lại được. Auth NFT one-shot + cấm burn ⇒ **9,63 tỷ LAMP Reserve khoá vĩnh viễn**. Giá kẻ tấn công: một phí mạng |
+| `G-USE-1` | `reserve_gate.ak` | gate không đòi tx phải rút gì ⇒ ai cũng tiêu rỗng UTxO gate mỗi block, mọi tx rút hợp lệ đang dựng thành vô hiệu. Cùng mẫu griefing mà `custody.ak:105` (C-COL-11) đã vá cho nhánh Collect — bài học chưa lan sang đây |
+| `G-VALUE-1` | `reserve_gate.ak` | không đòi giữ lovelace ⇒ mỗi lượt tiêu vét phần dư ADA của gate về ví người dựng |
+| `G-REF-1` + địa chỉ đầy đủ | `reserve_gate.ak` | `util.is_at_script` chỉ so payment credential ⇒ trả NFT về (gate, stake của kẻ tấn công) là hợp lệ, phần thưởng staking chảy đi; và đính reference script ~16 KB đẩy min-ADA lên ~69 ADA vĩnh viễn |
+| `S-GOV-0` | `custody_seed.ak` | `governance_ref` **không được ép ở lượt sinh** trong khi `custody.ak:79,133` ép nó bất biến và `release.ak:52-53` gác bằng đúng nó. Bản diễn tập ghi `""` ⇒ nhánh `Release` không bao giờ thoả ⇒ **két chỉ NHẬN, không bao giờ CHI**, và LAMP không đốt được |
+| `drawn_oildrop >= 0` | `reserve_draw.ak` | `drawn` âm làm pot còn lại phình (`total − drawn > total`). Không lượt sinh nào ép trường này: thread NFT đang dùng là `oneshot_nft.ak`, chỉ ép one-shot chứ không ép hình dạng datum. Gương `lamp_mint.ak:150-151` |
+
+`S-GOV-0` kéo theo một đổi ở phía dựng: `custodySeedDatum()` nay **đòi** `governance_ref` 28 byte,
+và `24_reserve_layer2_init.ts` đọc nó từ `GOVERNANCE_SCRIPT_HASH`, fail-closed. Lượt sinh custody
+dùng NFT one-shot nên **không làm lại được** — một két seed sai còn tệ hơn một két chưa seed.
+
+**`reserve_thread.ak` là mã chết.** `reserve_draw.ak:22` giới thiệu tham số
+`reserve_thread_policy` và cả tệp `reserve_thread.ak` tồn tại để hiện thực nó, nhưng bản triển
+khai truyền `metPid` sinh từ `oneshot_nft.ak` (`_reserve_layer2.ts`, `_canonical_v2.ts`). Hai
+policy cùng ba luật nên không phải lỗ hổng — nhưng người soi đọc `reserve_draw.ak:22` sẽ đi soi
+đúng tệp **không chạy**, và mọi luật thêm vào đó không có tác dụng gì.
+
+**Việc phải làm trước khi nói Lớp 2 xanh lại:** chạy lại `v2:l2` → `v2:l2draw` → `v2:l2brake` →
+`v2:verify` trên Preprod với wiring mới, rồi thay bảng bốn tx hash ở mục "Lớp 2".
 
 — LAMP agent

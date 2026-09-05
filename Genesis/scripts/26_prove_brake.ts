@@ -109,6 +109,19 @@ async function main(): Promise<void> {
   }
 
   const results: { name: string; blocked: boolean; error: string }[] = [];
+
+  /**
+   * Một lỗi CHỈ được tính là "validator đã chặn" khi nó là lỗi thực thi script.
+   *
+   * Vì sao phải lọc: bản trước bắt MỌI ngoại lệ rồi ghi `blocked: true`. Mạng rớt, Blockfrost
+   * 429, ví thiếu ADA, CBOR sai — tất cả thành "phanh có tác dụng". Đó đúng là trạng thái thứ
+   * ba (KHÔNG ĐO ĐƯỢC) đội lốt trạng thái thứ nhất (khớp), và nó đi thẳng vào cổng phát hành.
+   */
+  function laLoiValidator(e: unknown): boolean {
+    const m = String((e as { message?: string })?.message ?? e);
+    return /validator crashed|exited prematurely|Spend\[|Mint\[|ScriptFailure|EvaluationFailure/i.test(m);
+  }
+
   async function expectRejected(name: string, luat: string, run: () => Promise<unknown>): Promise<void> {
     console.log(`── ${name}`);
     console.log(`   ${luat}`);
@@ -117,6 +130,15 @@ async function main(): Promise<void> {
       results.push({ name, blocked: false, error: "" });
       console.log(`   ❌ KHÔNG BỊ CHẶN — giao dịch dựng được. Phanh này KHÔNG có tác dụng.\n`);
     } catch (e) {
+      if (!laLoiValidator(e)) {
+        // KHÔNG nuốt: phép đo này không đo được gì, và im lặng ở đây là dựng bằng chứng giả.
+        throw new Error(
+          `${name}: lỗi KHÔNG PHẢI do validator từ chối, nên phép phủ định này không đo được gì.\n` +
+          `Lỗi thô: ${short(e, 400)}\n` +
+          `Sửa nguyên nhân (mạng, ví, tham số) rồi chạy lại. Ghi nó thành "bị chặn" là dựng ` +
+          `bằng chứng giả cho cổng phát hành mainnet.`,
+        );
+      }
       results.push({ name, blocked: true, error: short(e) });
       console.log(`   ✓ bị chặn: ${short(e, 180)}\n`);
     }
@@ -154,8 +176,16 @@ async function main(): Promise<void> {
       await buildDraw({ delta: 1_000_000n, epoch: w.t, loMs: w.loMs, hiMs: w.hiMs, withGate: true });
       console.log(`   ✓ dựng ĐƯỢC — khuôn giao dịch đúng, nên mọi lỗi dưới đây là do khuyết tật cố ý.\n`);
     } catch (e) {
-      console.log(`   ⚠ KHÔNG dựng được: ${short(e, 200)}`);
-      console.log(`   Chưa có đối chứng dương thì ba phép dưới KHÔNG quy được về luật nào.\n`);
+      // Đối chứng dương đỏ ⇒ DỪNG. Bản trước chỉ in một dòng ⚠ rồi vẫn chạy tiếp và vẫn ghi
+      // `brakeProof` — tức vẫn sinh ra bằng chứng cho cổng phát hành, từ một lượt chạy mà
+      // chính nó vừa khai là không quy được về luật nào.
+      console.error(`   ⚠ ĐỐI CHỨNG DƯƠNG KHÔNG DỰNG ĐƯỢC: ${short(e, 300)}`);
+      console.error(
+        `\n   Ba phép phủ định dưới đây đều trả về CÙNG một chuỗi lỗi, nên nếu không có một\n` +
+        `   lượt dựng THÀNH CÔNG cùng khuôn thì "bị chặn" không quy được về luật nào — nó chỉ\n` +
+        `   nói khuôn giao dịch hỏng. KHÔNG ghi brakeProof, KHÔNG chạy tiếp.`,
+      );
+      process.exit(1);
     }
   }
 

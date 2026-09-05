@@ -39,7 +39,7 @@ import {
 import { readFile, writeFile } from "node:fs/promises";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { NETWORK, applyPolicy, policyId, rawValidator } from "./config.js";
+import { NETWORK, applyPolicy, applyValidator, policyId, rawValidator } from "./config.js";
 import { assertParamCount as assertParamCountGate } from "../offchain/src/applyGate.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -247,13 +247,14 @@ export async function deriveWiring(
   const lampPid = policyId(lampMint);
 
   // ── Tầng 3: supply_state ──────────────────────────────────────────────────
-  const supplyState: Validator = {
-    type: "PlutusV3",
-    script: applyParamsToScript(
-      (await rawValidator("supply_state.supply_state.spend")).compiledCode,
-      [lampPid, threadPid, o.tokenName] as never,
-    ),
-  };
+  // Qua `applyValidator` (có cổng APPLY-001/002), KHÔNG gọi thẳng `applyParamsToScript`.
+  // Đây là khe duy nhất trong đường canonical còn gọi thẳng: số tham số hôm nay đúng (3) nên
+  // nó vô hại, nhưng nếu `supply_state.ak` thêm một tham số thì chỗ này áp thiếu, IM LẶNG,
+  // và ra một `ssHash` khác — trong khi mọi lời gọi bên cạnh đều được gác.
+  const supplyState: Validator = applyValidator(
+    (await rawValidator("supply_state.supply_state.spend")).compiledCode,
+    [lampPid, threadPid, o.tokenName],
+  );
   const ssHash = hashOf(supplyState);
 
   // ── Distribution: claim_account → treasury (KHO), chia sẻ lampPid ─────────
