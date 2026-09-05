@@ -92,6 +92,10 @@ validator reserve_draw(
     let delta = util.minted_qty(tx.mint, lamp_policy, token_name)
     expect delta > 0
     expect delta <= math.max_per_epoch(s.total_oildrop)
+    // `drawn_oildrop` âm làm pot còn lại phình ra (`total - drawn` > `total`), và không lượt
+    // SINH nào ép trường này: thread NFT đang dùng là `oneshot_nft.ak`, chỉ ép one-shot chứ
+    // không ép hình dạng datum. Gương `lamp_mint.ak:150-151` (`expect s.dist_minted >= 0`).
+    expect s.drawn_oildrop >= 0
     expect delta <= s.total_oildrop - s.drawn_oildrop
 
     // ── Luật 5: Treasury-pull gate — ∃ input mang treasury_auth NFT Ở GATE SCRIPT ──

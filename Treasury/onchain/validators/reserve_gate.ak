@@ -18,8 +18,14 @@
 //              KHÔNG tiêu custody (custody do collect/release tự quản).
 //   G-FLOOR-1  parked = quantity_of(custody_ref.value, lamp_policy, token_name) < floor_oildrop.
 //              CHỈ cho kéo khi PARKED dưới sàn (demand-gated).
-//   G-REOUT-1  auth NFT re-output VỀ CHÍNH gate script (cùng payment script hash), qty == 1.
-//              Tái dùng vô hạn; không mất, không burn, không rời script.
+//   G-REOUT-1  auth NFT re-output VỀ CHÍNH gate script (địa chỉ ĐẦY ĐỦ, không chỉ payment
+//              part), qty == 1. Tái dùng vô hạn; không mất, không burn, không rời script.
+//   G-DATUM-1  auth re-output mang INLINE datum decode được về Void. Datum-hash không kèm
+//              tiền ảnh ⇒ UTxO không tiêu lại được ⇒ auth NFT chết ⇒ Reserve khoá vĩnh viễn.
+//   G-REF-1    auth re-output KHÔNG mang reference_script (thuế min-ADA + phí vĩnh viễn).
+//   G-USE-1    tx PHẢI thực sự đúc LAMP (> 0). Chống tiêu rỗng permissionless mỗi block làm
+//              mọi tx rút hợp lệ thành vô hiệu — mirror C-COL-11 của custody.ak.
+//   G-VALUE-1  lovelace của auth re-output >= lovelace own input. Chống vét ADA của gate.
 //   G-NOBURN-1 auth NFT KHÔNG bị mint/burn trong tx (qty mint == 0) — chống đúc auth giả.
 //   G-DS-1     đúng 1 input mang auth NFT + đúng 1 output mang auth NFT (chống double-satisfy).
 //
@@ -27,9 +33,10 @@
 // Datum gate = Void (không trạng thái — chỉ là khóa logic).
 
 use aiken/collection/list
-use cardano/address.{Address, Script}
+use cardano/address.{Address, Inline, Script}
 use cardano/assets.{PolicyId}
-use cardano/transaction.{Input, Output, OutputReference, Transaction, placeholder}
+use cardano/transaction.{DatumHash, Input, InlineDatum, Output, OutputReference, Transaction,
+  placeholder}
 use magiclamp/treasury/util
 
 /// Đếm UTxO (input/output) mang NFT (policy, name) qty == 1 — đối xứng reserve util.
@@ -102,7 +109,43 @@ validator reserve_gate(
     expect Script(own_hash) = own_out.address.payment_credential
     expect count_outputs_with_nft(tx.outputs, auth_policy, auth_name) == 1
     let auth_out: Output = output_with_nft(tx.outputs, auth_policy, auth_name)
-    expect util.is_at_script(auth_out.address, own_hash)
+    // Địa chỉ ĐẦY ĐỦ, không chỉ payment credential (bản trước dùng `util.is_at_script`, chỉ so
+    // payment part). Gương `reserve_draw.ak:125`. Để tự do phần staking thì phần thưởng staking
+    // của UTxO gate chảy về stake credential kẻ dựng tx.
+    expect auth_out.address == own_out.address
+
+    // ── G-DATUM-1: auth re-output PHẢI mang inline datum decode được về Void ──
+    //
+    // Vì sao bắt buộc: ba vế trên chỉ kiểm NƠI ĐẾN và QUYỀN SỞ HỮU của NFT, không kiểm
+    // KHẢ NĂNG TIÊU LẠI. Trả auth NFT về đúng địa chỉ gate nhưng gắn `DatumHash(<32 byte
+    // ngẫu nhiên>)` thì sổ cái đòi tiền ảnh datum ở lượt tiêu sau ⇒ không ai tiêu lại được.
+    // Auth NFT one-shot (`reserve_auth.ak:37`) và cấm burn (G-NOBURN-1 dưới) ⇒ không đúc lại,
+    // không thu hồi ⇒ `reserve_draw` Luật 5 vĩnh viễn không thoả ⇒ 9,63 tỷ LAMP Reserve
+    // không bao giờ phát hành được nữa. Giá của kẻ tấn công: một phí mạng.
+    //
+    // Phải viết TƯỜNG MINH, không trông vào kiểu khai ở `_datum: Option<Void>`: đo được
+    // Aiken KHÔNG phát cast cho tham số datum bị bỏ qua (compiledCode giống hệt bản
+    // `Option<Data>`), nên khai kiểu ở đó không cưỡng chế gì lúc chạy.
+    expect InlineDatum(auth_datum) = auth_out.datum
+    expect _void: Void = auth_datum
+
+    // ── G-REF-1: không biến gate thành script-carrier (gương reserve_draw.ak:134) ──
+    // Đính một reference script ~16 KB đẩy min-ADA của UTxO gate lên ~69 ADA và bắt mọi lượt
+    // tiêu sau gánh thêm phí reference-script, vĩnh viễn.
+    expect auth_out.reference_script == None
+
+    // ── G-USE-1: gate CHỈ mở khi tx thực sự rút Reserve ────────────────────
+    //
+    // Bản trước không đòi tx làm gì cả ngoài trả NFT về chỗ cũ ⇒ ai cũng dựng được một tx
+    // "tiêu rỗng" mỗi block, và mỗi lượt tiêu làm mọi tx rút hợp lệ đang dựng trên UTxO gate
+    // cũ thành vô hiệu. Đây đúng mẫu griefing mà `custody.ak:105` (C-COL-11) đã nhận diện và
+    // vá cho nhánh Collect — bài học đó chưa lan sang đây. Đối chứng: `reserve_draw` miễn
+    // nhiễm nhờ Luật 4 (`expect delta > 0`).
+    expect assets.quantity_of(tx.mint, lamp_policy, token_name) > 0
+
+    // ── G-VALUE-1: không vét ADA của gate ──────────────────────────────────
+    // G-REOUT-1 không đòi giữ lovelace, nên mỗi lượt tiêu rút được phần dư về ví người dựng.
+    expect assets.lovelace_of(auth_out.value) >= assets.lovelace_of(own_out.value)
 
     // ── G-NOBURN-1: auth NFT KHÔNG mint/burn trong tx (qty mint == 0) ──────
     // Chống đúc THÊM auth NFT giả cùng tx rồi giữ ở ví thường để né gate (mirror reserve_draw Luật 8).
@@ -196,14 +239,21 @@ fn run(tx: Transaction) -> Bool {
   )
 }
 
-/// tx gate hợp lệ: gate input + custody reference (parked) + auth re-output về gate, mint==0.
+/// Δ LAMP đúc trong tx rút — G-USE-1 đòi > 0.
+fn lamp_minted(delta: Int) -> assets.Value {
+  assets.zero |> assets.add(lamp_pol, lamp_nm, delta)
+}
+
+/// tx gate hợp lệ: gate input + custody reference (parked) + auth re-output về gate.
+/// `mint` PHẢI mang LAMP > 0 (G-USE-1): gate chỉ mở cho tx thực sự rút Reserve, không mở
+/// cho một lượt tiêu rỗng.
 fn build_tx(parked: Int) -> Transaction {
   Transaction {
     ..placeholder,
     inputs: [gate_input()],
     reference_inputs: [custody_ref_input(parked)],
     outputs: [auth_output_to_gate()],
-    mint: assets.zero,
+    mint: lamp_minted(1_000),
   }
 }
 
@@ -220,6 +270,113 @@ test gate_happy_parked_zero() {
 }
 
 // ── NEGATIVE ─────────────────────────────────────────────────
+
+// ── NEGATIVE cho bốn luật thêm 2026-09-05 ────────────────────
+// Mỗi ca khác `build_tx` ĐÚNG MỘT chiều, nên lượt từ chối quy được về đúng một luật.
+
+test gate_reject_auth_output_datum_hash() fail {
+  // G-DATUM-1: auth re-output mang datum-hash thay vì inline Void.
+  //
+  // Đây là ca nặng nhất trong bốn: sổ cái đòi tiền ảnh datum ở lượt tiêu sau, nên một
+  // datum-hash không kèm tiền ảnh khoá UTxO gate vĩnh viễn. Auth NFT one-shot + cấm burn
+  // ⇒ không đúc lại, không thu hồi ⇒ nhánh Reserve chết hẳn.
+  let v = assets.from_lovelace(2_000_000) |> assets.add(auth_pol, auth_nm, 1)
+  let out =
+    Output {
+      address: util.script_address(gate_hash),
+      value: v,
+      datum: DatumHash(#"00000000000000000000000000000000000000000000000000000000000000ff"),
+      reference_script: None,
+    }
+  run(
+    Transaction {
+      ..placeholder,
+      inputs: [gate_input()],
+      reference_inputs: [custody_ref_input(50)],
+      outputs: [out],
+      mint: lamp_minted(1_000),
+    },
+  )
+}
+
+test gate_reject_noop_respend() fail {
+  // G-USE-1: tx KHÔNG đúc LAMP nào. Bản trước cho qua ⇒ ai cũng tiêu rỗng UTxO gate mỗi
+  // block, làm mọi tx rút hợp lệ đang dựng trên UTxO cũ thành vô hiệu (griefing).
+  run(
+    Transaction {
+      ..placeholder,
+      inputs: [gate_input()],
+      reference_inputs: [custody_ref_input(50)],
+      outputs: [auth_output_to_gate()],
+      mint: assets.zero,
+    },
+  )
+}
+
+test gate_reject_ada_skim() fail {
+  // G-VALUE-1: gate input mang 50 ADA, auth re-output chỉ trả về 2 ADA — 48 ADA còn lại
+  // về ví người dựng tx. Bản trước không đòi giữ lovelace nên đây là đường vét.
+  let vin = assets.from_lovelace(50_000_000) |> assets.add(auth_pol, auth_nm, 1)
+  let rich_input =
+    util.mk_input(own_ref(), util.mk_output(util.script_address(gate_hash), vin, Void))
+  run(
+    Transaction {
+      ..placeholder,
+      inputs: [rich_input],
+      reference_inputs: [custody_ref_input(50)],
+      outputs: [auth_output_to_gate()],
+      mint: lamp_minted(1_000),
+    },
+  )
+}
+
+test gate_reject_reference_script_on_auth_output() fail {
+  // G-REF-1: đính reference script vào auth re-output ⇒ min-ADA của UTxO gate nhảy vọt và
+  // mọi lượt tiêu sau gánh thêm phí reference-script, vĩnh viễn.
+  let v = assets.from_lovelace(2_000_000) |> assets.add(auth_pol, auth_nm, 1)
+  let out =
+    Output {
+      address: util.script_address(gate_hash),
+      value: v,
+      datum: InlineDatum(Void),
+      reference_script: Some(#"beef"),
+    }
+  run(
+    Transaction {
+      ..placeholder,
+      inputs: [gate_input()],
+      reference_inputs: [custody_ref_input(50)],
+      outputs: [out],
+      mint: lamp_minted(1_000),
+    },
+  )
+}
+
+test gate_reject_attacker_stake_credential() fail {
+  // G-REOUT-1 siết: bản trước so PAYMENT credential thôi, nên trả auth NFT về
+  // (gate_hash, stake của kẻ tấn công) là hợp lệ — phần thưởng staking của UTxO gate
+  // chảy về họ. Nay so địa chỉ ĐẦY ĐỦ.
+  let v = assets.from_lovelace(2_000_000) |> assets.add(auth_pol, auth_nm, 1)
+  let out =
+    Output {
+      address: Address {
+        payment_credential: Script(gate_hash),
+        stake_credential: Some(Inline(Script(other_hash))),
+      },
+      value: v,
+      datum: InlineDatum(Void),
+      reference_script: None,
+    }
+  run(
+    Transaction {
+      ..placeholder,
+      inputs: [gate_input()],
+      reference_inputs: [custody_ref_input(50)],
+      outputs: [out],
+      mint: lamp_minted(1_000),
+    },
+  )
+}
 
 test gate_reject_parked_equals_floor() fail {
   // parked == floor (100) → KHÔNG < floor → G-FLOOR-1 reject (sàn là cận chặt).

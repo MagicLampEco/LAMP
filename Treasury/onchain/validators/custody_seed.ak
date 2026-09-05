@@ -35,6 +35,7 @@
 // BURN — CẤM hoàn toàn (else fail): NFT authenticity sống suốt vòng đời instance.
 
 use aiken/collection/dict
+use aiken/primitive/bytearray
 use aiken/collection/list
 use cardano/assets.{PolicyId}
 use cardano/transaction.{InlineDatum, OutputReference, Transaction}
@@ -98,6 +99,21 @@ validator custody_seed(genesis_ref: OutputReference) {
 
     // ── S-CUT-0: cut_bps trong dải [0,10000] (chống cut âm drain / >100%) ────
     expect seed_datum.cut_bps >= 0 && seed_datum.cut_bps <= 10000
+
+    // ── S-GOV-0: governance_ref là script hash THẬT (28 byte) ────────────────
+    //
+    // Vì sao phải ép Ở ĐÂY và không chỗ nào khác: `custody.ak:79` và `:133` ép
+    // `governance_ref` BẤT BIẾN ở cả hai nhánh, nên giá trị ghi ở lượt sinh là giá trị
+    // vĩnh viễn của instance. Và `release.ak:52-53` dùng nó làm cổng cứng
+    // (`expect ph == governance_ref`). Ghi rỗng hoặc sai độ dài một lần ⇒ nhánh `Release`
+    // không bao giờ thoả ⇒ két chỉ NHẬN, không bao giờ CHI ⇒ mọi LAMP vào đó mất vĩnh
+    // viễn. Và LAMP KHÔNG burn được (`Treasury/CONTRACT.md §5`), nên đây là phá huỷ cung
+    // thật, không phải một dòng kế toán.
+    //
+    // Bản trước bỏ trắng đúng trường này trong khi ép 10 bất biến khác quanh nó — và bản
+    // triển khai diễn tập ghi `governance_ref: ""` (`Genesis/scripts/_reserve_layer2.ts`),
+    // đúng cái mà cổng này chặn.
+    expect bytearray.length(seed_datum.governance_ref) == 28
 
     // ── S-SEED-0: ÉP bất biến nền sổ↔value tại seed (gồm NFT authenticity) ──
     expect

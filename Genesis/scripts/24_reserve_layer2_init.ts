@@ -25,6 +25,7 @@
 import { type UTxO } from "@lucid-evolution/lucid";
 import { NETWORK, makeLucid, walletPkh, explorerTx } from "./config.js";
 import { rehydrate, writeState, waitFor, MET_NAME } from "./_canonical_v2.js";
+import { supplyStateFromCbor } from "../offchain/src/datum.js";
 import {
   AUTH_NAME, INSTANCE_ID, deriveCustody, deriveReserveWiring, custodySeedDatum,
   reserveStateDatum, epochNow, printReserveWiring, VOID_DATUM, RESERVE_TOTAL,
@@ -55,6 +56,28 @@ function pickSeed(utxos: UTxO[], avoid: Set<string>, min = 5_000_000n): UTxO {
     );
   }
   return ok[0]!;
+}
+
+/**
+ * Script hash của validator governance, đọc từ `GOVERNANCE_SCRIPT_HASH`. KHÔNG có mặc định.
+ *
+ * Trường này đi vào datum lượt sinh và BẤT BIẾN từ đó (`custody.ak:79,133`); nhánh `Release`
+ * của két gác bằng đúng nó (`release.ak:52-53`). Bản trước điền `""` — khi đó `Release` không
+ * bao giờ thoả và két thành hố một chiều. Không có giá trị thì DỪNG: một két seed sai còn tệ
+ * hơn một két chưa seed, vì lượt seed không làm lại được (one-shot NFT).
+ */
+function governanceRef(): string {
+  const v = (process.env.GOVERNANCE_SCRIPT_HASH ?? "").trim();
+  if (!v) {
+    throw new Error(
+      `GOV-REF-001: chưa đặt GOVERNANCE_SCRIPT_HASH. Đây là script hash 28 byte của validator ` +
+      `governance sẽ ký duyệt các lượt chi từ két. Nó BẤT BIẾN sau lượt sinh custody và là cổng ` +
+      `cứng duy nhất của nhánh Release — đặt sai hoặc bỏ trống là két chỉ nhận, không bao giờ chi, ` +
+      `và LAMP trong đó không đốt được (Treasury/CONTRACT.md §5). Lượt sinh dùng NFT one-shot nên ` +
+      `KHÔNG làm lại được. Đặt GOVERNANCE_SCRIPT_HASH=<56 ký tự hex> rồi chạy lại.`,
+    );
+  }
+  return v;
 }
 
 async function main(): Promise<void> {
@@ -108,7 +131,10 @@ async function main(): Promise<void> {
       .attach.MintingPolicy(cust.custodySeed)
       // Sổ RỖNG + lovelace ĐÚNG BẰNG `reserved_min_ada` — xem `custodySeedDatum()`.
       .pay.ToContract(cust.custodyAddr,
-        { kind: "inline", value: custodyDatumToCbor(custodySeedDatum(wiring.lampPid, wiring.tokenName)) },
+        { kind: "inline",
+          value: custodyDatumToCbor(
+            custodySeedDatum(wiring.lampPid, wiring.tokenName, governanceRef()),
+          ) },
         { lovelace: RESERVED_MIN_ADA, [cust.custodyNftUnit]: 1n })
       .addSigner(walletAddr)
       .complete();
@@ -203,6 +229,38 @@ async function main(): Promise<void> {
         `Lớp 1 để nó ở ví; nếu nó đã đi chỗ khác thì Lớp 2 không dựng tiếp được.`,
       );
     }
+    // ── Cổng RESERVE-CAP-001, fail-closed ──────────────────────────────────
+    //
+    // `total_oildrop` ghi vào ReserveState ở đây trở thành BẤT BIẾN VĨNH VIỄN: Luật 7 của
+    // `reserve_draw.ak:128` ép mọi lượt sau giữ nguyên nó, và trần mỗi epoch tính TỪ nó
+    // (`reserve_draw.ak:94`, `reserve/math.ak::max_per_epoch` = total/1000). Không validator
+    // nào đối chiếu nó với `reserve_cap` của SupplyState — nên ghi lớn gấp N lần là trần nhịp
+    // lớn gấp N, và "1000 epoch ≈ 13,7 năm" thành 13,7/N năm. Cap tuyệt đối 36 tỷ vẫn giữ
+    // (`lamp_mint.ak:185`), nên đây là mất NHỊP chứ không mất TRẦN — nhưng nhịp là phanh duy
+    // nhất đang thật sự chạy (cổng cầu chưa đóng được), nên nó phải được đo trước khi gửi.
+    //
+    // Chỗ đo đúng là ĐÂY, không phải `verify_canonical_v2.ts`: cái đó chạy tay, SAU khi datum
+    // đã lên chuỗi và đã thành bất biến.
+    const ssAll = await lucid.utxosAt(wiring.ssAddr);
+    const ssU = ssAll.find((u) => (u.assets[wiring.threadUnit] ?? 0n) === 1n);
+    if (!ssU?.datum) {
+      throw new Error(
+        `RESERVE-CAP-001: không đọc được SupplyState tại ${wiring.ssAddr} (thread NFT ` +
+        `${wiring.threadUnit}), nên KHÔNG đối chiếu được total_oildrop với reserve_cap. ` +
+        `Không đo được thì DỪNG — datum này bất biến sau khi gửi.`,
+      );
+    }
+    const sNow = supplyStateFromCbor(ssU.datum);
+    if (RESERVE_TOTAL !== sNow.reserve_cap) {
+      throw new Error(
+        `RESERVE-CAP-001: total_oildrop sắp ghi (${RESERVE_TOTAL}) KHÁC reserve_cap trên chuỗi ` +
+        `(${sNow.reserve_cap}). Trần mỗi epoch = total/1000, và total là BẤT BIẾN sau khi gửi ` +
+        `(reserve_draw.ak Luật 7) ⇒ sai ở đây là sai vĩnh viễn. Sửa RESERVE_TOTAL trong ` +
+        `_reserve_layer2.ts cho khớp SupplyState rồi chạy lại.`,
+      );
+    }
+    console.log(`✓ RESERVE-CAP-001: total_oildrop = reserve_cap trên chuỗi (${RESERVE_TOTAL})`);
+
     const start = epochNow();
     console.log(`\nL2c dời meter: ví → ${rw!.reserve.drawAddr}`);
     console.log(`    ReserveState: start_epoch=${start} total=${RESERVE_TOTAL} drawn=0 last_epoch=0`);
