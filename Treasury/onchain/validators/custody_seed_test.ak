@@ -42,7 +42,7 @@ fn seed_datum(ledger: List<LedgerEntry>) -> CustodyDatum {
     accepted_assets: accepted(),
     ledger: ledger,
     cut_bps: 1000,
-    governance_ref: #"9999",
+    governance_ref: #"99999999999999999999999999999999999999999999999999999999",
     epoch: 0,
     consumed_proposals: [],
   }

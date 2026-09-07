@@ -95,8 +95,22 @@ async function main(): Promise<void> {
   console.log("\n── KHO A-DEST ──");
   const khoLamp = count(atTre, wiring.lampUnit);
   console.log(`KHO giữ ${vn(khoLamp / OIL)} LAMP trên ${atTre.length} UTxO`);
-  check(khoLamp >= s.dist_minted,
-    `mọi LAMP đường Distribution đều nằm trong kho (${vn(khoLamp / OIL)} ≥ ${vn(s.dist_minted / OIL)})`);
+  // Phép đo này chỉ đúng TRƯỚC lần phân phối đầu tiên. `khoLamp` là số đang ở kho HÔM NAY;
+  // `dist_minted` là tổng đúc LỊCH SỬ. Mỗi `ReleaseForRedeem` (treasury.ak) rút LAMP ra cho
+  // người dùng ⇒ khoLamp giảm, dist_minted không giảm ⇒ dòng này sẽ đỏ VĨNH VIỄN sau đợt phân
+  // phối đầu. Cổng đỏ-giả bị người vận hành học cách bỏ qua, và lúc đó nó hết bắt được cái nó
+  // sinh ra để bắt. Nên: chỉ ép khi kho chưa từng nhả, và nói rõ khi không còn ép được.
+  if (khoLamp >= s.dist_minted) {
+    check(true,
+      `mọi LAMP đường Distribution đều nằm trong kho (${vn(khoLamp / OIL)} ≥ ${vn(s.dist_minted / OIL)})`);
+  } else {
+    console.log(
+      `   · KHÔNG ĐO ĐƯỢC: kho giữ ${vn(khoLamp / OIL)} < dist_minted ${vn(s.dist_minted / OIL)} LAMP.\n` +
+      `     Đây là hình dạng BÌNH THƯỜNG sau khi phân phối bắt đầu (ReleaseForRedeem rút khỏi kho),\n` +
+      `     nhưng phép đo này không phân biệt được nó với rò rỉ. Muốn ép lại thì phải cộng dồn\n` +
+      `     lượng đã nhả từ lịch sử tx — chưa dựng. KHÔNG tính là xanh, cũng KHÔNG tính là đỏ.`,
+    );
+  }
 
   // ── Hai điều khác mainnet, nói bằng số ───────────────────────────────────
   console.log("\n── Khác policy mồi mainnet ở đâu ──");
@@ -123,8 +137,25 @@ async function main(): Promise<void> {
       console.log(`ReserveState: start=${r.start_epoch} total=${vn(r.total_oildrop)} drawn=${vn(r.drawn_oildrop)} last_epoch=${r.last_epoch}`);
       check(r.total_oildrop === s.reserve_cap,
         `total_oildrop khớp reserve_cap của SupplyState (${vn(r.total_oildrop)})`);
-      check(r.drawn_oildrop <= r.total_oildrop / 1000n * 1n + r.drawn_oildrop,
-        `drawn_oildrop = ${vn(r.drawn_oildrop)} ≤ pot`);
+      // Bản trước viết `drawn <= total/1000*1 + drawn` — vế phải LUÔN ≥ vế trái với total ≥ 0,
+      // nên dòng đó in ✓ kể cả khi drawn vượt pot: nhãn nói "≤ pot", phép đo không nhắc tới pot.
+      check(r.drawn_oildrop <= r.total_oildrop,
+        `drawn_oildrop = ${vn(r.drawn_oildrop)} ≤ pot ${vn(r.total_oildrop)}`);
+      // Trần nhịp cộng dồn. `last_epoch` là epoch của lượt RÚT gần nhất, và lượt SINH ghi
+      // nó bằng **0** làm giá trị canh (`_reserve_layer2.ts::reserveStateDatum`, `lastEpoch = 0n`)
+      // trong khi `start_epoch` là epoch thật — một số lớn. Nên trước lượt rút đầu tiên,
+      // `last_epoch - start_epoch + 1` ÂM, vế phải âm, và `0 <= <âm>` là SAI — cổng đỏ trên một
+      // két vừa seed xong đúng luật. Đó lại đúng lớp lỗi "đỏ giả" mà khối KHO A-DEST phía
+      // trên vừa gỡ bỏ. Nên tách hai trạng thái: chưa rút lần nào thì điều phải đo là
+      // `drawn == 0`, không phải một trần tính trên số epoch chưa tồn tại.
+      if (r.last_epoch === 0n) {
+        check(r.drawn_oildrop === 0n,
+          `chưa rút lần nào (last_epoch = 0) ⇒ drawn_oildrop phải = 0 (đang là ${vn(r.drawn_oildrop)})`);
+      } else {
+        const nhip = r.last_epoch - r.start_epoch + 1n;
+        check(r.drawn_oildrop <= r.total_oildrop / 1000n * nhip,
+          `drawn_oildrop ≤ trần nhịp cộng dồn (${nhip} epoch × pot/1000)`);
+      }
     }
 
     const custU = (await lucid.utxosAt(rw.reserve.custodyAddr))
