@@ -8,8 +8,8 @@
 
 | Mã | Treo cái gì | Ràng buộc TẠM đang có hiệu lực (fail-closed) | Khai ở |
 |---|---|---|---|
-| `EMIT-FLOOR` | Tham số sàn của cổng cầu | Cổng ép fail-closed: không thoả sàn thì không nhả. Giá trị dùng trong kịch bản diễn tập **không phải** giá trị vận hành và không mang sang mạng chính. | tham số triển khai module Treasury |
-| `RSV-PARAM-FREEZE` | Bộ tham số của một instance `reserve_draw` | Mọi tham số là **apply-param** — nướng vào script hash. Validator ép state ở lại đúng địa chỉ của nó và redeemer duy nhất là `Draw` (không có `Migrate`) ⇒ meter NFT không rời được instance đã gửi vào. Ràng buộc tạm: **chưa gửi meter NFT vào instance nào** cho tới khi `EMIT-FLOOR` đóng. | `Genesis/mainnet-deploy-plan.md` |
+| `EMIT-FLOOR-IMPL` | Cổng cầu chưa ép sàn ở dạng tỷ lệ `1%·C`; bản đang có dùng một ngưỡng tuyệt đối | Fail-closed theo cả hai cách đọc: không thoả sàn thì không nhả. Ngưỡng dùng trong kịch bản diễn tập **không phải** giá trị vận hành. | tham số triển khai module Treasury |
+| `RSV-PARAM-FREEZE` | Bộ tham số của một instance `reserve_draw` | Mọi tham số là **apply-param** — nướng vào script hash. Validator ép state ở lại đúng địa chỉ của nó và redeemer duy nhất là `Draw` (không có `Migrate`) ⇒ meter NFT không rời được instance đã gửi vào. Ràng buộc tạm: **chưa gửi meter NFT vào instance nào** cho tới khi `EMIT-FLOOR-IMPL` đóng. | `Genesis/mainnet-deploy-plan.md` |
 
 Mô hình **đệm phát hành demand-gated** (allocation v3, đông kết 2026-06-14). Reserve là
 **lớp đệm phát hành SAU CÙNG** của LAMP: 9,630 tỷ LAMP (26,75%) nhả từ U-space (chưa mint)

@@ -299,7 +299,8 @@ Mọi tham số dưới đọc từ **config-UTxO** do **Aladin Contract đặt 
 | `μ_pot` Founder (Aladin, GreenSun) | **0.25** | (0,1]; cân quang học MAGIC ngày đầu |
 | `μ_pot` Foundation/Platform/App/Join LampNet/Referrer/PhoenixKey | **1.0** | nhóm tiêu-lại/chia-theo-tiêu-thụ → không cap |
 | `μ_pot` User/Development/Partnership | **1.0** | gen ở vault user khi claim |
-| Reserve trần nhịp | **E/1000 = 9.630.000 LAMP/epoch** | hằng thiết kế, KHÔNG phải tham số điều chỉnh. Tham số cổng cầu và trạng thái của nó: `Specs/Emission/CONTRACT.md` §3 và §6 |
+| Reserve trần nhịp | **E/1000 = 9.630.000 LAMP/epoch** | hằng thiết kế, KHÔNG phải tham số điều chỉnh |
+| Reserve sàn cổng cầu | **1% × C** (lưu hành) | tỷ lệ, không phải hằng tuyệt đối → tự co giãn. Chi tiết: `Specs/Emission/CONTRACT.md` §3.2 |
 | Airdrop chia | **Delegator 100M · SPO 5M · CS 15M**, cả ba ∝ trọng số stake (v2, chốt 10/7) | per snapshot |
 | Airdrop epoch ×budget | **5 × 24.000 nghìn** | tổng 120.000 |
 | Airdrop hạn đăng ký | **epoch 4** | mở từ 1/7 |

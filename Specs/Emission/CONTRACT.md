@@ -98,7 +98,22 @@ mất ý nghĩa làm đệm.
 Cổng đo **trạng thái TRƯỚC giao dịch** của kho, và là một ngưỡng **nhị phân**: dưới sàn thì mở,
 từ sàn trở lên thì đóng. Không có dải nội suy.
 
-> Giá trị sàn: xem §6 — **chưa chốt**, và có ràng buộc tạm fail-closed đang hiệu lực.
+```
+sàn = 1% × C
+cổng MỞ   ⟺  parked_custody × 100 < C
+cổng ĐÓNG ⟺  parked_custody × 100 ≥ C
+```
+
+Phát biểu bằng lời: **kho Treasury phải giữ một khoản đệm ít nhất bằng 1% lượng LAMP đang lưu
+hành; xuống dưới mức đó thì Reserve tiếp tế.**
+
+Sàn là một **tỷ lệ của lưu hành**, không phải một hằng số tuyệt đối. Hệ quả cố ý:
+
+- Sàn **tự co giãn** theo quy mô hệ, nên không bao giờ cần sửa — và vì không cần sửa nên việc nó
+  bị nướng vào định danh của script không tạo ra nợ.
+- Ở giai đoạn đầu, `C` nhỏ ⟹ sàn nhỏ ⟹ kho dễ nằm trên sàn ⟹ cổng **đóng**. Đúng như mong muốn:
+  chưa có cầu thật thì Reserve không tiếp tế.
+- So sánh dùng **phép nhân**, không dùng phép chia — tránh mất mát do chia số nguyên.
 
 ### 3.3 Không có epoch kết thúc
 
@@ -165,10 +180,10 @@ phía trên, và trôi **im lặng** vì con trỏ vẫn trỏ vào một dòng 
 
 | Mã | Treo cái gì | Ràng buộc TẠM đang có hiệu lực | Khai ở |
 |---|---|---|---|
-| `EMIT-FLOOR` | Giá trị sàn của cổng cầu (§3.2) chưa chốt | Cổng vẫn ép fail-closed: không thoả sàn thì **không** nhả. Giá trị đang dùng ở kịch bản diễn tập **không phải** giá trị vận hành và không được mang sang mạng chính. | tham số triển khai của module Treasury |
+| `EMIT-FLOOR-IMPL` | Cổng cầu chưa ép sàn ở dạng **tỷ lệ** `1%·C` (§3.2); bản đang có dùng một ngưỡng tuyệt đối | Fail-closed theo cả hai cách đọc: không thoả sàn thì **không** nhả. Ngưỡng dùng trong kịch bản diễn tập **không phải** giá trị vận hành. | tham số triển khai module Treasury |
 
-Danh mục này cố ý **không** ghi giá trị đang cân nhắc: một con số chưa chốt nằm trong tài liệu
-công khai sẽ được trích lại như thể đã chốt.
+Danh mục này ghi **trạng thái hiện thực**, không ghi lựa chọn đang cân nhắc. Luật thì đã đủ ở §3;
+chỗ còn lại là mã đuổi theo luật, và mọi bước trung gian đều nghiêng về phía không nhả.
 
 ---
 
