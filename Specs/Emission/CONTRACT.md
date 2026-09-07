@@ -1,0 +1,187 @@
+# Luật phát hành LAMP — nguồn duy nhất
+
+> **Tệp này là nguồn chân lý của luật phát hành LAMP.** Mọi tài liệu khác trong kho trỏ về đây và
+> **không** phát biểu lại luật. Bản trước đó của luật này nằm rải ở bốn nơi và đã trôi khỏi nhau;
+> §7 ghi lại các câu bị thay và vì sao.
+
+Phạm vi: cung tổng, cách đúc, luật nhả của quỹ Reserve, và cổng cầu ở Treasury. Không bao gồm
+luật phân bổ giữa các quỹ (xem `Papers/pot-catalog.md`) và không bao gồm quyền biểu quyết
+(xem `Governance/VotingPower/CONTRACT.md`).
+
+---
+
+## 1. Đơn vị
+
+| Đại lượng | Giá trị |
+|---|---|
+| 1 LAMP | `1_000_000` oildrop (10⁶) |
+| 1 epoch | epoch Cardano — 5 ngày; ≈73 epoch/năm |
+
+Mọi con số on-chain tính bằng **oildrop**. Bảng dưới ghi cả hai đơn vị ở chỗ dễ đọc nhầm.
+
+---
+
+## 2. Cung tổng — TRẦN, không phải số đã đúc
+
+**36 tỷ LAMP là TRẦN được ép trên chuỗi. LAMP đúc dần (lazy-mint). LAMP KHÔNG BAO GIỜ bị đốt.**
+
+| Hằng | oildrop | LAMP |
+|---|---|---|
+| `dist_cap` | `26_370_000_000_000_000` | 26,37 tỷ |
+| `reserve_cap` (`E`) | `9_630_000_000_000_000` | 9,63 tỷ |
+| tổng trần | `36_000_000_000_000_000` | **36 tỷ** |
+
+Ba câu dưới đây phải đi cùng nhau; tách một câu ra là đổi nghĩa:
+
+1. **Trần 36 tỷ** — ép bởi validator mint, không phải một lời hứa trong tài liệu.
+2. **Đúc dần** — số đã đúc tại một thời điểm đọc từ `SupplyState` on-chain, KHÔNG đọc từ tài liệu.
+3. **Không đốt** — giảm lưu hành nghĩa là **chuyển vào Treasury** (một bút toán), không phải huỷ.
+
+> ⚠️ Câu rút gọn *"LAMP cố định 36 tỷ"* đọc thành *"36 tỷ đã lưu hành"*. Dùng
+> **"trần 36 tỷ, đúc dần, không đốt"**.
+
+### 2.1 `SupplyState` — bộ đếm đúc
+
+UTxO duy nhất, ghim bởi thread NFT one-shot, mang inline datum **4 trường**:
+`dist_minted` · `reserve_minted` · `dist_cap` · `reserve_cap`.
+
+Validator mint ép **mọi** giao dịch mint phải tiêu và tạo lại đúng UTxO này, và cấm giao dịch
+mint chạm tới thread NFT. Hệ quả dùng được: mọi giao dịch mint đều **đã** cầm `SupplyState` trong
+tay, nên đọc số cung không tốn thêm UTxO đầu vào nào.
+
+### 2.2 Lưu hành `C` — định nghĩa on-chain
+
+```
+C = (dist_minted + reserve_minted) − parked_custody
+```
+
+`parked_custody` = số LAMP đang nằm trong kho Treasury. Phần đã đúc mà còn nằm trong kho thì
+**đã đúc nhưng chưa lưu hành**, nên phải trừ ra. Đây là định nghĩa duy nhất của `C` dùng trong
+tệp này.
+
+---
+
+## 3. Reserve — luật nhả có HAI vế, bổ sung nhau
+
+Reserve là **lớp đệm phát hành sau cùng**: 9,63 tỷ LAMP đi từ vùng chưa-đúc vào kho Treasury.
+Điều tiết cung-cầu hai chiều thuộc **Treasury**, không thuộc Reserve — Reserve chỉ lo nhịp, trần,
+và đích đến.
+
+Hai vế trả lời **hai câu hỏi khác nhau**. Đây là chỗ các bản trước đã đọc thành loại trừ nhau:
+
+| Vế | Trả lời | Ép ở đâu |
+|---|---|---|
+| **A — TRẦN NHỊP** | *nhả tối đa bao nhiêu trong một epoch* | module Reserve |
+| **B — CỔNG CẦU** | *epoch này có được nhả hay không* | module Treasury |
+
+Một lượt nhả hợp lệ phải thoả **cả hai**.
+
+### 3.1 Vế A — trần nhịp
+
+```
+max_per_epoch = E / release_epochs        release_epochs = 1000
+              = 9_630_000_000_000 oildrop = 9.630.000 LAMP
+```
+
+- Trần **cứng** mỗi epoch. Không phụ thuộc thời gian trôi.
+- **Không cộng dồn.** Epoch không nhả thì phần đó **ở lại quỹ**, không tạo cục catch-up cho epoch sau.
+- Tối đa **một** lượt nhả mỗi epoch (bộ đếm ép epoch tiến nghiêm ngặt).
+- Không vượt phần quỹ còn lại.
+
+Bất biến số học: `max_per_epoch × release_epochs == E` — chia chẵn, dư 0.
+
+### 3.2 Vế B — cổng cầu
+
+Reserve **chỉ** nhả khi kho Treasury xuống **dưới sàn**. Treasury dồi dào mà vẫn nhả thì Reserve
+mất ý nghĩa làm đệm.
+
+Cổng đo **trạng thái TRƯỚC giao dịch** của kho, và là một ngưỡng **nhị phân**: dưới sàn thì mở,
+từ sàn trở lên thì đóng. Không có dải nội suy.
+
+> Giá trị sàn: xem §6 — **chưa chốt**, và có ràng buộc tạm fail-closed đang hiệu lực.
+
+### 3.3 Không có epoch kết thúc
+
+Hệ quả trực tiếp của hai vế trên, và là điểm hay bị ghi sai:
+
+- **Cận dưới:** nếu mọi epoch đều nhả đúng trần thì quỹ cạn sau **1000 epoch** (≈13,7 năm).
+- **Không có cận trên.** Mỗi epoch bị cổng cầu đóng lại đẩy thời điểm cạn ra xa. Về lý thuyết
+  **hầu hết epoch sẽ không nhả**, nên **không ấn định được một epoch kết thúc cụ thể**.
+
+Nói *"Reserve cạn sau 1000 epoch"* là **sai** — 1000 là cận dưới, không phải lịch.
+
+### 3.4 Trần lạm phát — SUY RA, không phải tham số đầu vào
+
+Trần lạm phát năm là **hệ quả** của trần nhịp, không phải một con số được đặt:
+
+```
+trần lý thuyết = max_per_epoch × 73 epoch/năm ÷ tổng trần
+               = 9.630.000 × 73 ÷ 36.000.000.000 ≈ 1,95%/năm
+```
+
+Đây là **trường hợp xấu nhất tuyệt đối** — mọi epoch đều nhả đúng trần. Với cổng cầu hoạt động,
+con số thực tế nằm dưới xa và không có đáy cố định.
+
+Đừng đảo chiều suy luận này: **trần nhịp là số gốc**, trần lạm phát là số dẫn xuất. Đặt trần lạm
+phát làm đầu vào rồi suy ngược ra trần nhịp là đi ngược luật.
+
+### 3.5 Đích đến
+
+Reserve chỉ nhả **vào kho Treasury**, không nhả vào bất kỳ địa chỉ nào khác. Kho được nhận diện
+bằng **NFT chính danh của kho**, không bằng địa chỉ — rót đúng địa chỉ mà sai hình dạng thì tài
+sản nằm trong sân kho và ngoài sổ kho.
+
+---
+
+## 4. Bất biến
+
+| Mã | Bất biến |
+|---|---|
+| `EMIT-CAP` | `dist_minted ≤ dist_cap` và `reserve_minted ≤ reserve_cap` tại mọi thời điểm |
+| `EMIT-NOBURN` | không giao dịch nào làm giảm `dist_minted` hay `reserve_minted` |
+| `EMIT-EPOCH` | tối đa một lượt nhả Reserve mỗi epoch |
+| `EMIT-RATE` | mỗi lượt nhả ≤ `max_per_epoch` |
+| `EMIT-POT` | mỗi lượt nhả ≤ `reserve_cap − reserve_minted` |
+| `EMIT-GATE` | nhả ⟺ kho Treasury dưới sàn **trước** giao dịch |
+| `EMIT-DEST` | LAMP nhả ra chỉ hạ cánh vào kho Treasury, đo bằng **độ tăng ròng** tại kho |
+| `EMIT-STATE` | mọi giao dịch mint tiêu và tạo lại đúng một `SupplyState`; thread NFT không bị chạm |
+
+---
+
+## 5. Ở đâu ép cái gì
+
+| Bất biến | Module ép | Neo |
+|---|---|---|
+| `EMIT-CAP`, `EMIT-NOBURN`, `EMIT-STATE`, `EMIT-DEST` | Genesis | `validators/lamp_mint.ak` |
+| `EMIT-EPOCH`, `EMIT-RATE`, `EMIT-POT` | Reserve | `validators/reserve_draw.ak`, hằng ở `lib/magiclamp/reserve/math.ak` (`release_epochs`, `max_per_epoch`) |
+| `EMIT-GATE` | Treasury | validator giữ cổng cầu — xem `Treasury/reserve-pull.md` |
+
+Trích theo **tên hằng và tên hàm**, không theo số dòng: số dòng trôi khi có người chèn một dòng
+phía trên, và trôi **im lặng** vì con trỏ vẫn trỏ vào một dòng có thật.
+
+---
+
+## 6. Điểm còn treo
+
+| Mã | Treo cái gì | Ràng buộc TẠM đang có hiệu lực | Khai ở |
+|---|---|---|---|
+| `EMIT-FLOOR` | Giá trị sàn của cổng cầu (§3.2) chưa chốt | Cổng vẫn ép fail-closed: không thoả sàn thì **không** nhả. Giá trị đang dùng ở kịch bản diễn tập **không phải** giá trị vận hành và không được mang sang mạng chính. | tham số triển khai của module Treasury |
+
+Danh mục này cố ý **không** ghi giá trị đang cân nhắc: một con số chưa chốt nằm trong tài liệu
+công khai sẽ được trích lại như thể đã chốt.
+
+---
+
+## 7. Các câu ĐÃ BỊ THAY
+
+Ghi lại để người đọc bản cũ không kết luận ngược. Ba câu dưới đây từng nằm trong kho và **đã bị
+thay bởi tệp này**:
+
+| Câu cũ | Vì sao bị thay |
+|---|---|
+| *"Gate nhịp Reserve = theo mức Treasury, **KHÔNG theo epoch**"* | Vế cổng cầu đúng và được giữ (§3.2). Vế *"không theo epoch"* sai: nó phủ nhận trần nhịp, mà trần nhịp là vế trả lời một câu hỏi khác. Hai vế bổ sung nhau, không loại trừ nhau. |
+| *"Reserve module hiện tại (trần E/1000/epoch) là thiết kế **CŨ** — cần thiết kế lại"* | Sai. Trần E/1000 là vế A của luật hiện hành và là phần **đã có mã, đã chạy xanh trên mạng thử**. Không có gì phải viết lại. |
+| *"nhả theo một **hàm nội suy** giữa sàn và trần (1%·C → 2%·C)"* | Không được giữ. Cổng cầu là **một ngưỡng nhị phân** (§3.2). Dải nội suy đòi hai tham số và một hàm chưa từng được định nghĩa; không có mã nào hiện thực nó. |
+
+Một câu cũ khác — *"§7b chưa định nghĩa `C` đo bằng gì on-chain"* — nay **hết hiệu lực**: `C` đã
+có định nghĩa ở §2.2, và `SupplyState` đã bắt buộc có mặt trong mọi giao dịch mint (§2.1).

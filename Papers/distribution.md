@@ -54,8 +54,9 @@ redeemable = vested − redeemed         (rút từ treasury con cùng tx, treas
 Keeper/committee dựng cây Merkle `(owner, amount, epoch)` → post root vào beacon → claim permissionless bằng proof.
 Chống double-claim = marker-NFT nullifier (name = leaf) ở script no-spend. Dư sau hạn → Sweep về Treasury.
 
-### 3.3 Reserve — gate theo mức Treasury (§7)
-KHÔNG theo epoch. Nhả khi Treasury parked tụt dưới trần, tối đa ở sàn (2%/1% lưu hành).
+### 3.3 Reserve — trần nhịp + cổng cầu (§7)
+Hai vế bổ sung nhau: trần tối đa mỗi epoch, và cổng chỉ mở khi kho Treasury dưới sàn.
+Nguồn duy nhất: [`Specs/Emission/CONTRACT.md`](../Specs/Emission/CONTRACT.md).
 
 ### 3.4 Chưa-mint / LP / RedBack
 - **Chưa-mint** (Reserve, Foundation trước lập pháp nhân): token không tồn tại → không di chuyển/đánh cắp.
@@ -253,21 +254,27 @@ address + 2 cert + đặt `redirect_bp=X` → user ký 1 lần → xong. Reward 
 
 ---
 
-## 7. Reserve — gate theo mức Treasury
+## 7. Reserve — trần nhịp + cổng cầu
+
+> **Nguồn duy nhất của luật này: [`Specs/Emission/CONTRACT.md`](../Specs/Emission/CONTRACT.md).**
+> Mục này chỉ tóm tắt vừa đủ để đọc tiếp bản phân bổ, và **không** phát biểu lại luật.
 
 Reserve = **lớp đệm cung CUỐI CÙNG** (U→C, no-burn). Điều tiết cung-cầu chính ở Treasury (C↔T). Reserve chỉ nhả
 khi Treasury không còn đủ đệm — Treasury dồi dào mà vẫn nhả Reserve = mất ý nghĩa.
 
-Hai mức trên **tổng lưu hành C** (KHÔNG phải max cap):
+Luật nhả có **hai vế, phải thoả cả hai**:
+
 ```
-T = LAMP parked ở Treasury;  C = lưu hành
-T ≥ 2%·C           →  Reserve KHÔNG nhả (Treasury tự lo cầu)
-1%·C < T < 2%·C    →  nhả theo hàm nội suy f(T) (càng gần sàn càng mạnh)
-T ≤ 1%·C           →  nhả TỐI ĐA
+vế A — TRẦN NHỊP   : mỗi epoch nhả tối đa E/1000 = 9.630.000 LAMP; tối đa 1 lượt/epoch;
+                     không cộng dồn — epoch không nhả thì phần đó ở lại quỹ
+vế B — CỔNG CẦU    : chỉ nhả khi kho Treasury dưới sàn (ngưỡng nhị phân, đo trạng thái
+                     TRƯỚC giao dịch)
 ```
-- KHÔNG giới hạn số epoch; tốc độ cạn = do cầu (mức Treasury) quyết.
-- Permissionless: ai dựng tx đúng điều kiện cũng được; dest = Treasury.
-- ⚠️ `Reserve/onchain/reserve_draw.ak` hiện (E/1000/epoch) là thiết kế CŨ — **viết lại** theo gate-mức-Treasury. Tham số (2%/1%, dạng `f`) chốt ở spec Reserve riêng.
+
+- **Không ấn định epoch kết thúc.** Cạn sau 1000 epoch là **cận dưới** (mọi epoch đều nhả đúng trần);
+  mỗi epoch bị cổng đóng lại đẩy thời điểm cạn ra xa, và không có cận trên.
+- Permissionless: ai dựng tx đúng điều kiện cũng được; đích đến = kho Treasury, nhận diện bằng NFT
+  chính danh của kho, không bằng địa chỉ.
 
 ---
 
@@ -292,9 +299,7 @@ Mọi tham số dưới đọc từ **config-UTxO** do **Aladin Contract đặt 
 | `μ_pot` Founder (Aladin, GreenSun) | **0.25** | (0,1]; cân quang học MAGIC ngày đầu |
 | `μ_pot` Foundation/Platform/App/Join LampNet/Referrer/PhoenixKey | **1.0** | nhóm tiêu-lại/chia-theo-tiêu-thụ → không cap |
 | `μ_pot` User/Development/Partnership | **1.0** | gen ở vault user khi claim |
-| Reserve `trần` | **2% × C** (lưu hành) | trên trần → KHÔNG nhả |
-| Reserve `sàn` | **1% × C** | tại sàn → nhả tối đa |
-| Reserve hàm `f(T)` | **tuyến tính** giữa trần↔sàn | `rate = (trần−T)/(trần−sàn)` clamp [0,1] |
+| Reserve trần nhịp | **E/1000 = 9.630.000 LAMP/epoch** | hằng thiết kế, KHÔNG phải tham số điều chỉnh. Tham số cổng cầu và trạng thái của nó: `Specs/Emission/CONTRACT.md` §3 và §6 |
 | Airdrop chia | **Delegator 100M · SPO 5M · CS 15M**, cả ba ∝ trọng số stake (v2, chốt 10/7) | per snapshot |
 | Airdrop epoch ×budget | **5 × 24.000 nghìn** | tổng 120.000 |
 | Airdrop hạn đăng ký | **epoch 4** | mở từ 1/7 |

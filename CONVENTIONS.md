@@ -18,12 +18,19 @@
 
 Hệ quả cho LAMP:
 
-- Thư mục đối ngoại là **`Papers/`**, không phải `Specs/`. Trước đây LAMP gọi nó là `Specs/` và ghi
-  "đặc tả dành cho công chúng" — trái Rule 6 ("ALL INTERNAL BY DEFAULT"). Chính chỗ lệch đó là
-  **nguyên nhân cấu trúc** khiến câu chữ nội bộ rò ra tài liệu công khai: không có bước phái sinh nào
-  để dừng lại và soát.
+- **`Papers/` là bản phái sinh phổ thông**, viết cho công chúng. Nó **diễn giải**, không định nghĩa.
 - **Spec nội bộ nằm trong thư mục module** (`Treasury/`, `Genesis/`, `Airdrop/`, …).
-- Không có file nào vừa là spec vừa là paper. Muốn công bố → viết một paper phái sinh.
+- **`Specs/` giữ luật vắt ngang nhiều module** — nguồn chân lý cho thứ mà không module nào sở hữu
+  trọn. Ranh giới nội dung ghi ở [`Specs/README.md`](Specs/README.md), và nó **chặt hơn** một thư mục
+  spec thường: kho này công khai, nên `Specs/` chỉ nhận thứ được viết ra như bản công khai ngay từ
+  đầu — không sinh bằng cách lọc bớt bản nội bộ, chỉ ghi giá trị đã cố định, và không mô tả một lỗ
+  hổng còn sống.
+- Không file nào vừa là spec vừa là paper. Muốn công bố phổ thông → viết một paper phái sinh.
+
+> Lịch sử: LAMP từng có một `Specs/` ghi "đặc tả dành cho công chúng" mà **không có bước phái sinh
+> nào để dừng lại và soát** — đó là nguyên nhân cấu trúc khiến câu chữ nội bộ rò ra tài liệu công
+> khai. Bước soát đó nay là danh sách được/không-được ở `Specs/README.md`. Bỏ danh sách đó là dựng
+> lại đúng chỗ đã hỏng.
 
 ## 2. Tên file
 
