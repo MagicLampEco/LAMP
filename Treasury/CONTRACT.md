@@ -40,7 +40,9 @@ Chữ ký: `collectToTreasury(asset ∈ accepted_assets, amount, app_id, categor
    theo app (provider/node — do app/caller chỉ định, không phải việc của Treasury).
 2. **Bảo toàn value on-chain (bất biến lõi):** với mọi asset,
    `Σ treasury_out.value(asset) ≥ Σ treasury_in.value(asset) + cut(asset)`.
-   Đây là **tổng quát hóa** bất biến `treasury_receives_lamp >= lamp_paid` đã có ở generators.
+   Đây là **tổng quát hóa** bất biến `treasury_receives_lamp >= lamp_paid` mà generators MAGIC TỪNG có
+   (đã gỡ 2026-09-03 ở cả ba — `Exec-Spec.md §1` khối đính chính). Bất biến này đứng độc lập với
+   nguồn thu: nó ràng buộc Treasury, không ràng buộc bên nộp.
 3. **Gộp theo lô:** nhiều `collect` gộp trong một settlement tx (chống bloat — KHÔNG thu từng
    micro-fee on-chain, bất khả thi vì min-ADA + phí mạng).
 4. **Receipt:** ghi `(app_id, asset, amount, cut, epoch)` vào datum/UTxO → audit + tín dụng VP/uy tín.

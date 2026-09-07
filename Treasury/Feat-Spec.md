@@ -150,8 +150,9 @@ Với **mọi** asset, sau một settlement tx thu (bất biến áp cho **`Σ c
 Σ treasury_out.value(asset) ≥ Σ treasury_in.value(asset) + Σ cut(asset)
 ```
 
-Đây là **tổng quát hóa theo HAI chiều** của bất biến `treasury_receives_lamp >= lamp_paid` đã có ở
-generators MAGIC (`InstantGen/onchain/validators/vault.ak` L298-313 (kho MAGIC, module CHƯA công bố)):
+Đây là **tổng quát hóa theo HAI chiều** của bất biến `treasury_receives_lamp >= lamp_paid` mà TỪNG có ở
+generators MAGIC (`InstantGen/onchain/validators/vault.ak` L298-313 của bản CŨ — kho MAGIC nay ĐÃ công bố và hàm đó
+ĐÃ BỊ GỠ (`Exec-Spec.md §1` đính chính); số dòng dưới đây không tra được ở bản hiện tại):
 
 1. **Đa-asset** — generators chỉ áp cho LAMP; Treasury áp cho **mọi** asset trong `accepted_assets`.
 2. **Đếm theo payment script hash** — generators hiện đếm theo **FULL ADDRESS**
@@ -376,7 +377,9 @@ OriLife, app SDK). Treasury không gọi ngược ai.
 
 ### 7.1 Generators (MAGIC) — caller
 
-Generators (Snapshot/Instant/Vacuum/Schedule) đã có bất biến `treasury_receives_lamp >= lamp_paid`.
+Generators (Snapshot/Instant/Vacuum/Schedule) TỪNG có bất biến `treasury_receives_lamp >= lamp_paid` —
+cả ba đã gỡ chân Treasury ngày 2026-09-03 (`Exec-Spec.md §1` khối đính chính), nên đoạn dưới mô tả một
+caller mẫu CHƯA có thật ở phía nguồn.
 Họ là caller mẫu: khi một generator thu phí, một phần đi Treasury qua `collectToTreasury`. Treasury
 **siết chặt** bất biến đó theo hai chiều (§2.2): per-asset thay vì chỉ LAMP, và đếm theo payment
 script hash thay vì full-address. Cách đếm full-address hiện tại của generators là điểm yếu (hở
@@ -487,7 +490,7 @@ kho MagicLamp), hoặc (b) **mở instance riêng** (§5) rồi tự là caller 
    CONTRACT/TECH/MATH sửa đồng bộ ngoài file này — xem ghi chú dưới.)
 2. **[major] "Tổng quát hóa" generators** — nói rõ Treasury siết theo HAI chiều: per-asset +
    đếm theo **payment script hash** (generators hiện đếm full-address `o.address == treasury_addr`,
-   `vault.ak` L298-313, còn hở double-satisfaction qua stake cred). KHÔNG phải quan hệ "tập con".
+   `vault.ak` L298-313 bản CŨ — hàm đã gỡ 2026-09-03, còn hở double-satisfaction qua stake cred). KHÔNG phải quan hệ "tập con".
    Sửa §2.2, §7.1; đồng bộ EXEC §1 + §4.1.
 3. **[major] Residual vs custody** — chốt mô hình: **chỉ `cut` vào custody**, `residual = amount −
    cut` đi thẳng ví provider/node cùng tx, KHÔNG qua custody. Bất biến §2.2 áp cho `Σ cut`. Gỡ Câu

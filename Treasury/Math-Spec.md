@@ -124,7 +124,8 @@ không thể rút custody — vì validator collect không cho phép nhánh `Δ_
 
 ### 2.3 Bất biến chiều thu (tổng quát hoá generators)
 
-CONTRACT §3.2 nâng cấp bất biến `treasury_receives_lamp ≥ lamp_paid` (đã có ở generators MAGIC) thành: với
+CONTRACT §3.2 nâng cấp bất biến `treasury_receives_lamp ≥ lamp_paid` (generators MAGIC TỪNG có; đã gỡ
+2026-09-03 — `Exec-Spec.md §1`) thành: với
 mọi asset `a` được thu trong tx,
 
 ```
