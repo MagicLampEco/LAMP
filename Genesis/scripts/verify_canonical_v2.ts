@@ -141,8 +141,21 @@ async function main(): Promise<void> {
       // nên dòng đó in ✓ kể cả khi drawn vượt pot: nhãn nói "≤ pot", phép đo không nhắc tới pot.
       check(r.drawn_oildrop <= r.total_oildrop,
         `drawn_oildrop = ${vn(r.drawn_oildrop)} ≤ pot ${vn(r.total_oildrop)}`);
-      check(r.drawn_oildrop <= r.total_oildrop / 1000n * (r.last_epoch - r.start_epoch + 1n),
-        `drawn_oildrop ≤ trần nhịp cộng dồn (${r.last_epoch - r.start_epoch + 1n} epoch × pot/1000)`);
+      // Trần nhịp cộng dồn. `last_epoch` là epoch của lượt RÚT gần nhất, và lượt SINH ghi
+      // nó bằng **0** làm giá trị canh (`_reserve_layer2.ts::reserveStateDatum`, `lastEpoch = 0n`)
+      // trong khi `start_epoch` là epoch thật — một số lớn. Nên trước lượt rút đầu tiên,
+      // `last_epoch - start_epoch + 1` ÂM, vế phải âm, và `0 <= <âm>` là SAI — cổng đỏ trên một
+      // két vừa seed xong đúng luật. Đó lại đúng lớp lỗi "đỏ giả" mà khối KHO A-DEST phía
+      // trên vừa gỡ bỏ. Nên tách hai trạng thái: chưa rút lần nào thì điều phải đo là
+      // `drawn == 0`, không phải một trần tính trên số epoch chưa tồn tại.
+      if (r.last_epoch === 0n) {
+        check(r.drawn_oildrop === 0n,
+          `chưa rút lần nào (last_epoch = 0) ⇒ drawn_oildrop phải = 0 (đang là ${vn(r.drawn_oildrop)})`);
+      } else {
+        const nhip = r.last_epoch - r.start_epoch + 1n;
+        check(r.drawn_oildrop <= r.total_oildrop / 1000n * nhip,
+          `drawn_oildrop ≤ trần nhịp cộng dồn (${nhip} epoch × pot/1000)`);
+      }
     }
 
     const custU = (await lucid.utxosAt(rw.reserve.custodyAddr))
