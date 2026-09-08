@@ -21,6 +21,10 @@
 > Lưu ý: chuẩn Cardano token registry KHÔNG có trường "đơn vị con" riêng — `oildrop` là quy ước
 > tài liệu (như lovelace/wei), ghi trong description + tài liệu, không phải field ví đọc.
 
+> **Nguồn của hai dòng `decimals` và `đơn vị con`: `Specs/Emission/CONTRACT.md` §1.** Bảng này là
+> bản **chép có nhãn** — biểu mẫu nộp registry đòi giá trị tại chỗ nên không trỏ suông được. Đổi
+> đơn vị thì sửa ở §1 trước, rồi mới sửa xuống đây.
+
 ## Description — 3 phương án (học cách NIGHT diễn đạt: điềm đạm, nói công dụng, không hứa giá)
 
 **P1 — sát ý anh, gọn:**
