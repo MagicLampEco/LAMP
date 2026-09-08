@@ -171,6 +171,11 @@ LAMP** (`Genesis/scripts/mint_release_plan.ts:124-128`) = **1,95%** headroom. Ph
 
 Mục tiêu là *"không ai, kể cả đội dự án, rút tắt được"*. Đo theo tiêu chuẩn đó:
 
+> **Hai hợp đồng so sánh dưới đây không còn trong cây làm việc.** `Airdrop/` và `SRCL/` đều đã bàn giao ra ngoài
+> repo này (SRCL 2026-08-30, Airdrop 2026-09-01). Phần so sánh **giữ nguyên làm bằng chứng lịch sử** — nó là chỗ ghi vì
+> sao một pot đạt tiêu chuẩn "không ai rút tắt được" còn pot kia không, và bài học đó áp cho mọi pot
+> dựng sau. Đọc mã bằng `git show 6df96ae:<đường-dẫn>`.
+
 - **`Airdrop/onchain/validators/airdrop_pool.ak` ĐẠT.** `merkle_root`/`deadline`/`dest` **bất biến
   qua `Claim`** (`:20`); claim permissionless bằng proof; chống double-claim bằng slot spend-once;
   hết hạn thì `Sweep` toàn bộ LAMP còn lại về Treasury. **Sau khi nạp, không ai thêm được người

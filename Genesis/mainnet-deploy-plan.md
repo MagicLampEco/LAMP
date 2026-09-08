@@ -178,14 +178,35 @@ Chi tiết + lệnh chạy: `Genesis/canonical-preprod-runbook.md`.
 > nhịp, rút lượt hai cùng epoch, và rút mà không kích cổng — cả ba đều bị từ chối ở bước dựng
 > giao dịch.
 >
-> **Nhưng cổng CẦU (`parked < sàn`) chưa đóng lại được, và lý do là cấu trúc.** `reserve_draw`
-> Luật 9 đếm LAMP tới *payment credential* của đích, còn `reserve_gate` đọc `parked` từ *UTxO
-> mang custody NFT*. Δ rút về nằm ở một UTxO RIÊNG bên cạnh UTxO đó ⇒ `parked` không nhích.
-> Không vá được bằng cách rót thẳng vào UTxO custody: cùng một UTxO không thể vừa là reference
-> input (gate đòi) vừa bị tiêu. ⇒ Lượt rút Reserve **không bao giờ tự nâng `parked` qua sàn**;
-> cổng cầu chỉ đóng khi một `Collect` của Treasury nạp vào chính UTxO custody — mà `Collect`
-> chưa dựng, và nguồn thu cho nó vừa bị gỡ ở phía MAGIC (`Treasury/Exec-Spec.md §1` đính chính
-> 2026-09-03).
+> **Nhưng cổng CẦU (`parked < sàn`) chưa đóng lại được ở bản đang chạy.** `reserve_draw`
+> Luật 9 đếm LAMP tới *payment credential* của đích (`reserve_draw.ak:144-145`, qua
+> `reserve/util.ak:107`), còn `reserve_gate` đọc `parked` từ *UTxO mang custody NFT* lấy ở vế
+> reference (`reserve_gate.ak:85,87,96-97`). Δ rút về nằm ở một UTxO RIÊNG bên cạnh UTxO đó ⇒
+> `parked` không nhích.
+>
+> **Đính chính 2026-09-05 — bản trước gọi đây là ràng buộc "cấu trúc". Sai.** Thứ chặn là
+> MỘT DÒNG trong một validator **chưa lên mainnet**, không phải luật của sổ cái:
+> `Treasury/onchain/validators/custody.ak:65` — `expect assets.is_zero(tx.mint)` (C-MINT-0).
+> Lượt `ReserveDraw` **có** mint Δ LAMP, nên `Collect` không nằm cùng giao dịch được. Lập luận
+> cũ ("một UTxO không thể vừa là reference input vừa bị tiêu") là non sequitur: bản vá không
+> cần custody vừa-tham-chiếu-vừa-tiêu, chỉ cần gate đọc `parked` ở vế bị tiêu.
+>
+> Ba đường vá đã nhận diện, **chưa đường nào bị loại**:
+> (i) thêm redeemer nạp-vào cho custody cho phép mint của đúng `lamp_policy` (lộ trình đã ghi
+> ở `custody.ak:197`), kèm đổi `reserve_draw.ak:144` sang đo tại UTxO mang custody NFT;
+> (ii) `reserve_gate.ak:85,87` đọc custody ở `tx.inputs` thay vì `tx.reference_inputs`;
+> (iii) gate có trạng thái — datum giữ mức đã nhả, đọc Δ từ `tx.mint` (`reserve_draw.ak:142-143`
+> đã ép `Δ mint == delta`), không đụng custody. Đường (iii) không phá tính permissionless của
+> gate (`reserve_gate.ak:26`), (i) thì có.
+>
+> Chi phí di trú hôm nay gần 0 vì Lớp 2 mới chỉ xanh trên Preprod. Nó tăng theo thời gian: đổi
+> gate là đổi script hash, mà auth NFT bị khoá ở gate cũ (`reserve_gate.ak:105,109`) và
+> `gate_script_hash` nướng vào tham số của `reserve_draw` (`:105`) ⇒ sau mainnet thì di trú =
+> đúc auth NFT mới + deploy lại `reserve_draw` + thread `ReserveState` mới.
+>
+> Đường còn lại (không đụng validator) là một `Collect` của Treasury nạp vào chính UTxO custody
+> — mà `Collect` chưa dựng, và nguồn thu cho nó vừa bị gỡ ở phía MAGIC
+> (`Treasury/Exec-Spec.md §1` đính chính 2026-09-03).
 >
 > Nói gọn cho người quyết: thứ đang giữ 9,63 tỷ LAMP là **trần nhịp ≥1000 epoch (~13,7 năm)**,
 > không phải "chỉ nhả khi Treasury cạn". Đừng ghi cổng cầu vào cột "đã có".
@@ -227,14 +248,15 @@ Việc thật còn lại, theo thứ tự:
   và không làm lại được, nên nó không tự chạy.
 - ~~**Dựng Lớp 2**~~ — **XONG 2026-09-03**, xanh trên Preprod (bảng C-bis bước 5-7).
 - **Quyết: cổng cầu Reserve có phải điều kiện phát hành không.** Trần nhịp đã ép được; cổng
-  `parked < sàn` thì KHÔNG tự đóng theo cấu trúc (lý do ở C-bis) và chỉ sống lại khi Treasury
-  có `Collect` — mà nguồn thu cho `Collect` vừa bị gỡ ở phía MAGIC
-  (`Treasury/Exec-Spec.md §1` đính chính 2026-09-03). Hai đường:
+  `parked < sàn` không tự đóng ở bản đang chạy (lý do + ba đường vá ở C-bis). **Ba** đường:
   (a) phát hành với trần nhịp là phanh duy nhất, và **nói thẳng điều đó ra** trong Whitepaper;
-  (b) chặn phát hành tới khi Treasury có `Collect` + một nguồn thu đã chốt.
+  (b) chặn phát hành tới khi Treasury có `Collect` + một nguồn thu đã chốt;
+  (c) sửa `custody.ak` / `reserve_gate.ak` / `reserve_draw.ak` **trước** khi phát hành, để chính
+  lượt rút nâng `parked` — rẻ nhất bây giờ (Lớp 2 mới xanh trên Preprod, chưa có gì phải di trú),
+  đắt dần sau mainnet vì auth NFT khoá ở gate cũ và `gate_script_hash` nướng vào tham số.
   Đây là quyết định sản phẩm, không phải việc dev tự chọn.
 - **Rồi mới D12–D15.**
 
 Em (agent) KHÔNG thực thi bước mainnet nào (token thật, bất khả nghịch) — anh + đội làm, em chuẩn bị code + verify + diễn tập Preprod.
 
-— LampNet agent
+— LAMP agent

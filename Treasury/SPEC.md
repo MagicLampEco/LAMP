@@ -36,7 +36,8 @@ value on-chain LUÔN `Σ_out = Σ_in`. Xem [CONTRACT §5](./CONTRACT.md).
 - **`collectToTreasury(asset, amount, app_id, category)`** — hàm THU dùng chung cho mọi app eco (lấp
   đúng "AppEconomics settlement spec" mà OriLife đang chờ). **Định giá nằm ở app** (OriLife `animal_fee`
   bò ≠ gà), Treasury chỉ nhận `amount` đã tính.
-- Bảo toàn value per-asset (tổng quát hóa `treasury_receives_lamp >= lamp_paid` của generators);
+- Bảo toàn value per-asset (tổng quát hóa `treasury_receives_lamp >= lamp_paid` mà generators TỪNG có —
+  đã gỡ 2026-09-03, `Exec-Spec.md §1`);
   chống double-satisfaction theo **payment script hash**; thu **theo lô**; địa chỉ Treasury **tách ví**.
 
 ## Tái dùng từ Distribution

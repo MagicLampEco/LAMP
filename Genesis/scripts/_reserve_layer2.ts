@@ -207,6 +207,24 @@ export async function deriveCustody(
   custodySeed: MintingPolicy; custody: Validator;
   custodySeedPid: string; custodyNftUnit: string; custodyHash: string; custodyAddr: string;
 }> {
+  // CỔNG POISON-002, fail-closed trên mạng thật.
+  //
+  // Vì sao phải đặt Ở ĐÂY chứ không dựa vào cổng đã có: `_guards.ts::isPoison` bắt đúng lớp lỗi
+  // này (toàn 0 / toàn f, "đúng dạng" nên đi lọt), nhưng nó chỉ chạy trong `requiredHashParam`
+  // /`requiredHexParam` — tức chỉ cho tham số ĐỌC TỪ ENV. Một hằng gõ cứng trong mã không đi
+  // qua cổng nào. Cổng dựng ra để chặn lớp lỗi này mù đúng chỗ lớp lỗi đó đang nằm.
+  if (network === "Mainnet" && /^0+$|^f+$/i.test(PROPOSAL_POLICY_PLACEHOLDER)) {
+    throw new Error(
+      `POISON-002: deriveCustody() chạy trên Mainnet với proposal_policy = ` +
+        `${PROPOSAL_POLICY_PLACEHOLDER.slice(0, 8)}…(${PROPOSAL_POLICY_PLACEHOLDER.length / 2} byte) — ` +
+        `GIÁ TRỊ CHẾT. Chuỗi toàn 0 / toàn f không có tiền ảnh blake2b-224 ⇒ không proposal NFT ` +
+        `nào tồn tại được dưới policy đó ⇒ nhánh chi-theo-proposal của custody đóng VĨNH VIỄN, và ` +
+        `LAMP đã vào két thì không burn được (Treasury/CONTRACT.md §5). Đây đúng cùng một hình ` +
+        `với khuyết tật đã giết nhánh Reserve của policy mồi mainnet. Truyền proposal_policy thật ` +
+        `vào deriveCustody() trước khi chạy mạng này.`,
+    );
+  }
+
   const custodyRef = encodeOutputRef(custodyTxHash, custodyIndex);
   const custodySeed = { type: "PlutusV3" as const,
     script: (await applyOf("Treasury", "custody_seed.custody_seed.mint", [custodyRef])).script };
@@ -345,7 +363,29 @@ export const VOID_DATUM = Data.to(new Constr(0, []));
  * Sổ rỗng cũng làm S-ACC-0 (mọi dòng thuộc `accepted_assets`) và S-LEDGER-0 (sổ canonical)
  * đúng hiển nhiên, và `reserved_min_ada` khi đó PHẢI đúng bằng lovelace đặt lên output.
  */
-export function custodySeedDatum(lampPid: string, tokenName: string): CustodyDatum {
+/**
+ * Datum cho lượt SINH custody.
+ *
+ * `governanceRef` BẮT BUỘC và phải là script hash thật 28 byte — không có mặc định.
+ *
+ * Vì sao không cho rỗng: `custody.ak:79` và `:133` ép `governance_ref` BẤT BIẾN ở cả hai
+ * nhánh, nên giá trị ghi ở đây là giá trị vĩnh viễn của instance; và `release.ak:52-53` dùng
+ * nó làm cổng cứng. Ghi rỗng một lần ⇒ nhánh `Release` không bao giờ thoả ⇒ két chỉ NHẬN,
+ * không bao giờ CHI ⇒ mọi LAMP vào đó mất vĩnh viễn, mà LAMP KHÔNG burn được
+ * (`Treasury/CONTRACT.md §5`). Bản trước điền `""` lặng lẽ; nay `custody_seed.ak` luật
+ * S-GOV-0 từ chối thẳng, và cổng dưới đây bắt sớm hơn với câu nói được nguyên nhân.
+ */
+export function custodySeedDatum(
+  lampPid: string, tokenName: string, governanceRef: string,
+): CustodyDatum {
+  if (!/^[0-9a-fA-F]{56}$/.test(governanceRef)) {
+    throw new Error(
+      `GOV-REF-001: governance_ref = "${governanceRef}" — cần script hash 28 byte (56 ký tự hex). ` +
+        `Trường này BẤT BIẾN sau lượt sinh (custody.ak:79,133) và là cổng cứng của nhánh Release ` +
+        `(release.ak:52-53). Sai một lần là két thành hố một chiều: LAMP vào được, không bao giờ ` +
+        `ra, và không đốt được. Truyền script hash của validator governance thật.`,
+    );
+  }
   return {
     instance_id: INSTANCE_ID,
     // S-ACC-1 đòi danh sách KHÔNG rỗng. Két này nhận LAMP (Reserve rót vào) và lovelace.
@@ -355,7 +395,7 @@ export function custodySeedDatum(lampPid: string, tokenName: string): CustodyDat
     ],
     ledger: [],
     cut_bps: 1000n,
-    governance_ref: "",
+    governance_ref: governanceRef,
     epoch: 0n,
     consumed_proposals: [],
   };
