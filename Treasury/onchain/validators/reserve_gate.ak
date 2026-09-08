@@ -13,9 +13,11 @@
 //
 // LUẬT (spend auth UTxO):
 //   G-AUTH-1   own input mang auth NFT (auth_policy, auth_name) qty == 1 — authenticity.
-//   G-CUST-1   tx có REFERENCE INPUT là custody UTxO THẬT: mang custody NFT
-//              (custody_nft_policy, custody_nft_name) qty == 1. Reference (CIP-31) —
-//              KHÔNG tiêu custody (custody do collect/release tự quản).
+//   G-CUST-1   tx có ĐÚNG MỘT custody UTxO THẬT (mang custody NFT
+//              (custody_nft_policy, custody_nft_name) qty == 1) trong tập GỘP
+//              `tx.inputs ∪ tx.reference_inputs`. Xem khối chú thích tại chỗ ép —
+//              PlutusV3 CẤM một TxIn nằm đồng thời ở hai danh sách, nên bắt cứng một
+//              vai là bắt cả hệ chọn một trong hai validator.
 //   G-FLOOR-1  parked = quantity_of(custody_ref.value, lamp_policy, token_name) < floor_oildrop.
 //              CHỈ cho kéo khi PARKED dưới sàn (demand-gated).
 //   G-REOUT-1  auth NFT re-output VỀ CHÍNH gate script (cùng payment script hash), qty == 1.
@@ -73,23 +75,38 @@ validator reserve_gate(
     // ── G-DS-1 (vế input): đúng 1 input mang auth NFT (chống 2 gate input chia 1 output) ──
     expect count_inputs_with_nft(tx.inputs, auth_policy, auth_name) == 1
 
-    // ── G-CUST-1: REFERENCE INPUT custody THẬT (mang custody NFT qty == 1) ──
-    // Đọc parked từ custody THẬT qua reference (CIP-31) — KHÔNG tiêu custody. Ghim NFT
-    // one-shot custody_seed: chỉ UTxO mang nó mới là custody "thật" → không thể dựng
-    // custody GIẢ (value LAMP thấp giả tạo) để qua mặt kiểm sàn (G-CUST-1-fake).
+    // ── G-CUST-1: custody UTxO THẬT — CHẤP NHẬN CẢ HAI VAI (reference HOẶC input) ──
+    // Ghim NFT one-shot custody_seed: chỉ UTxO mang nó mới là custody "thật" → không thể
+    // dựng custody GIẢ (value LAMP thấp giả tạo) để qua mặt kiểm sàn (G-CUST-1-fake).
     //
-    // ÉP ĐÚNG 1 custody reference (đối xứng G-DS-1 + defense-in-depth): custody NFT
-    // one-shot nên thực tế chỉ tồn tại 1 — nhưng nếu chỉ `find`, 2 reference mang NFT
-    // (bất biến tương lai vỡ) sẽ chọn cái parked THẤP để qua sàn. `count == 1` chặn hẳn.
-    expect
-      count_inputs_with_nft(tx.reference_inputs, custody_nft_policy, custody_nft_name) == 1
-    expect Some(cust_ref) =
-      list.find(
-        tx.reference_inputs,
-        fn(i) {
-          assets.quantity_of(i.output.value, custody_nft_policy, custody_nft_name) == 1
-        },
-      )
+    // VÌ SAO GỘP HAI DANH SÁCH, không bắt cứng `reference_inputs`:
+    //   Ledger vẫn ép `BabbageNonDisjointRefInputs` cho PlutusV3 (nới của cardano-ledger
+    //   chỉ áp cho V1/V2 từ protocol version 11), và cả ba module kho này compile ra
+    //   `"plutusVersion": "v3"`. ⟹ MỘT TxIn KHÔNG thể vừa ở `tx.inputs` vừa ở
+    //   `tx.reference_inputs`. Đường rút Reserve lại bắt buộc TIÊU custody (Genesis
+    //   `lamp_mint` nhánh ReserveDraw + `custody` nhánh MigrateIn đòi nó ở `tx.inputs`,
+    //   vì chính việc bị tiêu mới kích validator kho ghi Δ vào sổ), trong khi gate này
+    //   chạy CÙNG tx đó (`reserve_draw` Luật 5 ép auth NFT ở `gate_script_hash`).
+    //   Bắt cứng một vai ⇒ không tx `ReserveDraw` nào dựng được ⇒ pot khoá vĩnh viễn.
+    //
+    // Ngữ nghĩa SÀN không đổi giữa hai vai: cả hai đều là value TRƯỚC khi Δ hạ cánh
+    // (reference = không tiêu nên bất biến; input = trạng thái VÀO của lượt tiêu).
+    //
+    // `expect [cust_ref]` làm luôn hai việc: chọn phần tử VÀ ép ĐÚNG MỘT. Đúng-một là
+    // defense-in-depth: nếu one-shot vỡ, hai UTxO mang NFT cho phép chọn cái parked THẤP
+    // để lách sàn — kể cả khi chúng nằm ở hai danh sách khác nhau.
+    let cust_candidates =
+      list.concat(tx.inputs, tx.reference_inputs)
+        |> list.filter(
+             fn(i) {
+               assets.quantity_of(
+                 i.output.value,
+                 custody_nft_policy,
+                 custody_nft_name,
+               ) == 1
+             },
+           )
+    expect [cust_ref] = cust_candidates
     let custody_out: Output = cust_ref.output
 
     // ── G-FLOOR-1: parked < floor_oildrop (CHỈ cho kéo khi dưới sàn) ───────────
@@ -307,6 +324,64 @@ test gate_reject_missing_auth_input() fail {
       ..placeholder,
       inputs: [gate_input_no_nft()],
       reference_inputs: [custody_ref_input(50)],
+      outputs: [auth_output_to_gate()],
+      mint: assets.zero,
+    }
+  run(tx)
+}
+
+// ── G-CUST-1 vai INPUT (F1): đường mà bản vá Reserve↔Treasury thực sự đi ──────
+// PlutusV3 cấm một TxIn nằm ở cả hai danh sách, mà tx ReserveDraw BẮT BUỘC tiêu custody
+// (để validator kho chạy và ghi Δ vào sổ). Ba bài dưới ghim: đường input mở, sàn vẫn ép
+// trên đường đó, và đúng-một vẫn ép xuyên hai danh sách.
+
+/// tx gate với custody nằm ở `tx.inputs` (bị TIÊU), KHÔNG ở reference_inputs.
+fn build_tx_custody_spent(parked: Int) -> Transaction {
+  Transaction {
+    ..placeholder,
+    inputs: [gate_input(), custody_ref_input(parked)],
+    reference_inputs: [],
+    outputs: [auth_output_to_gate()],
+    mint: assets.zero,
+  }
+}
+
+test gate_happy_custody_as_spend_input() {
+  // custody Ở `tx.inputs`, parked = 50 < floor 100 → pass. Đây là hình dạng tx ReserveDraw
+  // thật; trước F1 nó bị G-CUST-1 từ chối và toàn bộ đường Reserve không dựng được.
+  run(build_tx_custody_spent(50))
+}
+
+test gate_reject_custody_as_spend_input_above_floor() fail {
+  // custody Ở `tx.inputs`, parked = 150 > floor → G-FLOOR-1 vẫn reject.
+  // Bài này chứng minh việc mở vai input KHÔNG mở luôn cổng sàn.
+  run(build_tx_custody_spent(150))
+}
+
+test gate_reject_custody_in_both_lists() fail {
+  // Hai UTxO mang custody NFT — một ở `inputs`, một ở `reference_inputs`.
+  // Tập gộp có 2 phần tử → `expect [cust_ref]` reject.
+  //
+  // CẢ HAI đều DƯỚI sàn, CÓ CHỦ Ý: nếu đặt một cái trên sàn thì bài chết ở G-FLOOR-1 và
+  // không còn đo vế đúng-một nữa. Đo thật bằng đột biến (`[x]` → `[x, ..]`): với hình
+  // dạng này bài chuyển sang ĐỎ; với hình dạng "một trên sàn" thì 0 bài đỏ — cùng một
+  // tên bài, một cái ghim luật, một cái không ghim gì.
+  let second_cust =
+    util.mk_input(
+      util.mk_ref(6),
+      util.mk_output(
+        util.script_address(#"d0d0"),
+        assets.from_lovelace(2_000_000)
+          |> assets.add(cust_pol, cust_nm, 1)
+          |> assets.add(lamp_pol, lamp_nm, 0),
+        Void,
+      ),
+    )
+  let tx =
+    Transaction {
+      ..placeholder,
+      inputs: [gate_input(), custody_ref_input(50)],
+      reference_inputs: [second_cust],
       outputs: [auth_output_to_gate()],
       mint: assets.zero,
     }

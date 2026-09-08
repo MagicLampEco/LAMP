@@ -16,6 +16,7 @@
 use aiken/collection/list
 use cardano/assets.{Value}
 use magiclamp/treasury/ledger
+use magiclamp/treasury/migrate
 use magiclamp/treasury/types.{AssetKey, CollectItem, LedgerEntry}
 
 /// cut của 1 item = floor(amount × cut_bps / 10000). amount ≥ 0, cut_bps ∈ [0,10000]
@@ -30,10 +31,24 @@ pub fn item_accepted(item: CollectItem, accepted: List<AssetKey>) -> Bool {
   list.any(accepted, fn(a) { a.policy == item.policy && a.name == item.name })
 }
 
+/// C-COL-5 + S-LEDGER-RESERVED (F4): mọi item hợp lệ VÀ không item nào ghi vào bucket
+/// DÀNH RIÊNG cho nguồn Reserve.
+///
+/// `item.category` là `Int` do người dựng tx đặt tự do, nên nếu không chặn ở đây thì bất
+/// kỳ ai chạy được `Collect` cũng ghi thẳng vào dòng sổ Reserve-inflow. Bất biến sổ↔value
+/// vẫn nguyên (tổng khớp), nhưng tính chất kiểm toán mà `migrate.reserve_inflow_bucket_id`
+/// sinh ra để giữ — "đọc kho đã nhận bao nhiêu từ Reserve bằng đúng một phép tra sổ" —
+/// mất sạch. `migrate.ak` trước đây chỉ dặn bằng chú thích rằng đây là quy ước off-chain;
+/// một dòng `expect` đóng được thì đừng để lại lời dặn.
 pub fn all_items_valid(items: List<CollectItem>, accepted: List<AssetKey>) -> Bool {
   list.all(
     items,
-    fn(it) { it.amount >= 0 && item_accepted(it, accepted) },
+    fn(it) {
+      it.amount >= 0 && it.category != migrate.reserve_inflow_bucket_id && item_accepted(
+        it,
+        accepted,
+      )
+    },
   )
 }
 

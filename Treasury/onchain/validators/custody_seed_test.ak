@@ -7,6 +7,7 @@
 use cardano/assets
 use cardano/transaction.{Input, Output, OutputReference, Transaction, placeholder}
 use custody_seed.{SeedGenesis}
+use magiclamp/treasury/migrate
 use magiclamp/treasury/types.{AssetKey, CustodyDatum, LedgerEntry}
 use magiclamp/treasury/util
 
@@ -465,5 +466,28 @@ test seed_mint_foreign_policy() fail {
   // mint = seed NFT (policy này, 1 token) + token policy lạ #"f0f0" (policy thứ 2).
   let mint = seed_mint(instance_id, 1) |> assets.add(#"f0f0", #"00", 1)
   let tx = seed_tx([genesis_input()], mint, [cust_output(happy_value(), happy_ledger())])
+  run(tx, reserved)
+}
+
+// ════════════════════════════════════════════════════════════
+// 19. SỔ GENESIS MANG BUCKET DÀNH RIÊNG CHO RESERVE (fail) — [F4 S-LEDGER-RESERVED].
+//   `migrate.reserve_inflow_bucket_id` chỉ có nghĩa khi MỌI số dư trong nó đến từ
+//   `MigrateIn`. Một dòng khai khống lúc seed lọt qua S-SEED-0 dễ dàng (chỉ cần nạp đủ
+//   value tương ứng) và làm hỏng đúng tính chất kiểm toán mà hằng ấy sinh ra để giữ.
+//   Sổ dưới đây CANONICAL + value khớp + asset accepted → cô lập S-LEDGER-RESERVED.
+// ════════════════════════════════════════════════════════════
+test seed_ledger_reserved_bucket() fail {
+  let ledger =
+    [
+      LedgerEntry { bucket_id: bucket_ops, policy: lamp_policy, name: lamp_name, amount: 1000 },
+      LedgerEntry {
+        bucket_id: migrate.reserve_inflow_bucket_id,
+        policy: lamp_policy,
+        name: lamp_name,
+        amount: 500,
+      },
+    ]
+  let value = assets.from_lovelace(2_000_000) |> assets.add(lamp_policy, lamp_name, 1500)
+  let tx = seed_tx([genesis_input()], seed_mint(instance_id, 1), [cust_output(value, ledger)])
   run(tx, reserved)
 }

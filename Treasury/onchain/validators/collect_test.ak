@@ -5,8 +5,9 @@
 use aiken/collection/list
 use aiken/interval
 use cardano/assets
-use cardano/transaction.{Input, Transaction, placeholder}
+use cardano/transaction.{Input, Output, Transaction, placeholder}
 use custody
+use magiclamp/treasury/migrate
 use magiclamp/treasury/types.{
   AssetKey, Collect, CollectItem, CustodyDatum, LedgerEntry, MigrateIn,
   Rebalance,
@@ -132,7 +133,8 @@ fn run_with(
 ) -> Bool {
   // Collect KHÔNG đụng proposal_policy (chỉ nhánh Release dùng) → dummy; seed_policy + ms thật.
   custody.custody.spend(
-    #"feed", seed_policy, ms_per_epoch, Some(d_in), Collect { items }, util.mk_ref(0), tx,
+    #"feed", seed_policy, ms_per_epoch, lamp_policy, lamp_name,
+    Some(d_in), Collect { items }, util.mk_ref(0), tx,
   )
 }
 
@@ -368,7 +370,8 @@ test collect_missing_datum() fail {
     collect_tx(lamp_val(5_000_000, 5000), lamp_val(5_000_000, 5100), ledger_in, ledger_out, 11, [])
   // datum_opt = None ⇒ expect Some(datum) crash.
   custody.custody.spend(
-    #"feed", seed_policy, ms_per_epoch, None, Collect { items }, util.mk_ref(0), tx,
+    #"feed", seed_policy, ms_per_epoch, lamp_policy, lamp_name,
+    None, Collect { items }, util.mk_ref(0), tx,
   )
 }
 
@@ -430,8 +433,9 @@ test collect_script_addr_is_not_vk() {
 }
 
 // ════════════════════════════════════════════════════════════
-// 14. NHÁNH CHƯA TRIỂN KHAI (fail) — Rebalance / MigrateIn rơi vào `_ -> fail`.
-//     v1 chỉ Collect + Release; mọi redeemer khác PHẢI reject (không lọt cửa hậu).
+// 14. NHÁNH CHƯA TRIỂN KHAI (fail) — Rebalance rơi vào `_ -> fail`.
+//     v1.x có Collect + Release + MigrateIn; mọi redeemer khác PHẢI reject.
+//     (MigrateIn nay ĐÃ triển khai — bộ kiểm của nó ở `migrate_test.ak`.)
 // ════════════════════════════════════════════════════════════
 test collect_rebalance_unimplemented() fail {
   let ledger_in = [LedgerEntry { bucket_id: bucket_ops, policy: lamp_policy, name: lamp_name, amount: 0 }]
@@ -441,12 +445,15 @@ test collect_rebalance_unimplemented() fail {
   let cust_out = util.mk_output(cust_addr, lamp_val(5_000_000, 5000), datum(ledger_in))
   let tx = Transaction { ..placeholder, inputs: [cust_in], outputs: [cust_out], mint: assets.zero }
   custody.custody.spend(
-    #"feed", seed_policy, ms_per_epoch, Some(datum(ledger_in)),
-    Rebalance { moves: [] }, util.mk_ref(0), tx,
+    #"feed", seed_policy, ms_per_epoch, lamp_policy, lamp_name,
+    Some(datum(ledger_in)), Rebalance { moves: [] }, util.mk_ref(0), tx,
   )
 }
 
-test collect_migrate_unimplemented() fail {
+test collect_migrate_without_mint_rejected() fail {
+  // MigrateIn nhưng tx KHÔNG mint gì → Δ == 0 → C-MIG-6 (`delta > 0`) reject.
+  // (Trước đây bài này tên `collect_migrate_unimplemented` và đo `_ -> fail`; nhánh
+  // MigrateIn nay có thân, nên nó đo cổng ĐẦU TIÊN của thân đó.)
   let ledger_in = [LedgerEntry { bucket_id: bucket_ops, policy: lamp_policy, name: lamp_name, amount: 0 }]
   let cust_addr = util.script_address(cust_sh)
   let cust_in =
@@ -454,8 +461,8 @@ test collect_migrate_unimplemented() fail {
   let cust_out = util.mk_output(cust_addr, lamp_val(5_000_000, 5000), datum(ledger_in))
   let tx = Transaction { ..placeholder, inputs: [cust_in], outputs: [cust_out], mint: assets.zero }
   custody.custody.spend(
-    #"feed", seed_policy, ms_per_epoch, Some(datum(ledger_in)),
-    MigrateIn { source: #"00" }, util.mk_ref(0), tx,
+    #"feed", seed_policy, ms_per_epoch, lamp_policy, lamp_name,
+    Some(datum(ledger_in)), MigrateIn { source: #"00" }, util.mk_ref(0), tx,
   )
 }
 
@@ -603,5 +610,80 @@ test collect_epoch_range_multi_epoch() fail {
       // lo epoch 11, hi epoch 12 → trải 2 epoch → get_epoch_bounded fail (hi/ms ≠ lo/ms).
       validity_range: interval.between(11 * ms_per_epoch, 12 * ms_per_epoch),
     }
+  run_with(tx, datum(ledger_in), items)
+}
+
+// ════════════════════════════════════════════════════════════
+// 23. C-COL-ADDR (fail) — [F2] địa chỉ kho GIỮ NGUYÊN, kể cả stake credential.
+//   `count_*_at_script` chỉ so PAYMENT credential ⇒ trước F2, stake credential của kho
+//   hoàn toàn tự do: ai chạy được Collect cũng lái phần thưởng uỷ quyền trên toàn bộ ADA
+//   kho về khoá stake của mình, và địa chỉ bech32 của kho đổi theo nên bên index mất dấu.
+//   `!is_vk` KHÔNG chặn được vì payment credential vẫn là Script. Mọi vế khác giữ đúng
+//   ca dương → cô lập C-COL-ADDR.
+// ════════════════════════════════════════════════════════════
+test collect_stake_credential_hijack() fail {
+  let ledger_in = [LedgerEntry { bucket_id: bucket_ops, policy: lamp_policy, name: lamp_name, amount: 0 }]
+  let ledger_out = [LedgerEntry { bucket_id: bucket_ops, policy: lamp_policy, name: lamp_name, amount: 100 }]
+  let items = [item(1000, bucket_ops)]
+  let cust_addr = util.script_address(cust_sh)
+  let cust_in =
+    util.mk_input(util.mk_ref(0), util.mk_output(cust_addr, with_nft(lamp_val(5_000_000, 5000)), datum(ledger_in)))
+  let d_out = CustodyDatum { ..datum(ledger_out), ledger: ledger_out, epoch: 11 }
+  // CÙNG payment credential (qua C-COL-1), KHÁC stake credential.
+  let cust_out =
+    util.mk_output(
+      util.script_address_staked(cust_sh, #"deadbeef"),
+      with_nft(lamp_val(5_000_000, 5100)),
+      d_out,
+    )
+  let tx =
+    Transaction {
+      ..placeholder, inputs: [cust_in], outputs: [cust_out], mint: assets.zero,
+      validity_range: epoch_range(11 * ms_per_epoch),
+    }
+  run_with(tx, datum(ledger_in), items)
+}
+
+// ════════════════════════════════════════════════════════════
+// 24. C-COL-REFSCRIPT (fail) — [F3] không đính script tham chiếu vào kho.
+//   Griefing: mỗi lượt Collect đính thêm một script tham chiếu → ăn dần dư địa min-ADA.
+//   Soi gương Genesis lamp_mint + Reserve reserve_draw (cả hai đã ghim trên state của mình).
+// ════════════════════════════════════════════════════════════
+test collect_reference_script_attached() fail {
+  let ledger_in = [LedgerEntry { bucket_id: bucket_ops, policy: lamp_policy, name: lamp_name, amount: 0 }]
+  let ledger_out = [LedgerEntry { bucket_id: bucket_ops, policy: lamp_policy, name: lamp_name, amount: 100 }]
+  let items = [item(1000, bucket_ops)]
+  let cust_addr = util.script_address(cust_sh)
+  let cust_in =
+    util.mk_input(util.mk_ref(0), util.mk_output(cust_addr, with_nft(lamp_val(5_000_000, 5000)), datum(ledger_in)))
+  let d_out = CustodyDatum { ..datum(ledger_out), ledger: ledger_out, epoch: 11 }
+  let cust_out =
+    Output {
+      ..util.mk_output(cust_addr, with_nft(lamp_val(5_000_000, 5100)), d_out),
+      reference_script: Some(#"5c81"),
+    }
+  let tx =
+    Transaction {
+      ..placeholder, inputs: [cust_in], outputs: [cust_out], mint: assets.zero,
+      validity_range: epoch_range(11 * ms_per_epoch),
+    }
+  run_with(tx, datum(ledger_in), items)
+}
+
+// ════════════════════════════════════════════════════════════
+// 25. BUCKET DÀNH RIÊNG CHO RESERVE (fail) — [F4] C-COL-5.
+//   `item.category` là Int do người dựng tx đặt tự do. Trước F4, bất kỳ ai chạy được
+//   Collect cũng ghi thẳng vào dòng sổ Reserve-inflow: bất biến sổ↔value vẫn khớp, nhưng
+//   tính chất kiểm toán "đọc kho đã nhận bao nhiêu từ Reserve bằng đúng một phép tra sổ"
+//   mất sạch. Sổ ra ghi ĐÚNG cut vào bucket đó (nên C-COL-3/C-COL-4 đều thoả) → cô lập F4.
+// ════════════════════════════════════════════════════════════
+test collect_reject_reserve_inflow_bucket() fail {
+  let ledger_in =
+    [LedgerEntry { bucket_id: migrate.reserve_inflow_bucket_id, policy: lamp_policy, name: lamp_name, amount: 0 }]
+  let ledger_out =
+    [LedgerEntry { bucket_id: migrate.reserve_inflow_bucket_id, policy: lamp_policy, name: lamp_name, amount: 100 }]
+  let items = [item(1000, migrate.reserve_inflow_bucket_id)]
+  let tx =
+    collect_tx(lamp_val(5_000_000, 5000), lamp_val(5_000_000, 5100), ledger_in, ledger_out, 11, [])
   run_with(tx, datum(ledger_in), items)
 }

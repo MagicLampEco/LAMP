@@ -6,10 +6,13 @@
 // không phải khác cách viết. Ai đọc bản này rồi dựng lời gọi cho mainnet sẽ ra một
 // policy-id khác (tham số nằm TRONG policy-id), tức một token khác, một kho khác.
 //
-//   1. SỐ THAM SỐ: bản dưới 12 (dòng 97-108), mainnet 8
+//   1. SỐ THAM SỐ: bản dưới 14 (xem chữ ký `validator lamp_mint(` — trích theo TÊN, không
+//      theo số dòng, vì số dòng trôi mà con trỏ vẫn trỏ vào một dòng CÓ THẬT), mainnet 8
 //      (`git show 457f312:Genesis/onchain/validators/lamp_mint.ak` dòng 53-61).
 //      Vị trí `meter_nft_policy` KHÁC NHAU: ở đây là tham số #11, mainnet là #7.
 //      Truyền theo thứ tự bản này vào script mainnet = lệch mọi tham số từ #4 trở đi.
+//      Hai khe #13-14 (`reserve_kho_nft_policy`/`reserve_kho_nft_name`) KHÔNG tồn tại ở
+//      mainnet — chúng là phần vá đường Reserve, thêm sau khi policy mainnet đã đúc.
 //
 //   2. CAP: bản dưới nhận `dist_cap`/`reserve_cap` làm THAM SỐ (dòng 100-101). Mainnet
 //      không có hai tham số đó — cap là HẰNG biên dịch, kiểm bằng
@@ -54,16 +57,39 @@
 //   chỉ là NHÃN; tính DUY NHẤT của token nằm ở PolicyID (neo bởi genesis_ref one-shot
 //   của thread_nft, tuyến tính apply-param). Đổi token_name ⇒ đổi policyId ⇒ token mới.
 //
-// Param (12): thread_nft_policy + thread_nft_name (tầng 1) + token_name (asset name LAMP) +
+// Param (14): thread_nft_policy + thread_nft_name (tầng 1) + token_name (asset name LAMP) +
 // dist_cap + reserve_cap (PARAM apply-time — framework dùng-chung; LAMP 26,37+9,63 tỷ oildrop,
 // FARM 12 tỷ, … bake vào policy-id ⇒ cap cố định bất biến từng token) +
 // registry_nft_policy/name + token_tag (WHO-gate: đọc bảng registry, authority theo tag) +
-// kho_nft_policy/name (A-DEST: đọc hash kho động, DistributionVest BẮT BUỘC rót LAMP vào kho,
-// không ra ví) + meter_nft_policy/name (định danh meter NFT = reserve_thread NFT, Reserve).
+// kho_nft_policy/name (A-DEST đường Distribution) + meter_nft_policy/name (định danh meter
+// NFT = reserve_thread NFT, Reserve) + reserve_kho_nft_policy/name (A-DEST đường Reserve).
 // KHÔNG tham chiếu ngược tầng 3 (không vòng lặp apply-param).
 //
+// ── HAI CẶP KHO, KHÔNG PHẢI MỘT (chốt khi vá lỗ Δ-chết) ─────────────────────
+// `kho_nft` và `reserve_kho_nft` trỏ vào HAI kho KHÁC NHAU, không phải hai tên của một thứ:
+//
+//   • `kho_nft_*` (#9-10) → kho DISTRIBUTION (`Distribution/onchain/validators/treasury.ak`).
+//     Kho đó có sổ riêng `outstanding_entitlement` và ba redeemer ReleaseForRedeem /
+//     GrantEntitlement / Refill phục vụ đường claim + redeem của người nắm token.
+//     Dùng cho nhánh `DistributionVest`.
+//
+//   • `reserve_kho_nft_*` (#13-14) → Treasury CUSTODY (`Treasury/onchain/validators/custody.ak`),
+//     cặp giá trị = (`seed_policy`, `instance_id`) của instance custody đích. Đó là nơi giữ SỔ
+//     KẾ TOÁN mà `Treasury/CONTRACT.md §5` nói tới ("giảm lưu hành = chuyển vào Treasury").
+//     Dùng cho nhánh `ReserveDraw`.
+//
+// VÌ SAO KHÔNG DÙNG CHUNG MỘT CẶP: dùng chung sẽ dời đích của `DistributionVest` sang Treasury
+// custody, tức 26,37 tỷ LAMP chỉ còn chi được qua `Release` gác bằng proposal — phá đường
+// claim/redeem của Distribution. Hai đường có hai đích thật sự khác nhau nên phải hai cặp.
+//
+// ⚠ BẤT BIẾN DEPLOY: `reserve_kho_nft_name` = `instance_id` của MỘT instance custody, nướng
+// vào policy-id ⇒ đường Reserve khoá vĩnh viễn vào đúng instance đó. Chọn sai lúc deploy
+// không sửa được bằng cách truyền tham số khác — phải đúc policy mới.
+//
 // GATE NHẢ RESERVE = HÀM, KHÔNG CHỮ KÝ (permissionless thật). Nhánh ReserveDraw KHÔNG
-// đòi pubkey-sig nữa: nó ÉP tx phải spend đúng 1 UTxO mang meter NFT (= reserve_thread NFT).
+// đòi pubkey-sig: nó ÉP tx phải spend đúng 1 UTxO mang meter NFT (= reserve_thread NFT)
+// VÀ spend đúng 1 UTxO mang kho NFT, với ĐỘ TĂNG RÒNG của kho ≥ δ (A-DEST, soi gương
+// DistributionVest). Kho bị spend ⇒ validator kho chạy ⇒ Δ vào SỔ, không chỉ vào địa chỉ.
 // Gate nhịp = reserve_draw (Reserve module) ép δ ≤ E/1000 (trần CỨNG mỗi epoch) + pot còn
 // lại + Treasury-pull. KHÔNG có validator "reserve_meter" riêng — đó là tên khái niệm gate
 // nhịp, hiện thực bởi reserve_draw + reserve_thread. ⟹ MỌI ReserveDraw BẮT BUỘC đi qua
@@ -106,6 +132,10 @@ validator lamp_mint(
   kho_nft_name        : ByteArray,
   meter_nft_policy    : PolicyId,
   meter_nft_name      : ByteArray,
+  // #13-#14 — THÊM SAU CÙNG, CÓ CHỦ Ý. Đặt ở cuối để 12 khe đang có không xê dịch:
+  // truyền sai thứ tự tham số KHÔNG báo lỗi, nó ra một policy-id khác một cách im lặng.
+  reserve_kho_nft_policy : PolicyId,
+  reserve_kho_nft_name   : ByteArray,
 ) {
   mint(r: TLampMintRedeemer, policy_id: PolicyId, tx: Transaction) {
     // ── Luật 1: consume + recreate SupplyState (thread NFT) ───────────────
@@ -248,11 +278,70 @@ validator lamp_mint(
           }
         }
         ReserveDraw -> {
-          // Đúng 1 input mang meter NFT (= reserve_thread NFT) → tầng gate nhịp (reserve_draw,
-          // Reserve module) BẮT BUỘC được kích hoạt và ép δ ≤ E/1000 + pot. Không cho 0 (bỏ qua meter) hay ≥2
-          // (double-meter). meter NFT KHÔNG được mint/burn trong tx (one-shot, sống mãi).
+          // ── WHO/NHỊP: đúng 1 input mang meter NFT (= reserve_thread NFT) ──
+          // → tầng gate nhịp (reserve_draw, Reserve module) BẮT BUỘC được kích hoạt và ép
+          // δ ≤ E/1000 + pot. Không cho 0 (bỏ qua meter) hay ≥2 (double-meter). meter NFT
+          // KHÔNG được mint/burn trong tx (one-shot, sống mãi).
+          //
+          // ── WHERE: A-DEST cho đường Reserve — soi gương DistributionVest ──
+          // Trước đây nhánh này KHÔNG ép đích: nó uỷ quyền toàn bộ cho reserve_draw, mà
+          // reserve_draw lại đo bằng "tổng LAMP tới một ĐỊA CHỈ" — đúng phép đo mà chú
+          // thích của DistributionVest ngay bên trên đã bác. Hệ quả đo được: mỗi lượt rút
+          // Δ đi vào một UTxO không datum ở địa chỉ kho, tiêu lại không được, tức Δ bị
+          // PHÁ HUỶ thay vì chuyển vào kho — trái bất biến "LAMP không đốt; giảm lưu hành
+          // = chuyển vào kho (kế toán)".
+          //
+          // Nay ép hai vế, cùng hình dạng đã audit ở DistributionVest:
+          //   (a) tx phải TIÊU đúng 1 UTxO mang kho NFT ⇒ validator của kho (Treasury
+          //       custody, nhánh MigrateIn) chạy ⇒ nó ép Δ vào value VÀ vào SỔ;
+          //   (b) ĐỘ TĂNG RÒNG của kho ≥ delta (không đo tổng — đo tổng cho tái chế).
+          //
+          // KHÁC DistributionVest ở CHỖ ĐỌC, và khác có lý do: Distribution đọc kho qua
+          // REFERENCE input (kho không cần bị tiêu, không tranh chấp UTxO). Ở đây kho PHẢI
+          // là SPEND input, vì chính việc bị tiêu mới làm validator kho chạy. Cùng một hàm
+          // `script_hash_of_holder` phục vụ được cả hai vì nó nhận `List<Input>` — nó vẫn
+          // đòi carrier ở SCRIPT và đòi ĐÚNG MỘT carrier, nên NFT kho đặt ở ví thường thì
+          // cả tx chết ngay tại đây.
+          //
+          // ── KHO CỦA NHÁNH NÀY LÀ CẶP RIÊNG `reserve_kho_nft_*` (#13-14) ──────────
+          // KHÔNG dùng `kho_nft_*` (#9-10) của `DistributionVest`. Hai cặp trỏ vào hai kho
+          // THẬT SỰ khác nhau — lý do đầy đủ ở khối "HAI CẶP KHO" đầu tệp. Tóm tắt chỗ dễ
+          // sai: `kho_nft_*` trỏ kho Distribution (`Distribution/…/treasury.ak`, có sổ
+          // `outstanding_entitlement` phục vụ claim/redeem); `reserve_kho_nft_*` trỏ Treasury
+          // custody (`Treasury/…/custody.ak`, cặp = (`seed_policy`, `instance_id`)), là nơi
+          // duy nhất có nhánh `MigrateIn` ép Δ vào SỔ KẾ TOÁN.
+          //
+          // Nối nhầm dây ở đây thì khoá ba tầng hở NGAY Ở TẦNG NỐI: tx tiêu UTxO kho
+          // Distribution, `treasury.ak` chạy — nhưng nó không có nhánh nào ghi Δ vào sổ
+          // custody, nên Δ vẫn đứng ngoài sổ kế toán dù mọi phép đo ở đây đều xanh.
+          //
+          // GHI CHÚ TRUNG THỰC về vế `count_inputs_holding_nft(reserve_kho) == 1`: nó BỊ BAO
+          // HÀM bởi `script_hash_of_holder` ngay dưới (`expect [single] = carriers`). Đo bằng
+          // đột biến một dòng: nới nó thành `>= 0` ⟹ 0 bài đỏ. Giữ lại vì nó nói mệnh đề
+          // ra thành lời tại chỗ và không phụ thuộc chi tiết cài đặt của helper; đừng đọc
+          // "0 bài đỏ" ở đây thành "thiếu bài".
           util.count_inputs_holding_nft(tx.inputs, meter_nft_policy, meter_nft_name) == 1
             && assets.quantity_of(tx.mint, meter_nft_policy, meter_nft_name) == 0
+            && util.count_inputs_holding_nft(
+                 tx.inputs,
+                 reserve_kho_nft_policy,
+                 reserve_kho_nft_name,
+               ) == 1
+            && {
+              let reserve_kho_hash =
+                util.script_hash_of_holder(
+                  tx.inputs,
+                  reserve_kho_nft_policy,
+                  reserve_kho_nft_name,
+                )
+              util.qty_delta_at_script(
+                tx.inputs,
+                tx.outputs,
+                reserve_kho_hash,
+                policy_id,
+                token_name,
+              ) >= delta
+            }
         }
       }
     expect gate_ok
@@ -405,22 +494,58 @@ fn build_tx_anchor(
   }
 }
 
-/// Dựng tx ReserveDraw đầy đủ (gate = spend meter NFT = reserve_thread NFT, KHÔNG chữ ký).
+// ── KHO ĐƯỜNG RESERVE = Treasury CUSTODY, KHÁC HẲN kho Distribution ở trên ───────────
+// Cặp `(reserve_kho_pol, reserve_kho_nm)` mô phỏng `(seed_policy, instance_id)` của
+// `Treasury/onchain/validators/custody.ak`; nó nằm ở MỘT script hash KHÁC `dist_dest_hash`.
+// Giữ hai hash phân biệt trong fixture là điều làm ca âm `reservedraw_delta_vao_kho_dist`
+// bên dưới có nghĩa — trộn chung một hash thì ca đó xanh vì lý do sai.
+const reserve_kho_pol: PolicyId = #"c057"
+
+const reserve_kho_nm: ByteArray = #"435553"
+
+/// Script hash của Treasury custody (đích thật của đường Reserve).
+const custody_hash: ByteArray = #"c0d1"
+
+/// Input SPEND mang custody NFT: chính UTxO kho Treasury bị tiêu trong lượt rút.
+/// KHÁC `kho_ref()` ở chỗ nó nằm trong `tx.inputs` — đó là điều làm validator custody CHẠY.
+/// `holding` = lượng LAMP custody đang giữ TRƯỚC lượt rút (dùng cho ca tái chế).
+fn custody_input_spent(holding: Int) -> Input {
+  let v =
+    assets.from_lovelace(2_000_000)
+      |> assets.add(reserve_kho_pol, reserve_kho_nm, 1)
+      |> assets.add(lamp_pol, constants.default_token_name, holding)
+  util.mk_input(util.mk_ref(5), util.mk_output(util.script_address(custody_hash), v, 0))
+}
+
+/// Output custody sau MigrateIn: custody NFT trả lại + `qty` LAMP.
+fn custody_output(qty: Int) -> Output {
+  let v =
+    assets.from_lovelace(2_000_000)
+      |> assets.add(reserve_kho_pol, reserve_kho_nm, 1)
+      |> assets.add(lamp_pol, constants.default_token_name, qty)
+  util.mk_output(util.script_address(custody_hash), v, 0)
+}
+
+/// Dựng tx ReserveDraw đầy đủ: gate nhịp (spend meter NFT = reserve_thread NFT, KHÔNG chữ
+/// ký) + A-DEST (spend custody NFT, custody tăng ròng đúng Δ). Custody khởi đầu giữ 0 LAMP.
 fn build_tx_reserve(s: SupplyState, s2: SupplyState, mint_qty: Int) -> Transaction {
   Transaction {
     ..placeholder,
-    inputs: [ss_input(s), meter_input()],
-    outputs: [ss_output(s2)],
+    inputs: [ss_input(s), meter_input(), custody_input_spent(0)],
+    outputs: [ss_output(s2), custody_output(mint_qty)],
     mint: mint_lamp(mint_qty),
     extra_signatories: [],
   }
 }
 
+/// 14 tham số, ĐÚNG THỨ TỰ chữ ký. Hai khe cuối là cặp kho RIÊNG của đường Reserve —
+/// đừng truyền `kho_pol, kho_nm` vào đó, đó chính là lỗ vừa vá.
 fn run(r: TLampMintRedeemer, tx: Transaction) -> Bool {
   lamp_mint.mint(
     thr_pol, constants.supply_name, tk_name,
     constants.dist_cap_oildrop, constants.reserve_cap_oildrop,
     registry_pol, registry_nm, lamp_tag, kho_pol, kho_nm, meter_pol, meter_nm,
+    reserve_kho_pol, reserve_kho_nm,
     r, lamp_pol, tx,
   )
 }
@@ -689,13 +814,14 @@ test reservedraw_sig_alone_insufficient() fail {
 
 test reservedraw_two_meters() fail {
   // 2 input mang meter NFT (= reserve_thread NFT) → count == 2 ≠ 1 → reject (chống double-meter).
+  // Lệch ca dương ĐÚNG một chỗ: meter thứ hai; phần kho giữ nguyên.
   let s = fresh()
   let s2 = SupplyState { ..s, reserve_minted: 1_000_000 }
   let tx =
     Transaction {
       ..placeholder,
-      inputs: [ss_input(s), meter_input(), meter_input()],
-      outputs: [ss_output(s2)],
+      inputs: [ss_input(s), meter_input(), meter_input(), custody_input_spent(0)],
+      outputs: [ss_output(s2), custody_output(1_000_000)],
       mint: mint_lamp(1_000_000),
       extra_signatories: [],
     }
@@ -709,12 +835,236 @@ test reservedraw_meter_minted_in_tx() fail {
   let tx =
     Transaction {
       ..placeholder,
-      inputs: [ss_input(s), meter_input()],
-      outputs: [ss_output(s2)],
+      inputs: [ss_input(s), meter_input(), custody_input_spent(0)],
+      outputs: [ss_output(s2), custody_output(1_000_000)],
       mint: mint_lamp(1_000_000) |> assets.add(meter_pol, meter_nm, 1),
       extra_signatories: [],
     }
   run(ReserveDraw, tx)
+}
+
+// ── A-DEST đường Reserve: kho phải BỊ TIÊU và phải TĂNG RÒNG ─────────────────
+
+test reservedraw_no_kho_input() fail {
+  // Không tiêu UTxO kho → validator kho không chạy → Δ không vào sổ được.
+  // Đây chính là hình dạng đã gây ra lỗ. Nay gate ReserveDraw reject.
+  let s = fresh()
+  let s2 = SupplyState { ..s, reserve_minted: 1_000_000 }
+  let tx =
+    Transaction {
+      ..placeholder,
+      inputs: [ss_input(s), meter_input()],
+      outputs: [ss_output(s2), custody_output(1_000_000)],
+      mint: mint_lamp(1_000_000),
+      extra_signatories: [],
+    }
+  run(ReserveDraw, tx)
+}
+
+test reservedraw_delta_to_datumless_utxo_at_kho() fail {
+  // Δ rót vào UTxO KHÔNG DATUM, KHÔNG NFT tại ĐỊA CHỈ custody, custody KHÔNG bị tiêu.
+  // Đúng địa chỉ nhưng không vào sổ, và tiêu lại không được ⇒ Δ chết ngoài sổ.
+  let s = fresh()
+  let s2 = SupplyState { ..s, reserve_minted: 1_000_000 }
+  let stray =
+    util.mk_output_no_datum(
+      util.script_address(custody_hash),
+      assets.from_lovelace(2_000_000)
+        |> assets.add(lamp_pol, constants.default_token_name, 1_000_000),
+    )
+  let tx =
+    Transaction {
+      ..placeholder,
+      inputs: [ss_input(s), meter_input()],
+      outputs: [ss_output(s2), stray],
+      mint: mint_lamp(1_000_000),
+      extra_signatories: [],
+    }
+  run(ReserveDraw, tx)
+}
+
+test reservedraw_two_kho_inputs() fail {
+  // 2 UTxO mang kho NFT → `script_hash_of_holder` đòi ĐÚNG một carrier → reject.
+  let s = fresh()
+  let s2 = SupplyState { ..s, reserve_minted: 1_000_000 }
+  let tx =
+    Transaction {
+      ..placeholder,
+      inputs: [ss_input(s), meter_input(), custody_input_spent(0), custody_input_spent(0)],
+      outputs: [ss_output(s2), custody_output(1_000_000)],
+      mint: mint_lamp(1_000_000),
+      extra_signatories: [],
+    }
+  run(ReserveDraw, tx)
+}
+
+test reservedraw_kho_nft_at_wallet() fail {
+  // custody NFT nằm ở VÍ THƯỜNG (không validator nào canh) → `script_hash_of_holder` đòi
+  // carrier ở SCRIPT → reject. Đây là lớp chặn cho bất biến deploy mà Reserve không đo.
+  let s = fresh()
+  let s2 = SupplyState { ..s, reserve_minted: 1_000_000 }
+  let kho_at_vk = {
+    let v =
+      assets.from_lovelace(2_000_000) |> assets.add(reserve_kho_pol, reserve_kho_nm, 1)
+    util.mk_input(util.mk_ref(5), util.mk_output(util.vk_address(#"7a7a"), v, 0))
+  }
+  let tx =
+    Transaction {
+      ..placeholder,
+      inputs: [ss_input(s), meter_input(), kho_at_vk],
+      outputs: [ss_output(s2), custody_output(1_000_000)],
+      mint: mint_lamp(1_000_000),
+      extra_signatories: [],
+    }
+  run(ReserveDraw, tx)
+}
+
+test reservedraw_reject_kho_recycle() fail {
+  // TÁI CHẾ trên đường Reserve: kho đang giữ 10 triệu ≥ Δ. tx tiêu UTxO kho, trả lại
+  // ĐÚNG 10 triệu, còn Δ mới chảy ra ví. Phép đo "TỔNG mặt output tới kho ≥ Δ" cho ca
+  // này lọt; `qty_delta_at_script` đo ĐỘ TĂNG = 0 < Δ ⇒ reject.
+  let s = fresh()
+  let s2 = SupplyState { ..s, reserve_minted: 10_000_000 }
+  let tx =
+    Transaction {
+      ..placeholder,
+      inputs: [ss_input(s), meter_input(), custody_input_spent(10_000_000)],
+      outputs: [ss_output(s2), custody_output(10_000_000), wallet_output(10_000_000)],
+      mint: mint_lamp(10_000_000),
+      extra_signatories: [],
+    }
+  run(ReserveDraw, tx)
+}
+
+test reservedraw_kho_increase_below_delta() fail {
+  // Kho tăng ròng NHỎ HƠN Δ (chia bớt Δ ra ví) → reject. Biên đối xứng của ca dương.
+  let s = fresh()
+  let s2 = SupplyState { ..s, reserve_minted: 10_000_000 }
+  let tx =
+    Transaction {
+      ..placeholder,
+      inputs: [ss_input(s), meter_input(), custody_input_spent(0)],
+      outputs: [ss_output(s2), custody_output(9_999_999), wallet_output(1)],
+      mint: mint_lamp(10_000_000),
+      extra_signatories: [],
+    }
+  run(ReserveDraw, tx)
+}
+
+test reservedraw_kho_increase_real_when_kho_prefunded() {
+  // ĐỐI CHỨNG DƯƠNG: cũng tiêu UTxO kho đang giữ 10 triệu, nhưng trả về 20 triệu
+  // = cũ + Δ. Độ tăng ròng == Δ ⇒ hợp lệ. Luật KHÔNG cấm tiêu UTxO kho, chỉ cấm
+  // kho không tăng.
+  let s = fresh()
+  let s2 = SupplyState { ..s, reserve_minted: 10_000_000 }
+  let tx =
+    Transaction {
+      ..placeholder,
+      inputs: [ss_input(s), meter_input(), custody_input_spent(10_000_000)],
+      outputs: [ss_output(s2), custody_output(20_000_000)],
+      mint: mint_lamp(10_000_000),
+      extra_signatories: [],
+    }
+  run(ReserveDraw, tx)
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// HAI KHO KHÔNG THAY THẾ ĐƯỢC CHO NHAU — bài đỏ cho lỗ "nối nhầm dây"
+//
+// Lỗ đã có thật: nhánh `ReserveDraw` từng dùng CHUNG cặp `kho_nft_*` với `DistributionVest`.
+// Cặp đó trỏ kho Distribution (`Distribution/…/treasury.ak`), không trỏ Treasury custody.
+// Hệ quả: khoá ba tầng (lamp_mint ⟹ reserve_draw ⟹ custody.MigrateIn) đứt ở tầng NỐI DÂY —
+// mọi phép đo trong `lamp_mint` vẫn xanh trong khi Δ hạ cánh ở một cái kho KHÔNG có nhánh
+// nào ghi nó vào sổ kế toán. Bốn bài dưới đây đỏ nếu ai gỡ bản vá.
+// ══════════════════════════════════════════════════════════════════════════════
+
+/// Input SPEND mang kho NFT ĐƯỜNG DISTRIBUTION (`kho_pol`/`kho_nm`) tại `dist_dest_hash`.
+/// Đây là CÁI KHO SAI cho đường Reserve — dựng riêng để bài âm nói đúng điều nó muốn nói.
+fn dist_kho_input_spent(holding: Int) -> Input {
+  let v =
+    assets.from_lovelace(2_000_000)
+      |> assets.add(kho_pol, kho_nm, 1)
+      |> assets.add(lamp_pol, constants.default_token_name, holding)
+  util.mk_input(util.mk_ref(12), util.mk_output(util.script_address(dist_dest_hash), v, 0))
+}
+
+test reservedraw_delta_vao_kho_dist_bi_tu_choi() fail {
+  // LỖ CỐT LÕI. Giao dịch hoàn hảo theo mọi luật CŨ: tiêu meter NFT, tiêu một UTxO kho
+  // mang kho NFT ở SCRIPT, kho đó tăng ròng đúng Δ. Chỉ sai một điều — đó là kho
+  // DISTRIBUTION, không phải Treasury custody. Không UTxO nào mang custody NFT
+  // ⇒ `count_inputs_holding_nft(reserve_kho) == 0` ⇒ reject.
+  let s = fresh()
+  let s2 = SupplyState { ..s, reserve_minted: 1_000_000 }
+  let tx =
+    Transaction {
+      ..placeholder,
+      inputs: [ss_input(s), meter_input(), dist_kho_input_spent(0)],
+      outputs: [ss_output(s2), dest_output(1_000_000)],
+      mint: mint_lamp(1_000_000),
+      extra_signatories: [],
+    }
+  run(ReserveDraw, tx)
+}
+
+test reservedraw_delta_vao_dung_custody_duoc_nhan() {
+  // ĐỐI CHỨNG DƯƠNG của bài ngay trên, khác ĐÚNG MỘT biến: kho được tiêu và được rót
+  // là Treasury custody (mang `reserve_kho` NFT, ở `custody_hash`). Cùng Δ, cùng meter,
+  // cùng transition ⇒ chấp nhận. Cặp âm/dương này khoá đúng chiều "kho nào".
+  let s = fresh()
+  let s2 = SupplyState { ..s, reserve_minted: 1_000_000 }
+  let tx =
+    Transaction {
+      ..placeholder,
+      inputs: [ss_input(s), meter_input(), custody_input_spent(0)],
+      outputs: [ss_output(s2), custody_output(1_000_000)],
+      mint: mint_lamp(1_000_000),
+      extra_signatories: [],
+    }
+  run(ReserveDraw, tx)
+}
+
+test reservedraw_custody_bi_tieu_nhung_delta_chay_sang_kho_dist() fail {
+  // Tinh vi hơn: tx tiêu CẢ HAI kho, custody có mặt nên vế "đúng 1 carrier" thoả, nhưng Δ
+  // được rót sang kho Distribution còn custody trả về đúng số cũ (0). Độ tăng ròng ĐO TẠI
+  // `custody_hash` = 0 < Δ ⇒ reject. Bài này chứng minh phép đo neo vào ĐÚNG hash đọc từ
+  // custody NFT, không phải "có một kho nào đó tăng là được".
+  let s = fresh()
+  let s2 = SupplyState { ..s, reserve_minted: 1_000_000 }
+  let tx =
+    Transaction {
+      ..placeholder,
+      inputs: [
+        ss_input(s), meter_input(), custody_input_spent(0), dist_kho_input_spent(0),
+      ],
+      outputs: [ss_output(s2), custody_output(0), dest_output(1_000_000)],
+      mint: mint_lamp(1_000_000),
+      extra_signatories: [],
+    }
+  run(ReserveDraw, tx)
+}
+
+test distvest_delta_vao_custody_bi_tu_choi() fail {
+  // CHIỀU NGƯỢC LẠI: `DistributionVest` rót toàn bộ Δ vào Treasury custody thay vì kho
+  // Distribution. Registry ký đúng, kho ref đúng — nhưng độ tăng ròng tại `dist_dest_hash`
+  // = 0 < Δ ⇒ reject.
+  //
+  // GHI CHÚ TRUNG THỰC về sức phát hiện: bài này KHÔNG đỏ dưới hai đột biến đã thử (đảo dây
+  // nhánh ReserveDraw sang cặp Distribution; đảo dây nhánh DistributionVest sang cặp Reserve).
+  // Nó fail cùng chỗ và cùng lý do với `distvest_mint_not_to_dest` — "kho Distribution không
+  // tăng". Giữ lại vì nó ghi lại một HÌNH DẠNG khác (đích là một SCRIPT khác, không phải ví),
+  // không phải vì nó bắt được thứ bài kia bỏ sót. Đừng đọc nó thành một lớp chặn độc lập.
+  let s = fresh()
+  let s2 = SupplyState { ..s, dist_minted: 1_000_000 }
+  let tx =
+    Transaction {
+      ..placeholder,
+      inputs: [ss_input(s)],
+      reference_inputs: [registry_ok(), kho_ref()],
+      outputs: [ss_output(s2), custody_output(1_000_000)],
+      mint: mint_lamp(1_000_000),
+      extra_signatories: [ctrl_pkh],
+    }
+  run(DistributionVest, tx)
 }
 
 // ── A11: mint asset name lạ cùng policy ──────────────────────
@@ -1244,25 +1594,33 @@ test adest_kho_input_still_ok_when_increase_real() {
 }
 
 // ══════════════════════════════════════════════════════════════
-// RANH GIỚI ReserveDraw — lamp_mint KHÔNG bảo vệ 9,63 tỷ, nó UỶ QUYỀN
+// RANH GIỚI ReserveDraw — cái gì lamp_mint canh, cái gì nó UỶ QUYỀN
 //
-// Nhánh ReserveDraw (`lamp_mint.ak:213-219`) chỉ đòi ĐÚNG MỘT input mang meter NFT.
-// Nó KHÔNG ép đích đến (không có A-DEST), KHÔNG ép trần mỗi lượt, KHÔNG đòi chữ ký.
-// Toàn bộ luật nhả 9,63 tỷ nằm ở SCRIPT ĐANG GIỮ METER NFT — không nằm ở đây.
+// ĐÃ ĐỔI: trước đây nhánh ReserveDraw chỉ đòi ĐÚNG MỘT input mang meter NFT và KHÔNG ép
+// đích đến. Nay nó ép thêm A-DEST đường Reserve — kho phải BỊ TIÊU và phải TĂNG RÒNG ≥ δ.
+// Lý do đổi: uỷ quyền đích đến cho reserve_draw, mà reserve_draw lại đo bằng "tổng LAMP
+// tới một ĐỊA CHỈ", nên mỗi lượt rút đẩy Δ vào một UTxO không datum ở địa chỉ kho — tiêu
+// lại không được ⇒ Δ bị PHÁ HUỶ. Đúng địa chỉ mà không vào SỔ thì kho không nhận được gì.
 //
-// Hệ quả VẬN HÀNH phải nói thẳng: meter NFT nằm ở đâu thì đó là luật của Reserve.
+// CÒN UỶ QUYỀN (lamp_mint vẫn KHÔNG canh): trần mỗi lượt (δ ≤ E/1000), nhịp ≤1 lượt/epoch,
+// pot còn lại, Treasury-pull. Toàn bộ nằm ở SCRIPT ĐANG GIỮ METER NFT.
 //   • meter NFT ở `reserve_draw.ak` ⇒ nhả theo thuật toán, không ai rút tay.
-//   • meter NFT ở VÍ THƯỜNG ⇒ người cầm ví đúc thẳng 9,63 tỷ về ví mình.
-// Và meter_nft_policy/meter_nft_name là THAM SỐ apply-time ⇒ nướng vào policy-id ⇒
-// chọn sai lúc deploy là vĩnh viễn.
+//   • meter NFT ở VÍ THƯỜNG ⇒ người cầm ví tự chọn nhịp và lượng (nhưng vẫn PHẢI rót
+//     vào kho — A-DEST mới chặn đường "đúc thẳng về ví").
+// meter_nft_policy/meter_nft_name và reserve_kho_nft_policy/reserve_kho_nft_name đều là THAM
+// SỐ apply-time ⇒ nướng vào policy-id ⇒ chọn sai lúc deploy là vĩnh viễn.
 //
-// Test dưới KHÔNG phải báo lỗi — nó GHI LẠI ranh giới đó bằng mã, để không ai đọc
-// lamp_mint rồi tưởng nó đang canh Reserve.
+// ⚠ CHỖ DỄ NỐI NHẦM DÂY NHẤT: kho của nhánh này là `reserve_kho_nft_*` (#13-14 → Treasury
+// custody), KHÔNG phải `kho_nft_*` (#9-10 → kho Distribution). Nối nhầm thì mọi phép đo ở
+// đây vẫn xanh mà Δ hạ cánh ở cái kho không có nhánh nào ghi nó vào sổ kế toán. Bài đỏ giữ
+// chỗ này: `reservedraw_delta_vao_kho_dist_bi_tu_choi` +
+// `reservedraw_custody_bi_tieu_nhung_delta_chay_sang_kho_dist`.
 // ══════════════════════════════════════════════════════════════
 
-test reservedraw_lamp_mint_khong_ep_dich_den() {
-  // Toàn bộ LAMP mint đường Reserve chảy về VÍ THƯỜNG. lamp_mint vẫn cho qua —
-  // đúng thiết kế (uỷ quyền), và đúng chỗ nguy hiểm nếu meter NFT đặt sai.
+test reservedraw_lamp_mint_ep_dich_den() fail {
+  // ĐẢO KỲ VỌNG (trước là ca DƯƠNG tên `reservedraw_lamp_mint_khong_ep_dich_den`, ghi
+  // lại đúng lỗ đang vá): toàn bộ LAMP mint đường Reserve chảy về VÍ THƯỜNG, không tiêu
+  // kho, kho không tăng ⇒ nay REJECT.
   let s = fresh()
   let s2 = SupplyState { ..s, reserve_minted: 5_000_000 }
   let tx =

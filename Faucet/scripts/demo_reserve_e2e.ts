@@ -25,6 +25,7 @@ import { reserveStateToCbor, drawRedeemerToCbor } from "../../Reserve/offchain/s
 import { buildReserveAuthMintTx } from "../../Treasury/offchain/src/reserveAuthBuilder.js";
 import { attachGateSpend } from "../../Treasury/offchain/src/reserveGateBuilder.js";
 import { msPerEpoch, assertMsPerEpochMatchesNetwork } from "../offchain/src/constants.js";
+import { assertParamCount } from "../../Genesis/offchain/src/applyGate.js";
 
 // Secret: MỘT nguồn duy nhất — $AGENT_SECRETS. KHÔNG có đường dự phòng nướng cứng.
 // Đường dự phòng cũ trỏ vào bộ nhà agent ở chỗ cũ — chỗ đó đã dời, nên hằng số ấy là
@@ -71,6 +72,23 @@ const gg = (t: string) => gbp.validators.find((v: { title: string }) => v.title 
 const gt = (t: string) => tbp.validators.find((v: { title: string }) => v.title === t).compiledCode;
 const gr = (t: string) => rbp.validators.find((v: { title: string }) => v.title === t).compiledCode;
 
+// ── Cổng APPLY-001: mọi lượt apply-param phải đi qua đây ───────────────────────
+// `applyParamsToScript` KHÔNG báo lỗi khi thiếu hoặc thừa tham số. Nó apply một phần rồi
+// trả về script hash / policy id KHÁC, im lặng — script chạy êm vào một địa chỉ không ai
+// giữ, và với `lamp_mint` thì đúc LAMP dưới policy id sai (LAMP không burn được,
+// `Treasury/CONTRACT.md §5`). TypeScript không bắt được vì tham số đi theo `unknown[]`.
+// Cổng thuần ở `Genesis/offchain/src/applyGate.ts`; ở đây chỉ nối số khai của blueprint vào.
+const mkApply = (bp: { validators: Array<{ title: string; parameters?: unknown[]; compiledCode: string }> }) =>
+  (title: string, params: unknown[]): string => {
+    const v = bp.validators.find((x) => x.title === title);
+    if (!v) throw new Error(`APPLY-002: blueprint không khai validator "${title}".`);
+    assertParamCount(title, (v.parameters ?? []).length, params.length);
+    return applyParamsToScript(v.compiledCode, params as never[]);
+  };
+const apG = mkApply(gbp);
+const apT = mkApply(tbp);
+const apR = mkApply(rbp);
+
 const link = (h: string) => `https://preview.cexplorer.io/tx/${h}`;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 async function waitVisible(txHash: string, addr: string, tries = 40): Promise<void> {
@@ -103,42 +121,42 @@ console.log(`custody genesis: ${seedCustody.txHash}#${seedCustody.outputIndex}`)
 console.log(`auth genesis: ${seedAuth.txHash}#${seedAuth.outputIndex}`);
 
 // ── Policies & validators ───────────────────────────────────────────────
-const threadPolicy: MintingPolicy = { type: "PlutusV3", script: applyParamsToScript(gg("thread_nft.thread_nft.mint"), [threadRef]) };
+const threadPolicy: MintingPolicy = { type: "PlutusV3", script: apG("thread_nft.thread_nft.mint", [threadRef]) };
 const threadPid = mintingPolicyToId(threadPolicy);
-const reserveThreadPolicy: MintingPolicy = { type: "PlutusV3", script: applyParamsToScript(gr("reserve_thread.reserve_thread.mint"), [reserveRef, RESERVE_THREAD_NAME]) };
+const reserveThreadPolicy: MintingPolicy = { type: "PlutusV3", script: apR("reserve_thread.reserve_thread.mint", [reserveRef, RESERVE_THREAD_NAME]) };
 const reserveThreadPid = mintingPolicyToId(reserveThreadPolicy);
 
 // lamp_mint với meter = reserve_thread (THẬT, không placeholder).
-const tlampPolicy: MintingPolicy = { type: "PlutusV3", script: applyParamsToScript(gg("lamp_mint.lamp_mint.mint"), [threadPid, SUPPLY_NAME, TOKEN_NAME, [pkh], 1n, reserveThreadPid, RESERVE_THREAD_NAME]) };
+const tlampPolicy: MintingPolicy = { type: "PlutusV3", script: apG("lamp_mint.lamp_mint.mint", [threadPid, SUPPLY_NAME, TOKEN_NAME, [pkh], 1n, reserveThreadPid, RESERVE_THREAD_NAME]) };
 const tlampPid = mintingPolicyToId(tlampPolicy);
 const lampUnit = toUnit(tlampPid, TOKEN_NAME);
 
-const ssScript: Validator = { type: "PlutusV3", script: applyParamsToScript(gg("supply_state.supply_state.spend"), [tlampPid, threadPid, TOKEN_NAME]) };
+const ssScript: Validator = { type: "PlutusV3", script: apG("supply_state.supply_state.spend", [tlampPid, threadPid, TOKEN_NAME]) };
 const ssAddr = credentialToAddress("Preview", scriptHashToCredential(validatorToScriptHash(ssScript)));
 const threadUnit = toUnit(threadPid, SUPPLY_NAME);
 
 // custody (Treasury) — reserve_dest.
-const custodyScript: Validator = { type: "PlutusV3", script: applyParamsToScript(gt("custody.custody.spend"), [PROPOSAL_POLICY, MS_PER_EPOCH]) };
+const custodyScript: Validator = { type: "PlutusV3", script: apT("custody.custody.spend", [PROPOSAL_POLICY, MS_PER_EPOCH]) };
 const custodyHash = validatorToScriptHash(custodyScript);
 const custodyAddr = credentialToAddress("Preview", scriptHashToCredential(custodyHash));
 
 // reserve_auth (one-shot, ref ghim seedAuth) — auth NFT credential.
-const authPolicy: MintingPolicy = { type: "PlutusV3", script: applyParamsToScript(gt("reserve_auth.reserve_auth.mint"), [authRef, AUTH_NAME]) };
+const authPolicy: MintingPolicy = { type: "PlutusV3", script: apT("reserve_auth.reserve_auth.mint", [authRef, AUTH_NAME]) };
 const authPid = mintingPolicyToId(authPolicy);
 const authUnit = toUnit(authPid, AUTH_NAME);
 
 // custody_seed (one-shot, ref ghim seedCustody).
 const custodyRefData = new Constr(0, [seedCustody.txHash, BigInt(seedCustody.outputIndex)]);
-const custodySeedPolicy: MintingPolicy = { type: "PlutusV3", script: applyParamsToScript(gt("custody_seed.custody_seed.mint"), [custodyRefData, custodyHash]) };
+const custodySeedPolicy: MintingPolicy = { type: "PlutusV3", script: apT("custody_seed.custody_seed.mint", [custodyRefData, custodyHash]) };
 const custodySeedPid = mintingPolicyToId(custodySeedPolicy);
 const custodyNftUnit = toUnit(custodySeedPid, INSTANCE_ID);
 
-const gateScript: Validator = { type: "PlutusV3", script: applyParamsToScript(gt("reserve_gate.reserve_gate.spend"), [custodySeedPid, INSTANCE_ID, tlampPid, TOKEN_NAME, FLOOR_OILDROP, authPid, AUTH_NAME]) };
+const gateScript: Validator = { type: "PlutusV3", script: apT("reserve_gate.reserve_gate.spend", [custodySeedPid, INSTANCE_ID, tlampPid, TOKEN_NAME, FLOOR_OILDROP, authPid, AUTH_NAME]) };
 const gateHash = validatorToScriptHash(gateScript);
 const gateAddr = credentialToAddress("Preview", scriptHashToCredential(gateHash));
 
 // reserve_draw — giữ ReserveState (param lamp + thread + dest=custody + auth + gate hash).
-const reserveDrawScript: Validator = { type: "PlutusV3", script: applyParamsToScript(gr("reserve_draw.reserve_draw.spend"), [tlampPid, TOKEN_NAME, reserveThreadPid, RESERVE_THREAD_NAME, MS_PER_EPOCH, new Constr(0, [new Constr(1, [custodyHash]), new Constr(1, [])]), authPid, AUTH_NAME, gateHash]) };
+const reserveDrawScript: Validator = { type: "PlutusV3", script: apR("reserve_draw.reserve_draw.spend", [tlampPid, TOKEN_NAME, reserveThreadPid, RESERVE_THREAD_NAME, MS_PER_EPOCH, new Constr(0, [new Constr(1, [custodyHash]), new Constr(1, [])]), authPid, AUTH_NAME, gateHash]) };
 const reserveDrawAddr = credentialToAddress("Preview", scriptHashToCredential(validatorToScriptHash(reserveDrawScript)));
 const reserveThreadUnit = toUnit(reserveThreadPid, RESERVE_THREAD_NAME);
 
