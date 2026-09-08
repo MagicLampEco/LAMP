@@ -499,7 +499,12 @@ fn build_tx_custody_spent(parked: Int) -> Transaction {
     inputs: [gate_input(), custody_ref_input(parked)],
     reference_inputs: [],
     outputs: [auth_output_to_gate()],
-    mint: assets.zero,
+    // PHẢI có mint: `G-USE-1` đòi `quantity_of(tx.mint, lamp_policy, token_name) > 0`.
+    // Đây là hình dạng tx ReserveDraw THẬT — draw nhả LAMP bằng cách mint, nên tx không
+    // mint là tx không tồn tại trên đường này. Trước khi `G-USE-1` có, chỗ này để
+    // `assets.zero` và bài vẫn xanh; sau đó bài âm bên dưới có nguy cơ chết ở `G-USE-1`
+    // thay vì ở luật mang tên nó — cùng màu, sai chốt.
+    mint: lamp_minted(1_000),
   }
 }
 
@@ -540,7 +545,10 @@ test gate_reject_custody_in_both_lists() fail {
       inputs: [gate_input(), custody_ref_input(50)],
       reference_inputs: [second_cust],
       outputs: [auth_output_to_gate()],
-      mint: assets.zero,
+      // Có mint, cùng lý do ở `build_tx_custody_spent`: bài này ghim vế "đúng MỘT UTxO
+      // mang custody NFT". Để `assets.zero` thì nó chết ở `G-USE-1` trước khi chạm vế đó,
+      // và vẫn hiện ĐỎ đúng tên — đỏ đúng chỗ mang tên nó KHÔNG chứng minh nó ghim chỗ đó.
+      mint: lamp_minted(1_000),
     }
   run(tx)
 }
