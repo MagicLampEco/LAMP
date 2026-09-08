@@ -2,6 +2,8 @@
 //
 // Vạch KẾ HOẠCH luồng mint-more → kho → release → pot cho 3 đợt launch (ETD/Airdrop/SRCL)
 // trên MAINNET. Chạy: `npx tsx mint_release_plan.ts [deltaLAMP]` — CHỈ IN, không ký, không mint.
+// Ba cái trong ngoặc là TÊN POT, không phải ba thư mục: mã của cả ba đã bàn giao ra ngoài repo
+// này 2026-09-01. Script này chỉ cần con số ngân sách nên nó không import gì từ ba module đó.
 //
 // ⚠️ ĐÂY LÀ SCAFFOLD để Tuân hoàn thiện + chạy VỚI KHOÁ. Script này CỐ TÌNH không import
 //    ví/seed/Lucid — không thể mint thật kể cả khi chạy. Muốn mint: cần bổ sung (a→c) dưới.
