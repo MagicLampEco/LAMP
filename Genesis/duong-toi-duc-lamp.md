@@ -88,19 +88,27 @@ thử mở là đánh cược toàn bộ dự án — LAMP **không burn đượ
 `meter_nft_policy = 00`×28. Policy-id là hash 224-bit ⇒ không tồn tại tiền ảnh ⇒ điều kiện
 `count_inputs_holding_nft(...) == 1` không bao giờ thoả.
 
-**Chưa đúc = chưa tồn tại.** Không ai từng nắm 9,63 tỷ đó, không ai bị lấy mất gì. Phát biểu đúng —
-và mạnh hơn phát biểu cũ:
+**Chưa đúc = chưa tồn tại.** Không ai từng nắm 9,63 tỷ đó, không ai bị lấy mất gì. Dưới policy
+`55d3e01b…` thì phát hành hữu hiệu tối đa là **26,37 tỷ**, không phải 36 tỷ.
 
-> LAMP: **trần cứng 36 tỷ** (bất biến, nướng vào policy-id). **Phát hành hữu hiệu tối đa 26,37 tỷ.**
-> Rổ Reserve 9,63 tỷ **vĩnh viễn không phát hành được** dưới policy này — đó là trần THẤP HƠN,
-> tức khan hiếm hơn, không phải mất mát.
+Phép đo trên đứng nguyên. Cái đã đổi là **đường đi tiếp**.
 
-Đây là việc **đổi chữ, miễn phí**. Cách còn lại — đẻ policy mới để cứu Reserve — là trả token thật
-để mua một lớp đệm mà chính spec gọi là "SAU CÙNG" (`Reserve/CONTRACT.md:4`).
+> **Đã chốt 2026-09-02: phát hành policy LAMP mới**, khai tử bản khởi tạo `55d3e01b…180f0`.
+> Khai ở `Genesis/mainnet-deploy-plan.md` mục `A1` — *"A1 policy mainnet · **ĐÓNG 2026-09-02 —
+> phát hành policy mới**"*. Vào `main` qua `MagicLampEco/LAMP#51` (merge 2026-09-04).
+> Bản phổ thông tương ứng: `Papers/Whitepaper.md` §"Cập nhật 2026-09-02".
+
+Tệp này trước đó khuyến nghị đường ngược lại — giữ policy, phát biểu lại cung thành trần 26,37 tỷ,
+gọi việc đẻ policy mới là "trả token thật". Khuyến nghị đó **không còn hiệu lực**; giữ lại ở đây
+đúng một dòng để người đọc bản cũ biết mình đang đọc bản nào, không phải để cân nhắc lại.
+
+Hệ quả với chính §3.3: `ReserveDraw` chết là **hỏng của bản khởi tạo**, không phải một tính chất
+của LAMP. Policy mới nhận `meter_nft_policy` thật ⇒ rổ Reserve 9,63 tỷ phát hành được, và luật nhả
+nó là trần nhịp + cổng cầu ở `Specs/Emission/CONTRACT.md` §3.
 
 ---
 
-## 4. Một ràng buộc TỰ ĐẶT cần chủ dự án quyết
+## 4. Một ràng buộc TỰ ĐẶT — nền của mục này đã đổi
 
 `Genesis/kho-a-dest.md:36` và `Genesis/mainnet-deploy-plan.md:29-30` ghi:
 
@@ -109,23 +117,30 @@ và mạnh hơn phát biểu cũ:
 
 **Câu đó không thực hiện được, và cũng không cần thiết.**
 
-- **Không thực hiện được:** `dist_dest` nướng vào tham số ⇒ đổi kho = đổi script hash = **policy-id
-  khác = token khác**. Thêm nữa `treasury.ak` nhận `lamp_policy` làm tham số
-  (`Distribution/onchain/validators/treasury.ak:16-19`), mà `lamp_policy` lại cần `dist_dest` =
-  hash của treasury ⇒ **vòng apply-param không giải được**.
+- **Không thực hiện được *dưới policy `55d3e01b…`*:** `dist_dest` nướng vào tham số ⇒ đổi kho =
+  đổi script hash = **policy-id khác = token khác**. Thêm nữa `treasury.ak` nhận `lamp_policy` làm
+  tham số (`Distribution/onchain/validators/treasury.ak`, khối tham số của `validator treasury`),
+  mà `lamp_policy` lại cần `dist_dest` = hash của treasury ⇒ **vòng apply-param không giải được**.
 - **Không cần thiết:** A-DEST chỉ ràng buộc **trong tx đúc**. Kho chi ra tự do với một chữ ký, nên
   nó làm được **TRẠM TRUNG CHUYỂN**: đúc → kho → tx thứ hai đẩy vào hợp đồng phân phối thật. Chính
   repo đã viết đường này rồi: `Genesis/scripts/mint_release_plan.ts:160` — *"Release kho→pot: tx
   riêng SPEND kho… rót LAMP vào pot từng đợt"*. Và mọi hợp đồng phân phối trong repo đều nhận
   `lamp_policy` làm **tham số**, nên bind được vào policy `55d3e01b…` đang chạy, không vòng.
 
-⚠️ **Đây là chỗ cần chủ dự án chốt, LAMP agent không tự lật một quyết định đã ghi.** Hai lựa chọn:
+**Bảng lựa chọn trước đây ở chỗ này đã bị gỡ, vì nền của nó không còn.** Nó cân hai đường bằng đúng
+một trục: *giữ policy-id* hay *đổi policy-id*. Quyết định 2026-09-02 (§3.3) chốt **đổi** — nên trục
+đó không còn phân biệt được hai cột, và cột "policy-id GIỮ" không còn tồn tại để mà chọn.
 
-| | Giữ nguyên câu cũ | Gỡ câu cũ, dùng trạm trung chuyển |
+Phần **còn hiệu lực** của mục này là phép đo, không phải khuyến nghị: vòng apply-param giữa
+`lamp_mint(dist_dest)` và `treasury(lamp_policy)` là **có thật** và **không mất đi** khi phát hành
+policy mới — nó là ràng buộc mà lần deploy mới phải giải, không phải lý do để không deploy.
+
+| Điểm | Trạng thái | Ràng buộc đang có hiệu lực |
 |---|---|---|
-| Hệ quả | Việc đúc bị treo **vĩnh viễn** sau một cổng không mở được | Đúc được ngay, cửa sổ tin cậy = thời gian giữa 2 tx |
-| Deploy validator Genesis mới | 5 | 0 |
-| Policy-id | ĐỔI ⇒ token cũ thành mồ côi | GIỮ |
+| `A1` policy mainnet | **ĐÓNG** 2026-09-02 — phát hành policy mới | `Genesis/mainnet-deploy-plan.md` mục `A1` |
+| Vòng apply-param `dist_dest` ↔ `lamp_policy` | **MỞ** — phải giải trong thiết kế lần deploy mới | chưa giải thì chưa chạy được bước apply-param ⇒ không sinh được policy-id ⇒ không đúc được. Fail-closed sẵn theo cơ học, không cần cổng thêm |
+| `A4` authority (M/N + người giữ khoá) | **MỞ** | khai ở `Genesis/mainnet-deploy-plan.md`; là quyết định vận hành, không phải kỹ thuật |
+| Thời điểm phát hành | **MỞ** | phải qua trọn `Genesis/canonical-preprod-runbook.md` trước khi bàn tới ngày |
 
 ---
 
@@ -133,8 +148,11 @@ và mạnh hơn phát biểu cũ:
 
 **Bậc 0 — không chạm chain, sửa được, làm ngay**
 1. ~~Đối chiếu byte 3 script~~ — **XONG** 2026-08-12 (§2).
-2. Phát biểu lại cung theo §3.3. Danh sách tệp phải sửa ở §6.
-3. Chủ dự án chốt §4.
+2. ~~Phát biểu lại cung thành trần 26,37 tỷ~~ — **BỎ**. Việc này chỉ cần thiết dưới đường "giữ
+   policy `55d3e01b…`", mà đường đó đã đóng 2026-09-02 (§3.3). Trần cung nói đúng ở
+   `Specs/Emission/CONTRACT.md` §2; đừng chép lại con số ra chỗ khác.
+3. ~~Trục "giữ hay đổi policy-id" ở §4~~ — **ĐÓNG** 2026-09-02 cùng `A1`. Phần còn mở của §4 là
+   kỹ thuật thuần (vòng apply-param), trạng thái ở bảng cuối §4.
 
 **Bậc 1 — bất khả hồi nhưng giá trị ≈ 0. PHẢI làm trước mọi thứ khác**
 
