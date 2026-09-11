@@ -154,6 +154,10 @@ policy mới — nó là ràng buộc mà lần deploy mới phải giải, khô
 3. ~~Trục "giữ hay đổi policy-id" ở §4~~ — **ĐÓNG** 2026-09-02 cùng `A1`. Phần còn mở của §4 là
    kỹ thuật thuần (vòng apply-param), trạng thái ở bảng cuối §4.
 
+> **Bậc 0 đã đóng — cả ba mục, không còn việc nào ở bậc này.** Ghi ra vì một danh sách mà mọi
+> dòng đều bị gạch trông y hệt một danh sách bị cắt mất, và người đọc không có cách nào phân
+> biệt hai thứ đó. Việc kế tiếp nằm ở **bậc 1**, mục 4.
+
 **Bậc 1 — bất khả hồi nhưng giá trị ≈ 0. PHẢI làm trước mọi thứ khác**
 
 4. **TX THĂM DÒ KHO.** Tiêu UTxO kho, tách ~1.000 LAMP ra một địa chỉ, trả phần còn lại về kho.
