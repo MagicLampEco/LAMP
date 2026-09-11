@@ -12,7 +12,15 @@
     "rootDir":          "..",
     "declaration":      true,
     "declarationMap":   true,
-    "sourceMap":        true
+    "sourceMap":        true,
+
+    // `../tests/**` nằm NGOÀI package này nhưng `node_modules` lại ở TRONG ⇒ phân giải kiểu
+    // Node đi ngược từ `<module>/tests/` không bao giờ chạm tới nó, và tsc ngập TS2307 cho
+    // `vitest` / `@lucid-evolution/lucid` — nghĩa là bài kiểm KHÔNG được typecheck chút nào,
+    // một trạng thái mù trông y như đã kiểm. Trỏ specifier trần về node_modules của chính
+    // package để tests được typecheck THẬT. (Cùng khuôn `Genesis/offchain/tsconfig.json`.)
+    "baseUrl":          ".",
+    "paths":            { "*": ["node_modules/*"] }
   },
   "include": ["src/**/*", "../tests/**/*"],
   "exclude": ["node_modules", "dist"]
