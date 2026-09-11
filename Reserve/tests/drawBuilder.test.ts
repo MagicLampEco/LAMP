@@ -13,7 +13,9 @@
 // khẳng định mà mấy bài dưới đây kiểm: cổng phải chặn trước khi tốn một lệnh mạng nào.
 
 import { describe, it, expect } from "vitest";
-import { Constr, Data, toUnit, credentialToAddress, scriptHashToCredential } from "@lucid-evolution/lucid";
+import {
+  Constr, Data, toUnit, credentialToAddress, keyHashToCredential, scriptHashToCredential,
+} from "@lucid-evolution/lucid";
 import type { Assets, UTxO } from "@lucid-evolution/lucid";
 import { buildDrawTx, type DrawParams } from "../offchain/src/drawBuilder.js";
 import { reserveStateToCbor } from "../offchain/src/datum.js";
@@ -65,7 +67,10 @@ function params(over: Partial<DrawParams> = {}): DrawParams {
       }),
     },
     reserveScript: { type: "PlutusV3", script: "00" } as never,
-    reserveAddress: "addr_test1reserve",
+    // KHÔNG truyền `reserveAddress`: địa chỉ recreate lấy từ `reserveUtxo.address`
+    // (Luật 7, `reserve_draw.ak:159`). Bản cũ của bộ kiểm này truyền "addr_test1reserve"
+    // trong khi `reserveUtxo.address` là một địa chỉ script Preview khác hẳn — hai nguồn
+    // lệch nhau suốt mà không ca nào đỏ, vì không ca nào đọc tới địa chỉ recreate.
     reserveThreadPolicyId: THREAD_POLICY,
     reserveThreadName: THREAD_NAME,
     tokenName: TOKEN_NAME,
@@ -92,8 +97,8 @@ function params(over: Partial<DrawParams> = {}): DrawParams {
 
     custodyUtxo: custody,
     custodyScript: { type: "PlutusV3", script: "00" } as never,
-    khoNftPolicyId: KHO_POLICY,
-    khoNftName: KHO_NAME,
+    reserveKhoNftPolicyId: KHO_POLICY,
+    reserveKhoNftName: KHO_NAME,
     custodyScriptHash: CUSTODY_HASH,
     custodyRedeemerCbor: "d87983",
     custodyOutDatumCbor: "d87980",
@@ -117,7 +122,7 @@ describe("DrawParams — hình dạng hợp đồng", () => {
   it("CÓ đủ bộ trường kho: utxo + script + NFT + hash + redeemer + datum ra + value ra", () => {
     const p = params() as unknown as Record<string, unknown>;
     for (const k of [
-      "custodyUtxo", "custodyScript", "khoNftPolicyId", "khoNftName",
+      "custodyUtxo", "custodyScript", "reserveKhoNftPolicyId", "reserveKhoNftName",
       "custodyScriptHash", "custodyRedeemerCbor", "custodyOutDatumCbor", "custodyOutValue",
     ]) expect(p[k], k).toBeDefined();
   });
@@ -204,6 +209,64 @@ describe("RDB-005 — value kho ra == vào ⊕ Δ (lovelace chỉ TĂNG)", () =>
         [toUnit("ee".repeat(28), "01")]: 5n,
       },
     }))).rejects.toThrow(/RDB-005/);
+  });
+});
+
+// ══ RDB-006 — gương Luật 7: địa chỉ recreate LẤY TỪ INPUT ═══════════════
+//
+// `reserve_draw.ak:159` ▸ `expect s_out.address == own_out.address` — đẳng thức trên CẢ
+// Address, tức stake credential cũng bị ghim. Bản cũ nhận địa chỉ qua trường rời
+// `reserveAddress`, nên ReserveState gieo dưới dạng base sẽ được recreate thành enterprise
+// và on-chain từ chối; ở dạng enterprise thì hai bên trùng nhau ngẫu nhiên và không ai thấy.
+describe("RDB-006 — ReserveState' phải ở ĐÚNG địa chỉ input", () => {
+  const RESERVE_HASH = "99".repeat(28);
+  const STAKE_KEY_HASH = "5e".repeat(28);
+  const reserveEnterprise = credentialToAddress("Preview", scriptHashToCredential(RESERVE_HASH));
+  const reserveBase = credentialToAddress(
+    "Preview", scriptHashToCredential(RESERVE_HASH), keyHashToCredential(STAKE_KEY_HASH),
+  );
+
+  function withReserveAddress(address: string): DrawParams {
+    const p = params();
+    return { ...p, reserveUtxo: { ...p.reserveUtxo, address } };
+  }
+
+  it("hai cực khác nhau — tiền đề: enterprise ≠ base của CÙNG script", () => {
+    expect(reserveBase).not.toBe(reserveEnterprise);
+  });
+
+  it("ĐỎ: reserveAddress lệch reserveUtxo.address (hai nguồn cùng tả một sự thật)", async () => {
+    await expect(buildDrawTx({ ...params(), reserveAddress: "addr_test1reserve" }))
+      .rejects.toThrow(/RDB-006/);
+  });
+
+  it("XANH ở cổng này: reserveAddress TRÙNG reserveUtxo.address → không ném RDB-006", async () => {
+    const p = withReserveAddress(reserveEnterprise);
+    let msg = "";
+    try {
+      await buildDrawTx({ ...p, reserveAddress: reserveEnterprise });
+    } catch (e) { msg = (e as Error).message; }
+    expect(msg).not.toMatch(/RDB-006/);
+  });
+
+  // Hai cực phải phân biệt được: bản cũ nhận enterprise string cho CẢ HAI ca và im lặng.
+  it("ĐỎ: ReserveState gieo BASE nhưng bên gọi đưa địa chỉ enterprise", async () => {
+    await expect(buildDrawTx({
+      ...withReserveAddress(reserveBase), reserveAddress: reserveEnterprise,
+    })).rejects.toThrow(/RDB-006/);
+  });
+
+  it("ĐỎ ngược lại: ReserveState gieo ENTERPRISE nhưng bên gọi đưa địa chỉ base", async () => {
+    await expect(buildDrawTx({
+      ...withReserveAddress(reserveEnterprise), reserveAddress: reserveBase,
+    })).rejects.toThrow(/RDB-006/);
+  });
+
+  it("RDB-006: reserveUtxo thiếu address → ném, không dựng tx mù", async () => {
+    const p = params();
+    await expect(buildDrawTx({
+      ...p, reserveUtxo: { ...p.reserveUtxo, address: "" as never },
+    })).rejects.toThrow(/RDB-006/);
   });
 });
 

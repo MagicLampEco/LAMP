@@ -1,4 +1,4 @@
-// _canonical_v2.ts — WIRING DUY NHẤT của policy LAMP canonical (12 tham số, marker one-shot).
+// _canonical_v2.ts — WIRING DUY NHẤT của policy LAMP canonical (14 tham số, marker one-shot).
 //
 // VÌ SAO CÓ TỆP NÀY
 //   Policy LAMP đang chạy trên mainnet (`55d3e01b…180f0`, đúc 2026-06-18) là bản KHỞI TẠO
@@ -41,6 +41,8 @@ import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { NETWORK, applyPolicy, applyValidator, policyId, rawValidator } from "./config.js";
 import { assertParamCount as assertParamCountGate } from "../offchain/src/applyGate.js";
+import { lampMintParamList } from "../offchain/src/reserveKhoPair.js";
+import type { FloorSource } from "./_floorLabel.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -145,6 +147,21 @@ export interface CanonicalWiring {
   metUnit: string;
   khoUnit: string;
 
+  /**
+   * Cặp NFT kho **Treasury custody** đã nướng vào `lamp_mint` khe #13-14
+   * (`reserve_kho_nft_policy` / `reserve_kho_nft_name`) — đích của đường ReserveDraw.
+   *
+   * Giữ hai trường CHUỖI RIÊNG chứ không một đối tượng, vì `rehydrate()` dò trôi bằng
+   * `typeof wiring[k] === "string"`: gói vào đối tượng thì phép dò lặng lẽ bỏ qua đúng hai
+   * giá trị quyết định policy-id của kho Reserve.
+   *
+   * ⚠ KHÔNG phải `markers.khoPid` — đó là kho **Distribution** (khe #9-10), một cái kho khác.
+   * Cặp này phải trùng `reserve_draw.kho_nft_policy`/`kho_nft_name` (khe #6-7); cổng ép nằm ở
+   * `offchain/src/reserveKhoPair.ts` (APPLY-003), gọi trong `_reserve_layer2.ts`.
+   */
+  reserveKhoPid: string;
+  reserveKhoName: string;
+
   /** Địa chỉ SupplyState (tầng 3) — nơi thread NFT sống. */
   ssHash: string;
   ssAddr: string;
@@ -188,6 +205,18 @@ export interface DeriveOptions {
   genesisIndex: number;
   pkh: string;
   tokenName: string;
+
+  /**
+   * Cặp NFT kho Treasury custody cho khe #13-14 của `lamp_mint` — BẮT BUỘC, không mặc định.
+   *
+   * `policy` = policy id của `custody_seed` áp trên hạt giống custody; `name` = `instance_id`
+   * của instance custody đích. Không có mặc định vì mọi giá trị mặc định ở đây đều SAI theo một
+   * kiểu không kêu: nướng nhầm thì `lamp_mint` cho Δ rót vào một kho, `reserve_draw` đòi tiêu
+   * NFT của kho khác, và không tầng nào báo.
+   */
+  reserveKhoPid: string;
+  reserveKhoName: string;
+
   network?: Network;
 }
 
@@ -196,7 +225,7 @@ export interface DeriveOptions {
  *
  * Thứ tự phụ thuộc là TUYẾN TÍNH, không vòng — đây là điều kiện để apply-param được:
  *   genesis_ref → {thread, reg, met, kho, beacon} pid
- *              → lamp_mint(12 tham số) → lampPid
+ *              → lamp_mint(14 tham số) → lampPid
  *              → supply_state(lampPid, threadPid, token_name) → ssAddr
  *              → claim_account_nft → claim_account → treasury → treAddr
  * `treasury_nft` chỉ phụ thuộc hạt giống, nên `kho_nft_policy` biết TRƯỚC `lampPid`;
@@ -233,17 +262,32 @@ export async function deriveWiring(
   const khoPid    = policyId(treasuryNft);
   const beaconPid = policyId(beaconNft);
 
-  // ── Tầng 2: lamp_mint 12 tham số ──────────────────────────────────────────
-  // Thứ tự tham số lấy từ `lamp_mint.ak:97-108`. Sai thứ tự KHÔNG báo lỗi — nó ra một
-  // policy-id khác, im lặng, và đó chính là lớp lỗi đã đẻ ra bản mồi mainnet.
-  const lampMint = applyPolicy((await rawValidator("lamp_mint.lamp_mint.mint")).compiledCode, [
-    threadPid, SUPPLY_NAME,          // #1-2  thread_nft_policy / name
-    o.tokenName,                     // #3    token_name
-    DIST_CAP, RESERVE_CAP,           // #4-5  cap 26,37 + 9,63 = 36 tỷ
-    regPid, REG_NAME, TOKEN_TAG,     // #6-8  registry + token_tag (WHO-gate)
-    khoPid, KHO_NAME,                // #9-10 kho NFT (A-DEST, hash kho đọc động)
-    metPid, MET_NAME,                // #11-12 meter NFT — khe đã CHẾT ở bản mainnet
-  ]);
+  // ── Tầng 2: lamp_mint 14 tham số ──────────────────────────────────────────
+  // Thứ tự tham số lấy từ chữ ký `validator lamp_mint(` — trích theo TÊN, không theo số dòng.
+  // Sai thứ tự KHÔNG báo lỗi — nó ra một policy-id khác, im lặng, và đó chính là lớp lỗi đã
+  // đẻ ra bản mồi mainnet.
+  //
+  // Danh sách dựng qua `lampMintParamList` chứ không gõ mảng tại chỗ: thứ tự 14 khe nay có
+  // ĐÚNG MỘT nguồn (`offchain/src/reserveKhoPair.ts`), nạp được trong bài kiểm mà không cần
+  // .env / ví / mạng. Gõ mảng ở mỗi script là để thứ tự ấy sống ở nhiều bản sao, mỗi bản chết
+  // im lặng theo kiểu riêng.
+  const lampMint = applyPolicy(
+    (await rawValidator("lamp_mint.lamp_mint.mint")).compiledCode,
+    lampMintParamList({
+      threadNftPolicy: threadPid, threadNftName: SUPPLY_NAME,   // #1-2
+      tokenName: o.tokenName,                                    // #3
+      distCap: DIST_CAP, reserveCap: RESERVE_CAP,                // #4-5  26,37 + 9,63 = 36 tỷ
+      registryNftPolicy: regPid, registryNftName: REG_NAME,      // #6-7  WHO-gate
+      tokenTag: TOKEN_TAG,                                       // #8
+      distKhoNftPolicy: khoPid, distKhoNftName: KHO_NAME,        // #9-10 kho DISTRIBUTION
+      meterNftPolicy: metPid, meterNftName: MET_NAME,            // #11-12 meter = reserve thread
+      // #13-14 kho TREASURY CUSTODY của đường ReserveDraw. KHÔNG suy ra được từ genesis_ref:
+      // nó là `(custody_seed policy id, instance_id)` của instance custody, mà `custody_seed`
+      // nướng hạt giống RIÊNG (luật S-MINT-2 cấm gộp giao dịch đúc). Nên hạt giống custody
+      // phải chọn TRƯỚC lượt đúc lamp_mint — đây là chiều phụ thuộc thật, không phải phiền toái.
+      reserveKhoNft: { policy: o.reserveKhoPid, name: o.reserveKhoName },
+    }),
+  );
   const lampPid = policyId(lampMint);
 
   // ── Tầng 3: supply_state ──────────────────────────────────────────────────
@@ -288,6 +332,8 @@ export async function deriveWiring(
       regUnit:    toUnit(regPid, REG_NAME),
       metUnit:    toUnit(metPid, MET_NAME),
       khoUnit:    toUnit(khoPid, KHO_NAME),
+      reserveKhoPid:  o.reserveKhoPid.trim().toLowerCase(),
+      reserveKhoName: o.reserveKhoName.trim().toLowerCase(),
       ssHash,
       ssAddr:  addrOf(ssHash, network),
       // `oneshot_nft` là PlutusV3 một-script: policy-id của nhánh mint ≡ script hash của nhánh
@@ -344,6 +390,25 @@ export interface CanonicalState {
   minted: { dist: string; reserve: string };
   /** Bằng chứng phủ định: đúc marker lượt hai bị chặn. */
   oneshotProof?: { attemptedAt: string; blocked: boolean; error: string };
+
+  /**
+   * SÀN của cổng cầu (oildrop) đã dùng ở bước Lớp 2, dạng chuỗi vì nó là `bigint`.
+   *
+   * Cặp đôi với `floorSource` bên dưới và chỉ có nghĩa cùng nó: con số đứng một mình không nói
+   * được nó là giá trị diễn tập hay giá trị Treasury đã chốt.
+   */
+  floorOildrop?: string;
+
+  /**
+   * Nhãn xuất xứ của `floorOildrop` — LIỆT KÊ ĐÓNG (`_floorLabel.ts`).
+   *
+   * Vì sao nó phải nằm trong tệp trạng thái chứ không chỉ trong chú thích: nhãn "demo" trước đây
+   * chỉ được IN RA MÀN HÌNH, nên không tạo tác nào mang nó. Bản thật sau này kế thừa CON SỐ mà
+   * không kế thừa nhãn, và không có gì kêu. `undefined` = bản trạng thái ghi trước đợt vá này
+   * hoặc một bản mới chỉ đi tới Lớp 1; chỗ tiêu thụ phải đọc qua `parseFloorSource()` và DỪNG,
+   * không được suy ra "chắc là bản thật".
+   */
+  floorSource?: FloorSource;
 
   /**
    * Lớp 2 — hai hạt giống riêng cho custody NFT và auth NFT.
@@ -411,6 +476,12 @@ export async function rehydrate(): Promise<{
     genesisIndex:  state.wiring.genesisRef.outputIndex,
     pkh:           state.wiring.pkh,
     tokenName:     state.wiring.tokenName,
+    // State ghi TRƯỚC khi có hai khe #13-14 thì hai trường này `undefined`. Không bù giá trị:
+    // `lampMintParamList` ném APPLY-003 ngay, và đó là câu trả lời ĐÚNG — một state như thế
+    // thuộc về một policy lamp_mint 12 tham số, không phải bản 14 khe ở HEAD. Bù một chuỗi
+    // rỗng cho "khỏi vỡ" là dựng lại một policy-id khác cái đang giữ token, im lặng.
+    reserveKhoPid:  state.wiring.reserveKhoPid as string,
+    reserveKhoName: state.wiring.reserveKhoName as string,
     network:       state.wiring.network,
   });
   // So MỌI trường chuỗi, kể cả trong `markers` — đó chính là chỗ đáng canh nhất: policy-id
@@ -490,6 +561,7 @@ export function printWiring(w: CanonicalWiring): void {
   console.log(`registry(REG): ${w.markers.regPid}`);
   console.log(`meter(MET):    ${w.markers.metPid}`);
   console.log(`kho(TRSY):     ${w.markers.khoPid}`);
+  console.log(`kho Reserve:   ${w.reserveKhoPid} / ${w.reserveKhoName}  (lamp_mint #13-14)`);
   console.log(`beacon(DROP):  ${w.markers.beaconPid}`);
   console.log(`lamp_policy:   ${w.lampPid}`);
   console.log(`supply_state:  ${w.ssHash}`);

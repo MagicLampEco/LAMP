@@ -3,7 +3,9 @@
 // VÌ SAO BÀI NÀY TỒN TẠI: `applyParamsToScript` KHÔNG ném khi thiếu/thừa tham số. Nó áp một
 // phần rồi trả về một script-hash / policy-id KHÁC, im lặng. Đợt "Δ Reserve vào SỔ" đổi chữ ký
 // của ba validator cùng lúc (`custody` 3→5, `custody_seed` 2→1, `reserve_draw` 9→11), nên mọi
-// lời gọi off-chain cũ đều rơi đúng vào lớp lỗi đó.
+// lời gọi off-chain cũ đều rơi đúng vào lớp lỗi đó. Đợt sau lại đổi hai cái nữa —
+// `reserve_draw` 11→12 (`reserve_cap`, Luật 1b) và `reserve_auth` 2→3 (`floor_oildrop`,
+// A-FLOOR-1) — và cổng này bắn đúng lúc, đó là tính năng chứ không phải hỏng.
 //
 // Bài chạy OFFLINE: apply-param là phép thuần trên compiledCode, không cần provider hay UTxO.
 //
@@ -69,11 +71,12 @@ const AUTH_NAME = "5450554c4c";        // "TPULL"
 const THREAD_NAME = "524553";          // "RES"
 const MS_PER_EPOCH = 432_000_000n;
 const FLOOR = 1_000_000n;
+const RESERVE_CAP = 9_630_000_000_000_000n;
 // `OutputReference` = Constr(0, [txHash 32 byte, index]) — phải là Constr THẬT, không phải
 // một đối tượng cùng hình dạng: lucid serialize theo class, đối tượng thường ném "Unsupported type".
 const GENESIS_REF = new Constr(0, ["ab".repeat(32), 0n]);
 
-// Bốn lời gọi apply-param của đường rút Reserve, ĐÚNG thứ tự chữ ký on-chain.
+// Năm lời gọi apply-param của đường rút Reserve, ĐÚNG thứ tự chữ ký on-chain.
 const CALLS: Array<{ mod: "Treasury" | "Reserve"; title: string; params: unknown[]; soCu: number }> = [
   {
     mod: "Treasury", title: "custody_seed.custody_seed.mint",
@@ -96,7 +99,7 @@ const CALLS: Array<{ mod: "Treasury" | "Reserve"; title: string; params: unknown
   {
     mod: "Reserve", title: "reserve_draw.reserve_draw.spend",
     // Khe #6 cũ là `reserve_dest: Address`. Ba khe thay nó: kho định danh bằng NFT (#6-7)
-    // và ghim vào ĐÚNG validator giữ nó (#11).
+    // và ghim vào ĐÚNG validator giữ nó (#11). Khe #12 `reserve_cap` thêm sau đó (Luật 1b).
     params: [
       LAMP_POLICY, TOKEN_NAME,
       THREAD_POLICY, THREAD_NAME,
@@ -105,8 +108,17 @@ const CALLS: Array<{ mod: "Treasury" | "Reserve"; title: string; params: unknown
       AUTH_POLICY, AUTH_NAME,
       GATE_HASH,
       CUSTODY_HASH,
+      RESERVE_CAP,
     ],
-    soCu: 9,
+    soCu: 11,
+  },
+  {
+    // Khe #3 `floor_oildrop` thêm vào cùng đợt với luật A-FLOOR-1. Nó KHÔNG so sánh gì trong
+    // `reserve_auth`; nó ở đó để nhánh SINH bác một cấu hình chết, và để có một vế cho cổng
+    // FLOOR-PAIR-001 đo — chuỗi không khép được vòng `reserve_auth` ↔ `reserve_gate`.
+    mod: "Treasury", title: "reserve_auth.reserve_auth.mint",
+    params: [GENESIS_REF, AUTH_NAME, FLOOR],
+    soCu: 2,
   },
 ];
 
@@ -117,7 +129,8 @@ describe.skipIf(!haveBlueprints)("apply-param đường rút Reserve — qua c�
     expect(declaredOf(bp.Treasury, "custody_seed.custody_seed.mint")).toBe(1);
     expect(declaredOf(bp.Treasury, "custody.custody.spend")).toBe(5);
     expect(declaredOf(bp.Treasury, "reserve_gate.reserve_gate.spend")).toBe(7);
-    expect(declaredOf(bp.Reserve, "reserve_draw.reserve_draw.spend")).toBe(11);
+    expect(declaredOf(bp.Treasury, "reserve_auth.reserve_auth.mint")).toBe(3);
+    expect(declaredOf(bp.Reserve, "reserve_draw.reserve_draw.spend")).toBe(12);
   });
 
   for (const c of CALLS) {

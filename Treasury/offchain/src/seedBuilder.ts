@@ -19,8 +19,8 @@
 // Off-chain TỰ KIỂM seedDatumOk (gương đủ validator) TRƯỚC complete() — fail-fast.
 
 import {
-  Constr, Data, applyParamsToScript, credentialToAddress, mintingPolicyToId,
-  scriptHashToCredential, validatorToScriptHash,
+  Constr, Data, applyParamsToScript, mintingPolicyToId,
+  type Credential as LucidCredential,
   type LucidEvolution, type Network, type TxSignBuilder, type UTxO, type Validator,
 } from "@lucid-evolution/lucid";
 
@@ -29,7 +29,7 @@ import { custodyDatumToCbor, encodeOutputReference } from "./datum.js";
 import {
   type AssetMap, assetKey, canonicalizeLedger, seedDatumOk, seedValue,
 } from "./collect.js";
-import { assetsToMap, mapToAssets } from "./collectBuilder.js";
+import { assetsToMap, custodySeedAddress, mapToAssets } from "./collectBuilder.js";
 
 // ── custody_seed redeemer ──────────────────────────────────────────────────
 // CustodySeedRedeemer: SeedGenesis { reserved_min_ada: Int } = Constr(0, [int]).
@@ -126,6 +126,20 @@ export interface SeedParams {
 
   /** lovelace giữ cho min-UTxO (≥ 0, KHÔNG ghi sổ). */
   reservedMinAda: bigint;
+
+  /**
+   * Stake credential của kho — BỎ TRỐNG ⟹ enterprise address (không uỷ quyền stake được).
+   *
+   * Đây là chỗ DUY NHẤT quyết định hình dạng địa chỉ kho. Sau lượt gieo, `custody.ak` ghim
+   * `cust_out.address == cust_in.address` ở cả ba nhánh tiêu (C-COL-ADDR / C-REL-ADDR /
+   * C-MIG-ADDR), nên lựa chọn ở đây sống cùng kho: đổi về sau phải chuyển toàn bộ tài sản
+   * sang một UTxO ở địa chỉ khác, vì địa chỉ khác nhau là UTxO nằm ở chỗ khác nhau.
+   *
+   * ADA nằm trong kho là ADA nhàn rỗi; uỷ quyền stake trên Cardano không khoá vốn và không
+   * chuyển quyền chi, nên kho dài hạn để trống ô này là bỏ một dòng thu mà không đổi lại gì.
+   * Nhưng CHỌN khoá stake nào là quyết định triển khai — builder không tự đặt hộ.
+   */
+  stakeCredential?: LucidCredential;
 }
 
 export interface SeedResult {
@@ -138,15 +152,16 @@ export interface SeedResult {
 }
 
 export async function buildSeedTx(params: SeedParams): Promise<SeedResult> {
-  const { lucid, network, custodySeed, custodyScript, genesisUtxo, datum, reservedMinAda } = params;
+  const {
+    lucid, network, custodySeed, custodyScript, genesisUtxo, datum, reservedMinAda,
+    stakeCredential,
+  } = params;
 
   const seedPolicy = seedPolicyId(custodySeed);
   const { datum: outDatum, custodyValue, nftName } = planSeed(datum, seedPolicy, reservedMinAda);
 
   const nftUnit = seedPolicy + nftName;                 // unit = policy ‖ name (hex).
-  const custodyAddress = credentialToAddress(
-    network, scriptHashToCredential(validatorToScriptHash(custodyScript)),
-  );
+  const custodyAddress = custodySeedAddress(network, custodyScript, stakeCredential);
 
   // value output custody (gồm NFT). Tự kiểm: NFT qty 1 nằm trong custodyValue.
   if ((custodyValue[assetKey(seedPolicy, nftName)] ?? 0n) !== 1n) {

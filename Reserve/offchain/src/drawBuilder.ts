@@ -54,8 +54,17 @@ export interface DrawParams {
   reserveUtxo: UTxO;
   /** reserve_draw spend validator (giữ ReserveState). */
   reserveScript: Validator;
-  /** script address giữ ReserveState (nơi recreate output). */
-  reserveAddress: string;
+  /**
+   * KHÔNG CÒN DÙNG để dựng output — địa chỉ recreate lấy từ chính `reserveUtxo.address`.
+   *
+   * Luật 7 (`reserve_draw.ak:159`) ép `s_out.address == own_out.address`, tức ĐỊA CHỈ INPUT
+   * kể cả stake credential. Nhận địa chỉ qua một trường rời là để hai nguồn cùng tả một sự
+   * thật, và bản trong kho đã trôi thật: bộ kiểm truyền `"addr_test1reserve"` trong khi
+   * `reserveUtxo.address` là một địa chỉ script Preview khác hẳn — không ca nào đỏ.
+   *
+   * Giữ lại làm ĐỐI CHIẾU tuỳ chọn: truyền vào thì phải khớp `reserveUtxo.address`.
+   */
+  reserveAddress?: string;
   /** policy id reserve thread NFT (hex) + asset name (hex). */
   reserveThreadPolicyId: string;
   reserveThreadName: string;
@@ -101,7 +110,8 @@ export interface DrawParams {
   reserveDrawRedeemerCbor: string;
 
   /**
-   * KHO custody UTxO — mang kho NFT (khoNftPolicyId, khoNftName) qty 1, ngồi ở custody script.
+   * KHO custody UTxO — mang kho NFT (`reserveKhoNftPolicyId`, `reserveKhoNftName`) qty 1,
+   * ngồi ở custody script.
    *
    * Luật 9 (`reserve_draw.ak`): tx PHẢI TIÊU đúng 1 UTxO mang kho NFT. Luật 10: UTxO đó phải ở
    * ĐÚNG `custody_script_hash`. Bị tiêu là điều kiện để `custody` nhánh `MigrateIn` chạy và ghi
@@ -110,9 +120,23 @@ export interface DrawParams {
   custodyUtxo: UTxO;
   /** Validator `custody` (Treasury, đã apply-param) — đính để tiêu kho. */
   custodyScript: Validator;
-  /** policy id (hex) + asset name (hex) của KHO NFT — khớp param kho_nft_policy/name onchain. */
-  khoNftPolicyId: string;
-  khoNftName: string;
+  /**
+   * policy id (hex) + asset name (hex) của KHO NFT — khớp param `kho_nft_policy`/`kho_nft_name`
+   * (khe #6-7) của `reserve_draw` onchain.
+   *
+   * ⚠ TÊN MANG TIỀN TỐ `reserveKho…` LÀ CÓ CHỦ Ý (2026-09-11). Cặp này PHẢI trùng khe #13-14
+   * `reserve_kho_nft_policy`/`reserve_kho_nft_name` của `Genesis/onchain/validators/lamp_mint.ak`
+   * — hai validator canh CÙNG một instance `custody`. Nó KHÔNG phải cặp `kho_nft_*` khe #9-10
+   * của `lamp_mint` (kho Distribution, một cái kho khác hẳn). Trước bản đổi tên, trường này tên
+   * `khoNftPolicyId` — trùng y hệt tên trường trỏ kho Distribution ở
+   * `Genesis/offchain/src/mintBuilder.ts`, nên hai kho khác nhau nhìn như một.
+   *
+   * Ràng buộc khớp cặp được ép ở tầng APPLY-PARAM, nơi giá trị còn sửa được:
+   * `Genesis/offchain/src/reserveKhoPair.ts::assertReserveKhoPair` (APPLY-003). Ở tầng dựng tx
+   * này thì policy-id đã chốt trong bytecode, không còn gì để ép.
+   */
+  reserveKhoNftPolicyId: string;
+  reserveKhoNftName: string;
   /** script hash của `custody` — khớp param custody_script_hash onchain (Luật 10). */
   custodyScriptHash: string;
   /**
@@ -231,7 +255,7 @@ export async function buildDrawTx(p: DrawParams): Promise<{
 
   // Luật 9 guard: kho UTxO phải mang ĐÚNG 1 kho NFT. Không NFT thì on-chain không nhận nó là
   // kho "thật" — `count_inputs_with_nft(...) == 1` sẽ đếm 0 và cả tx chết.
-  const khoUnit = toUnit(p.khoNftPolicyId, p.khoNftName);
+  const khoUnit = toUnit(p.reserveKhoNftPolicyId, p.reserveKhoNftName);
   const khoQty = p.custodyUtxo.assets[khoUnit] ?? 0n;
   if (khoQty !== 1n) {
     throw new Error(
@@ -250,6 +274,23 @@ export async function buildDrawTx(p: DrawParams): Promise<{
     throw new Error(
       `RDB-004: custodyUtxo phải ở SCRIPT custody khớp custodyScriptHash (${p.custodyScriptHash}) — ` +
       `Luật 10: kho NFT ở script khác thì validator chạy không phải custody, không ai ghi Δ vào sổ.`,
+    );
+  }
+
+  // Luật 7 guard: ReserveState' phải ở ĐÚNG địa chỉ input, kể cả stake credential
+  // (`reserve_draw.ak:159` ▸ `expect s_out.address == own_out.address`). Địa chỉ recreate
+  // lấy thẳng từ input; `reserveAddress` nếu có chỉ được phép TRÙNG.
+  const reserveOutAddress = p.reserveUtxo.address;
+  if (!reserveOutAddress) {
+    throw new Error(
+      "RDB-006: reserveUtxo không có address — Luật 7 đòi recreate ReserveState ở ĐÚNG địa chỉ input.",
+    );
+  }
+  if (p.reserveAddress !== undefined && p.reserveAddress !== reserveOutAddress) {
+    throw new Error(
+      `RDB-006: reserveAddress (${p.reserveAddress}) khác reserveUtxo.address (${reserveOutAddress}) — ` +
+      `Luật 7 ép s_out.address == own_out.address kể cả stake credential; hai nguồn lệch nhau ` +
+      `nghĩa là một trong hai đã cũ. Bỏ hẳn reserveAddress, địa chỉ lấy từ input.`,
     );
   }
 
@@ -294,8 +335,9 @@ export async function buildDrawTx(p: DrawParams): Promise<{
     .mintAssets(mintAssets, p.reserveDrawRedeemerCbor)
     .attach.MintingPolicy(p.tlampPolicy)
     // Recreate ReserveState' (NFT trả lại, drawn_oildrop += delta, last_epoch := epoch).
+    // Địa chỉ TỪ CHÍNH `reserveUtxo.address` — Luật 7 ép `s_out.address == own_out.address`.
     .pay.ToContract(
-      p.reserveAddress,
+      reserveOutAddress,
       { kind: "inline", value: reserveStateToCbor(sOut) },
       reserveOutValue,
     )

@@ -8,6 +8,14 @@
 //
 // ⚠️ KHÔNG ĐƯỢC XOÁ / KHÔNG ĐƯỢC SỬA GIÁ TRỊ đã lên chain. Định danh on-chain là bất biến
 // lịch sử; muốn đổi thì THÊM một bản ghi mạng mới, không sửa bản ghi cũ.
+//
+// 📒 SỔ TRẠNG THÁI ĐI KÈM: `./lampPolicies.ts`.
+//    Tệp NÀY giữ bản ghi ĐẦY ĐỦ của mainnet (từng tham số apply-param + provenance đối chiếu
+//    byte). Tệp KIA giữ bảng policy id theo mạng KÈM TRẠNG THÁI (`ACTIVE` / `SUPERSEDED` /
+//    `PENDING-MINT`), gồm cả testnet — và nó TRỎ về `LAMP_MAINNET.policyId` chứ không chép lại,
+//    nên mainnet vẫn chỉ có một nơi giữ giá trị. Cần "policy nào đang hiệu lực trên mạng X" thì
+//    gọi `activeLampPolicyId(x)` bên đó; cần "policy mainnet được dựng từ tham số nào" thì đọc
+//    tệp này.
 
 /** Mạng được hỗ trợ. */
 export type LampNetwork = "mainnet" | "preview" | "preprod";
@@ -26,7 +34,7 @@ export interface DeployedLamp {
   /** Asset name (hex). */
   assetName: string;
   /** Số tham số apply-param của validator `lamp_mint` đang chạy. */
-  mintParamCount: 8 | 12;
+  mintParamCount: 8 | 14;
   lifecycle: PolicyLifecycle;
   /** Địa chỉ script giữ UTxO SupplyState (thread NFT "SUPPLY"). */
   supplyStateAddress: string;
@@ -110,7 +118,7 @@ export const LAMP_MAINNET: DeployedLamp = {
   caveats: [
     "Đây là bản MỒI. Sẽ bị thay bởi policy uỷ quyền OrgDID — POLICY-ID SẼ KHÁC. Đừng nhúng cứng.",
     "dist_dest (địa chỉ kho) nướng vào tham số ⇒ đổi kho = đổi script hash = policy-id khác. " +
-      "Kho-NFT động chỉ có ở bản 12 tham số CHƯA phát hành.",
+      "Kho-NFT động chỉ có ở bản 14 tham số CHƯA phát hành.",
     "🔴 MỘT KHOÁ HAI CỔNG: dist_authority[0] và authority của kho dist_treasury là CÙNG MỘT pkh " +
       "(180a5c17…ee0441 — đo 2026-08-12 bằng cách đọc ngược cả hai script). Nghĩa là A-DEST " +
       "KHÔNG chia quyền cho ai: người ký được lệnh mint cũng ký được lệnh rút kho. Nó là một " +
@@ -130,8 +138,11 @@ export function deployedLamp(network: LampNetwork): DeployedLamp {
     case "preview":
     case "preprod":
       throw new Error(
-        `LAMP-DEPLOYED-001: chưa có bản ghi phát hành cho mạng "${network}". ` +
-          `Đừng suy từ mainnet — policy-id phụ thuộc apply-param nên MỖI MẠNG một policy khác.`,
+        `LAMP-DEPLOYED-001: chưa có bản ghi phát hành ĐẦY ĐỦ (mintParams + provenance) cho mạng ` +
+          `"${network}". Đừng suy từ mainnet — policy-id phụ thuộc apply-param nên MỖI MẠNG một ` +
+          `policy khác. Chỉ cần policy id + trạng thái của mạng này thì gọi ` +
+          `activeLampPolicyId("${network}") ở './lampPolicies.js' — sổ đó có bản ghi testnet, và ` +
+          `nó cũng NÉM nếu mạng chưa có bản ACTIVE (đang chờ đúc lại theo đường registry-gate).`,
       );
   }
 }

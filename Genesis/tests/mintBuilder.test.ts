@@ -1,4 +1,4 @@
-// mintBuilder — HAI nhánh validator (8 tham số mainnet / 12 tham số registry-gate),
+// mintBuilder — HAI nhánh validator (8 tham số mainnet / 14 tham số registry-gate),
 // ràng buộc A-DEST, và cổng APPLY-001.
 //
 // Vì sao có tệp này: trước 2026-08-05 `buildMintTx` còn ở hình dạng v1/anchor — không
@@ -8,7 +8,7 @@
 // tốn phí; (2) hai reference input là tham số BẮT BUỘC của hợp đồng gọi.
 //
 // 2026-08-16 — bản vá ngược lại cũng phải khoá. Sau lần vá trên, builder chỉ còn dựng
-// được tx cho bản 12 tham số CHƯA PHÁT HÀNH: `.readFrom([registry, kho])` gọi VÔ ĐIỀU KIỆN.
+// được tx cho bản 14 tham số CHƯA PHÁT HÀNH: `.readFrom([registry, kho])` gọi VÔ ĐIỀU KIỆN.
 // Mainnet đang chạy bản **8 tham số** (`deployed.ts:65`) — nó không đọc reference input nào,
 // và dưới policy đó KHÔNG TỒN TẠI registry UTxO để mà truyền. Tức builder chắn ngang đường
 // đúc LAMP thật. Nhóm test "nhánh 8 tham số" dưới khoá: dựng được KHÔNG ref-input, và TỪ
@@ -21,7 +21,7 @@
 import { describe, it, expect } from "vitest";
 import {
   buildMintTx, readSupplyState,
-  type MintParams, type MintParamsV8, type MintParamsV12,
+  type MintParams, type MintParamsV8, type MintParamsV14,
 } from "../offchain/src/mintBuilder.js";
 import { assertParamCount } from "../offchain/src/applyGate.js";
 import { deployedLamp, type DeployedLamp } from "../offchain/src/deployed.js";
@@ -104,15 +104,15 @@ function commonParams() {
   };
 }
 
-/** Bản 12 tham số (registry-gate, CHƯA deploy) — hai reference input bắt buộc. */
-function params12(overrides: Partial<MintParamsV12> = {}): MintParamsV12 {
+/** Bản 14 tham số (registry-gate, CHƯA deploy) — hai reference input bắt buộc. */
+function params14(overrides: Partial<MintParamsV14> = {}): MintParamsV14 {
   return {
     ...commonParams(),
-    mintParamCount: 12,
+    mintParamCount: 14,
     registryRefUtxo: utxo("addr_test1wregistry", { [`${REG_PID}524547`]: 1n }, "d87980"),
     registryNftPolicyId: REG_PID,
-    khoRefUtxo: utxo(KHO_ADDR, { [`${KHO_PID}4b484f`]: 1n }),
-    khoNftPolicyId: KHO_PID,
+    distKhoRefUtxo: utxo(KHO_ADDR, { [`${KHO_PID}4b484f`]: 1n }),
+    distKhoNftPolicyId: KHO_PID,
     ...overrides,
   };
 }
@@ -144,8 +144,8 @@ describe("buildMintTx — nhánh 8 tham số (bản ĐANG CHẠY mainnet)", () =
     expect(trace.signers).toEqual(["ee".repeat(28)]);
   });
 
-  it("TỪ CHỐI khi bị truyền khoRefUtxo (GMB-007)", async () => {
-    const p = { ...params8(), khoRefUtxo: utxo(KHO_ADDR, { [`${KHO_PID}4b484f`]: 1n }) };
+  it("TỪ CHỐI khi bị truyền distKhoRefUtxo (GMB-007)", async () => {
+    const p = { ...params8(), distKhoRefUtxo: utxo(KHO_ADDR, { [`${KHO_PID}4b484f`]: 1n }) };
     await expect(buildMintTx(p as unknown as MintParams)).rejects.toThrow(/GMB-007/);
   });
 
@@ -155,9 +155,9 @@ describe("buildMintTx — nhánh 8 tham số (bản ĐANG CHẠY mainnet)", () =
   });
 
   it("TỪ CHỐI cả hai policy-id ref-input, và NÊU TÊN từng trường thừa", async () => {
-    const p = { ...params8(), registryNftPolicyId: REG_PID, khoNftPolicyId: KHO_PID };
+    const p = { ...params8(), registryNftPolicyId: REG_PID, distKhoNftPolicyId: KHO_PID };
     await expect(buildMintTx(p as unknown as MintParams)).rejects.toThrow(
-      /GMB-007[\s\S]*registryNftPolicyId[\s\S]*khoNftPolicyId/,
+      /GMB-007[\s\S]*registryNftPolicyId[\s\S]*distKhoNftPolicyId/,
     );
   });
 
@@ -167,7 +167,7 @@ describe("buildMintTx — nhánh 8 tham số (bản ĐANG CHẠY mainnet)", () =
     const s = genesisSupplyState();
     const p = {
       ...params8({ recipient: VI_THUONG, amount: s.dist_cap + 1n }),
-      khoRefUtxo: utxo(VI_THUONG, {}),
+      distKhoRefUtxo: utxo(VI_THUONG, {}),
     };
     await expect(buildMintTx(p as unknown as MintParams)).rejects.toThrow(/GMB-007/);
   });
@@ -193,44 +193,44 @@ describe("buildMintTx — nhánh 8 tham số (bản ĐANG CHẠY mainnet)", () =
 
 describe("buildMintTx — mintParamCount là hợp đồng gọi (GMB-008)", () => {
   it("thiếu mintParamCount ⇒ ném, KHÔNG đoán bản validator", async () => {
-    const p = params12();
+    const p = params14();
     delete (p as { mintParamCount?: number }).mintParamCount;
     await expect(buildMintTx(p)).rejects.toThrow(/GMB-008/);
   });
 
   it("số lạ (vd 10) ⇒ ném", async () => {
-    const p = { ...params12(), mintParamCount: 10 };
+    const p = { ...params14(), mintParamCount: 10 };
     await expect(buildMintTx(p as unknown as MintParams)).rejects.toThrow(/GMB-008/);
   });
 
   it("kiểu TS chặn gọi sai nhánh ngay lúc biên dịch", () => {
-    // @ts-expect-error — nhánh 8 CẤM khoRefUtxo (`?: never`). Nếu dòng này ngừng lỗi thì
+    // @ts-expect-error — nhánh 8 CẤM distKhoRefUtxo (`?: never`). Nếu dòng này ngừng lỗi thì
     // hàng rào kiểu đã bị nới, và test sẽ đỏ ở `tsc` chứ không âm thầm mất.
-    const sai: MintParamsV8 = { ...params8(), khoRefUtxo: utxo(KHO_ADDR, {}) };
+    const sai: MintParamsV8 = { ...params8(), distKhoRefUtxo: utxo(KHO_ADDR, {}) };
     expect(sai.mintParamCount).toBe(8);
 
-    // @ts-expect-error — nhánh 12 CẤM distDestAddress (A-DEST đọc động từ kho-NFT).
-    const sai12: MintParamsV12 = { ...params12(), distDestAddress: KHO_ADDR };
-    expect(sai12.mintParamCount).toBe(12);
+    // @ts-expect-error — nhánh 14 CẤM distDestAddress (A-DEST đọc động từ kho-NFT).
+    const sai14: MintParamsV14 = { ...params14(), distDestAddress: KHO_ADDR };
+    expect(sai14.mintParamCount).toBe(14);
   });
 });
 
-describe("buildMintTx — nhánh 12 tham số vẫn nguyên hành vi cũ", () => {
+describe("buildMintTx — nhánh 14 tham số vẫn nguyên hành vi cũ", () => {
   it("GẮN đúng hai reference input vào tx", async () => {
     const { trace, lucid } = fakeLucid();
-    const p = params12({ lucid });
+    const p = params14({ lucid });
     await buildMintTx(p);
     expect(trace.readFrom).toHaveLength(1);
-    expect(trace.readFrom[0]).toEqual([p.registryRefUtxo, p.khoRefUtxo]);
+    expect(trace.readFrom[0]).toEqual([p.registryRefUtxo, p.distKhoRefUtxo]);
   });
 
-  it("registryRefUtxo + khoRefUtxo là tham số BẮT BUỘC", () => {
+  it("registryRefUtxo + distKhoRefUtxo là tham số BẮT BUỘC", () => {
     // Khoá hình dạng: bỏ một trong hai là quay lại bản v1 hỏng-mọi-tx. TypeScript đã ép
     // ở chỗ gọi; khẳng định ở đây để lần refactor sau không lặng lẽ nới thành optional.
-    const p = params12();
+    const p = params14();
     expect(p.registryRefUtxo).toBeDefined();
-    expect(p.khoRefUtxo).toBeDefined();
-    expect(p.khoRefUtxo.address).toBe(p.recipient);
+    expect(p.distKhoRefUtxo).toBeDefined();
+    expect(p.distKhoRefUtxo.address).toBe(p.recipient);
     // recipientDatum BẮT BUỘC — xem GMB-006. Đừng nới lại thành optional.
     expect(p.recipientDatum).toBeDefined();
   });
@@ -239,11 +239,11 @@ describe("buildMintTx — nhánh 12 tham số vẫn nguyên hành vi cũ", () =>
 describe("buildMintTx — A-DEST", () => {
   it("chặn recipient KHÁC địa chỉ kho (GMB-004)", async () => {
     // Đây là ca đắt nhất nếu lọt: LAMP không burn được, rót nhầm chỗ là kẹt vĩnh viễn.
-    await expect(buildMintTx(params12({ recipient: VI_THUONG }))).rejects.toThrow(/GMB-004/);
+    await expect(buildMintTx(params14({ recipient: VI_THUONG }))).rejects.toThrow(/GMB-004/);
   });
 
   it("thông điệp lỗi nêu ĐỦ cả hai địa chỉ để đối chiếu", async () => {
-    await expect(buildMintTx(params12({ recipient: VI_THUONG }))).rejects.toThrow(
+    await expect(buildMintTx(params14({ recipient: VI_THUONG }))).rejects.toThrow(
       new RegExp(`${VI_THUONG}[\\s\\S]*${KHO_ADDR}`),
     );
   });
@@ -252,7 +252,7 @@ describe("buildMintTx — A-DEST", () => {
     // Thứ tự có ý nghĩa: lỗi cap nói đúng nguyên nhân gốc, không bị guard địa chỉ che.
     const s = genesisSupplyState();
     await expect(
-      buildMintTx(params12({ amount: s.dist_cap + 1n, recipient: VI_THUONG })),
+      buildMintTx(params14({ amount: s.dist_cap + 1n, recipient: VI_THUONG })),
     ).rejects.not.toThrow(/GMB-004/);
   });
 });
@@ -265,36 +265,36 @@ describe("buildMintTx — no-datum LÀ MẤT TIỀN (GMB-006)", () => {
   // không burn được. Bản trước để `recipientDatum` là tuỳ chọn và mặc định rơi vào
   // `pay.ToAddress` — tức đường MẶC ĐỊNH là đường mất tiền.
   it("chặn khi thiếu recipientDatum", async () => {
-    const p = params12();
+    const p = params14();
     delete (p as { recipientDatum?: string }).recipientDatum;
     await expect(buildMintTx(p)).rejects.toThrow(/GMB-006/);
   });
 
   it("chặn khi recipientDatum rỗng", async () => {
-    await expect(buildMintTx(params12({ recipientDatum: "" }))).rejects.toThrow(/GMB-006/);
+    await expect(buildMintTx(params14({ recipientDatum: "" }))).rejects.toThrow(/GMB-006/);
   });
 });
 
 describe("buildMintTx — reference input phải THẬT (GMB-005)", () => {
-  it("chặn khoRefUtxo không mang kho-NFT", async () => {
-    // Ca này lọt qua GMB-004 vì recipient == khoRefUtxo.address — guard địa chỉ tự thoả
-    // khi chính khoRefUtxo sai. Phải kiểm NFT mới bắt được.
+  it("chặn distKhoRefUtxo không mang kho-NFT", async () => {
+    // Ca này lọt qua GMB-004 vì recipient == distKhoRefUtxo.address — guard địa chỉ tự thoả
+    // khi chính distKhoRefUtxo sai. Phải kiểm NFT mới bắt được.
     const fake = utxo(VI_THUONG, {});
     await expect(
-      buildMintTx(params12({ khoRefUtxo: fake, recipient: VI_THUONG })),
+      buildMintTx(params14({ distKhoRefUtxo: fake, recipient: VI_THUONG })),
     ).rejects.toThrow(/GMB-005/);
   });
 
   it("chặn registryRefUtxo không mang registry-NFT", async () => {
     await expect(
-      buildMintTx(params12({ registryRefUtxo: utxo("addr_test1wregistry", {}, "d87980") })),
+      buildMintTx(params14({ registryRefUtxo: utxo("addr_test1wregistry", {}, "d87980") })),
     ).rejects.toThrow(/GMB-005/);
   });
 
   it("GMB-005 chạy TRƯỚC GMB-004 (bắt đúng nguyên nhân gốc)", async () => {
     const fake = utxo(VI_THUONG, {});
     await expect(
-      buildMintTx(params12({ khoRefUtxo: fake })),
+      buildMintTx(params14({ distKhoRefUtxo: fake })),
     ).rejects.not.toThrow(/GMB-004/);
   });
 });
@@ -302,23 +302,23 @@ describe("buildMintTx — reference input phải THẬT (GMB-005)", () => {
 describe("cổng APPLY-001 — apply thiếu tham số KHÔNG báo lỗi, nó đổi policy-id", () => {
   // Cổng đắt nhất trong Genesis: `applyParamsToScript` thiếu tham số vẫn trả về một script
   // hash KHÁC, im lặng. Đúc LAMP dưới policy-id sai là mất vĩnh viễn (LAMP không burn).
-  it("ném khi truyền THIẾU tham số (8 vào validator 12 tham số)", () => {
-    expect(() => assertParamCount("lamp_mint.lamp_mint.mint", 12, 8)).toThrow(/APPLY-001/);
+  it("ném khi truyền THIẾU tham số (8 vào validator 14 tham số)", () => {
+    expect(() => assertParamCount("lamp_mint.lamp_mint.mint", 14, 8)).toThrow(/APPLY-001/);
   });
 
-  it("ném khi truyền THỪA tham số (12 vào validator 8 tham số)", () => {
-    expect(() => assertParamCount("lamp_mint.lamp_mint.mint", 8, 12)).toThrow(/APPLY-001/);
+  it("ném khi truyền THỪA tham số (14 vào validator 8 tham số)", () => {
+    expect(() => assertParamCount("lamp_mint.lamp_mint.mint", 8, 14)).toThrow(/APPLY-001/);
   });
 
   it("thông điệp nêu tên validator + cả hai con số để đối chiếu", () => {
-    expect(() => assertParamCount("lamp_mint.lamp_mint.mint", 12, 8)).toThrow(
-      /lamp_mint\.lamp_mint\.mint khai 12 tham số, chỗ gọi truyền 8/,
+    expect(() => assertParamCount("lamp_mint.lamp_mint.mint", 14, 8)).toThrow(
+      /lamp_mint\.lamp_mint\.mint khai 14 tham số, chỗ gọi truyền 8/,
     );
   });
 
-  it("im lặng khi khớp — cả 8 lẫn 12", () => {
+  it("im lặng khi khớp — cả 8 lẫn 14", () => {
     expect(() => assertParamCount("lamp_mint.lamp_mint.mint", 8, 8)).not.toThrow();
-    expect(() => assertParamCount("lamp_mint.lamp_mint.mint", 12, 12)).not.toThrow();
+    expect(() => assertParamCount("lamp_mint.lamp_mint.mint", 14, 14)).not.toThrow();
   });
 });
 
@@ -337,7 +337,7 @@ describe("readSupplyState", () => {
 // ────────────────────────────────────────────────────────────────────────────
 // Lời khuyên trong GMB-008/GMB-009 phải BIÊN DỊCH ĐƯỢC.
 //
-// Vì sao có nhóm này: `deployedLamp(n).mintParamCount` có kiểu `8 | 12`, nên cách dùng
+// Vì sao có nhóm này: `deployedLamp(n).mintParamCount` có kiểu `8 | 14`, nên cách dùng
 // hiển nhiên — spread thẳng nó vào một lời gọi `buildMintTx` duy nhất — là TS2345. Người
 // tích hợp gặp lỗi đó dễ chữa bằng `as unknown as MintParams`, và thế là toàn bộ hàng rào
 // `?: never` bốc hơi. Test này viết ĐÚNG cách mà thông điệp lỗi khuyên — không một chỗ
@@ -345,7 +345,7 @@ describe("readSupplyState", () => {
 // nào dựng sai hình dạng tx.
 // ────────────────────────────────────────────────────────────────────────────
 
-/** Đúng hình dạng dữ liệu mà chỗ tích hợp có: `mintParamCount` kiểu `8 | 12`, chưa thu hẹp. */
+/** Đúng hình dạng dữ liệu mà chỗ tích hợp có: `mintParamCount` kiểu `8 | 14`, chưa thu hẹp. */
 type DeployedGate = Pick<DeployedLamp, "mintParamCount" | "khoAddress">;
 
 /** CÁCH VIẾT ĐƯỢC KHUYÊN, chép nguyên từ thông điệp GMB-008. Không `as`, không ép kiểu. */
@@ -363,15 +363,15 @@ async function mintTheoDeployed(d: DeployedGate, lucid: MintParams["lucid"]) {
     mintParamCount: d.mintParamCount,
     registryRefUtxo: utxo("addr_test1wregistry", { [`${REG_PID}524547`]: 1n }, "d87980"),
     registryNftPolicyId: REG_PID,
-    khoRefUtxo: utxo(d.khoAddress, { [`${KHO_PID}4b484f`]: 1n }),
-    khoNftPolicyId: KHO_PID,
+    distKhoRefUtxo: utxo(d.khoAddress, { [`${KHO_PID}4b484f`]: 1n }),
+    distKhoNftPolicyId: KHO_PID,
   });
 }
 
 describe("buildMintTx — cách dùng mà GMB-008/009 khuyên (thu hẹp bằng if)", () => {
   it("nhánh 8 từ deployedLamp('mainnet') THẬT: dựng được, KHÔNG ref-input", async () => {
     const { trace, lucid } = fakeLucid();
-    const d = deployedLamp("mainnet"); // mintParamCount: 8 | 12 — chưa thu hẹp
+    const d = deployedLamp("mainnet"); // mintParamCount: 8 | 14 — chưa thu hẹp
     const { nextState } = await mintTheoDeployed(d, lucid);
 
     expect(d.mintParamCount).toBe(8);
@@ -381,10 +381,10 @@ describe("buildMintTx — cách dùng mà GMB-008/009 khuyên (thu hẹp bằng 
     expect(nextState.dist_minted).toBe(10_000n * 1_000_000n);
   });
 
-  it("nhánh 12 cùng một khuôn: gắn đủ hai ref-input", async () => {
+  it("nhánh 14 cùng một khuôn: gắn đủ hai ref-input", async () => {
     const { trace, lucid } = fakeLucid();
-    // Cùng kiểu `DeployedGate` ⇒ `mintParamCount` vẫn là `8 | 12` ở đầu vào, `if` thu hẹp nó.
-    const d: DeployedGate = { mintParamCount: 12, khoAddress: KHO_ADDR };
+    // Cùng kiểu `DeployedGate` ⇒ `mintParamCount` vẫn là `8 | 14` ở đầu vào, `if` thu hẹp nó.
+    const d: DeployedGate = { mintParamCount: 14, khoAddress: KHO_ADDR };
     await mintTheoDeployed(d, lucid);
 
     expect(trace.readFrom).toHaveLength(1);

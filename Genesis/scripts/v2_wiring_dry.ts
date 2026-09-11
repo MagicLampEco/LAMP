@@ -19,6 +19,15 @@ import { deriveWiring, printWiring } from "./_canonical_v2.js";
 /** Giá trị mẫu — CHỈ để xem hình dạng wiring. Không phải hạt giống thật của lượt nào. */
 const SAMPLE_TX  = "0".repeat(63) + "1";
 const SAMPLE_PKH = "0".repeat(55) + "1";
+/** policy id `custody_seed` mẫu cho khe #13 — thay bằng giá trị thật khi tính lượt thật. */
+const SAMPLE_RESERVE_KHO_PID = "0".repeat(55) + "2";
+/**
+ * `instance_id` của instance custody đích = asset name kho NFT (khe #14). Đây KHÔNG phải giá
+ * trị mẫu: nó là hằng của màn diễn tập, khớp `_reserve_layer2.ts::INSTANCE_ID`
+ * (`fromText("lamp-reserve")`). Giữ dạng hex ở đây để tệp này không phải import
+ * `_reserve_layer2.ts` — chiều import ngược lại đã có, thêm chiều này là vòng.
+ */
+const RESERVE_KHO_NAME = "6c616d702d72657365727665"; // "lamp-reserve"
 
 function hex(name: string, fallback: string, chars: number): string {
   const v = (process.env[name] ?? fallback).trim().toLowerCase();
@@ -32,17 +41,27 @@ async function main(): Promise<void> {
   const genesisTxHash = hex("DRY_GENESIS_TX", SAMPLE_TX, 64);
   const pkh = hex("DRY_PKH", SAMPLE_PKH, 56);
   const genesisIndex = Number(process.env.DRY_GENESIS_IDX ?? "0");
-  const sample = genesisTxHash === SAMPLE_TX || pkh === SAMPLE_PKH;
+  // Khe #13-14 của `lamp_mint`: kho Treasury custody mà đường ReserveDraw rót vào. Không suy
+  // ra được từ `genesis_ref` — `custody_seed` nướng hạt giống RIÊNG (luật S-MINT-2), nên nó
+  // là đầu vào, không phải kết quả.
+  const reserveKhoPid  = hex("DRY_RESERVE_KHO_PID", SAMPLE_RESERVE_KHO_PID, 56);
+  const reserveKhoName = (process.env.DRY_RESERVE_KHO_NAME ?? RESERVE_KHO_NAME).trim().toLowerCase();
+  const sample =
+    genesisTxHash === SAMPLE_TX || pkh === SAMPLE_PKH ||
+    reserveKhoPid === SAMPLE_RESERVE_KHO_PID;
 
   console.log(`=== Wiring canonical v2 — KHÔ (${NETWORK}) ===`);
   if (sample) {
-    console.log("⚠ đang dùng GIÁ TRỊ MẪU cho hạt giống/pkh. Mọi policy-id dưới đây chỉ để xem");
-    console.log("  hình dạng — KHÔNG phải policy của lượt nào. Truyền DRY_GENESIS_TX/DRY_PKH");
-    console.log("  để tính đúng lượt thật.");
+    console.log("⚠ đang dùng GIÁ TRỊ MẪU cho hạt giống/pkh/kho Reserve. Mọi policy-id dưới đây");
+    console.log("  chỉ để xem hình dạng — KHÔNG phải policy của lượt nào. Truyền DRY_GENESIS_TX/");
+    console.log("  DRY_PKH/DRY_RESERVE_KHO_PID để tính đúng lượt thật.");
   }
   console.log();
 
-  const { wiring } = await deriveWiring({ genesisTxHash, genesisIndex, pkh, tokenName: TOKEN_NAME });
+  const { wiring } = await deriveWiring({
+    genesisTxHash, genesisIndex, pkh, tokenName: TOKEN_NAME,
+    reserveKhoPid, reserveKhoName,
+  });
   printWiring(wiring);
 
   // Năm marker phải ra NĂM policy-id khác nhau. Trùng nhau nghĩa là một tham số bị bỏ sót

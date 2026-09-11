@@ -3,7 +3,7 @@
 // + validation errors. CONTRACT v2 "Capped Drop".
 
 import { describe, it, expect } from "vitest";
-import { validatorToScriptHash, credentialToAddress, scriptHashToCredential, mintingPolicyToId, toUnit, Data } from "@lucid-evolution/lucid";
+import { validatorToScriptHash, credentialToAddress, scriptHashToCredential, keyHashToCredential, mintingPolicyToId, toUnit, Data } from "@lucid-evolution/lucid";
 import type { UTxO, Validator } from "@lucid-evolution/lucid";
 
 import { buildClaimTx, assertClaimSolvency } from "../offchain/src/claimBuilder.js";
@@ -744,5 +744,131 @@ describe("accountNftName — vector đối chiếu Aiken blake2b_256", () => {
     expect(() => accountNftName("xyz")).toThrow(/ACCNFT-001/);
     expect(() => accountNftName("abc")).toThrow(/ACCNFT-001/);
     expect(() => accountNftName("")).toThrow(/ACCNFT-001/);
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════
+// C-SOLV-5 — ĐỊA CHỈ KHO MANG THEO TỪ INPUT, KHÔNG DỰNG LẠI TỪ SCRIPT HASH
+// ════════════════════════════════════════════════════════════════════════
+//
+// Trên Cardano một địa chỉ script có HAI dạng cùng chung một script hash:
+//   enterprise = chỉ payment credential
+//   base       = payment credential + stake credential (kho được uỷ quyền stake)
+// Cùng hash, KHÁC địa chỉ. `claim_account.ak:105` (nhánh Claim) và `:146` (nhánh Redeem)
+// ép `tre_in_addr == tre_out_addr` — so CẢ `Address`, tức kể cả stake credential.
+// `credentialToAddress(network, scriptHashToCredential(h))` LUÔN trả dạng enterprise.
+//
+// ⚠️ VÌ SAO 96 CA CŨ KHÔNG BẮT ĐƯỢC: mọi fixture kho trong tệp này dùng `scriptAddr()`,
+// tức luôn enterprise. Ở cực đó hai vế trùng nhau NGẪU NHIÊN, nên bài xanh đang GIỮ lỗ
+// chứ không gác nó. Hai ca dưới đây phân biệt HAI CỰC: đầu vào enterprise và đầu vào base
+// phải cho hai địa chỉ đầu ra KHÁC NHAU. Ca nào xanh ở cả hai cực thì nó không kiểm gì —
+// nên mỗi ca mở đầu bằng chốt `entAddr !== baseAddr`, canh chính cái fixture.
+describe("C-SOLV-5 — địa chỉ kho theo input, hai cực enterprise/base", () => {
+  const STAKE_KH  = "77".repeat(28);
+  const TRE_HASH  = validatorToScriptHash(FAKE_TREASURY);
+  const entAddr   = credentialToAddress(NETWORK, scriptHashToCredential(TRE_HASH));
+  const baseAddr  = credentialToAddress(
+    NETWORK, scriptHashToCredential(TRE_HASH), keyHashToCredential(STAKE_KH),
+  );
+
+  /** Kho mang TRSY, đặt ở địa chỉ chỉ định (enterprise hoặc base). */
+  function treAt(address: string, lamp = lampOildrop(1000n), cum = lampOildrop(1000n)): UTxO {
+    return {
+      txHash: "22".repeat(32), outputIndex: 0,
+      address,
+      assets: { lovelace: 5_000_000n, [TRSY_UNIT]: 1n, [LAMP_UNIT]: lamp },
+      datum: treasuryDatumToCbor({ committee_hash: "ee".repeat(28), outstanding_entitlement: cum }),
+    };
+  }
+  function accUtxo(redeemed = 0n): UTxO {
+    return {
+      txHash: "11".repeat(32), outputIndex: 0,
+      address: scriptAddr(FAKE_CLAIM),
+      assets: { lovelace: 2_000_000n },
+      datum: claimAccountDatumToCbor({
+        owner: OWNER, entitlement: lampOildrop(250n), redeemed,
+        start_epoch: 0n, drops_per_epoch: 1n,
+      }),
+    };
+  }
+  function beaconUtxo(): UTxO {
+    return {
+      txHash: "33".repeat(32), outputIndex: 0,
+      address: scriptAddr(FAKE_BEACON),
+      assets: { lovelace: 2_000_000n },
+      datum: beaconDatumToCbor({ epoch: 7n, kind: "DropParam", drop_value: D }),
+    };
+  }
+  const rbase = {
+    network: NETWORK, claimScript: FAKE_CLAIM, treasuryScript: FAKE_TREASURY,
+    lampPolicyId: LAMP_POLICY, treasuryNftPolicy: TRSY_POLICY,
+  };
+
+  /** Địa chỉ của output mang TRSY trong tx đã dựng. */
+  function treOutAddr(rec: Recorded): string {
+    return rec.payData.find(p => p.assets[TRSY_UNIT] === 1n)!.address;
+  }
+
+  it("fixture phân biệt được hai cực (cùng script hash, khác Address)", () => {
+    expect(baseAddr).not.toBe(entAddr);
+    expect(validatorToScriptHash(FAKE_TREASURY)).toBe(TRE_HASH); // cùng hash, khác địa chỉ
+  });
+
+  it("buildRedeemTx — kho enterprise ⇒ output enterprise (cực 1)", async () => {
+    const { lucid, rec } = mockLucid("addr_user");
+    await buildRedeemTx({
+      ...rbase, lucid, currentEpoch: 3n,
+      claimAccountUtxo: accUtxo(), treasuryUtxo: treAt(entAddr), dropBeaconUtxo: beaconUtxo(),
+    });
+    expect(treOutAddr(rec)).toBe(entAddr);
+  });
+
+  it("buildRedeemTx — kho base (có stake cred) ⇒ output GIỮ stake cred (cực 2)", async () => {
+    const { lucid, rec } = mockLucid("addr_user");
+    await buildRedeemTx({
+      ...rbase, lucid, currentEpoch: 3n,
+      claimAccountUtxo: accUtxo(), treasuryUtxo: treAt(baseAddr), dropBeaconUtxo: beaconUtxo(),
+    });
+    // Dựng lại từ hash sẽ ra `entAddr` ⇒ `trsy_in_addr != trsy_out_addr` ⇒ chuỗi TỪ CHỐI.
+    expect(treOutAddr(rec)).toBe(baseAddr);
+    expect(treOutAddr(rec)).not.toBe(entAddr);
+  });
+
+  it("buildClaimTx UPDATE — kho enterprise ⇒ output enterprise (cực 1)", async () => {
+    const { lucid, rec } = mockLucid("addr_wallet");
+    await buildClaimTx({
+      lucid, claimScript: FAKE_CLAIM, network: NETWORK, ownerPkh: OWNER,
+      amount: lampOildrop(10n), currentEpoch: 5n, committeeKeyHashes: COMMITTEE,
+      claimAccountUtxo: accUtxo(),
+      treasury: { utxo: treAt(entAddr), script: FAKE_TREASURY, nftPolicy: TRSY_POLICY },
+    });
+    expect(treOutAddr(rec)).toBe(entAddr);
+  });
+
+  it("buildClaimTx UPDATE — kho base ⇒ output GIỮ stake cred (cực 2)", async () => {
+    const { lucid, rec } = mockLucid("addr_wallet");
+    await buildClaimTx({
+      lucid, claimScript: FAKE_CLAIM, network: NETWORK, ownerPkh: OWNER,
+      amount: lampOildrop(10n), currentEpoch: 5n, committeeKeyHashes: COMMITTEE,
+      claimAccountUtxo: accUtxo(),
+      treasury: { utxo: treAt(baseAddr), script: FAKE_TREASURY, nftPolicy: TRSY_POLICY },
+    });
+    expect(treOutAddr(rec)).toBe(baseAddr);
+    expect(treOutAddr(rec)).not.toBe(entAddr);
+  });
+
+  // Đường CREATE: `claim_account` spend KHÔNG chạy (không có account input) nên chuỗi
+  // KHÔNG từ chối — nhưng NFT "TRSY" bị âm thầm hạ từ base xuống enterprise, mất uỷ quyền
+  // stake mà không ai đỏ. Đây là cực "rò êm" của cùng một dòng mã.
+  it("buildClaimTx CREATE — kho base KHÔNG bị âm thầm hạ về enterprise", async () => {
+    const { lucid, rec } = mockLucid("addr_wallet");
+    await buildClaimTx({
+      lucid, claimScript: FAKE_CLAIM, network: NETWORK, ownerPkh: OWNER,
+      amount: lampOildrop(10n), currentEpoch: 5n, committeeKeyHashes: COMMITTEE,
+      treasury: { utxo: treAt(baseAddr), script: FAKE_TREASURY, nftPolicy: TRSY_POLICY },
+      accountNft: accNft,
+    });
+    expect(treOutAddr(rec)).toBe(baseAddr);
+    expect(treOutAddr(rec)).not.toBe(entAddr);
   });
 });

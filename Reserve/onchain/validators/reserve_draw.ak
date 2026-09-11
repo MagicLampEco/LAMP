@@ -58,6 +58,11 @@
 //                           một cách im lặng. KHÔNG sinh vòng apply-param — thứ tự đúc vẫn
 //                           là one-shot NFT → lamp_mint → custody → reserve_gate →
 //                           reserve_draw; `custody` không bake hash của hai validator này.
+//   reserve_cap           — pot Reserve ĐÚNG theo thiết kế (oildrop). PHẢI trùng khe #5
+//                           `reserve_cap` của `Genesis/onchain/validators/lamp_mint.ak`.
+//                           Luật 1b đối chiếu `ReserveState.total_oildrop` với hằng này.
+//                           Cũng đặt Ở CUỐI, sau `custody_script_hash`, để 11 khe đang có
+//                           không xê dịch (xem lý do ở dòng trên — khe lệch là hỏng IM LẶNG).
 
 use aiken/collection/list
 use aiken/interval.{Finite, Interval, IntervalBound, PositiveInfinity}
@@ -80,6 +85,7 @@ validator reserve_draw(
   treasury_auth_name    : ByteArray,
   gate_script_hash      : ByteArray,
   custody_script_hash   : ByteArray,
+  reserve_cap           : Int,
 ) {
   spend(
     _datum: Option<ReserveState>,
@@ -97,7 +103,46 @@ validator reserve_draw(
       assets.quantity_of(own_out.value, reserve_thread_policy, reserve_thread_name) == 1
 
     // Đọc state vào (datum option bỏ qua — đọc trực tiếp từ input để chắc khớp NFT).
+    // BA TRẠNG THÁI, không hai: `util.inline_datum` fail khi datum vắng hoặc là DatumHash
+    // (KHÔNG ĐỌC ĐƯỢC → từ chối, không đệm giá trị trông hợp lệ); `expect s: ReserveState`
+    // fail khi bốn trường không đúng hình dạng (LỆCH KIỂU → từ chối). Chỉ khi cả hai qua
+    // mới tới Luật 1b so GIÁ TRỊ.
     expect s: ReserveState = util.inline_datum(own_out)
+
+    // ── Luật 1b: total_oildrop PHẢI khớp `reserve_cap` nướng vào hash ──────
+    //
+    // VẤN ĐỀ: trần mỗi epoch tính TỪ DATUM (`math.max_per_epoch(s.total_oildrop)`, Luật 4),
+    // mà datum là thứ người gửi đặt. Không lượt SINH nào ép nó: `reserve_thread.ak` chỉ ép
+    // one-shot + đúng-1-tên + qty == 1, không đụng hình dạng datum. Luật 7 thì khoá `total`
+    // BẤT BIẾN — tức khoá chặt một giá trị có thể đã sai từ đầu. Ghi `total = 10 × cap` ⟹
+    // trần mỗi epoch × 10 ⟹ pot cạn trong ~100 epoch thay vì 1000 ⟹ trần lạm phát năm nhảy
+    // 1,95% → ~19,5%. `lamp_mint` vẫn chặn đúng ở TỔNG, nên trần giữ được mà NHỊP thì không
+    // — và nhịp mới là thứ luật này tồn tại để giữ. Trước bản vá, bảo đảm duy nhất nằm
+    // off-chain (`Genesis/scripts/24_reserve_layer2_init.ts`, mã lỗi `RESERVE-CAP-001`).
+    //
+    // VÌ SAO Ở ĐÂY, KHÔNG Ở `reserve_thread.mint` (nhánh sinh):
+    //   Ép lúc sinh NGHE mạnh hơn nhưng ở đây nó KHÔNG chạm được vật cần ép. Thread NFT
+    //   không được đúc thẳng vào script này: lượt đúc để nó Ở VÍ, rồi một tx SAU mới dời nó
+    //   xuống địa chỉ `reserve_draw` KÈM ReserveState (bước "L2c dời meter" của
+    //   `Genesis/scripts/24_reserve_layer2_init.ts`). Datum mà `reserve_thread.mint` nhìn
+    //   thấy là datum của UTxO ví — bị tiêu và vứt đi ở tx sau. Datum có hiệu lực là cái
+    //   gắn ở L2c, và KHÔNG validator nào chạy lúc nó được TẠO (validator chỉ chạy lúc UTxO
+    //   bị TIÊU). Ép ở nhánh sinh vì thế đi vòng được bằng đúng hai bước mà quy trình thật
+    //   đang dùng — nó ghim một giới hạn, không ghim một hành vi.
+    //   `reserve_thread` cũng KHÔNG thể nướng hash của `reserve_draw` để ép đích: vòng
+    //   apply-param (reserve_thread → `lamp_mint.meter_nft_policy` khe #11 → `lamp_policy`
+    //   của reserve_draw → reserve_thread).
+    //   Đây là nơi DUY NHẤT từng đọc datum có hiệu lực, nên là nơi duy nhất không đi vòng.
+    //
+    // ĐỦ CHO MỌI LƯỢT SAU: Luật 7 ép `s2.total_oildrop == s.total_oildrop`, nên một lượt
+    // khớp `reserve_cap` kéo theo mọi lượt kế tiếp cũng khớp. Không cần kiểm lại trên s2.
+    //
+    // ⚠ ĐÁNH ĐỔI người vận hành PHẢI biết: chốt này biến "ghi sai total" từ NHỊP VỠ thành
+    //   POT ĐỨNG IM — mọi lượt rút đều hỏng, mà Luật 7 không cho sửa `total`, nên ReserveState
+    //   sai là ReserveState chết và phải đúc lại `reserve_thread` (⟹ đổi cả policy-id LAMP).
+    //   Vì thế cổng off-chain `RESERVE-CAP-001` ĐO TRƯỚC KHI GỬI vẫn là hàng rào thứ nhất và
+    //   KHÔNG được gỡ; chốt này là hàng rào thứ hai cho ca cổng kia bị bỏ qua hoặc chạy sai.
+    expect s.total_oildrop == reserve_cap
 
     // ── Luật 2: epoch t từ validity_range lower_bound (bảo thủ, chống tua tương lai) ──
     let t = util.get_epoch(tx.validity_range.lower_bound.bound_type, ms_per_epoch)
@@ -357,9 +402,17 @@ fn vrange(ep: Int) -> Interval {
 }
 
 fn run(s_in: ReserveState, tx: Transaction) -> Bool {
+  // `reserve_cap` = e: mọi ca cũ dựng state bằng `fresh()` (total = e) nên chúng là ĐỐI CHỨNG
+  // DƯƠNG của Luật 1b — khớp thì đi tiếp như trước, không ca nào phải sửa.
+  run_with_cap(e, s_in, tx)
+}
+
+/// Biến thể đổi RIÊNG `reserve_cap` nướng vào hash — dùng cho ca âm Luật 1b. Giữ nguyên mọi
+/// tham số khác để ca âm không trôi sang chết ở cổng hàng xóm.
+fn run_with_cap(cap_param: Int, s_in: ReserveState, tx: Transaction) -> Bool {
   reserve_draw.spend(
     lamp_pol, lamp_nm, thr_pol, thr_nm, ms_epoch, kho_pol, kho_nm, tre_pol, tre_nm,
-    gate_hash, kho_hash, Some(s_in), Draw, own_ref(), tx,
+    gate_hash, kho_hash, cap_param, Some(s_in), Draw, own_ref(), tx,
   )
 }
 
@@ -837,6 +890,66 @@ test reject_kho_nft_at_wallet() fail {
 }
 
 // ── HAPPY: full-drain nhiều epoch tới cạn (tổng kế toán đúng E) ────────────
+
+// ── Luật 1b: total_oildrop phải khớp `reserve_cap` nướng vào hash ─────────
+//
+// Ba ca dưới khác nhau ĐÚNG MỘT biến (`total_oildrop` của datum, hoặc `reserve_cap` của
+// tham số). Mọi vế khác là hình dạng rút HỢP LỆ — delta đúng bằng trần tính TỪ total sai,
+// s2 giữ đúng total sai, kho bị tiêu ở đúng script, auth ở đúng gate — nên chúng trung lập
+// hoá mọi cổng đứng SAU Luật 1b. Nếu không dựng thế, ca âm sẽ chết ở Luật 4 vì vượt trần và
+// bài vẫn xanh trong khi Luật 1b bị gỡ sạch.
+
+test reject_total_oildrop_ten_times_cap() fail {
+  // Ca thật của lỗ: ghi `total = 10 × reserve_cap` lúc L2c ⟹ trần mỗi epoch × 10 ⟹ pot cạn
+  // trong ~100 epoch thay vì 1000. `lamp_mint` vẫn chặn ở TỔNG nên không cổng nào khác kêu.
+  let bad_total = 10 * e
+  let s =
+    ReserveState {
+      start_epoch: start,
+      total_oildrop: bad_total,
+      drawn_oildrop: 0,
+      last_epoch: start,
+    }
+  let d = bad_total / 1000
+  let s2 = ReserveState { ..s, drawn_oildrop: d, last_epoch: start + 1 }
+  run(s, build_tx(s, s2, d, d, start + 1))
+}
+
+test reject_total_oildrop_below_cap() fail {
+  // Chiều NGƯỢC LẠI: `total` nhỏ hơn cap. Không gây lạm phát, nhưng khoá 90% pot ngoài tầm
+  // với vĩnh viễn (Luật 7 cấm sửa `total`). `==` bắt cả hai chiều; `>=` hay `<=` thì hụt một.
+  let small_total = e / 10
+  let s =
+    ReserveState {
+      start_epoch: start,
+      total_oildrop: small_total,
+      drawn_oildrop: 0,
+      last_epoch: start,
+    }
+  let d = small_total / 1000
+  let s2 = ReserveState { ..s, drawn_oildrop: d, last_epoch: start + 1 }
+  run(s, build_tx(s, s2, d, d, start + 1))
+}
+
+test total_ten_times_cap_passes_when_param_matches() {
+  // ĐỐI CHỨNG DƯƠNG CHO THAM SỐ: CÙNG datum của ca âm thứ nhất, chỉ đổi `reserve_cap` nướng
+  // vào hash thành `10 × e` → PASS. Cặp này chứng minh Luật 1b so với THAM SỐ (thứ nướng vào
+  // script hash, người vận hành chọn lúc deploy) chứ không so với một hằng nào trong mã —
+  // và chứng minh được điều đó mà không cần đột biến mã.
+  let bad_total = 10 * e
+  let s =
+    ReserveState {
+      start_epoch: start,
+      total_oildrop: bad_total,
+      drawn_oildrop: 0,
+      last_epoch: start,
+    }
+  let d = bad_total / 1000
+  let s2 = ReserveState { ..s, drawn_oildrop: d, last_epoch: start + 1 }
+  run_with_cap(bad_total, s, build_tx(s, s2, d, d, start + 1))
+}
+
+// ── HAPPY: full-drain nhiều epoch tới cạn (tiếp) ──────────────────────────
 
 test draw_full_drain_three_epochs_chain() {
   // Mô phỏng 3 epoch liên tiếp nhả đúng trần — kiểm transition nối tiếp đúng.

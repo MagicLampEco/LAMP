@@ -22,7 +22,8 @@
 // tính cut + dựng output bảo toàn value. Phần residual + cách provider cấp fund tuỳ caller.
 
 import {
-  Data, credentialToAddress, scriptHashToCredential, validatorToScriptHash,
+  Data, credentialToAddress, getAddressDetails, scriptHashToCredential, validatorToScriptHash,
+  type Credential as LucidCredential,
   type LucidEvolution, type UTxO, type Validator, type TxSignBuilder, type Assets,
 } from "@lucid-evolution/lucid";
 import type { Network } from "@lucid-evolution/lucid";
@@ -55,6 +56,64 @@ export function assetsToMap(a: Assets): AssetMap {
  * = (⌊validFromMs/msPerEpoch⌋ + 1) × msPerEpoch − 1. Bảo đảm ⌊validTo/ms⌋ == ⌊validFrom/ms⌋
  * (mirror get_epoch_bounded) đồng thời cho cửa sổ hợp lệ tối đa trong epoch.
  */
+// ── Địa chỉ kho: MANG THEO, không dựng lại ───────────────────────────────────
+//
+// `custody.ak` ép `cust_out.address == cust_in.address` KỂ CẢ stake credential ở cả ba
+// nhánh tiêu kho — `Treasury/onchain/validators/custody.ak` ▸ C-COL-ADDR (dòng 143-144),
+// C-REL-ADDR (188-189), C-MIG-ADDR (290-292). Dựng lại địa chỉ từ script hash thì luôn
+// ra ENTERPRISE (stake part `None`), nên nó chỉ TRÙNG input trong đúng một ca: kho được
+// gieo dưới dạng enterprise. Kho có stake credential ⟹ output lệch input ⟹ validator từ
+// chối, và off-chain không có gì kêu lên trước khi submit.
+//
+// Hôm nay hai bên trùng nhau NGẪU NHIÊN (seed gieo enterprise), nên không phép kiểm nào
+// đỏ. Đó chính là lý do phải vá trước chứ không đợi triệu chứng: triệu chứng chỉ xuất
+// hiện đúng vào lượt gieo kho có uỷ quyền stake, tức lượt không lùi được.
+//
+// `Reserve/offchain/src/drawBuilder.ts` (nhánh MigrateIn) đã lấy địa chỉ từ
+// `custodyUtxo.address` theo đúng lý lẽ này; hai tệp anh em ở đây thì chưa.
+
+/**
+ * Địa chỉ output kho cho một lượt tiêu kho = ĐÚNG địa chỉ của input kho.
+ *
+ * Vẫn kiểm payment credential của input có phải Script hash của `custodyScript` không —
+ * mang theo một địa chỉ sai còn tệ hơn dựng lại một địa chỉ đúng-hình-dạng.
+ */
+export function custodyOutputAddress(custodyInAddress: string, custodyScript: Validator): string {
+  const cred = getAddressDetails(custodyInAddress).paymentCredential;
+  if (!cred || cred.type !== "Script") {
+    throw new Error(
+      "CUSTODY-ADDR-001: custody UTxO không nằm ở địa chỉ Script — C-COL-2/C-REL-2 đòi kho ở script, không ở ví.",
+    );
+  }
+  const want = validatorToScriptHash(custodyScript);
+  if (cred.hash.toLowerCase() !== want.toLowerCase()) {
+    throw new Error(
+      `CUSTODY-ADDR-002: payment credential của custody UTxO (${cred.hash}) khác script hash của custodyScript (${want}) — sai validator hoặc sai UTxO.`,
+    );
+  }
+  return custodyInAddress;
+}
+
+/**
+ * Địa chỉ kho lúc GIEO — chỗ DUY NHẤT quyết định kho là enterprise hay base.
+ *
+ * Sau lượt gieo, `custody.ak` ghim địa chỉ qua mọi lượt tiêu, nên stake credential chọn ở
+ * đây sống cùng kho. Không có mặc định ngầm nào là an toàn cho cả hai chiều, nên tham số
+ * để TRỐNG là enterprise (giữ nguyên hành vi cũ) và bên gieo phải nói ra khi muốn base.
+ *
+ * Đây KHÔNG phải apply-param: không script hash nào của LAMP nhận địa chỉ (kiểm bằng
+ * `Genesis|Treasury|Reserve|Distribution/onchain/plutus.json` — mọi tham số là PolicyId /
+ * ByteArray hash / Int / OutputReference). Đổi hình dạng địa chỉ kho KHÔNG đổi hash nào.
+ */
+export function custodySeedAddress(
+  network: Network, custodyScript: Validator, stakeCredential?: LucidCredential,
+): string {
+  const payment = scriptHashToCredential(validatorToScriptHash(custodyScript));
+  return stakeCredential === undefined
+    ? credentialToAddress(network, payment)
+    : credentialToAddress(network, payment, stakeCredential);
+}
+
 export function sameEpochValidToMs(validFromMs: bigint, msPerEpoch: bigint): bigint {
   if (msPerEpoch <= 0n) throw new Error("EPOCH-000: msPerEpoch phải > 0");
   const epoch = validFromMs / msPerEpoch;
@@ -179,9 +238,8 @@ export async function buildCollectTx(params: CollectParams): Promise<CollectResu
   const newEpoch = validFromMs / msPerEpoch;
   const { newDatum, custodyAfter, cut } = planCollect(datum, valueIn, items, newEpoch, seedPolicy);
 
-  const custodyAddress = credentialToAddress(
-    network, scriptHashToCredential(validatorToScriptHash(custodyScript)),
-  );
+  // C-COL-ADDR: địa chỉ kho MANG THEO từ input (kể cả stake credential), không dựng lại.
+  const custodyAddress = custodyOutputAddress(custodyUtxo.address, custodyScript);
 
   const custodyOutAssets = mapToAssets(custodyAfter);
   const redeemer = collectRedeemerToCbor(items);

@@ -34,7 +34,9 @@ import {
   decodeCustodyDatum, custodyDatumToCbor, custodyRedeemerToCbor,
 } from "./datum.js";
 import type { OutputReference } from "./types.js";
-import { assetsToMap, mapToAssets, sameEpochValidToMs } from "./collectBuilder.js";
+import {
+  assetsToMap, custodyOutputAddress, mapToAssets, sameEpochValidToMs,
+} from "./collectBuilder.js";
 import { type AssetMap, assetKey } from "./collect.js";
 import {
   type RecipientOutput, applyDraws, drawsWithinBalance, ledgerOk, planLedgerOut,
@@ -272,9 +274,9 @@ export async function buildReleaseTx(params: ReleaseParams): Promise<ReleaseResu
     guards,
   );
 
-  const custodyAddress = credentialToAddress(
-    network, scriptHashToCredential(custodyHash),
-  );
+  // C-REL-ADDR: địa chỉ kho MANG THEO từ input (kể cả stake credential), không dựng lại.
+  // Lý lẽ đầy đủ ở `custodyOutputAddress` trong `collectBuilder.ts`.
+  const custodyAddress = custodyOutputAddress(custodyUtxo.address, custodyScript);
 
   const redeemer = custodyRedeemerToCbor({ kind: "Release", proposal_ref: proposalRef, draws });
 
