@@ -266,6 +266,21 @@ export interface LookalikePolicyRecord {
   assetName: string;
   /** Vì sao nó KHÔNG phải LAMP, và điều gì đã xảy ra với nó. */
   whatItActuallyIs: string;
+  /**
+   * Ảnh chụp cung, KHÔNG phải thuộc tính của bản ghi.
+   *
+   * Số lượng của một token đang sống là thứ ĐỌC TỪ CHUỖI. Đóng băng nó thành một hằng ở đây là
+   * tạo một bản sao chết im lặng: nó đổi ở nơi khác và không gì báo cho tệp này. Nên trường này
+   * bắt buộc mang mốc đo — `measuredAt` là phần làm nó tự khai được là ảnh chụp.
+   */
+  supplySnapshot: {
+    /** Số oildrop đo được tại `measuredAt`. Chuỗi, vì nó vượt `Number.MAX_SAFE_INTEGER`. */
+    quantityOildrop: string;
+    mintOrBurnCount: number;
+    measuredAt: string;
+    /** Lệnh đo lại — để người đọc không phải đi tìm. */
+    howToRemeasure: string;
+  };
   evidence: string[];
 }
 
@@ -276,13 +291,30 @@ export const NON_LAMP_LOOKALIKE_POLICIES: readonly LookalikePolicyRecord[] = [
     assetName: "744c414d50",
     whatItActuallyIs:
       "Token diễn tập đời đầu, đúc bằng một chính sách chữ-ký-đơn của ví triển khai — KHÔNG đi " +
-      "qua `lamp_mint`, nên KHÔNG có SupplyState, KHÔNG có cổng WHO, và KHÔNG có trần nào. " +
-      "Hệ quả đã xảy ra thật chứ không phải rủi ro lý thuyết: cung đang là 72.000.000.000.000.000 " +
-      "oildrop = 72 tỷ LAMP, tức GẤP ĐÔI trần 36 tỷ. LAMP không burn ⇒ con số đó vĩnh viễn. " +
-      "Lượt đưa về trần từng được phát lệnh nhưng chết ở cổng kiểm biến môi trường trước khi chạm " +
-      "chuỗi — và một lượt chết ở đó không để lại dấu vết nào, nên nó đọc y hệt một lượt đã xong.",
+      "qua `lamp_mint`, nên KHÔNG có SupplyState, KHÔNG có cổng WHO, và KHÔNG có trần nào. Hệ quả " +
+      "đã xảy ra thật chứ không phải rủi ro lý thuyết: có lúc cung lên tới 72.000.000.000.000.000 " +
+      "oildrop = 72 tỷ LAMP, GẤP ĐÔI trần 36 tỷ. Đã được đưa về đúng trần bằng một lượt đúc ÂM " +
+      "(chính sách chữ-ký-đơn không chặn mint âm, giữ khoá là đốt được). " +
+      "⚠ Việc đó KHÔNG mâu thuẫn luật no-burn của LAMP, và cũng không phải ngoại lệ của luật ấy: " +
+      "luật no-burn áp cho token do `lamp_mint` sinh ra, còn token này chưa bao giờ đi qua đó. " +
+      "Suy từ 'LAMP không burn' ra 'token này không đốt được' là nối hai mệnh đề KHÁC LOẠI — một " +
+      "luật sản phẩm và một phát biểu về chuỗi — bằng một dấu suy ra không có thật. " +
+      "Cái VĨNH VIỄN là DẤU VẾT, không phải số dư: `mint_or_burn_count` chỉ tăng, nên lần đúc " +
+      "thừa ở lại mãi trong lịch sử tài sản kể cả khi số dư đã về đúng trần.",
+    supplySnapshot: {
+      quantityOildrop: "36000000000000000",
+      mintOrBurnCount: 3,
+      measuredAt: "2026-09-11",
+      howToRemeasure:
+        "Hỏi tx trước, bảng tổng hợp sau. Bảng tổng hợp tài sản (Blockfrost `/assets/<unit>`, " +
+        "koios `asset_info`) NHẤT QUÁN DẦN: nó còn trả số cũ một lúc sau khi giao dịch đã vào " +
+        "khối. Đo bằng một lần hỏi bảng ngay sau lượt đốt thì một lượt ĐÃ THÀNH CÔNG đọc y hệt " +
+        "một lượt hỏng — và đó là ngay sau thao tác bất khả hồi, đúng lúc người vận hành cần câu " +
+        "trả lời đúng nhất. Đường không trễ: `/txs/<hash>` của chính giao dịch đúc/đốt.",
+    },
     evidence: [
-      "Blockfrost preprod /assets/28e916b0…744c414d50 (2026-09-11): quantity 72000000000000000, mint_or_burn_count 2",
+      "Blockfrost preprod /txs/b08692d0044bdbc64439cad9cf31e384a50649040a9c627f1513a4e704810600 — block 5164905, asset_mint_or_burn_count 1 (lượt đốt −36×10¹⁵)",
+      "Blockfrost preprod /assets/28e916b0…744c414d50 (2026-09-11, SAU lượt đốt): quantity 36000000000000000, mint_or_burn_count 3",
       "Distribution/scripts/live-deploy-preview.md:19 (khai 'Native sig (ví deploy)')",
       "Faucet/deployed-artifacts.md:103 (đã đánh dấu bỏ)",
     ],

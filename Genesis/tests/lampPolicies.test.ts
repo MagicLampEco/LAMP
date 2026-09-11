@@ -9,6 +9,7 @@
 import { describe, it, expect } from "vitest";
 import {
   LAMP_POLICY_REGISTRY,
+  NON_LAMP_LOOKALIKE_POLICIES,
   LAMP_POLICY_ERRORS,
   LampPolicySourceError,
   activeLampPolicyId,
@@ -226,12 +227,34 @@ describe("token giả dạng mang tên LAMP/tLAMP", () => {
     expect(r!.assetName).toBe("744c414d50");
   });
 
-  it("bản ghi nêu THẲNG con số vượt trần, không chỉ nói 'không phải LAMP'", () => {
+  it("bản ghi nêu THẲNG con số, không chỉ nói 'không phải LAMP'", () => {
     const r = lookalikePolicy(UNCAPPED_DEMO)!;
-    // Người đọc phải thấy con số. "Token này không phải LAMP" không nói được
-    // rằng đang có 72 tỷ đơn vị mang đúng cái tên ấy trên chuỗi.
+    // "Token này không phải LAMP" đúng mà vô dụng: nó không nói được đang có
+    // bao nhiêu đơn vị mang đúng cái tên ấy trên chuỗi.
     expect(r.whatItActuallyIs).toContain("72");
-    expect(r.evidence.some((e) => e.includes("72000000000000000"))).toBe(true);
+    expect(r.supplySnapshot.quantityOildrop).toBe("36000000000000000");
+  });
+
+  it("ảnh chụp cung PHẢI mang mốc đo — không có mốc thì nó không tự khai được là ảnh chụp", () => {
+    // Số lượng của một token đang sống là thứ đọc từ chuỗi. Đóng băng nó thành
+    // một hằng trơ là tạo một bản sao sẽ chết im lặng: nó đổi ở nơi khác và
+    // không gì báo cho tệp này. Đã xảy ra thật — bản ghi đầu tiên ghi 72 tỷ như
+    // một dữ kiện vĩnh viễn, và sai trong cùng ngày.
+    for (const r of NON_LAMP_LOOKALIKE_POLICIES) {
+      expect(r.supplySnapshot.measuredAt).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+      expect(r.supplySnapshot.howToRemeasure.length).toBeGreaterThan(40);
+    }
+  });
+
+  it("bản ghi KHÔNG được suy 'không đốt được' từ luật no-burn của LAMP", () => {
+    const r = lookalikePolicy(UNCAPPED_DEMO)!;
+    // Hai mệnh đề KHÁC LOẠI: "LAMP không burn" là luật sản phẩm, áp cho token do
+    // `lamp_mint` sinh ra; "token này không đốt được" là phát biểu về chuỗi, và
+    // nó SAI — chính sách chữ-ký-đơn không chặn mint âm. Bản ghi phải nói rõ cái
+    // vĩnh viễn là DẤU VẾT (`mint_or_burn_count` chỉ tăng), không phải số dư.
+    expect(r.whatItActuallyIs).toContain("KHÁC LOẠI");
+    expect(r.whatItActuallyIs).toContain("DẤU VẾT");
+    expect(r.supplySnapshot.mintOrBurnCount).toBeGreaterThan(2);
   });
 
   it("chữ hoa và khoảng trắng vẫn tra ra — policy id hay bị chép kèm rác", () => {
