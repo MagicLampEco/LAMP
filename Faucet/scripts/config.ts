@@ -110,6 +110,20 @@ export function scriptHash(script: Validator): string {
 
 export const DEPLOYED_PATH = resolve(__dirname, "deployed-faucet.json");
 
+/**
+ * Con trỏ về NGUỒN DUY NHẤT của policy id tLAMP, đóng dấu vào mọi lượt ghi state.
+ *
+ * VÌ SAO SINH CHỨ KHÔNG CHÉP TAY: `saveDeployed` ghi đè TRỌN tệp. Một dòng cảnh báo gõ tay vào
+ * `deployed-faucet.json` sẽ biến mất ở lần `01_mint_pool.ts` kế tiếp — im lặng, không lỗi, và
+ * người đọc sau lại thấy một tệp trông sạch sẽ khai mình là nguồn. Đóng dấu ở tầng ghi thì bản
+ * sao không tự chết được.
+ */
+export const TLAMP_POLICY_ID_SOURCE =
+  "Genesis/offchain/src/lampPolicies.ts — NGUỒN DUY NHẤT cho policy id + TRẠNG THÁI " +
+  "(ACTIVE / SUPERSEDED / PENDING-MINT). Đọc bằng activeLampPolicyId(network); hàm đó NÉM khi " +
+  "mạng chưa có bản ACTIVE, thay vì trả một giá trị trông hợp lệ. Giá trị trong tệp này là ẢNH " +
+  "CHỤP của một lượt deploy, KHÔNG phải nguồn — đừng chép nó sang repo khác.";
+
 export interface FaucetDeployed {
   network: Network;
   tlamp: {
@@ -121,6 +135,8 @@ export interface FaucetDeployed {
   faucet: { hash: string; address: string };
   poolUtxo?: { txHash: string; outputIndex: number };
   claimAmountOildrop: string;
+  /** Đóng dấu tự động bởi `saveDeployed` — đừng đặt tay, đừng xoá. */
+  _policyIdSource?: string;
 }
 
 export async function loadDeployed(): Promise<FaucetDeployed> {
@@ -132,7 +148,10 @@ export async function loadDeployed(): Promise<FaucetDeployed> {
 }
 
 export async function saveDeployed(state: FaucetDeployed): Promise<void> {
-  await writeFile(DEPLOYED_PATH, JSON.stringify(state, null, 2) + "\n", "utf8");
+  // Đóng dấu con trỏ nguồn ở tầng GHI, không ở tầng gọi: chỗ gọi quên một lần là bản sao mất
+  // đường về nguồn, và không gì kêu lên.
+  const stamped: FaucetDeployed = { ...state, _policyIdSource: TLAMP_POLICY_ID_SOURCE };
+  await writeFile(DEPLOYED_PATH, JSON.stringify(stamped, null, 2) + "\n", "utf8");
 }
 
 export function explorerTx(hash: string): string {

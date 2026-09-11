@@ -1,8 +1,10 @@
 # Faucet tLAMP — self-serve, DID-gated, rate-limited, tự thu hồi
 
 Faucet cấp tLAMP test cho dev/Agent xây trên Cardano. **Self-serve permissionless**
-(ai cũng claim qua SDK, kể cả bot), nhưng **chống sybil bằng DID NFT** + **rate-limit
-per-DID** + **tự thu hồi token idle** để bảo toàn pool hữu hạn.
+(ai cũng claim qua SDK, kể cả bot). **Rate-limit per-DID** + **tự thu hồi token idle** để bảo
+toàn pool hữu hạn — rate-limit chỉ chặn spam TỪ MỘT DID; chặn một người đúc nhiều DID để né
+cooldown phụ thuộc điểm treo `Governance/VotingPower/CONTRACT.md §3 [IDENT-ONE-PERSON]` (chưa
+đóng hôm nay, xem thêm §"Điểm cần orchestrator chốt" #1 dưới đây).
 
 ## Hằng số (1 tLAMP = 10^6 oildrop)
 

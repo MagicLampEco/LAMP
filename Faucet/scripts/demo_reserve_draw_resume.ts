@@ -103,6 +103,12 @@ const custodyNftUnit = toUnit(custodySeedPid, INSTANCE_ID);
 // đúc dưới policy-id sai thì không thu hồi được. Năm khe demo này chưa có dữ kiện: #4 dist_cap,
 // #5 reserve_cap, #6-7 registry_nft_policy/name (WHO-gate v2), #8 token_tag, #9-10 kho
 // Distribution. Lý do đầy đủ ở khối cùng tên trong `demo_reserve_e2e.ts`.
+//
+// ⛔ VÀ KHÔNG CHỈ `lamp_mint` — hai chữ ký nữa đã đổi sau bản demo này (11/09): `reserve_auth`
+// 2 → 3 khe (thêm #3 `floor_oildrop`) và `reserve_draw` 11 → 12 khe (thêm #12 `reserve_cap`).
+// Hai chỗ gọi bên dưới còn dựng mảng BẰNG TAY, tức đi vòng qua `reserveAuthParamList` /
+// `reserveGateParamList` (FLOOR-PAIR-001) và `reserveDrawParamList` (APPLY-003 +
+// RESERVE-CAP-002). Nối lại phải đi qua các hàm đó, không phải thêm một phần tử vào mảng tay.
 const tlampPolicy: MintingPolicy = { type: "PlutusV3", script: apG("lamp_mint.lamp_mint.mint", [threadPid, SUPPLY_NAME, TOKEN_NAME, [pkh], 1n, reserveThreadPid, RESERVE_THREAD_NAME]) };
 const tlampPid = mintingPolicyToId(tlampPolicy);
 const lampUnit = toUnit(tlampPid, TOKEN_NAME);

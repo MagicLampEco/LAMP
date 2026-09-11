@@ -163,6 +163,16 @@ const custodyNftUnit = toUnit(custodySeedPid, INSTANCE_ID);
 //   #9-10 kho_nft_policy/name — kho DISTRIBUTION (`Distribution/.../treasury.ak`), KHÁC kho
 //        Treasury custody ở #13-14. Demo này không dựng kho Distribution.
 // ⇒ Sửa đúng nghĩa là mở rộng màn diễn sang v2/registry-gate, không phải thêm bảy phần tử.
+//
+// ⛔ VÀ KHÔNG CHỈ `lamp_mint` — hai chữ ký nữa đã đổi sau bản demo này (11/09):
+//   · `reserve_auth` 2 → 3 khe (thêm #3 `floor_oildrop`; luật A-FLOOR-1 bác sàn chết).
+//   · `reserve_draw` 11 → 12 khe (thêm #12 `reserve_cap`; Luật 1b ép `total_oildrop == reserve_cap`).
+// Cả hai chỗ gọi bên dưới vẫn dựng mảng BẰNG TAY, nên ngoài việc sai số khe chúng còn đi vòng
+// qua hai cổng dựng danh sách tham số duy nhất có thật:
+//   `reserveAuthParamList`/`reserveGateParamList` (FLOOR-PAIR-001 — ép sàn ở `reserve_auth` #3
+//   khớp sàn ở `reserve_gate` #5) và `reserveDrawParamList` (APPLY-003 + RESERVE-CAP-002).
+// Nối lại phải đi qua các hàm đó, KHÔNG phải thêm một phần tử vào mảng tay — mảng tay là chính
+// thứ làm hai bản sao thứ tự khe trôi khỏi nhau mà không gì báo.
 const tlampPolicy: MintingPolicy = { type: "PlutusV3", script: apG("lamp_mint.lamp_mint.mint", [threadPid, SUPPLY_NAME, TOKEN_NAME, [pkh], 1n, reserveThreadPid, RESERVE_THREAD_NAME]) };
 const tlampPid = mintingPolicyToId(tlampPolicy);
 const lampUnit = toUnit(tlampPid, TOKEN_NAME);

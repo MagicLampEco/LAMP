@@ -226,6 +226,12 @@ hạn) ([CONTRACT §6](./CONTRACT.md)).
 test). Các module test khác (Distribution/Treasury/Governance) khi cần LAMP test nên trỏ tới
 `deployed-faucet.json.tlamp.policyId` thay vì tự mint. Token sig policy cũ **deprecated**.
 
+> ⚠️ **Đường trỏ đã đổi (2026-09-11).** Nguồn duy nhất cho policy id + trạng thái:
+> `Genesis/offchain/src/lampPolicies.ts`, đọc bằng `activeLampPolicyId(network)`.
+> `deployed-faucet.json` chỉ là ảnh chụp; giá trị trong đó (`7a1a7aed…`) mang trạng thái
+> **SUPERSEDED** vì marker neo bằng native-sig ví deploy (một khoá đúc thêm được).
+> Chi tiết: [`CONTRACT §6`](./CONTRACT.md).
+
 ---
 
 ## 6. Tóm tắt trạng thái — bảng chuyển
