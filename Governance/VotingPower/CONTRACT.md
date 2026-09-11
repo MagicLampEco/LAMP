@@ -56,12 +56,15 @@ VP_i = ∏_k  min( C_{k,i}, cap_k )^( w_k )
 
 3. **Token đơn thuần vô hiệu hóa.** Cap C4 = 100 triệu LAMP: ai giữ 12 tỷ chỉ được tính như
    **một cử tri 100 triệu**; muốn dùng hết phải chia cho ~120 cử tri — mà mỗi cử tri phải là
-   người thật (DID sinh trắc) có lịch sử tiêu MAGIC (C1) + uy tín (C3). Cộng với công thức nhân.
+   người thật có lịch sử tiêu MAGIC (C1) + uy tín (C3). Cộng với công thức nhân. ("Người thật" ở
+   đây là giả định thiết kế, chưa phải hiện trạng — xem điểm treo `[IDENT-ONE-PERSON]` ở §3.)
 
 4. **Sybil — HAI TRỤC phòng thủ khác bản chất, KHÔNG được gộp:**
-   - *Trục chi phí-mỗi-DID (**cộng dồn theo `N`**):* DID sinh trắc PhoenixKey (1 người = 1 DID,
-     không nhân bản) + lịch sử C1 + uy tín C3. Đây là thứ **tăng lên** khi kẻ tấn công thêm một
-     danh tính. Xem mức tuyên bố thật của C1/C3 ở nguyên lý 2.
+   - *Trục chi phí-mỗi-DID (**cộng dồn theo `N`**):* **giả định thiết kế, chưa phải hiện trạng** —
+     cần "1 DID = 1 người, không nhân bản" (backend PhoenixKey) cộng lịch sử C1 + uy tín C3. Trục
+     này **chưa có hiệu lực hôm nay**: điểm treo `[IDENT-ONE-PERSON]` ở §3 chưa đóng, nên thêm một
+     DID không tốn gì hơn phí + min-ADA. Khi giả định đóng, trục này là thứ **tăng lên** khi kẻ tấn
+     công thêm một danh tính. Xem mức tuyên bố thật của C1/C3 ở nguyên lý 2.
    - *Trục đòn bẩy-trong-công-thức (**KHÔNG phụ thuộc `N`**):* **D8** (§5) ép `w_1 ≥ w_2`, `w_3 ≥ w_4`,
      `w_k > 0`. Đã ép trên chuỗi ở `validators/tally.ak` (không còn là bất biến giấy — xem §5).
    D8 **không** làm tăng chi phí biên của một DID Sybil thêm vào, nên nó **không thay thế được**
@@ -80,9 +83,16 @@ VP_i = ∏_k  min( C_{k,i}, cap_k )^( w_k )
 
 ## 3. Phụ thuộc liên hệ thống
 
-- **PhoenixKey DID sinh trắc** + zk-proof "1 DID = 1 người thật" mà KHÔNG lộ dữ liệu sinh trắc.
-  Thuộc **backend PhoenixKey** — NGOÀI phạm vi repo LAMP (Claude không sửa, chỉ tiêu thụ proof).
-  Đây là **blocker tiên quyết**: Governance không chạy thật trước khi có DID proof on-chain.
+- **[IDENT-ONE-PERSON] "1 DID = 1 người thật" — ĐIỂM TREO, chưa có mệnh đề chứng thực trên chuỗi
+  (đo 2026-09-11).** Không có ràng buộc on-chain nào giới hạn số DID mỗi người; cùng một khoá điều
+  khiển đúc được DID thứ N chỉ với phí + min-ADA. **Ràng buộc TẠM THỜI đang có hiệu lực
+  (fail-closed):** cổng NĂNG LỰC (voting power C1–C4, và mọi suất trong phân phối có trần dẫn từ
+  VP) **từ chối cấp năng lực cho DID chưa có mệnh đề chứng thực cá nhân** — không có nhánh mặc
+  định cấp năng lực khi thiếu chứng thực. Cổng TẠO DID không phải chỗ cưỡng chế tính duy nhất;
+  chỗ cưỡng chế đúng là cổng NĂNG LỰC ở trên. Backend chứng thực (PhoenixKey, sinh trắc + zk-proof,
+  KHÔNG lộ dữ liệu sinh trắc) thuộc **NGOÀI phạm vi repo LAMP** (Claude không sửa, chỉ tiêu thụ
+  proof). **Blocker tiên quyết**: Governance không chạy thật, và mô hình chi phí sybil ở MATH §10
+  không đứng vững, trước khi có mệnh đề chứng thực on-chain.
 - **C1 (MAGIC tiêu thụ)** đọc từ repo MAGIC; **C2 (ScheduleGen)** từ MAGIC; **C4 (LAMP UTxO)**
   từ repo LAMP. Cross-repo qua reference input.
 

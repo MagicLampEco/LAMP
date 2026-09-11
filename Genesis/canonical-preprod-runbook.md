@@ -147,6 +147,17 @@ bộ policy-id được **dựng lại và so** với state — lệch một ch�
 
 `genesis_ref` = `525b80f4…e301#1` · `lamp_policy` = `d9c09230079b810ab5ed92e8db4c190d42efc42db6aac028656f7e07`
 
+> ⚠️ **Con số trên KHÔNG phải nguồn.** Nguồn duy nhất: `Genesis/offchain/src/lampPolicies.ts`
+> (bản ghi `preprod-oneshot-12param`).
+> Trạng thái bản này: **SUPERSEDED** — bị thay bởi `preprod-oneshot-14param`, chưa đúc.
+> Lý do: policy id này sinh từ `lamp_mint` **12 tham số**, mã hôm nay là **14**
+> (`Genesis/onchain/validators/lamp_mint.ak` — xem chữ ký `validator lamp_mint(`), nên dựng lại
+> từ mã hiện tại ra policy id **KHÁC**. Tham số nằm TRONG policy id; không có đường build lại
+> cho khớp. Đo lại:
+> `cd Genesis/offchain && npx vitest run ../tests/lampPolicies.test.ts` — bài
+> `"mạng chưa có bản ACTIVE nào"` khẳng định `activeLampPolicyId("preprod")` NÉM, không rơi
+> ngược về giá trị cũ.
+
 | bước | giao dịch | kết quả |
 |---|---|---|
 | 0 `v2:dry` | — | 5 marker ra 5 policy-id khác nhau, cổng APPLY-001/002 im |
@@ -318,5 +329,34 @@ policy cùng ba luật nên không phải lỗ hổng — nhưng người soi đ
 
 **Việc phải làm trước khi nói Lớp 2 xanh lại:** chạy lại `v2:l2` → `v2:l2draw` → `v2:l2brake` →
 `v2:verify` trên Preprod với wiring mới, rồi thay bảng bốn tx hash ở mục "Lớp 2".
+
+## 🔴 2026-09-11 — THỨ TỰ BƯỚC ĐÃ ĐẢO: hạt giống custody phải chọn TRƯỚC Lớp 1
+
+`lamp_mint` nay nhận **14** tham số (`Genesis/onchain/plutus.json`, `lamp_mint.lamp_mint.mint`).
+Hai khe cuối là `reserve_kho_nft_policy` / `reserve_kho_nft_name` = **`(custody_seed policy id,
+instance_id)`** của instance custody đích — kho của đường `ReserveDraw`, khác hẳn cặp #9-10 vốn
+trỏ kho của đường `DistributionVest`.
+
+Đó là **tham số apply-time**, nên nó nướng vào policy-id của `lamp_mint`. Hệ quả không tránh
+được: policy-id của LAMP **phụ thuộc** hạt giống custody. Mà luật `S-MINT-2` của `custody_seed.ak`
+cấm gộp giao dịch đúc, nên hạt giống custody không dùng chung với hạt giống genesis được.
+
+⇒ **Thứ tự cũ sai.** Bản trước chọn hạt giống custody ở Lớp 2 (`24_reserve_layer2_init.ts`),
+**sau** khi Lớp 1 đã lên chuỗi. Chạy theo thứ tự đó bây giờ thì Lớp 1 không có giá trị cho khe
+#13-14. Thứ tự đúng:
+
+1. Chọn hạt giống custody (UTxO riêng, KHÔNG trùng hạt giống genesis).
+2. `deriveCustody(...).custodySeedPid` → đặt `RESERVE_KHO_NFT_POLICY`.
+3. Chạy genesis Lớp 1. Chưa đặt biến ở bước 2 thì `20_canonical_genesis.ts` dừng với
+   `RESERVE-KHO-001` (fail-closed, không mặc định cho policy).
+
+**Cổng `APPLY-003`** (`Genesis/offchain/src/reserveKhoPair.ts`) ép `reserve_draw` #6-7 trùng
+`lamp_mint` #13-14 trước khi apply-param, và ném ở **cả ba** trạng thái: lệch · không đọc được
+(thiếu/rỗng/sai hình dạng hex) · hai vế cùng rỗng. "Bằng nhau" không phải "đã điền".
+Lý do phải có cổng: `assertParamCount` đếm **số** khe, nó im lặng với ca **đủ số nhưng nhầm cặp** —
+và nhầm cặp không ra script hỏng, nó ra một policy-id khác, im lặng.
+
+`rehydrate()` gặp state cũ (thiếu hai trường) nay ném `APPLY-003` thay vì bù chuỗi rỗng. Đúng:
+state đó thuộc về một policy 12 tham số, không phải policy hiện tại.
 
 — LAMP agent

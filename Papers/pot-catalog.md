@@ -96,7 +96,7 @@
 
 | # | Pot | Nghìn LAMP | % | Mục đích | Cách ra | Gen MAGIC? |
 |---|---|---:|---:|---|---|---|
-| 1 | **Reserve** | 9.630.000 | 26,75% | Đệm cung cuối, điều tiết khi Treasury cạn | Engine demand-gated: tối đa **9.630.000 LAMP/epoch** (E/1000), **không giới hạn số epoch** | ❌ chưa-mint |
+| 1 | **Reserve** | 9.630.000 | 26,75% | Đệm cung cuối, điều tiết khi Treasury cạn | Engine demand-gated: tối đa **9.630 nghìn LAMP/epoch** (= 9,63 triệu LAMP = E/1000) ⇒ nhanh nhất cũng mất **1000 epoch** mới cạn | ❌ chưa-mint |
 | 2 | **Treasury** | 964.000 | 2,68% | Sổ điều tiết C↔T (giảm lưu hành = parked, không đốt) | Kế toán 2 chiều | ❌ parked |
 | 3 | **Development** | 2.718.000 | 7,55% | Quỹ duy trì & vận hành giao thức: R&D công nghệ lõi + mua app truyền thống tích hợp; DAO quyết, ai cũng đề xuất | Nhỏ-giọt | 👤 khi claim về DID |
 | 4 | **Platform** | 3.141.000 | 8,73% | Thưởng nền tảng dùng LAMP | Nhỏ-giọt | 🏛️ gen, chia DID theo MAGIC tiêu thụ |
@@ -104,7 +104,7 @@
 | 6 | **Wakeme** | 1.001.000 | 2,78% | **Cho mượn để TIÊU dịch vụ, KHÔNG tặng, KHÔNG để mua-bán**: mỗi PersonDID ≤1001 LAMP, khoá 1001 đêm, ngày không dùng → thu 1 LAMP về pot; qua 1001 đêm nhả 1 LAMP/đêm thành sở-hữu | Module PhoenixKey **Wakeme** (tên cũ Activation): vault-vesting 1 LAMP/đêm + anti-idle | 👤 vault khoá theo PersonDID |
 | 7 | **Referrer** | 343.000 | 0,95% | Thưởng giới thiệu | Nhỏ-giọt | 🏛️ uỷ thác Platform **AffiSo** DID |
 | 8 | **PhoenixKey (Phoenix Treasury)** | 142.857 | 0,40% | Quỹ **Phoenix Treasury** — nguồn tài sản cho **Feecover** (trả phí hộ user). Cấp nguồn cho **Feecover** qua **1 đợt SRCL 7 epoch**: phần thưởng staking do người tham gia định tuyến về pot được dùng trả phí mạng, đóng góp đó được **ghi nhận** bằng 7 triệu LAMP (1 triệu/epoch). Quản lý số dư ADA của Feecover là nghiệp vụ vận hành nội bộ, không phải dịch vụ giao dịch cho bên thứ ba | Nhỏ-giọt + đợt SRCL 7 epoch | 🏛️ uỷ thác Platform **PhoenixKey** DID |
-| 9 | **MagicLamp Foundation** | 1.296.000 | 3,60% | Năng lượng vận hành DAO | **Chưa-mint→khoá VĨNH VIỄN** sau khi lập pháp nhân | 🏛️ gen → nuôi DAO (xem §3) |
+| 9 | **MagicLamp Foundation** | 1.296.000 | 3,60% | Năng lượng vận hành DAO | **Đúc** rồi giữ ở Foundation-DID; **sinh MAGIC** nuôi các ban chuyên môn. Không định đoạt ra ngoài hệ trước khi có quy chế pháp nhân | 🏛️ gen → nuôi DAO (xem §3) |
 | 10 | **Aladin Contract** | 6.000.000 | 16,67% | Pháp nhân sáng lập (1/6 cung) | Nhỏ-giọt **ngang cộng đồng** | 🏛️ gen → **OrgDID Aladin** |
 | 11 | **GreenSun Tech** | 6.000.000 | 16,67% | Pháp nhân sáng lập (1/6 cung) | Nhỏ-giọt **ngang cộng đồng** | 🏛️ gen → **OrgDID GreenSun** |
 | 12 | **Partnership** | 284.000 | 0,79% | Đối tác chiến lược | Nhỏ-giọt | 👤 khi partner claim về DID |
@@ -131,9 +131,11 @@
 ## 3. Thuyết minh từng pot (để cộng đồng phân biệt)
 
 **Nhóm điều tiết & dự trữ**
-- **1. Reserve (9.630.000)** — lớp đệm cung **cuối cùng**. Nhả **tối đa 9.630.000 LAMP mỗi epoch** (= 1/1000 quỹ
-  Reserve), và **chỉ nhả khi có cầu thật** (demand-gated: khi lưu hành tụt dưới sàn, Treasury hết khả năng điều tiết).
-  **KHÔNG giới hạn số epoch** — quỹ co-giãn theo nhu cầu thật, KHÔNG phải "nhả hết trong N epoch"; không cầu thì không
+- **1. Reserve (9.630.000 nghìn LAMP = 9,63 tỷ LAMP)** — lớp đệm cung **cuối cùng**. Nhả **tối đa 9,63 triệu
+  LAMP mỗi epoch** (= 1/1000 quỹ Reserve), và **chỉ nhả khi có cầu thật** (demand-gated: khi lượng LAMP đang
+  đỗ trong **kho Treasury** tụt xuống dưới sàn — phép đo là lượng trong kho, không phải tổng lưu hành).
+  **KHÔNG có hạn chót phải nhả hết** — quỹ co-giãn theo nhu cầu thật, KHÔNG phải "nhả hết trong N epoch";
+  không cầu thì không
   nhả. Một chiều (no-burn). Permissionless, không ai rút tay.
 - **2. Treasury (964.000)** — **vốn mồi + sổ điều tiết hai chiều** C↔T. "Giảm lưu hành" = parked vào đây (kế toán),
   KHÔNG đốt. Là nơi bơm lại các pot khác (User, Development…) khi DAO quyết. Quản bởi DAO.

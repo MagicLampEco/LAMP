@@ -1302,9 +1302,10 @@ CONTRACT D9) + **FEAT** (quy trình DAO đổi weight phải kiểm W1 trước 
 ## 13. Phụ thuộc
 
 - **CONTRACT.md** (file này bám sát; không mâu thuẫn §1, §2, §3).
-- **PhoenixKey DID sinh trắc + zk-proof "1 DID = 1 người"** — *blocker tiên quyết*. MATH giả định
-  mỗi `i` ứng đúng một người thật; nếu DID không bảo đảm 1-người-1-DID thì mô hình chi phí §10 sụp
-  (sybil rẻ). Thuộc backend PhoenixKey, ngoài repo LAMP (CONTRACT §3).
+- **[IDENT-ONE-PERSON]** PhoenixKey DID sinh trắc + zk-proof "1 DID = 1 người" — *blocker tiên
+  quyết*, chưa đóng hôm nay (`CONTRACT.md §3`). MATH giả định mỗi `i` ứng đúng một người thật; nếu
+  DID không bảo đảm 1-người-1-DID thì mô hình chi phí §10 sụp (sybil rẻ). Thuộc backend PhoenixKey,
+  ngoài repo LAMP.
 - **TECH** — đo `C1,C2,C4` (cross-repo MAGIC + LAMP qua reference input), chốt `SCALE` + lưới mốc +
   `ε_tab` cho **bảng tra `pow_k` (D7, §11.2)** + chạy property test PT1–PT5 (§11.4), datum/redeemer,
   chống double-vote; **ép W1 (`w_2+w_4≤w_1+w_3`) lúc nạp bảng weight + ép W2 (C2 khóa ≥`N_2` epoch)

@@ -472,7 +472,7 @@ Theo CONTRACT §5 và FEAT §5:
 
 | Tính năng | Mô tả | Chờ |
 |---|---|---|
-| **DAO multi-drop per-DID** | DAO tăng `drops_per_epoch` cho DID uy tín/Org (CONTRACT §5.1). Gắn Governance VP + PhoenixKey DID sinh trắc (chống sybil). | Governance VP (`LAMP/Governance/VotingPower/CONTRACT.md`), PhoenixKey DID. |
+| **DAO multi-drop per-DID** | DAO tăng `drops_per_epoch` cho DID uy tín/Org (CONTRACT §5.1). Gắn Governance VP; chống sybil-chia-DID phụ thuộc điểm treo `Governance/VotingPower/CONTRACT.md §3 [IDENT-ONE-PERSON]` (chưa đóng hôm nay). | Governance VP (`LAMP/Governance/VotingPower/CONTRACT.md`), điểm treo IDENT-ONE-PERSON. |
 | **Pause/penalty** | DAO đặt `drops_per_epoch = 0` trong N epoch (CONTRACT §5.2). Phần vested trước đó không mất. | DAO governance on-chain. |
 | **Beacon NFT one-shot Aiken policy** | Thay native sig beacon NFT bằng Aiken minting validator (one-shot UTxO), tăng bảo mật và tách khỏi ví deploy (KL-7). | `beacon_nft` module ship. |
 | **Batch Claim (nhiều account/TX)** | Giảm số TX cần để cấp E cho ISPO lớn (KL-1). Cần thay đổi `count_inputs/outputs` guard. | Spec + audit lại double-satisfaction. |

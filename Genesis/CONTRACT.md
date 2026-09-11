@@ -13,7 +13,7 @@
   đơn điệu tăng. Token chưa mint = chưa tồn tại on-chain (không khoá min-ADA, không bị tấn công).
 - **Phân bổ 2 quota** (cùng một bộ đếm `SupplyState`):
   - **Distribution = 26,37 tỷ LAMP** (đường vesting/cộng đồng/đối tác) — gate WHO bằng registry.
-  - **Reserve = 9,63 tỷ LAMP** (đường DAO nhả-thuật-toán) — permissionless, **gate theo mức Treasury** (trần 2% / sàn 1% lưu hành; §7b).
+  - **Reserve = 9,63 tỷ LAMP** (đường DAO nhả-thuật-toán) — permissionless, **trần cứng `E/1000` mỗi epoch** cộng cổng cầu nhị phân ở Treasury (§7b).
 - **3 câu hỏi nền** mà thiết kế trả lời:
   - **Q1 — không bao giờ mint lại policy** (policy-id bất biến qua mọi lần xoay khoá).
   - **Q2 — ký được kể cả khi seed lộ** mà pot không bị cướp (A-DEST + kho nhả-vesting).
@@ -269,17 +269,23 @@ Permissionless thật, **KHÔNG chữ ký**. Nguồn: nhánh `ReserveDraw ->` tr
 > `reservedraw_delta_vao_kho_dist_bi_tu_choi`,
 > `reservedraw_custody_bi_tieu_nhung_delta_chay_sang_kho_dist`.
 
-**Gate nhịp Reserve = THEO MỨC TREASURY, KHÔNG theo epoch (anh chốt 20/6 — SỬA thiết kế E/1000 cũ).**
+**Gate nhịp Reserve = TRẦN CỨNG `E/1000` MỖI EPOCH, cộng một cổng cầu nhị phân (chốt 2026-09-11).**
 Reserve là **lớp đệm cung CUỐI CÙNG** (U→C một chiều, no-burn). Điều tiết cung-cầu chính thuộc Treasury
 (C↔T hai chiều). Reserve **chỉ nhả khi Treasury KHÔNG còn đủ đệm** — nếu Treasury dồi dào mà vẫn nhả Reserve
-thì mất ý nghĩa. Hai mức trên **tổng lưu hành C** (KHÔNG phải max cap):
-- **Trần = 2% × C**: khi parked Treasury `T ≥ 2%·C` → Reserve **KHÔNG nhả** (Treasury tự lo cầu).
-- **Sàn = 1% × C**: khi `T ≤ 1%·C` → Reserve nhả **tối đa**.
-- **Giữa (1%·C < T < 2%·C)**: nhả theo **một hàm số** nội suy (càng gần sàn càng nhả mạnh).
-- KHÔNG giới hạn số epoch; tốc độ cạn Reserve = do cầu (mức Treasury) quyết, không do lịch.
+thì mất ý nghĩa. Hai vế bổ sung nhau, cưỡng chế ở hai module khác nhau:
+- **Vế nhịp** — `delta ≤ total_oildrop / 1000` mỗi epoch, ép ở `Reserve/onchain/validators/reserve_draw.ak`
+  Luật 4. Trần lạm phát năm ⇒ ≈1,95%.
+- **Vế cầu** — `parked < floor_oildrop` ép ở `Treasury/onchain/validators/reserve_gate.ak`. Sàn là một số
+  **TUYỆT ĐỐI** (oildrop) nướng vào script hash, **không** phải phần trăm lưu hành.
 
-> ⚠️ **Reserve module hiện tại (`reserve_draw.ak`, trần E/1000/epoch) là thiết kế CŨ — cần thiết kế lại**
-> theo gate-mức-Treasury này. Tham số (2%/1%, dạng hàm nội suy) chốt ở spec Reserve riêng.
+> Mục này trước đây mô tả một luật khác — gate theo mức Treasury với trần `2%·C`, sàn `1%·C` và nội suy ở
+> giữa — và chỉ đạo thiết kế lại `reserve_draw.ak`. **Bỏ.** Lý do không phải "đã chọn bên khác": hàm nội suy
+> đó là một **phân số không thứ nguyên**, còn `2%·C`/`1%·C` là ngưỡng đặt lên *lượng đang nằm trong kho*, tức
+> ngưỡng **trạng thái** chứ không phải trần **lưu lượng**. Nhân hai thứ đó không ra được số oildrop mỗi epoch,
+> nên luật ấy chỉ well-formed khi gắn thêm một cơ số — và cơ số duy nhất tồn tại là `E/1000`. Vế thật sự bị
+> bác chỉ là câu "KHÔNG theo epoch". Bản tỷ lệ của sàn giữ lại làm điểm treo `EMIT-FLOOR-IMPL`
+> (`Specs/Emission/CONTRACT.md`); ràng buộc tạm thời đang có hiệu lực là sàn tuyệt đối, fail-closed.
+> Đối chiếu đầy đủ ở `Reserve/CONTRACT.md` (v4), kèm hai lỗ nướng-vào-hash phải bịt trước khi gửi meter NFT.
 
 ---
 

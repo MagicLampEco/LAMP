@@ -54,11 +54,11 @@ redeemable = vested − redeemed         (rút từ treasury con cùng tx, treas
 Keeper/committee dựng cây Merkle `(owner, amount, epoch)` → post root vào beacon → claim permissionless bằng proof.
 Chống double-claim = marker-NFT nullifier (name = leaf) ở script no-spend. Dư sau hạn → Sweep về Treasury.
 
-### 3.3 Reserve — gate theo mức Treasury (§7)
-KHÔNG theo epoch. Nhả khi Treasury parked tụt dưới trần, tối đa ở sàn (2%/1% lưu hành).
+### 3.3 Reserve — trần nhịp theo epoch, CỘNG gate theo mức Treasury (§7)
+Hai vế cùng phải thoả, không phải chọn một. **Trần cứng `E/1000` mỗi epoch** (`Reserve/onchain/lib/magiclamp/reserve/math.ak` ▸ `max_per_epoch`) đặt nhịp: nhanh nhất cũng mất 1000 epoch mới cạn pot. **Cổng cầu ở Treasury** (`Treasury/onchain/validators/reserve_gate.ak` ▸ `G-FLOOR-1`) quyết định epoch nào được nhả: chỉ mở khi lượng LAMP đang đỗ trong kho tụt xuống dưới sàn. Không có dải nội suy.
 
 ### 3.4 Chưa-mint / LP / RedBack
-- **Chưa-mint** (Reserve, Foundation trước lập pháp nhân): token không tồn tại → không di chuyển/đánh cắp.
+- **Chưa-mint** (Reserve): token không tồn tại → không di chuyển/đánh cắp. Reserve chỉ sinh ra theo từng lượt rút, mỗi epoch tối đa một lượt.
 - **Liquidity / RedBack:** dự phòng cho nhu cầu thanh khoản trong hệ sinh thái. Cơ chế, thời điểm và điều kiện pháp lý để kích hoạt **chưa được quyết định**; dự án **không cam kết** về việc có kích hoạt hay không.
 
 ---
@@ -254,21 +254,25 @@ address + 2 cert + đặt `redirect_bp=X` → user ký 1 lần → xong. Reward 
 
 ---
 
-## 7. Reserve — gate theo mức Treasury
+## 7. Reserve — trần nhịp theo epoch CỘNG gate theo mức Treasury
 
 Reserve = **lớp đệm cung CUỐI CÙNG** (U→C, no-burn). Điều tiết cung-cầu chính ở Treasury (C↔T). Reserve chỉ nhả
 khi Treasury không còn đủ đệm — Treasury dồi dào mà vẫn nhả Reserve = mất ý nghĩa.
 
-Hai mức trên **tổng lưu hành C** (KHÔNG phải max cap):
-```
-T = LAMP parked ở Treasury;  C = lưu hành
-T ≥ 2%·C           →  Reserve KHÔNG nhả (Treasury tự lo cầu)
-1%·C < T < 2%·C    →  nhả theo hàm nội suy f(T) (càng gần sàn càng mạnh)
-T ≤ 1%·C           →  nhả TỐI ĐA
-```
-- KHÔNG giới hạn số epoch; tốc độ cạn = do cầu (mức Treasury) quyết.
-- Permissionless: ai dựng tx đúng điều kiện cũng được; dest = Treasury.
-- ⚠️ `Reserve/onchain/reserve_draw.ak` hiện (E/1000/epoch) là thiết kế CŨ — **viết lại** theo gate-mức-Treasury. Tham số (2%/1%, dạng `f`) chốt ở spec Reserve riêng.
+Hai vế **cùng phải thoả**, không phải chọn một. Chúng trả lời hai câu khác nhau:
+
+| vế | trả lời câu | cưỡng chế ở |
+|---|---|---|
+| **Trần nhịp** `Δ ≤ E/1000` mỗi epoch, tối đa **một** lượt rút mỗi epoch | *"một lượt được nhả bao nhiêu, và bao lâu một lượt"* | `Reserve/onchain/lib/magiclamp/reserve/math.ak` ▸ `max_per_epoch`; `reserve_draw.ak` ▸ `Luật 4` |
+| **Cổng cầu**: chỉ mở khi lượng LAMP đang đỗ trong kho Treasury tụt **dưới sàn** | *"epoch nào thì được nhả"* | `Treasury/onchain/validators/reserve_gate.ak` ▸ `G-FLOOR-1` |
+
+Trần nhịp đặt **cận trên tuyệt đối**: nhanh nhất cũng mất **1000 epoch** mới cạn pot, bất kể cầu mạnh đến đâu.
+Cổng cầu chỉ có thể làm nó **chậm hơn**, không bao giờ nhanh hơn.
+
+- Nhị phân, không có dải nội suy: dưới sàn thì mở, từ sàn trở lên thì đóng.
+- Phép đo của cổng là **lượng trong kho**, không phải tổng lưu hành.
+- Permissionless: ai dựng tx đúng điều kiện cũng được; đích = kho Treasury, và Δ phải vào **SỔ** kho chứ không chỉ vào địa chỉ kho.
+- 📌 Sàn hiện là một **hằng số nướng vào script hash**, không phải tỷ lệ tự co giãn theo lưu hành — nên đổi sàn về sau là đổi định danh của validator. Điểm treo: `EMIT-FLOOR-IMPL`.
 
 ---
 

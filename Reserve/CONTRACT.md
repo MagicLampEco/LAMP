@@ -1,18 +1,25 @@
-# LAMP Reserve — Demand-Gated Draw Engine (v3 — luật E/1000, **chưa phải luật cuối**)
+# LAMP Reserve — Demand-Gated Draw Engine (v4 — luật E/1000, ĐÃ CHỐT)
 
-> ## 🔴 ĐỌC TRƯỚC KHI DEPLOY — tệp này và `Genesis/CONTRACT.md` mô tả HAI luật loại trừ nhau
+> ## Luật nhả đã chốt: **trần cứng E/1000 mỗi epoch** (2026-09-11)
 >
-> Tệp này mô tả **trần cứng E/1000 mỗi epoch**. `Genesis/CONTRACT.md §7b` mô tả một luật KHÁC
-> HẲN — gate theo **mức Treasury** (trần `2%·C`, sàn `1%·C`, giữa hai mức thì nội suy, không
-> giới hạn số epoch) — và nói thẳng: *"Reserve module hiện tại (`reserve_draw.ak`, trần
-> E/1000/epoch) là thiết kế **CŨ** — cần thiết kế lại"*.
+> Tệp này từng mang cảnh báo "hai luật loại trừ nhau" giữa E/1000 và `Genesis/CONTRACT.md §7b`
+> (gate theo mức Treasury: trần `2%·C`, sàn `1%·C`, nội suy ở giữa). Cảnh báo đó **hết hiệu
+> lực**, và lý do đáng ghi lại vì nó không phải "đã chọn một bên":
 >
-> Mã hiện có (`math.max_per_epoch` + `math.release_epochs` ở `Reserve/onchain/lib/magiclamp/reserve/math.ak`,
-> gọi tại `Luật 4` của `reserve_draw`) hiện thực luật E/1000 của tệp
-> này, **không** hiện thực §7b: grep `bps|nội suy|interpolat|circulating|lưu hành` trong
-> `Reserve/onchain/` ra rỗng, và `reserve_draw` không nhận `SupplyState` nên **không đọc được
-> `C`**. Sàn ở `reserve_gate` là `floor_oildrop` — một số **TUYỆT ĐỐI** (oildrop) nướng vào script
-> hash, KHÔNG phải phần trăm lưu hành.
+> **§7b không phải một luật cạnh tranh — nó là một luật THIẾU CƠ SỐ.** Hàm nội suy của nó
+> (`rate = (trần−T)/(trần−sàn)`, kẹp `[0,1]`) là một **phân số không thứ nguyên**; `2%·C` và
+> `1%·C` là ngưỡng đặt lên *lượng đang nằm trong kho*, tức ngưỡng **trạng thái**, không phải
+> trần **lưu lượng**. Nhân một phân số với một ngưỡng trạng thái không ra được số oildrop mỗi
+> epoch. Cơ số duy nhất tồn tại trong kho là `E/1000`. Nên vế thật sự bị bác ở §7b chỉ là câu
+> *"KHÔNG theo epoch"* — chính câu đó phủ nhận thứ làm cho phần còn lại của §7b có nghĩa.
+>
+> Hai vế ĐANG chạy, và chúng bổ sung nhau chứ không loại trừ:
+> - **Vế nhịp** — `reserve_draw.ak` Luật 4, `delta ≤ math.max_per_epoch(total_oildrop)`.
+> - **Vế cầu** — `reserve_gate.ak` `expect parked < floor_oildrop`, sàn là số **TUYỆT ĐỐI**
+>   (oildrop) nướng vào script hash, **không** phải phần trăm lưu hành. Bản tỷ lệ chưa hiện
+>   thực; điểm treo khai ở `Specs/Emission/CONTRACT.md` (`EMIT-FLOOR-IMPL`).
+>
+> ### Ràng buộc vận hành còn hiệu lực — fail-closed
 >
 > Vì sao chỗ này đắt: cả **11** tham số của `reserve_draw` là **apply-param** — nướng vào script
 > hash (bảng ở §6). `Luật 7` ép `s_out.address == own_out.address` và redeemer duy nhất là
@@ -20,10 +27,18 @@
 > NFT vào một instance là khoá luật đó cho toàn bộ vòng đời 9,63 tỷ, không có redeemer
 > `Migrate`, không có đường nâng cấp. LAMP không burn ⇒ không có đường dọn sổ làm lại.
 >
-> **Chưa chốt §7b là luật cuối thì chưa được gửi meter NFT vào bất kỳ `reserve_draw` nào.**
-> §7b cũng còn một lỗ ở tầng thiết kế: nó nói `1%`/`2%` của `C` (lưu hành) nhưng **chưa định
-> nghĩa `C` đo bằng gì on-chain** — `C` ≠ `dist_minted + reserve_minted`, vì phần nằm trong
-> Treasury thì đã đúc mà chưa lưu hành.
+> **Chưa bịt hai lỗ dưới đây thì chưa được gửi meter NFT vào bất kỳ `reserve_draw` nào.** Cả
+> hai nướng vào script hash nên chỉ sửa được TRƯỚC khi gửi:
+> 1. **`floor_oildrop` phải > 0.** `parked` lấy bằng `quantity_of` nên luôn ≥ 0 ⟹ `floor = 0`
+>    làm `parked < floor` không bao giờ đúng ⟹ auth NFT không rời gate ⟹ **9,63 tỷ LAMP khoá
+>    chết vĩnh viễn**. Cùng hình dạng với sự cố `meter_nft_policy` 28 byte 0 đã xảy ra thật.
+> 2. **`total_oildrop` phải được ép trên chuỗi lúc SINH.** `reserve_thread.ak` đúc NFT ghim
+>    ReserveState mà không ép hình dạng datum; `reserve_draw.ak` chỉ ép nó **bất biến** sau đó,
+>    tức khoá chặt một giá trị có thể đã sai từ đầu. Ghi `total_oildrop = 10 × reserve_cap` thì
+>    pot cạn trong ~100 epoch thay vì 1000 — **trần tổng vẫn đúng, NHỊP vỡ 10×**. Bảo đảm duy
+>    nhất hôm nay là một guard off-chain (`RESERVE-CAP-001`). Trường anh em `drawn_oildrop` đã
+>    được ép trên chuỗi ở `reserve_draw.ak:128`; hai trường cùng tệp, cùng mối nguy, một được
+>    ép một không.
 
 Mô hình **đệm phát hành demand-gated** (allocation v3, đông kết 2026-06-14). Reserve là
 **lớp đệm phát hành SAU CÙNG** của LAMP: 9,630 tỷ LAMP (26,75%) nhả từ U-space (chưa mint)
