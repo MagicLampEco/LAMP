@@ -23,6 +23,11 @@ import type { Network } from "@magiclamp/utils";
 /** Tên validator trong blueprint Treasury — dùng chung cho cổng đếm khe. */
 export const CUSTODY_TITLE = "custody.custody.spend";
 export const CUSTODY_SEED_TITLE = "custody_seed.custody_seed.mint";
+/** `treasury_stake` khai hai handler (`withdraw`, `publish`) dùng CHUNG một thân, nên hai
+ *  mục blueprint có cùng hash và cùng danh sách khe. Lấy `withdraw` làm mục tra cứu —
+ *  đọc mục nào cũng ra cùng số khe, nhưng ghim một mục thì cổng đếm khe không phụ thuộc
+ *  thứ tự các mục trong `plutus.json`. Thứ tự khe dựng ở `offchain/src/stakeBuilder.ts`. */
+export const TREASURY_STAKE_TITLE = "treasury_stake.treasury_stake.withdraw";
 
 /**
  * `token_name` theo mạng: Mainnet → "LAMP", mọi testnet → "tLAMP".

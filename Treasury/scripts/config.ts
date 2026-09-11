@@ -32,9 +32,15 @@ import type { OutputReference } from "../offchain/src/types.js";
 // mẫu đã dùng trong kho (vd `Faucet/scripts/demo_treasury.ts:26`).
 import { blueprintGate } from "../../Genesis/offchain/src/blueprintSource.js";
 import {
-  CUSTODY_SEED_TITLE, CUSTODY_TITLE, custodyParamList, custodyTokenName, resolveLampPolicy,
+  CUSTODY_SEED_TITLE, CUSTODY_TITLE, TREASURY_STAKE_TITLE,
+  custodyParamList, custodyTokenName, resolveLampPolicy,
   type ResolvedLampPolicy,
 } from "./custodyParams.js";
+// Cùng lý do class-identity như `applyCustodySeed`: khe `reward_cred` là một Constr, nên
+// nó phải được dựng bằng lucid của `offchain/node_modules`, không phải của `scripts/`.
+import {
+  applyTreasuryStake, custodyBaseAddress, treasuryStakeHash,
+} from "../offchain/src/stakeBuilder.js";
 import { readFile, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
@@ -109,7 +115,10 @@ export async function rawValidator(title: string): Promise<RawValidator> {
 export const TREASURY_GATE = blueprintGate(PLUTUS_JSON_PATH, "Treasury");
 
 // Re-export để script chỉ cần một đường import (mẫu của `Distribution/scripts/config.ts`).
-export { custodyParamList, custodyTokenName, resolveLampPolicy, CUSTODY_TITLE, CUSTODY_SEED_TITLE };
+export {
+  custodyParamList, custodyTokenName, resolveLampPolicy,
+  CUSTODY_TITLE, CUSTODY_SEED_TITLE, TREASURY_STAKE_TITLE,
+};
 export type { ResolvedLampPolicy };
 
 /**
@@ -201,6 +210,50 @@ export async function applyCustodyInstance(
   const custodyAddr = scriptAddress(custodyScript);
 
   return { custodySeed, seedPolicy, custodyScript, custodyHash, custodyAddr, lampPolicy, tokenName };
+}
+
+// ── Phần STAKE của địa chỉ kho ─────────────────────────────────
+//
+// Không có vòng phụ thuộc, và thứ tự bắt buộc là:
+//   1. custody hash  = f(5 khe apply) — KHÔNG chứa phần stake;
+//   2. stake hash    = g(instance_id, reward_cred = credential thanh toán của kho,
+//                        delegation_admin);
+//   3. địa chỉ kho   = base(custody hash, stake hash).
+// ⇒ đổi `custody.ak` là đổi cả ba. Nên mọi thay đổi validator phải xong TRƯỚC lượt gieo.
+
+export interface AppliedStake {
+  stakeScript: Validator;
+  stakeHash:   string;
+  /** Địa chỉ kho dạng BASE (payment = custody, stake = treasury_stake). */
+  custodyBaseAddr: string;
+}
+
+/**
+ * Apply `treasury_stake` cho MỘT instance kho, rồi dựng địa chỉ kho dạng base.
+ *
+ * `rewardCred` trỏ về chính credential THANH TOÁN của kho — hợp lệ kể từ khi `custody.ak`
+ * có nhánh `StakeRewardIn`: trước đó kho nhận được thưởng nhưng không nhánh nào tiêu lại
+ * được nó đúng cách, nên trỏ về kho là tạo ra một khoản chết mang hình dạng kế toán.
+ *
+ * Cổng đếm khe chạy tay ở đây (không qua `applyValidator`) vì khe `reward_cred` là Constr
+ * và phải dựng trong `offchain/` — cùng ngoại lệ đã áp cho `applyCustodySeed`.
+ */
+export async function applyTreasuryStakeInstance(
+  instanceId: string, custodyHash: string, delegationAdmin: string,
+  custodyScript: Validator,
+): Promise<AppliedStake> {
+  const raw = await rawValidator(TREASURY_STAKE_TITLE);
+  TREASURY_GATE.assertParamCount(TREASURY_STAKE_TITLE, 3);
+  const stakeScript = applyTreasuryStake(raw.compiledCode, {
+    instanceId,
+    rewardCred: { kind: "Script", hash: custodyHash },
+    delegationAdmin,
+  });
+  return {
+    stakeScript,
+    stakeHash: treasuryStakeHash(stakeScript),
+    custodyBaseAddr: custodyBaseAddress(NETWORK, custodyScript, stakeScript),
+  };
 }
 
 // ── env helpers (đọc param, có placeholder dev rõ ràng) ─────────
@@ -300,7 +353,15 @@ export interface SeededInstance {
   msPerEpoch:     string;          // bigint as string
   instanceId:     string;          // hex (= NFT name)
   custodyHash:    string;
+  /** Địa chỉ BASE của kho (payment = custody, stake = treasury_stake) — đúng địa chỉ mà
+   *  tx gieo rót vào. KHÔNG phải bản enterprise: cùng script hash nhưng khác địa chỉ, và
+   *  `custody.ak` ghim địa chỉ ĐẦY ĐỦ. */
   custodyAddress: string;
+  /** Hash `treasury_stake` đã apply = phần stake của `custodyAddress`. */
+  stakeHash:      string;
+  /** apply-param #3 của `treasury_stake` — nướng vào `stakeHash`, đổi sau khi gieo là không
+   *  đổi được. Ghi lại để đối chiếu, không phải để ai đọc ra rồi ký. */
+  delegationAdmin: string;
   seedPolicy:     string;
   proposalPolicy: string;
   proposalSource: string;          // "env" | "placeholder"

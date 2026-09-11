@@ -15,11 +15,13 @@
 //
 // KHÔNG submit thật (không credential). KHÔNG đụng onchain/ hay offchain/src.
 
-import { credentialToAddress, scriptHashToCredential, validatorToScriptHash } from "@lucid-evolution/lucid";
+import {
+  credentialToAddress, getAddressDetails, scriptHashToCredential, validatorToScriptHash,
+} from "@lucid-evolution/lucid";
 import {
   NETWORK, MS_PER_EPOCH,
   makeLucidOrNull, walletPkh,
-  applyCustodyInstance, resolveProposalPolicy,
+  applyCustodyInstance, applyTreasuryStakeInstance, resolveProposalPolicy,
   resolveLampPolicy, custodyTokenName,
   asciiToHex, padHash28,
   evaluateLiveGuards, warnLiveBlocked,
@@ -37,6 +39,12 @@ const RESERVED_MIN_ADA = BigInt(process.env.RESERVED_MIN_ADA ?? "2000000"); // 2
 const GOVERNANCE_REF_ENV = (process.env.GOVERNANCE_REF ?? "").trim().toLowerCase();
 const GOVERNANCE_REF_PLACEHOLDER = GOVERNANCE_REF_ENV === "";   // F14: rỗng → placeholder
 const GOVERNANCE_REF = GOVERNANCE_REF_ENV || padHash28(asciiToHex("treasury-committee"));
+// delegation_admin: khoá được phép đăng ký / uỷ quyền / huỷ-uỷ-quyền phần stake của kho
+// (`treasury_stake.ak` nhánh `publish`). Nướng vào script hash ⇒ vào địa chỉ kho ⇒ đổi sau
+// khi gieo là không đổi được. Rỗng → placeholder + van F14 chặn LIVE.
+const DELEGATION_ADMIN_ENV = (process.env.DELEGATION_ADMIN ?? "").trim().toLowerCase();
+const DELEGATION_ADMIN_PLACEHOLDER = DELEGATION_ADMIN_ENV === "";
+const DELEGATION_ADMIN = DELEGATION_ADMIN_ENV || padHash28(asciiToHex("delegation-admin"));
 
 /**
  * Chọn genesis UTxO. Có ví → UTxO đầu của ví (one-shot tiêu khi seed). DRY → đọc
@@ -87,6 +95,10 @@ async function main(): Promise<void> {
     { name: "governance_ref",  value: GOVERNANCE_REF,  placeholder: GOVERNANCE_REF_PLACEHOLDER },
     { name: "genesis_ref",     value: `${genesisRef.transaction_id}#${genesisRef.output_index}`, placeholder: genSource === "placeholder" },
     { name: "lamp_policy",     value: lampPolicy.policy, placeholder: lampPolicy.source === "placeholder" },
+    //   delegation_admin placeholder ⇔ DELEGATION_ADMIN rỗng. Nó nướng vào phần stake của
+    //   ĐỊA CHỈ kho, nên gieo LIVE với placeholder = gieo một cái kho mà không ai uỷ quyền
+    //   được, và không dời được sang địa chỉ khác.
+    { name: "delegation_admin", value: DELEGATION_ADMIN, placeholder: DELEGATION_ADMIN_PLACEHOLDER },
   ]);
   const dry = !guard.allowLive;          // F14: placeholder → ÉP DRY (không build LIVE)
 
@@ -99,16 +111,58 @@ async function main(): Promise<void> {
   console.log(`lamp_policy:     ${lampPolicy.policy}  (${lampPolicy.source}) — ${lampPolicy.reason}`);
   console.log(`token_name:      ${tokenName}  ("${Buffer.from(tokenName, "hex").toString("utf8")}")`);
   console.log(`governance_ref:  ${GOVERNANCE_REF}`);
+  console.log(`delegation_admin:${DELEGATION_ADMIN}${DELEGATION_ADMIN_PLACEHOLDER ? "  (PLACEHOLDER)" : ""}`);
   console.log(`instance_id:     ${INSTANCE_ID} ("${Buffer.from(INSTANCE_ID, "hex").toString("utf8")}")`);
   console.log(`cut_bps:         ${CUT_BPS}`);
   console.log(`reserved_min_ada:${RESERVED_MIN_ADA} lovelace\n`);
 
   // ── Apply params 2 validator (offline — KHÔNG cần mạng) ───────
   const applied = await applyCustodyInstance(genesisRef, proposal.policy, MS_PER_EPOCH, lampPolicy);
+  // Phần STAKE — phải apply SAU custody: `reward_cred` của nó là credential thanh toán kho.
+  const stake = await applyTreasuryStakeInstance(
+    INSTANCE_ID, applied.custodyHash, DELEGATION_ADMIN, applied.custodyScript,
+  );
+  // Đối chiếu địa chỉ bằng đường ĐỘC LẬP (dựng tại chỗ, không qua `custodyBaseAddress`).
+  // Chạy VÔ ĐIỀU KIỆN, trước cả nhánh DRY/LIVE: đặt nó trong nhánh DRY là đặt nó ở đúng
+  // chỗ nó ít cần nhất — LIVE mới là lượt rót tiền thật, và một địa chỉ kho sai ở đó thì
+  // không có tx nào lấy lại được.
+  const custodyAddrCheck = credentialToAddress(
+    NETWORK,
+    scriptHashToCredential(validatorToScriptHash(applied.custodyScript)),
+    scriptHashToCredential(stake.stakeHash),
+  );
+  if (custodyAddrCheck !== stake.custodyBaseAddr) {
+    throw new Error(
+      `SEED-ADDR-001: hai đường dựng địa chỉ kho cho kết quả KHÁC NHAU.\n` +
+      `  qua custodyBaseAddress: ${stake.custodyBaseAddr}\n` +
+      `  dựng lại tại chỗ:       ${custodyAddrCheck}\n` +
+      `Gieo khi hai đường còn lệch là gieo vào một địa chỉ không ai biết chắc là địa chỉ nào.`,
+    );
+  }
+  // Và địa chỉ kho PHẢI có phần stake. Thiếu nó là địa chỉ enterprise — kho không uỷ quyền
+  // được, không sinh thưởng, và `custody.ak` ghim địa chỉ đầy đủ nên không dời được.
+  //
+  // ⚠ ĐO ĐƯỢC 2026-09-12: van này hôm nay bị SEED-ADDR-001 CHE. Phá `custodyBaseAddress`
+  // cho ra địa chỉ enterprise thì 001 kêu trước, 002 không chạy tới. Nên KHÔNG được nói
+  // "phần stake đã được van 002 ghim" — hôm nay nó chưa chứng minh điều gì.
+  // Giữ nó vì nó canh một ca mà 001 KHÔNG canh: nếu ai đó sửa phép dựng lại phía trên
+  // thành `stake.custodyBaseAddr` thì 001 thành phép so một thứ với chính nó (luôn xanh),
+  // và lúc đó 002 là van duy nhất còn lại. Đó là lý do giữ, không phải bằng chứng đã đo.
+  const stakePart = getAddressDetails(stake.custodyBaseAddr).stakeCredential;
+  if (stakePart?.hash !== stake.stakeHash || stakePart?.type !== "Script") {
+    throw new Error(
+      `SEED-ADDR-002: địa chỉ kho KHÔNG mang phần stake script đúng.\n` +
+      `  mong đợi Script ${stake.stakeHash}\n` +
+      `  đọc được  ${stakePart?.type ?? "(không có phần stake)"} ${stakePart?.hash ?? ""}`,
+    );
+  }
+
   console.log("── Applied validators ──");
   console.log(`seed_policy:     ${applied.seedPolicy}`);
   console.log(`custody hash:    ${applied.custodyHash}`);
-  console.log(`custody addr:    ${applied.custodyAddr}\n`);
+  console.log(`stake hash:      ${stake.stakeHash}`);
+  console.log(`custody addr:    ${stake.custodyBaseAddr}   ← BASE (có phần stake) ✓`);
+  console.log(`  (enterprise, KHÔNG dùng: ${applied.custodyAddr})\n`);
 
   // ── Plan seed datum + value + tự kiểm seedDatumOk (gương validator) ──
   // CustodyDatum genesis: sổ rỗng (custody bắt đầu trống — chỉ reserved ADA + NFT).
@@ -142,6 +196,10 @@ async function main(): Promise<void> {
       network: NETWORK,
       custodySeed:   applied.custodySeed,
       custodyScript: applied.custodyScript,
+      // Phần stake của địa chỉ kho. Thiếu tham số này thì `buildSeedTx` rót vào địa chỉ
+      // ENTERPRISE — cùng script hash, KHÁC địa chỉ — và `custody.ak` ghim địa chỉ đầy đủ,
+      // nên kho gieo xong sẽ không bao giờ uỷ quyền được và không dời sang base được.
+      stakeCredential: scriptHashToCredential(stake.stakeHash),
       genesisUtxo:   utxo as never,
       datum:         datumIn,
       reservedMinAda: RESERVED_MIN_ADA,
@@ -153,10 +211,7 @@ async function main(): Promise<void> {
   } else {
     console.log("── DRY: cần BLOCKFROST_KEY + PRIVATE_KEY/WALLET_SEED để build tx thật ──");
     console.log("Phần apply-params/hash/address/datum ở trên KHÔNG cần mạng — đã đủ kiểm.");
-    const custodyAddrCheck = credentialToAddress(
-      NETWORK, scriptHashToCredential(validatorToScriptHash(applied.custodyScript)),
-    );
-    console.log(`custody addr (verify): ${custodyAddrCheck}`);
+    console.log(`custody addr (đã đối chiếu hai đường): ${custodyAddrCheck}`);
   }
 
   // ── Ghi seeded.json ──────────────────────────────────────────
@@ -165,7 +220,11 @@ async function main(): Promise<void> {
     msPerEpoch:     MS_PER_EPOCH.toString(),
     instanceId:     INSTANCE_ID,
     custodyHash:    applied.custodyHash,
-    custodyAddress: applied.custodyAddr,
+    // Địa chỉ GHI VÀO SỔ là địa chỉ BASE — chính là địa chỉ tx rót vào. Ghi bản enterprise
+    // vào đây là để lại một con trỏ trỏ sai chỗ cho mọi script đọc sau.
+    custodyAddress: stake.custodyBaseAddr,
+    stakeHash:        stake.stakeHash,
+    delegationAdmin:  DELEGATION_ADMIN,
     seedPolicy:     applied.seedPolicy,
     proposalPolicy: proposal.policy,
     proposalSource: proposal.source,
