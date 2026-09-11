@@ -17,6 +17,7 @@ import {
   lampPolicyIdRequireActive,
   lampPolicyRecord,
   readPolicyIdOf,
+  lookalikePolicy,
   type LampPolicyRecord,
 } from "../offchain/src/lampPolicies.js";
 
@@ -209,5 +210,42 @@ describe("bất biến của sổ", () => {
     const pre = lampPolicyRecord("preprod-native-sig-12param").policyId;
     const pv = lampPolicyRecord("preview-native-sig-12param").policyId;
     expect(pre).toBe(pv);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TOKEN GIẢ DẠNG — sổ phải NÓI ĐƯỢC nó là gì, không được im lặng
+// ─────────────────────────────────────────────────────────────────────────────
+describe("token giả dạng mang tên LAMP/tLAMP", () => {
+  const UNCAPPED_DEMO = "28e916b097be13ed955330f00710bd93e2ea74bbc89aa5f5cd0f12b4";
+
+  it("tra ra được bản ghi cho policy diễn tập 72 tỷ trên Preprod", () => {
+    const r = lookalikePolicy(UNCAPPED_DEMO);
+    expect(r).not.toBeNull();
+    expect(r!.network).toBe("preprod");
+    expect(r!.assetName).toBe("744c414d50");
+  });
+
+  it("bản ghi nêu THẲNG con số vượt trần, không chỉ nói 'không phải LAMP'", () => {
+    const r = lookalikePolicy(UNCAPPED_DEMO)!;
+    // Người đọc phải thấy con số. "Token này không phải LAMP" không nói được
+    // rằng đang có 72 tỷ đơn vị mang đúng cái tên ấy trên chuỗi.
+    expect(r.whatItActuallyIs).toContain("72");
+    expect(r.evidence.some((e) => e.includes("72000000000000000"))).toBe(true);
+  });
+
+  it("chữ hoa và khoảng trắng vẫn tra ra — policy id hay bị chép kèm rác", () => {
+    expect(lookalikePolicy(`  ${UNCAPPED_DEMO.toUpperCase()}  `)).not.toBeNull();
+  });
+
+  it("policy id lạ trả null, KHÔNG ném — đây là phép tra, không phải phép gác", () => {
+    expect(lookalikePolicy("00".repeat(28))).toBeNull();
+  });
+
+  it("token giả dạng KHÔNG được lọt vào sổ policy chính", () => {
+    // Nhét nó vào sổ chính là nói dối bằng kiểu dữ liệu: mọi trường ở đó
+    // (`mintParamCount`, `anchor`) giả định token do `lamp_mint` sinh ra.
+    const ids = LAMP_POLICY_REGISTRY.map((r) => r.policyId);
+    expect(ids).not.toContain(UNCAPPED_DEMO);
   });
 });

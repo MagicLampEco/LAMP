@@ -248,6 +248,58 @@ export const LAMP_POLICY_REGISTRY: readonly LampPolicyRecord[] = [
 // giữ. LAMP không burn ⇒ sai là không sửa được.
 // ─────────────────────────────────────────────────────────────────────────────
 
+// ─────────────────────────────────────────────────────────────────────────────
+// TOKEN GIẢ DẠNG — mang asset name "LAMP"/"tLAMP" nhưng KHÔNG do `lamp_mint` đúc
+//
+// Vì sao chúng không nằm trong `LAMP_POLICY_REGISTRY`: mọi trường của bản ghi kia
+// (`mintParamCount`, `anchor`) giả định token do `lamp_mint` sinh ra. Nhét một token
+// không-phải-LAMP vào đó là nói dối bằng kiểu dữ liệu — nó sẽ đọc như một bản LAMP hợp lệ.
+//
+// Vì sao vẫn phải khai ở đây: một sổ "nguồn duy nhất" mà IM LẶNG về một token đang sống trên
+// chuỗi với đúng cái tên ấy thì nó không phải nguồn duy nhất — người tra một policy id không
+// thấy gì và kết luận "không liên quan", trong khi thứ họ đang cầm là một token 72 tỷ.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface LookalikePolicyRecord {
+  policyId: string;
+  network: LampNetwork;
+  assetName: string;
+  /** Vì sao nó KHÔNG phải LAMP, và điều gì đã xảy ra với nó. */
+  whatItActuallyIs: string;
+  evidence: string[];
+}
+
+export const NON_LAMP_LOOKALIKE_POLICIES: readonly LookalikePolicyRecord[] = [
+  {
+    policyId: "28e916b097be13ed955330f00710bd93e2ea74bbc89aa5f5cd0f12b4",
+    network: "preprod",
+    assetName: "744c414d50",
+    whatItActuallyIs:
+      "Token diễn tập đời đầu, đúc bằng một chính sách chữ-ký-đơn của ví triển khai — KHÔNG đi " +
+      "qua `lamp_mint`, nên KHÔNG có SupplyState, KHÔNG có cổng WHO, và KHÔNG có trần nào. " +
+      "Hệ quả đã xảy ra thật chứ không phải rủi ro lý thuyết: cung đang là 72.000.000.000.000.000 " +
+      "oildrop = 72 tỷ LAMP, tức GẤP ĐÔI trần 36 tỷ. LAMP không burn ⇒ con số đó vĩnh viễn. " +
+      "Lượt đưa về trần từng được phát lệnh nhưng chết ở cổng kiểm biến môi trường trước khi chạm " +
+      "chuỗi — và một lượt chết ở đó không để lại dấu vết nào, nên nó đọc y hệt một lượt đã xong.",
+    evidence: [
+      "Blockfrost preprod /assets/28e916b0…744c414d50 (2026-09-11): quantity 72000000000000000, mint_or_burn_count 2",
+      "Distribution/scripts/live-deploy-preview.md:19 (khai 'Native sig (ví deploy)')",
+      "Faucet/deployed-artifacts.md:103 (đã đánh dấu bỏ)",
+    ],
+  },
+] as const;
+
+/**
+ * Tra một policy id bất kỳ xem nó có phải token giả dạng đã biết không.
+ *
+ * Dùng ở nhánh lỗi: người tra một policy id lạ phải nhận được câu "đây là cái gì", không phải
+ * câu "không tìm thấy". "Không tìm thấy" là phát biểu về vùng quét, không phải về policy.
+ */
+export function lookalikePolicy(policyId: string): LookalikePolicyRecord | null {
+  const needle = policyId.trim().toLowerCase();
+  return NON_LAMP_LOOKALIKE_POLICIES.find((r) => r.policyId === needle) ?? null;
+}
+
 /** Mã lỗi của sổ policy. Tên gợi nhớ, không ký hiệu trơ. */
 export const LAMP_POLICY_ERRORS = {
   MISSING_RECORD: "TLAMP-SRC-001-MISSING-RECORD",
