@@ -105,4 +105,8 @@ export type CustodyRedeemer =
   | { kind: "Collect";   items: CollectItem[] }
   | { kind: "Release";   proposal_ref: OutputReference; draws: ReleaseDraw[] }
   | { kind: "Rebalance"; moves: BucketMove[] }
-  | { kind: "MigrateIn"; source: string };
+  | { kind: "MigrateIn"; source: string }
+  // Constr index 4 — thêm Ở CUỐI để 0..3 giữ nguyên với mọi bản đã mã hoá trước đó.
+  // `amount` = Δ lovelace KHAI BÁO; validator ép nó khớp ĐẲNG THỨC với độ tăng lovelace
+  // thực của UTxO kho, nên khai dối chỉ làm tx bị từ chối.
+  | { kind: "StakeRewardIn"; amount: bigint };

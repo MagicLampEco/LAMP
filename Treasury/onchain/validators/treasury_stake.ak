@@ -3,9 +3,9 @@
 // ─────────────────────────────────────────────────────────────────────────
 // MÔ HÌNH
 //   Kho được gieo với địa chỉ (payment: Script(custody_hash), stake: Script(this)).
-//   Cả ba nhánh spend của `custody.ak` đều ép `cust_out.address == cust_in.address`
-//   (C-COL-ADDR / C-REL-ADDR / C-MIG-ADDR) nên stake credential của kho là BẤT BIẾN đời
-//   instance: không giao dịch nào dời được nó sang credential khác.
+//   Cả BỐN nhánh spend của `custody.ak` đều ép `cust_out.address == cust_in.address`
+//   (C-COL-ADDR / C-REL-ADDR / C-MIG-ADDR / C-STK-ADDR) nên stake credential của kho là
+//   BẤT BIẾN đời instance: không giao dịch nào dời được nó sang credential khác.
 //
 //   Toàn bộ ADA trong kho do đó sinh phần thưởng uỷ quyền, và phần thưởng ấy dồn về
 //   reward-account của CHÍNH script này. Ledger không đòi chữ ký nào để rút một
@@ -48,17 +48,30 @@
 //   tham chiếu, port nguyên văn về ngữ nghĩa.
 //
 // ─────────────────────────────────────────────────────────────────────────
-// HAI RÀNG BUỘC PHẢI KIỂM Ở BƯỚC GIEO (không kiểm được on-chain vì đều là hằng
+// BA RÀNG BUỘC PHẢI KIỂM Ở BƯỚC GIEO (không kiểm được on-chain vì đều là hằng
 // apply-time — một `expect` so hai hằng sẽ tốn ExUnit mỗi tx mà luôn cùng kết quả):
-//   G1. `reward_cred` KHÔNG được là payment credential của chính kho custody.
-//       `collect.value_ok` là ĐẲNG THỨC tuyệt đối (lib/.../collect.ak `value_ok`) nên mọi
-//       ADA lạ rơi vào output kho làm `Collect` bị từ chối; còn output tới địa chỉ kho
-//       trong một tx KHÔNG tiêu kho sẽ tạo một UTxO thứ hai không NFT, không datum — cả
-//       ba nhánh spend đều đòi đúng 1 UTxO mang NFT nên nó không tiêu lại được. Rót đúng
-//       địa chỉ mà sai hình dạng = đốt trá hình.
+//   G1. `reward_cred` LÀ payment credential của chính kho custody — đường khuyến nghị kể
+//       từ khi `custody.ak` có nhánh `StakeRewardIn`.
+//       ⚠ ĐÃ ĐẢO so với bản đầu của tệp này. Bản đầu CẤM đích trùng kho, và lý do khi ấy
+//       đúng: không nhánh spend nào đưa ADA vào kho ĐÚNG SỔ được, nên rót thưởng về địa
+//       chỉ kho sinh ra một UTxO thứ hai không NFT, không datum — cả ba nhánh đều đòi đúng
+//       1 UTxO mang NFT nên nó không tiêu lại được, tức rót đúng địa chỉ mà sai hình dạng =
+//       đốt trá hình. `StakeRewardIn` đóng đúng lỗ đó: nó ép Δ vào CHÍNH UTxO kho (C-STK-1
+//       đúng 1 in + 1 out) và vào SỔ ở một hằng bucket dành riêng (C-STK-8), lovelace bằng
+//       ĐẲNG THỨC (C-STK-7). Từ đó `net_to_cred(reward_cred=kho)` bằng đúng Δ mà custody
+//       ghi sổ, hai validator ăn khớp không cần bên thứ ba.
+//       Đặt `reward_cred` ra một ví ngoài VẪN chạy, nhưng khi đó thưởng của DAO đi qua tay
+//       người vận hành và không cơ chế on-chain nào bắt nó quay về kho.
 //   G2. Người crank KHÔNG được dùng chính `reward_cred` làm ví trả phí. S-STK-NET trừ mọi
 //       input đến từ đích, nên ví đích vừa trả phí vừa nhận change sẽ ra NET âm và tx bị
 //       từ chối. Đây là REJECT, không phải mất tiền — nhưng phải biết trước.
+//       Khi `reward_cred` == kho (G1), ràng buộc này được C-STK-1 lo hộ: tx chỉ được tiêu
+//       ĐÚNG MỘT UTxO kho, và đó là UTxO đang nạp.
+//   G3. `CustodyDatum.accepted_assets` PHẢI chứa ADA (`policy=#""`, `name=#""`) khi kho
+//       dùng script stake credential. `custody.ak` ▸ C-STK-9 đòi điều đó mỗi lượt nạp, và
+//       `accepted_assets` là BẤT BIẾN đời instance — không nhánh nào sửa được sau seed. Gieo
+//       thiếu ⇒ `StakeRewardIn` bất khả thi vĩnh viễn ⇒ thưởng kẹt trong reward-account,
+//       mà `reward_cred` cũng khoá cứng nên không có đích nào khác để rút về.
 
 use cardano/address.{Credential}
 use cardano/certificate.{Certificate}

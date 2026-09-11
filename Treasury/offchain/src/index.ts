@@ -42,3 +42,11 @@ export {
   eachOutLineOk as migrateEachOutLineOk,
   eachInLineSettled as migrateEachInLineSettled,
 } from "./migrate.js";
+
+// stakeReward.js: nhánh STAKE-REWARD-IN (thưởng uỷ quyền của CHÍNH kho vào SỔ kho).
+// `valueOk` lại trùng tên ⇒ alias `stakeReward*`, cùng quy ước như hai nhánh trên.
+export {
+  REWARD_POLICY, REWARD_NAME,
+  ledgerRewardOk, planStakeRewardLedger, planStakeRewardDatum,
+  valueOk as stakeRewardValueOk,
+} from "./stakeReward.js";

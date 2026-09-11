@@ -8,6 +8,7 @@ use cardano/assets
 use cardano/transaction.{Input, Output, OutputReference, Transaction, placeholder}
 use custody_seed.{SeedGenesis}
 use magiclamp/treasury/migrate
+use magiclamp/treasury/stake_reward
 use magiclamp/treasury/types.{AssetKey, CustodyDatum, LedgerEntry}
 use magiclamp/treasury/util
 
@@ -482,6 +483,29 @@ test seed_ledger_reserved_bucket() fail {
       LedgerEntry { bucket_id: bucket_ops, policy: lamp_policy, name: lamp_name, amount: 1000 },
       LedgerEntry {
         bucket_id: migrate.reserve_inflow_bucket_id,
+        policy: lamp_policy,
+        name: lamp_name,
+        amount: 500,
+      },
+    ]
+  let value = assets.from_lovelace(2_000_000) |> assets.add(lamp_policy, lamp_name, 1500)
+  let tx = seed_tx([genesis_input()], seed_mint(instance_id, 1), [cust_output(value, ledger)])
+  run(tx, reserved)
+}
+
+// ════════════════════════════════════════════════════════════
+// 20. SỔ GENESIS MANG BUCKET DÀNH RIÊNG CHO THƯỞNG UỶ QUYỀN (fail) — S-LEDGER-RESERVED.
+//   Đối xứng bài 19, cho `stake_reward.stake_reward_bucket_id`. Bucket ấy chỉ có nghĩa khi
+//   MỌI số dư trong nó đến từ `StakeRewardIn`; một dòng khai khống lúc seed lọt qua
+//   S-SEED-0 dễ dàng (chỉ cần nạp đủ value) và làm hỏng đúng tính chất kiểm toán mà hằng
+//   ấy sinh ra để giữ. Sổ dưới CANONICAL + value khớp + asset accepted → cô lập chốt.
+// ════════════════════════════════════════════════════════════
+test seed_ledger_stake_reward_bucket() fail {
+  let ledger =
+    [
+      LedgerEntry { bucket_id: bucket_ops, policy: lamp_policy, name: lamp_name, amount: 1000 },
+      LedgerEntry {
+        bucket_id: stake_reward.stake_reward_bucket_id,
         policy: lamp_policy,
         name: lamp_name,
         amount: 500,

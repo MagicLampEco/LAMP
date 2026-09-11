@@ -8,6 +8,7 @@ use cardano/assets
 use cardano/transaction.{Input, Output, Transaction, placeholder}
 use custody
 use magiclamp/treasury/migrate
+use magiclamp/treasury/stake_reward
 use magiclamp/treasury/types.{
   AssetKey, Collect, CollectItem, CustodyDatum, LedgerEntry, MigrateIn,
   Rebalance,
@@ -683,6 +684,24 @@ test collect_reject_reserve_inflow_bucket() fail {
   let ledger_out =
     [LedgerEntry { bucket_id: migrate.reserve_inflow_bucket_id, policy: lamp_policy, name: lamp_name, amount: 100 }]
   let items = [item(1000, migrate.reserve_inflow_bucket_id)]
+  let tx =
+    collect_tx(lamp_val(5_000_000, 5000), lamp_val(5_000_000, 5100), ledger_in, ledger_out, 11, [])
+  run_with(tx, datum(ledger_in), items)
+}
+
+// ════════════════════════════════════════════════════════════
+// 26. BUCKET DÀNH RIÊNG CHO THƯỞNG UỶ QUYỀN (fail) — C-COL-5.
+//   Đối xứng bài 25, cho hằng `stake_reward.stake_reward_bucket_id`. Bucket ấy mua đúng
+//   một tính chất kiểu ấy ("đọc kho đã thu bao nhiêu thưởng bằng một phép tra sổ") và mất
+//   theo đúng một đường ấy. Không có bài này thì vế `!= stake_reward_bucket_id` trong
+//   `collect.all_items_valid` gỡ ra mà cả bộ kiểm vẫn xanh.
+// ════════════════════════════════════════════════════════════
+test collect_reject_stake_reward_bucket() fail {
+  let ledger_in =
+    [LedgerEntry { bucket_id: stake_reward.stake_reward_bucket_id, policy: lamp_policy, name: lamp_name, amount: 0 }]
+  let ledger_out =
+    [LedgerEntry { bucket_id: stake_reward.stake_reward_bucket_id, policy: lamp_policy, name: lamp_name, amount: 100 }]
+  let items = [item(1000, stake_reward.stake_reward_bucket_id)]
   let tx =
     collect_tx(lamp_val(5_000_000, 5000), lamp_val(5_000_000, 5100), ledger_in, ledger_out, 11, [])
   run_with(tx, datum(ledger_in), items)

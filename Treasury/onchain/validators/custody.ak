@@ -49,6 +49,29 @@
 //   C-MIG-ADDR      cust_out.address == cust_in.address (GHIM CẢ stake credential).
 //   C-MIG-REFSCRIPT cust_out.reference_script == None.
 //
+// Nhánh STAKE-REWARD-IN ÉP (v1.x — nạp Δ ADA thưởng uỷ quyền của CHÍNH kho; lib
+// stake_reward.ak). PERMISSIONLESS y như MigrateIn, nên mang ĐỦ ràng buộc của nhánh đó:
+//   C-STK-0   KHÔNG mint/burn (khác MigrateIn: thưởng staking không đi kèm mint nào).
+//   C-STK-1   ĐÚNG 1 custody input + 1 custody output theo PAYMENT SCRIPT HASH.
+//   C-STK-2   cust_in/out mang đúng 1 NFT (seed_policy, instance_id).
+//   C-STK-3   params instance bảo toàn (id, accepted, governance_ref, cut_bps, consumed).
+//   C-STK-4   out.epoch == get_epoch(tx) ∧ get_epoch(tx) ≥ in.epoch.
+//   C-STK-5   cust_out ở SCRIPT, không ví thường.
+//   C-STK-6   Δ khai (`amount`) > 0 — không respend no-op.
+//   C-STK-7   Value: lovelace_out == lovelace_in + Δ (ĐẲNG THỨC); mọi asset khác NGUYÊN.
+//   C-STK-8   Sổ: ledger_out == ledger_in + Δ tại HẰNG `stake_reward_bucket_id` × ADA,
+//             CANONICAL; bucket là HẰNG, không tham số nào do người gọi điều khiển.
+//   C-STK-9   ADA ∈ accepted_assets (giữ bất biến S-ACC-0 "mọi dòng sổ ∈ accepted").
+//   C-STK-ADDR      cust_out.address == cust_in.address (GHIM CẢ stake credential).
+//   C-STK-REFSCRIPT cust_out.reference_script == None.
+//
+// C-STK-7 ĐO ĐỘ TĂNG RÒNG, nên KHÔNG cần thêm một chốt NET riêng: C-STK-1 ép đúng một
+// input kho và đúng một output kho, và Δ là hiệu lovelace giữa CHÍNH hai UTxO đó. Mọi
+// đường "rút lại từ kho trong cùng tx" — tiêu thêm một UTxO kho, mở một output kho thứ
+// hai, hay trả kho về đúng số cũ rồi cho Δ chảy ra ví — đều đổi một trong hai vế ấy nên
+// bị từ chối. Đây cũng là vế ăn khớp với `treasury_stake` ▸ `net_to_cred`: khi `reward_cred`
+// là payment credential của kho, NET của nó ĐÚNG BẰNG Δ ở đây.
+//
 // VÌ SAO PHẢI GHIM ĐỊA CHỈ ĐẦY ĐỦ, không chỉ `!is_vk` (F2):
 //   `count_*_at_script` so PAYMENT credential thôi, nên stake credential của kho hoàn
 //   toàn tự do. `MigrateIn` là nhánh PERMISSIONLESS đầu tiên ⇒ bất kỳ ai dựng được tx
@@ -71,8 +94,10 @@ use cardano/transaction.{InlineDatum, OutputReference, Transaction}
 use magiclamp/treasury/collect
 use magiclamp/treasury/migrate
 use magiclamp/treasury/release
+use magiclamp/treasury/stake_reward
 use magiclamp/treasury/types.{
   Collect, CustodyDatum, CustodyRedeemer, Executed, MigrateIn, Release,
+  StakeRewardIn,
 }
 use magiclamp/treasury/util
 
@@ -341,7 +366,95 @@ validator custody(
         True
       }
 
-      // v1 triển khai Collect + Release + MigrateIn; Rebalance thêm ở v1.x.
+      StakeRewardIn { amount } -> {
+        // ── C-STK-0: tuyệt đối KHÔNG mint/burn ─────────────────────────────
+        // Khác MigrateIn có chủ ý: Δ ở đó ĐẾN TỪ mint (Reserve nhả LAMP), còn Δ ở đây đến
+        // từ reward-account của ledger — không thao tác mint nào tham gia. Để `tx.mint` tự
+        // do thì nhánh này thành một cổng mint kèm-theo: bất kỳ ai crank được thưởng cũng
+        // đúc được token lạ trong cùng tx, và không vế nào dưới đây nhìn tới `tx.mint`.
+        expect assets.is_zero(tx.mint)
+
+        // ── C-STK-6: Δ khai phải DƯƠNG ─────────────────────────────────────
+        // Δ == 0 biến nhánh này thành đường respend miễn phí mỗi block (griefing: gây
+        // contention chặn settlement thật — cùng lý do với C-COL-11). Δ < 0 thì đẳng thức
+        // C-STK-7 sẽ thành "rút ADA khỏi kho" mà không qua cổng Governance nào; chặn ở đây
+        // cho lệnh cấm đọc được ngay tại chỗ, và vì sổ canonical (mọi dòng > 0) từ chối
+        // theo một đường khác nên không được để hai chốt dựa vào nhau.
+        expect amount > 0
+
+        // ── C-STK-1: đúng 1 custody input + 1 custody output theo SCRIPT HASH ──
+        // Chống double-satisfaction (2 custody input chia chung 1 output) VÀ chống rót Δ
+        // vào một UTxO thứ hai (không datum) tại địa chỉ custody — hình dạng "đúng địa chỉ,
+        // ngoài sổ" đã từng gây lỗ ở đường Reserve.
+        expect util.count_inputs_at_script(tx.inputs, own_hash) == 1
+        expect util.count_outputs_at_script(tx.outputs, own_hash) == 1
+
+        let cust_in = util.input_at_script(tx.inputs, own_hash)
+        let cust_out = util.output_at_script(tx.outputs, own_hash)
+
+        // ── C-STK-3: params instance bảo toàn (chỉ ledger + epoch được đổi) ──
+        expect InlineDatum(od) = cust_out.datum
+        expect out_datum: CustodyDatum = od
+        expect out_datum.instance_id == datum.instance_id
+        expect out_datum.accepted_assets == datum.accepted_assets
+        expect out_datum.governance_ref == datum.governance_ref
+        expect out_datum.cut_bps == datum.cut_bps
+        // KHÔNG được dùng làm đường vòng cho Release: marker single-use giữ NGUYÊN.
+        expect out_datum.consumed_proposals == datum.consumed_proposals
+
+        // ── C-STK-5: custody output ở SCRIPT, không ví thường ───────────────
+        // Ghi chú trung thực (mirror C-MIG-5): vế này là HỆ QUẢ của C-STK-1
+        // (`output_at_script` đã lọc theo payment credential Script), nên đột biến một
+        // dòng sẽ không có bài nào đỏ. Giữ để bất biến đọc được ngay tại chỗ.
+        expect !util.is_vk(cust_out.address)
+
+        // ── C-STK-ADDR (F2): địa chỉ kho GIỮ NGUYÊN, kể cả stake credential ──
+        // Sống còn ở ĐÚNG nhánh này: stake credential là thứ sinh ra chính khoản thưởng
+        // đang nạp. Không ghim thì người crank đặt stake credential của hắn vào output kho
+        // và mọi epoch sau thưởng chảy về hắn, chi phí một phí tx.
+        expect cust_out.address == cust_in.address
+
+        // ── C-STK-REFSCRIPT (F3): không đính script tham chiếu vào kho ───────
+        expect cust_out.reference_script == None
+
+        // ── C-STK-2: cust_in/out mang đúng 1 NFT (seed_policy, instance_id) ──
+        expect
+          assets.quantity_of(cust_in.value, seed_policy, datum.instance_id) == 1
+        expect
+          assets.quantity_of(cust_out.value, seed_policy, out_datum.instance_id) == 1
+
+        // ── C-STK-4: neo epoch vào chain GỌN 1 epoch (không lùi, không đóng băng) ──
+        let cur = util.get_epoch_bounded(tx, ms_per_epoch)
+        expect cur >= datum.epoch
+        expect out_datum.epoch == cur
+
+        // ── C-STK-9: kho phải khai là nhận ADA ─────────────────────────────
+        // Giữ bất biến S-ACC-0 của `custody_seed` ("mọi dòng sổ thuộc accepted_assets")
+        // sống qua nhánh này: không ép thì một dòng sổ ADA xuất hiện ở kho chưa từng khai
+        // nhận ADA, và bất biến ấy chết im lặng vì không ai kiểm lại nó sau seed.
+        // ⚠ Kéo theo một điều kiện GIEO — xem `treasury_stake.ak` ▸ G3: kho dùng script
+        // stake credential PHẢI khai ADA trong `accepted_assets`, vì `accepted_assets` là
+        // bất biến đời instance, không nhánh nào sửa được sau seed.
+        expect
+          migrate.asset_accepted(
+            datum.accepted_assets,
+            stake_reward.reward_policy,
+            stake_reward.reward_name,
+          )
+
+        // ── C-STK-7: lovelace tăng ĐÚNG Δ, mọi asset khác NGUYÊN ────────────
+        expect stake_reward.value_ok(cust_in.value, cust_out.value, amount)
+
+        // ── C-STK-8: sổ tăng ĐÚNG Δ tại hằng bucket thưởng × ADA, canonical ──
+        // Đích không phải một ĐỊA CHỈ mà là một DÒNG SỔ: value tăng mà sổ không tăng thì
+        // Release không rút lại được — ADA kẹt ngoài sổ, tức đốt trá hình.
+        expect
+          stake_reward.ledger_ok(datum.ledger, out_datum.ledger, amount)
+
+        True
+      }
+
+      // v1 triển khai Collect + Release + MigrateIn + StakeRewardIn; Rebalance ở v1.x.
       _ -> fail
     }
   }
