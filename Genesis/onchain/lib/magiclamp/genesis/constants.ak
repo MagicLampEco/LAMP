@@ -36,7 +36,9 @@ test lamp_token_tag_is_lamp_bytes() {
 /// CAP Distribution: 26,370 tỷ LAMP × 10^6 (oildrop) — khớp allocation v17 (tất cả trừ Reserve).
 pub const dist_cap_oildrop: Int = 26_370_000_000_000_000
 
-/// CAP Reserve: 9,630 tỷ LAMP × 10^6 (oildrop) — khớp allocation v17 (engine trần E/1000/epoch, Treasury-pull gated, ~1001 epoch).
+/// CAP Reserve: 9,630 tỷ LAMP × 10^6 (oildrop) — khớp allocation v17 (engine trần E/1000/epoch,
+/// Treasury-pull gated). 1000 epoch là CẬN DƯỚI để cạn pot, không phải lịch cạn: mỗi epoch bị cổng
+/// cầu đóng lại đẩy thời điểm cạn ra xa, không có cận trên. Nguồn: `Specs/Emission/CONTRACT.md` §3.3.
 pub const reserve_cap_oildrop: Int = 9_630_000_000_000_000
 
 /// CAP tổng = 36 tỷ LAMP × 10^6 — BẤT BIẾN.

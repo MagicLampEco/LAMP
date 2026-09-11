@@ -13,7 +13,7 @@
   đơn điệu tăng. Token chưa mint = chưa tồn tại on-chain (không khoá min-ADA, không bị tấn công).
 - **Phân bổ 2 quota** (cùng một bộ đếm `SupplyState`):
   - **Distribution = 26,37 tỷ LAMP** (đường vesting/cộng đồng/đối tác) — gate WHO bằng registry.
-  - **Reserve = 9,63 tỷ LAMP** (đường DAO nhả-thuật-toán) — permissionless, **gate theo mức Treasury** (trần 2% / sàn 1% lưu hành; §7b).
+  - **Reserve = 9,63 tỷ LAMP** (đường DAO nhả-thuật-toán) — permissionless, **trần nhịp mỗi epoch + cổng cầu khi kho Treasury dưới sàn** (§7b; luật đầy đủ ở [`Specs/Emission/CONTRACT.md`](../Specs/Emission/CONTRACT.md)).
 - **3 câu hỏi nền** mà thiết kế trả lời:
   - **Q1 — không bao giờ mint lại policy** (policy-id bất biến qua mọi lần xoay khoá).
   - **Q2 — ký được kể cả khi seed lộ** mà pot không bị cướp (A-DEST + kho nhả-vesting).
@@ -209,17 +209,18 @@ Permissionless thật, **KHÔNG chữ ký**. Nguồn `lamp_mint.ak:204`.
 > **nướng vào policy-id** ⇒ chọn sai lúc deploy là vĩnh viễn (mainnet `55d3e01b…` đã dính: 28 byte 0 ⇒
 > nhánh chết hẳn). Test ghi lại ranh giới: `reservedraw_lamp_mint_khong_ep_dich_den`.
 
-**Gate nhịp Reserve = THEO MỨC TREASURY, KHÔNG theo epoch (anh chốt 20/6 — SỬA thiết kế E/1000 cũ).**
-Reserve là **lớp đệm cung CUỐI CÙNG** (U→C một chiều, no-burn). Điều tiết cung-cầu chính thuộc Treasury
-(C↔T hai chiều). Reserve **chỉ nhả khi Treasury KHÔNG còn đủ đệm** — nếu Treasury dồi dào mà vẫn nhả Reserve
-thì mất ý nghĩa. Hai mức trên **tổng lưu hành C** (KHÔNG phải max cap):
-- **Trần = 2% × C**: khi parked Treasury `T ≥ 2%·C` → Reserve **KHÔNG nhả** (Treasury tự lo cầu).
-- **Sàn = 1% × C**: khi `T ≤ 1%·C` → Reserve nhả **tối đa**.
-- **Giữa (1%·C < T < 2%·C)**: nhả theo **một hàm số** nội suy (càng gần sàn càng nhả mạnh).
-- KHÔNG giới hạn số epoch; tốc độ cạn Reserve = do cầu (mức Treasury) quyết, không do lịch.
+**Luật nhả Reserve: nguồn duy nhất là [`Specs/Emission/CONTRACT.md`](../Specs/Emission/CONTRACT.md).**
 
-> ⚠️ **Reserve module hiện tại (`reserve_draw.ak`, trần E/1000/epoch) là thiết kế CŨ — cần thiết kế lại**
-> theo gate-mức-Treasury này. Tham số (2%/1%, dạng hàm nội suy) chốt ở spec Reserve riêng.
+Tóm tắt vừa đủ để đọc tiếp phần Genesis — **không** phát biểu lại luật:
+
+- Reserve là **lớp đệm cung CUỐI CÙNG** (U→C một chiều, no-burn). Điều tiết cung-cầu chính thuộc
+  Treasury (C↔T hai chiều).
+- Luật nhả có **hai vế bổ sung nhau**: **trần nhịp** mỗi epoch (ép ở module Reserve) và **cổng cầu**
+  chỉ mở khi kho Treasury dưới sàn (ép ở module Treasury). Một lượt nhả hợp lệ phải thoả cả hai.
+- **Không ấn định epoch kết thúc** — mỗi epoch bị cổng đóng lại đẩy thời điểm cạn ra xa.
+
+> Bản trước của mục này mô tả một luật loại trừ trần nhịp, và gọi trần nhịp là "thiết kế cũ cần
+> thiết kế lại". Cả hai câu đó đã bị thay; lý do ghi ở `Specs/Emission/CONTRACT.md` §7.
 
 ---
 

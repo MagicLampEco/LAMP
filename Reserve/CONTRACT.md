@@ -1,27 +1,15 @@
-# LAMP Reserve — Demand-Gated Draw Engine (v3 — luật E/1000, **chưa phải luật cuối**)
+# LAMP Reserve — Demand-Gated Draw Engine
 
-> ## 🔴 ĐỌC TRƯỚC KHI DEPLOY — tệp này và `Genesis/CONTRACT.md` mô tả HAI luật loại trừ nhau
->
-> Tệp này mô tả **trần cứng E/1000 mỗi epoch**. `Genesis/CONTRACT.md §7b` mô tả một luật KHÁC
-> HẲN — gate theo **mức Treasury** (trần `2%·C`, sàn `1%·C`, giữa hai mức thì nội suy, không
-> giới hạn số epoch) — và nói thẳng: *"Reserve module hiện tại (`reserve_draw.ak`, trần
-> E/1000/epoch) là thiết kế **CŨ** — cần thiết kế lại"*.
->
-> Mã hiện có (`reserve_draw.ak:94`, `lib/.../math.ak:13,17-19`) hiện thực luật E/1000 của tệp
-> này, **không** hiện thực §7b: grep `bps|nội suy|interpolat|circulating|lưu hành` trong
-> `Reserve/onchain/` ra rỗng, và `reserve_draw` không nhận `SupplyState` nên **không đọc được
-> `C`**.
->
-> Vì sao chỗ này đắt: cả 9 tham số của `reserve_draw` là **apply-param** — nướng vào script
-> hash. `reserve_draw.ak:125` ép `s_out.address == own_out.address` và redeemer duy nhất là
-> `Draw` (`:150-152` `else fail`) ⇒ **meter NFT không bao giờ rời được địa chỉ đó**. Gửi meter
-> NFT vào một instance là khoá luật đó cho toàn bộ vòng đời 9,63 tỷ, không có redeemer
-> `Migrate`, không có đường nâng cấp. LAMP không burn ⇒ không có đường dọn sổ làm lại.
->
-> **Chưa chốt §7b là luật cuối thì chưa được gửi meter NFT vào bất kỳ `reserve_draw` nào.**
-> §7b cũng còn một lỗ ở tầng thiết kế: nó nói `1%`/`2%` của `C` (lưu hành) nhưng **chưa định
-> nghĩa `C` đo bằng gì on-chain** — `C` ≠ `dist_minted + reserve_minted`, vì phần nằm trong
-> Treasury thì đã đúc mà chưa lưu hành.
+> **Luật phát hành: nguồn duy nhất là [`Specs/Emission/CONTRACT.md`](../Specs/Emission/CONTRACT.md).**
+> Tệp này mô tả **cách module Reserve hiện thực vế trần nhịp** của luật đó; vế cổng cầu nằm ở module
+> Treasury. Chỗ nào tệp này và nguồn duy nhất nói khác nhau thì **nguồn duy nhất đúng**.
+
+### Trạng thái triển khai
+
+| Mã | Treo cái gì | Ràng buộc TẠM đang có hiệu lực (fail-closed) | Khai ở |
+|---|---|---|---|
+| `EMIT-FLOOR-IMPL` | Cổng cầu chưa ép sàn ở dạng tỷ lệ `1%·C`; bản đang có dùng một ngưỡng tuyệt đối | Fail-closed theo cả hai cách đọc: không thoả sàn thì không nhả. Ngưỡng dùng trong kịch bản diễn tập **không phải** giá trị vận hành. | tham số triển khai module Treasury |
+| `RSV-PARAM-FREEZE` | Bộ tham số của một instance `reserve_draw` | Mọi tham số là **apply-param** — nướng vào script hash. Validator ép state ở lại đúng địa chỉ của nó và redeemer duy nhất là `Draw` (không có `Migrate`) ⇒ meter NFT không rời được instance đã gửi vào. Ràng buộc tạm: **chưa gửi meter NFT vào instance nào** cho tới khi `EMIT-FLOOR-IMPL` đóng. | `Genesis/mainnet-deploy-plan.md` |
 
 Mô hình **đệm phát hành demand-gated** (allocation v3, đông kết 2026-06-14). Reserve là
 **lớp đệm phát hành SAU CÙNG** của LAMP: 9,630 tỷ LAMP (26,75%) nhả từ U-space (chưa mint)
@@ -41,8 +29,9 @@ Reserve (no-burn cấm token quay lại U). Reserve chỉ lo *nhịp phát hành
 - **Trần CỨNG mỗi epoch = E/1000** — không phụ thuộc thời gian trôi, không cục catch-up.
 - **Demand-gated:** mỗi draw đòi Treasury co-spend authority NFT → Reserve nhả ⟺ Treasury
   thực sự dưới sàn (logic sàn `parked < floor` nằm Ở TREASURY — `reserve_gate`, xem §quan hệ).
-- **Rollover:** epoch bị gate / không cần → dư ở lại pot, nhả epoch sau → tổng kéo dài tối
-  thiểu ~1000 epoch (cạn liên tục), thực tế ~1001+ epoch (có epoch bị gate).
+- **Rollover:** epoch bị gate / không cần → dư ở lại pot, nhả epoch sau. `1000` epoch là **cận
+  dưới** (mọi epoch đều nhả đúng trần); mỗi epoch bị gate đẩy thời điểm cạn ra xa và **không có cận
+  trên** — không ấn định được một epoch kết thúc. Nguồn: `Specs/Emission/CONTRACT.md` §3.3.
 
 Bộ đếm = **ReserveState UTxO** (duy nhất, ghim bởi `reserve_thread` NFT one-shot).
 
@@ -57,7 +46,8 @@ Bộ đếm = **ReserveState UTxO** (duy nhất, ghim bởi `reserve_thread` NFT
 | `release_epochs` | `1000` | hằng thiết kế (`math.ak:13`); `E ⋮ 1000` → chia chẵn, dư = 0 |
 | `max_per_epoch` | `E / 1000 = 9_630_000_000_000` oildrop | trần CỨNG mỗi epoch (`math.ak:17`) |
 
-`max_per_epoch(E) × 1000 == E` (`math.ak:55` test). Cạn pot liên tục đúng trần ⇒ 1000 epoch.
+`max_per_epoch(E) × 1000 == E` (test ở `lib/magiclamp/reserve/math.ak`). Cạn pot liên tục đúng trần
+⇒ 1000 epoch — đó là **cận dưới**, không phải lịch cạn (§1, và `Specs/Emission/CONTRACT.md` §3.3).
 
 ---
 

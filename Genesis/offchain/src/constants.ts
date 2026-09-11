@@ -19,7 +19,9 @@ export const SUPPLY_NAME = "535550504c59";
 /** CAP Distribution: 26,370 tỷ LAMP × 10^6 (oildrop) — khớp allocation v17 (tất cả trừ Reserve). */
 export const DIST_CAP_OILDROP = 26_370_000_000_000_000n;
 
-/** CAP Reserve: 9,630 tỷ LAMP × 10^6 (oildrop) — khớp allocation v17 (engine trần E/1000/epoch, Treasury-pull gated, ~1001 epoch). */
+/** CAP Reserve: 9,630 tỷ LAMP × 10^6 (oildrop) — khớp allocation v17 (engine trần E/1000/epoch,
+ *  Treasury-pull gated). 1000 epoch là CẬN DƯỚI để cạn pot, không phải lịch cạn: mỗi epoch bị cổng
+ *  cầu đóng lại đẩy thời điểm cạn ra xa, không có cận trên. Nguồn: `Specs/Emission/CONTRACT.md` §3.3. */
 export const RESERVE_CAP_OILDROP = 9_630_000_000_000_000n;
 
 /** CAP tổng = 36 tỷ LAMP × 10^6 — BẤT BIẾN. */
