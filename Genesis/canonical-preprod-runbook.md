@@ -9,7 +9,7 @@
 Policy LAMP đang chạy trên mainnet — `55d3e01bb6c469e02665e4b6573ce65bbaf7a50ad2024e247eb180f0`,
 đúc **2026-06-18**, `lifecycle: "bootstrap"`, **8 tham số** — có một ngõ cụt không sửa được:
 
-| | bản mồi mainnet (8 tham số) | bản canonical (12 tham số) |
+| | bản mồi mainnet (8 tham số) | bản canonical (runbook này chạy bản **12 tham số**) |
 |---|---|---|
 | `meter_nft_policy` | **28 byte 0** (`offchain/src/deployed.ts:92`) | policy one-shot có thật |
 | nhánh `ReserveDraw` | không bao giờ thoả ⇒ **9,63 tỷ LAMP kẹt** (`deployed.ts:118-119`) | mở được — chứng minh ở bước 3 |
@@ -17,6 +17,12 @@ Policy LAMP đang chạy trên mainnet — `55d3e01bb6c469e02665e4b6573ce65bbaf7
 | WHO-gate | danh sách pkh nướng sẵn, 1-of-1 (`deployed.ts:71-76`) | đọc bảng registry theo `token_tag` |
 | xoay khoá vận hành | không được — phải đúc lại policy | sửa entry registry, không redeploy |
 | A-DEST | không ép on-chain ở bản đang chạy | ép: hash kho đọc động từ TRSY NFT |
+
+⚠️ **Con số 12 ở cột phải là bản đã CHẠY trong runbook này, KHÔNG phải mã trong cây.** Mã hiện tại có
+**14 tham số** — hai khe `reserve_kho_nft_policy`/`reserve_kho_nft_name` thêm sau cùng khi vá A-DEST
+đường Reserve (`Genesis/CONTRACT.md §4`). Tham số nằm TRONG policy-id ⟹ bản 14 sinh policy-id **khác**
+mọi policy-id ghi trong runbook này. Dựng lại theo mã hiện tại thì phải đo lại toàn bộ địa chỉ, và cột
+"A-DEST" ở bản 14 mạnh hơn: nó ép **cả đường Reserve**, không chỉ đường Distribution.
 
 Tham số bị nướng vào policy-id, nên **không có đường nâng cấp tại chỗ**
 (`onchain/validators/lamp_mint.ak:34`). Trên Cardano, đổi tham số là đổi policy-id — tức
@@ -120,7 +126,7 @@ bộ policy-id được **dựng lại và so** với state — lệch một ch�
 | chưa có | vì sao | ai làm |
 |---|---|---|
 | ~~**Trần nhịp Reserve δ ≤ E/1000**~~ | **ĐÃ XONG 2026-09-03** — Lớp 2 chạy xanh trên Preprod, xem mục Lớp 2 bên dưới. | — |
-| **Cổng cầu `parked < sàn` đóng lại được** | Lớp 2 chứng minh cổng MỞ khi két dưới sàn, và chứng minh không rút được nếu bỏ qua cổng. Nhưng **chưa chứng minh cổng ĐÓNG**, và lý do là cấu trúc chứ không phải thiếu công sức — xem "cổng cầu không tự đóng lại" bên dưới. | Treasury — `Collect` (chưa dựng) |
+| **Cổng cầu `parked < sàn` đóng lại được** | Lớp 2 chứng minh cổng MỞ khi két dưới sàn, và chứng minh không rút được nếu bỏ qua cổng. **Chưa chứng minh cổng ĐÓNG** trên mạng thử. Lý do KHÔNG còn là "chưa dựng": `Collect` **đã dựng** — nhánh `Collect { items }` trong `Treasury/onchain/validators/custody.ak` với dải luật `C-COL-1`…`C-COL-11` + `C-COL-ADDR`/`C-COL-REFSCRIPT`, bài kiểm riêng ở `Treasury/onchain/validators/collect_test.ak`. Và trên đường rút Reserve thì `Collect` **không còn là bước cần**: nhánh `MigrateIn` ép `value += Δ` (`C-MIG-7`) VÀ `sổ += Δ` (`C-MIG-8`) trong CÙNG tx rút, nên `parked` nâng ngay tại lượt rút. Thứ còn thiếu là **một bài chạy thật trên mạng thử** nối `MigrateIn` liền tx với lượt rút, rồi đo `parked` vượt sàn và cổng từ chối lượt kế. | Treasury — bài chạy thật `MigrateIn` liền tx trên mạng thử: `not_started` |
 | **Xoay khoá authority** | REG nằm dưới `oneshot_nft`, mà `oneshot_nft` có `else(_) { fail }` ⇒ UTxO đó **không tiêu được** ⇒ bảng registry BẤT BIẾN. Đúng ý cho diễn tập, nhưng nghĩa là chưa chạy thử được đường sửa bảng. Mainnet dùng `registry_write` — tiêu được, gác bằng TAAD/OrgDID | `mainnet-deploy-plan.md` mục D12 |
 | **Authority M-of-N** | committee của màn diễn tập là 1-of-1 (chính ví deploy) | mục A4, đang MỞ |
 | **Đường claim → redeem** | DROP NFT đã đúc và đặt đúng chỗ, nhưng chuỗi claim/beacon/redeem chưa chạy trong runbook này | Distribution |
@@ -190,13 +196,15 @@ tx nên hỏng sớm với thông điệp đọc được thay vì "Mint[0] cras
 
 Lớp 1 chứng minh nhánh `ReserveDraw` **mở được**. Nó không chứng minh nhánh đó **có phanh**:
 MET nằm ở ví, nên tiêu nó không kích validator nào. Lớp 2 đưa MET xuống `reserve_draw.ak`.
-Từ đó một lượt rút phải làm hài lòng **bốn validator trong một giao dịch**:
+Từ đó một lượt rút phải làm hài lòng **năm validator trong một giao dịch** (bảng theo mã HIỆN TẠI —
+bản chạy 2026-09-03 chỉ có bốn, vì `custody` lúc đó chưa bị tiêu trong lượt rút):
 
 | validator | ép cái gì |
 |---|---|
-| `reserve_draw.spend` | ≤1 lượt/epoch · δ ≤ tổng/1000 · δ ≤ pot còn lại · δ về đúng đích · ReserveState tái tạo đúng · phải có auth NFT tiêu TỪ gate |
-| `reserve_gate.spend` | `parked` của két < sàn (cổng CẦU) · auth NFT quay về gate · auth không mint/burn |
-| `lamp_mint.mint` | nhánh `ReserveDraw`: đúng 1 input mang MET · MET không mint/burn |
+| `reserve_draw.spend` | ≤1 lượt/epoch · δ ≤ tổng/1000 · δ ≤ pot còn lại · **tiêu đúng 1 UTxO mang kho NFT** (Luật 9) · **UTxO đó ở đúng `custody_script_hash`** (Luật 10) · ReserveState tái tạo đúng · phải có auth NFT tiêu TỪ gate |
+| `reserve_gate.spend` | `parked` của két < sàn (cổng CẦU) · custody THẬT có mặt, input HOẶC reference, đúng một (`G-CUST-1`) · auth NFT quay về gate kèm inline datum · tx thực sự đúc LAMP (`G-USE-1`) · giữ lovelace (`G-VALUE-1`) · auth không mint/burn |
+| `lamp_mint.mint` | nhánh `ReserveDraw`: đúng 1 input mang MET · MET không mint/burn · **A-DEST đường Reserve**: tiêu đúng 1 UTxO mang `reserve_kho_nft_*` + độ tăng ròng của kho ≥ δ |
+| `custody.spend` (`MigrateIn`) | `value += δ` (`C-MIG-7`) **VÀ** `sổ += δ` tại `reserve_inflow_bucket_id` (`C-MIG-8`) · `source == reserve_source_tag` · địa chỉ + params instance giữ nguyên |
 | `supply_state.spend` | `reserve_minted += δ` ≤ cap, đơn điệu |
 
 ```bash
@@ -239,9 +247,18 @@ LAMP tại ĐỊA CHỈ két           = 1.000 LAMP
 
 Hai số này lệch nhau, và đó là **hình dạng của thiết kế**, không phải lỗi lượt chạy:
 
-- `reserve_draw` Luật 9 đếm LAMP tới **payment credential** của đích ⇒ Δ vào đúng địa chỉ két, xanh.
+- `reserve_draw` Luật 9 (**bản CŨ**) đếm LAMP tới **payment credential** của đích ⇒ Δ vào đúng địa chỉ
+  két, xanh.
 - `reserve_gate` G-CUST-1 + G-FLOOR-1 đọc `parked` từ **UTxO mang custody NFT** ⇒ Δ nằm ở một
   UTxO RIÊNG bên cạnh, không tính vào `parked`.
+
+> **Đính chính — hình dạng này KHÔNG còn tồn tại trong mã.** Luật 9 hiện tại không đo địa chỉ nữa: nó
+> ép tx **TIÊU đúng 1 UTxO mang kho NFT**, và Luật 10 ép UTxO đó ở đúng `custody_script_hash`. Kho bị
+> tiêu ⇒ `custody` nhánh `MigrateIn` chạy ⇒ Δ vào value VÀ vào sổ trong cùng tx ⇒ `parked` nâng ngay tại
+> lượt rút, không cần bước settle sau. Hai số lệch nhau ở trên là số đo của bản CŨ. Nguồn: `Luật 9` +
+> `Luật 10` trong `Reserve/onchain/validators/reserve_draw.ak`; `C-MIG-7`/`C-MIG-8` trong
+> `Treasury/onchain/validators/custody.ak`. Bài đỏ chặn hình dạng cũ:
+> `reject_delta_to_datumless_utxo_at_kho_address`.
 **Đính chính 2026-09-05.** Bản trước của mục này viết "không sửa được… cùng một UTxO không thể
 vừa là reference input vừa bị tiêu", và gọi đó là ràng buộc **cấu trúc**. Cả hai đều sai. Bản vá
 không cần custody vừa-tham-chiếu-vừa-tiêu — chỉ cần gate đọc `parked` ở vế bị tiêu. Thứ thật sự
@@ -269,7 +286,9 @@ không phải cổng cầu. Đừng ghi cổng cầu vào cột "đã có".
 
 Ngoài ra, bản demo cũ `Faucet/scripts/demo_reserve_e2e.ts` **không còn chạy được** với mã hiện
 hành và nên đọc như tài liệu lịch sử: nó truyền 2 tham số cho `custody.custody.spend` (blueprint
-khai 3), 2 cho `custody_seed.custody_seed.mint` (khai 1), và ghi custody NFT thành một dòng sổ —
+nay khai **5** — `proposal_policy, seed_policy, ms_per_epoch, lamp_policy, token_name`; con số "3"
+trong bản trước của dòng này lấy từ một bản spec sai, và chính bản spec đó đã sinh ra chỗ truyền 2
+tham số này), 2 cho `custody_seed.custody_seed.mint` (khai 1), và ghi custody NFT thành một dòng sổ —
 mà `collect.seed_value_ok` cộng NFT **ngoài** sổ, nên ghi thế là đếm hai lần.
 
 ## 🔴 2026-09-05 — bản Lớp 2 trên Preprod ĐÃ LỖI THỜI, phải dựng lại

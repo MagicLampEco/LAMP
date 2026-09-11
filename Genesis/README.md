@@ -32,7 +32,7 @@ Mọi giao dịch mint LAMP **bắt buộc** tiêu và tái tạo `SupplyState`.
 | Tầng | Validator | Vai |
 |---|---|---|
 | 1 | `thread_nft.ak` | mint one-shot NFT `SUPPLY` (param: `genesis_ref`) — neo tính duy nhất |
-| 2 | `lamp_mint.ak` | minting policy LAMP, 12 param, ép toàn bộ luật cung |
+| 2 | `lamp_mint.ak` | minting policy LAMP, **14 param** (nguồn: chữ ký `validator lamp_mint(`; bảng đầy đủ ở `Genesis/CONTRACT.md §4`), ép toàn bộ luật cung |
 | 3 | `supply_state.ak` | spend validator giữ UTxO `SupplyState` |
 
 Tầng 3 chỉ biết policy của tầng 2; tầng 2 chỉ biết policy/name của tầng 1; tầng 1 chỉ biết

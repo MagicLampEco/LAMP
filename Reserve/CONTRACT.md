@@ -7,14 +7,16 @@
 > giới hạn số epoch) — và nói thẳng: *"Reserve module hiện tại (`reserve_draw.ak`, trần
 > E/1000/epoch) là thiết kế **CŨ** — cần thiết kế lại"*.
 >
-> Mã hiện có (`reserve_draw.ak:94`, `lib/.../math.ak:13,17-19`) hiện thực luật E/1000 của tệp
+> Mã hiện có (`math.max_per_epoch` + `math.release_epochs` ở `Reserve/onchain/lib/magiclamp/reserve/math.ak`,
+> gọi tại `Luật 4` của `reserve_draw`) hiện thực luật E/1000 của tệp
 > này, **không** hiện thực §7b: grep `bps|nội suy|interpolat|circulating|lưu hành` trong
 > `Reserve/onchain/` ra rỗng, và `reserve_draw` không nhận `SupplyState` nên **không đọc được
-> `C`**.
+> `C`**. Sàn ở `reserve_gate` là `floor_oildrop` — một số **TUYỆT ĐỐI** (oildrop) nướng vào script
+> hash, KHÔNG phải phần trăm lưu hành.
 >
-> Vì sao chỗ này đắt: cả 9 tham số của `reserve_draw` là **apply-param** — nướng vào script
-> hash. `reserve_draw.ak:125` ép `s_out.address == own_out.address` và redeemer duy nhất là
-> `Draw` (`:150-152` `else fail`) ⇒ **meter NFT không bao giờ rời được địa chỉ đó**. Gửi meter
+> Vì sao chỗ này đắt: cả **11** tham số của `reserve_draw` là **apply-param** — nướng vào script
+> hash (bảng ở §6). `Luật 7` ép `s_out.address == own_out.address` và redeemer duy nhất là
+> `Draw` (`else(_) { fail }`) ⇒ **meter NFT không bao giờ rời được địa chỉ đó**. Gửi meter
 > NFT vào một instance là khoá luật đó cho toàn bộ vòng đời 9,63 tỷ, không có redeemer
 > `Migrate`, không có đường nâng cấp. LAMP không burn ⇒ không có đường dọn sổ làm lại.
 >
@@ -90,7 +92,7 @@ tăng (≤ `total_oildrop`); `last_epoch` ghi epoch draw này → chống re-dra
 | Validator | Loại | Vai trò |
 |---|---|---|
 | `reserve_thread` | mint | đúc DUY NHẤT 1 `reserve_thread` NFT one-shot (param `genesis_ref`) → ReserveState chính danh & DUY NHẤT |
-| `reserve_draw` | spend | giữ ReserveState UTxO; ép 9 luật mỗi draw (xem §5). ĐÓNG vai "meter" gate nhịp cho Genesis route ReserveDraw |
+| `reserve_draw` | spend | giữ ReserveState UTxO; ép 10 luật mỗi draw (xem §5). ĐÓNG vai "meter" gate nhịp cho Genesis route ReserveDraw |
 
 **Quan hệ với Genesis (lamp_mint):** Genesis route `ReserveDraw` đòi tx spend đúng 1 UTxO mang
 "meter" NFT (gate nhịp). `reserve_thread` NFT của ReserveState ĐÓNG vai meter đó — `reserve_draw`
@@ -99,7 +101,7 @@ CHÍNH là gate nhịp. (Orchestrator chốt: `meter_nft = reserve_thread`. KHÔ
 
 ---
 
-## 5. Chín luật ép trong `reserve_draw` (mỗi tx Draw)
+## 5. Mười luật ép trong `reserve_draw` (mỗi tx Draw)
 
 Gọi `s` = ReserveState input, `s2` = ReserveState output, `delta` = `Δ mint LAMP`
 (`lamp_policy`, `token_name`), `t` = epoch suy từ `validity_range.lower_bound`.
@@ -122,22 +124,58 @@ Gọi `s` = ReserveState input, `s2` = ReserveState output, `delta` = `Δ mint L
    (chống nhồi LAMP né dest) ∧ KHÔNG đính `reference_script`.
 8. **reserve_thread NFT không mint/burn trong tx** — `quantity_of(tx.mint, reserve_thread_*) == 0`.
    Chống đúc thêm meter NFT giả giữ ở ví thường để né validator (Vector F).
-9. **TOÀN BỘ delta LAMP tới reserve_dest** — `qty_to_credential(dest) ≥ delta` (== delta ngầm vì
-   Δ mint == delta và state output không ôm LAMP → không nguồn LAMP nào khác để vượt).
+9. **tx PHẢI TIÊU đúng 1 UTxO mang KHO NFT** — `count_inputs_with_nft(tx.inputs, kho_nft_policy,
+   kho_nft_name) == 1`. `reserve_draw` KHÔNG đo đích và KHÔNG đo lượng: nó chỉ ép kho BỊ TIÊU.
+   Kho bị tiêu ⇒ validator của chính kho chạy (Treasury `custody`, nhánh `MigrateIn`) ⇒ chính nó
+   ép Δ vào value VÀ vào SỔ (`C-MIG-7`/`C-MIG-8`). `== 1` chứ không `≥ 1`: hai UTxO kho trong một
+   tx thì mỗi cái đòi "value tăng Δ" trong khi chỉ có một Δ được mint ⇒ mơ hồ, chặn cứng.
+10. **UTxO mang kho NFT phải Ở ĐÚNG script hash của Treasury `custody`** —
+    `is_at_script(kho_in.output.address, custody_script_hash)`. Luật 9 chỉ ép "một UTxO mang kho
+    NFT bị tiêu", nó KHÔNG nói UTxO đó thuộc validator nào; NFT nằm ở script khác hoặc ở ví thường
+    thì cái chạy không phải `custody` và không ai ép Δ vào SỔ. Soi gương Luật 5 — "có mặt" không
+    thay được "validator nào chạy".
+
+**VÌ SAO Luật 9 KHÔNG còn là `qty_to_credential(dest) ≥ delta`:** phép đo cũ đo TỔNG mặt output
+tới một ĐỊA CHỈ, hỏng hai đường cùng lúc. (a) Đo tổng cho phép TÁI CHẾ — kho đang giữ `X ≥ delta`,
+tx trả lại đúng `X`, `delta` mới ra ví, mà vế `tổng ≥ delta` vẫn thoả. (b) Đúng địa chỉ KHÔNG có
+nghĩa là vào SỔ — Δ rót vào một UTxO không datum ở địa chỉ kho thì kho tiêu lại không được, Δ đóng
+băng ngoài sổ = đốt trá hình, trái bất biến "LAMP không đốt". Nguồn: khối chú thích "LUẬT 9 — VÌ
+SAO ĐO KHO BỊ TIÊU, KHÔNG ĐO ĐỊA CHỈ NHẬN ĐỦ" trong `Reserve/onchain/validators/reserve_draw.ak`.
+
+**Lợi ích kèm theo:** địa chỉ kho không còn bị nướng vào script hash của `reserve_draw`, nên quyết
+định "kho có uỷ quyền stake không" KHÔNG còn ràng vào apply-param.
 
 ---
 
 ## 6. Param `reserve_draw` (apply-param lúc deploy)
 
-| Param | Ý nghĩa |
-|---|---|
-| `lamp_policy` | minting policy LAMP/tLAMP (Genesis lamp_mint) — đo Δ mint |
-| `token_name` | asset name LAMP (testnet "tLAMP" / mainnet "LAMP") |
-| `reserve_thread_policy` / `reserve_thread_name` | policy + name reserve_thread NFT one-shot (authenticity ReserveState) |
-| `ms_per_epoch` | độ dài epoch (POSIX ms) theo network |
-| `reserve_dest` | địa chỉ ĐÍCH nhận LAMP nhả (= địa chỉ custody Treasury) |
-| `treasury_auth_policy` / `treasury_auth_name` | policy + name NFT co-spend authority Treasury (Treasury-pull gate) |
-| `gate_script_hash` | script hash của `reserve_gate` (Treasury). Auth NFT BẮT BUỘC spend từ input ở gate này → ép kích `reserve_gate.spend`. Hằng truyền vào — KHÔNG vòng phụ thuộc |
+**11 tham số, ĐÚNG thứ tự** dưới đây (thứ tự nằm TRONG script hash — truyền lệch không báo lỗi,
+nó chỉ ra một script hash khác một cách im lặng). Nguồn: chữ ký `validator reserve_draw(` trong
+`Reserve/onchain/validators/reserve_draw.ak`.
+
+| # | Param | Ý nghĩa |
+|---|---|---|
+| 1 | `lamp_policy` | minting policy LAMP/tLAMP (Genesis `lamp_mint`) — đo Δ mint |
+| 2 | `token_name` | asset name LAMP (testnet "tLAMP" / mainnet "LAMP") |
+| 3 | `reserve_thread_policy` | policy reserve_thread NFT one-shot (authenticity ReserveState) |
+| 4 | `reserve_thread_name` | asset name reserve_thread NFT |
+| 5 | `ms_per_epoch` | độ dài epoch (POSIX ms) theo network |
+| 6 | `kho_nft_policy` | policy NFT one-shot ĐỊNH DANH kho (Treasury `custody`). Thay cho `reserve_dest` cũ: định danh kho bằng NFT, không bằng địa chỉ |
+| 7 | `kho_nft_name` | asset name kho NFT |
+| 8 | `treasury_auth_policy` | policy NFT co-spend authority Treasury (Treasury-pull gate) |
+| 9 | `treasury_auth_name` | asset name Treasury auth NFT |
+| 10 | `gate_script_hash` | script hash của `reserve_gate` (Treasury). Auth NFT BẮT BUỘC spend từ input ở gate này → ép kích `reserve_gate.spend`. Hằng truyền vào — KHÔNG vòng phụ thuộc |
+| 11 | `custody_script_hash` | script hash của Treasury `custody`. UTxO mang kho NFT BẮT BUỘC nằm ở payment credential này (Luật 10). Đặt Ở CUỐI để không xê dịch khe cũ |
+
+⚠ **BẤT BIẾN NỐI DÂY:** cặp `kho_nft_policy`/`kho_nft_name` (#6-7) của `reserve_draw` phải TRÙNG
+cặp `reserve_kho_nft_policy`/`reserve_kho_nft_name` (khe #13-14 của
+`Genesis/onchain/validators/lamp_mint.ak`), tức `(seed_policy, instance_id)` của instance `custody`
+đích. Đó KHÔNG phải cặp `kho_nft_*` (#9-10) của `lamp_mint` — cặp đó trỏ kho Distribution. Truyền
+lệch hai chỗ này thì mỗi validator canh một cái kho khác nhau và **cả hai vẫn xanh**: khoá ba tầng
+đứt ở tầng nối dây, không tầng nào báo.
+
+Thứ tự đúc: one-shot NFT → `lamp_mint` → `custody` → `reserve_gate` → `reserve_draw`. `custody`
+không nướng hash của hai validator cuối ⟹ KHÔNG sinh vòng apply-param.
 
 ---
 
@@ -145,8 +183,12 @@ Gọi `s` = ReserveState input, `s2` = ReserveState output, `delta` = `Δ mint L
 
 Mỗi draw = MỘT tx gộp: `reserve_draw` (ép trần epoch + kế toán) + `reserve_gate` của Treasury
 (ép sàn `parked < floor`, giữ auth NFT) + Genesis `lamp_mint` (kế toán supply, route ReserveDraw).
-Auth NFT là **input** từ gate → thỏa Luật 5; `reserve_gate` đọc `parked` qua custody reference
-(CIP-31), ép sàn. Reserve nhả ⟺ Treasury thực sự dưới sàn.
+Auth NFT là **input** từ gate → thỏa Luật 5; `reserve_gate` đọc `parked` từ UTxO custody THẬT (mang
+custody NFT) rồi ép sàn. Trên đường Reserve, custody đó là một **spend input**, không phải reference:
+Luật 9 buộc kho bị tiêu, và PlutusV3 cấm một `TxIn` nằm đồng thời ở `tx.inputs` và
+`tx.reference_inputs`. Vì vậy `G-CUST-1` gộp hai danh sách và chấp nhận **input HOẶC reference, đúng
+một** (xem khối chú thích tại chỗ ép `G-CUST-1` trong `Treasury/onchain/validators/reserve_gate.ak`).
+Reserve nhả ⟺ Treasury thực sự dưới sàn.
 
 - `reserve_gate` KHÔNG kiểm chi tiết draw (reserve_draw tự ép trần/kế toán);
   `reserve_draw` KHÔNG kiểm sàn (gate tự ép). Phân tách trách nhiệm sạch.
@@ -167,7 +209,11 @@ Auth NFT là **input** từ gate → thỏa Luật 5; `reserve_gate` đọc `par
 | ReserveState giả (không NFT) | Luật 1 | `reject_missing_nft` |
 | Burn / draw rỗng | Luật 4 (`delta > 0`) | `reject_burn` / `reject_no_mint` |
 | Kế toán sai (drawn/last_epoch) | Luật 7 | `reject_drawn_wrong_sum` / `reject_last_epoch_not_updated` |
-| Rò rỉ LAMP né dest | Luật 9 | `reject_lamp_leak_not_to_dest` |
+| Kho KHÔNG bị tiêu (hình dạng "rót vào địa chỉ rồi thôi") | Luật 9 | `reject_missing_kho_input` |
+| 2 UTxO kho trong 1 tx (kho tự chia đôi trách nhiệm) | Luật 9 | `reject_two_kho_inputs` |
+| Δ rót vào UTxO KHÔNG datum tại địa chỉ kho (Δ đóng băng ngoài sổ) | Luật 9 | `reject_delta_to_datumless_utxo_at_kho_address` |
+| Kho NFT ngồi ở script KHÁC `custody` | Luật 10 | `reject_kho_nft_at_other_script` |
+| Kho NFT ở ví thường | Luật 10 | `reject_kho_nft_at_wallet` |
 | Double-satisfaction | Luật 6 | `reject_double_satisfaction` |
 | Nới cap / dời mốc | Luật 7 (bất biến) | `reject_total_oildrop_mutated` / `reject_start_epoch_mutated` |
 | State' ôm LAMP / rời địa chỉ | Luật 7 | `reject_state_output_holds_lamp` / `reject_state_moved_address` |
@@ -178,12 +224,16 @@ Auth NFT là **input** từ gate → thỏa Luật 5; `reserve_gate` đọc `par
 
 ## 9. Trạng thái triển khai
 
-- **onchain:** `reserve_draw.ak` (spend, 9 luật) + `reserve_thread.ak` (mint one-shot) +
+- **onchain:** `reserve_draw.ak` (spend, 10 luật) + `reserve_thread.ak` (mint one-shot) +
   `lib/.../types.ak` (ReserveState + 2 redeemer) + `math.ak` (max_per_epoch/drawable) + `util.ak`.
   Test Aiken: happy (full-cap/partial/incremental/last-drain/3-epoch-chain) + toàn bộ negative §8.
 - **offchain:** `types.ts` + `datum.ts` (codec byte-perfect) + `math.ts` (applyDraw/maxPerEpoch
   fail-fast) + `drawBuilder.ts` (dựng tx Draw co-spend ReserveState + SupplyState + Treasury auth).
-- **đích nhả:** `reserve_dest` = địa chỉ custody Treasury. ⚠️ **CHƯA CHỐT** — quyết định này còn
-  treo (bản ghi cũ ở `Legacy/internal-2026H1/PENDING.md §1` — thư mục `Legacy/` đã gỡ khỏi cây
-  2026-08-12, tra `git show be14728:Legacy/internal-2026H1/PENDING.md`; **không còn hiệu lực**,
-  đừng lấy làm nguồn). Phải chốt lại và ghi vào chính file này trước khi deploy Reserve.
+- **đích nhả:** `complete` — KHÔNG còn tham số `reserve_dest`. Đích được ép bằng NFT chứ bằng địa
+  chỉ: `kho_nft_policy`/`kho_nft_name` (Luật 9, kho phải BỊ TIÊU) + `custody_script_hash` (Luật 10,
+  kho phải ở đúng `custody`). Hạng mục "chốt `reserve_dest` trước khi deploy" đã hết hiệu lực vì
+  chính tham số đó không còn tồn tại trong `validator reserve_draw(`.
+- **còn treo:** `blocked-by-deploy` — cặp `(kho_nft_policy, kho_nft_name)` là `(seed_policy,
+  instance_id)` của MỘT instance `custody`, nướng vào script hash. Chọn instance nào là quyết định
+  lúc deploy, không phải điều validator tự bảo đảm; chọn sai không sửa được bằng cách truyền tham
+  số khác. Xem §6 khối "BẤT BIẾN NỐI DÂY".

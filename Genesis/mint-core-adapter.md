@@ -8,8 +8,13 @@
 >
 > Model = cap-36B lazy-mint, redeemer `DistributionVest` / `ReserveDraw`, SupplyState 4-field, A-DEST.
 > **CÒN PHẢI XÁC MINH:** bản script đang chạy trên mainnet dùng **8 tham số (authority khoá thường)**
-> hay **12 tham số (Registry-gate theo DID)** — chưa đối chiếu CBOR on-chain với bản dựng lại.
+> hay bản Registry-gate theo DID — chưa đối chiếu CBOR on-chain với bản dựng lại.
 > **Đừng hardcode authority/redeemer shape trước khi có kết quả đối chiếu đó.**
+>
+> ⚠️ Bản trong kho hiện có **14 tham số** (§6), không phải 12 — hai khe `reserve_kho_nft_policy`/
+> `reserve_kho_nft_name` được thêm sau cùng khi vá A-DEST đường Reserve. Vế "12 tham số" trong câu trên
+> là mốc của một bản build cũ. Tham số nằm TRONG policy-id ⟹ bản 14 sinh ra policy-id **khác** bản 12
+> và khác `55d3e01b…`.
 >
 > Nguồn on-chain: `Genesis/onchain/validators/lamp_mint.ak`, `.../supply_state.ak`,
 > `.../dist_treasury.ak`, `lib/magiclamp/genesis/{types,registry}.ak`.
@@ -27,7 +32,17 @@ Tx mint LAMP (phân phối) hợp lệ ⟺ TẤT CẢ:
 3. **WHO (Registry):** `registry.validate_mint` — có **ĐÚNG 1 reference input** mang Registry NFT
    `(registry_nft_policy, registry_nft_name)`; decode `RegistryDatum`; tìm entry `token_tag`==param;
    **Authority của entry thoả** (SinglePkh → pkh ∈ sigs / MultiSig → ≥ threshold / Revoked → fail).
-4. **A-DEST (WHERE):** đọc `kho_hash` động từ ref input mang `kho_nft` → **`qty_to_script(outputs, kho_hash, lamp_policy, token_name) ≥ Δ`** — TOÀN BỘ Δ rót vào KHO, KHÔNG ra ví.
+4. **A-DEST (WHERE):** đọc `kho_hash` động từ ref input mang `kho_nft` (`util.script_hash_of_holder`)
+   → **`util.qty_delta_at_script(tx.inputs, tx.outputs, kho_hash, policy_id, token_name) ≥ Δ`** —
+   TOÀN BỘ Δ rót vào KHO, KHÔNG ra ví.
+
+   ⚠️ **Đo ĐỘ TĂNG RÒNG (`output − input`), KHÔNG đo tổng mặt output.** Một bản spec trước ghi
+   `qty_to_script(outputs, …) ≥ Δ`; hàm đó **không** được dùng ở nhánh nào của `lamp_mint` (nó chỉ còn
+   trong chú thích của một test cũ). Khác biệt này không phải hình thức: đo TỔNG cho phép **tái chế số
+   dư kho** — kho đang giữ `X ≥ Δ`, tx tiêu UTxO kho rồi trả lại đúng `X` và đưa `Δ` mới về ví, mà vế
+   `tổng ≥ Δ` vẫn thoả trong khi kho **không tăng một đồng**. Bài đỏ chặn đúng đường đó:
+   `adest_recycle_kho_balance_rejected`; cặp dương: `adest_kho_input_still_ok_when_increase_real`.
+   Cả hai nhánh `DistributionVest` và `ReserveDraw` đều dùng `qty_delta_at_script`.
 5. **cap** (qua supply_state, §2): `dist_minted' = dist_minted+Δ ≤ dist_cap`.
 
 ## 2. `supply_state` (spend, redeemer `Advance`) — ÉP
@@ -61,21 +76,34 @@ Mint:
   • +Δ (lamp_policy, "LAMP")                        — redeemer lamp_mint = DistributionVest
 Outputs:
   • SupplyState continuing @ Script(supply_state): SUPPLY NFT + minADA, datum {dist_minted+Δ, …3 field giữ}
-  • KHO @ kho_hash: ≥ Δ LAMP                         ← A-DEST bắt buộc, KHÔNG ra ví
+  • KHO @ kho_hash: ĐỘ TĂNG RÒNG ≥ Δ LAMP            ← A-DEST bắt buộc, KHÔNG ra ví
+    (nếu tx cũng tiêu UTxO kho thì phải trả về `input + Δ`, không phải `Δ`)
 Required signers:
   • authority của entry token_tag (= controller_pkh OrgDID nếu SinglePkh; hoặc ≥m nếu MultiSig)
 Scripts đính: lamp_mint (mint) + supply_state (spend). Validity TTL hợp lý.
 ```
 
 ## 5. ReserveDraw (đường Reserve — KHÔNG liên quan PhoenixKey mint)
-Permissionless: KHÔNG chữ ký; ép tx spend ĐÚNG 1 UTxO mang `meter_nft` (= reserve_thread) → `reserve_draw`
-ép δ ≤ E/1000/epoch. Core **không** dùng đường này cho mint-by-OrgDID.
+Permissionless: KHÔNG chữ ký. Ép hai vế:
+- **WHO/NHỊP:** tx spend ĐÚNG 1 UTxO mang `meter_nft` (= reserve_thread) → `reserve_draw` ép
+  δ ≤ E/1000/epoch + pot còn lại + Treasury-pull.
+- **WHERE (A-DEST đường Reserve):** tx spend ĐÚNG 1 UTxO mang `reserve_kho_nft_*` (Treasury `custody`)
+  **và** độ tăng ròng của kho đó ≥ δ (`qty_delta_at_script`). Kho bị tiêu ⇒ `custody` nhánh `MigrateIn`
+  chạy ⇒ Δ vào value VÀ vào SỔ.
 
-## 6. Tham số bake `lamp_mint` (12) — LAMP cấp khi deploy
+Core **không** dùng đường này cho mint-by-OrgDID.
+
+## 6. Tham số bake `lamp_mint` (14) — LAMP cấp khi deploy
 `thread_nft_policy/name` (SUPPLY NFT) · `token_name` ("LAMP") · `dist_cap` · `reserve_cap`
 (LAMP = 26,37 tỷ + 9,63 tỷ ×10⁶) · `registry_nft_policy/name` · **`token_tag`** — **CHỐT 2026-07-10**:
 `#"4c414d50"` (UTF-8 "LAMP"), hằng số `constants.lamp_token_tag` (`Genesis/onchain/lib/magiclamp/genesis/constants.ak`)
-· `kho_nft_policy/name` · `meter_nft_policy/name`.
+· `kho_nft_policy/name` (kho **Distribution**) · `meter_nft_policy/name` · `reserve_kho_nft_policy/name`
+(Treasury **custody**, hai khe CUỐI).
+
+Thứ tự và số tham số nằm TRONG policy-id. Nguồn: chữ ký `validator lamp_mint(` trong
+`Genesis/onchain/validators/lamp_mint.ak`. ⚠️ `kho_nft_*` và `reserve_kho_nft_*` trỏ HAI kho KHÁC NHAU
+(Distribution vs Treasury custody) — nối nhầm thì mọi phép đo vẫn xanh mà Δ hạ cánh ở cái kho không có
+nhánh nào ghi nó vào sổ. Xem `Genesis/CONTRACT.md §4`.
 
 ## 7. Đơn vị — cảnh báo 10⁶
 Explorer hiện `decimals 0` (thiếu metadata) → hiển thị raw base. Core + backend LUÔN coi 1 LAMP = 10⁶ base;
