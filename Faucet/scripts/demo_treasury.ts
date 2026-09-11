@@ -92,19 +92,27 @@ async function waitVisible(txHash: string, addr: string, tries = 40): Promise<vo
 const out: Record<string, unknown> = { network: "Preview", txs: [] as unknown[] };
 const rec = (o: unknown) => (out.txs as unknown[]).push(o);
 
-// ── custody validator (params: proposal_policy, ms_per_epoch) → script hash ──
-const custodyScript: Validator = { type: "PlutusV3", script: apT("custody.custody.spend", [PROPOSAL_POLICY, MS_PER_EPOCH]) };
+// ── S1: seed custody (one-shot NFT) ─────────────────────────────────────────
+// THỨ TỰ ĐÃ ĐỔI: custody_seed TRƯỚC custody. `custody_seed` nay chỉ nhận `genesis_ref` — nó
+// chọn output custody bằng self-reference NFT, nên vòng seed↔custody đã bị phá; còn `custody`
+// thì NGƯỢC LẠI cần `seed_policy` (khe #2) để ghim NFT one-shot làm định danh instance.
+const utxos0 = await lucid.wallet().getUtxos();
+const genesis = utxos0.reduce((a, b) => (b.assets.lovelace > a.assets.lovelace ? b : a));
+const genesisRef = new Constr(0, [genesis.txHash, BigInt(genesis.outputIndex)]);
+const custodySeedPolicy: MintingPolicy = { type: "PlutusV3", script: apT("custody_seed.custody_seed.mint", [genesisRef]) };
+const custodySeedPid = mintingPolicyToId(custodySeedPolicy);
+
+// ── custody validator → script hash ─────────────────────────────────────────
+// Năm tham số: proposal_policy, seed_policy, ms_per_epoch, lamp_policy, token_name.
+// Hai khe LAMP (#4-5) là để nhánh `MigrateIn` đo Δ — không đọc "token nào là LAMP" từ datum
+// được, vì datum do người gửi đặt ⇒ phải nướng vào script hash.
+const custodyScript: Validator = { type: "PlutusV3", script: apT("custody.custody.spend", [
+  PROPOSAL_POLICY, custodySeedPid, MS_PER_EPOCH, LAMP_POLICY, LAMP_NAME,
+]) };
 const custodyHash = validatorToScriptHash(custodyScript);
 const custodyAddr = credentialToAddress("Preview", scriptHashToCredential(custodyHash));
 console.log(`custodyHash=${custodyHash}`);
 console.log(`custodyAddr=${custodyAddr}`);
-
-// ── S1: seed custody (one-shot NFT) ─────────────────────────────────────────
-const utxos0 = await lucid.wallet().getUtxos();
-const genesis = utxos0.reduce((a, b) => (b.assets.lovelace > a.assets.lovelace ? b : a));
-const genesisRef = new Constr(0, [genesis.txHash, BigInt(genesis.outputIndex)]);
-const custodySeedPolicy: MintingPolicy = { type: "PlutusV3", script: apT("custody_seed.custody_seed.mint", [genesisRef, custodyHash]) };
-const custodySeedPid = mintingPolicyToId(custodySeedPolicy);
 const custodyNftUnit = toUnit(custodySeedPid, INSTANCE_ID); // NFT name == instance_id
 console.log(`custodySeedPid=${custodySeedPid}`);
 console.log(`custodyNftUnit=${custodyNftUnit}`);

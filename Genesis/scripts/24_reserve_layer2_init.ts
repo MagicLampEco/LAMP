@@ -101,7 +101,9 @@ async function main(): Promise<void> {
   // ══ L2a — custody NFT (giao dịch RIÊNG vì S-MINT-2) ═══════════════════════
   let custodyRef = state.reserve?.custodyRef;
   let cust = custodyRef
-    ? await deriveCustody(custodyRef.txHash, custodyRef.outputIndex, wiring.network)
+    ? await deriveCustody(custodyRef.txHash, custodyRef.outputIndex, {
+        lampPid: wiring.lampPid, tokenName: wiring.tokenName, network: wiring.network,
+      })
     : undefined;
 
   const custodyLive = async () =>
@@ -119,7 +121,9 @@ async function main(): Promise<void> {
     const avoid = new Set(metHeld(utxos).map(key));
     const seed = pickSeed(utxos, avoid);
     custodyRef = { txHash: seed.txHash, outputIndex: seed.outputIndex };
-    cust = await deriveCustody(seed.txHash, seed.outputIndex, wiring.network);
+    cust = await deriveCustody(seed.txHash, seed.outputIndex, {
+      lampPid: wiring.lampPid, tokenName: wiring.tokenName, network: wiring.network,
+    });
 
     console.log(`L2a hạt giống custody: ${key(seed)}`);
     console.log(`    custody policy: ${cust.custodySeedPid}`);

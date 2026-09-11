@@ -193,6 +193,22 @@ export interface ReserveScripts {
 }
 
 /**
+ * Tham số của `deriveCustody`, dạng ĐỐI TƯỢNG chứ không phải thêm hai khe vị trí.
+ *
+ * Vì sao đối tượng: `custody` nay nướng thêm `lamp_policy`/`token_name` vào script hash. Nếu
+ * chèn hai khe vị trí thì mọi lời gọi cũ `deriveCustody(h, i, network)` vẫn BIÊN DỊCH ĐƯỢC —
+ * `network` trôi vào khe `lampPid` — và kết quả là một `custodyHash` khác mà không dòng nào
+ * báo. Đối tượng làm mọi lời gọi cũ ĐỎ ở tsc, tức lỗi lộ ra lúc dịch chứ không lúc đúc.
+ */
+export interface DeriveCustodyOptions {
+  /** policy id LAMP/tLAMP (Genesis lamp_mint) — `MigrateIn` đo Δ theo đây. */
+  lampPid: string;
+  /** asset name LAMP/tLAMP (hex) — testnet "tLAMP" / mainnet "LAMP". */
+  tokenName: string;
+  network?: Network;
+}
+
+/**
  * Phần két, tách riêng vì nó KHÔNG phụ thuộc auth NFT.
  *
  * Tách ra là điều kiện để giao dịch đúc custody chạy TRƯỚC khi chọn hạt giống auth. Thứ tự đó
@@ -202,11 +218,12 @@ export interface ReserveScripts {
  * dựng một câu lỗi để bắt đúng cảnh này — `demo_reserve_e2e.ts` bước A1.)
  */
 export async function deriveCustody(
-  custodyTxHash: string, custodyIndex: number, network: Network = NETWORK,
+  custodyTxHash: string, custodyIndex: number, o: DeriveCustodyOptions,
 ): Promise<{
   custodySeed: MintingPolicy; custody: Validator;
   custodySeedPid: string; custodyNftUnit: string; custodyHash: string; custodyAddr: string;
 }> {
+  const network = o.network ?? NETWORK;
   // CỔNG POISON-002, fail-closed trên mạng thật.
   //
   // Vì sao phải đặt Ở ĐÂY chứ không dựa vào cổng đã có: `_guards.ts::isPoison` bắt đúng lớp lỗi
@@ -234,6 +251,9 @@ export async function deriveCustody(
     PROPOSAL_POLICY_PLACEHOLDER,  // #1 proposal_policy — xem cảnh báo 28 byte 0 ở trên
     custodySeedPid,               // #2 seed_policy — ghim NFT one-shot làm định danh két
     MS_PER_EPOCH,                 // #3 ms_per_epoch
+    o.lampPid, o.tokenName,       // #4-5 LAMP — nhánh `MigrateIn` đo Δ theo đúng cặp này.
+                                  //      Không đọc "token nào là LAMP" từ datum được: datum do
+                                  //      người gửi đặt. ⇒ tham số apply-time, nướng vào hash.
   ]) as Validator;
   const custodyHash = hashOf(custody);
   return {
@@ -276,7 +296,9 @@ export async function deriveReserveWiring(
 
   // ── custody: seed one-shot → két ────────────────────────────────────────────
   const { custodySeed, custody, custodySeedPid, custodyHash, custodyAddr } =
-    await deriveCustody(o.custodyTxHash, o.custodyIndex, network);
+    await deriveCustody(o.custodyTxHash, o.custodyIndex, {
+      lampPid: w.lampPid, tokenName: w.tokenName, network,
+    });
 
   // ── auth NFT: credential "kéo" của Treasury ─────────────────────────────────
   const auth = { type: "PlutusV3" as const,
@@ -296,14 +318,25 @@ export async function deriveReserveWiring(
   const gateHash = hashOf(gate);
 
   // ── draw: nơi ép trần nhịp ──────────────────────────────────────────────────
-  // Thứ tự tham số lấy từ `reserve_draw.ak:43-53`.
+  // Thứ tự tham số lấy từ chữ ký `validator reserve_draw(` — trích theo TÊN, không theo số
+  // dòng, vì số dòng trôi mà con trỏ vẫn trỏ vào một dòng CÓ THẬT.
+  //
+  // ĐỔI HÌNH DẠNG (đợt "Δ Reserve vào SỔ"): khe #6 cũ là `reserve_dest: Address` — một ĐỊA
+  // CHỈ. Rót đúng địa chỉ mà sai hình dạng thì Δ nằm trong SÂN kho và ngoài SỔ kho, không
+  // tiêu lại được. Nay ba khe thay nó: kho được định danh bằng NFT (#6-7) và bị ghim vào
+  // ĐÚNG validator giữ nó (#11), để chính `custody` nhánh MigrateIn ghi Δ vào sổ.
   const draw = await applyOf("Reserve", "reserve_draw.reserve_draw.spend", [
-    w.lampPid, w.tokenName,                 // #1-2 LAMP — đo Δ mint
-    w.markers.metPid, MET_NAME,             // #3-4 meter NFT = reserve thread (`reserve_draw.ak:16`)
-    MS_PER_EPOCH,                           // #5   mẫu số quy đổi epoch
-    scriptAddressData(custodyHash),         // #6   reserve_dest = két Treasury
-    authPid, AUTH_NAME,                     // #7-8 auth NFT Treasury-pull
-    gateHash,                               // #9   auth PHẢI được tiêu TỪ gate này
+    w.lampPid, w.tokenName,                 // #1-2  LAMP — đo Δ mint
+    w.markers.metPid, MET_NAME,             // #3-4  meter NFT = reserve thread
+    MS_PER_EPOCH,                           // #5    mẫu số quy đổi epoch
+    custodySeedPid, INSTANCE_ID,            // #6-7  KHO NFT — Luật 9 ép TIÊU đúng 1 UTxO mang nó.
+                                            //       Cùng cặp gate dùng ở #1-2 của reserve_gate:
+                                            //       kho "thật" là UTxO mang NFT custody_seed.
+    authPid, AUTH_NAME,                     // #8-9  auth NFT Treasury-pull
+    gateHash,                               // #10   auth PHẢI được tiêu TỪ gate này
+    custodyHash,                            // #11   Luật 10 — kho NFT phải ở ĐÚNG script custody,
+                                            //       không thì validator chạy không phải custody
+                                            //       và KHÔNG AI ghi Δ vào sổ.
   ]);
   const drawHash = hashOf(draw);
 
