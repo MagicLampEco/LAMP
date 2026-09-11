@@ -15,6 +15,8 @@ luật phân bổ giữa các quỹ (xem `Papers/pot-catalog.md`) và không bao
 | Đại lượng | Giá trị |
 |---|---|
 | 1 LAMP | `1_000_000` oildrop (10⁶) |
+| tên đơn vị con | `oildrop` (vai trò như `lovelace` của ADA) |
+| `decimals` (trường metadata token) | `6` — cùng một dữ kiện với dòng trên, viết theo trường mà ví và explorer đọc |
 | 1 epoch | epoch Cardano — 5 ngày; ≈73 epoch/năm |
 
 Mọi con số on-chain tính bằng **oildrop**. Bảng dưới ghi cả hai đơn vị ở chỗ dễ đọc nhầm.
@@ -125,26 +127,52 @@ Hệ quả trực tiếp của hai vế trên, và là điểm hay bị ghi sai:
 
 Nói *"Reserve cạn sau 1000 epoch"* là **sai** — 1000 là cận dưới, không phải lịch.
 
-### 3.4 Trần lạm phát — SUY RA, không phải tham số đầu vào
+### 3.4 Tốc độ nhả năm — SUY RA, không phải tham số đầu vào
 
-Trần lạm phát năm là **hệ quả** của trần nhịp, không phải một con số được đặt:
+Tốc độ nhả tối đa trong một năm là **hệ quả** của trần nhịp, không phải một con số được đặt:
 
 ```
-trần lý thuyết = max_per_epoch × 73 epoch/năm ÷ tổng trần
-               = 9.630.000 × 73 ÷ 36.000.000.000 ≈ 1,95%/năm
+trần nhả năm = max_per_epoch × 73 epoch/năm ÷ tổng trần
+             = 9.630.000 × 73 ÷ 36.000.000.000 ≈ 1,95% TỔNG TRẦN mỗi năm
 ```
 
 Đây là **trường hợp xấu nhất tuyệt đối** — mọi epoch đều nhả đúng trần. Với cổng cầu hoạt động,
 con số thực tế nằm dưới xa và không có đáy cố định.
 
-Đừng đảo chiều suy luận này: **trần nhịp là số gốc**, trần lạm phát là số dẫn xuất. Đặt trần lạm
-phát làm đầu vào rồi suy ngược ra trần nhịp là đi ngược luật.
+> ⚠️ **`1,95%` không phải một tỷ lệ lạm phát.** Mẫu số của nó là **tổng trần 36 tỷ**, không phải
+> lưu hành `C` (§2.2). Lạm phát và pha loãng đo theo lưu hành, và ở giai đoạn đầu `C` nhỏ nên
+> **cùng lượng nhả đó là một tỷ lệ lớn hơn nhiều**. Gọi nó là "trần lạm phát" là đọc một con số
+> theo một mẫu số nó không có.
+>
+> Tệp này **không** phát biểu một con số lạm phát — kho này không định nghĩa đại lượng đó, và
+> trạng thái ấy được khai ở `EMIT-INFLATION-DENOM` (§6) cùng ràng buộc đang có hiệu lực.
+
+Đừng đảo chiều suy luận này: **trần nhịp là số gốc**, tốc độ nhả năm là số dẫn xuất. Đặt tốc độ nhả
+làm đầu vào rồi suy ngược ra trần nhịp là đi ngược luật.
 
 ### 3.5 Đích đến
 
-Reserve chỉ nhả **vào kho Treasury**, không nhả vào bất kỳ địa chỉ nào khác. Kho được nhận diện
-bằng **NFT chính danh của kho**, không bằng địa chỉ — rót đúng địa chỉ mà sai hình dạng thì tài
-sản nằm trong sân kho và ngoài sổ kho.
+**Luật:** Reserve chỉ nhả **vào kho Treasury**, không nhả vào bất kỳ địa chỉ nào khác.
+
+**Cách ép luật đó khác nhau giữa hai đường phát hành, và đường Reserve đang ở giữa một lần đổi
+cách.** Ghi rõ ra vì đây đúng là chỗ dễ đọc nhầm một câu mô tả *đích mong muốn* thành một câu mô tả
+*cơ chế đang chạy*:
+
+| Đường | Nhận diện kho bằng | Đo cái gì | Ép ở |
+|---|---|---|---|
+| Distribution | **NFT chính danh của kho** (hash kho đọc động từ reference input) | **độ tăng ròng** LAMP tại script kho | `Genesis/onchain/validators/lamp_mint.ak`, nhánh `DistributionVest` — `script_hash_of_holder` + `qty_delta_at_script` |
+| Reserve — bản đang trên nhánh chính | **địa chỉ** (tham số nướng vào script hash) | **tổng mặt output** LAMP tới credential đó | `Reserve/onchain/validators/reserve_draw.ak`, Luật 9 — `qty_to_credential` |
+| Reserve — bản đã có mã, chưa vào nhánh chính | **NFT chính danh của kho** + payment credential của `custody` | không đo đích; ép giao dịch phải **tiêu** đúng một UTxO mang kho NFT, để chính validator kho ép Δ vào sổ | `reserve_draw.ak` sau khi đổi, xem `EMIT-DEST-NFT` ở §6 |
+
+Vì sao đổi: **rót đúng địa chỉ không phải rót vào sổ.** Một UTxO hạ cánh đúng địa chỉ kho nhưng
+sai hình dạng (không datum kho đòi) thì nằm **trong sân** kho và **ngoài sổ** kho — không giao dịch
+nào tiêu lại được, tức là đốt trá hình, trái `EMIT-NOBURN`. Đo **tổng mặt output** còn cho phép tái
+chế: kho đang giữ sẵn `X ≥ delta`, trả lại đúng `X`, phần mới đi ra ví.
+
+Bản đang trên nhánh chính vẫn **an toàn**, nhưng nhờ một lập luận hẹp hơn chứ không nhờ phép đo:
+output giữ trạng thái không ôm LAMP và `Δmint == delta`, nên không còn nguồn LAMP nào khác để phép
+đo tổng bị lợi dụng. Lập luận đó không sống sót qua một thay đổi ở chỗ khác — đó là lý do phải đổi
+cách ép, không phải đổi câu chữ.
 
 ---
 
@@ -158,7 +186,7 @@ sản nằm trong sân kho và ngoài sổ kho.
 | `EMIT-RATE` | mỗi lượt nhả ≤ `max_per_epoch` |
 | `EMIT-POT` | mỗi lượt nhả ≤ `reserve_cap − reserve_minted` |
 | `EMIT-GATE` | nhả ⟺ kho Treasury dưới sàn **trước** giao dịch |
-| `EMIT-DEST` | LAMP nhả ra chỉ hạ cánh vào kho Treasury, đo bằng **độ tăng ròng** tại kho |
+| `EMIT-DEST` | LAMP nhả ra chỉ hạ cánh vào kho Treasury (cách ép khác nhau giữa hai đường — §3.5) |
 | `EMIT-STATE` | mọi giao dịch mint tiêu và tạo lại đúng một `SupplyState`; thread NFT không bị chạm |
 
 ---
@@ -167,7 +195,9 @@ sản nằm trong sân kho và ngoài sổ kho.
 
 | Bất biến | Module ép | Neo |
 |---|---|---|
-| `EMIT-CAP`, `EMIT-NOBURN`, `EMIT-STATE`, `EMIT-DEST` | Genesis | `validators/lamp_mint.ak` |
+| `EMIT-CAP`, `EMIT-NOBURN`, `EMIT-STATE` | Genesis | `validators/lamp_mint.ak` |
+| `EMIT-DEST` — đường **Distribution** | Genesis | `validators/lamp_mint.ak`, nhánh `DistributionVest` (`script_hash_of_holder`, `qty_delta_at_script`) |
+| `EMIT-DEST` — đường **Reserve** | Reserve | `validators/reserve_draw.ak` (Luật 9). Nhánh `ReserveDraw` của `lamp_mint.ak` **không** ép đích — nó chỉ ép giao dịch đi qua đúng một meter NFT |
 | `EMIT-EPOCH`, `EMIT-RATE`, `EMIT-POT` | Reserve | `validators/reserve_draw.ak`, hằng ở `lib/magiclamp/reserve/math.ak` (`release_epochs`, `max_per_epoch`) |
 | `EMIT-GATE` | Treasury | validator giữ cổng cầu — xem `Treasury/reserve-pull.md` |
 
@@ -181,6 +211,8 @@ phía trên, và trôi **im lặng** vì con trỏ vẫn trỏ vào một dòng 
 | Mã | Treo cái gì | Ràng buộc TẠM đang có hiệu lực | Khai ở |
 |---|---|---|---|
 | `EMIT-FLOOR-IMPL` | Cổng cầu chưa ép sàn ở dạng **tỷ lệ** `1%·C` (§3.2); bản đang có dùng một ngưỡng tuyệt đối | Fail-closed theo cả hai cách đọc: không thoả sàn thì **không** nhả. Ngưỡng dùng trong kịch bản diễn tập **không phải** giá trị vận hành. | tham số triển khai module Treasury |
+| `EMIT-INFLATION-DENOM` | Kho này không định nghĩa đại lượng "lạm phát"/"pha loãng" — không mẫu số nào được khai cho nó | Tệp này chỉ phát biểu tốc độ nhả theo mẫu số **tổng trần**, và gọi đúng tên mẫu số đó (§3.4). Không tài liệu nào trong kho được phát biểu một tỷ lệ lạm phát chừng nào đại lượng đó còn chưa có định nghĩa. | §3.4 tệp này |
+| `EMIT-DEST-NFT` | Đường Reserve chưa nhận diện kho bằng **NFT chính danh** trên nhánh chính; bản trên nhánh chính nhận diện bằng **địa chỉ** và đo tổng mặt output (§3.5). Bản đổi cách đã có mã nhưng chưa vào nhánh chính | Fail-closed ở cả hai bản: không chứng minh được `delta` đã tới kho thì **không** nhả. Mọi tham số của `reserve_draw` là apply-param, và ràng buộc `RSV-PARAM-FREEZE` ở `Reserve/CONTRACT.md` giữ **chưa gửi meter NFT vào instance nào** — nên chưa instance nào của bản cũ đang giữ quota. | `Reserve/onchain/validators/reserve_draw.ak` (Luật 9) |
 
 Danh mục này ghi **trạng thái hiện thực**, không ghi lựa chọn đang cân nhắc. Luật thì đã đủ ở §3;
 chỗ còn lại là mã đuổi theo luật, và mọi bước trung gian đều nghiêng về phía không nhả.

@@ -73,9 +73,33 @@ bản sao sẽ chết im lặng — quay về mức 1 hoặc 2.
 
 ## Vì sao viết ra thành luật
 
-Đo trong kho này (bỏ `node_modules/` và thư mục build): hằng `reserve_cap` được **khai báo độc lập
-8 lần** ở 8 tệp, trong đó hai lần nằm trong **cùng một module** — một ở thư viện, một trong chính
-validator dùng thư viện đó. `dist_cap` khai 4 lần. Không lần nào trỏ về lần nào.
+Hai hằng cap được **gõ thẳng vào mã ở rất nhiều nơi**, không nơi nào trỏ về nơi nào. Số đo dưới đây
+đi kèm **chính lệnh sinh ra nó**, để ai cũng chạy lại được thay vì phải tin con số:
+
+```sh
+# Số tệp mã chứa literal giá trị reserve_cap (9,63 tỷ LAMP tính bằng oildrop)
+grep -rlE '9_630_000_000_000_000|9630000000000000' --include='*.ak' --include='*.ts' . \
+  | grep -v node_modules | grep -v '/build/' | wc -l
+
+# Số tệp mã chứa literal giá trị dist_cap (26,37 tỷ LAMP tính bằng oildrop)
+grep -rlE '26_370_000_000_000_000|26370000000000000' --include='*.ak' --include='*.ts' . \
+  | grep -v node_modules | grep -v '/build/' | wc -l
+```
+
+Chạy từ gốc kho, ngày `2026-09-11`:
+
+| Đo | Kết quả |
+|---|---|
+| tệp `.ak`/`.ts` chứa literal `reserve_cap` | **17** |
+| tệp `.ak`/`.ts` chứa literal `dist_cap` | **14** |
+
+Đếm **tệp chứa literal**, không đếm "khai báo có tên", vì đại lượng đúng cho vấn đề này là **số bản
+sao của một giá trị**: một literal gõ thẳng giữa một biểu thức cũng là một bản sao sẽ chết im lặng
+y như một `const` có tên. Bỏ `.md` ra khỏi phép đếm — tài liệu trích giá trị thì đã có ba mức trích
+ở trên chi phối.
+
+Con số này **sẽ đổi** khi kho đổi. Nó không phải một dữ kiện phải giữ cho đúng; nó là một phép đo
+kèm cách đo lại. Đừng sửa riêng con số mà không chạy lại lệnh.
 
 Các bản sao đó hiện đang **khớp giá trị**. Vấn đề không phải hôm nay chúng sai, mà là **không có gì
 kêu lên vào ngày một bản đổi** — và một bản sao chết im lặng nguy hiểm hơn một chỗ thiếu thông tin,
@@ -86,6 +110,6 @@ vì người đọc tin nó.
 | Dữ kiện | Tình trạng |
 |---|---|
 | Con số phân bổ 18 pot | Chỉ tồn tại trong `Papers/`, mà `Papers/` là bản **phái sinh** — nên dữ kiện này hiện **không có nguồn định nghĩa**. Grep toàn bộ `*.ak` và `*.ts` (bỏ `node_modules/`, build): 0 kết quả. |
-| Hằng cap trong mã | 8 + 4 khai báo độc lập như trên; chưa có một module nào được chỉ định là nơi khai duy nhất để các nơi khác `import`. |
+| Hằng cap trong mã | 17 + 14 tệp mang literal như đo ở trên; chưa có một module nào được chỉ định là nơi khai duy nhất để các nơi khác `import`. |
 
 Ghi ra để người đọc không nhầm một khoảng trống thành một nguồn.

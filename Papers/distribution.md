@@ -274,8 +274,10 @@ vế B — CỔNG CẦU    : chỉ nhả khi kho Treasury dưới sàn (ngưỡn
 
 - **Không ấn định epoch kết thúc.** Cạn sau 1000 epoch là **cận dưới** (mọi epoch đều nhả đúng trần);
   mỗi epoch bị cổng đóng lại đẩy thời điểm cạn ra xa, và không có cận trên.
-- Permissionless: ai dựng tx đúng điều kiện cũng được; đích đến = kho Treasury, nhận diện bằng NFT
-  chính danh của kho, không bằng địa chỉ.
+- Permissionless: ai dựng tx đúng điều kiện cũng được; **đích đến = kho Treasury**. Cách validator
+  nhận diện kho khác nhau giữa đường Distribution và đường Reserve, và đường Reserve đang ở giữa một
+  lần đổi cách — bảng ở [`Specs/Emission/CONTRACT.md`](../Specs/Emission/CONTRACT.md) §3.5 là nguồn
+  duy nhất, mục này không nhắc lại.
 
 ---
 

@@ -29,8 +29,9 @@ Reserve (no-burn cấm token quay lại U). Reserve chỉ lo *nhịp phát hành
 - **Trần CỨNG mỗi epoch = E/1000** — không phụ thuộc thời gian trôi, không cục catch-up.
 - **Demand-gated:** mỗi draw đòi Treasury co-spend authority NFT → Reserve nhả ⟺ Treasury
   thực sự dưới sàn (logic sàn `parked < floor` nằm Ở TREASURY — `reserve_gate`, xem §quan hệ).
-- **Rollover:** epoch bị gate / không cần → dư ở lại pot, nhả epoch sau → tổng kéo dài tối
-  thiểu ~1000 epoch (cạn liên tục), thực tế ~1001+ epoch (có epoch bị gate).
+- **Rollover:** epoch bị gate / không cần → dư ở lại pot, nhả epoch sau. `1000` epoch là **cận
+  dưới** (mọi epoch đều nhả đúng trần); mỗi epoch bị gate đẩy thời điểm cạn ra xa và **không có cận
+  trên** — không ấn định được một epoch kết thúc. Nguồn: `Specs/Emission/CONTRACT.md` §3.3.
 
 Bộ đếm = **ReserveState UTxO** (duy nhất, ghim bởi `reserve_thread` NFT one-shot).
 
@@ -45,7 +46,8 @@ Bộ đếm = **ReserveState UTxO** (duy nhất, ghim bởi `reserve_thread` NFT
 | `release_epochs` | `1000` | hằng thiết kế (`math.ak:13`); `E ⋮ 1000` → chia chẵn, dư = 0 |
 | `max_per_epoch` | `E / 1000 = 9_630_000_000_000` oildrop | trần CỨNG mỗi epoch (`math.ak:17`) |
 
-`max_per_epoch(E) × 1000 == E` (`math.ak:55` test). Cạn pot liên tục đúng trần ⇒ 1000 epoch.
+`max_per_epoch(E) × 1000 == E` (test ở `lib/magiclamp/reserve/math.ak`). Cạn pot liên tục đúng trần
+⇒ 1000 epoch — đó là **cận dưới**, không phải lịch cạn (§1, và `Specs/Emission/CONTRACT.md` §3.3).
 
 ---
 
