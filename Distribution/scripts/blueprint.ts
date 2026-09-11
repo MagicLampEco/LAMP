@@ -84,7 +84,18 @@ export function assertParamCount(compiledCode: string, params: unknown[]): void 
     );
   }
   const meta = paramCountByCode.get(compiledCode);
-  if (!meta) return; // code không từ blueprint này — không đoán.
+  if (!meta) {
+    // FAIL-CLOSED. Bản cũ `return` ở đây — "code không từ blueprint này, không đoán" — nhưng
+    // KHÔNG ĐOÁN ĐƯỢC chính là trạng thái nguy hiểm nhất, không phải trạng thái vô hại: không
+    // tra được thì không biết blueprint khai bao nhiêu khe, apply thiếu vẫn chạy trơn và sinh
+    // script hash / policy id KHÁC, im lặng. Cổng im ở đúng ca nó mù nghĩa là màu xanh của nó
+    // đọc thành "ổn" trong khi nó nói "tôi không biết".
+    throw new Error(
+      `APPLY-002: compiledCode (chỗ gọi truyền ${params.length} tham số) không có trong blueprint ` +
+      `Distribution (${PLUTUS_JSON_PATH}) — cổng APPLY-001 KHÔNG ĐO ĐƯỢC số khe nên DỪNG ` +
+      `(fail-closed). Lấy compiledCode qua \`rawValidator(title)\` của chính module này.`,
+    );
+  }
   if (params.length !== meta.n) {
     throw new Error(
       `APPLY-001: ${meta.title} khai ${meta.n} tham số, chỗ gọi truyền ${params.length}. ` +

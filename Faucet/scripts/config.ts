@@ -12,6 +12,8 @@ import {
   type LucidEvolution, type Validator, type MintingPolicy,
 } from "@lucid-evolution/lucid";
 import type { Network } from "@magiclamp/utils";
+// Cổng đếm khe apply-param (dùng chung toàn kho) — xem `blueprintSource.ts`.
+import { blueprintGate } from "../../Genesis/offchain/src/blueprintSource.js";
 import { readFile, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
@@ -84,13 +86,21 @@ export async function rawValidator(title: string): Promise<RawValidator> {
   return v;
 }
 
-/** Apply params → PlutusV3 spend validator. */
+/**
+ * Cổng đếm khe của blueprint Faucet. Số khe ĐỌC từ blueprint, không nhận số gõ tay — lý do
+ * đầy đủ ở `Genesis/offchain/src/blueprintSource.ts`. Đọc tệp LAZY (lần apply đầu tiên).
+ */
+export const FAUCET_GATE = blueprintGate(PLUTUS_JSON_PATH, "Faucet");
+
+/** Apply params → PlutusV3 spend validator, QUA cổng đếm khe. */
 export function applyValidator(compiledCode: string, params: unknown[]): Validator {
+  FAUCET_GATE.assertParamCountOfCode(compiledCode, params.length);
   return { type: "PlutusV3", script: applyParamsToScript(compiledCode, params as never) };
 }
 
-/** Apply params → PlutusV3 minting policy. */
+/** Apply params → PlutusV3 minting policy, QUA cổng đếm khe. */
 export function applyPolicy(compiledCode: string, params: unknown[]): MintingPolicy {
+  FAUCET_GATE.assertParamCountOfCode(compiledCode, params.length);
   return { type: "PlutusV3", script: applyParamsToScript(compiledCode, params as never) };
 }
 

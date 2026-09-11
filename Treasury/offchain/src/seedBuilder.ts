@@ -46,7 +46,15 @@ export function seedRedeemerToCbor(reservedMinAda: bigint): string {
 // ── apply param custody_seed (genesis_ref) → Validator + seed_policy ────────
 
 /** Apply genesis_ref vào compiledCode custody_seed → Validator PlutusV3.
- *  compiledCode lấy từ onchain/plutus.json (title "custody_seed.custody_seed.mint"). */
+ *  compiledCode lấy từ onchain/plutus.json (title "custody_seed.custody_seed.mint").
+ *
+ *  ⚠ CỬA APPLY-PARAM KHÔNG TỰ GÁC ĐƯỢC: hàm nhận `compiledCode` TRẦN nên nó không biết
+ *  blueprint nào khai bao nhiêu khe, và `applyParamsToScript` không ném khi số tham số lệch
+ *  — nó sinh một policy id KHÁC, im lặng. Chỗ gọi PHẢI chạy cổng đếm khe trước:
+ *      TREASURY_GATE.assertParamCount(CUSTODY_SEED_TITLE, 1)
+ *  (`Treasury/scripts/config.ts::applyCustodyInstance`,
+ *   `PlatformKit/scripts/03_onboard_platform.ts`). Cổng: `Genesis/offchain/src/blueprintSource.ts`.
+ *  Đừng gỡ cổng ở chỗ gọi rồi trông vào chữ ký `[ref]` ở đây — chữ ký không đọc blueprint. */
 export function applyCustodySeed(compiledCode: string, genesisRef: OutputReference): Validator {
   const ref = encodeOutputReference(genesisRef);
   return {

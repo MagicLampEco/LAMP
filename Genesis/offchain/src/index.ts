@@ -5,6 +5,7 @@ export * from "./constants.js";
 export * from "./deployed.js";
 export * from "./lampPolicies.js";
 export * from "./applyGate.js";
+export * from "./blueprintSource.js";
 export * from "./reserveKhoPair.js";
 export * from "./datum.js";
 export * from "./supplyState.js";

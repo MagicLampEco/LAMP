@@ -20,6 +20,7 @@ import {
   NETWORK, MS_PER_EPOCH,
   makeLucidOrNull, walletPkh,
   applyCustodyInstance, resolveProposalPolicy,
+  resolveLampPolicy, custodyTokenName,
   asciiToHex, padHash28,
   evaluateLiveGuards, warnLiveBlocked,
   saveSeeded, explorerTx, type SeededInstance,
@@ -71,16 +72,21 @@ async function main(): Promise<void> {
   console.log("=== Treasury Step 1: Seed custody instance (apply-params + plan) ===\n");
 
   const proposal = resolveProposalPolicy();
+  const lampPolicy = resolveLampPolicy(NETWORK);
+  const tokenName = custodyTokenName(NETWORK);
   const { ref: genesisRef, source: genSource, utxo } = await resolveGenesisRef();
 
   // F14: VAN chặn LIVE khi param then-chốt còn PLACEHOLDER/rỗng.
   //   proposal_policy placeholder ⇔ proposal.source !== "env".
   //   governance_ref  placeholder ⇔ GOVERNANCE_REF_PLACEHOLDER.
   //   genesis_ref     placeholder ⇔ genSource === "placeholder".
+  //   lamp_policy     placeholder ⇔ lampPolicy.source === "placeholder" (sổ policy chưa có
+  //                   bản ACTIVE cho mạng này ⇒ chưa đúc ⇒ KHÔNG được dựng tx thật).
   const guard = evaluateLiveGuards([
     { name: "proposal_policy", value: proposal.policy, placeholder: proposal.source !== "env" },
     { name: "governance_ref",  value: GOVERNANCE_REF,  placeholder: GOVERNANCE_REF_PLACEHOLDER },
     { name: "genesis_ref",     value: `${genesisRef.transaction_id}#${genesisRef.output_index}`, placeholder: genSource === "placeholder" },
+    { name: "lamp_policy",     value: lampPolicy.policy, placeholder: lampPolicy.source === "placeholder" },
   ]);
   const dry = !guard.allowLive;          // F14: placeholder → ÉP DRY (không build LIVE)
 
@@ -90,13 +96,15 @@ async function main(): Promise<void> {
   warnLiveBlocked(guard);                // in cảnh báo nếu LIVE bị chặn vì placeholder
   console.log(`genesis_ref:     ${genesisRef.transaction_id}#${genesisRef.output_index}  (${genSource})`);
   console.log(`proposal_policy: ${proposal.policy}  (${proposal.source})`);
+  console.log(`lamp_policy:     ${lampPolicy.policy}  (${lampPolicy.source}) — ${lampPolicy.reason}`);
+  console.log(`token_name:      ${tokenName}  ("${Buffer.from(tokenName, "hex").toString("utf8")}")`);
   console.log(`governance_ref:  ${GOVERNANCE_REF}`);
   console.log(`instance_id:     ${INSTANCE_ID} ("${Buffer.from(INSTANCE_ID, "hex").toString("utf8")}")`);
   console.log(`cut_bps:         ${CUT_BPS}`);
   console.log(`reserved_min_ada:${RESERVED_MIN_ADA} lovelace\n`);
 
   // ── Apply params 2 validator (offline — KHÔNG cần mạng) ───────
-  const applied = await applyCustodyInstance(genesisRef, proposal.policy, MS_PER_EPOCH);
+  const applied = await applyCustodyInstance(genesisRef, proposal.policy, MS_PER_EPOCH, lampPolicy);
   console.log("── Applied validators ──");
   console.log(`seed_policy:     ${applied.seedPolicy}`);
   console.log(`custody hash:    ${applied.custodyHash}`);
@@ -161,6 +169,9 @@ async function main(): Promise<void> {
     seedPolicy:     applied.seedPolicy,
     proposalPolicy: proposal.policy,
     proposalSource: proposal.source,
+    lampPolicy:       applied.lampPolicy.policy,
+    lampPolicySource: applied.lampPolicy.source,
+    tokenName:        applied.tokenName,
     genesisRef: {
       transaction_id: genesisRef.transaction_id,
       output_index:   genesisRef.output_index.toString(),
