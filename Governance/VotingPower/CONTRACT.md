@@ -186,9 +186,32 @@ Sau rà soát đối kháng, các interface dưới đây được **ghim cứng
      dạng tổng); test `d8_rejects_the_sum_form_loophole` giữ đúng phản ví dụ này.
 
   </details>
-- **D9 — Interface cross-repo MAGIC (CẦN MAGIC xác nhận).** Beacon C1/C2 của MAGIC PHẢI nhúng
-  `did_commit` đọc byte-perfect trong datum để ràng (b) chống-mượn-C_k thực thi được. Cho tới khi MAGIC
-  xác nhận → đánh dấu chống-mượn-C1/C2 là "phụ thuộc xác nhận MAGIC", không coi là đã chặn.
+- **D9 — Interface cross-repo MAGIC — ĐÃ GIẢI 2026-09-13, giải theo nhánh XẤU.** Beacon C1/C2 của
+  MAGIC PHẢI nhúng `did_commit` đọc byte-perfect trong datum để ràng (b) chống-mượn-C_k thực thi được.
+  **MAGIC không nhúng theo nghĩa đó.** Đo được ở `MAGIC/ConsumeMAGIC/onchain/validators/consume.ak`:
+  nhánh `BindDID` kiểm một-lần, chữ ký **chủ thread** (`in_datum.owner`), 1-vào/1-ra, value bảo toàn,
+  độ dài 32 byte — **không vế nào nối `in_datum.owner` với `did_commit`**. Đường genesis để
+  `did_commit` tự do, và bài `engage_mint_did_commit_free_happy` khoá chủ ý đó lại.
+
+  ⟹ **Chống-mượn-C1/C2 KHÔNG được chặn.** `did_commit` là hash 32 byte nằm công khai trên chuỗi ở
+  mọi thread đã gắn, nên chép được cả hai chiều mà không cần tiền ảnh, không cần chữ ký khổ chủ.
+
+  **Hệ quả riêng của kho này, không suy từ mã MAGIC mà từ công thức VP ở §2.** Vì
+  `VP = ∏ min(C_k, cap_k)^{w_k}` đơn điệu tăng theo từng `C_k`, việc thổi C1 cho một DID **không hại
+  chính DID đó** — nó hại ở chỗ khác, và trần làm nó **tệ hơn chứ không nhẹ hơn**:
+  - `cap_1` biến "mua ảnh hưởng không giới hạn" thành "mua ảnh hưởng với **giá hữu hạn tính được**".
+    Một mức giá chặn trên là một mức giá **niêm yết được** — đó là điều kiện đủ để hình thành thị
+    trường mua phiếu, không phải điều kiện chặn nó.
+  - Dạng **nhân** làm `C1 = 0 ⇒ VP = 0`. Nên đường này **kích hoạt** được những DID chưa từng tham
+    gia, từ VP 0 lên VP dương, mà chủ DID không làm gì. Kẻ tấn công không cần đoạt phiếu của ai —
+    chỉ cần cấp VP cho người đã thoả thuận ngoài chuỗi. Trên chuỗi thấy: một bên tiêu MAGIC bình
+    thường, một bên có C1 tăng bình thường. **Giao dịch mua phiếu không để lại hình dạng của một
+    giao dịch mua phiếu.**
+
+  **Ràng buộc TẠM đang có hiệu lực (fail-closed), cho tới khi có quyết định về C1/C2:** cấm mọi tài
+  liệu mô tả C1 hoặc C2 là "chống-Sybil", "chứng minh engagement của người đó", hay "không mua được
+  bằng tiền" — bảng §2 cột *"Mua bằng tiền?"* của C1 phải đọc là **CÓ, gián tiếp, giá bị chặn trên
+  bởi `cap_1`**. `C3` và `C4` không bị mục này chạm tới.
 
 - **D10 — `ProposalResult` beacon Gov→Treasury (KHÓA byte-perfect, orchestrator ghim 2026-06-07).**
   Audit phát hiện: Treasury `release.ak` decode type **`ProposalResult` 5 field**
