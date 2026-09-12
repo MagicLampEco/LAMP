@@ -66,7 +66,7 @@ LAMP là token chính thức của hệ sinh thái **MagicLamp** trên Cardano. 
 
 - Mỗi epoch, LAMP **sinh MAGIC** (cơ chế per-epoch). MAGIC **không phải token/coin**, không chuyển nhượng tự do — nó là **tín chỉ tiện ích kế toán**, **tiêu hết** khi dùng trong ứng dụng.
 - MAGIC dùng để: truy cập/sử dụng dịch vụ trong hệ, và là một tham số của quyền quản trị.
-- Vì MAGIC tiêu-thụ chứ không phải tài sản giao dịch → khung pháp lý là *tiện ích*, không phải *chứng khoán/lợi nhuận*.
+- MAGIC không chuyển nhượng tự do và **tiêu hết** khi dùng trong ứng dụng. Nó không được thiết kế để mua bán hay nắm giữ chờ tăng giá; dự án không vận hành và không hỗ trợ thị trường thứ cấp cho MAGIC.
 
 ## 6. Quản trị — KHÔNG theo trọng số token
 
@@ -162,10 +162,16 @@ nướng cứng một khoá — nên xoay khoá không còn phải phát hành l
 
 ## 10. Pháp lý & tuân thủ
 
-- LAMP là **token tiện ích** trong hệ sinh thái MagicLamp, **không phải sản phẩm đầu tư**. Không
-  hứa hẹn giá, không hứa lợi nhuận, không cam kết niêm yết.
-- **Không bán token.** LAMP không được chào bán đổi lấy tiền hay tài sản của người dùng. Token
-  được phân bổ theo công thức **ghi nhận đóng góp đã xảy ra**, công khai và ai cũng tính lại được.
+- LAMP được thiết kế làm **token tiện ích** trong hệ sinh thái MagicLamp. Dự án **không** định vị
+  LAMP là sản phẩm đầu tư, **không** hứa hẹn giá, **không** hứa lợi nhuận, **không** cam kết niêm yết.
+- **Không bán token đổi lấy tiền.** LAMP không được chào bán đổi lấy tiền pháp định hay tiền mã hoá
+  của người dùng. Token được phân bổ theo công thức **ghi nhận đóng góp đã xảy ra**, công khai và
+  ai cũng tính lại được.
+- **Nói rõ một chỗ dễ bị đọc nhầm:** trong chương trình SRCL, người tham gia định tuyến **phần
+  thưởng staking của chính mình** — đó là **tài sản của họ**, và việc định tuyến nó là một hành vi
+  định đoạt tài sản có giá trị kinh tế. Tài liệu này **không** mô tả SRCL như "không nhận gì của
+  người dùng". Vốn gốc thì không rời ví; phần thưởng thì có. Hai việc khác nhau, và tài liệu nêu
+  cả hai.
 - Quyền biểu quyết **không theo số token nắm giữ** (xem §6) — nắm nhiều token không mua được quyền lực.
 - MAGIC tiêu-thụ (không chuyển nhượng) củng cố định vị tiện ích.
 - Pháp nhân phát hành: **GreenSun Tech Inc** (Việt Nam).
@@ -314,13 +320,13 @@ lần đều làm tăng `dist_minted`/`reserve_minted` trong chuỗi nên ai cũ
 
 ## H. Pháp lý & tuân thủ (89–95)
 
-89. **LAMP có phải chứng khoán không?** Định vị là token **tiện ích**, không hứa lợi nhuận; MAGIC tiêu-thụ củng cố điều đó.
+89. **LAMP được thiết kế như thế nào?** LAMP được thiết kế làm token **tiện ích** trong hệ: dùng để sinh MAGIC và tham gia quản trị theo cơ chế không dựa trên trọng số token. Dự án không cam kết, không dự báo và không khuyến nghị về giá hoặc lợi nhuận, và không vận hành thị trường thứ cấp. Phân loại pháp lý của một tài sản mã hoá do pháp luật từng khu vực quyết định, không do tổ chức phát hành tự xác định; người tham gia ở mỗi khu vực tự kiểm tra hoặc hỏi tư vấn pháp lý của mình.
 90. **LAMP có phải sản phẩm đầu tư không?** Không. Dự án không định vị, không khuyến nghị, và không mô tả LAMP như sản phẩm đầu tư.
 91. **Có whitepaper pháp lý không?** Tài liệu công bố theo lộ trình; tuân thủ quy định nơi phát hành.
 92. **Dự án ở đâu?** Pháp nhân sáng lập (Aladin Contract, GreenSun Tech); cấu trúc pháp lý đang hoàn thiện.
 93. **KYC có cần không?** Tùy chương trình/khu vực; tham gia quản trị qua DID.
 94. **LAMP hợp pháp ở nước tôi?** Tùy quy định địa phương; người dùng tự kiểm tra.
-95. **Dự án có tuân thủ chống rửa tiền không?** Tuân thủ pháp luật Việt Nam áp dụng cho hoạt động của mình. Vì không chào bán và không nhận tiền của người dùng, các nghĩa vụ của tổ chức phát hành chứng khoán hay trung gian thanh toán không phát sinh.
+95. **Dự án có tuân thủ chống rửa tiền không?** Các pháp nhân vận hành tuân thủ pháp luật Việt Nam áp dụng cho hoạt động của mình. Ở các chương trình có tiếp nhận tài sản từ người tham gia, dự án áp dụng định danh người tham gia qua PhoenixKey DID, giới hạn theo vùng pháp lý, và lưu vết giao dịch trên chuỗi. Việc một chương trình cụ thể thuộc phạm vi điều chỉnh nào được xác định theo pháp luật của từng khu vực và theo tư vấn pháp lý tại khu vực đó; dự án không đưa ra kết luận thay cơ quan có thẩm quyền.
 
 ## I. Lộ trình & tương lai (96–100)
 

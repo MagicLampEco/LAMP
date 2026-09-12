@@ -192,7 +192,7 @@ Chi tiết ở spec Governance riêng. Điểm giao với phân phối: **gen-MA
 
 ### 6.3 SRCL (360.000 nghìn) — redirect, 36 epoch, DECOUPLED
 - **Tổng:** 360.000 nghìn = 36 epoch × **10.000 nghìn/epoch**.
-- **Bản chất:** delegator tự nguyện **định tuyến** một phần phần-thưởng staking phát sinh trong tương lai (tự chọn 0–100%) về pot của đợt. Đóng góp đó được **ghi nhận** bằng LAMP theo công thức tất định. Vốn gốc không rời ví. ADA phần-thưởng về bên vận hành là **doanh thu vận hành stake pool**, hạch toán **tách bạch** với việc phân bổ LAMP — công thức chia LAMP không phụ thuộc doanh thu hay lãi lỗ của bên vận hành.
+- **Bản chất:** delegator tự nguyện **định tuyến** một phần phần-thưởng staking phát sinh trong tương lai (tự chọn 0–100%) về pot của đợt. Đóng góp đó được **ghi nhận** bằng LAMP theo công thức tất định. Vốn gốc không rời ví. ADA phần-thưởng đi về `beneficiary` của đợt — **không** về doanh thu của bên sáng lập; bên thụ hưởng từng đợt khai ở `srcl.md` §5, và ràng buộc **bên thụ hưởng tách khỏi bên đóng góp** khai ở `srcl.md` §7. Công thức chia LAMP không phụ thuộc doanh thu hay lãi lỗ của bất kỳ pháp nhân nào.
 - **Phá bottleneck "SPO ký mỗi epoch" (decouple):** SPO **KHÔNG** phải claim mỗi epoch. Tỷ lệ chỉ phụ thuộc
   **tổng ADA mỗi pool đã góp** (đo on-chain). SPO là **người nhận**, không phải **người gác cổng**.
 

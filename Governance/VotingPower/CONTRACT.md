@@ -129,6 +129,17 @@ Sau rà soát đối kháng, các interface dưới đây được **ghim cứng
   `did_commit→holding` BACKED bởi LAMP **khóa thật** trong lock UTxO **một-LAMP-một-DID** (UTxO bị
   tiêu khi khóa → không double-count cho 2 DID). CẤM đọc số dư ví trần qua reference input. EXEC/M2/M5
   theo đây; thêm negative-test "mượn-ảnh" (2 DID trỏ một kho LAMP → fail).
+- **D4-bis — Phân bổ CHƯA claim = 0 VP.** Một suất LAMP đã được ghi nhận trong bảng phân bổ
+  (Airdrop, SRCL, vesting, bất kỳ đợt nào) nhưng người thụ hưởng **chưa thực hiện claim** thì
+  **không đóng góp một đơn vị nào vào C4**, và cũng không đóng vào C2. Chỉ LAMP đã ra khỏi kho,
+  vào tay chủ, rồi được **khóa thật** trong lock UTxO một-LAMP-một-DID (D4) mới được tính.
+  - Vì sao phải viết thành bất biến chứ không để D4 suy ra: D4 nói điều kiện ĐỦ (phải có UTxO
+    khóa), người đọc vẫn có thể dựng một đường đọc "entitlement" từ Merkle root của đợt phân phối
+    — root đó là dữ liệu on-chain thật, tra được bằng proof, nên nó **trông đủ tư cách làm nguồn**.
+    D4 không cấm nó bằng chữ nào. Đường đó biến một lời hứa trả LAMP thành quyền biểu quyết ngay
+    lúc công bố root, tức là **quyền có trước tài sản**.
+  - Hệ quả phải chịu, nói thẳng: người được phân bổ nhiều mà chưa claim thì không có tiếng nói
+    tương ứng. Đó là chiều hỏng đúng — người chưa nhận tài sản thì chưa gánh rủi ro của nó.
 - **D5 — Bỏ `vp_claimed` khỏi VoteDatum.** Tally tự tính `power` từ `c*_capped` + bảng tra; không
   tin số off-chain mớm.
 - **D6 — TallyDatum thêm `top_did_vp: List<TopEntry>`** (≤ F−1, `TopEntry{vp_raw, choice}`) để pha

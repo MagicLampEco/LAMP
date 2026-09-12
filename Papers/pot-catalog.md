@@ -117,6 +117,23 @@
 
 **Kiểm chứng:** tổng = 36.000.000 nghìn ✓ · mọi pot trừ Reserve = 26.370.000 (= `dist_cap`) ✓ · Reserve = 9.630.000 (= `reserve_cap`) ✓ · PhoenixKey 142.857 + RedBack 21.143 = 164.000 (bù lẻ tròn).
 
+### Cổng pháp lý theo pot — ràng buộc fail-closed
+
+Bảng này ghi **trạng thái**, không ghi phương án. Mỗi dòng: pot nào · điều gì đang mở · ràng buộc
+TẠM đang có hiệu lực · khai ở đâu. Mọi ràng buộc đều là **đóng-mặc-định**: điều kiện chưa thoả thì
+pot không vận hành phần tương ứng, chứ không vận hành tạm rồi sửa sau.
+
+| pot | trạng thái đang mở | ràng buộc TẠM đang có hiệu lực (fail-closed) | khai ở |
+|---|---|---|---|
+| 9 · Foundation | pháp nhân chưa lập | **không** giữ tài sản trọng yếu trước khi có pháp nhân; khoá vĩnh viễn chỉ thực hiện sau khi lập | §3 pot 9 |
+| 15 · SRCL | đại lượng đo ngưỡng kích hoạt (`SRCL-KICH-HOAT-001`) · người giữ `delegation_admin` (`SRCL-ADMIN-002`) | ngưỡng chưa có định nghĩa đo được ⇒ **không kích hoạt**; admin chưa công bố ⇒ **cấm** mô tả cơ chế là "bất biến"/"không admin" | `srcl.md` §1, §8 |
+| 17 · RedBack | phạm vi CARP ↔ LAMP | quỹ peg thuộc tài liệu riêng của CARP; kho này **không** định nghĩa lại điều kiện hy sinh quỹ | `srcl.md` §5 đợt 2 |
+| 18 · Liquidity | điều kiện pháp lý để cấp thanh khoản | **chưa kích hoạt**; không cặp nào được mở trước khi có kết luận tư vấn cho khu vực tương ứng | §3 pot 18 |
+
+**Áp cho mọi pot:** phân phối LAMP theo nguyên tắc **đóng-mặc-định theo vùng pháp lý** — một khu
+vực chỉ mở khi đã có kết luận tư vấn cho khu vực đó, và ràng buộc đó có hiệu lực **kỹ thuật tại
+khâu claim**, không chỉ trong quy chế.
+
 ---
 
 ## 2. Ba mức gen-MAGIC (tổng theo nghìn LAMP)
@@ -172,7 +189,12 @@
   pot này — chạy **1 đợt SRCL trong 7 epoch**: phần thưởng staking do người tham gia định tuyến về pot được dùng trả
   **phí mạng** cho user, và đóng góp đó được **ghi nhận** bằng **7 triệu LAMP** (1 triệu/epoch). **Vòng tự-bồi:** khi có
   CARP (từ TxFee), hệ thống quy đổi CARP về ADA để tiếp tục có nguồn trả phí. Đây là **nghiệp vụ vận hành nội bộ** để
-  duy trì số dư trả phí, không phải dịch vụ giao dịch cung cấp cho bên thứ ba. **Giao thức TỰ ĐỘNG, KHÔNG người kiểm soát.** Uỷ thác vào Platform **PhoenixKey** (DID riêng).
+  duy trì số dư trả phí, không phải dịch vụ giao dịch cung cấp cho bên thứ ba. **Quy tắc chi của pot này nằm trong mã, không do người quyết từng lượt.** Uỷ thác vào Platform **PhoenixKey** (DID riêng).
+> Câu này trước đây viết *"Giao thức TỰ ĐỘNG, KHÔNG người kiểm soát"*. Đã thay, vì cùng tệp này,
+> cách đó khoảng 50 dòng, có câu *"Hệ-số-gen mỗi pot = THAM SỐ ĐIỀU CHỈNH ĐƯỢC, do Aladin Contract
+> đặt thời gian đầu"*. Hai câu đứng cạnh nhau trong một tài liệu công khai thì câu mạnh hơn không
+> thắng — chúng **triệt tiêu nhau**, và người đọc có lý do tin câu bất lợi hơn. Mức phát biểu đúng
+> là phân biệt **quy tắc chi** (trong mã) với **tham số** (có người đặt, và đã khai ở §hệ-số-gen).
   > Bản cũ ghi "quỹ tài trợ phí ADA/DUST, user không cần ADA" — mô tả sai (agent bịa), đã thay bằng mô hình Feecover
   > thực: `TxFee` cố định (CARP) + đợt SRCL 7 epoch của pot này thu ADA + CARP mua lại ADA trên DEX.
 - **16. Join LampNet (1.461.000)** — thưởng **người đóng góp tài nguyên thiết bị** (sức tính toán, lưu trữ, băng thông)
