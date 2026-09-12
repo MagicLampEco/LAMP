@@ -13,7 +13,6 @@
 // CLASS-IDENTITY: param registry/registry_beacon đều PHẲNG (hex string/bytes) — KHÔNG có
 // Constr → an toàn dùng applyParamsToScript của lucid trong scripts/node_modules.
 
-import dotenv from "dotenv";
 import {
   Lucid, Blockfrost,
   getAddressDetails,
@@ -36,8 +35,13 @@ import { dirname, resolve } from "node:path";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-// .env từ PlatformKit root (../.env so với PlatformKit/scripts/).
-dotenv.config({ path: resolve(__dirname, "../.env") });
+// BÍ MẬT: tệp này nhận GIÁ TRỊ qua biến môi trường, KHÔNG đọc tệp `.env` nào.
+//
+// Đường cũ `dotenv.config()` lên `.env` của kho con — rule cấm đọc `.env` ở project con
+// vì đó là bản cũ/rác đã bỏ. Và nó hỏng theo chiều KHÔNG ai thấy: dotenv không đè biến
+// đã có, nên biến CHƯA đặt thì lặng lẽ lấy giá trị chết, không dòng nào báo.
+// Đặt biến ngay trước lệnh:
+//   NETWORK=… BLOCKFROST_KEY=… WALLET_SEED="…" tsx <tệp>.ts
 
 // ── Network + provider ─────────────────────────────────────────
 export const NETWORK: Network = (process.env.NETWORK ?? "Preview") as Network;

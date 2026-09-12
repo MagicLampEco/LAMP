@@ -8,7 +8,6 @@
 // KHÔNG có credential thật, mọi helper apply-params chạy offline; chỉ buildSeedTx mới
 // cần Lucid (network). makeLucidOrNull() trả null khi thiếu cred → caller in plan tĩnh.
 
-import dotenv from "dotenv";
 import {
   Lucid, Blockfrost,
   getAddressDetails,
@@ -47,8 +46,13 @@ import { dirname, resolve } from "node:path";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-// Load .env từ repo Treasury root (../.env so với Treasury/scripts/) — KHÔNG phụ thuộc cwd.
-dotenv.config({ path: resolve(__dirname, "../.env") });
+// BÍ MẬT: tệp này nhận GIÁ TRỊ qua biến môi trường, KHÔNG đọc tệp `.env` nào.
+//
+// Đường cũ `dotenv.config()` lên `.env` của kho con — rule cấm đọc `.env` ở project con
+// vì đó là bản cũ/rác đã bỏ. Và nó hỏng theo chiều KHÔNG ai thấy: dotenv không đè biến
+// đã có, nên biến CHƯA đặt thì lặng lẽ lấy giá trị chết, không dòng nào báo.
+// Đặt biến ngay trước lệnh:
+//   NETWORK=… BLOCKFROST_KEY=… WALLET_SEED="…" tsx <tệp>.ts
 
 // ── Network + provider ─────────────────────────────────────────
 export const NETWORK: Network = (process.env.NETWORK ?? "Preview") as Network;
