@@ -56,7 +56,11 @@ Phần thưởng staking →  mỗi epoch, mạng trả vào tài khoản thư�
 LAMP               →  hệ chia cho bạn ∝ phần thưởng bạn đã đóng góp, nhả dần theo lịch
 ```
 
-**Đo lường:** mỗi epoch, hệ ghi nhận số ADA phần-thưởng mỗi người đóng góp. Đây là đại lượng đo đóng góp.
+**Đo lường:** mỗi epoch, hệ ghi nhận số ADA phần-thưởng mỗi người đóng góp. Đây là đại lượng đo
+đóng góp. Cụ thể hơn, vì chỗ này quyết định bằng chứng nào được dùng: đại lượng đếm là **số ADA
+đã RÚT** khỏi tài khoản thưởng của người đó về pot, không phải số dư còn tồn trong tài khoản
+thưởng. Rút định kỳ, nên mỗi lượt rút là một sự kiện trên chuỗi ai cũng kiểm lại được — đó là lý
+do chọn đại lượng này thay vì đọc số dư, dù đọc số dư thì đỡ vài lượt phí.
 
 **Phân bổ:** pot LAMP của đợt được chia cho người tham gia theo tỉ lệ phần thưởng họ đóng góp, **tất định** (ai cũng tính lại ra cùng kết quả) và **bảo toàn** (tổng LAMP chia ra đúng bằng pot). Cách chia dùng phương pháp số nguyên dư-lớn-nhất nên không tạo hay mất một đơn vị nào.
 
@@ -149,7 +153,41 @@ Hai đợt cùng cơ chế, khác pot / nguồn LAMP / bên hưởng thụ / quy
 
 ## 8. Pháp lý
 
-- Tài sản mã hoá được công nhận là **tài sản** tại Việt Nam (Luật Công nghiệp Công nghệ số, hiệu lực 01/01/2026).
+- **Văn bản Việt Nam đang điều chỉnh lĩnh vực này** — nêu để người đọc tự đối chiếu, không kèm
+  kết luận nào về chương trình này:
+
+  | văn bản | điều khoản đáng đọc |
+  |---|---|
+  | **Luật số 71/2025/QH15** — Công nghiệp công nghệ số, ký 14/6/2025, hiệu lực **01/01/2026** | Điều 46 định nghĩa tài sản số; Điều 47 phân loại và loại trừ chứng khoán; Điều 48 giao Chính phủ quy định điều kiện kinh doanh dịch vụ tài sản mã hoá |
+  | **Nghị quyết số 05/2025/NQ-CP** — thí điểm thị trường tài sản mã hoá, ký 09/9/2025, thí điểm **5 năm** | Điều 3 khoản 2 (định nghĩa) · Điều 4 khoản 7 và khoản 9 · Điều 5 khoản 1 và 2 (điều kiện tổ chức phát hành) · Điều 6 khoản 1 và 2 (đối tượng được chào bán) · Điều 7 khoản 2 · Điều 8 khoản 2 |
+  | **Thông tư 32/2026/TT-BTC** (27/3/2026) · **41/2026/TT-BTC** (09/4/2026) · **15/2026/TT-BTC** | thuế GTGT/TNDN/TNCN · kê khai, khấu trừ tại nguồn, quyết toán · nguyên tắc kế toán |
+  | **Luật số 109/2025/QH15** — Thuế TNCN, hiệu lực 01/7/2026 | bổ sung "thu nhập từ chuyển nhượng tài sản số" vào thu nhập chịu thuế |
+  | **Luật số 14/2022/QH15** — Phòng chống rửa tiền | Điều 4 (đối tượng báo cáo) |
+  | **Luật Doanh nghiệp số 59/2020/QH14** | Điều 12 (người đại diện theo pháp luật là **một cá nhân**) · Điều 74 · Điều 120 |
+
+- **Khung thí điểm đặt ra những điều kiện mà tài liệu này nêu thẳng, không diễn giải.** Trích
+  nguyên văn Nghị quyết 05/2025/NQ-CP, bản ký số của Văn phòng Chính phủ ngày 10/9/2025:
+  - Điều 5 khoản 1: *"Tổ chức phát hành tài sản mã hóa là doanh nghiệp Việt Nam, đăng ký hoạt
+    động dưới hình thức công ty trách nhiệm hữu hạn hoặc công ty cổ phần theo Luật Doanh nghiệp."*
+  - Điều 5 khoản 2: *"Tài sản mã hóa phải được phát hành dựa trên **tài sản cơ sở là tài sản
+    thực**, không bao gồm tài sản là chứng khoán, tiền pháp định."*
+  - Điều 6 khoản 1: *"Tài sản mã hóa **chỉ được chào bán, phát hành cho nhà đầu tư nước ngoài**."*
+  - Điều 4 khoản 7: *"Việc chào bán, phát hành, giao dịch, thanh toán tài sản mã hóa phải được
+    thực hiện **bằng Đồng Việt Nam**."*
+  - Điều 4 khoản 9: *"Chính sách thuế đối với giao dịch, chuyển nhượng, kinh doanh tài sản mã hóa
+    được áp dụng **như các quy định về thuế đối với chứng khoán** cho đến khi có chính sách thuế
+    đối với thị trường tài sản mã hóa tại Việt Nam."*
+
+  Bốn điều kiện đầu mô tả một hình dạng **khác** hình dạng của cơ chế này (không có tài sản cơ sở
+  là tài sản thực, không giới hạn người tham gia theo quốc tịch, không thanh toán bằng Đồng Việt
+  Nam). Điều đó **không** có nghĩa cơ chế này hợp pháp hay không hợp pháp — nó có nghĩa **đường
+  thí điểm không phải đường của cơ chế này**, và câu hỏi cơ chế này nằm ở đâu trong pháp luật
+  hiện hành là câu hỏi dành cho tư vấn pháp lý có thẩm quyền, không dành cho tài liệu này.
+  Điều 4 khoản 9 cũng nói rõ: việc một tài sản **không phải** chứng khoán không kéo theo việc nó
+  được đối xử khác chứng khoán về thuế.
+
+- **Cho tới khi có kết luận tư vấn pháp lý bằng văn bản cho một khu vực cụ thể, khu vực đó đóng.**
+  Nguyên tắc đóng-mặc-định ở dưới có hiệu lực kỹ thuật tại khâu claim, không phải một lời hứa.
 - **Không bên sáng lập nào là bên thụ hưởng.** ADA phần-thưởng chuyển hướng đi vào kho cộng đồng
   (đợt 1) hoặc pot RedBack (đợt 2), không đi vào doanh thu của GreenSun Tech hay Aladin Contract.
   Hai công ty này đóng góp công nghệ và nhận LAMP theo phần phân bổ đã công bố, **không nhận dòng
