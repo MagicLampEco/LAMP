@@ -21,7 +21,12 @@
 // CHẠY LẠI ĐƯỢC: mỗi bước tự kiểm marker của nó đã trên chuỗi chưa rồi mới gửi. Ngắt giữa
 // chừng thì chạy lại tiếp đúng chỗ dừng, không đúc trùng.
 //
-// Chạy: NETWORK=Preprod tsx 24_reserve_layer2_init.ts
+// HẠT GIỐNG CUSTODY ĐI VÀO TỪ NGOÀI, KHÔNG CHỌN Ở ĐÂY. `CUSTODY_SEED_TX`/`CUSTODY_SEED_IDX`
+// phải là ĐÚNG UTxO đã dùng để tính khe #13 `reserve_kho_nft_policy` lúc chạy
+// `20_canonical_genesis.ts`. Cổng CUSTODY-REF-001 đối chiếu hai vế đó TRƯỚC khi dựng giao dịch
+// nào — xem `_custodySeedRef.ts`.
+//
+// Chạy: NETWORK=Preprod CUSTODY_SEED_TX=<64 hex> CUSTODY_SEED_IDX=<n> tsx 24_reserve_layer2_init.ts
 import { type UTxO } from "@lucid-evolution/lucid";
 import { NETWORK, makeLucid, walletPkh, explorerTx } from "./config.js";
 import { rehydrate, writeState, waitFor, MET_NAME } from "./_canonical_v2.js";
@@ -29,7 +34,12 @@ import { supplyStateFromCbor } from "../offchain/src/datum.js";
 import {
   AUTH_NAME, INSTANCE_ID, deriveCustody, deriveReserveWiring, custodySeedDatum,
   reserveStateDatum, epochNow, printReserveWiring, VOID_DATUM, RESERVE_TOTAL,
+  FLOOR_OILDROP, FLOOR_SOURCE,
 } from "./_reserve_layer2.js";
+import {
+  assertCustodyKhoPair, custodySeedRefFromEnv, refKey, sameRef,
+} from "./_custodySeedRef.js";
+import { floorSourceWarning } from "./_floorLabel.js";
 import { custodyDatumToCbor } from "../../Treasury/offchain/src/datum.js";
 import { mintAuthRedeemerToCbor } from "../../Treasury/offchain/src/reserveAuthBuilder.js";
 import { Constr, Data } from "@lucid-evolution/lucid";
@@ -43,7 +53,13 @@ import { Constr, Data } from "@lucid-evolution/lucid";
 const RESERVED_MIN_ADA = 2_000_000n;
 const NFT_ADA = 2_000_000n;
 
-/** Chọn một UTxO ví ≥ `min` lovelace KHÔNG mang NFT nào cần giữ. */
+/**
+ * Chọn một UTxO ví ≥ `min` lovelace KHÔNG mang NFT nào cần giữ.
+ *
+ * Chỉ còn dùng cho hạt giống AUTH. Hạt giống CUSTODY không đi qua đây: nó đã nướng vào
+ * policy-id của `lamp_mint` từ bước genesis, nên nó là một UTxO CỤ THỂ truyền vào, không phải
+ * một cái "còn rảnh là được".
+ */
 function pickSeed(utxos: UTxO[], avoid: Set<string>, min = 5_000_000n): UTxO {
   const key = (u: UTxO) => `${u.txHash}#${u.outputIndex}`;
   const ok = utxos
@@ -98,28 +114,74 @@ async function main(): Promise<void> {
   const key = (u: UTxO) => `${u.txHash}#${u.outputIndex}`;
   const metHeld = (us: UTxO[]) => us.filter((u) => (u.assets[wiring.metUnit] ?? 0n) === 1n);
 
+  // ── Nhãn xuất xứ con số SÀN, ghi vào TẠO TÁC ngay ────────────────────────
+  // Con số sàn là giá trị diễn tập. Trước đợt vá này nhãn đó chỉ sống trong một chú thích và
+  // một dòng in ra màn hình — không tệp nào giữ nó, nên bản thật sau này kế thừa CON SỐ mà
+  // không kế thừa chữ "demo". Ghi ở đây, trước mọi `writeState` của lượt chạy, để mọi bản
+  // trạng thái ghi ra từ bước này đều mang nhãn.
+  state.floorOildrop = FLOOR_OILDROP.toString();
+  state.floorSource = FLOOR_SOURCE;
+  const canhBaoSan = floorSourceWarning(FLOOR_SOURCE);
+  if (canhBaoSan) console.log(`⚠ ${canhBaoSan}\n`);
+
   // ══ L2a — custody NFT (giao dịch RIÊNG vì S-MINT-2) ═══════════════════════
-  let custodyRef = state.reserve?.custodyRef;
-  let cust = custodyRef
-    ? await deriveCustody(custodyRef.txHash, custodyRef.outputIndex, wiring.network)
-    : undefined;
+  //
+  // HẠT GIỐNG CUSTODY KHÔNG ĐƯỢC CHỌN Ở ĐÂY. Nó đã được chốt TRƯỚC bước genesis: policy id
+  // của `custody_seed` áp trên nó chính là khe #13 `reserve_kho_nft_policy` đã nướng vào
+  // policy-id của `lamp_mint`. Bản trước tự chọn "UTxO nhiều ADA nhất còn rảnh" — chọn trượt
+  // là đúc custody bằng một hạt giống khác cái đã tính khe #13, và policy trong khe đó không
+  // bao giờ đúc được nữa ⇒ nhánh ReserveDraw của token vừa đúc chết vĩnh viễn.
+  const custodyRef = custodySeedRefFromEnv(process.env);
+  const refTrongState = state.reserve?.custodyRef;
+  if (refTrongState && !sameRef(refTrongState, custodyRef)) {
+    throw new Error(
+      `CUSTODY-SEED-002: state ghi custodyRef = ${refKey(refTrongState)} nhưng ` +
+      `CUSTODY_SEED_TX/IDX trỏ ${refKey(custodyRef)}. Hai giá trị này định danh hai instance ` +
+      `custody KHÁC NHAU; đi tiếp là dựng giao dịch cho một cái kho mà lượt trước không dùng. ` +
+      `Sửa biến môi trường cho khớp state, hoặc chạy lại từ một state đúng.`,
+    );
+  }
+  const cust = await deriveCustody(custodyRef.txHash, custodyRef.outputIndex, {
+    lampPid: wiring.lampPid, tokenName: wiring.tokenName, network: wiring.network,
+  });
+
+  // ── CỔNG CUSTODY-REF-001 — ném TRƯỚC mọi lời gọi dựng giao dịch ──────────
+  //
+  // Cổng APPLY-003 (`offchain/src/reserveKhoPair.ts`) đo cùng chuyện này, nhưng nó chạy trong
+  // `deriveReserveWiring()` ở bước L2b — tức SAU khi L2a đã đúc custody NFT one-shot lên
+  // chuỗi. Cổng đặt sau bước không quay lui được thì nó không còn là cổng. Đây là chỗ đo đúng:
+  // trước khi có bất cứ thứ gì đi lên mạng ở lượt chạy này, và chạy CẢ ở nhánh "L2a bỏ qua".
+  assertCustodyKhoPair(
+    { policy: cust.custodySeedPid, name: INSTANCE_ID },
+    { policy: wiring.reserveKhoPid, name: wiring.reserveKhoName },
+  );
+  console.log(
+    `✓ CUSTODY-REF-001: hạt giống ${refKey(custodyRef)} sinh đúng cặp kho đã nướng vào ` +
+    `lamp_mint #13-14 (${wiring.reserveKhoPid}, ${wiring.reserveKhoName})`,
+  );
 
   const custodyLive = async () =>
-    cust
-      ? (await lucid.utxosAt(cust.custodyAddr))
-          .filter((u) => (u.assets[cust!.custodyNftUnit] ?? 0n) === 1n)
-      : [];
+    (await lucid.utxosAt(cust.custodyAddr))
+      .filter((u) => (u.assets[cust.custodyNftUnit] ?? 0n) === 1n);
 
-  if (cust && (await custodyLive()).length === 1) {
+  if ((await custodyLive()).length === 1) {
     console.log(`↷ L2a bỏ qua — custody NFT đã ở ${cust.custodyAddr}`);
   } else {
     const utxos = await lucid.wallet().getUtxos();
-    // Không lấy UTxO đang giữ MET làm hạt giống: tiêu nó ở đây thì MET đi theo coin-selection
-    // về một output không kiểm soát, và bước L2c mất thứ nó phải dời.
-    const avoid = new Set(metHeld(utxos).map(key));
-    const seed = pickSeed(utxos, avoid);
-    custodyRef = { txHash: seed.txHash, outputIndex: seed.outputIndex };
-    cust = await deriveCustody(seed.txHash, seed.outputIndex, wiring.network);
+    // Hạt giống là một UTxO CỤ THỂ, không phải "một cái nào cũng được": tìm đúng nó trong ví.
+    // Không còn trong ví = đã bị một giao dịch nào đó giữa hai bước tiêu mất (mỗi bước ở giữa
+    // có coin-selection tự do). Lúc đó KHÔNG đúc bừa bằng hạt giống khác — nói thẳng ra.
+    const seed = utxos.find((u) => key(u) === refKey(custodyRef));
+    if (!seed) {
+      throw new Error(
+        `CUSTODY-SEED-003: hạt giống custody ${refKey(custodyRef)} KHÔNG còn trong ví, và ` +
+        `custody NFT cũng chưa có ở ${cust.custodyAddr}. Một UTxO chỉ tiêu được MỘT lần: nếu nó ` +
+        `đã bị coin-selection của một bước trước tiêu mất thì policy \`custody_seed\` đã nướng ` +
+        `vào khe #13 của lamp_mint KHÔNG BAO GIỜ đúc được nữa, và nhánh ReserveDraw của policy ` +
+        `đang chạy đóng vĩnh viễn. DỪNG ở đây — đúc bằng một hạt giống khác chỉ tạo thêm một ` +
+        `cái kho thứ hai mà không validator nào công nhận. Đối chiếu trên chuỗi trước khi quyết.`,
+      );
+    }
 
     console.log(`L2a hạt giống custody: ${key(seed)}`);
     console.log(`    custody policy: ${cust.custodySeedPid}`);
@@ -156,7 +218,7 @@ async function main(): Promise<void> {
 
   let rw = authRefValid
     ? await deriveReserveWiring(wiring, {
-        custodyTxHash: custodyRef!.txHash, custodyIndex: custodyRef!.outputIndex,
+        custodyTxHash: custodyRef.txHash, custodyIndex: custodyRef.outputIndex,
         authTxHash: authRef!.txHash, authIndex: authRef!.outputIndex,
         network: wiring.network,
       })
@@ -177,7 +239,7 @@ async function main(): Promise<void> {
     // tiêu. Lượt chạy đầu trên Preprod (2026-09-03) rơi đúng vậy: hạt giống auth được chọn
     // trùng hạt giống custody, và cổng SEED-001 bắt được. Cổng đó đúng, nhưng để nó phải
     // bắt là bắt người chạy làm lại tay — nên chờ ở đây, và VẪN loại tường minh bên dưới.
-    const spent = `${custodyRef!.txHash}#${custodyRef!.outputIndex}`;
+    const spent = refKey(custodyRef);
     const utxos = await waitFor(
       `ví không còn hạt giống custody ${spent}`,
       () => lucid.wallet().getUtxos(),
@@ -187,7 +249,7 @@ async function main(): Promise<void> {
     const seed = pickSeed(utxos, avoid);
     authRef = { txHash: seed.txHash, outputIndex: seed.outputIndex };
     rw = await deriveReserveWiring(wiring, {
-      custodyTxHash: custodyRef!.txHash, custodyIndex: custodyRef!.outputIndex,
+      custodyTxHash: custodyRef.txHash, custodyIndex: custodyRef.outputIndex,
       authTxHash: seed.txHash, authIndex: seed.outputIndex,
       network: wiring.network,
     });
@@ -212,7 +274,7 @@ async function main(): Promise<void> {
     await waitFor("auth NFT tại gate", authLive, (us) => us.length === 1);
     console.log(`✓ auth NFT bị KHOÁ tại reserve_gate — mọi lượt rút phải đi qua cổng sàn\n`);
 
-    state.reserve = { custodyRef: custodyRef!, authRef, brakeProof: state.reserve?.brakeProof };
+    state.reserve = { custodyRef, authRef, brakeProof: state.reserve?.brakeProof };
     state.tx.authMint = h;
     await writeState(state);
   }

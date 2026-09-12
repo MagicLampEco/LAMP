@@ -7,6 +7,7 @@ import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { makeLucid, walletPkh, rawValidator, applyPolicy, policyId, NETWORK } from "./config.js";
 import { assertOneShotMarkers } from "./_guards.js";
+import { assertParamCountFromBlueprint } from "../offchain/src/applyGate.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -21,15 +22,24 @@ const KHO_NAME = fromText("KHO");
 const MET_NAME = fromText("MET");
 const MS_PER_EPOCH_PREPROD = 432000000n;         // 432000 slot × 1000 ms
 
-// Load Distribution blueprint (validators claim/beacon/treasury)
-async function distValidator(title: string): Promise<string> {
-  const p = resolve(__dirname, "../../Distribution/onchain/plutus.json");
-  const bp = JSON.parse(await readFile(p, "utf8"));
+// Load Distribution blueprint (validators claim/beacon/treasury) + cổng đếm khe.
+//
+// CỔNG APPLY-001/002 — script này TỰ đọc blueprint của Distribution nên KHÔNG hưởng cổng ở
+// `config.ts::applyValidator` (cổng đó tra bảng compiledCode của các blueprint đã nạp).
+// `applyParamsToScript` không ném khi thiếu/thừa tham số: nó sinh script hash KHÁC, im lặng
+// — và mọi địa chỉ in ra dưới đây, gồm cả KHO A-DEST, đều suy từ hash ấy. Số khe đọc TỪ
+// blueprint Distribution, không gõ tay.
+const DIST_PLUTUS_JSON = resolve(__dirname, "../../Distribution/onchain/plutus.json");
+
+async function applyDist(
+  title: string, params: unknown[],
+): Promise<{ type: "PlutusV3"; script: string }> {
+  const bp = JSON.parse(await readFile(DIST_PLUTUS_JSON, "utf8"));
   const v = (bp.validators as { title: string; compiledCode: string }[]).find((x) => x.title === title);
   if (!v) throw new Error(`Distribution validator '${title}' không có trong plutus.json`);
-  return v.compiledCode;
+  assertParamCountFromBlueprint(bp, title, "Distribution", params.length);
+  return { type: "PlutusV3" as const, script: applyParamsToScript(v.compiledCode, params as never) };
 }
-const applyDist = (code: string, params: unknown[]) => ({ type: "PlutusV3" as const, script: applyParamsToScript(code, params as never) });
 const hashOf = (s: { type: "PlutusV3"; script: string }) => validatorToScriptHash(s);
 const addrOf = (h: string) => credentialToAddress(NETWORK, scriptHashToCredential(h));
 
@@ -63,16 +73,16 @@ async function main() {
   // ── Distribution: claim_account → treasury(kho) → beacon, chia sẻ lampPid ──
   const committee = [pkh];
   const threshold = 1n;
-  const claimScript = applyDist(await distValidator("claim_account.claim_account.spend"), [
+  const claimScript = await applyDist("claim_account.claim_account.spend", [
     committee, threshold, MS_PER_EPOCH_PREPROD, lampPid, TLAMP_NAME, nPid,
   ]);
   const claimHash = hashOf(claimScript);
-  const treasuryScript = applyDist(await distValidator("treasury.treasury.spend"), [
+  const treasuryScript = await applyDist("treasury.treasury.spend", [
     claimHash, lampPid, TLAMP_NAME,
   ]);
   const treasuryHash = hashOf(treasuryScript);
   const treasuryAddr = addrOf(treasuryHash);   // ← KHO A-DEST
-  const beaconScript = applyDist(await distValidator("beacon.beacon.spend"), [
+  const beaconScript = await applyDist("beacon.beacon.spend", [
     committee, threshold, nPid,
   ]);
   const beaconHash = hashOf(beaconScript);

@@ -2,6 +2,7 @@
 // Custody collect (LAMP Treasury v1). Value bảo toàn TUYỆT ĐỐI per-asset (KHÔNG burn).
 
 export * from "./types.js";
+export * from "./constants.js";
 export * from "./datum.js";
 export * from "./collect.js";
 export * from "./collectBuilder.js";
@@ -28,3 +29,24 @@ export {
   eachOutLineOk as releaseEachOutLineOk,
   eachInLinePresent as releaseEachInLinePresent,
 } from "./release.js";
+
+// migrate.js: nhánh MIGRATE-IN (Δ Reserve vào SỔ kho, không chỉ vào sân kho).
+// Cùng lý do như release.js — `valueOk`/`ledgerOk`/`eachOutLineOk`/`eachInLineSettled`
+// trùng tên với collect.js, mỗi nhánh một bản riêng ⇒ alias `migrate*`. Hàm KHÔNG trùng
+// (mintOk, assetAccepted, planMigrate*, lineDelta, targetLinePresent) export thẳng.
+export {
+  mintOk, assetAccepted, lineDelta, targetLinePresent,
+  planMigrateLedger, planMigrateDatum,
+  valueOk as migrateValueOk,
+  ledgerOk as migrateLedgerOk,
+  eachOutLineOk as migrateEachOutLineOk,
+  eachInLineSettled as migrateEachInLineSettled,
+} from "./migrate.js";
+
+// stakeReward.js: nhánh STAKE-REWARD-IN (thưởng uỷ quyền của CHÍNH kho vào SỔ kho).
+// `valueOk` lại trùng tên ⇒ alias `stakeReward*`, cùng quy ước như hai nhánh trên.
+export {
+  REWARD_POLICY, REWARD_NAME,
+  ledgerRewardOk, planStakeRewardLedger, planStakeRewardDatum,
+  valueOk as stakeRewardValueOk,
+} from "./stakeReward.js";

@@ -174,9 +174,15 @@ export async function buildRedeemTx(params: RedeemParams): Promise<RedeemResult>
   const claimAddress = credentialToAddress(
     network, scriptHashToCredential(validatorToScriptHash(claimScript)),
   );
-  const treasuryAddress = credentialToAddress(
-    network, scriptHashToCredential(validatorToScriptHash(treasuryScript)),
-  );
+  // Kho: MANG ĐỊA CHỈ THEO TỪ INPUT, KHÔNG dựng lại từ script hash.
+  // `claim_account.ak:146` (C-SOLV-5) ép `trsy_in_addr == trsy_out_addr` — so CẢ `Address`,
+  // tức KỂ CẢ stake credential. Một địa chỉ script có hai dạng cùng script hash: enterprise
+  // (chỉ payment credential) và base (payment + stake). `credentialToAddress(network,
+  // scriptHashToCredential(...))` LUÔN trả enterprise. Ngày kho còn ngụ ở UTxO enterprise thì
+  // hai vế trùng nhau một cách NGẪU NHIÊN; đúng lượt kho được uỷ quyền stake (địa chỉ base),
+  // mọi tx redeem dựng ra đều bị chuỗi từ chối — mất collateral, và không phép kiểm nào báo
+  // trước vì không ca nào đọc tới địa chỉ dựng lại.
+  const treasuryAddress = treasuryUtxo.address;
   const destination = params.destinationAddress ?? (await lucid.wallet().address());
 
   // ── Output datums ──────────────────────────────────────────────────

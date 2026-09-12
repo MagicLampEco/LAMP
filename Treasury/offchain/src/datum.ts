@@ -32,6 +32,10 @@ export const CUSTODY_REDEEMER = {
   Release:   1,
   Rebalance: 2,
   MigrateIn: 3,
+  // ⚠ Index PHẢI khớp thứ tự khai báo ở `types.ak` ▸ `CustodyRedeemer`. Constructor mới
+  // luôn thêm Ở CUỐI: chèn vào giữa làm mọi redeemer đã mã hoá trỏ sang nhánh khác, và
+  // nó KHÔNG lỗi lúc build — nó lỗi lúc validator chạy, sau khi đã trả phí.
+  StakeRewardIn: 4,
 } as const;
 
 // ── helpers ────────────────────────────────────────────────────────────
@@ -354,6 +358,8 @@ export function encodeCustodyRedeemer(r: CustodyRedeemer): Constr<Data> {
       ]);
     case "MigrateIn":
       return new Constr(CUSTODY_REDEEMER.MigrateIn, [normHex(r.source)]);
+    case "StakeRewardIn":
+      return new Constr(CUSTODY_REDEEMER.StakeRewardIn, [r.amount]);
   }
 }
 
@@ -378,7 +384,7 @@ function decodeBucketMove(d: Data): BucketMove {
   };
 }
 
-/** Decode CustodyRedeemer (mirror encodeCustodyRedeemer — 4 nhánh theo Constr index). */
+/** Decode CustodyRedeemer (mirror encodeCustodyRedeemer — 5 nhánh theo Constr index). */
 export function decodeCustodyRedeemer(d: Data): CustodyRedeemer {
   const c = asConstr(d, "CustodyRedeemer");
   switch (c.index) {
@@ -401,6 +407,10 @@ export function decodeCustodyRedeemer(d: Data): CustodyRedeemer {
     case CUSTODY_REDEEMER.MigrateIn: {
       if (c.fields.length !== 1) throw new Error(`TDATUM-123: MigrateIn expects 1 field, got ${c.fields.length}`);
       return { kind: "MigrateIn", source: asBytes(c.fields[0]!, "MigrateIn.source") };
+    }
+    case CUSTODY_REDEEMER.StakeRewardIn: {
+      if (c.fields.length !== 1) throw new Error(`TDATUM-125: StakeRewardIn expects 1 field, got ${c.fields.length}`);
+      return { kind: "StakeRewardIn", amount: asInt(c.fields[0]!, "StakeRewardIn.amount") };
     }
     default:
       throw new Error(`TDATUM-124: CustodyRedeemer unknown Constr ${c.index}`);

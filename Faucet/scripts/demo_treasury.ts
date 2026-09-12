@@ -23,6 +23,7 @@ import { custodyDatumToCbor } from "../../Treasury/offchain/src/datum.js";
 import { buildCollectTx } from "../../Treasury/offchain/src/collectBuilder.js";
 import type { CustodyDatum, CollectItem } from "../../Treasury/offchain/src/types.js";
 import { msPerEpoch, assertMsPerEpochMatchesNetwork } from "../offchain/src/constants.js";
+import { assertParamCount } from "../../Genesis/offchain/src/applyGate.js";
 
 // Secret: MỘT nguồn duy nhất — $AGENT_SECRETS. KHÔNG có đường dự phòng nướng cứng.
 // Đường dự phòng cũ trỏ vào bộ nhà agent ở chỗ cũ — chỗ đó đã dời, nên hằng số ấy là
@@ -62,6 +63,21 @@ const pkh = getAddressDetails(myAddr).paymentCredential!.hash;
 const bp = JSON.parse(await readFile(resolve(process.cwd(), "../../Treasury/onchain/plutus.json"), "utf8"));
 const get = (t: string) => bp.validators.find((v: { title: string }) => v.title === t).compiledCode;
 
+// ── Cổng APPLY-001: mọi lượt apply-param phải đi qua đây ───────────────────────
+// `applyParamsToScript` KHÔNG báo lỗi khi thiếu hoặc thừa tham số. Nó apply một phần rồi
+// trả về script hash / policy id KHÁC, im lặng — script chạy êm vào một địa chỉ không ai
+// giữ, và với `lamp_mint` thì đúc LAMP dưới policy id sai (LAMP không burn được,
+// `Treasury/CONTRACT.md §5`). TypeScript không bắt được vì tham số đi theo `unknown[]`.
+// Cổng thuần ở `Genesis/offchain/src/applyGate.ts`; ở đây chỉ nối số khai của blueprint vào.
+const mkApply = (bp: { validators: Array<{ title: string; parameters?: unknown[]; compiledCode: string }> }) =>
+  (title: string, params: unknown[]): string => {
+    const v = bp.validators.find((x) => x.title === title);
+    if (!v) throw new Error(`APPLY-002: blueprint không khai validator "${title}".`);
+    assertParamCount(title, (v.parameters ?? []).length, params.length);
+    return applyParamsToScript(v.compiledCode, params as never[]);
+  };
+const apT = mkApply(bp);
+
 const link = (h: string) => `https://preview.cexplorer.io/tx/${h}`;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 async function waitVisible(txHash: string, addr: string, tries = 40): Promise<void> {
@@ -76,19 +92,27 @@ async function waitVisible(txHash: string, addr: string, tries = 40): Promise<vo
 const out: Record<string, unknown> = { network: "Preview", txs: [] as unknown[] };
 const rec = (o: unknown) => (out.txs as unknown[]).push(o);
 
-// ── custody validator (params: proposal_policy, ms_per_epoch) → script hash ──
-const custodyScript: Validator = { type: "PlutusV3", script: applyParamsToScript(get("custody.custody.spend"), [PROPOSAL_POLICY, MS_PER_EPOCH]) };
+// ── S1: seed custody (one-shot NFT) ─────────────────────────────────────────
+// THỨ TỰ ĐÃ ĐỔI: custody_seed TRƯỚC custody. `custody_seed` nay chỉ nhận `genesis_ref` — nó
+// chọn output custody bằng self-reference NFT, nên vòng seed↔custody đã bị phá; còn `custody`
+// thì NGƯỢC LẠI cần `seed_policy` (khe #2) để ghim NFT one-shot làm định danh instance.
+const utxos0 = await lucid.wallet().getUtxos();
+const genesis = utxos0.reduce((a, b) => (b.assets.lovelace > a.assets.lovelace ? b : a));
+const genesisRef = new Constr(0, [genesis.txHash, BigInt(genesis.outputIndex)]);
+const custodySeedPolicy: MintingPolicy = { type: "PlutusV3", script: apT("custody_seed.custody_seed.mint", [genesisRef]) };
+const custodySeedPid = mintingPolicyToId(custodySeedPolicy);
+
+// ── custody validator → script hash ─────────────────────────────────────────
+// Năm tham số: proposal_policy, seed_policy, ms_per_epoch, lamp_policy, token_name.
+// Hai khe LAMP (#4-5) là để nhánh `MigrateIn` đo Δ — không đọc "token nào là LAMP" từ datum
+// được, vì datum do người gửi đặt ⇒ phải nướng vào script hash.
+const custodyScript: Validator = { type: "PlutusV3", script: apT("custody.custody.spend", [
+  PROPOSAL_POLICY, custodySeedPid, MS_PER_EPOCH, LAMP_POLICY, LAMP_NAME,
+]) };
 const custodyHash = validatorToScriptHash(custodyScript);
 const custodyAddr = credentialToAddress("Preview", scriptHashToCredential(custodyHash));
 console.log(`custodyHash=${custodyHash}`);
 console.log(`custodyAddr=${custodyAddr}`);
-
-// ── S1: seed custody (one-shot NFT) ─────────────────────────────────────────
-const utxos0 = await lucid.wallet().getUtxos();
-const genesis = utxos0.reduce((a, b) => (b.assets.lovelace > a.assets.lovelace ? b : a));
-const genesisRef = new Constr(0, [genesis.txHash, BigInt(genesis.outputIndex)]);
-const custodySeedPolicy: MintingPolicy = { type: "PlutusV3", script: applyParamsToScript(get("custody_seed.custody_seed.mint"), [genesisRef, custodyHash]) };
-const custodySeedPid = mintingPolicyToId(custodySeedPolicy);
 const custodyNftUnit = toUnit(custodySeedPid, INSTANCE_ID); // NFT name == instance_id
 console.log(`custodySeedPid=${custodySeedPid}`);
 console.log(`custodyNftUnit=${custodyNftUnit}`);

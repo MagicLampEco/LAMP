@@ -12,6 +12,8 @@ import {
   type LucidEvolution, type Validator, type MintingPolicy,
 } from "@lucid-evolution/lucid";
 import type { Network } from "@magiclamp/utils";
+// Cổng đếm khe apply-param (dùng chung toàn kho) — xem `blueprintSource.ts`.
+import { blueprintGate } from "../../Genesis/offchain/src/blueprintSource.js";
 import { readFile, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
@@ -84,13 +86,21 @@ export async function rawValidator(title: string): Promise<RawValidator> {
   return v;
 }
 
-/** Apply params → PlutusV3 spend validator. */
+/**
+ * Cổng đếm khe của blueprint Faucet. Số khe ĐỌC từ blueprint, không nhận số gõ tay — lý do
+ * đầy đủ ở `Genesis/offchain/src/blueprintSource.ts`. Đọc tệp LAZY (lần apply đầu tiên).
+ */
+export const FAUCET_GATE = blueprintGate(PLUTUS_JSON_PATH, "Faucet");
+
+/** Apply params → PlutusV3 spend validator, QUA cổng đếm khe. */
 export function applyValidator(compiledCode: string, params: unknown[]): Validator {
+  FAUCET_GATE.assertParamCountOfCode(compiledCode, params.length);
   return { type: "PlutusV3", script: applyParamsToScript(compiledCode, params as never) };
 }
 
-/** Apply params → PlutusV3 minting policy. */
+/** Apply params → PlutusV3 minting policy, QUA cổng đếm khe. */
 export function applyPolicy(compiledCode: string, params: unknown[]): MintingPolicy {
+  FAUCET_GATE.assertParamCountOfCode(compiledCode, params.length);
   return { type: "PlutusV3", script: applyParamsToScript(compiledCode, params as never) };
 }
 
@@ -110,6 +120,20 @@ export function scriptHash(script: Validator): string {
 
 export const DEPLOYED_PATH = resolve(__dirname, "deployed-faucet.json");
 
+/**
+ * Con trỏ về NGUỒN DUY NHẤT của policy id tLAMP, đóng dấu vào mọi lượt ghi state.
+ *
+ * VÌ SAO SINH CHỨ KHÔNG CHÉP TAY: `saveDeployed` ghi đè TRỌN tệp. Một dòng cảnh báo gõ tay vào
+ * `deployed-faucet.json` sẽ biến mất ở lần `01_mint_pool.ts` kế tiếp — im lặng, không lỗi, và
+ * người đọc sau lại thấy một tệp trông sạch sẽ khai mình là nguồn. Đóng dấu ở tầng ghi thì bản
+ * sao không tự chết được.
+ */
+export const TLAMP_POLICY_ID_SOURCE =
+  "Genesis/offchain/src/lampPolicies.ts — NGUỒN DUY NHẤT cho policy id + TRẠNG THÁI " +
+  "(ACTIVE / SUPERSEDED / PENDING-MINT). Đọc bằng activeLampPolicyId(network); hàm đó NÉM khi " +
+  "mạng chưa có bản ACTIVE, thay vì trả một giá trị trông hợp lệ. Giá trị trong tệp này là ẢNH " +
+  "CHỤP của một lượt deploy, KHÔNG phải nguồn — đừng chép nó sang repo khác.";
+
 export interface FaucetDeployed {
   network: Network;
   tlamp: {
@@ -121,6 +145,8 @@ export interface FaucetDeployed {
   faucet: { hash: string; address: string };
   poolUtxo?: { txHash: string; outputIndex: number };
   claimAmountOildrop: string;
+  /** Đóng dấu tự động bởi `saveDeployed` — đừng đặt tay, đừng xoá. */
+  _policyIdSource?: string;
 }
 
 export async function loadDeployed(): Promise<FaucetDeployed> {
@@ -132,7 +158,10 @@ export async function loadDeployed(): Promise<FaucetDeployed> {
 }
 
 export async function saveDeployed(state: FaucetDeployed): Promise<void> {
-  await writeFile(DEPLOYED_PATH, JSON.stringify(state, null, 2) + "\n", "utf8");
+  // Đóng dấu con trỏ nguồn ở tầng GHI, không ở tầng gọi: chỗ gọi quên một lần là bản sao mất
+  // đường về nguồn, và không gì kêu lên.
+  const stamped: FaucetDeployed = { ...state, _policyIdSource: TLAMP_POLICY_ID_SOURCE };
+  await writeFile(DEPLOYED_PATH, JSON.stringify(stamped, null, 2) + "\n", "utf8");
 }
 
 export function explorerTx(hash: string): string {

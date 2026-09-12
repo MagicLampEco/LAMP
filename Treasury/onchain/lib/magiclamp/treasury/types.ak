@@ -101,4 +101,10 @@ pub type CustodyRedeemer {
   Rebalance { moves: List<BucketMove> }
   // MIGRATE value treasury cũ vào instance (v1.x — chưa triển khai)
   MigrateIn { source: ByteArray }
+  // NẠP phần thưởng uỷ quyền của chính kho vào value VÀ vào SỔ (v1.x — triển khai).
+  // `amount` = Δ lovelace KHAI BÁO; validator ép nó khớp ĐẲNG THỨC với độ tăng lovelace
+  // thực của UTxO kho, nên khai dối chỉ làm tx bị từ chối, không rút thêm được gì.
+  // ⚠ Constr index 4 — thêm Ở CUỐI để index 0..3 (Collect/Release/Rebalance/MigrateIn)
+  // giữ nguyên với offchain `encodeCustodyRedeemer` (Treasury/tests/datum.test.ts).
+  StakeRewardIn { amount: Int }
 }

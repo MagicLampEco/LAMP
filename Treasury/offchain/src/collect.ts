@@ -11,6 +11,7 @@
 //   value_out == value_in ⊕ cut_value(items)
 // Residual (amount − cut) do CALLER trả thẳng provider ngoài custody.
 
+import { RESERVE_INFLOW_BUCKET_ID, STAKE_REWARD_BUCKET_ID } from "./constants.js";
 import type { CollectItem, CustodyDatum, LedgerEntry } from "./types.js";
 
 /** Đơn vị value đa-asset offchain: key "policy|name" → amount. "" cho lovelace. */
@@ -35,9 +36,22 @@ export function itemAccepted(item: CollectItem, accepted: CustodyDatum["accepted
   return accepted.some((a) => assetKey(a.policy, a.name) === k);
 }
 
-/** Mọi item hợp lệ: amount ≥ 0 + asset ∈ accepted_assets. */
+/** Mọi item hợp lệ: amount ≥ 0 + category KHÔNG phải một trong HAI bucket dành riêng
+ *  + asset ∈ accepted_assets. Mirror `collect.all_items_valid` on-chain.
+ *
+ *  Hai vế `category != <bucket dành riêng>` (F4) là thứ CƯỠNG CHẾ hai hằng bucket: không
+ *  đường `Collect` nào được ghi lén vào dòng sổ Reserve-inflow hay dòng thưởng uỷ quyền,
+ *  nên "kho đã nhận bao nhiêu từ Reserve" và "kho đã nhận bao nhiêu thưởng" vẫn đọc được
+ *  bằng đúng một phép tra sổ mỗi cái. Thiếu một vế thì off-chain dựng được một tx mà
+ *  on-chain chắc chắn từ chối — sai theo chiều tốn phí chứ không mất tiền, nhưng vẫn là
+ *  gương lệch, và gương lệch là thứ người ta phát hiện bằng một tx hỏng chứ không bằng
+ *  bài kiểm. Đếm ở đây phải bằng đếm ở `collect.ak` ▸ `all_items_valid`: HAI. */
 export function allItemsValid(items: CollectItem[], accepted: CustodyDatum["accepted_assets"]): boolean {
-  return items.every((it) => it.amount >= 0n && itemAccepted(it, accepted));
+  return items.every((it) =>
+    it.amount >= 0n
+    && it.category !== RESERVE_INFLOW_BUCKET_ID
+    && it.category !== STAKE_REWARD_BUCKET_ID
+    && itemAccepted(it, accepted));
 }
 
 /** Số dư (bucket,policy,name) trong sổ; 0 nếu chưa có dòng. */
@@ -345,6 +359,7 @@ export function allLinesAccepted(
  *   S-SEED-0    value == ledgerValue ⊕ reserved_min_ada ⊕ 1 NFT (seed_policy,instance_id)
  *   S-LEDGER-0  sổ CANONICAL (strict-sorted ∧ mọi dòng > 0)
  *   S-ACC-0     mọi dòng sổ thuộc accepted_assets
+ *   S-LEDGER-RESERVED sổ genesis KHÔNG chứa dòng ở bucket dành riêng nguồn Reserve
  *   S-CONSUMED-0 consumed_proposals == []
  * Off-chain GỌI trước khi build genesis tx — chặn seed sai ngay từ off-chain.
  * @param nftPolicy seed_policy (PolicyId của custody authenticity NFT).
@@ -359,5 +374,19 @@ export function seedDatumOk(
     && seedValueOk(value, datum.ledger, reservedMinAda, nftPolicy, nftName) // S-SEED-0
     && isCanonical(datum.ledger)                                     // S-LEDGER-0
     && allLinesAccepted(datum.ledger, datum.accepted_assets)         // S-ACC-0
+    && noReservedBucketLines(datum.ledger)                           // S-LEDGER-RESERVED
     && datum.consumed_proposals.length === 0;                        // S-CONSUMED-0
+}
+
+/** S-LEDGER-RESERVED (F4): sổ genesis KHÔNG được chứa dòng ở HAI bucket DÀNH RIÊNG — nguồn
+ *  Reserve và thưởng uỷ quyền. Mirror `custody_seed.ak::no_reserved_bucket_lines`.
+ *
+ *  Hai bucket đó chỉ có nghĩa khi MỌI số dư trong chúng đến từ đúng một nhánh redeemer
+ *  (`MigrateIn`, `StakeRewardIn`); một dòng khai khống lúc seed làm hỏng đúng tính chất
+ *  kiểm toán mà hằng ấy sinh ra để giữ, và nó lọt qua S-SEED-0 dễ dàng vì chỉ cần nạp đủ
+ *  value tương ứng. Đếm ở đây phải bằng đếm ở `custody_seed.ak`: HAI. */
+export function noReservedBucketLines(ledger: LedgerEntry[]): boolean {
+  return ledger.every((e) =>
+    e.bucket_id !== RESERVE_INFLOW_BUCKET_ID
+    && e.bucket_id !== STAKE_REWARD_BUCKET_ID);
 }

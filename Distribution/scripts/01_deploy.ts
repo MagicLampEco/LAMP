@@ -306,9 +306,11 @@ async function main(): Promise<void> {
       lampName,
       beaconNftPolicy,
       treasuryNftPolicy,
+      // `accountNftPolicy` từng xuất hiện HAI LẦN trong chính khối này — trong một object
+      // literal thì lần sau đè lần trước không một tiếng động. Ở đây hai lần cùng một biến
+      // nên giá trị không sai, nhưng một dòng trùng vô hại dạy người đọc bỏ qua dòng trùng.
       accountNftPolicy,
       claimAccountHash: claimHash,
-      accountNftPolicy,
     },
     beaconNftMode,
     ...(beaconNftGenesisRef ? { beaconNftGenesisRef } : {}),

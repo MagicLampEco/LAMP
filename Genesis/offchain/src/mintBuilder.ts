@@ -9,15 +9,15 @@
 //     kiểm bằng `extra_signatories`; A-DEST = `dist_dest` NƯỚNG SẴN (script hash kho).
 //     Validator **KHÔNG đọc reference input nào** (`457f312:.../lamp_mint.ak:169-172`).
 //     Dưới policy đó KHÔNG TỒN TẠI registry UTxO nào để mà đọc.
-//   • **12 tham số (registry-gate, bản B) — CHƯA TỪNG DEPLOY**, là bản ở HEAD
+//   • **14 tham số (registry-gate, bản B) — CHƯA TỪNG DEPLOY**, là bản ở HEAD
 //     (`onchain/validators/lamp_mint.ak:59-72`). WHO-gate đọc **registry NFT**, A-DEST đọc
 //     **kho NFT**, cả hai qua `tx.reference_inputs` ⇒ hai ref-input BẮT BUỘC.
 //
 //   Hai bản có **policy-id KHÁC NHAU** — chúng là hai token, không phải hai phiên bản của
-//   một token. Gọi nhầm nhánh không sinh tx sai, nó sinh tx CHẮC CHẮN FAIL: nhánh 12 gắn
+//   một token. Gọi nhầm nhánh không sinh tx sai, nó sinh tx CHẮC CHẮN FAIL: nhánh 14 gắn
 //   ref-input vào tx tiêu policy 8 tham số thì validator 8 tham số bỏ qua ref-input, nhưng
 //   chỗ gọi lại phải bịa ra registry/kho UTxO không tồn tại để thoả kiểu ⇒ bế tắc ở
-//   offchain. Trước bản vá 2026-08-16 builder chỉ có nhánh 12, tức nó **chắn ngang đường
+//   offchain. Trước bản vá 2026-08-16 builder chỉ có nhánh 14, tức nó **chắn ngang đường
 //   đúc LAMP thật trên mainnet**.
 //
 // Flow (khớp luật onchain):
@@ -25,9 +25,9 @@
 //   - Mint:   Δ oildrop LAMP qua policy lamp_mint, redeemer DistributionVest|ReserveDraw.
 //   - Output: SupplyState' tại CÙNG script address, mang lại thread NFT, datum cập nhật
 //             (dist_minted hoặc reserve_minted += Δ); + Δ tLAMP trả `recipient`.
-//   - Ref:    CHỈ nhánh 12 tham số — registry UTxO (mang registry NFT) + kho UTxO (mang kho
+//   - Ref:    CHỈ nhánh 14 tham số — registry UTxO (mang registry NFT) + kho UTxO (mang kho
 //             NFT). Nhánh 8 tham số KHÔNG có reference input (validator không đọc).
-//   - Sign:   nhánh 12: authority mà RegistryDatum chỉ định cho `token_tag`;
+//   - Sign:   nhánh 14: authority mà RegistryDatum chỉ định cho `token_tag`;
 //             nhánh 8: pkh trong `dist_authority` nướng sẵn (extra_signatories).
 //
 // PHẠM VI: builder này phục vụ đường DistributionVest. Đường ReserveDraw KHÔNG dùng chữ
@@ -35,11 +35,24 @@
 // ReserveDraw thật được dựng bởi `Reserve/offchain/drawBuilder.ts`. KHÔNG dùng builder này
 // cho ReserveDraw.
 //
+// ⚠ TÊN TRƯỜNG MANG TIỀN TỐ `dist…` LÀ CÓ CHỦ Ý (2026-09-11). `distKhoRefUtxo` /
+// `distKhoNftPolicyId` trỏ kho **Distribution** — khe #9-10 `kho_nft_policy`/`kho_nft_name`
+// của `lamp_mint`. `lamp_mint` còn MỘT cặp kho nữa, khe #13-14
+// `reserve_kho_nft_policy`/`reserve_kho_nft_name`, trỏ kho **Treasury custody** của đường
+// ReserveDraw — kho KHÁC HẲN. Trước bản đổi tên, hai kho khác nhau mang cùng một tên trường
+// `khoNftPolicyId` ở hai tệp (`mintBuilder` và `Reserve/offchain/src/drawBuilder`), nên chỗ
+// nối dây giữa chúng không nhìn ra được bằng mắt.
+//
+// Hai khe #13-14 KHÔNG phải trường của builder này: chúng là tham số APPLY-PARAM, nướng vào
+// policy-id lúc deploy, và tx DistributionVest không chạm tới chúng. Chúng được dựng và ép
+// khớp ở `offchain/src/reserveKhoPair.ts` (cổng APPLY-003), gọi từ
+// `scripts/_canonical_v2.ts` và `scripts/_reserve_layer2.ts`.
+//
 // Invariants ép TRƯỚC khi build (fail-fast offchain qua applyMint): Δ>0, ≤ cap, đúng quota.
 //
 // ⚠ ĐÃ SỬA 2026-08-05 — trước đó builder này KHÔNG dùng được với `lamp_mint` canonical.
 // Nó còn ở hình dạng v1/anchor: chỉ `addSigner(authority)` rồi `pay.ToAddress(recipient)`,
-// KHÔNG có `readFrom`. Validator canonical (`lamp_mint.ak` 12 tham số) đọc **registry** để
+// KHÔNG có `readFrom`. Validator canonical (`lamp_mint.ak` 14 tham số) đọc **registry** để
 // biết ai được mint và đọc **kho-NFT** để biết A-DEST rót đi đâu, cả hai qua reference
 // input. Thiếu chúng thì `expect` đầu tiên trong validator crash ⇒ MỌI tx dựng bằng builder
 // này đều fail, không tuỳ tham số. Đường chạy thật duy nhất trước bản vá là
@@ -53,17 +66,17 @@
 //     expect Some(datum)` từ chối vĩnh viễn, mà LAMP không burn được. Bản trước để optional
 //     và mặc định rơi vào `pay.ToAddress` — đường MẶC ĐỊNH chính là đường mất tiền.
 //   GMB-005 — đối chiếu registry/kho ref-input thật sự mang NFT. GMB-004 so recipient với
-//     `khoRefUtxo.address`; nếu chính khoRefUtxo sai thì phép so tự thoả ⇒ guard vô nghĩa.
+//     `distKhoRefUtxo.address`; nếu chính distKhoRefUtxo sai thì phép so tự thoả ⇒ guard vô nghĩa.
 //     Chạy TRƯỚC GMB-004 để lỗi nói đúng nguyên nhân gốc.
 //   (GMB-004 giữ nguyên.)
 //
 // ⚠ VÁ TIẾP 2026-08-16 — TÁCH NHÁNH THEO `mintParamCount` (xem đầu tệp). Guard mới:
-//   GMB-007 — nhánh 8 tham số nhận `registryRefUtxo`/`khoRefUtxo`/policy-id của chúng thì
+//   GMB-007 — nhánh 8 tham số nhận `registryRefUtxo`/`distKhoRefUtxo`/policy-id của chúng thì
 //     NÉM, không im lặng bỏ qua. Truyền được chúng nghĩa là chỗ gọi đang tin có một registry
 //     dưới policy 8 tham số — niềm tin đó sai, và nếu để builder lặng lẽ nuốt thì cái sai ấy
 //     đi tiếp vào tài liệu/tích hợp. Kiểu TS đã chặn (`?: never`); guard này bắt đường JS
 //     thuần và mọi chỗ ép kiểu bằng `as`.
-//   GMB-008 — `mintParamCount` thiếu hoặc không thuộc {8, 12}. Fail-closed: builder KHÔNG
+//   GMB-008 — `mintParamCount` thiếu hoặc không thuộc {8, 14}. Fail-closed: builder KHÔNG
 //     đoán bản validator, vì đoán sai = dựng tx cho sai policy.
 //   GMB-009 — nhánh 8 tham số thiếu `distDestAddress`. Không có ref-input để đọc A-DEST
 //     động, nên không có nó thì GMB-004 mất chỗ đối chiếu và A-DEST không còn ai canh.
@@ -113,15 +126,15 @@ export interface MintParamsCommon {
   amount: bigint;
 
   /** Người nhận tLAMP đã mint (bech32 address).
-   *  A-DEST (DistributionVest): PHẢI là địa chỉ KHO. Nhánh 12 tham số: chính địa chỉ đang
-   *  giữ `khoRefUtxo` (đọc động). Nhánh 8 tham số: `distDestAddress` (nướng vào policy).
+   *  A-DEST (DistributionVest): PHẢI là địa chỉ KHO. Nhánh 14 tham số: chính địa chỉ đang
+   *  giữ `distKhoRefUtxo` (đọc động). Nhánh 8 tham số: `distDestAddress` (nướng vào policy).
    *  Rót về ví cá nhân thì validator reject (qty_to_script < Δ). Builder ĐỐI CHIẾU điều này
    *  trước khi build (GMB-004) thay vì để hỏng trên chuỗi. */
   recipient: string;
 
   /** Inline datum đặt kèm output kho (hex CBOR). **BẮT BUỘC ở CẢ HAI NHÁNH.**
    *
-   *  Nhánh 12 tham số — đây là ca MẤT TIỀN: kho là `treasury.ak`, mà rót vào script KHÔNG
+   *  Nhánh 14 tham số — đây là ca MẤT TIỀN: kho là `treasury.ak`, mà rót vào script KHÔNG
    *  datum thì `treasury.ak:27 expect Some(datum)` fail ⇒ UTxO không spend được, LAMP
    *  no-burn ⇒ MẤT VĨNH VIỄN. Tx vẫn HỢP LỆ khi thiếu datum (validator đếm theo payment
    *  credential, không nhìn datum) nên chuỗi KHÔNG cứu được — phải chặn ở đây.
@@ -133,7 +146,7 @@ export interface MintParamsCommon {
   recipientDatum: string;
 
   /** Keyhash authority phải ký (đúng đường mint) — addSigner để Lucid đòi chữ ký.
-   *  Nhánh 12: khớp `Authority` mà RegistryDatum gán cho `token_tag`.
+   *  Nhánh 14: khớp `Authority` mà RegistryDatum gán cho `token_tag`.
    *  Nhánh 8: khớp `dist_authority` nướng sẵn (mainnet: đúng MỘT pkh, threshold 1). */
   authoritySigners: string[];
 
@@ -142,11 +155,11 @@ export interface MintParamsCommon {
 }
 
 /**
- * Tham số cho bản **12 tham số** (registry-gate, CHƯA deploy). Hai reference input là hợp
+ * Tham số cho bản **14 tham số** (registry-gate, CHƯA deploy). Hai reference input là hợp
  * đồng gọi BẮT BUỘC — validator đọc WHO-gate và A-DEST qua `tx.reference_inputs`.
  */
-export interface MintParamsV12 extends MintParamsCommon {
-  mintParamCount: 12;
+export interface MintParamsV14 extends MintParamsCommon {
+  mintParamCount: 14;
 
   /** Reference input: UTxO mang **registry NFT** — validator đọc RegistryDatum từ đây để
    *  biết `token_tag` này ai được mint (WHO-gate). Thiếu ⇒ validator crash. */
@@ -158,13 +171,13 @@ export interface MintParamsV12 extends MintParamsCommon {
 
   /** Reference input: UTxO mang **kho NFT** — validator đọc địa chỉ kho từ đây (A-DEST
    *  động). Thiếu ⇒ validator crash. */
-  khoRefUtxo: UTxO;
+  distKhoRefUtxo: UTxO;
 
-  /** policy id kho NFT (hex) — ĐỐI CHIẾU `khoRefUtxo` (GMB-005). GMB-004 so recipient với
-   *  `khoRefUtxo.address`; nếu chính khoRefUtxo sai thì phép so đó vô nghĩa. */
-  khoNftPolicyId: string;
+  /** policy id kho NFT (hex) — ĐỐI CHIẾU `distKhoRefUtxo` (GMB-005). GMB-004 so recipient với
+   *  `distKhoRefUtxo.address`; nếu chính distKhoRefUtxo sai thì phép so đó vô nghĩa. */
+  distKhoNftPolicyId: string;
 
-  /** Nhánh 12 đọc A-DEST động từ `khoRefUtxo` — CẤM truyền địa chỉ tĩnh (GMB-007). */
+  /** Nhánh 14 đọc A-DEST động từ `distKhoRefUtxo` — CẤM truyền địa chỉ tĩnh (GMB-007). */
   distDestAddress?: never;
 }
 
@@ -183,17 +196,17 @@ export interface MintParamsV8 extends MintParamsCommon {
 
   registryRefUtxo?: never;
   registryNftPolicyId?: never;
-  khoRefUtxo?: never;
-  khoNftPolicyId?: never;
+  distKhoRefUtxo?: never;
+  distKhoNftPolicyId?: never;
 }
 
 /**
  * Hợp đồng gọi `buildMintTx` — union phân biệt theo `mintParamCount`. Gọi sai nhánh là
- * LỖI BIÊN DỊCH: nhánh 8 khai bốn trường ref-input là `never`, nhánh 12 khai
+ * LỖI BIÊN DỊCH: nhánh 8 khai bốn trường ref-input là `never`, nhánh 14 khai
  * `distDestAddress` là `never`.
  *
  * ⚠ **CÁCH VIẾT DUY NHẤT BIÊN DỊCH ĐƯỢC** — `deployedLamp(network).mintParamCount` có kiểu
- * `8 | 12`, nên spread thẳng nó vào lời gọi là TS2345 ("Type '8 | 12' is not assignable to
+ * `8 | 14`, nên spread thẳng nó vào lời gọi là TS2345 ("Type '8 | 14' is not assignable to
  * type '8'"). Phải THU HẸP bằng `if` trước, mỗi nhánh một lời gọi riêng:
  *
  * ```ts
@@ -202,16 +215,16 @@ export interface MintParamsV8 extends MintParamsCommon {
  *   await buildMintTx({ ...common, mintParamCount: d.mintParamCount, distDestAddress: d.khoAddress });
  * } else {
  *   await buildMintTx({ ...common, mintParamCount: d.mintParamCount,
- *     registryRefUtxo, registryNftPolicyId, khoRefUtxo, khoNftPolicyId });
+ *     registryRefUtxo, registryNftPolicyId, distKhoRefUtxo, distKhoNftPolicyId });
  * }
  * ```
  *
  * Hai nhánh KHÔNG gộp được thành một lời gọi vì chúng đòi trường KHÁC NHAU (A-DEST tĩnh
  * vs hai ref-input) — đó là điểm, không phải phiền toái. Đừng phá hàng rào bằng
- * `as unknown as MintParams`: làm thế là vứt sạch `?: never`, và chiều 12 (thiếu/sai
+ * `as unknown as MintParams`: làm thế là vứt sạch `?: never`, và chiều 14 (thiếu/sai
  * ref-input) KHÔNG còn lưới runtime nào ngoài GMB-005.
  */
-export type MintParams = MintParamsV8 | MintParamsV12;
+export type MintParams = MintParamsV8 | MintParamsV14;
 
 /** Đọc SupplyState datum từ UTxO (inline). */
 export function readSupplyState(utxo: UTxO): SupplyState {
@@ -241,9 +254,9 @@ function threadNftAssets(threadPolicyId: string, minAda: bigint): Assets {
   };
 }
 
-/** Bốn trường CHỈ có nghĩa ở bản 12 tham số. Truyền vào nhánh 8 ⇒ GMB-007. */
+/** Bốn trường CHỈ có nghĩa ở bản 14 tham số. Truyền vào nhánh 8 ⇒ GMB-007. */
 const FORBIDDEN_IN_V8 = [
-  "registryRefUtxo", "registryNftPolicyId", "khoRefUtxo", "khoNftPolicyId",
+  "registryRefUtxo", "registryNftPolicyId", "distKhoRefUtxo", "distKhoNftPolicyId",
 ] as const;
 
 /**
@@ -252,7 +265,7 @@ const FORBIDDEN_IN_V8 = [
  * + trả Δ tLAMP cho recipient + addSigner(authority).
  *
  * Hình dạng tx KHÁC NHAU theo `mintParamCount`:
- *   - 12: có `.readFrom([registryRefUtxo, khoRefUtxo])` (validator đọc WHO-gate + A-DEST);
+ *   - 14: có `.readFrom([registryRefUtxo, distKhoRefUtxo])` (validator đọc WHO-gate + A-DEST);
  *   -  8: KHÔNG có reference input nào (validator không đọc).
  */
 export async function buildMintTx(p: MintParams): Promise<{
@@ -262,17 +275,17 @@ export async function buildMintTx(p: MintParams): Promise<{
   const minAda = p.supplyMinAda ?? 2_000_000n;
 
   // ── GMB-008 (fail-closed): KHÔNG đoán bản validator ────────────────────────
-  // Không mặc định về 12. Hai bản có policy-id khác nhau; đoán sai là dựng tx cho sai
+  // Không mặc định về 14. Hai bản có policy-id khác nhau; đoán sai là dựng tx cho sai
   // token, và LAMP không burn được nên sai không sửa được.
-  if (p.mintParamCount !== 8 && p.mintParamCount !== 12) {
+  if (p.mintParamCount !== 8 && p.mintParamCount !== 14) {
     throw new Error(
-      `GMB-008: mintParamCount phải là 8 (bản mồi ĐANG CHẠY mainnet) hoặc 12 ` +
+      `GMB-008: mintParamCount phải là 8 (bản mồi ĐANG CHẠY mainnet) hoặc 14 ` +
       `(registry-gate, chưa deploy), nhận ${String((p as { mintParamCount?: unknown }).mintParamCount)}. ` +
       `Đọc số này từ 'deployedLamp(network).mintParamCount', đừng đoán — nhưng ĐừNG spread thẳng ` +
-      `nó vào lời gọi (kiểu nó là '8 | 12' ⇒ TS2345). Thu hẹp bằng if, mỗi nhánh một lời gọi: ` +
+      `nó vào lời gọi (kiểu nó là '8 | 14' ⇒ TS2345). Thu hẹp bằng if, mỗi nhánh một lời gọi: ` +
       `const d = deployedLamp(network); ` +
       `if (d.mintParamCount === 8) buildMintTx({ ...common, mintParamCount: d.mintParamCount, distDestAddress: d.khoAddress }); ` +
-      `else buildMintTx({ ...common, mintParamCount: d.mintParamCount, registryRefUtxo, registryNftPolicyId, khoRefUtxo, khoNftPolicyId }); ` +
+      `else buildMintTx({ ...common, mintParamCount: d.mintParamCount, registryRefUtxo, registryNftPolicyId, distKhoRefUtxo, distKhoNftPolicyId }); ` +
       `Đừng chữa TS2345 bằng 'as unknown as MintParams' — làm thế là vứt sạch hàng rào kiểu.`,
     );
   }
@@ -290,7 +303,7 @@ export async function buildMintTx(p: MintParams): Promise<{
         `GMB-007: nhánh 8 tham số nhận trường CẤM [${forbidden.join(", ")}]. Bản mồi đang chạy ` +
         `mainnet KHÔNG đọc reference input nào (457f312:lamp_mint.ak:169-172) và dưới policy ` +
         `đó KHÔNG TỒN TẠI registry UTxO. Muốn dùng registry-gate thì đó là policy-id KHÁC — ` +
-        `chuyển sang mintParamCount: 12, đừng nhét ref-input vào bản 8.`,
+        `chuyển sang mintParamCount: 14, đừng nhét ref-input vào bản 8.`,
       );
     }
   }
@@ -303,17 +316,17 @@ export async function buildMintTx(p: MintParams): Promise<{
   const mintAssets: Assets = { [tlampUnit]: p.amount };
 
   // ── A-DEST: nguồn sự thật khác nhau giữa hai bản ───────────────────────────
-  // 12: đọc ĐỘNG từ UTxO mang kho-NFT ⇒ phải kiểm chính UTxO đó trước (GMB-005).
+  // 14: đọc ĐỘNG từ UTxO mang kho-NFT ⇒ phải kiểm chính UTxO đó trước (GMB-005).
   //  8: `dist_dest` NƯỚNG vào policy ⇒ không có gì để kiểm NFT; caller cấp địa chỉ tương
   //     ứng hash đã nướng (lấy từ `deployed.ts`, không gõ tay).
   let khoAddress: string;
-  if (p.mintParamCount === 12) {
+  if (p.mintParamCount === 14) {
     // GMB-005 (ref-input thật): ĐỐI CHIẾU hai reference input TRƯỚC GMB-004. GMB-004 so
-    // recipient với `khoRefUtxo.address` — nếu chính khoRefUtxo là UTxO sai (vd ví của
+    // recipient với `distKhoRefUtxo.address` — nếu chính distKhoRefUtxo là UTxO sai (vd ví của
     // caller) thì phép so đó tự thoả và guard vô nghĩa. Kiểm NFT trước, so địa chỉ sau.
     assertHoldsNft(p.registryRefUtxo, p.registryNftPolicyId, "registryRefUtxo (WHO-gate)");
-    assertHoldsNft(p.khoRefUtxo, p.khoNftPolicyId, "khoRefUtxo (A-DEST)");
-    khoAddress = p.khoRefUtxo.address;
+    assertHoldsNft(p.distKhoRefUtxo, p.distKhoNftPolicyId, "distKhoRefUtxo (A-DEST)");
+    khoAddress = p.distKhoRefUtxo.address;
   } else {
     if (!p.distDestAddress) {
       throw new Error(
@@ -321,7 +334,7 @@ export async function buildMintTx(p: MintParams): Promise<{
         `dist_dest NƯỚNG SẴN trong policy — builder không suy ra được từ tx. Viết: ` +
         `const d = deployedLamp("mainnet"); ` +
         `if (d.mintParamCount === 8) buildMintTx({ ...common, mintParamCount: d.mintParamCount, distDestAddress: d.khoAddress }); ` +
-        `(đừng spread thẳng d.mintParamCount ngoài if — kiểu '8 | 12' ⇒ TS2345.)`,
+        `(đừng spread thẳng d.mintParamCount ngoài if — kiểu '8 | 14' ⇒ TS2345.)`,
       );
     }
     khoAddress = p.distDestAddress;
@@ -359,11 +372,11 @@ export async function buildMintTx(p: MintParams): Promise<{
     .mintAssets(mintAssets, mintRouteToCbor(p.route))
     .attach.MintingPolicy(p.tlampPolicy);
 
-  // Reference input CHỈ ở bản 12 tham số: WHO-gate (registry) + A-DEST (kho) — validator
+  // Reference input CHỈ ở bản 14 tham số: WHO-gate (registry) + A-DEST (kho) — validator
   // đọc cả hai qua `tx.reference_inputs`. Bản 8 tham số không đọc cái nào; gắn thêm ref-input
   // ở đó là rác làm phình tx, và tệ hơn: nó ngụ ý một registry không hề tồn tại.
-  if (p.mintParamCount === 12) {
-    txb = txb.readFrom([p.registryRefUtxo, p.khoRefUtxo]);
+  if (p.mintParamCount === 14) {
+    txb = txb.readFrom([p.registryRefUtxo, p.distKhoRefUtxo]);
   }
 
   txb = txb.pay.ToContract(

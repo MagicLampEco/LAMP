@@ -27,6 +27,20 @@ import { msPerEpoch, type Network } from "@magiclamp/utils";
 // param Constr; chỉ tự apply cho param phẳng (string/bigint — không có class identity).
 import { applyCustodySeed, seedPolicyId } from "../offchain/src/seedBuilder.js";
 import type { OutputReference } from "../offchain/src/types.js";
+// Cổng đếm khe apply-param. Số khe ĐỌC từ blueprint, không nhận số gõ tay — xem lý do đầy
+// đủ ở `Genesis/offchain/src/blueprintSource.ts`. Import chéo theo đường dẫn tương đối là
+// mẫu đã dùng trong kho (vd `Faucet/scripts/demo_treasury.ts:26`).
+import { blueprintGate } from "../../Genesis/offchain/src/blueprintSource.js";
+import {
+  CUSTODY_SEED_TITLE, CUSTODY_TITLE, TREASURY_STAKE_TITLE,
+  custodyParamList, custodyTokenName, resolveLampPolicy,
+  type ResolvedLampPolicy,
+} from "./custodyParams.js";
+// Cùng lý do class-identity như `applyCustodySeed`: khe `reward_cred` là một Constr, nên
+// nó phải được dựng bằng lucid của `offchain/node_modules`, không phải của `scripts/`.
+import {
+  applyTreasuryStake, custodyBaseAddress, treasuryStakeHash,
+} from "../offchain/src/stakeBuilder.js";
 import { readFile, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
@@ -94,8 +108,28 @@ export async function rawValidator(title: string): Promise<RawValidator> {
   return v;
 }
 
-/** Plutus Data hex của 1 param list → applied Validator (PlutusV3). */
+/**
+ * Cổng đếm khe của blueprint Treasury. Đọc tệp LAZY — lần apply đầu tiên, không lúc import,
+ * để `tsc --noEmit` và bài kiểm không đòi cây đã `aiken build`.
+ */
+export const TREASURY_GATE = blueprintGate(PLUTUS_JSON_PATH, "Treasury");
+
+// Re-export để script chỉ cần một đường import (mẫu của `Distribution/scripts/config.ts`).
+export {
+  custodyParamList, custodyTokenName, resolveLampPolicy,
+  CUSTODY_TITLE, CUSTODY_SEED_TITLE, TREASURY_STAKE_TITLE,
+};
+export type { ResolvedLampPolicy };
+
+/**
+ * Plutus Data hex của 1 param list → applied Validator (PlutusV3), QUA cổng đếm khe.
+ *
+ * Trước bản vá này hàm gọi thẳng `applyParamsToScript`: áp 3 tham số vào `custody` (khai 5)
+ * KHÔNG ném gì, nó trả về một script hash trông hợp lệ và sai. Cổng tra theo `compiledCode`
+ * nên chỗ gọi không phải đổi chữ ký, và `compiledCode` lạ ⇒ APPLY-002 (fail-closed).
+ */
 export function applyValidator(compiledCode: string, params: unknown[]): Validator {
+  TREASURY_GATE.assertParamCountOfCode(compiledCode, params.length);
   return {
     type: "PlutusV3",
     script: applyParamsToScript(compiledCode, params as never),
@@ -118,16 +152,23 @@ export function scriptHash(script: Validator): string {
 //
 // custody_seed.custody_seed.mint : [genesis_ref:OutputReference]
 //     → seed_policy = mintingPolicyToId(custody_seed đã apply).
-// custody.custody.spend          : [proposal_policy:PolicyId, seed_policy:PolicyId, ms_per_epoch:Int]
+// custody.custody.spend          : [proposal_policy, seed_policy, ms_per_epoch,
+//                                   lamp_policy, token_name]   ← FIVE khe
 //
 // DEPENDENCY: custody cần seed_policy → apply custody_seed TRƯỚC.
+//
+// Hai khe cuối (`lamp_policy`, `token_name`) vào cùng nhánh MigrateIn
+// (`Treasury/onchain/validators/custody.ak:89-95`). Danh sách khe dựng bằng
+// `custodyParamList` — thứ tự chỉ được viết ở MỘT nơi (`./custodyParams.ts`).
 
 export interface AppliedCustody {
   custodySeed:   Validator;   // minting policy one-shot (apply genesis_ref)
   seedPolicy:    string;      // = mintingPolicyToId(custodySeed)
-  custodyScript: Validator;   // spend validator (apply proposal_policy, seed_policy, ms_per_epoch)
+  custodyScript: Validator;   // spend validator (5 khe, xem custodyParamList)
   custodyHash:   string;
   custodyAddr:   string;
+  lampPolicy:    ResolvedLampPolicy;   // giá trị + nguồn (env / sổ policy / placeholder)
+  tokenName:     string;
 }
 
 /**
@@ -135,29 +176,84 @@ export interface AppliedCustody {
  * @param genesisRef UTxO genesis tiêu khi seed (one-shot) → quyết định seed_policy.
  * @param proposalPolicy PolicyId beacon Governance (gác Release). Dev → placeholder.
  * @param msPerEpoch POSIX ms ↔ epoch (mặc định MS_PER_EPOCH theo network).
+ * @param lampPolicyOverride `lamp_policy` đã giải sẵn; bỏ trống → `resolveLampPolicy(NETWORK)`.
  */
 export async function applyCustodyInstance(
   genesisRef: OutputReference,
   proposalPolicy: string,
   msPerEpochParam: bigint = MS_PER_EPOCH,
+  lampPolicyOverride?: ResolvedLampPolicy,
 ): Promise<AppliedCustody> {
   // 1. custody_seed (one-shot, param genesis_ref:OutputReference) → seed_policy.
-  //    Dùng applyCustodySeed của SDK (dựng Constr nội bộ, tránh lệch class-identity).
-  const rawSeed = await rawValidator("custody_seed.custody_seed.mint");
+  //    Dùng applyCustodySeed của SDK (dựng Constr nội bộ, tránh lệch class-identity). SDK
+  //    nhận compiledCode trần nên KHÔNG tự gác được — cổng chạy ở đây, trước khi apply.
+  const rawSeed = await rawValidator(CUSTODY_SEED_TITLE);
+  TREASURY_GATE.assertParamCount(CUSTODY_SEED_TITLE, 1);
   const custodySeed = applyCustodySeed(rawSeed.compiledCode, genesisRef);
   const seedPolicy = seedPolicyId(custodySeed);
 
-  // 2. custody (spend) cần seed_policy.
-  const rawCustody = await rawValidator("custody.custody.spend");
-  const custodyScript = applyValidator(rawCustody.compiledCode, [
-    proposalPolicy,
-    seedPolicy,
-    msPerEpochParam,
-  ]);
+  // 2. custody (spend) cần seed_policy + lamp_policy + token_name.
+  const lampPolicy = lampPolicyOverride ?? resolveLampPolicy(NETWORK);
+  const tokenName = custodyTokenName(NETWORK);
+  const rawCustody = await rawValidator(CUSTODY_TITLE);
+  const custodyScript = applyValidator(
+    rawCustody.compiledCode,
+    custodyParamList({
+      proposalPolicy,
+      seedPolicy,
+      msPerEpoch: msPerEpochParam,
+      lampPolicy: lampPolicy.policy,
+      tokenName,
+    }),
+  );
   const custodyHash = scriptHash(custodyScript);
   const custodyAddr = scriptAddress(custodyScript);
 
-  return { custodySeed, seedPolicy, custodyScript, custodyHash, custodyAddr };
+  return { custodySeed, seedPolicy, custodyScript, custodyHash, custodyAddr, lampPolicy, tokenName };
+}
+
+// ── Phần STAKE của địa chỉ kho ─────────────────────────────────
+//
+// Không có vòng phụ thuộc, và thứ tự bắt buộc là:
+//   1. custody hash  = f(5 khe apply) — KHÔNG chứa phần stake;
+//   2. stake hash    = g(instance_id, reward_cred = credential thanh toán của kho,
+//                        delegation_admin);
+//   3. địa chỉ kho   = base(custody hash, stake hash).
+// ⇒ đổi `custody.ak` là đổi cả ba. Nên mọi thay đổi validator phải xong TRƯỚC lượt gieo.
+
+export interface AppliedStake {
+  stakeScript: Validator;
+  stakeHash:   string;
+  /** Địa chỉ kho dạng BASE (payment = custody, stake = treasury_stake). */
+  custodyBaseAddr: string;
+}
+
+/**
+ * Apply `treasury_stake` cho MỘT instance kho, rồi dựng địa chỉ kho dạng base.
+ *
+ * `rewardCred` trỏ về chính credential THANH TOÁN của kho — hợp lệ kể từ khi `custody.ak`
+ * có nhánh `StakeRewardIn`: trước đó kho nhận được thưởng nhưng không nhánh nào tiêu lại
+ * được nó đúng cách, nên trỏ về kho là tạo ra một khoản chết mang hình dạng kế toán.
+ *
+ * Cổng đếm khe chạy tay ở đây (không qua `applyValidator`) vì khe `reward_cred` là Constr
+ * và phải dựng trong `offchain/` — cùng ngoại lệ đã áp cho `applyCustodySeed`.
+ */
+export async function applyTreasuryStakeInstance(
+  instanceId: string, custodyHash: string, delegationAdmin: string,
+  custodyScript: Validator,
+): Promise<AppliedStake> {
+  const raw = await rawValidator(TREASURY_STAKE_TITLE);
+  TREASURY_GATE.assertParamCount(TREASURY_STAKE_TITLE, 3);
+  const stakeScript = applyTreasuryStake(raw.compiledCode, {
+    instanceId,
+    rewardCred: { kind: "Script", hash: custodyHash },
+    delegationAdmin,
+  });
+  return {
+    stakeScript,
+    stakeHash: treasuryStakeHash(stakeScript),
+    custodyBaseAddr: custodyBaseAddress(NETWORK, custodyScript, stakeScript),
+  };
 }
 
 // ── env helpers (đọc param, có placeholder dev rõ ràng) ─────────
@@ -257,10 +353,21 @@ export interface SeededInstance {
   msPerEpoch:     string;          // bigint as string
   instanceId:     string;          // hex (= NFT name)
   custodyHash:    string;
+  /** Địa chỉ BASE của kho (payment = custody, stake = treasury_stake) — đúng địa chỉ mà
+   *  tx gieo rót vào. KHÔNG phải bản enterprise: cùng script hash nhưng khác địa chỉ, và
+   *  `custody.ak` ghim địa chỉ ĐẦY ĐỦ. */
   custodyAddress: string;
+  /** Hash `treasury_stake` đã apply = phần stake của `custodyAddress`. */
+  stakeHash:      string;
+  /** apply-param #3 của `treasury_stake` — nướng vào `stakeHash`, đổi sau khi gieo là không
+   *  đổi được. Ghi lại để đối chiếu, không phải để ai đọc ra rồi ký. */
+  delegationAdmin: string;
   seedPolicy:     string;
   proposalPolicy: string;
   proposalSource: string;          // "env" | "placeholder"
+  lampPolicy:     string;          // apply-param #4 của custody — nướng vào custody_hash
+  lampPolicySource: string;        // "env" | "registry" | "placeholder"
+  tokenName:      string;          // apply-param #5 (hex): "tLAMP" testnet / "LAMP" mainnet
   genesisRef:     { transaction_id: string; output_index: string };
   cutBps:         string;
   reservedMinAda: string;

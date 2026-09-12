@@ -9,6 +9,16 @@
 //   ms_per_epoch      : ms mỗi epoch (network-specific) → quy đổi epoch.
 //
 // ─────────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────
+// BẤT BIẾN CHUNG cho MỌI redeemer (chạy trước when redeemer):
+//   C-POOL-IN-1   POOL NFT input ở CHÍNH script đang chạy (own_addr == pool_in.address).
+//   C-POOL-OUT-1  pool_out ở ĐÚNG ĐỊA CHỈ ĐẦY ĐỦ của pool_in. `output_with_nft`
+//                 định vị pool_out thuần bằng NFT — nó KHÔNG nói gì về nơi đến.
+//                 Đầy đủ chứ không chỉ payment credential: cùng script hash +
+//                 khác stake credential là hai Address khác nhau nhưng CÙNG
+//                 validator. POOL NFT one-shot ⇒ gửi nhầm chỗ = giết kho vĩnh viễn.
+//   C-POOL-OUT-2  pool_out.reference_script == None (không script-carrier).
+//
 // CLAIM (permissionless, DID-gated):
 //   - đúng 1 POOL input + 1 POOL output (theo POOL NFT authenticity).
 //   - FaucetConfig (drip/cooldown/reclaim) bảo toàn ở pool output.
@@ -60,9 +70,39 @@ validator faucet_pool(
     let pool_in = util.input_with_nft(tx.inputs, faucet_nft_policy, pool_nft_name)
     let pool_out = util.output_with_nft(tx.outputs, faucet_nft_policy, pool_nft_name)
 
-    // own_ref phải TRỎ chính pool input (chống spoof own_ref sang UTxO khác).
+    // ── C-POOL-IN-1: POOL NFT input phải ở CHÍNH script đang chạy ─────────
+    // own_addr do LEDGER cấp (own_ref là OutputReference của lượt spend) ⇒ không giả
+    // được. Dòng này neo pool_in vào script pool: nếu POOL NFT nằm ở ví, cặp
+    // (pool_in, pool_out) sẽ neo vào cái ví đó và mọi ràng buộc địa chỉ bên dưới suy
+    // biến thành "ví == ví" ⇒ pool hợp lệ vĩnh viễn ở ngoài script.
+    // Ghim bởi `poc_pool_nft_input_not_at_own_script`.
     let own_addr = util.own_address(own_ref, tx.inputs)
     expect own_addr == pool_in.address
+
+    // ── C-POOL-OUT-1: pool_out ở ĐÚNG địa chỉ của pool_in ─────────────────
+    // `output_with_nft` định vị pool_out THUẦN bằng POOL NFT — nó không nói gì về
+    // nơi đến. Không có dòng này, một tx đúng-một-input/đúng-một-output với value và
+    // datum y hệt vẫn đưa được toàn bộ tLAMP + POOL NFT + ADA sang ví bất kỳ, không
+    // cần chữ ký nào. Và POOL NFT là one-shot (`faucet_nft.ak` MintPool tiêu
+    // genesis_ref; nhánh MintAccount cấm đụng POOL NFT) ⇒ gửi nhầm chỗ = giết kho
+    // vĩnh viễn, cùng một giao dịch, cùng chi phí.
+    //
+    // So ĐỊA CHỈ ĐẦY ĐỦ chứ không chỉ payment credential (gương
+    // `Treasury/onchain/validators/reserve_gate.ak` G-REOUT-1): cùng script hash +
+    // khác stake credential là hai Address khác nhau nhưng CÙNG validator, nên phép
+    // so theo payment credential cho nó đi qua — và khi đó phần thưởng uỷ quyền trên
+    // toàn bộ ADA của pool chảy về khoá stake kẻ dựng tx, lặp mỗi epoch, còn địa chỉ
+    // bech32 của pool đổi theo nên mọi bên index theo địa chỉ mất dấu kho.
+    // Ghim bởi `poc_reclaim_pool_to_wallet` · `poc_claim_pool_to_wallet` ·
+    // `poc_reclaim_pool_stake_hijack`.
+    expect pool_out.address == pool_in.address
+
+    // ── C-POOL-OUT-2: pool KHÔNG biến thành script-carrier ────────────────
+    // Đính một reference script (~16 KB) đẩy min-ADA của UTxO pool lên hàng chục ADA
+    // và bắt MỌI lượt claim sau gánh thêm phí reference-script, vĩnh viễn. Cửa này
+    // permissionless nên chi phí griefing = một phí tx. Gương `reserve_draw.ak` Luật 7
+    // và `reserve_gate.ak` G-REF-1. Ghim bởi `poc_reclaim_pool_script_carrier`.
+    expect pool_out.reference_script == None
 
     // FaucetConfig bảo toàn (drip/cooldown/reclaim không bị đổi để drain).
     expect InlineDatum(od) = pool_out.datum
@@ -485,6 +525,106 @@ test reclaim_steal_ada() fail {
   let pool_out =
     util.mk_output(pool_addr, fp_pool_val(2_000_000, 1_000_000_000 + fp_drip), fp_cfg())
   let base = Transaction { ..placeholder, inputs: [pool_in], outputs: [pool_out] }
+  let tx = fp_tx_at(2000, base)
+  faucet_pool.spend(
+    fp_nft_policy, fp_did_policy, fp_lamp_policy, fp_lamp_name, fp_ms_per_epoch,
+    Some(fp_cfg()), Reclaim, util.mk_ref(0), tx,
+  )
+}
+
+// ══════════════════════════════════════════════════════════════
+// ĐÍCH CỦA POOL — ca kiểm ĐỔI ĐỊA CHỈ (không phải đổi value)
+// ══════════════════════════════════════════════════════════════
+// Mọi ca phía trên dựng pool_out bằng CÙNG một hằng `util.script_address(fp_pool_sh)`
+// ở cả hai cực ⇒ không ca nào phân biệt được "pool_out ở đâu". Bốn ca dưới đây giữ
+// value + datum ĐÚNG y hệt ca happy, chỉ đổi ĐỊA CHỈ / reference_script.
+
+/// Ví kẻ tấn công (payment credential là VerificationKey).
+const fp_thief_pkh: ByteArray = #"a77ac6"
+
+/// Tấn công qua Reclaim: 1 input pool, 1 output value+datum y hệt, địa chỉ = ví.
+test poc_reclaim_pool_to_wallet() fail {
+  let pool_addr = util.script_address(fp_pool_sh)
+  let v = fp_pool_val(10_000_000, 1_000_000_000)
+  let pool_in = util.mk_input(util.mk_ref(0), util.mk_output(pool_addr, v, fp_cfg()))
+  let pool_out = util.mk_output(util.vk_address(fp_thief_pkh), v, fp_cfg())
+  let base = Transaction { ..placeholder, inputs: [pool_in], outputs: [pool_out] }
+  let tx = fp_tx_at(2000, base)
+  faucet_pool.spend(
+    fp_nft_policy, fp_did_policy, fp_lamp_policy, fp_lamp_name, fp_ms_per_epoch,
+    Some(fp_cfg()), Reclaim, util.mk_ref(0), tx,
+  )
+}
+
+/// Tấn công qua Claim: drip đúng, cooldown đúng, DID đúng — chỉ pool_out về ví.
+test poc_claim_pool_to_wallet() fail {
+  let pool_addr = util.script_address(fp_pool_sh)
+  let pool_in =
+    util.mk_input(util.mk_ref(0), util.mk_output(pool_addr, fp_pool_val(10_000_000, 5_000_000_000), fp_cfg()))
+  let pool_out =
+    util.mk_output(util.vk_address(fp_thief_pkh), fp_pool_val(10_000_000, 5_000_000_000 - fp_drip), fp_cfg())
+  let acct_out =
+    util.mk_output(util.script_address(#"acc0"), fp_acct_val(2_000_000, fp_drip), fp_acct_datum(fp_did_name, 100))
+  let did_in =
+    util.mk_input(util.mk_ref(7), util.mk_output_no_datum(util.vk_address(#"c1"), fp_did_val(fp_did_name)))
+  let base = Transaction { ..placeholder, inputs: [pool_in, did_in], outputs: [pool_out, acct_out] }
+  let tx = fp_tx_at(100, base)
+  faucet_pool.spend(
+    fp_nft_policy, fp_did_policy, fp_lamp_policy, fp_lamp_name, fp_ms_per_epoch,
+    Some(fp_cfg()), Claim, util.mk_ref(0), tx,
+  )
+}
+
+/// CÙNG script hash, KHÁC stake credential (base ≠ enterprise). Ca này là lý do
+/// phải so ĐỊA CHỈ ĐẦY ĐỦ: mọi phép so theo payment credential đều cho nó đi qua,
+/// và phần thưởng uỷ quyền trên ADA của pool chảy về khoá stake kẻ dựng tx, mỗi
+/// epoch, với chi phí một phí tx. Địa chỉ bech32 của pool cũng đổi theo ⇒ mọi bên
+/// index theo địa chỉ mất dấu kho.
+test poc_reclaim_pool_stake_hijack() fail {
+  let pool_addr = util.script_address(fp_pool_sh)
+  let v = fp_pool_val(10_000_000, 1_000_000_000)
+  let pool_in = util.mk_input(util.mk_ref(0), util.mk_output(pool_addr, v, fp_cfg()))
+  let pool_out =
+    util.mk_output(util.script_address_staked(fp_pool_sh, fp_thief_pkh), v, fp_cfg())
+  let base = Transaction { ..placeholder, inputs: [pool_in], outputs: [pool_out] }
+  let tx = fp_tx_at(2000, base)
+  faucet_pool.spend(
+    fp_nft_policy, fp_did_policy, fp_lamp_policy, fp_lamp_name, fp_ms_per_epoch,
+    Some(fp_cfg()), Reclaim, util.mk_ref(0), tx,
+  )
+}
+
+/// Biến pool thành script-carrier: đúng địa chỉ, đúng value, đúng datum, nhưng
+/// đính một reference script ⇒ min-ADA của UTxO pool nhảy vọt và mọi lượt tiêu
+/// sau gánh thêm phí reference-script, vĩnh viễn.
+test poc_reclaim_pool_script_carrier() fail {
+  let pool_addr = util.script_address(fp_pool_sh)
+  let v = fp_pool_val(10_000_000, 1_000_000_000)
+  let pool_in = util.mk_input(util.mk_ref(0), util.mk_output(pool_addr, v, fp_cfg()))
+  let pool_out = util.mk_output_with_ref_script(pool_addr, v, fp_cfg(), #"beef")
+  let base = Transaction { ..placeholder, inputs: [pool_in], outputs: [pool_out] }
+  let tx = fp_tx_at(2000, base)
+  faucet_pool.spend(
+    fp_nft_policy, fp_did_policy, fp_lamp_policy, fp_lamp_name, fp_ms_per_epoch,
+    Some(fp_cfg()), Reclaim, util.mk_ref(0), tx,
+  )
+}
+
+/// Ghim dòng `own_addr == pool_in.address`: POOL NFT nằm ở VÍ, UTxO đang tiêu là
+/// một UTxO khác ở script pool. Không có dòng đó thì cặp (pool_in, pool_out) neo
+/// vào cái ví kia và mọi ràng buộc địa chỉ phía sau trở thành "ví == ví" — pool
+/// hợp lệ vĩnh viễn ở ngoài script.
+test poc_pool_nft_input_not_at_own_script() fail {
+  let pool_addr = util.script_address(fp_pool_sh)
+  let thief_addr = util.vk_address(fp_thief_pkh)
+  let v = fp_pool_val(10_000_000, 1_000_000_000)
+  // UTxO đang tiêu: ở script pool, KHÔNG mang POOL NFT.
+  let own_in =
+    util.mk_input(util.mk_ref(0), util.mk_output(pool_addr, assets.from_lovelace(5_000_000), fp_cfg()))
+  // POOL NFT ở ví kẻ tấn công, vào và ra cùng một địa chỉ ví.
+  let pool_in = util.mk_input(util.mk_ref(1), util.mk_output(thief_addr, v, fp_cfg()))
+  let pool_out = util.mk_output(thief_addr, v, fp_cfg())
+  let base = Transaction { ..placeholder, inputs: [own_in, pool_in], outputs: [pool_out] }
   let tx = fp_tx_at(2000, base)
   faucet_pool.spend(
     fp_nft_policy, fp_did_policy, fp_lamp_policy, fp_lamp_name, fp_ms_per_epoch,

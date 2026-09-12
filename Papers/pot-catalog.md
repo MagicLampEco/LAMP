@@ -104,7 +104,7 @@
 | 6 | **Wakeme** | 1.001.000 | 2,78% | **Cho mượn để TIÊU dịch vụ, KHÔNG tặng, KHÔNG để mua-bán**: mỗi PersonDID ≤1001 LAMP, khoá 1001 đêm, ngày không dùng → thu 1 LAMP về pot; qua 1001 đêm nhả 1 LAMP/đêm thành sở-hữu | Module PhoenixKey **Wakeme** (tên cũ Activation): vault-vesting 1 LAMP/đêm + anti-idle | 👤 vault khoá theo PersonDID |
 | 7 | **Referrer** | 343.000 | 0,95% | Thưởng giới thiệu | Nhỏ-giọt | 🏛️ uỷ thác Platform **AffiSo** DID |
 | 8 | **PhoenixKey (Phoenix Treasury)** | 142.857 | 0,40% | Quỹ **Phoenix Treasury** — nguồn tài sản cho **Feecover** (trả phí hộ user). Cấp nguồn cho **Feecover** qua **1 đợt SRCL 7 epoch**: phần thưởng staking do người tham gia định tuyến về pot được dùng trả phí mạng, đóng góp đó được **ghi nhận** bằng 7 triệu LAMP (1 triệu/epoch). Quản lý số dư ADA của Feecover là nghiệp vụ vận hành nội bộ, không phải dịch vụ giao dịch cho bên thứ ba | Nhỏ-giọt + đợt SRCL 7 epoch | 🏛️ uỷ thác Platform **PhoenixKey** DID |
-| 9 | **MagicLamp Foundation** | 1.296.000 | 3,60% | Năng lượng vận hành DAO | **Chưa-mint→khoá VĨNH VIỄN** sau khi lập pháp nhân | 🏛️ gen → nuôi DAO (xem §3) |
+| 9 | **MagicLamp Foundation** | 1.296.000 | 3,60% | Năng lượng vận hành DAO | **Đúc** rồi giữ ở Foundation-DID; **sinh MAGIC** nuôi các ban chuyên môn. Không định đoạt ra ngoài hệ trước khi có quy chế pháp nhân | 🏛️ gen → nuôi DAO (xem §3) |
 | 10 | **Aladin Contract** | 6.000.000 | 16,67% | Pháp nhân sáng lập (1/6 cung) | Nhỏ-giọt **ngang cộng đồng** | 🏛️ gen → **OrgDID Aladin** |
 | 11 | **GreenSun Tech** | 6.000.000 | 16,67% | Pháp nhân sáng lập (1/6 cung) | Nhỏ-giọt **ngang cộng đồng** | 🏛️ gen → **OrgDID GreenSun** |
 | 12 | **Partnership** | 284.000 | 0,79% | Đối tác chiến lược | Nhỏ-giọt | 👤 khi partner claim về DID |

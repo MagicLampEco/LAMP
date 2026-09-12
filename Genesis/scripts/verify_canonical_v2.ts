@@ -9,6 +9,7 @@ import { NETWORK, makeLucid } from "./config.js";
 import { supplyStateFromCbor } from "../offchain/src/datum.js";
 import { rehydrate, printWiring } from "./_canonical_v2.js";
 import { deriveReserveWiring, printReserveWiring } from "./_reserve_layer2.js";
+import { floorSourceWarning, parseFloorSource } from "./_floorLabel.js";
 import { reserveStateFromCbor } from "../../Reserve/offchain/src/datum.js";
 import { parkedOf } from "../../Treasury/offchain/src/reserveGateBuilder.js";
 
@@ -126,10 +127,34 @@ async function main(): Promise<void> {
       ? `bằng chứng one-shot: đúc marker lượt hai BỊ CHẶN (${proof.attemptedAt})`
       : `chưa có bằng chứng one-shot — chạy 23_prove_oneshot.ts (mục C đòi bằng chứng RIÊNG)`);
 
+  // ── Nhãn xuất xứ con số SÀN ───────────────────────────────────────────────
+  //
+  // Chỉ đòi nhãn khi Lớp 2 ĐÃ chạy: một state mới đi tới Lớp 1 thì chưa có sàn nào để dán nhãn,
+  // và bắt nó đỏ là dựng một cảnh báo luôn có lời giải thích vô hại — thứ dạy người đọc lướt qua.
+  if (state.reserve?.custodyRef) {
+    try {
+      const nguonSan = parseFloorSource(state.floorSource, "state.floorSource");
+      check(state.floorOildrop !== undefined,
+        `sàn cổng cầu ghi trong state = ${state.floorOildrop} oildrop [${nguonSan}]`);
+      const canhBao = floorSourceWarning(nguonSan);
+      if (canhBao) console.log(`⚠ ${canhBao}`);
+    } catch (e) {
+      // Nhãn không đọc được là trạng thái MÙ, không phải trạng thái "chắc là bản thật".
+      check(false, e instanceof Error ? e.message : String(e));
+    }
+  }
+
   // ── Lớp 2: phanh có tác dụng THẬT hay chỉ có mặt ──────────────────────────
   if (rw) {
     console.log("\n── Lớp 2: phanh nhịp Reserve ──");
     printReserveWiring(rw.reserve);
+    // Bản sao phải chết ỒN ÀO: con số trong state và con số trong mã là hai chỗ, nên phải so.
+    check(state.floorOildrop === rw.reserve.floorOildrop.toString(),
+      `sàn trong state (${state.floorOildrop}) khớp sàn nướng vào reserve_gate ` +
+      `(${rw.reserve.floorOildrop})`);
+    check(state.floorSource === rw.reserve.floorSource,
+      `nhãn xuất xứ sàn trong state (${state.floorSource}) khớp nhãn trong mã ` +
+      `(${rw.reserve.floorSource})`);
     const drawU = (await lucid.utxosAt(rw.reserve.drawAddr))
       .find((u) => (u.assets[wiring.metUnit] ?? 0n) === 1n);
     if (drawU?.datum) {

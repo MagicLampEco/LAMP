@@ -145,6 +145,23 @@ pub fn mk_output_no_datum(addr: Address, value: Value) -> Output {
   Output { address: addr, value: value, datum: NoDatum, reference_script: None }
 }
 
+/// Output CÓ đính reference script — chỉ dùng cho ca kiểm cổng cấm script-carrier.
+/// `mk_output`/`mk_output_no_datum` luôn đặt `reference_script: None`, nên mọi ca
+/// dựng bằng chúng KHÔNG phân biệt được hai bên của cổng đó (cổng không được kiểm).
+pub fn mk_output_with_ref_script(
+  addr: Address,
+  value: Value,
+  datum: Data,
+  script_hash: ByteArray,
+) -> Output {
+  Output {
+    address: addr,
+    value: value,
+    datum: InlineDatum(datum),
+    reference_script: Some(script_hash),
+  }
+}
+
 pub fn mk_input(ref: OutputReference, out: Output) -> Input {
   Input { output_reference: ref, output: out }
 }

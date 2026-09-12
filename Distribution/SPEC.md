@@ -98,7 +98,9 @@ Toán: bảng M-* trong [`capped-drop/Math-Spec.md`](./capped-drop/Math-Spec.md)
 ## 6. Hooks DAO (post-MVP — CHỪA CHỖ, KHÔNG build MVP) — CONTRACT §5
 
 - **Multi-drop per-DID:** DAO tăng `drops_per_epoch` cho DID uy tín/nhu cầu cao. Gắn
-  Governance VP (`LAMP/Governance/VotingPower/CONTRACT.md`) + DID sinh trắc chống sybil.
+  Governance VP (`LAMP/Governance/VotingPower/CONTRACT.md`) — chống sybil-chia-nhiều-DID phụ
+  thuộc điểm treo `Governance/VotingPower/CONTRACT.md §3 [IDENT-ONE-PERSON]` (chưa đóng hôm nay:
+  một người vẫn đúc được nhiều DID).
 - **Pause/penalty:** DAO đặt `drops_per_epoch = 0` trong `N` epoch nếu hành vi gây hại.
 - MVP chỉ cần `drops_per_epoch` là field datum + đọc được; cơ chế DAO chỉnh = phiên sau.
 - Cả 2 hook **không** phá đơn điệu/cap (chứng minh MATH §5.2).
