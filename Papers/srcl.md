@@ -178,13 +178,42 @@ Hai đợt cùng cơ chế, khác pot / nguồn LAMP / bên hưởng thụ / quy
     được áp dụng **như các quy định về thuế đối với chứng khoán** cho đến khi có chính sách thuế
     đối với thị trường tài sản mã hóa tại Việt Nam."*
 
-  Bốn điều kiện đầu mô tả một hình dạng **khác** hình dạng của cơ chế này (không có tài sản cơ sở
-  là tài sản thực, không giới hạn người tham gia theo quốc tịch, không thanh toán bằng Đồng Việt
-  Nam). Điều đó **không** có nghĩa cơ chế này hợp pháp hay không hợp pháp — nó có nghĩa **đường
-  thí điểm không phải đường của cơ chế này**, và câu hỏi cơ chế này nằm ở đâu trong pháp luật
-  hiện hành là câu hỏi dành cho tư vấn pháp lý có thẩm quyền, không dành cho tài liệu này.
-  Điều 4 khoản 9 cũng nói rõ: việc một tài sản **không phải** chứng khoán không kéo theo việc nó
-  được đối xử khác chứng khoán về thuế.
+  **Đọc cho đúng loại: đây là điều kiện GIA NHẬP một thị trường, không phải lệnh cấm áp cho mọi
+  người.** Nghị quyết 05 dựng một thị trường thí điểm ba bên — tổ chức phát hành · tổ chức cung
+  cấp dịch vụ được cấp phép · nhà đầu tư — và mọi nghĩa vụ trong đó đều chạy qua bên được cấp
+  phép. Ba chỗ trong chính văn bản cho thấy tính tự-giới-hạn đó:
+  - Điều 3 khoản 8 định nghĩa *tổ chức phát hành* là tổ chức chào bán, phát hành **thông qua nền
+    tảng phát hành tài sản mã hóa** — tức định nghĩa đã gắn sẵn vào việc đi qua một nền tảng được
+    cấp phép. Không đi qua nền tảng nào thì không rơi vào định nghĩa này.
+  - Điều 17 khoản 1 điểm đ: Bộ Tài chính lựa chọn **tối đa 05** tổ chức cung cấp dịch vụ. Một thị
+    trường có trần năm chỗ ngồi thì nó là một thị trường cụ thể, không phải toàn bộ không gian.
+  - Từ vựng xuyên suốt là *nhà đầu tư*, *Bản cáo bạch chào bán*, *tài khoản*, *giá dịch vụ*,
+    *mua, bán*, và Điều 4 khoản 8 ghi tài sản trong phạm vi này *"được sử dụng cho mục đích trao
+    đổi hoặc đầu tư"*.
+
+  **Và Nghị quyết 05 KHÔNG định nghĩa riêng "chào bán" hay "phát hành".** Điều 3 có mười khoản
+  giải thích từ ngữ, không khoản nào định nghĩa hai từ đó — chúng luôn đi thành cặp và luôn gắn
+  với nền tảng, cáo bạch, nhà đầu tư. Nên hai từ đó mang nghĩa thông thường cộng với nghĩa ở luật
+  khác, và ở luật khác thì *chào bán* là hành vi **đưa ra để bán**.
+
+  Hệ quả, nói thẳng và không vòng: **một đợt phân phối mà bên phân phối KHÔNG nhận lại giá trị
+  nào** — người dùng tự claim, không trả tiền, không chuyển tài sản cho ai — thì không có bên mua,
+  không có giá, không có cáo bạch, không có nền tảng được cấp phép, và không có nhà đầu tư theo
+  nghĩa văn bản này dùng. Bốn điều kiện của đường thí điểm không chặn một đợt như vậy; chúng chỉ
+  mô tả điều kiện để **đi vào thị trường thí điểm**, mà đợt như vậy không đi vào.
+
+  **Chỗ ranh giới thật, và nó nằm ở SRCL chứ không ở các đợt kia.** Trong SRCL, người tham gia
+  định tuyến phần thưởng staking của chính mình về một quỹ — **có giá trị đi vào**. Đó là điểm
+  khác biệt về bản chất so với một đợt phân phối không nhận gì, và tài liệu này nêu ra thay vì
+  gộp chung. Việc phân loại hành vi đó thuộc thẩm quyền của cơ quan nhà nước và của tư vấn pháp
+  lý, không thuộc tài liệu này.
+
+  Hai điều khoản sau đây thì **không** phụ thuộc vào việc có ở trong thí điểm hay không, nên nêu
+  riêng: Điều 4 khoản 9 (thuế áp như với chứng khoán cho tới khi có chính sách riêng — tức việc
+  một tài sản **không phải** chứng khoán không kéo theo việc nó được đối xử khác chứng khoán về
+  thuế), và Điều 7 khoản 2 (nhà đầu tư trong nước giao dịch ngoài tổ chức được cấp phép, sau 06
+  tháng kể từ khi tổ chức đầu tiên được cấp phép, bị xử lý hành chính hoặc truy cứu hình sự —
+  điều này chạm **người dùng**, không chạm bên phân phối).
 
 - **Cho tới khi có kết luận tư vấn pháp lý bằng văn bản cho một khu vực cụ thể, khu vực đó đóng.**
   Nguyên tắc đóng-mặc-định ở dưới có hiệu lực kỹ thuật tại khâu claim, không phải một lời hứa.
