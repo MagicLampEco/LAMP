@@ -25,8 +25,14 @@ use treasury_stake
 /// salt instance (khớp `CustodyDatum.instance_id` của kho).
 const instance_id: ByteArray = #"abcd"
 
-/// payment credential của ĐÍCH rút thưởng.
-const reward_sh: ByteArray = #"7ec0"
+/// payment credential của ĐÍCH rút thưởng — một VÍ (VerificationKey).
+///
+/// Vì sao ví chứ không Script: đích Script bật S-STK-BOOK (kho phải được tiêu bằng
+/// `StakeRewardIn`), và mọi ca ở tệp này sẽ chết ở chốt đó trước khi chạm chốt nó khai.
+/// Đích VK tắt S-STK-BOOK nên DEST/NET/SUM/ACC đo được riêng từng chốt. Đường đích = kho
+/// (Script) và S-STK-BOOK được đo ở `stake_reward_test.ak` ▸ phần TÍCH HỢP, nơi có đủ
+/// custody input + redeemer.
+const reward_pkh: ByteArray = #"7ec0"
 
 /// một credential BẤT KỲ khác đích — dùng cho ca rút sai đích.
 const other_sh: ByteArray = #"badf"
@@ -50,7 +56,7 @@ const pool_id: ByteArray = #"9001"
 const reward: Int = 5_000_000
 
 fn reward_cred() -> Credential {
-  Script(reward_sh)
+  VerificationKey(reward_pkh)
 }
 
 fn other_cred() -> Credential {

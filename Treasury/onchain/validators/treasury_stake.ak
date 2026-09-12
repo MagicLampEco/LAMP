@@ -20,6 +20,9 @@
 //     S-STK-DEST  đích nhận = `reward_cred` (payment credential), không cred nào khác.
 //     S-STK-NET   ÉP NET: (Σ out→đích − Σ in-từ-đích) ≥ Σ withdrawals. KHÔNG ép GROSS.
 //     S-STK-SUM   ép theo Σ MỌI withdrawal của tx, không chỉ phần của account này.
+//     S-STK-BOOK  đích là Script ⇒ kho phải được tiêu bằng `StakeRewardIn { amount }`
+//                 với amount ≥ Σ withdrawals. NET thôi không phân biệt được "vào sổ" với
+//                 "vào một UTxO không datum" hay "ké một Collect" — xem `reward_booked`.
 //   publish — chứng nhận uỷ thác. ÉP:
 //     S-STK-CERT-DEREG  `UnregisterCredential` → False, tuyệt đối.
 //     S-STK-CERT-SIG    register/delegate đòi chữ ký `delegation_admin`.
@@ -56,17 +59,25 @@
 //       đúng: không nhánh spend nào đưa ADA vào kho ĐÚNG SỔ được, nên rót thưởng về địa
 //       chỉ kho sinh ra một UTxO thứ hai không NFT, không datum — cả ba nhánh đều đòi đúng
 //       1 UTxO mang NFT nên nó không tiêu lại được, tức rót đúng địa chỉ mà sai hình dạng =
-//       đốt trá hình. `StakeRewardIn` đóng đúng lỗ đó: nó ép Δ vào CHÍNH UTxO kho (C-STK-1
+//       đốt trá hình. `StakeRewardIn` là hình dạng ĐÚNG: nó ép Δ vào CHÍNH UTxO kho (C-STK-1
 //       đúng 1 in + 1 out) và vào SỔ ở một hằng bucket dành riêng (C-STK-8), lovelace bằng
-//       ĐẲNG THỨC (C-STK-7). Từ đó `net_to_cred(reward_cred=kho)` bằng đúng Δ mà custody
-//       ghi sổ, hai validator ăn khớp không cần bên thứ ba.
-//       Đặt `reward_cred` ra một ví ngoài VẪN chạy, nhưng khi đó thưởng của DAO đi qua tay
-//       người vận hành và không cơ chế on-chain nào bắt nó quay về kho.
+//       ĐẲNG THỨC (C-STK-7).
+//       ⚠ Có nhánh ấy CHƯA đủ đóng lỗ — phải BẮT tx rút đi qua nó. NET đơn thuần vẫn thoả
+//       khi Δ rót vào một UTxO không datum ở địa chỉ kho, hoặc khi withdrawal ké một
+//       `Collect`/`MigrateIn` làm kho tăng ≥ Δ (thưởng rơi vào change người dựng tx). Nên
+//       ràng HAI CHIỀU: S-STK-BOOK ở đây đòi kho được tiêu bằng `StakeRewardIn` với
+//       amount ≥ Σ withdrawals; `custody.ak` ▸ C-STK-10 đòi `StakeRewardIn` đi kèm withdrawal
+//       của chính stake credential kho, ĐÚNG BẰNG amount.
+//       Hệ quả: `reward_cred` là Script thì PHẢI là kho custody — một script khác không có
+//       redeemer `StakeRewardIn` nên mọi lượt rút bị từ chối (fail-closed, không mất tiền).
+//       Đặt `reward_cred` ra một ví ngoài (VerificationKey) VẪN chạy, chỉ còn S-STK-NET giữ:
+//       thưởng của DAO đi qua tay người vận hành, không cơ chế on-chain nào bắt nó quay về
+//       kho, và bất kỳ tx nào vốn trả ví ấy ≥ Δ cũng ké được withdrawal.
 //   G2. Người crank KHÔNG được dùng chính `reward_cred` làm ví trả phí. S-STK-NET trừ mọi
 //       input đến từ đích, nên ví đích vừa trả phí vừa nhận change sẽ ra NET âm và tx bị
 //       từ chối. Đây là REJECT, không phải mất tiền — nhưng phải biết trước.
 //       Khi `reward_cred` == kho (G1), ràng buộc này được C-STK-1 lo hộ: tx chỉ được tiêu
-//       ĐÚNG MỘT UTxO kho, và đó là UTxO đang nạp.
+//       ĐÚNG MỘT UTxO kho, và đó là UTxO đang nạp (S-STK-BOOK đòi chính UTxO ấy).
 //   G3. `CustodyDatum.accepted_assets` PHẢI chứa ADA (`policy=#""`, `name=#""`) khi kho
 //       dùng script stake credential. `custody.ak` ▸ C-STK-9 đòi điều đó mỗi lượt nạp, và
 //       `accepted_assets` là BẤT BIẾN đời instance — không nhánh nào sửa được sau seed. Gieo
@@ -99,6 +110,7 @@ validator treasury_stake(
     stake.withdraw_ok(
       self.inputs,
       self.outputs,
+      self.redeemers,
       self.withdrawals,
       account,
       reward_cred,

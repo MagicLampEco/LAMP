@@ -9,6 +9,9 @@
 // Vì sao tệp này tồn tại dù chưa có bộ dựng tx: nhánh on-chain đã sống, nên off-chain
 // thiếu gương là chỗ hai bên trôi nhau trong im lặng. Bộ dựng tx (`stakeRewardBuilder.ts`)
 // chỉ cần khi thưởng uỷ quyền thật sự về — sau khi kho đã uỷ quyền và qua đủ số kỷ nguyên.
+// Bộ dựng ấy PHẢI đặt trong cùng tx: withdrawal TOÀN BỘ số dư reward-account của stake
+// credential kho, và `StakeRewardIn { amount }` với amount ĐÚNG BẰNG số rút đó —
+// `custody.ak` ▸ C-STK-10 và `treasury_stake.ak` ▸ S-STK-BOOK đòi nhau hai chiều.
 //
 // KHÁC `migrate.ts` ở đúng hai chỗ, cả hai đều SIẾT chứ không nới:
 //   1. asset cố định ADA, không nhận (policy, name) từ người gọi — thưởng uỷ quyền trên

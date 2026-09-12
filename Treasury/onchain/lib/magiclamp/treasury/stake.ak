@@ -12,19 +12,22 @@
 //   S-STK-DEST  đích rút = `reward_cred`, không cred nào khác            → `lovelace_to_cred`
 //   S-STK-NET   ép NET (Σ out→đích − Σ in-từ-đích), KHÔNG ép GROSS       → `net_to_cred`
 //   S-STK-SUM   ép Σ MỌI withdrawal của tx, không chỉ phần của account   → `sum_withdrawals`
+//   S-STK-BOOK  đích là Script ⇒ kho PHẢI được tiêu bằng `StakeRewardIn`
+//               với amount ≥ Σ withdrawals                               → `reward_booked`
 //   S-STK-CERT-DEREG  cấm tuyệt đối deregister                           → `certificate_ok`
 //   S-STK-CERT-SIG    register/delegate đòi chữ ký admin                 → `certificate_ok`
 
 use aiken/collection/list
 use aiken/collection/pairs
 use aiken/crypto.{VerificationKeyHash}
-use cardano/address.{Credential}
+use cardano/address.{Credential, Script, VerificationKey}
 use cardano/assets.{lovelace_of}
 use cardano/certificate.{
   Certificate, DelegateCredential, RegisterAndDelegateCredential,
   RegisterCredential, UnregisterCredential,
 }
-use cardano/transaction.{Input, Output}
+use cardano/transaction.{Input, Output, Redeemer, ScriptPurpose, Spend}
+use magiclamp/treasury/types.{CustodyRedeemer, StakeRewardIn}
 
 // ── S-STK-DEST: Σ lovelace mọi OUTPUT tới đích rút ──
 
@@ -102,21 +105,69 @@ pub fn account_is_withdrawing(
   }
 }
 
+// ── S-STK-BOOK: thưởng phải đi QUA nhánh ghi sổ của kho ──
+
+/// Đích là Script (tức kho custody — G1 ở `validators/treasury_stake.ak`) ⇒ tx phải tiêu
+/// một input của đích với redeemer `StakeRewardIn { amount }` và `amount ≥ total`.
+///
+/// VÌ SAO NET THÔI KHÔNG ĐỦ khi đích là kho: NET chỉ đo "địa chỉ kho nhận thêm bao nhiêu",
+/// mà ba hình dạng tx khác đều làm địa chỉ ấy nhận thêm ADA:
+///   • rót Δ vào một UTxO KHÔNG DATUM ở địa chỉ kho — `custody.spend` mở đầu bằng
+///     `expect Some(datum)` nên UTxO đó không tiêu được nữa: thưởng bị khoá vĩnh viễn;
+///   • ghép withdrawal vào một `Collect` có cut ADA ≥ Δ — kho tăng đúng phần cut, còn
+///     thưởng chảy vào change của người dựng tx;
+///   • ghép vào `MigrateIn` — cùng đường, nhờ vế lovelace `>=` của nhánh ấy.
+/// Cả ba đều thoả NET. Chỉ `StakeRewardIn` ghi Δ vào SỔ, nên đòi đúng redeemer đó ở đây.
+/// Chiều ngược lại (redeemer ấy phải đi kèm một withdrawal thật) do `custody.ak` ▸
+/// C-STK-10 ép.
+///
+/// Đích VerificationKey ⇒ True: không có redeemer nào để đòi; đường ví ngoài chỉ còn NET
+/// giữ, và tin người vận hành (G1).
+pub fn reward_booked(
+  inputs      : List<Input>,
+  redeemers   : Pairs<ScriptPurpose, Redeemer>,
+  reward_cred : Credential,
+  total       : Int,
+) -> Bool {
+  when reward_cred is {
+    VerificationKey(_) -> True
+    Script(_) ->
+      list.any(
+        inputs,
+        fn(i) {
+          i.output.address.payment_credential == reward_cred && when
+            pairs.get_first(redeemers, Spend(i.output_reference))
+          is {
+            Some(r) ->
+              if r is StakeRewardIn { amount }: CustodyRedeemer {
+                amount >= total
+              } else {
+                False
+              }
+            None -> False
+          }
+        },
+      )
+  }
+}
+
 // ── Gộp: điều kiện của nhánh `withdraw` ──
 
-/// S-STK-ACC ∧ S-STK-DEST ∧ S-STK-NET ∧ S-STK-SUM.
+/// S-STK-ACC ∧ S-STK-DEST ∧ S-STK-NET ∧ S-STK-SUM ∧ S-STK-BOOK.
 pub fn withdraw_ok(
   inputs      : List<Input>,
   outputs     : List<Output>,
+  redeemers   : Pairs<ScriptPurpose, Redeemer>,
   withdrawals : Pairs<Credential, Int>,
   account     : Credential,
   reward_cred : Credential,
 ) -> Bool {
-  account_is_withdrawing(withdrawals, account) && net_to_cred(
-    inputs,
-    outputs,
-    reward_cred,
-  ) >= sum_withdrawals(withdrawals)
+  let total = sum_withdrawals(withdrawals)
+  and {
+    account_is_withdrawing(withdrawals, account),
+    net_to_cred(inputs, outputs, reward_cred) >= total,
+    reward_booked(inputs, redeemers, reward_cred, total),
+  }
 }
 
 // ── S-STK-CERT-*: certificate ──

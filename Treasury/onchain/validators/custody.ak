@@ -62,6 +62,8 @@
 //   C-STK-8   Sổ: ledger_out == ledger_in + Δ tại HẰNG `stake_reward_bucket_id` × ADA,
 //             CANONICAL; bucket là HẰNG, không tham số nào do người gọi điều khiển.
 //   C-STK-9   ADA ∈ accepted_assets (giữ bất biến S-ACC-0 "mọi dòng sổ ∈ accepted").
+//   C-STK-10  tx.withdrawals[stake credential của kho] == Δ — Δ là thưởng THẬT, không phải
+//             ADA tự bỏ; ghép với `treasury_stake` ▸ S-STK-BOOK thành ràng buộc HAI CHIỀU.
 //   C-STK-ADDR      cust_out.address == cust_in.address (GHIM CẢ stake credential).
 //   C-STK-REFSCRIPT cust_out.reference_script == None.
 //
@@ -71,6 +73,8 @@
 // hai, hay trả kho về đúng số cũ rồi cho Δ chảy ra ví — đều đổi một trong hai vế ấy nên
 // bị từ chối. Đây cũng là vế ăn khớp với `treasury_stake` ▸ `net_to_cred`: khi `reward_cred`
 // là payment credential của kho, NET của nó ĐÚNG BẰNG Δ ở đây.
+// NET khớp là cần nhưng chưa đủ — hai validator còn phải ĐÒI nhau: `treasury_stake` đòi
+// kho được tiêu bằng nhánh này (S-STK-BOOK), nhánh này đòi withdrawal thật (C-STK-10).
 //
 // VÌ SAO PHẢI GHIM ĐỊA CHỈ ĐẦY ĐỦ, không chỉ `!is_vk` (F2):
 //   `count_*_at_script` so PAYMENT credential thôi, nên stake credential của kho hoàn
@@ -89,6 +93,8 @@
 // MigrateIn KHÔNG phải đường vòng cho Collect/Release: nó KHÔNG đụng consumed_proposals,
 // KHÔNG chi ra cho ai, KHÔNG giảm value (C-MIG-3 + C-MIG-7 khoá cả ba).
 
+use aiken/collection/pairs
+use cardano/address.{Inline}
 use cardano/assets
 use cardano/transaction.{InlineDatum, OutputReference, Transaction}
 use magiclamp/treasury/collect
@@ -376,7 +382,9 @@ validator custody(
 
         // ── C-STK-6: Δ khai phải DƯƠNG ─────────────────────────────────────
         // Δ == 0 biến nhánh này thành đường respend miễn phí mỗi block (griefing: gây
-        // contention chặn settlement thật — cùng lý do với C-COL-11). Δ < 0 thì đẳng thức
+        // contention chặn settlement thật — cùng lý do với C-COL-11). Một mình vế này KHÔNG
+        // chặn được griefing: Δ = 1 lovelace tự bỏ vẫn dương — vế chặn thật là C-STK-10.
+        // Δ < 0 thì đẳng thức
         // C-STK-7 sẽ thành "rút ADA khỏi kho" mà không qua cổng Governance nào; chặn ở đây
         // cho lệnh cấm đọc được ngay tại chỗ, và vì sổ canonical (mọi dòng > 0) từ chối
         // theo một đường khác nên không được để hai chốt dựa vào nhau.
@@ -413,6 +421,20 @@ validator custody(
         // đang nạp. Không ghim thì người crank đặt stake credential của hắn vào output kho
         // và mọi epoch sau thưởng chảy về hắn, chi phí một phí tx.
         expect cust_out.address == cust_in.address
+
+        // ── C-STK-10: Δ PHẢI là khoản rút thật từ reward-account của CHÍNH kho ──
+        // Không có vế này thì nhánh là cửa nạp ADA tự do: bất kỳ ai cũng tiêu kho mỗi block
+        // với Δ = 1 lovelace của chính mình — `amount > 0` không chặn được, vì ADA tự bỏ vẫn
+        // dương. Mỗi lượt như thế làm mọi Collect/Release/MigrateIn đang dựng trên UTxO kho
+        // cũ mất hiệu lực, và dòng sổ thưởng không còn đọc ra "kho đã thu bao nhiêu thưởng".
+        // Ghim ĐẲNG THỨC với withdrawal của stake credential kho: ledger bắt withdrawal rút
+        // TOÀN BỘ số dư reward-account, nên sau lượt nạp số dư về 0 và lượt kế cần thưởng
+        // của epoch sau — tối đa một lượt mỗi epoch, không còn griefing mỗi block.
+        // Chiều ngược lại (withdrawal phải đi qua nhánh này) do `treasury_stake` ▸
+        // S-STK-BOOK ép. Kho không có stake credential Inline thì không có thưởng để nạp ⇒
+        // `expect` từ chối.
+        expect Some(Inline(own_stake)) = cust_in.address.stake_credential
+        expect pairs.get_first(tx.withdrawals, own_stake) == Some(amount)
 
         // ── C-STK-REFSCRIPT (F3): không đính script tham chiếu vào kho ───────
         expect cust_out.reference_script == None

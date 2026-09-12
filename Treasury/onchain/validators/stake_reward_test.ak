@@ -1,4 +1,5 @@
-// Validator tests cho nhánh STAKE-REWARD-IN (mock Transaction) — C-STK-0..9.
+// Validator tests cho nhánh STAKE-REWARD-IN (mock Transaction) — C-STK-0..10, cùng
+// S-STK-BOOK của `treasury_stake` (chốt ấy cần custody input + redeemer nên đo ở đây).
 //
 // Nhánh này là chỗ phần thưởng uỷ quyền của kho ĐI VÀO SỔ kho. Giá trị của nó nằm ở chỗ
 // nó TỪ CHỐI, nên bộ kiểm dưới đây có ít ca dương và phần lớn là ca âm, mỗi chốt C-STK-*
@@ -17,12 +18,15 @@ use aiken/collection/list
 use aiken/interval
 use cardano/address.{Address, Credential, Inline, Script}
 use cardano/assets
-use cardano/transaction.{InlineDatum, Input, Output, Transaction, placeholder}
+use cardano/transaction.{
+  InlineDatum, Input, Output, Redeemer, ScriptPurpose, Spend, Transaction,
+  placeholder,
+}
 use custody
 use magiclamp/treasury/migrate
 use magiclamp/treasury/stake_reward
 use magiclamp/treasury/types.{
-  AssetKey, CustodyDatum, LedgerEntry, StakeRewardIn,
+  AssetKey, Collect, CustodyDatum, LedgerEntry, MigrateIn, StakeRewardIn,
 }
 use magiclamp/treasury/util
 use treasury_stake
@@ -247,11 +251,24 @@ fn happy_tx() -> Transaction {
   )
 }
 
-/// Chạy validator. `#"feed"` = proposal_policy dummy (chỉ nhánh Release dùng).
-fn run(tx: Transaction, d_in: CustodyDatum, amount: Int) -> Bool {
+/// Chạy validator NGUYÊN tx — không ghép gì. Chỉ ca âm của C-STK-10 gọi thẳng hàm này.
+/// `#"feed"` = proposal_policy dummy (chỉ nhánh Release dùng).
+fn run_raw(tx: Transaction, d_in: CustodyDatum, amount: Int) -> Bool {
   custody.custody.spend(
     #"feed", seed_policy, ms_per_epoch, lamp_policy, lamp_name,
     Some(d_in), StakeRewardIn { amount }, util.mk_ref(0), tx,
+  )
+}
+
+/// Chạy validator với tx đã ghép withdrawal của stake credential kho ĐÚNG BẰNG `amount` —
+/// hình dạng C-STK-10 đòi. Ghép ở đây chứ không ở `tx_of` để mọi ca âm cũ vẫn lệch ca dương
+/// đúng một chỗ: withdrawal luôn khớp `amount` ca đó khai, nên C-STK-10 không bao giờ là
+/// chốt chặn trước chốt ca ấy đo.
+fn run(tx: Transaction, d_in: CustodyDatum, amount: Int) -> Bool {
+  run_raw(
+    Transaction { ..tx, withdrawals: [Pair(stake_cred(), amount)] },
+    d_in,
+    amount,
   )
 }
 
@@ -318,34 +335,48 @@ test stake_reward_happy_accumulates_into_existing_line() {
 //   (treasury_stake.ak ▸ G1). Hai bài dưới ghim hai cực của chính chỗ ăn khớp đó.
 // ════════════════════════════════════════════════════════════
 
-/// tx ca dương + một withdrawal Δ của stake credential kho.
+/// Redeemer của UTxO kho (`mk_ref(0)`) trong `tx.redeemers` — thứ S-STK-BOOK đọc.
+fn custody_redeemer(r: Data) -> Pairs<ScriptPurpose, Redeemer> {
+  [Pair(Spend(util.mk_ref(0)), r)]
+}
+
+/// tx ca dương + một withdrawal Δ của stake credential kho + redeemer `StakeRewardIn { Δ }`
+/// cho UTxO kho — hình dạng ĐẦY ĐỦ mà cả hai validator cùng chạy trên đó.
 fn happy_tx_with_withdrawal() -> Transaction {
-  Transaction { ..happy_tx(), withdrawals: [Pair(stake_cred(), delta)] }
+  Transaction {
+    ..happy_tx(),
+    withdrawals: [Pair(stake_cred(), delta)],
+    redeemers: custody_redeemer(StakeRewardIn { amount: delta }),
+  }
 }
 
-test stake_reward_integration_custody_side_ok() {
-  // Phía custody: tx có withdrawal vẫn hợp lệ (nhánh này không đọc `tx.withdrawals`;
-  // nó đo ĐỘ TĂNG của chính UTxO kho).
-  run_ok(happy_tx_with_withdrawal())
-}
-
-test stake_reward_integration_stake_side_ok() {
-  // Phía stake: cùng MỘT tx ấy, `net_to_cred(reward_cred = kho)` == Δ ≥ Σ withdrawals.
-  // Hai validator ăn khớp không cần bên thứ ba.
+/// Chạy handler `withdraw` của `treasury_stake` với `reward_cred` = payment credential kho (G1).
+fn stake_withdraw(tx: Transaction) -> Bool {
   treasury_stake.treasury_stake.withdraw(
     instance_id,
     cust_cred(),
     #"a0a0",
     Void,
     stake_cred(),
-    happy_tx_with_withdrawal(),
+    tx,
   )
 }
 
+test stake_reward_integration_custody_side_ok() {
+  // Phía custody: C-STK-10 thoả — withdrawal của stake credential kho đúng bằng Δ.
+  run_raw(happy_tx_with_withdrawal(), d_in_ok(), delta)
+}
+
+test stake_reward_integration_stake_side_ok() {
+  // Phía stake: cùng MỘT tx ấy, NET về kho == Δ ≥ Σ withdrawals VÀ kho được tiêu bằng
+  // `StakeRewardIn { Δ }` (S-STK-BOOK). Hai validator ăn khớp không cần bên thứ ba.
+  stake_withdraw(happy_tx_with_withdrawal())
+}
+
 test stake_reward_integration_reward_to_crank_wallet_rejected() {
-  // Cực ĐỐI: thưởng chảy vào ví người crank, kho giữ nguyên lovelace. NET về kho == 0
-  // < Σ withdrawals ⇒ `treasury_stake` từ chối. Không có bài này thì cặp trên xanh ở cả
-  // hai cực và không chứng minh điều gì.
+  // Cực ĐỐI của S-STK-NET: thưởng chảy vào ví người crank, kho giữ nguyên lovelace. Redeemer
+  // `StakeRewardIn { Δ }` CÓ mặt nên S-STK-BOOK thoả — chỉ NET về kho == 0 < Σ withdrawals
+  // đứng chắn. Không có bài này thì cặp trên xanh ở cả hai cực và không chứng minh điều gì.
   let wallet =
     util.mk_output_no_datum(util.vk_address(crank_pkh), assets.from_lovelace(delta))
   let tx =
@@ -355,14 +386,102 @@ test stake_reward_integration_reward_to_crank_wallet_rejected() {
         out_epoch * ms_per_epoch, assets.zero, [], [wallet],
       ),
       withdrawals: [Pair(stake_cred(), delta)],
+      redeemers: custody_redeemer(StakeRewardIn { amount: delta }),
     }
-  !treasury_stake.treasury_stake.withdraw(
-    instance_id,
-    cust_cred(),
-    #"a0a0",
-    Void,
-    stake_cred(),
-    tx,
+  !stake_withdraw(tx)
+}
+
+// ════════════════════════════════════════════════════════════
+// S-STK-BOOK — withdrawal PHẢI đi qua `StakeRewardIn` (phía `treasury_stake`)
+//   Mọi ca dưới đều THOẢ S-STK-NET: địa chỉ kho nhận thêm ≥ Σ withdrawals. Đó chính là lý do
+//   chúng tồn tại — bản trước chỉ có NET và cả bốn ca này đều XANH.
+// ════════════════════════════════════════════════════════════
+
+test stake_side_reject_reward_into_datumless_utxo() fail {
+  // Không tiêu kho: thưởng rót vào một UTxO KHÔNG DATUM ở địa chỉ kho. NET = Δ ≥ Δ.
+  // `custody.spend` mở đầu bằng `expect Some(datum)` ⇒ UTxO ấy không bao giờ tiêu được:
+  // thưởng của DAO bị khoá vĩnh viễn ngoài sổ, kẻ tấn công tốn đúng một phí tx.
+  let stray = util.mk_output_no_datum(cust_addr(), assets.from_lovelace(delta))
+  stake_withdraw(
+    Transaction {
+      ..placeholder,
+      outputs: [stray],
+      withdrawals: [Pair(stake_cred(), delta)],
+      validity_range: epoch_range(out_epoch * ms_per_epoch),
+    },
+  )
+}
+
+test stake_side_reject_withdrawal_riding_on_collect() fail {
+  // Kho tăng Δ (= cut ADA của một Collect), withdrawal Δ ké cùng tx ⇒ NET = Δ ≥ Δ, còn
+  // Δ thưởng rơi vào change người dựng tx. Lệch ca dương ĐÚNG MỘT chỗ: redeemer kho.
+  stake_withdraw(
+    Transaction {
+      ..happy_tx_with_withdrawal(),
+      redeemers: custody_redeemer(Collect { items: [] }),
+    },
+  )
+}
+
+test stake_side_reject_withdrawal_riding_on_migrate_in() fail {
+  // Cùng đường với Collect, qua vế lovelace `>=` của `MigrateIn`.
+  stake_withdraw(
+    Transaction {
+      ..happy_tx_with_withdrawal(),
+      redeemers: custody_redeemer(MigrateIn { source: #"00" }),
+    },
+  )
+}
+
+test stake_side_reject_booked_amount_below_withdrawals() fail {
+  // Redeemer ĐÚNG nhánh nhưng khai ít hơn Σ withdrawals. Cực đối của
+  // `stake_reward_integration_stake_side_ok`: đột biến `amount >= total` → `True` sẽ làm
+  // bài này xanh.
+  stake_withdraw(
+    Transaction {
+      ..happy_tx_with_withdrawal(),
+      redeemers: custody_redeemer(StakeRewardIn { amount: delta - 1 }),
+    },
+  )
+}
+
+// ════════════════════════════════════════════════════════════
+// C-STK-10 — Δ phải là withdrawal THẬT của stake credential kho (phía custody)
+//   Mọi ca dưới giữ value + sổ ĐÚNG ca dương, chỉ đổi `tx.withdrawals`.
+// ════════════════════════════════════════════════════════════
+
+test stake_reward_reject_without_withdrawal() fail {
+  // Griefing: Δ là ADA TỰ BỎ của người gọi, không có withdrawal nào. Lặp mỗi block là mọi
+  // tx Collect/Release/MigrateIn dựng trên UTxO kho cũ mất hiệu lực.
+  run_raw(happy_tx(), d_in_ok(), delta)
+}
+
+test stake_reward_reject_withdrawal_short_of_delta() fail {
+  // Rút Δ−1, bù 1 lovelace tự bỏ: sổ thưởng ghi Δ trong khi thưởng thật chỉ Δ−1.
+  run_raw(
+    Transaction { ..happy_tx(), withdrawals: [Pair(stake_cred(), delta - 1)] },
+    d_in_ok(),
+    delta,
+  )
+}
+
+test stake_reward_reject_withdrawal_exceeds_delta() fail {
+  // Cực đối: rút Δ+1 mà chỉ nạp Δ — 1 lovelace thưởng rơi ra change. Cặp hai bài này phân
+  // biệt `==` với `<=`/`>=`.
+  run_raw(
+    Transaction { ..happy_tx(), withdrawals: [Pair(stake_cred(), delta + 1)] },
+    d_in_ok(),
+    delta,
+  )
+}
+
+test stake_reward_reject_withdrawal_from_other_account() fail {
+  // Withdrawal ĐÚNG Δ nhưng từ reward-account KHÁC (của người gọi): ADA ngoài nạp vào dòng
+  // sổ thưởng của kho, và mở lại griefing bằng thưởng của chính hắn.
+  run_raw(
+    Transaction { ..happy_tx(), withdrawals: [Pair(Script(#"57ad"), delta)] },
+    d_in_ok(),
+    delta,
   )
 }
 
