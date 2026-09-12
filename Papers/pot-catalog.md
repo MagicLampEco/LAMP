@@ -126,6 +126,7 @@ pot không vận hành phần tương ứng, chứ không vận hành tạm rồ
 | pot | trạng thái đang mở | ràng buộc TẠM đang có hiệu lực (fail-closed) | khai ở |
 |---|---|---|---|
 | 9 · Foundation | pháp nhân chưa lập | **không** giữ tài sản trọng yếu trước khi có pháp nhân; khoá vĩnh viễn chỉ thực hiện sau khi lập | §3 pot 9 |
+| `PHAP-NHAN-001` (áp cho pot 9 · 14 · 15) | quốc gia đặt pháp nhân, hình thức pháp nhân, quy chế của nó | đã định **hướng**: pháp nhân đặt ở **nước ngoài**, lập bởi cộng đồng DAO hình thành từ Airdrop. Chừng nào chưa công bố đủ ba thứ đang mở ⇒ **cấm** mọi tài liệu mô tả Foundation như pháp nhân **đang tồn tại**, **cấm** nêu một quốc gia cụ thể như đã chọn, và pot 9 giữ trạng thái **chưa-mint** | §3 pot 9, pot 14; `srcl.md` §1 |
 | 15 · SRCL | đại lượng đo ngưỡng kích hoạt (`SRCL-KICH-HOAT-001`) · người giữ `delegation_admin` (`SRCL-ADMIN-002`) | ngưỡng chưa có định nghĩa đo được ⇒ **không kích hoạt**; admin chưa công bố ⇒ **cấm** mô tả cơ chế là "bất biến"/"không admin" | `srcl.md` §1, §8 |
 | 17 · RedBack | phạm vi CARP ↔ LAMP | quỹ peg thuộc tài liệu riêng của CARP; kho này **không** định nghĩa lại điều kiện hy sinh quỹ | `srcl.md` §5 đợt 2 |
 | 18 · Liquidity | điều kiện pháp lý để cấp thanh khoản | **chưa kích hoạt**; không cặp nào được mở trước khi có kết luận tư vấn cho khu vực tương ứng | §3 pot 18 |
@@ -201,7 +202,10 @@ khâu claim**, không chỉ trong quy chế.
   vào **hạ tầng thiết bị phân tán LampNet**. Uỷ thác vào Platform **LampNet** (DID riêng).
 
 **Nhóm DAO & đối tác**
-- **9. MagicLamp Foundation (1.296.000)** — **năng lượng vận hành DAO**. Khoá vĩnh viễn sau khi lập pháp nhân; LAMP
+- **9. MagicLamp Foundation (1.296.000)** — **năng lượng vận hành DAO**. Pháp nhân này **đặt ở nước ngoài** và
+  do **cộng đồng DAO hình thành từ đợt Airdrop** lập ra, không do hai công ty sáng lập lập ra — vai của nó là
+  **đại diện pháp lý** cho hệ (trạng thái: `PHAP-NHAN-001`, bảng cổng pháp lý §3).
+  Khoá vĩnh viễn sau khi lập pháp nhân; LAMP
   ở Foundation-DID **sinh MAGIC** chia cho các **ban chuyên môn** tiêu thụ. Ban được **tái uỷ quyền** phần chưa dùng
   cho ban khác, hoặc **uỷ thác thu LAMP**; phần MAGIC dư sau phân bổ cũng tái uỷ quyền nhận LAMP. Mọi hình thức định
   đoạt tài sản của Foundation ra ngoài hệ do quy chế Foundation quyết định **sau khi lập pháp nhân** — chưa nằm trong
@@ -211,7 +215,19 @@ khâu claim**, không chỉ trong quy chế.
 **Nhóm phân phối sớm (snapshot, hết trong thời gian đầu)**
 - **13. ETD (12.000)** — ghi nhận **delegator sớm pool TIGER**; redeem TRƯỚC làm **bài test toàn cầu** cho hệ claim.
 - **14. Airdrop (120.000)** — **dành tặng cộng đồng Delegator và SPO** dựa trên **stake**; ghi nhận việc góp phần
-  vào an ninh kinh tế của mạng Cardano. Chia **3 pot**: Delegator **100M** · SPO **5M** ·
+  vào an ninh kinh tế của mạng Cardano.
+
+  **Mục đích chính của đợt này không phải là phân phối token, mà là tạo ra một cộng đồng DAO** —
+  tập hợp đủ người sẵn sàng nhận việc vận hành để **thành lập MagicLamp Foundation**, pháp nhân
+  **đặt ở nước ngoài** làm đại diện pháp lý cho hệ. Việc phân phối token là **phương tiện** để tập
+  hợp cộng đồng đó, không phải đích đến. Hệ quả đọc được từ hai chỗ khác trong tài liệu này: pot 9
+  (Foundation) **chưa-mint** cho tới khi pháp nhân được lập, và SRCL (pot 15) **không kích hoạt**
+  trước khi đạt số người ký văn kiện thành lập — cả hai mốc đều nằm **sau** Airdrop, và cả hai đều
+  đóng-mặc-định. Nói cách khác, Airdrop là bước duy nhất chạy được khi chưa có pháp nhân, và đó
+  chính là lý do nó đứng đầu. Trạng thái của chính pháp nhân: dòng `PHAP-NHAN-001`, bảng cổng pháp
+  lý §3.
+
+  Chia **3 pot**: Delegator **100M** · SPO **5M** ·
   CS (Community Supporter) **15M**, cả ba đều **∝ trọng số stake** (làn CS cho phép tự bỏ phiếu nên điểm cân bằng
   cũng là chia theo stake — `Airdrop/spo-cs.md` §3.5; KHÔNG mô tả làn CS như phần thưởng cho đóng góp).
   Đặc tả hiệu lực: `Airdrop/CONTRACT.md`. Module `Airdrop/` đã **bàn giao ra ngoài repo này 2026-09-01** và không

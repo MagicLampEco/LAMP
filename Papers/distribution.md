@@ -35,6 +35,8 @@ Xem bảng đầy đủ ở `pot-catalog.md §1`. Tóm tắt theo **cơ chế nh
 
 Tổng = 22.708.857 + 492.000 + 9.630.000 + 1.873.143 + 1.296.000 = **36.000.000 nghìn** ✓.
 Foundation **không drip** ra lưu hành — minted vào Foundation-DID rồi **khoá vĩnh viễn**, chỉ sinh MAGIC (§4).
+Pháp nhân Foundation đặt ở **nước ngoài**, do cộng đồng DAO hình thành từ đợt Airdrop lập ra; trạng thái các điểm
+còn mở ở `Papers/pot-catalog.md` §3, dòng `PHAP-NHAN-001`.
 
 ---
 

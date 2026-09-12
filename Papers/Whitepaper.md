@@ -258,7 +258,7 @@ lần đều làm tăng `dist_minted`/`reserve_minted` trong chuỗi nên ai cũ
 55. **Pot Foundation là gì?** Quỹ vận hành dài hạn; dự kiến khóa principal vĩnh viễn (không rút gốc) nhưng vẫn dùng MAGIC.
 56. **Có vesting/cliff cho đội ngũ không?** Cơ chế nhỏ giọt theo tham số (tốc độ/cliff) công bố công khai.
 57. **Cộng đồng nhận LAMP bằng cách nào?** Qua các pot cộng đồng (Airdrop, SRCL, delegator…) theo tiêu chí công khai.
-58. **Airdrop cho ai?** Theo danh sách/tiêu chí công bố; nhỏ giọt theo epoch.
+58. **Airdrop cho ai?** Theo danh sách/tiêu chí công bố; nhỏ giọt theo epoch. Mục đích chính của đợt này **không phải phân phối token** mà là **tạo ra cộng đồng DAO** — tập hợp đủ người nhận việc vận hành để lập MagicLamp Foundation (câu 99). Phân phối là phương tiện, không phải đích.
 59. **SRCL là gì?** Cơ chế phân phối qua reward-redirect staking (Staking Reward Contribution Launch); chi tiết theo chương trình.
 60. **Phân bổ có thể đổi không?** Ngân sách từng pot điều chỉnh được trong cap 36 tỷ (off-chain), tổng không đổi.
 61. **Pot nào "khóa", pot nào "nhỏ giọt"?** Mỗi pot cấu hình riêng (tốc độ/khóa/lịch) ở tầng phân phối.
@@ -333,7 +333,7 @@ lần đều làm tăng `dist_minted`/`reserve_minted` trong chuỗi nên ai cũ
 96. **Bước tiếp theo của LAMP?** Hoàn thiện tầng phân phối (nhỏ giọt từng pot), kích hoạt MAGIC, di trú quản trị sang PhoenixKey.
 97. **"Bootstrap" nghĩa là gì?** Giai đoạn khởi tạo trên mainnet; tầng vận hành sẽ nâng cấp trước khi mở rộng người dùng.
 98. **Khi nào MAGIC hoạt động?** Theo lộ trình sau khi hạ tầng MAGIC lên mainnet.
-99. **Foundation khi nào lập?** Theo lộ trình; tới đó pot Foundation mới khóa + vận hành chính thức.
+99. **Foundation khi nào lập?** Theo lộ trình; tới đó pot Foundation mới khóa + vận hành chính thức. Pháp nhân này **đặt ở nước ngoài**, do **cộng đồng DAO hình thành từ đợt Airdrop** lập ra chứ không do hai công ty sáng lập lập ra, và vai của nó là **đại diện pháp lý** cho hệ. Quốc gia, hình thức pháp nhân và quy chế chưa công bố — chừng nào chưa công bố, không tài liệu nào của dự án được mô tả Foundation như một pháp nhân đang tồn tại (`PHAP-NHAN-001`, `Papers/pot-catalog.md` §3).
 100. **Theo dõi cập nhật ở đâu?** Kênh chính thức tại https://magiclamp.network/ và các kênh dự án công bố.
 
 ---

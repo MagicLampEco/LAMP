@@ -21,6 +21,14 @@ trước khi cộng đồng có người vận hành: điều kiện kích hoạ
 rồi, SRCL có thể chạy **song song** với Airdrop, **tiếp nối ngay** khi Airdrop kết thúc, hoặc ở
 **một thời điểm sau đó**; quy chế từng đợt ấn định.
 
+**Vì sao Airdrop phải đứng trước.** Mục đích chính của đợt Airdrop không phải phân phối token mà
+là **tạo ra cộng đồng DAO** — tập hợp đủ người nhận việc vận hành để **thành lập MagicLamp
+Foundation**, pháp nhân **đặt ở nước ngoài** làm đại diện pháp lý cho hệ. Nên thứ tự ba đợt không
+phải là lịch trình mà là một chuỗi phụ thuộc: Airdrop tạo ra cộng đồng → cộng đồng lập pháp nhân →
+pháp nhân là bên đứng tên cho những gì SRCL nhận vào. Đảo thứ tự thì SRCL nhận giá trị vào trong
+khi chưa có ai đứng tên nhận. Trạng thái của pháp nhân: `PHAP-NHAN-001`, bảng cổng pháp lý
+`pot-catalog.md` §3.
+
 **Ngưỡng kích hoạt đo bằng gì.** Đại lượng đếm là **số thành viên đã ký một văn kiện thành lập**
 — văn kiện lâm thời, nhưng phải nêu rõ quyền và nghĩa vụ của người ký, và người ký phải đọc được
 nó trước khi ký. **Không** đếm lượt bấm "đồng ý" với một bản điều khoản dài. Lý do nằm ở đại lượng
@@ -31,6 +39,7 @@ DAO — ban quản trị là một nhóm nhỏ điều phối, còn đây là s�
 | mã | trạng thái đang mở | ràng buộc TẠM đang có hiệu lực (fail-closed) | khai ở |
 |---|---|---|---|
 | `SRCL-KICH-HOAT-001` | con số ngưỡng, và nội dung văn kiện lâm thời | đại lượng đã định (số người ký văn kiện thành lập); con số và văn kiện chưa công bố ⇒ SRCL **không kích hoạt** | mục này |
+| `SRCL-PHAP-NHAN-005` | khoảng thời gian giữa **đủ người ký** và **pháp nhân tồn tại** | ngưỡng ở `SRCL-KICH-HOAT-001` đo *ý định thành lập*, không đo *đã thành lập* — hai mốc này không trùng nhau. Chừng nào chưa có mốc đo được cho vế thứ hai ⇒ **cấm** mô tả tài sản SRCL nhận vào là "đã có pháp nhân đứng tên", và đợt 1 giữ bên thụ hưởng là **kho cộng đồng on-chain**, không phải một pháp nhân | mục này; `pot-catalog.md` §3 `PHAP-NHAN-001` |
 | `SRCL-ADMIN-002` | ai giữ `delegation_admin`, lộ trình chuyển giao | chưa công bố ⇒ **cấm** mô tả cơ chế là "bất biến" hoặc "không có admin" trong mọi tài liệu | §8 |
 | `SRCL-UYTHAC-003` | nhánh `publish` của `srcl_stake.ak` nhận mọi certificate ngoài huỷ-đăng-ký, không đòi chữ ký | ⇒ **cấm** mô tả đóng góp của người tham gia là "được bảo đảm" hoặc "không ai can thiệp được" | §8 |
 | `SRCL-QUANTRI-004` | tầng quản trị chưa dựng được giao dịch (`Governance/SPEC.md`), khoá `authority` còn 1-of-1 (`Treasury/CONTRACT.md` ▸ F12) | ⇒ **cấm** mô tả việc chi tiêu là "đã được cộng đồng kiểm soát"; đúng mức chỉ nói *cổng có trong mã, tầng quản trị chưa chạy* | §5 |
