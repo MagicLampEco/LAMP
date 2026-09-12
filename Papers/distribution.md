@@ -54,8 +54,9 @@ redeemable = vested − redeemed         (rút từ treasury con cùng tx, treas
 Keeper/committee dựng cây Merkle `(owner, amount, epoch)` → post root vào beacon → claim permissionless bằng proof.
 Chống double-claim = marker-NFT nullifier (name = leaf) ở script no-spend. Dư sau hạn → Sweep về Treasury.
 
-### 3.3 Reserve — trần nhịp theo epoch, CỘNG gate theo mức Treasury (§7)
-Hai vế cùng phải thoả, không phải chọn một. **Trần cứng `E/1000` mỗi epoch** (`Reserve/onchain/lib/magiclamp/reserve/math.ak` ▸ `max_per_epoch`) đặt nhịp: nhanh nhất cũng mất 1000 epoch mới cạn pot. **Cổng cầu ở Treasury** (`Treasury/onchain/validators/reserve_gate.ak` ▸ `G-FLOOR-1`) quyết định epoch nào được nhả: chỉ mở khi lượng LAMP đang đỗ trong kho tụt xuống dưới sàn. Không có dải nội suy.
+### 3.3 Reserve — trần nhịp + cổng cầu (§7)
+Hai vế bổ sung nhau: trần tối đa mỗi epoch, và cổng chỉ mở khi kho Treasury dưới sàn.
+Nguồn duy nhất: [`Specs/Emission/CONTRACT.md`](../Specs/Emission/CONTRACT.md).
 
 ### 3.4 Chưa-mint / LP / RedBack
 - **Chưa-mint** (Reserve): token không tồn tại → không di chuyển/đánh cắp. Reserve chỉ sinh ra theo từng lượt rút, mỗi epoch tối đa một lượt.
@@ -254,25 +255,29 @@ address + 2 cert + đặt `redirect_bp=X` → user ký 1 lần → xong. Reward 
 
 ---
 
-## 7. Reserve — trần nhịp theo epoch CỘNG gate theo mức Treasury
+## 7. Reserve — trần nhịp + cổng cầu
+
+> **Nguồn duy nhất của luật này: [`Specs/Emission/CONTRACT.md`](../Specs/Emission/CONTRACT.md).**
+> Mục này chỉ tóm tắt vừa đủ để đọc tiếp bản phân bổ, và **không** phát biểu lại luật.
 
 Reserve = **lớp đệm cung CUỐI CÙNG** (U→C, no-burn). Điều tiết cung-cầu chính ở Treasury (C↔T). Reserve chỉ nhả
 khi Treasury không còn đủ đệm — Treasury dồi dào mà vẫn nhả Reserve = mất ý nghĩa.
 
-Hai vế **cùng phải thoả**, không phải chọn một. Chúng trả lời hai câu khác nhau:
+Luật nhả có **hai vế, phải thoả cả hai**:
 
-| vế | trả lời câu | cưỡng chế ở |
-|---|---|---|
-| **Trần nhịp** `Δ ≤ E/1000` mỗi epoch, tối đa **một** lượt rút mỗi epoch | *"một lượt được nhả bao nhiêu, và bao lâu một lượt"* | `Reserve/onchain/lib/magiclamp/reserve/math.ak` ▸ `max_per_epoch`; `reserve_draw.ak` ▸ `Luật 4` |
-| **Cổng cầu**: chỉ mở khi lượng LAMP đang đỗ trong kho Treasury tụt **dưới sàn** | *"epoch nào thì được nhả"* | `Treasury/onchain/validators/reserve_gate.ak` ▸ `G-FLOOR-1` |
+```
+vế A — TRẦN NHỊP   : mỗi epoch nhả tối đa E/1000 = 9.630.000 LAMP; tối đa 1 lượt/epoch;
+                     không cộng dồn — epoch không nhả thì phần đó ở lại quỹ
+vế B — CỔNG CẦU    : chỉ nhả khi kho Treasury dưới sàn (ngưỡng nhị phân, đo trạng thái
+                     TRƯỚC giao dịch)
+```
 
-Trần nhịp đặt **cận trên tuyệt đối**: nhanh nhất cũng mất **1000 epoch** mới cạn pot, bất kể cầu mạnh đến đâu.
-Cổng cầu chỉ có thể làm nó **chậm hơn**, không bao giờ nhanh hơn.
-
-- Nhị phân, không có dải nội suy: dưới sàn thì mở, từ sàn trở lên thì đóng.
-- Phép đo của cổng là **lượng trong kho**, không phải tổng lưu hành.
-- Permissionless: ai dựng tx đúng điều kiện cũng được; đích = kho Treasury, và Δ phải vào **SỔ** kho chứ không chỉ vào địa chỉ kho.
-- 📌 Sàn hiện là một **hằng số nướng vào script hash**, không phải tỷ lệ tự co giãn theo lưu hành — nên đổi sàn về sau là đổi định danh của validator. Điểm treo: `EMIT-FLOOR-IMPL`.
+- **Không ấn định epoch kết thúc.** Cạn sau 1000 epoch là **cận dưới** (mọi epoch đều nhả đúng trần);
+  mỗi epoch bị cổng đóng lại đẩy thời điểm cạn ra xa, và không có cận trên.
+- Permissionless: ai dựng tx đúng điều kiện cũng được; **đích đến = kho Treasury**. Cách validator
+  nhận diện kho khác nhau giữa đường Distribution và đường Reserve, và đường Reserve đang ở giữa một
+  lần đổi cách — bảng ở [`Specs/Emission/CONTRACT.md`](../Specs/Emission/CONTRACT.md) §3.5 là nguồn
+  duy nhất, mục này không nhắc lại.
 
 ---
 
@@ -297,9 +302,8 @@ Mọi tham số dưới đọc từ **config-UTxO** do **Aladin Contract đặt 
 | `μ_pot` Founder (Aladin, GreenSun) | **0.25** | (0,1]; cân quang học MAGIC ngày đầu |
 | `μ_pot` Foundation/Platform/App/Join LampNet/Referrer/PhoenixKey | **1.0** | nhóm tiêu-lại/chia-theo-tiêu-thụ → không cap |
 | `μ_pot` User/Development/Partnership | **1.0** | gen ở vault user khi claim |
-| Reserve `trần` | **2% × C** (lưu hành) | trên trần → KHÔNG nhả |
-| Reserve `sàn` | **1% × C** | tại sàn → nhả tối đa |
-| Reserve hàm `f(T)` | **tuyến tính** giữa trần↔sàn | `rate = (trần−T)/(trần−sàn)` clamp [0,1] |
+| Reserve trần nhịp | **E/1000 = 9.630.000 LAMP/epoch** | hằng thiết kế, KHÔNG phải tham số điều chỉnh |
+| Reserve sàn cổng cầu | **1% × C** (lưu hành) | tỷ lệ, không phải hằng tuyệt đối → tự co giãn. Chi tiết: `Specs/Emission/CONTRACT.md` §3.2 |
 | Airdrop chia | **Delegator 100M · SPO 5M · CS 15M**, cả ba ∝ trọng số stake (v2, chốt 10/7) | per snapshot |
 | Airdrop epoch ×budget | **5 × 24.000 nghìn** | tổng 120.000 |
 | Airdrop hạn đăng ký | **epoch 4** | mở từ 1/7 |

@@ -21,6 +21,14 @@
 > Lưu ý: chuẩn Cardano token registry KHÔNG có trường "đơn vị con" riêng — `oildrop` là quy ước
 > tài liệu (như lovelace/wei), ghi trong description + tài liệu, không phải field ví đọc.
 
+> **Bản chép có nhãn.**
+> **(a) Nguồn** của ba dòng `decimals`, `đơn vị con` và tỷ lệ `1 LAMP = 1.000.000 oildrop`:
+> [`Specs/Emission/CONTRACT.md`](../Specs/Emission/CONTRACT.md) §1 — mục đó khai cả tên đơn vị con,
+> tỷ lệ 10⁶, và `decimals = 6` như cùng một dữ kiện viết theo hai cách.
+> **(b) Chép ngày `2026-09-11`.**
+> Biểu mẫu nộp registry đòi giá trị tại chỗ nên không trỏ suông được. Đổi đơn vị thì sửa ở §1
+> trước, rồi mới sửa xuống đây — và cập nhật lại ngày chép ở dòng (b).
+
 ## Description — 3 phương án (học cách NIGHT diễn đạt: điềm đạm, nói công dụng, không hứa giá)
 
 **P1 — sát ý anh, gọn:**

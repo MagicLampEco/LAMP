@@ -1,44 +1,15 @@
-# LAMP Reserve — Demand-Gated Draw Engine (v4 — luật E/1000, ĐÃ CHỐT)
+# LAMP Reserve — Demand-Gated Draw Engine
 
-> ## Luật nhả đã chốt: **trần cứng E/1000 mỗi epoch** (2026-09-11)
->
-> Tệp này từng mang cảnh báo "hai luật loại trừ nhau" giữa E/1000 và `Genesis/CONTRACT.md §7b`
-> (gate theo mức Treasury: trần `2%·C`, sàn `1%·C`, nội suy ở giữa). Cảnh báo đó **hết hiệu
-> lực**, và lý do đáng ghi lại vì nó không phải "đã chọn một bên":
->
-> **§7b không phải một luật cạnh tranh — nó là một luật THIẾU CƠ SỐ.** Hàm nội suy của nó
-> (`rate = (trần−T)/(trần−sàn)`, kẹp `[0,1]`) là một **phân số không thứ nguyên**; `2%·C` và
-> `1%·C` là ngưỡng đặt lên *lượng đang nằm trong kho*, tức ngưỡng **trạng thái**, không phải
-> trần **lưu lượng**. Nhân một phân số với một ngưỡng trạng thái không ra được số oildrop mỗi
-> epoch. Cơ số duy nhất tồn tại trong kho là `E/1000`. Nên vế thật sự bị bác ở §7b chỉ là câu
-> *"KHÔNG theo epoch"* — chính câu đó phủ nhận thứ làm cho phần còn lại của §7b có nghĩa.
->
-> Hai vế ĐANG chạy, và chúng bổ sung nhau chứ không loại trừ:
-> - **Vế nhịp** — `reserve_draw.ak` Luật 4, `delta ≤ math.max_per_epoch(total_oildrop)`.
-> - **Vế cầu** — `reserve_gate.ak` `expect parked < floor_oildrop`, sàn là số **TUYỆT ĐỐI**
->   (oildrop) nướng vào script hash, **không** phải phần trăm lưu hành. Bản tỷ lệ chưa hiện
->   thực; điểm treo khai ở `Specs/Emission/CONTRACT.md` (`EMIT-FLOOR-IMPL`).
->
-> ### Ràng buộc vận hành còn hiệu lực — fail-closed
->
-> Vì sao chỗ này đắt: cả **11** tham số của `reserve_draw` là **apply-param** — nướng vào script
-> hash (bảng ở §6). `Luật 7` ép `s_out.address == own_out.address` và redeemer duy nhất là
-> `Draw` (`else(_) { fail }`) ⇒ **meter NFT không bao giờ rời được địa chỉ đó**. Gửi meter
-> NFT vào một instance là khoá luật đó cho toàn bộ vòng đời 9,63 tỷ, không có redeemer
-> `Migrate`, không có đường nâng cấp. LAMP không burn ⇒ không có đường dọn sổ làm lại.
->
-> **Chưa bịt hai lỗ dưới đây thì chưa được gửi meter NFT vào bất kỳ `reserve_draw` nào.** Cả
-> hai nướng vào script hash nên chỉ sửa được TRƯỚC khi gửi:
-> 1. **`floor_oildrop` phải > 0.** `parked` lấy bằng `quantity_of` nên luôn ≥ 0 ⟹ `floor = 0`
->    làm `parked < floor` không bao giờ đúng ⟹ auth NFT không rời gate ⟹ **9,63 tỷ LAMP khoá
->    chết vĩnh viễn**. Cùng hình dạng với sự cố `meter_nft_policy` 28 byte 0 đã xảy ra thật.
-> 2. **`total_oildrop` phải được ép trên chuỗi lúc SINH.** `reserve_thread.ak` đúc NFT ghim
->    ReserveState mà không ép hình dạng datum; `reserve_draw.ak` chỉ ép nó **bất biến** sau đó,
->    tức khoá chặt một giá trị có thể đã sai từ đầu. Ghi `total_oildrop = 10 × reserve_cap` thì
->    pot cạn trong ~100 epoch thay vì 1000 — **trần tổng vẫn đúng, NHỊP vỡ 10×**. Bảo đảm duy
->    nhất hôm nay là một guard off-chain (`RESERVE-CAP-001`). Trường anh em `drawn_oildrop` đã
->    được ép trên chuỗi ở `reserve_draw.ak:128`; hai trường cùng tệp, cùng mối nguy, một được
->    ép một không.
+> **Luật phát hành: nguồn duy nhất là [`Specs/Emission/CONTRACT.md`](../Specs/Emission/CONTRACT.md).**
+> Tệp này mô tả **cách module Reserve hiện thực vế trần nhịp** của luật đó; vế cổng cầu nằm ở module
+> Treasury. Chỗ nào tệp này và nguồn duy nhất nói khác nhau thì **nguồn duy nhất đúng**.
+
+### Trạng thái triển khai
+
+| Mã | Treo cái gì | Ràng buộc TẠM đang có hiệu lực (fail-closed) | Khai ở |
+|---|---|---|---|
+| `EMIT-FLOOR-IMPL` | Cổng cầu chưa ép sàn ở dạng tỷ lệ `1%·C`; bản đang có dùng một ngưỡng tuyệt đối | Fail-closed theo cả hai cách đọc: không thoả sàn thì không nhả. Ngưỡng dùng trong kịch bản diễn tập **không phải** giá trị vận hành. | tham số triển khai module Treasury |
+| `RSV-PARAM-FREEZE` | Bộ tham số của một instance `reserve_draw` | Mọi tham số là **apply-param** — nướng vào script hash. Validator ép state ở lại đúng địa chỉ của nó và redeemer duy nhất là `Draw` (không có `Migrate`) ⇒ meter NFT không rời được instance đã gửi vào. Ràng buộc tạm: **chưa gửi meter NFT vào instance nào** cho tới khi `EMIT-FLOOR-IMPL` đóng. | `Genesis/mainnet-deploy-plan.md` |
 
 Mô hình **đệm phát hành demand-gated** (allocation v3, đông kết 2026-06-14). Reserve là
 **lớp đệm phát hành SAU CÙNG** của LAMP: 9,630 tỷ LAMP (26,75%) nhả từ U-space (chưa mint)
@@ -58,8 +29,9 @@ Reserve (no-burn cấm token quay lại U). Reserve chỉ lo *nhịp phát hành
 - **Trần CỨNG mỗi epoch = E/1000** — không phụ thuộc thời gian trôi, không cục catch-up.
 - **Demand-gated:** mỗi draw đòi Treasury co-spend authority NFT → Reserve nhả ⟺ Treasury
   thực sự dưới sàn (logic sàn `parked < floor` nằm Ở TREASURY — `reserve_gate`, xem §quan hệ).
-- **Rollover:** epoch bị gate / không cần → dư ở lại pot, nhả epoch sau → tổng kéo dài tối
-  thiểu ~1000 epoch (cạn liên tục), thực tế ~1001+ epoch (có epoch bị gate).
+- **Rollover:** epoch bị gate / không cần → dư ở lại pot, nhả epoch sau. `1000` epoch là **cận
+  dưới** (mọi epoch đều nhả đúng trần); mỗi epoch bị gate đẩy thời điểm cạn ra xa và **không có cận
+  trên** — không ấn định được một epoch kết thúc. Nguồn: `Specs/Emission/CONTRACT.md` §3.3.
 
 Bộ đếm = **ReserveState UTxO** (duy nhất, ghim bởi `reserve_thread` NFT one-shot).
 
@@ -74,7 +46,8 @@ Bộ đếm = **ReserveState UTxO** (duy nhất, ghim bởi `reserve_thread` NFT
 | `release_epochs` | `1000` | hằng thiết kế (`math.ak:13`); `E ⋮ 1000` → chia chẵn, dư = 0 |
 | `max_per_epoch` | `E / 1000 = 9_630_000_000_000` oildrop | trần CỨNG mỗi epoch (`math.ak:17`) |
 
-`max_per_epoch(E) × 1000 == E` (`math.ak:55` test). Cạn pot liên tục đúng trần ⇒ 1000 epoch.
+`max_per_epoch(E) × 1000 == E` (test ở `lib/magiclamp/reserve/math.ak`). Cạn pot liên tục đúng trần
+⇒ 1000 epoch — đó là **cận dưới**, không phải lịch cạn (§1, và `Specs/Emission/CONTRACT.md` §3.3).
 
 ---
 
@@ -116,13 +89,27 @@ CHÍNH là gate nhịp. (Orchestrator chốt: `meter_nft = reserve_thread`. KHÔ
 
 ---
 
-## 5. Mười luật ép trong `reserve_draw` (mỗi tx Draw)
+## 5. Mười một luật ép trong `reserve_draw` (mỗi tx Draw)
 
 Gọi `s` = ReserveState input, `s2` = ReserveState output, `delta` = `Δ mint LAMP`
 (`lamp_policy`, `token_name`), `t` = epoch suy từ `validity_range.lower_bound`.
 
 1. **ReserveState input chính danh** — đúng 1 input mang `reserve_thread` NFT (qty == 1).
    Đọc state TRỰC TIẾP từ input (không tin datum option) → chắc khớp NFT. Chống UTxO rác cùng địa chỉ.
+1b. **`total_oildrop` khớp `reserve_cap` nướng vào hash** — `s.total_oildrop == reserve_cap`
+   (khe #12). Trần mỗi epoch tính TỪ DATUM (Luật 4), mà datum là thứ người gửi đặt, và KHÔNG lượt
+   sinh nào ép nó: `reserve_thread.ak` chỉ ép one-shot + đúng-một-tên + `qty == 1`, không đụng hình
+   dạng datum. Luật 7 thì khoá `total` bất biến — tức khoá chặt một giá trị có thể đã sai từ đầu.
+   Ghi `total = 10 × cap` ⟹ trần mỗi epoch × 10 ⟹ pot cạn trong ~100 epoch thay vì 1000 ⟹ trần
+   lạm phát năm nhảy 1,95% → ~19,5%. `lamp_mint` vẫn chặn đúng ở TỔNG, nên **trần giữ được mà NHỊP
+   thì không** — và nhịp mới là thứ Reserve tồn tại để giữ. Luật đặt ở nhánh TIÊU, không ở nhánh
+   SINH: thread NFT không được đúc thẳng vào script này (đúc để nó ở ví, một tx sau mới dời nó
+   xuống kèm ReserveState — bước L2c), nên datum mà `reserve_thread.mint` nhìn thấy bị vứt đi ở tx
+   sau; đây là nơi duy nhất từng đọc datum CÓ HIỆU LỰC. ⚠ Đánh đổi người vận hành phải biết: chốt
+   này biến "ghi sai total" từ **nhịp vỡ** thành **pot đứng im** — Luật 7 không cho sửa `total`, nên
+   ReserveState sai là ReserveState chết và phải đúc lại `reserve_thread` (⟹ đổi cả policy-id LAMP).
+   Vì thế cổng off-chain `RESERVE-CAP-001` (`Genesis/scripts/24_reserve_layer2_init.ts`) đo TRƯỚC
+   KHI GỬI vẫn là hàng rào thứ nhất và KHÔNG được gỡ.
 2. **Epoch ghim (lower + upper bound)** — `t` từ `lower_bound`; ÉP `upper_bound` Finite VÀ cùng
    epoch với lower (`hi / ms_per_epoch == t`). Chống tx phủ nhiều epoch để chọn nhịp nhả (Vector 2).
 3. **≤1 draw/epoch** — `t > s.last_epoch`. Chống rút nhiều lần cùng epoch vượt trần; ép tiến nghiêm ngặt.
@@ -164,7 +151,7 @@ SAO ĐO KHO BỊ TIÊU, KHÔNG ĐO ĐỊA CHỈ NHẬN ĐỦ" trong `Reserve/onc
 
 ## 6. Param `reserve_draw` (apply-param lúc deploy)
 
-**11 tham số, ĐÚNG thứ tự** dưới đây (thứ tự nằm TRONG script hash — truyền lệch không báo lỗi,
+**12 tham số, ĐÚNG thứ tự** dưới đây (thứ tự nằm TRONG script hash — truyền lệch không báo lỗi,
 nó chỉ ra một script hash khác một cách im lặng). Nguồn: chữ ký `validator reserve_draw(` trong
 `Reserve/onchain/validators/reserve_draw.ak`.
 
@@ -181,6 +168,7 @@ nó chỉ ra một script hash khác một cách im lặng). Nguồn: chữ ký 
 | 9 | `treasury_auth_name` | asset name Treasury auth NFT |
 | 10 | `gate_script_hash` | script hash của `reserve_gate` (Treasury). Auth NFT BẮT BUỘC spend từ input ở gate này → ép kích `reserve_gate.spend`. Hằng truyền vào — KHÔNG vòng phụ thuộc |
 | 11 | `custody_script_hash` | script hash của Treasury `custody`. UTxO mang kho NFT BẮT BUỘC nằm ở payment credential này (Luật 10). Đặt Ở CUỐI để không xê dịch khe cũ |
+| 12 | `reserve_cap` | pot Reserve ĐÚNG theo thiết kế (oildrop). Luật 1b đối chiếu `ReserveState.total_oildrop` với hằng này. PHẢI trùng khe `reserve_cap` của `Genesis/onchain/validators/lamp_mint.ak`. Đặt ở cuối vì cùng lý do khe #11 |
 
 ⚠ **BẤT BIẾN NỐI DÂY:** cặp `kho_nft_policy`/`kho_nft_name` (#6-7) của `reserve_draw` phải TRÙNG
 cặp `reserve_kho_nft_policy`/`reserve_kho_nft_name` (khe #13-14 của
@@ -207,6 +195,13 @@ Reserve nhả ⟺ Treasury thực sự dưới sàn.
 
 - `reserve_gate` KHÔNG kiểm chi tiết draw (reserve_draw tự ép trần/kế toán);
   `reserve_draw` KHÔNG kiểm sàn (gate tự ép). Phân tách trách nhiệm sạch.
+- **`floor_oildrop > 0` được ép ở `reserve_auth`, KHÔNG ở `reserve_gate`.** `reserve_gate` ép
+  `parked < floor_oildrop`, mà `parked` lấy bằng `quantity_of` trên value của một Output ⟹ sổ cái
+  bảo đảm `parked >= 0`. Với `floor_oildrop <= 0` thì vế đó không bao giờ đúng ⟹ auth NFT không
+  rời gate được ⟹ **9,630 tỷ LAMP khoá vĩnh viễn**, và không lệnh nào báo lỗi. Đặt `expect` trong
+  `reserve_gate.spend` là mã chết (ở đó nó chỉ chạy khi đã có lượt kéo, mà lượt kéo là thứ không
+  bao giờ tới). Chỗ ép thật: `Treasury/onchain/validators/reserve_auth.ak` ▸ `expect floor_oildrop
+  > 0`, kèm hai ca âm cho `== 0` và `< 0`.
 - Chi tiết flow + interface contract apply-param: xem [`Treasury/reserve-pull.md`](../Treasury/reserve-pull.md).
 
 ---
@@ -231,6 +226,7 @@ Reserve nhả ⟺ Treasury thực sự dưới sàn.
 | Kho NFT ở ví thường | Luật 10 | `reject_kho_nft_at_wallet` |
 | Double-satisfaction | Luật 6 | `reject_double_satisfaction` |
 | Nới cap / dời mốc | Luật 7 (bất biến) | `reject_total_oildrop_mutated` / `reject_start_epoch_mutated` |
+| Ghi `total_oildrop` SAI ngay lúc sinh (nhịp nhả × 10, trần tổng vẫn đúng) | Luật 1b | `reject_total_oildrop_ten_times_cap` / `reject_total_oildrop_below_cap` (+ đối chứng dương `total_ten_times_cap_passes_when_param_matches`, đổi riêng `reserve_cap` nướng vào hash) |
 | State' ôm LAMP / rời địa chỉ | Luật 7 | `reject_state_output_holds_lamp` / `reject_state_moved_address` |
 | Đúc thêm meter NFT (Vector F) | Luật 8 | `reject_mint_extra_reserve_thread` |
 | upper_bound vô hạn / khác epoch (Vector 2) | Luật 2 | `reject_upper_bound_infinite` / `reject_upper_bound_other_epoch` |
@@ -239,7 +235,7 @@ Reserve nhả ⟺ Treasury thực sự dưới sàn.
 
 ## 9. Trạng thái triển khai
 
-- **onchain:** `reserve_draw.ak` (spend, 10 luật) + `reserve_thread.ak` (mint one-shot) +
+- **onchain:** `reserve_draw.ak` (spend, 11 luật) + `reserve_thread.ak` (mint one-shot) +
   `lib/.../types.ak` (ReserveState + 2 redeemer) + `math.ak` (max_per_epoch/drawable) + `util.ak`.
   Test Aiken: happy (full-cap/partial/incremental/last-drain/3-epoch-chain) + toàn bộ negative §8.
 - **offchain:** `types.ts` + `datum.ts` (codec byte-perfect) + `math.ts` (applyDraw/maxPerEpoch

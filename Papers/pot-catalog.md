@@ -37,7 +37,7 @@
 1. **Mục đích** — pot này để làm gì.
 2. **Cách ra:** **Nhỏ-giọt (CappedDrop)** `vested(t)=min(E, D·dpe·max(0,t−start))` · **Chưa-mint**
    (token chưa tồn tại, khoá tự nhiên) · **Snapshot** (chia theo ảnh chụp, claim Merkle permissionless)
-   · **Engine riêng** (Reserve gate-Treasury / LP / RedBack).
+   · **Engine riêng** (Reserve: trần nhịp + cổng cầu / LP / RedBack).
 3. **Gen MAGIC?** — **NGUYÊN TẮC CỐT LÕI: MAGIC CHỈ gen trong VAULT của một DID, KHÔNG bao giờ gen "trong pot".**
    Một pot chỉ gen MAGIC khi **LAMP của nó đã nằm trong một vault-DID** (cá nhân / OrgDID / Platform-DID).
    3 mức = LAMP nằm ở **vault-DID nào**:
@@ -96,7 +96,7 @@
 
 | # | Pot | Nghìn LAMP | % | Mục đích | Cách ra | Gen MAGIC? |
 |---|---|---:|---:|---|---|---|
-| 1 | **Reserve** | 9.630.000 | 26,75% | Đệm cung cuối, điều tiết khi Treasury cạn | Engine demand-gated: tối đa **9.630 nghìn LAMP/epoch** (= 9,63 triệu LAMP = E/1000) ⇒ nhanh nhất cũng mất **1000 epoch** mới cạn | ❌ chưa-mint |
+| 1 | **Reserve** | 9.630.000 | 26,75% | Đệm cung cuối, điều tiết khi Treasury cạn | Engine hai vế: trần **9.630.000 LAMP/epoch** (E/1000) + cổng cầu khi kho Treasury dưới sàn; **không ấn định epoch kết thúc**. Luật: [`Specs/Emission/CONTRACT.md`](../Specs/Emission/CONTRACT.md) | ❌ chưa-mint |
 | 2 | **Treasury** | 964.000 | 2,68% | Sổ điều tiết C↔T (giảm lưu hành = parked, không đốt) | Kế toán 2 chiều | ❌ parked |
 | 3 | **Development** | 2.718.000 | 7,55% | Quỹ duy trì & vận hành giao thức: R&D công nghệ lõi + mua app truyền thống tích hợp; DAO quyết, ai cũng đề xuất | Nhỏ-giọt | 👤 khi claim về DID |
 | 4 | **Platform** | 3.141.000 | 8,73% | Thưởng nền tảng dùng LAMP | Nhỏ-giọt | 🏛️ gen, chia DID theo MAGIC tiêu thụ |
@@ -131,12 +131,11 @@
 ## 3. Thuyết minh từng pot (để cộng đồng phân biệt)
 
 **Nhóm điều tiết & dự trữ**
-- **1. Reserve (9.630.000 nghìn LAMP = 9,63 tỷ LAMP)** — lớp đệm cung **cuối cùng**. Nhả **tối đa 9,63 triệu
-  LAMP mỗi epoch** (= 1/1000 quỹ Reserve), và **chỉ nhả khi có cầu thật** (demand-gated: khi lượng LAMP đang
-  đỗ trong **kho Treasury** tụt xuống dưới sàn — phép đo là lượng trong kho, không phải tổng lưu hành).
-  **KHÔNG có hạn chót phải nhả hết** — quỹ co-giãn theo nhu cầu thật, KHÔNG phải "nhả hết trong N epoch";
-  không cầu thì không
-  nhả. Một chiều (no-burn). Permissionless, không ai rút tay.
+- **1. Reserve (9.630.000)** — lớp đệm cung **cuối cùng**, luật nhả có **hai vế phải thoả cả hai**: nhả
+  **tối đa 9.630.000 LAMP mỗi epoch** (= 1/1000 quỹ Reserve), và **chỉ nhả khi kho Treasury xuống dưới sàn**.
+  Cạn sau 1000 epoch là **cận dưới**, không phải lịch — mỗi epoch bị cổng đóng lại đẩy thời điểm cạn ra xa,
+  và **không có cận trên**; không cầu thì không nhả. Một chiều (no-burn). Permissionless, không ai rút tay.
+  Luật đầy đủ: [`Specs/Emission/CONTRACT.md`](../Specs/Emission/CONTRACT.md).
 - **2. Treasury (964.000)** — **vốn mồi + sổ điều tiết hai chiều** C↔T. "Giảm lưu hành" = parked vào đây (kế toán),
   KHÔNG đốt. Là nơi bơm lại các pot khác (User, Development…) khi DAO quyết. Quản bởi DAO.
 
