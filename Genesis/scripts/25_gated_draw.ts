@@ -28,6 +28,7 @@ import {
 import { rehydrate, writeState, waitFor } from "./_canonical_v2.js";
 import {
   deriveReserveWiring, reserveStateDatum, drawWindow, printReserveWiring,
+  resolveDelegationAdmin,
 } from "./_reserve_layer2.js";
 import { reserveStateFromCbor, drawRedeemerToCbor } from "../../Reserve/offchain/src/datum.js";
 import { attachGateSpend, parkedOf } from "../../Treasury/offchain/src/reserveGateBuilder.js";
@@ -59,6 +60,7 @@ async function main(): Promise<void> {
     authTxHash:    state.reserve.authRef.txHash,
     authIndex:     state.reserve.authRef.outputIndex,
     network:       wiring.network,
+    delegationAdminPkh: resolveDelegationAdmin(wiring.pkh),
   });
 
   const delta = DRAW_LAMP * 1_000_000n;

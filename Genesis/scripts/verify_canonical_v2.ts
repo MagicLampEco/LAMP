@@ -8,7 +8,9 @@
 import { NETWORK, makeLucid } from "./config.js";
 import { supplyStateFromCbor } from "../offchain/src/datum.js";
 import { rehydrate, printWiring } from "./_canonical_v2.js";
-import { deriveReserveWiring, printReserveWiring } from "./_reserve_layer2.js";
+import {
+  deriveReserveWiring, printReserveWiring, resolveDelegationAdmin,
+} from "./_reserve_layer2.js";
 import { floorSourceWarning, parseFloorSource } from "./_floorLabel.js";
 import { reserveStateFromCbor } from "../../Reserve/offchain/src/datum.js";
 import { parkedOf } from "../../Treasury/offchain/src/reserveGateBuilder.js";
@@ -58,6 +60,7 @@ async function main(): Promise<void> {
       authTxHash:    state.reserve.authRef.txHash,
       authIndex:     state.reserve.authRef.outputIndex,
       network:       wiring.network,
+      delegationAdminPkh: resolveDelegationAdmin(wiring.pkh),
     });
   }
   if (!rw) {

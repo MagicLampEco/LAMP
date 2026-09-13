@@ -34,7 +34,7 @@ import { supplyStateFromCbor } from "../offchain/src/datum.js";
 import {
   AUTH_NAME, INSTANCE_ID, deriveCustody, deriveReserveWiring, custodySeedDatum,
   reserveStateDatum, epochNow, printReserveWiring, VOID_DATUM, RESERVE_TOTAL,
-  FLOOR_OILDROP, FLOOR_SOURCE,
+  FLOOR_OILDROP, FLOOR_SOURCE, resolveDelegationAdmin,
 } from "./_reserve_layer2.js";
 import {
   assertCustodyKhoPair, custodySeedRefFromEnv, refKey, sameRef,
@@ -141,8 +141,10 @@ async function main(): Promise<void> {
       `Sửa biến môi trường cho khớp state, hoặc chạy lại từ một state đúng.`,
     );
   }
+  const delegAdmin = resolveDelegationAdmin(pkh);
   const cust = await deriveCustody(custodyRef.txHash, custodyRef.outputIndex, {
     lampPid: wiring.lampPid, tokenName: wiring.tokenName, network: wiring.network,
+    delegationAdminPkh: delegAdmin,
   });
 
   // ── CỔNG CUSTODY-REF-001 — ném TRƯỚC mọi lời gọi dựng giao dịch ──────────
@@ -220,7 +222,7 @@ async function main(): Promise<void> {
     ? await deriveReserveWiring(wiring, {
         custodyTxHash: custodyRef.txHash, custodyIndex: custodyRef.outputIndex,
         authTxHash: authRef!.txHash, authIndex: authRef!.outputIndex,
-        network: wiring.network,
+        network: wiring.network, delegationAdminPkh: delegAdmin,
       })
     : undefined;
 
@@ -251,7 +253,7 @@ async function main(): Promise<void> {
     rw = await deriveReserveWiring(wiring, {
       custodyTxHash: custodyRef.txHash, custodyIndex: custodyRef.outputIndex,
       authTxHash: seed.txHash, authIndex: seed.outputIndex,
-      network: wiring.network,
+      network: wiring.network, delegationAdminPkh: delegAdmin,
     });
 
     console.log(`\nL2b hạt giống auth: ${key(seed)}`);

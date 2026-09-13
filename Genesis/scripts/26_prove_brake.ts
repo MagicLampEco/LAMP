@@ -23,7 +23,9 @@ import {
   supplyStateToCbor, supplyStateFromCbor, supplyStateRedeemerToCbor, mintRouteToCbor,
 } from "../offchain/src/datum.js";
 import { rehydrate, writeState } from "./_canonical_v2.js";
-import { deriveReserveWiring, reserveStateDatum, drawWindow } from "./_reserve_layer2.js";
+import {
+  deriveReserveWiring, reserveStateDatum, drawWindow, resolveDelegationAdmin,
+} from "./_reserve_layer2.js";
 import { reserveStateFromCbor, drawRedeemerToCbor } from "../../Reserve/offchain/src/datum.js";
 import { attachGateSpend } from "../../Treasury/offchain/src/reserveGateBuilder.js";
 
@@ -59,6 +61,7 @@ async function main(): Promise<void> {
     authTxHash:    state.reserve.authRef.txHash,
     authIndex:     state.reserve.authRef.outputIndex,
     network:       wiring.network,
+    delegationAdminPkh: resolveDelegationAdmin(wiring.pkh),
   });
 
   const drawU = theOneHolding(await lucid.utxosAt(reserve.drawAddr), wiring.metUnit, "meter NFT tại reserve_draw");

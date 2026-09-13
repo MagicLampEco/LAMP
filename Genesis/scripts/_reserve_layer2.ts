@@ -70,6 +70,7 @@ import { assertParamCount as assertParamCountGate } from "../offchain/src/applyG
 import { reserveDrawParamList } from "../offchain/src/reserveKhoPair.js";
 import { reserveAuthParamList, reserveGateParamList } from "../offchain/src/reserveFloorPair.js";
 import type { CustodyDatum } from "../../Treasury/offchain/src/types.js";
+import { treasuryStakeParamList } from "../../Treasury/offchain/src/stakeBuilder.js";
 import {
   MET_NAME, MS_PER_EPOCH, RESERVE_CAP, encodeOutputRef, type CanonicalWiring,
 } from "./_canonical_v2.js";
@@ -175,6 +176,60 @@ const hashOf = (s: Script) => validatorToScriptHash(s as Validator);
 const addrOf = (h: string, n: Network) => credentialToAddress(n, scriptHashToCredential(h));
 
 /**
+ * Gác `delegation_admin` của `treasury_stake` — 28 byte, và KHÔNG được là giá trị chết.
+ *
+ * Vì sao là cổng chứ không phải một phép ép kiểu: pkh này nướng vào hash `treasury_stake`,
+ * hash đó là **phần stake của địa chỉ kho**, và `custody.ak` ghim địa chỉ đầy đủ. Một pkh
+ * toàn 0 / toàn f không có tiền ảnh blake2b-224 ⇒ không chữ ký nào thoả nhánh `publish` ⇒
+ * kho đăng ký stake được đúng một lần rồi **không bao giờ uỷ quyền lại được**, và không có
+ * đường sửa nào ngoài di trú toàn bộ UTxO sang một địa chỉ khác. Cùng hình dạng với
+ * POISON-002 ở `deriveCustody`, nên gác cùng một kiểu.
+ */
+/**
+ * NGUỒN DUY NHẤT của `delegationAdminPkh` cho mọi script trong thư mục này.
+ *
+ * Đặt ở đây chứ không rải vào từng script vì nó nướng vào ĐỊA CHỈ kho: hai script gõ hai giá
+ * trị khác nhau thì ra hai địa chỉ khác nhau, và không lệnh nào báo — một script gieo, một
+ * script đi tìm, và cái nó tìm không tồn tại. Đúng hình dạng §"Một nguồn, nhiều con trỏ".
+ *
+ * `TREASURY_DELEGATION_ADMIN_PKH` không đặt ⟹ lùi về pkh ví deploy, và NÓI RA. Mặc định im
+ * lặng ở một tham số nướng-không-lùi là cách một quyết định được đưa ra bởi việc không gõ gì.
+ */
+export function resolveDelegationAdmin(deployPkh: string): string {
+  const v = (process.env.TREASURY_DELEGATION_ADMIN_PKH ?? "").trim().toLowerCase();
+  if (v) return requireDelegationAdmin(v);
+  console.log(
+    `⚠ TREASURY_DELEGATION_ADMIN_PKH chưa đặt — dùng pkh ví deploy ${deployPkh.slice(0, 8)}…\n` +
+    `  Đây là quyền ĐĂNG KÝ / UỶ QUYỀN / HUỶ-UỶ-QUYỀN phần stake của kho. Nó nướng vào hash\n` +
+    `  treasury_stake ⟹ vào phần stake của địa chỉ kho, nên đổi về sau phải di trú mọi UTxO.\n` +
+    `  Trên mạng thật: đặt biến này tường minh.`,
+  );
+  return requireDelegationAdmin(deployPkh);
+}
+
+function requireDelegationAdmin(pkh: string | undefined): string {
+  const h = (pkh ?? "").toLowerCase();
+  if (!/^[0-9a-f]{56}$/.test(h)) {
+    throw new Error(
+      `TSTAKE-ADMIN-001: delegationAdminPkh phải là 28 byte hex (56 ký tự), nhận ` +
+        `${h.length === 0 ? "CHUỖI RỖNG" : `${h.length} ký tự`}. Nó nướng vào hash ` +
+        `treasury_stake ⟹ vào phần stake của địa chỉ kho ⟹ vào chính chỗ tài sản nằm. ` +
+        `Không có mặc định: một mặc định im lặng ở đây là quyết định về quyền uỷ quyền ` +
+        `được đưa ra bởi việc KHÔNG gõ gì.`,
+    );
+  }
+  if (/^0+$|^f+$/.test(h)) {
+    throw new Error(
+      `TSTAKE-ADMIN-002: delegationAdminPkh = ${h.slice(0, 8)}…(28 byte) — GIÁ TRỊ CHẾT. ` +
+        `Chuỗi toàn 0 / toàn f không có tiền ảnh blake2b-224 ⇒ không chữ ký nào thoả nhánh ` +
+        `\`publish\` của treasury_stake ⇒ kho không bao giờ uỷ quyền lại được, và phần stake ` +
+        `đã nướng vào địa chỉ nên không sửa được mà không di trú toàn bộ UTxO.`,
+    );
+  }
+  return h;
+}
+
+/**
  * `Address = Constr(0, [payment_credential, Option<stake_credential>])`.
  * Script credential = `Constr(1, [hash])`; `None` = `Constr(1, [])`.
  *
@@ -207,7 +262,10 @@ export interface ReserveWiring {
   custodySeedPid: string;
   custodyNftUnit: string;
   custodyHash: string;
+  /** ĐỊA CHỈ KHO dạng BASE — payment = `custodyHash`, stake = `treasuryStakeHash`. */
   custodyAddr: string;
+  /** Hash `treasury_stake` — phần stake của `custodyAddr`, và là stake credential để uỷ quyền. */
+  treasuryStakeHash: string;
 
   authPid: string;
   authUnit: string;
@@ -247,6 +305,15 @@ export interface DeriveCustodyOptions {
   /** asset name LAMP/tLAMP (hex) — testnet "tLAMP" / mainnet "LAMP". */
   tokenName: string;
   network?: Network;
+  /**
+   * pkh 28 byte được phép đăng ký / uỷ quyền / huỷ-uỷ-quyền phần stake của kho
+   * (`treasury_stake`, nhánh `publish`).
+   *
+   * BẮT BUỘC, không có mặc định. Nó nướng vào hash `treasury_stake` ⟹ nướng vào **phần
+   * stake của địa chỉ kho** ⟹ vào chính chỗ tài sản nằm. Một mặc định im lặng ở đây là
+   * một quyết định về quyền uỷ quyền được đưa ra bởi việc KHÔNG gõ gì.
+   */
+  delegationAdminPkh: string;
 }
 
 /**
@@ -263,6 +330,7 @@ export async function deriveCustody(
 ): Promise<{
   custodySeed: MintingPolicy; custody: Validator;
   custodySeedPid: string; custodyNftUnit: string; custodyHash: string; custodyAddr: string;
+  treasuryStake: Validator; treasuryStakeHash: string;
 }> {
   const network = o.network ?? NETWORK;
   // CỔNG POISON-002, fail-closed trên mạng thật.
@@ -297,10 +365,45 @@ export async function deriveCustody(
                                   //      người gửi đặt. ⇒ tham số apply-time, nướng vào hash.
   ]) as Validator;
   const custodyHash = hashOf(custody);
+
+  // ── PHẦN STAKE CỦA ĐỊA CHỈ KHO ──────────────────────────────────────────────
+  //
+  // Kho là địa chỉ dạng BASE: payment = hash `custody`, stake = hash `treasury_stake`.
+  // KHÔNG phải enterprise. Ba lý do, theo thứ tự không lùi được:
+  //
+  // 1. `custody.ak` ghim `cust_out.address == cust_in.address` — so ĐỊA CHỈ ĐẦY ĐỦ, kể cả
+  //    phần stake. Nên gieo vào enterprise là gieo vào một cái kho vĩnh viễn không uỷ quyền
+  //    được, và KHÔNG có thao tác nào chuyển nó sang base sau đó.
+  // 2. Phần stake nướng vào địa chỉ ⟹ vào nơi tài sản nằm. Sửa sau = di trú mọi UTxO đang
+  //    sống, không phải một lần đổi cấu hình.
+  // 3. Kho bên tiêu thụ nướng địa chỉ này vào apply-param của họ
+  //    (`MAGIC/scripts/deployParams.ts` ▸ `assertTreasuryStakeDecided`, cổng fail-closed từ
+  //    2026-09-06). Địa chỉ enterprise làm cổng đó ĐỎ ⟹ Paymaster không deploy được ⟹ luồng
+  //    trả phí hộ đứng. Đó là một cổng của NHÀ KHÁC, CI kho này không kiểm được — nên chỗ
+  //    đúng để giữ lời hứa là ở đây, tại nơi địa chỉ được sinh ra.
+  //
+  // `reward_cred` trỏ về chính credential thanh toán của kho ⟹ thưởng uỷ quyền chỉ đi được
+  // vào kho, và `StakeRewardIn` là đường duy nhất ghi nó vào sổ.
+  const stakeParams = treasuryStakeParamList({
+    instanceId: INSTANCE_ID,
+    rewardCred: { kind: "Script", hash: custodyHash },
+    delegationAdmin: requireDelegationAdmin(o.delegationAdminPkh),
+  });
+  const treasuryStake = await applyOf(
+    "Treasury", "treasury_stake.treasury_stake.withdraw", stakeParams,
+  ) as Validator;
+  const treasuryStakeHash = hashOf(treasuryStake);
+
   return {
     custodySeed, custody, custodySeedPid,
     custodyNftUnit: toUnit(custodySeedPid, INSTANCE_ID),
-    custodyHash, custodyAddr: addrOf(custodyHash, network),
+    custodyHash,
+    custodyAddr: credentialToAddress(
+      network,
+      scriptHashToCredential(custodyHash),
+      scriptHashToCredential(treasuryStakeHash),
+    ),
+    treasuryStake, treasuryStakeHash,
   };
 }
 
@@ -310,6 +413,8 @@ export interface ReserveDeriveOptions {
   authTxHash: string;
   authIndex: number;
   network?: Network;
+  /** Xem `DeriveCustodyOptions.delegationAdminPkh` — nướng vào phần stake của địa chỉ kho. */
+  delegationAdminPkh: string;
 }
 
 /**
@@ -336,9 +441,10 @@ export async function deriveReserveWiring(
   }
 
   // ── custody: seed one-shot → két ────────────────────────────────────────────
-  const { custodySeed, custody, custodySeedPid, custodyHash, custodyAddr } =
+  const { custodySeed, custody, custodySeedPid, custodyHash, custodyAddr, treasuryStakeHash } =
     await deriveCustody(o.custodyTxHash, o.custodyIndex, {
       lampPid: w.lampPid, tokenName: w.tokenName, network,
+      delegationAdminPkh: o.delegationAdminPkh,
     });
 
   // ── SÀN: MỘT biến, hai chỗ đọc ──────────────────────────────────────────────
@@ -421,6 +527,7 @@ export async function deriveReserveWiring(
       custodyNftUnit: toUnit(custodySeedPid, INSTANCE_ID),
       custodyHash,
       custodyAddr,
+      treasuryStakeHash,
       authPid,
       authUnit: toUnit(authPid, AUTH_NAME),
       gateHash,
