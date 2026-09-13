@@ -32,6 +32,11 @@ import {
 } from "./_reserve_layer2.js";
 import { reserveStateFromCbor, drawRedeemerToCbor } from "../../Reserve/offchain/src/datum.js";
 import { attachGateSpend, parkedOf } from "../../Treasury/offchain/src/reserveGateBuilder.js";
+import {
+  custodyDatumToCbor, custodyDatumFromCbor, custodyRedeemerToCbor,
+} from "../../Treasury/offchain/src/datum.js";
+import { planMigrateDatum } from "../../Treasury/offchain/src/migrate.js";
+import { RESERVE_SOURCE_TAG } from "../../Treasury/offchain/src/constants.js";
 
 const NFT_ADA = 2_000_000n;
 const DRAW_LAMP = BigInt(process.env.DRAW_LAMP ?? "1000");
@@ -106,6 +111,20 @@ async function main(): Promise<void> {
   const lampAtCustodyBefore = (await lucid.utxosAt(reserve.custodyAddr))
     .reduce((s, u) => s + (u.assets[wiring.lampUnit] ?? 0n), 0n);
 
+  // KHO' — sổ và value, tính TRƯỚC khi dựng tx để mọi lỗi đọc datum lộ ra ở đây.
+  //
+  // Value ra: phi-lovelace == vào ⊕ Δ (kho NFT giữ NGUYÊN); lovelace giữ nguyên, KHÔNG bơm
+  // thêm. Ledger từ chối vì min-UTxO thì đường sửa là seed kho với dư địa ADA lớn hơn, KHÔNG
+  // phải hạ Δ — `Collect` mang item ADA chỉ tồn tại nếu ADA nằm trong `accepted_assets`, thứ
+  // bất biến đời instance mà không nhánh nào đổi được.
+  const custodyDatumOut = planMigrateDatum(
+    custodyDatumFromCbor(custU.datum!), wiring.lampPid, wiring.tokenName, delta, window.t,
+  );
+  const custodyValueOut = {
+    ...custU.assets,
+    [wiring.lampUnit]: (custU.assets[wiring.lampUnit] ?? 0n) + delta,
+  };
+
   // ── Một giao dịch, bốn validator ──────────────────────────────────────────
   let txb = lucid.newTx()
     // reserve_draw: tiêu ReserveState (mang meter) + tái tạo, drawn += Δ, last_epoch := t.
@@ -123,17 +142,40 @@ async function main(): Promise<void> {
     .pay.ToContract(wiring.ssAddr,
       { kind: "inline", value: supplyStateToCbor({ ...s0, reserve_minted: s0.reserve_minted + delta }) },
       { lovelace: NFT_ADA, [wiring.threadUnit]: 1n })
-    // Luật 9: TOÀN BỘ Δ đi tới `reserve_dest` = credential của két.
-    .pay.ToAddress(reserve.custodyAddr, { lovelace: NFT_ADA, [wiring.lampUnit]: delta })
+    // ── Luật 9+10: Δ vào VALUE **VÀ** vào SỔ, trong cùng một giao dịch ──────
+    //
+    // Bản cũ ở đây làm `.pay.ToAddress(reserve.custodyAddr, { …, [lampUnit]: delta })` — sinh
+    // một UTxO KHÔNG datum tại địa chỉ kho. `custody.ak` đòi datum, nên số LAMP đó nằm trong
+    // SÂN kho và ngoài SỔ kho: không hình dạng giao dịch nào tiêu lại được. Đóng băng ngoài
+    // sổ = ĐỐT, chỉ khác tên — và LAMP không có đường đốt (`Treasury/CONTRACT.md §5`).
+    //
+    // Điều làm nó nguy hơn một lỗi thường: KHÔNG vế nào hỏng ồn ào. Tx dựng được, lên chuỗi
+    // được, số dư tại địa chỉ kho hiện ĐÚNG con số. Chỉ tới lượt ai đó định tiêu mới biết.
+    // Phép thử bắt được nó, hỏi TRƯỚC khi viết: *"sau giao dịch này, tồn tại giao dịch nào
+    // tiêu lại được thứ tôi vừa tạo không — chỉ ra nhánh nào, điều kiện nào của nó được thoả."*
+    //
+    // Nay kho bị TIÊU với redeemer `MigrateIn`, và chính việc bị tiêu mới kích `custody` để nó
+    // ghi Δ vào sổ. Địa chỉ ra lấy TỪ CHÍNH `custU.address` — `C-MIG-ADDR` ép giữ nguyên địa
+    // chỉ đầy đủ, kể cả phần stake, nên không được gõ lại `reserve.custodyAddr` ở đây.
+    .collectFrom([custU], custodyRedeemerToCbor({ kind: "MigrateIn", source: RESERVE_SOURCE_TAG }))
+    .attach.SpendingValidator(rs.custody)
+    .pay.ToContract(custU.address,
+      { kind: "inline", value: custodyDatumToCbor(custodyDatumOut) },
+      custodyValueOut)
     // Luật 2b: lower_bound và upper_bound PHẢI cùng một epoch.
     .validFrom(window.loMs).validTo(window.hiMs)
     .addSigner(walletAddr);
 
-  // reserve_gate: tiêu auth NFT (kích cổng sàn) + reference custody + trả auth về gate.
+  // reserve_gate: tiêu auth NFT (kích cổng sàn) + trả auth về gate.
+  //
+  // `custodyRole: "input"` — kho đang bị TIÊU ở trên, và PlutusV3 CẤM một TxIn nằm đồng thời ở
+  // `tx.inputs` và `tx.reference_inputs`. Để vai mặc định `"reference"` ở đây thì tx không dựng
+  // nổi. Đây là chỗ mẫu cũ và mẫu mới khác nhau, nên nó phải đổi CÙNG lượt với khối trên.
   txb = attachGateSpend(txb, {
     lucid, authUtxo: authU, gateScript: rs.gate, gateAddress: reserve.gateAddr,
     authPolicyId: reserve.authPid, authName: reserve.authUnit.slice(56),
-    custodyUtxo: custU, lampPolicyId: wiring.lampPid, tokenName: wiring.tokenName,
+    custodyUtxo: custU, custodyRole: "input",
+    lampPolicyId: wiring.lampPid, tokenName: wiring.tokenName,
     floorOildrop: reserve.floorOildrop,
   });
 

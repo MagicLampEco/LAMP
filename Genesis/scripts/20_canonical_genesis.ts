@@ -229,6 +229,42 @@ async function main(): Promise<void> {
       { lovelace: NFT_ADA, [toDropUnit(wiring)]: 1n })
     .complete();
 
+  // ── CỔNG SEED-CHON-DONG-001 — đo KẾT QUẢ, không đo ý định ───────────────────
+  //
+  // `.collectFrom([seed])` chỉ ghim hạt giống GENESIS. `.complete()` ở trên chạy chọn-đồng mặc
+  // định trên TOÀN BỘ UTxO ví, không loại trừ gì. Tx này trả ra năm lần `NFT_ADA` cộng phí, nên
+  // hạt giống không đủ thì chọn-đồng CHẮC CHẮN kéo thêm input — và không gì ngăn nó trúng hạt
+  // giống custody.
+  //
+  // Hỏng ra sao, và vì sao nó không kêu: `lamp_mint` đã nướng policy trên `custody_seed` áp
+  // trên đúng UTxO đó. Tiêu nhầm ở đây thì tx VẪN hợp lệ, VẪN lên chuỗi, mọi thứ trông thành
+  // công — tới lượt đúc NFT custody mới biết policy ấy vĩnh viễn không đúc được nữa, và lúc đó
+  // genesis đã xong, không quay lui.
+  //
+  // Đo sau khi dựng chứ không loại trước khi dựng: phép loại đo Ý ĐỊNH và đúng cho tới khi thư
+  // viện đổi cách chọn; phép này đo KẾT QUẢ nên vẫn đúng sau khi nó đổi.
+  {
+    const custodyRef = custodySeedRefFromEnv(process.env);
+    const wanted = `${custodyRef.txHash}#${custodyRef.outputIndex}`;
+    const used = tx.toTransaction().body().inputs();
+    const inputs: string[] = [];
+    for (let i = 0; i < used.len(); i++) {
+      const ti = used.get(i);
+      inputs.push(`${ti.transaction_id().to_hex()}#${ti.index()}`);
+    }
+    if (inputs.includes(wanted)) {
+      throw new Error(
+        `SEED-CHON-DONG-001: chọn-đồng đã kéo HẠT GIỐNG CUSTODY ${wanted} vào Tx A.\n` +
+        `Tx A tiêu nó ⇒ policy \`custody_seed\` áp trên UTxO đó KHÔNG BAO GIỜ đúc được nữa, ` +
+        `trong khi khe #13 của \`lamp_mint\` đã nướng chính policy đó. Genesis vẫn thành công, ` +
+        `lỗi chỉ lộ ở bước đúc custody — lúc đó không quay lui được.\n` +
+        `Sửa: tách hạt giống custody khỏi ví trước khi chạy (gửi nó sang một địa chỉ khác), ` +
+        `hoặc gộp thêm ADA vào hạt giống genesis để chọn-đồng không cần input thứ hai.\n` +
+        `Input Tx A đang có: ${inputs.join(", ")}`,
+      );
+    }
+  }
+
   console.log(`\n✓ Tx A dựng xong + eval script OK (CBOR ${tx.toCBOR().length / 2} byte).`);
 
   if (!SUBMIT) {
