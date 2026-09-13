@@ -14,7 +14,6 @@
 //     Đây là lựa chọn thiết kế MVP (4 trục: tối ưu — 1 ví đủ demo; bền vững —
 //     production vẫn 3-of-N qua env). Ghi vào deployed.json để audit.
 
-import dotenv from "dotenv";
 import {
   Lucid, Blockfrost,
   getAddressDetails, validatorToScriptHash,
@@ -33,19 +32,11 @@ import { dirname, resolve } from "node:path";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-// Load .env từ repo root (../../.env so với LampDistribution/scripts/),
-// không phụ thuộc cwd lúc chạy tsx.
-// Secret: MỘT nguồn duy nhất — $AGENT_SECRETS. KHÔNG có đường dự phòng nướng cứng.
-// Đường dự phòng cũ trỏ vào bộ nhà agent ở chỗ cũ — chỗ đó đã dời, nên hằng số ấy là
-// một con trỏ chết. Con trỏ chết im lặng theo HAI chiều: dotenv KHÔNG báo khi tệp
-// không tồn tại (script chỉ gãy muộn hơn, ở một chỗ không liên quan), và nếu về sau có
-// tệp thật mọc đúng đường đó thì nó được đọc mà không ai chọn.
-if (!process.env.AGENT_SECRETS) {
-  throw new Error(
-    "SECRETS-001: thiếu $AGENT_SECRETS. Secret CHỈ đọc từ biến này, không có đường dự phòng.",
-  );
-}
-dotenv.config({ path: process.env.AGENT_SECRETS });
+// BÍ MẬT: tệp này nhận GIÁ TRỊ qua biến môi trường, KHÔNG mở kho khoá và KHÔNG biết
+// kho ở đâu. Đường cũ tự đọc biến trỏ tới kho rồi `dotenv.config()` lên tệp đó — thứ
+// đắt nhất bị lộ không phải giá trị mà là SƠ ĐỒ KHO, và mọi phép quét bí mật đều im
+// lặng đúng ở ca đó. Đặt biến ngay trước lệnh, để bí mật sống trong đúng một tiến trình:
+//   NETWORK=… BLOCKFROST_KEY=… WALLET_SEED="…" tsx <tệp>.ts
 
 // ── Network + provider ─────────────────────────────────────────
 export const NETWORK: Network = (process.env.NETWORK ?? "Preview") as Network;

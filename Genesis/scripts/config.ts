@@ -4,7 +4,6 @@
 // secret. SUBMIT=false (mặc định) → build tx + in CBOR, KHÔNG gửi lên chain (an toàn,
 // kiểm tra logic trước khi tốn tADA). SUBMIT=true để gửi thật.
 
-import dotenv from "dotenv";
 import {
   Lucid, Blockfrost, getAddressDetails,
   validatorToScriptHash, credentialToAddress, scriptHashToCredential,
@@ -18,46 +17,33 @@ import { assertParamCount as assertParamCountGate } from "../offchain/src/applyG
 import { requiredHexParam } from "./_guards.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-// Secret: MỘT nguồn duy nhất — $AGENT_SECRETS. KHÔNG có đường dự phòng nướng cứng.
-// Đường dự phòng cũ trỏ vào bộ nhà agent ở chỗ cũ — chỗ đó đã dời, nên hằng số ấy là
-// một con trỏ chết. Con trỏ chết im lặng theo HAI chiều: dotenv KHÔNG báo khi tệp
-// không tồn tại (script chỉ gãy muộn hơn, ở một chỗ không liên quan), và nếu về sau có
-// tệp thật mọc đúng đường đó thì nó được đọc mà không ai chọn.
-if (!process.env.AGENT_SECRETS) {
-  throw new Error(
-    "SECRETS-001: thiếu $AGENT_SECRETS. Secret CHỈ đọc từ biến này, không có đường dự phòng.",
-  );
-}
-dotenv.config({ path: process.env.AGENT_SECRETS });
+// BÍ MẬT: tệp này nhận GIÁ TRỊ qua biến môi trường, KHÔNG mở kho khoá và KHÔNG biết
+// kho ở đâu. Đường cũ tự đọc biến trỏ tới kho rồi `dotenv.config()` lên tệp đó — thứ
+// đắt nhất bị lộ không phải giá trị mà là SƠ ĐỒ KHO, và mọi phép quét bí mật đều im
+// lặng đúng ở ca đó. Đặt biến ngay trước lệnh, để bí mật sống trong đúng một tiến trình:
+//   NETWORK=… BLOCKFROST_KEY=… WALLET_SEED="…" tsx <tệp>.ts
 
 export const NETWORK: Network = (process.env.NETWORK ?? "Preview") as Network;
 export const BLOCKFROST_URL = `https://cardano-${NETWORK.toLowerCase()}.blockfrost.io/api/v0`;
 
-// ── Tên biến trong $AGENT_SECRETS, tra THEO MẠNG ──────────────────────────
-// Không đoán, không hard-code khoá. Thiếu biến → assertEnv() ném lỗi nêu đúng tên.
-const BF_KEY_BY_NETWORK: Record<string, string> = {
-  Preprod: "Blockfrost_Aladin_Preprod",
-  Preview: "Blockfrost_GreenSun_Preview",
-  Mainnet: "Blockfrost_ThanhDuc_mainnet",
-};
+// Bảng tra TÊN KHOÁ theo mạng đã bỏ hẳn, KHÔNG thay bằng bảng khác — nó là một mẩu sơ
+// đồ kho nằm trong kho mã. Hệ quả phải biết: script không còn TỰ TÌM được khoá cho một
+// mạng; đó là chủ ý, vì "tự tìm được" chính là năng lực bị cấm. Thiếu biến thì
+// `assertEnv()` nói THIẾU BIẾN NÀO, không nói tìm nó ở đâu.
 
-/** Ví deploy testnet + địa chỉ CÔNG KHAI tương ứng, để đối chiếu seed đúng ví. */
-const SEED_VAR_BY_NETWORK: Record<string, string> = {
-  Preprod: "CNODE_PUBLICED_SEED",
-  Preview: "CNODE_PUBLICED_SEED",
-};
-const EXPECTED_ADDR_VAR: Record<string, string> = {
-  Preprod: "CNODE_PREPROD_PAYMENT_ADDR",
-};
-
-export const BLOCKFROST_KEY =
-  process.env.BLOCKFROST_KEY ?? process.env[BF_KEY_BY_NETWORK[NETWORK] ?? ""] ?? "";
+export const BLOCKFROST_KEY = process.env.BLOCKFROST_KEY ?? "";
 export const PRIVATE_KEY = process.env.PRIVATE_KEY ?? "";
-export const WALLET_SEED = (
-  process.env.WALLET_SEED ?? process.env[SEED_VAR_BY_NETWORK[NETWORK] ?? ""] ?? ""
-)
-  .trim()
-  .replace(/\s+/g, " ");
+export const WALLET_SEED = (process.env.WALLET_SEED ?? "").trim().replace(/\s+/g, " ");
+
+/**
+ * Địa chỉ ví đối chiếu — DỮ LIỆU CÔNG KHAI, không phải bí mật.
+ *
+ * Tách khỏi mọi đường kho khoá có chủ ý: địa chỉ in ra được, dán vào dòng lệnh được, ghi
+ * vào nhật ký được. Bản cũ tra nó bằng một bảng tên-khoá-theo-mạng — dùng sơ đồ kho để
+ * lấy về một thứ vốn chẳng cần giấu — và bảng đó trỏ ví CŨ sau khi ví xoay, nên chốt
+ * kiểm chặn đúng ví đúng mà không ai hiểu vì sao.
+ */
+export const EXPECTED_WALLET_ADDR = (process.env.EXPECTED_WALLET_ADDR ?? "").trim();
 
 /** SUBMIT=false (mặc định) → chỉ build tx + in CBOR, KHÔNG gửi chain. */
 export const SUBMIT = (process.env.SUBMIT ?? "false").toLowerCase() === "true";
@@ -99,17 +85,18 @@ export function tokenNameFor(network: Network): string {
 export const TOKEN_NAME = tokenNameFor(NETWORK);
 
 export function assertEnv(): void {
-  const src = process.env.AGENT_SECRETS;
+  // Thông điệp nói THIẾU BIẾN NÀO và cách đặt nó, KHÔNG nói đi lấy giá trị ở đâu —
+  // chỉ đường tới kho khoá cũng là một mẩu sơ đồ kho.
   if (!BLOCKFROST_KEY) {
     throw new Error(
-      `thiếu khoá Blockfrost cho ${NETWORK}. Đặt BLOCKFROST_KEY, hoặc thêm ` +
-        `${BF_KEY_BY_NETWORK[NETWORK] ?? "<biến theo mạng>"} vào ${src}.`,
+      `SECRETS-001: thiếu BLOCKFROST_KEY cho ${NETWORK}. Đặt nó ngay trước lệnh ` +
+        `(\`BLOCKFROST_KEY=… tsx <script>.ts\`), đừng ghi vào tệp nào trong kho.`,
     );
   }
   if (!PRIVATE_KEY && !WALLET_SEED) {
     throw new Error(
-      `thiếu ví deploy cho ${NETWORK}. Đặt WALLET_SEED/PRIVATE_KEY, hoặc thêm ` +
-        `${SEED_VAR_BY_NETWORK[NETWORK] ?? "<biến seed>"} vào ${src}.`,
+      `SECRETS-002: thiếu WALLET_SEED (hoặc PRIVATE_KEY) cho ${NETWORK}. Đặt nó ngay ` +
+        `trước lệnh, đừng ghi vào tệp nào trong kho.`,
     );
   }
 }
@@ -122,26 +109,24 @@ export function assertEnv(): void {
  * SỚM, trước khi có tx nào được dựng. Địa chỉ là dữ liệu công khai, in ra được.
  */
 export function assertWalletMatches(derived: string): void {
-  const v = EXPECTED_ADDR_VAR[NETWORK];
   // FAIL-CLOSED trên mạng thật. Bản trước `return` khi mạng chưa khai địa chỉ đối chiếu — và
   // Mainnet chính là mạng chưa khai, nên chốt kiểm ví KHÔNG chạy đúng ở mạng duy nhất mà
   // chú thích trên vừa nói hậu quả là "đúc token vào ví không ai giữ khoá". Cổng hỏng-mà-
   // cho-qua thì không ai biết; ở đây phải hỏng-mà-chặn.
-  if (NETWORK === "Mainnet" && (!v || !process.env[v])) {
+  if (NETWORK === "Mainnet" && !EXPECTED_WALLET_ADDR) {
     throw new Error(
-      `WALLET-001: chạy trên Mainnet mà chưa khai địa chỉ ví đối chiếu. Chốt kiểm ví không có ` +
+      `WALLET-001: chạy trên Mainnet mà chưa đặt EXPECTED_WALLET_ADDR. Chốt kiểm ví không có ` +
         `gì để so, nên nó KHÔNG đo được — và trên mainnet thì seed sai nghĩa là đúc token vào ví ` +
-        `không ai giữ khoá, không quay lui được. Khai biến địa chỉ công khai cho Mainnet trong ` +
-        `EXPECTED_ADDR_VAR rồi đặt biến đó, hoặc đừng chạy mạng này.`,
+        `không ai giữ khoá, không quay lui được. Đặt địa chỉ ví công khai vào biến đó ngay trước ` +
+        `lệnh, hoặc đừng chạy mạng này.`,
     );
   }
-  if (!v) return; // testnet chưa khai địa chỉ đối chiếu — không đoán.
-  const expected = process.env[v];
-  if (!expected) return;
-  if (derived !== expected) {
+  // Testnet chưa khai địa chỉ đối chiếu → không đoán, và KHÔNG tự đi tìm ở đâu khác.
+  if (!EXPECTED_WALLET_ADDR) return;
+  if (derived !== EXPECTED_WALLET_ADDR) {
     throw new Error(
-      `SAI VÍ: seed suy ra ${derived} nhưng ${v} là ${expected}. ` +
-        `Dừng trước khi dựng tx — kiểm lại biến seed trong $AGENT_SECRETS.`,
+      `WALLET-002 SAI VÍ: seed suy ra ${derived} nhưng EXPECTED_WALLET_ADDR là ` +
+        `${EXPECTED_WALLET_ADDR}. Dừng trước khi dựng tx — kiểm lại biến seed đang đặt.`,
     );
   }
 }

@@ -10,7 +10,6 @@ import {
   Constr, getAddressDetails, toUnit, Data,
   type MintingPolicy, type Validator,
 } from "@lucid-evolution/lucid";
-import dotenv from "dotenv";
 import { resolve } from "node:path";
 import { readFile } from "node:fs/promises";
 import {
@@ -19,17 +18,11 @@ import {
 } from "./_guards.js";
 import { assertParamCount } from "../offchain/src/applyGate.js";
 
-// Secret: MỘT nguồn duy nhất — $AGENT_SECRETS. KHÔNG có đường dự phòng nướng cứng.
-// Đường dự phòng cũ trỏ vào bộ nhà agent ở chỗ cũ — chỗ đó đã dời, nên hằng số ấy là
-// một con trỏ chết. Con trỏ chết im lặng theo HAI chiều: dotenv KHÔNG báo khi tệp
-// không tồn tại (script chỉ gãy muộn hơn, ở một chỗ không liên quan), và nếu về sau có
-// tệp thật mọc đúng đường đó thì nó được đọc mà không ai chọn.
-if (!process.env.AGENT_SECRETS) {
-  throw new Error(
-    "SECRETS-001: thiếu $AGENT_SECRETS. Secret CHỈ đọc từ biến này, không có đường dự phòng.",
-  );
-}
-dotenv.config({ path: process.env.AGENT_SECRETS });
+// BÍ MẬT: tệp này nhận GIÁ TRỊ qua biến môi trường, KHÔNG mở kho khoá và KHÔNG biết
+// kho ở đâu. Đường cũ tự đọc biến trỏ tới kho rồi `dotenv.config()` lên tệp đó — thứ
+// đắt nhất bị lộ không phải giá trị mà là SƠ ĐỒ KHO, và mọi phép quét bí mật đều im
+// lặng đúng ở ca đó. Đặt biến ngay trước lệnh, để bí mật sống trong đúng một tiến trình:
+//   NETWORK=… BLOCKFROST_KEY=… WALLET_SEED="…" tsx <tệp>.ts
 
 const GUARD_IO = { env: process.env, warn: (m: string) => console.warn(m) };
 const MINT_OILDROP = BigInt(process.env.MINT_OILDROP ?? "3000000000"); // 3000 tLAMP
