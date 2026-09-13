@@ -97,7 +97,8 @@ Mọi **Claim** (committee cấp/tăng `entitlement`) BẮT BUỘC co-spend trea
 ## 5. Hooks DAO (post-MVP — CHỪA CHỖ, KHÔNG build MVP)
 
 - **Multi-drop per-DID:** DAO tăng `drops_per_epoch` cho DID uy tín/nhu cầu cao (Org hoạt động liên
-  tục → nhiều drop/epoch). Gắn Governance VP (C3 uy tín) + DID sinh trắc (chống sybil chia nhiều DID).
+  tục → nhiều drop/epoch). Gắn Governance VP (C3 uy tín) — chống sybil-chia-nhiều-DID phụ thuộc
+  điểm treo `Governance/VotingPower/CONTRACT.md §3 [IDENT-ONE-PERSON]` (chưa đóng hôm nay).
 - **Pause/penalty:** DAO đặt `drops_per_epoch = 0` trong N epoch nếu hành vi gây hại.
 - MVP chỉ cần để `drops_per_epoch` là field datum + đọc được; cơ chế DAO chỉnh nó = phiên sau.
 

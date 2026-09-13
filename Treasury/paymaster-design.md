@@ -16,9 +16,10 @@
   transferable" theo LAMP §1.5 nghĩa là không có DEX pair MAGIC↔ADA — KHÔNG phải "không phải
   token". Nguồn: `ConsumeMAGIC/FEAT.md §1`, `ConsumeMAGIC/onchain/plutus.json` (validator
   `consume.consume.spend` compiled).
-- LAMP cố định 36 tỷ **LAMP** (= 3,6×10^16 oildrop), KHÔNG burn. `oildrop = LAMP × 10^6`,
-  `nanogic = MAGIC × 10^9`.
-  Nguồn: `Treasury/CONTRACT.md §5`.
+- LAMP **trần 36 tỷ, đúc dần, không đốt** (trần = 3,6×10^16 oildrop). Con số đó là TRẦN,
+  không phải lượng đã đúc — cách nói rút gọn "cố định 36 tỷ" đọc thành "36 tỷ đã lưu hành".
+  `oildrop = LAMP × 10^6`, `nanogic = MAGIC × 10^9`.
+  Nguồn: `Treasury/CONTRACT.md §5`; cách nói chuẩn ở `Specs/Emission/CONTRACT.md` §2 (khối ⚠️).
 - BigInt everywhere — KHÔNG Number cho amounts (Q = 10^9, sequential floor).
 - P8: Aiken ↔ TypeScript bit-identical.
 - eUTXO: 1 UTxO spend 1 lần/tx. Double-satisfaction cần guard riêng (own_hash).
@@ -419,7 +420,7 @@ Tx PaymasterSponsor:
 | PM-ATK-3 | Double-meter: 2 txs cùng epoch drain gấp đôi | Thread NFT `SponsorMeter` — 1 UTxO/app/epoch (PM-7) |
 | PM-ATK-4 | Khai `magic_burned` giả trong redeemer | Đọc từ `tx.mint` thật, không tin redeemer (PM-2) |
 | PM-ATK-5 | Meter epoch cũ (replay SponsorMeter epoch trước) | Kiểm epoch lock; reset nếu epoch mới (PM-8) |
-| PM-ATK-6 | Sybil: tạo nhiều DID để né per-DID cap | DID sinh trắc PhoenixKey — không thể clone |
+| PM-ATK-6 | Sybil: tạo nhiều DID để né per-DID cap | **Chưa chặn hôm nay** — điểm treo `Governance/VotingPower/CONTRACT.md §3 [IDENT-ONE-PERSON]` (chưa đóng: một người đúc được DID thứ N chỉ với phí + min-ADA). Ràng buộc tạm fail-closed: per-DID cap chỉ tính DID đã qua cổng năng lực (đã chứng thực cá nhân), không cộng dồn qua DID chưa chứng thực |
 | PM-ATK-7 | App không cosign (người khác submit tx) | `app_authority ∈ extra_signatories` bắt buộc (PM-1) |
 | PM-ATK-8 | Policy beacon giả (không có NFT) | Kiểm SponsorPolicy NFT qty == 1 (1 policy per app) |
 | PM-ATK-9 | Tỷ giá stale (policy không cập nhật lâu) | `max_policy_stale` epoch (PM-10) |
@@ -555,7 +556,9 @@ MAX_POLICY_STALE=10
   Nguồn: `Treasury/onchain/validators/custody.ak`.
 - **Governance** — DAO approval cho `SponsorPolicy` tham số (tỷ giá, caps).
   Nguồn: `Governance/VotingPower/CONTRACT.md`.
-- **PhoenixKey DID** (external) — `did_commit` field trong EngageDatum; sinh trắc chống Sybil.
+- **PhoenixKey DID** (external) — `did_commit` field trong EngageDatum; định danh cá nhân. Tính
+  duy nhất-mỗi-người là điểm treo `Governance/VotingPower/CONTRACT.md §3 [IDENT-ONE-PERSON]`
+  (chưa đóng hôm nay — xem PM-ATK-6 §8.1).
   Blocker: `EngageDatum.did_commit` cần Tuân mở rộng trước.
 - **Multi-Tier Fee** (`DESIGN §A`) — Paymaster là một app-layer trong khung 3 tầng phí.
   Build sau Reserve (C) và Multi-Tier Fee (A) theo thứ tự `DESIGN §TỔNG HỢP`.

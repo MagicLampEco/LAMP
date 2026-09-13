@@ -139,3 +139,13 @@ toàn mạng test). Các module test (Distribution/Treasury/Governance) khi cầ
 nên trỏ tới `deployed-faucet.json.tlamp.policyId` thay vì tự mint sig policy. Token sig
 policy cũ **deprecated** — giữ lại chỉ cho test self-contained cũ, không dùng cho e2e
 chia sẻ mới.
+
+> ⚠️ **Đường trỏ đã đổi (2026-09-11).** `deployed-faucet.json` là **ảnh chụp** một lượt deploy,
+> KHÔNG phải nguồn. Nguồn duy nhất: `Genesis/offchain/src/lampPolicies.ts` — đọc bằng
+> `activeLampPolicyId(network)`.
+> Trạng thái bản đang nằm trong `deployed-faucet.json` (`7a1a7aed…`): **SUPERSEDED** — marker
+> neo bằng native-sig ví deploy nên MỘT khoá đúc thêm được; đang chờ bản
+> `preprod-oneshot-14param` / `preview-oneshot-14param` đúc theo đường registry-gate.
+> Hệ quả cho vế "KHÔNG trung thực fixed-supply" ở ngay trên: nó đúng với sig policy **và** đúng
+> với bản `7a1a7aed…` — đổi từ sig policy sang `7a1a7aed…` KHÔNG gỡ được điều đó, chỉ đổi chỗ
+> đặt cái khoá. Đo lại: `cd Genesis/offchain && npx vitest run ../tests/lampPolicies.test.ts`.

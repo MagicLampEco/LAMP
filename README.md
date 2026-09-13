@@ -41,7 +41,7 @@ Pháp nhân phát hành: **GreenSun Tech Inc** (Việt Nam).
 ```
    LAMP (repo này)                      MAGIC (repo khác)
    ────────────────                     ─────────────────
-   • Cung cố định 36 tỷ                 • 4 generator (Snapshot/Instant/Vacuum/Schedule)
+   • Trần cung 36 tỷ, đúc dần     • 4 generator (Snapshot/Instant/Vacuum/Schedule)
    • Phát hành + phân bổ                • Vault sinh MAGIC từ LAMP
    • Kho bạc                            • AppEconomics / ConsumeMAGIC
    • Quản trị                           • Integrator SDK (DID-agnostic)

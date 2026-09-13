@@ -59,7 +59,7 @@ Hai vế bổ sung nhau: trần tối đa mỗi epoch, và cổng chỉ mở khi
 Nguồn duy nhất: [`Specs/Emission/CONTRACT.md`](../Specs/Emission/CONTRACT.md).
 
 ### 3.4 Chưa-mint / LP / RedBack
-- **Chưa-mint** (Reserve, Foundation trước lập pháp nhân): token không tồn tại → không di chuyển/đánh cắp.
+- **Chưa-mint** (Reserve): token không tồn tại → không di chuyển/đánh cắp. Reserve chỉ sinh ra theo từng lượt rút, mỗi epoch tối đa một lượt.
 - **Liquidity / RedBack:** dự phòng cho nhu cầu thanh khoản trong hệ sinh thái. Cơ chế, thời điểm và điều kiện pháp lý để kích hoạt **chưa được quyết định**; dự án **không cam kết** về việc có kích hoạt hay không.
 
 ---

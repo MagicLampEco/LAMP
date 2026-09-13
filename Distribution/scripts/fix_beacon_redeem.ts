@@ -5,6 +5,7 @@ import {
   Data, Constr, applyParamsToScript, validatorToScriptHash, credentialToAddress, scriptHashToCredential,
   scriptFromNative, mintingPolicyToId, toUnit as u, getAddressDetails, Lucid, Blockfrost, type Validator,
 } from "@lucid-evolution/lucid";
+import { assertParamCountFromBlueprint } from "../../Genesis/offchain/src/applyGate.js";
 import { readFile } from "node:fs/promises";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -25,24 +26,21 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const norm = (h: string) => (h.startsWith("0x") ? h.slice(2) : h).toLowerCase();
 
 /** Một validator trong blueprint + SỐ tham số nó khai — dùng để chặn apply thiếu param. */
-interface BpValidator { title: string; compiledCode: string; nParams: number }
+interface BpValidator { title: string; compiledCode: string; mod: string; blueprint: unknown }
 
 async function gCode(mod: string, title: string): Promise<BpValidator> {
   const bp = JSON.parse(await readFile(resolve(__dirname, `../../${mod}/onchain/plutus.json`), "utf8"));
   const v = (bp.validators as { title: string; compiledCode: string; parameters?: unknown[] }[])
     .find((x) => x.title === title);
   if (!v) throw new Error(`${title} not found`);
-  return { title, compiledCode: v.compiledCode, nParams: (v.parameters ?? []).length };
+  return { title, compiledCode: v.compiledCode, mod, blueprint: bp };
 }
 
 /** Apply param + ÉP đủ số tham số (xem ghi chú APPLY-001 ở `canonical_release.ts`). */
 const applyV = (v: BpValidator, p: unknown[]): Validator => {
-  if (p.length !== v.nParams) {
-    throw new Error(
-      `APPLY-001: ${v.title} khai ${v.nParams} tham số, script này truyền ${p.length}. ` +
-      `Validator đã đổi — cập nhật danh sách tham số (và địa chỉ deploy) trước khi chạy tiếp.`,
-    );
-  }
+  // Một luật duy nhất cho cả kho (`Genesis/offchain/src/applyGate.ts`): bản cũ ở đây đọc
+  // `parameters` vắng mặt thành 0 khe, tức biến trạng thái KHÔNG ĐO ĐƯỢC thành "khớp 0".
+  assertParamCountFromBlueprint(v.blueprint, v.title, v.mod, p.length);
   return { type: "PlutusV3", script: applyParamsToScript(v.compiledCode, p as never) };
 };
 const epochNow = async () => (await tipPosixMs()) / MS_EPOCH;

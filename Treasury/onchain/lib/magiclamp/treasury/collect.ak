@@ -16,6 +16,8 @@
 use aiken/collection/list
 use cardano/assets.{Value}
 use magiclamp/treasury/ledger
+use magiclamp/treasury/migrate
+use magiclamp/treasury/stake_reward
 use magiclamp/treasury/types.{AssetKey, CollectItem, LedgerEntry}
 
 /// cut của 1 item = floor(amount × cut_bps / 10000). amount ≥ 0, cut_bps ∈ [0,10000]
@@ -30,10 +32,30 @@ pub fn item_accepted(item: CollectItem, accepted: List<AssetKey>) -> Bool {
   list.any(accepted, fn(a) { a.policy == item.policy && a.name == item.name })
 }
 
+/// C-COL-5 + S-LEDGER-RESERVED (F4): mọi item hợp lệ VÀ không item nào ghi vào một bucket
+/// DÀNH RIÊNG — nguồn Reserve (`migrate.reserve_inflow_bucket_id`) hoặc thưởng uỷ quyền
+/// (`stake_reward.stake_reward_bucket_id`).
+///
+/// `item.category` là `Int` do người dựng tx đặt tự do, nên nếu không chặn ở đây thì bất
+/// kỳ ai chạy được `Collect` cũng ghi thẳng vào dòng sổ Reserve-inflow. Bất biến sổ↔value
+/// vẫn nguyên (tổng khớp), nhưng tính chất kiểm toán mà `migrate.reserve_inflow_bucket_id`
+/// sinh ra để giữ — "đọc kho đã nhận bao nhiêu từ Reserve bằng đúng một phép tra sổ" —
+/// mất sạch. `migrate.ak` trước đây chỉ dặn bằng chú thích rằng đây là quy ước off-chain;
+/// một dòng `expect` đóng được thì đừng để lại lời dặn.
+///
+/// Bucket thưởng uỷ quyền vào cùng danh sách này khi nhánh `StakeRewardIn` ra đời, vì nó
+/// mua đúng một tính chất kiểu ấy ("kho đã thu bao nhiêu thưởng") và mất theo đúng một
+/// đường ấy. Đây là chỗ dễ bỏ sót nhất: vá một bucket rồi coi là xong thì bucket thứ hai
+/// nằm hở mà không cổng nào kêu.
 pub fn all_items_valid(items: List<CollectItem>, accepted: List<AssetKey>) -> Bool {
   list.all(
     items,
-    fn(it) { it.amount >= 0 && item_accepted(it, accepted) },
+    fn(it) {
+      it.amount >= 0 && it.category != migrate.reserve_inflow_bucket_id && it.category != stake_reward.stake_reward_bucket_id && item_accepted(
+        it,
+        accepted,
+      )
+    },
   )
 }
 

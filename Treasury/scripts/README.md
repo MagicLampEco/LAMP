@@ -41,6 +41,10 @@ proposalPolicy, genesisRef, datumCbor, dryRun }`. PlatformKit `03_onboard_platfo
 ## Thứ tự dependency (apply-params)
 
 1. `custody_seed(genesis_ref)` → `seed_policy = mintingPolicyToId(custody_seed)`.
-2. `custody(proposal_policy, seed_policy, ms_per_epoch)` → custody hash/address.
+2. `custody(proposal_policy, seed_policy, ms_per_epoch, lamp_policy, token_name)` → custody
+   hash/address. **5 tham số** — nguồn: chữ ký `validator custody(` trong
+   `Treasury/onchain/validators/custody.ak`. Truyền thiếu tham số KHÔNG báo lỗi, nó ra một script hash
+   khác một cách im lặng ⇒ một địa chỉ custody khác.
 
-`custody` cần `seed_policy` ⇒ apply `custody_seed` TRƯỚC.
+`custody` cần `seed_policy` ⇒ apply `custody_seed` TRƯỚC. `lamp_policy` là policy id của
+`Genesis/onchain/validators/lamp_mint.ak` sau apply-param ⇒ apply `lamp_mint` TRƯỚC `custody`.

@@ -18,6 +18,11 @@
 //   C-FAU-3  VALUE bảo toàn tuyệt đối: pool_out.value == pool_in.value với
 //            tLAMP giảm ĐÚNG claim_amount. Mọi asset khác (ADA, dust) bảo toàn
 //            → chống drain ADA / lấy >100 / lấy asset khác.
+//   C-FAU-4  ĐỊA CHỈ ĐẦY ĐỦ: pool_out.address == pool_in.address. C-FAU-1 đếm
+//            theo script hash = chỉ so PAYMENT credential ⇒ để trống stake
+//            credential của pool_out. Đếm-theo-hash KHÔNG phải ghim-địa-chỉ.
+//   C-FAU-5  pool_out.reference_script == None (không biến pool thành
+//            script-carrier: min-ADA vọt + mọi claim sau gánh thêm phí).
 //   claim_amount > 0 (chống datum bịa claim_amount ≤ 0).
 
 use aiken/collection/list
@@ -50,6 +55,20 @@ validator faucet(tlamp_policy: ByteArray, tlamp_name: ByteArray) {
 
     let pool_in = util.input_at_script(tx.inputs, own_hash)
     let pool_out = util.output_at_script(tx.outputs, own_hash)
+
+    // C-FAU-4: pool_out ở ĐÚNG địa chỉ của pool_in (địa chỉ ĐẦY ĐỦ).
+    // C-FAU-1 đếm theo script hash — đúng cho việc nó làm (chống double-satisfaction
+    // qua stake cred), nhưng đếm-theo-hash chỉ so PAYMENT credential nên nó để trống
+    // đúng phần stake credential của pool_out. Claim permissionless ⇒ bất kỳ ai cũng
+    // lái phần thưởng uỷ quyền trên toàn bộ ADA của pool về khoá stake mình, lặp mỗi
+    // epoch; và địa chỉ bech32 của pool đổi sau MỖI claim nên bên index mất dấu.
+    // Ghim bởi `rt_pool_out_stake_hijack`.
+    expect pool_out.address == pool_in.address
+
+    // C-FAU-5: pool KHÔNG biến thành script-carrier. Đính reference script đẩy
+    // min-ADA của UTxO pool lên hàng chục ADA và bắt mọi claim sau gánh thêm phí
+    // reference-script, vĩnh viễn. Ghim bởi `rt_pool_out_script_carrier`.
+    expect pool_out.reference_script == None
 
     // C-FAU-2: datum bảo toàn (claim_amount không đổi).
     expect InlineDatum(od) = pool_out.datum
@@ -428,6 +447,61 @@ test rt_steal_dust() fail {
     ft_pool_val(10_000_000, 1_000_000_000) |> assets.add(#"dddd", #"f00d", 7)
   let pout = ft_pool_val(10_000_000, 1_000_000_000 - ft_claim)
   let tx = faucet_tx(pin, pout, ft_datum(), ft_datum(), assets.zero, [])
+  faucet.spend(
+    ft_tlamp_policy, ft_tlamp_name, Some(ft_datum()), Claim, util.mk_ref(0), tx,
+  )
+}
+
+// ══════════════════════ ĐÍCH CỦA POOL ══════════════════════
+// C-FAU-1 đếm theo SCRIPT HASH (đúng, chống double-satisfaction qua stake cred —
+// xem `claim_double_satisfaction`). Nhưng đếm-theo-hash KHÔNG phải ghim-địa-chỉ:
+// nó để trống đúng phần stake credential của pool_out. Hai ca dưới giữ nguyên
+// value + datum, chỉ đổi phần mà C-FAU-1 không chạm tới.
+
+const ft_thief_pkh: ByteArray = #"a77ac6"
+
+// RT-F9 (C-FAU-4): pool_out cùng script hash, KHÁC stake credential. Claim là cửa
+// permissionless ⇒ bất kỳ ai cũng lái phần thưởng uỷ quyền trên toàn bộ ADA của
+// pool về khoá stake của mình, lặp mỗi epoch, chi phí một phí tx; và địa chỉ bech32
+// của pool đổi sau MỖI claim nên mọi bên index theo địa chỉ mất dấu pool.
+// Ca "đưa pool về ví" KHÔNG dùng được ở đây (count_outputs_at_script == 0 chặn
+// trước) — chỉ biến thể stake credential phân biệt được hai bên của C-FAU-4.
+test rt_pool_out_stake_hijack() fail {
+  let pool_addr = util.script_address(ft_pool_sh)
+  let pool_in =
+    util.mk_input(util.mk_ref(0),
+      util.mk_output(pool_addr, ft_pool_val(10_000_000, 1_000_000_000), ft_datum()))
+  let pool_out =
+    util.mk_output(
+      util.script_address_staked(ft_pool_sh, ft_thief_pkh),
+      ft_pool_val(10_000_000, 1_000_000_000 - ft_claim),
+      ft_datum(),
+    )
+  let claimer =
+    util.mk_output_no_datum(util.vk_address(#"c1"), assets.from_lovelace(2_000_000))
+  let tx =
+    Transaction { ..placeholder, inputs: [pool_in], outputs: [pool_out, claimer], mint: assets.zero }
+  faucet.spend(
+    ft_tlamp_policy, ft_tlamp_name, Some(ft_datum()), Claim, util.mk_ref(0), tx,
+  )
+}
+
+// RT-F10 (C-FAU-5): pool_out đính reference script → min-ADA của pool nhảy vọt và
+// mọi claim sau gánh thêm phí reference-script, vĩnh viễn. Cửa permissionless ⇒
+// chi phí griefing = một phí tx.
+test rt_pool_out_script_carrier() fail {
+  let pool_addr = util.script_address(ft_pool_sh)
+  let pool_in =
+    util.mk_input(util.mk_ref(0),
+      util.mk_output(pool_addr, ft_pool_val(10_000_000, 1_000_000_000), ft_datum()))
+  let pool_out =
+    util.mk_output_with_ref_script(
+      pool_addr, ft_pool_val(10_000_000, 1_000_000_000 - ft_claim), ft_datum(), #"beef",
+    )
+  let claimer =
+    util.mk_output_no_datum(util.vk_address(#"c1"), assets.from_lovelace(2_000_000))
+  let tx =
+    Transaction { ..placeholder, inputs: [pool_in], outputs: [pool_out, claimer], mint: assets.zero }
   faucet.spend(
     ft_tlamp_policy, ft_tlamp_name, Some(ft_datum()), Claim, util.mk_ref(0), tx,
   )

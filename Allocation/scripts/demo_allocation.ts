@@ -17,6 +17,7 @@ import {
   applyParamsToScript, validatorToScriptHash, credentialToAddress, scriptHashToCredential,
   toUnit, Data, type Network, type Validator, type UTxO,
 } from "@lucid-evolution/lucid";
+import { assertParamCountFromBlueprint } from "../../Genesis/offchain/src/applyGate.js";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
@@ -59,11 +60,17 @@ const CHANNEL_ID = Buffer.from("DEMO").toString("hex"); // "DEMO" hex
 const ENTITLEMENT = 5_000_000n;         // 5 LAMP
 const MIN_ADA = 2_000_000n;
 
-async function rawCompiled(title: string): Promise<string> {
+// ── Cổng đếm khe APPLY-001/002 ───────────────────────────────────────────────
+// `applyParamsToScript` KHÔNG báo lỗi khi thiếu/thừa tham số: nó apply một phần rồi trả về
+// một script hash KHÁC, im lặng — và ở đây script hash chính là ĐỊA CHỈ nhận LAMP, nên sai
+// nghĩa là rót token vào một địa chỉ không validator nào mở được. Số khe đọc TỪ blueprint,
+// không gõ tay. Lý do đầy đủ: `Genesis/offchain/src/applyGate.ts`.
+async function applyChecked(title: string, params: unknown[]): Promise<Validator> {
   const json = JSON.parse(await readFile(resolve(__dirname, "../onchain/plutus.json"), "utf8"));
-  const v = json.validators.find((x: any) => x.title === title);
+  const v = json.validators.find((x: { title: string }) => x.title === title);
   if (!v) throw new Error(`validator ${title} không thấy`);
-  return v.compiledCode;
+  assertParamCountFromBlueprint(json, title, "Allocation", params.length);
+  return { type: "PlutusV3", script: applyParamsToScript(v.compiledCode as string, params as never) };
 }
 
 async function main() {
@@ -81,23 +88,17 @@ async function main() {
   // claim_account(committee, threshold, ms_per_epoch, lamp_policy, lamp_name, drop_value,
   //               budget_nft_policy) — phá vòng: BỎ channel_budget_hash. budget_nft_policy
   //   = placeholder 0×28 (Redeem KHÔNG đọc nó; chỉ Claim dùng để khoá chéo budget beacon).
-  const claimScript: Validator = {
-    type: "PlutusV3",
-    script: applyParamsToScript(await rawCompiled("claim_account.claim_account.spend"), [
-      [pkh], 1n, MS_PER_EPOCH, LAMP_POLICY, LAMP_NAME, DROP_VALUE, ZERO28,
-    ] as never),
-  };
+  const claimScript: Validator = await applyChecked("claim_account.claim_account.spend", [
+    [pkh], 1n, MS_PER_EPOCH, LAMP_POLICY, LAMP_NAME, DROP_VALUE, ZERO28,
+  ]);
   const claimHash = validatorToScriptHash(claimScript);
   const claimAddr = credentialToAddress(NETWORK, scriptHashToCredential(claimHash));
   console.log(`claim_account hash: ${claimHash}`);
 
   // treasury(claim_account_hash, lamp_policy, lamp_name)
-  const treasuryScript: Validator = {
-    type: "PlutusV3",
-    script: applyParamsToScript(await rawCompiled("treasury.treasury.spend"), [
-      claimHash, LAMP_POLICY, LAMP_NAME,
-    ] as never),
-  };
+  const treasuryScript: Validator = await applyChecked("treasury.treasury.spend", [
+    claimHash, LAMP_POLICY, LAMP_NAME,
+  ]);
   const treasuryHash = validatorToScriptHash(treasuryScript);
   const treasuryAddr = credentialToAddress(NETWORK, scriptHashToCredential(treasuryHash));
   console.log(`treasury hash:      ${treasuryHash}\n`);

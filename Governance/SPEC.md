@@ -91,7 +91,10 @@ Gọi `VP_max = ∏_k cap_k^{w_k}`. Một thực thể nắm `H` LAMP muốn t�
 - **Có cap (mới):** mỗi DID chỉ đạt tối đa `VP_max`; phần `H` vượt `cap_4 = 100 triệu` **vô giá trị
   về phiếu**. Muốn dùng hết `H = 12 tỷ` phải chia cho `≥ H/cap_4 ≈ 120` **DID người-thật**, mỗi DID
   còn phải có C1/C2/C3 thật (lịch sử tiêu MAGIC + cam kết + uy tín). Chi phí thâu tóm vì thế **= chi phí đóng
-  góp thật**, và bị chặn sybil bởi DID sinh trắc
+  góp thật** — **với điều kiện** một DID ứng đúng một người thật. Điều kiện đó hôm nay là **điểm
+  treo chưa đóng** (`Governance/VotingPower/CONTRACT.md §3 [IDENT-ONE-PERSON]`): chưa có mệnh đề
+  chứng thực trên chuỗi giới hạn số DID mỗi người, nên cổng cưỡng chế thật nằm ở NĂNG LỰC (VP),
+  không phải ở việc tạo DID
   ([proof of personhood](https://en.wikipedia.org/wiki/Proof_of_personhood);
   [Sybil attack — Douceur 2002](https://www.microsoft.com/en-us/research/publication/the-sybil-attack/)).
 
@@ -143,7 +146,8 @@ Nguồn: `MagicLamp-Docs/docs/Foundation-Bootstrap.md` (lưu ý: bản local hi�
 
 ## Phụ thuộc
 
-- **PhoenixKey DID sinh trắc + zk-proof** "1 DID = 1 người" — backend PhoenixKey, **ngoài repo LAMP**
-  (Claude không sửa). Blocker tiên quyết để Governance chạy thật.
+- **[IDENT-ONE-PERSON]** PhoenixKey DID sinh trắc + zk-proof "1 DID = 1 người" — backend PhoenixKey,
+  **ngoài repo LAMP** (Claude không sửa). Blocker tiên quyết để Governance chạy thật; trạng thái
+  đầy đủ + ràng buộc tạm thời fail-closed: `Governance/VotingPower/CONTRACT.md §3`.
 - C1/C2 đọc từ repo **MAGIC** (MAGIC consumed, ScheduleGen commitment) qua reference input; C4 từ
   **LAMP**. Cross-repo — thiết kế ở [TECH](./VotingPower/Tech-Spec.md).

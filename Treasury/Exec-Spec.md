@@ -238,9 +238,19 @@ Quy đổi LAMP↔USD/ADA cho **định giá app** dùng `MAGIC/oracle` (Score D
 
 ### 7.1 Instance MagicLamp (instance đầu tiên)
 
-Param **validator custody** (hardening v1 LỖ #5): `(proposal_policy, seed_policy, ms_per_epoch)` — bỏ
-`lamp_policy/lamp_name` (đọc từ accepted_assets/datum). Tham số instance ở **datum** (CONTRACT §1):
-`(governance_ref, accepted_assets[], buckets[], cut_bps)`. Param **custody_seed**: chỉ `genesis_ref`.
+Param **validator custody**: `(proposal_policy, seed_policy, ms_per_epoch, lamp_policy, token_name)` —
+**5 tham số, đúng thứ tự này**. Nguồn: chữ ký `validator custody(` trong
+`Treasury/onchain/validators/custody.ak`.
+
+⚠️ `lamp_policy`/`token_name` **KHÔNG bị bỏ**. Nhánh `MigrateIn` phải đo Δ (`C-MIG-6`/`C-MIG-7`/
+`C-MIG-8`) nên phải biết token nào là LAMP; đọc điều đó từ `accepted_assets` trong datum thì **datum do
+người gửi đặt** ⇒ người dựng tx tự khai token cần đo. `accepted_assets` chỉ giữ vai **danh mục được
+nhận** (`C-MIG-9`). Hệ quả: đổi token ⇒ đổi script hash ⇒ đúc lại `custody`; instance cho token khác là
+**instance khác**, đúng mô hình đa thuê bao. Truyền thiếu tham số là lỗi **im lặng** — ra một script
+hash khác, không báo gì.
+
+Tham số instance ở **datum** (CONTRACT §1): `(governance_ref, accepted_assets[], buckets[], cut_bps)`.
+Param **custody_seed**: chỉ `genesis_ref`.
 
 | Param | Giá trị khởi tạo | Ghi chú |
 |---|---|---|
@@ -402,7 +412,7 @@ Vòng audit đối kháng. EXEC chỉ tự sửa nội dung EXEC; các điểm c
     - **`S-MINT-2`** (vá lần 2 F5): `length(policies(tx.mint)) == 1` — tx seed CHỈ mint policy này, KHÔNG gánh mint policy ngoài (least-authority, đối xứng registry_beacon R-MINT-2);
   - sổ **strict-sorted theo (bucket_id, policy, name)** (C-SORT — thay `no_dup_lines` O(n²) bằng quét O(n), bao luôn "không trùng khóa");
   - mọi dòng ∈ `accepted_assets`; `reserved_min_ada ≥ 0`. Burn cấm (`else fail`).
-- `validators/custody.ak`: param đổi `(proposal_policy, seed_policy, ms_per_epoch)` — bỏ `lamp_policy/lamp_name` (đọc từ accepted_assets/datum). Mọi spend (Collect/Release) ép **seed NFT hiện diện** in+out (`quantity_of(value, seed_policy, instance_id)==1`) — NFT authenticity đã mint sẵn nay được DÙNG khi spend (TECH §10 C-NFT-1). Epoch neo chain (TECH C-EPOCH).
+- `validators/custody.ak`: param `(proposal_policy, seed_policy, ms_per_epoch, lamp_policy, token_name)` — **5 tham số**; `lamp_policy`/`token_name` GIỮ LẠI vì `MigrateIn` phải đo Δ và datum do người gửi đặt (xem §7.1). Mọi spend (Collect/Release/MigrateIn) ép **seed NFT hiện diện** in+out (`quantity_of(value, seed_policy, instance_id)==1`) — NFT authenticity đã mint sẵn nay được DÙNG khi spend (TECH §10 C-NFT-1). Epoch neo chain (TECH C-EPOCH).
 - Offchain (`offchain/src/collect.ts`): `ledgerValue` / `seedValue` / `seedValueOk` / `allLinesAccepted` / `seedDatumOk` — gương đủ validator (gồm seed guards mới + strict-sort) để off-chain DỰNG đúng seed + tự kiểm TRƯỚC khi build genesis tx.
 
 > **Phá vòng phụ thuộc seed↔custody (LỖ #5).** Cũ: `custody_seed` param `custody_script_hash` (để chọn output custody) **và** custody cần `seed_policy` (= hash của custody_seed) → mỗi cái cần hash cái kia trước khi compile (vòng). Mới: seed chọn output bằng **self-reference NFT** (output mang chính token vừa mint), không cần biết hash custody; custody side tính `seed_policy` độc lập từ `genesis_ref`. Vòng bị phá, deploy được theo một chiều.
@@ -426,8 +436,8 @@ Vòng audit đối kháng. EXEC chỉ tự sửa nội dung EXEC; các điểm c
 | **#2/E/A,B** seed guards | §16, §7.1, §3 M0 | S-CUT-0/S-LEDGER-1/S-ID-0/S-ACC-1 ép tại `custody_seed`; bảng param ghi ràng buộc; M0 DoD thêm các reject. |
 | **#3** canonical sổ + prune | §16, §3 M0/M3 | strict-sorted thay no_dup O(n²); prune dòng==0; van tạm trần N_max cho consumed_proposals (vá gốc v1.x cần Gov `Spent`). |
 | **#4** epoch neo chain | §3 M2/M3 | C-EPOCH: `epoch_out == get_epoch(tx)`; DoD thêm "epoch không neo → reject". |
-| **#5** custody đòi NFT authenticity | §16, §7.1, §3 M2/M3 | Param custody `(proposal_policy, seed_policy, ms_per_epoch)`; custody_seed bỏ `custody_script_hash`, chọn output bằng self-reference NFT (phá vòng); spend ép seed NFT in+out. |
-| **#6** Rebalance/MigrateIn v1.x | (lộ trình) | Hai nhánh `_ -> fail` ở v1; nạp generators dùng adapter off-chain b-ii qua `Collect` (§4) — không cần MigrateIn. 6 test rebalance_*/migrate_* gỡ khỏi DoD v1 (TECH §11). |
+| **#5** custody đòi NFT authenticity | §16, §7.1, §3 M2/M3 | Param custody `(proposal_policy, seed_policy, ms_per_epoch, lamp_policy, token_name)` — 5 tham số; custody_seed bỏ `custody_script_hash`, chọn output bằng self-reference NFT (phá vòng); spend ép seed NFT in+out. |
+| **#6** Rebalance / MigrateIn | `MigrateIn` = `complete`; `Rebalance` = `not_started` | `MigrateIn` ĐÃ dựng: nhánh `MigrateIn { source }` trong `custody.ak` với `C-MIG-1`…`C-MIG-9` + `C-MIG-ADDR`/`C-MIG-REFSCRIPT`, bài kiểm ở `Treasury/onchain/validators/migrate_test.ak`. Nó là chân Treasury của đường rút Reserve (xem `Treasury/reserve-pull.md`), không phải đường nạp generators. `Rebalance` vẫn `_ -> fail`. |
 
 Bám 4 trục build mode: dài hạn (open SDK đa instance an toàn từ gốc), first-principles (ép base-case tại genesis + dùng NFT đã mint), tối ưu (O(n) sort + 1 lần kiểm seed, không đường nóng), bền vững (đóng drain cut_bps<0 + custody datum giả + replay chéo khác governance_ref).
 

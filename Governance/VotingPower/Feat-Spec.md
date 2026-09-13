@@ -15,18 +15,20 @@ Mọi tham số số học chưa chốt được đánh dấu **"tham số mở 
 ### 0.1 Mục tiêu
 
 MagicLamp cần một cơ chế ra quyết định tập thể mà **token đơn thuần không mua được
-quyền lực**. Cử tri là **con người** (1 PhoenixKey DID = 1 người thật), không phải số dư
-ví. FEAT mô tả toàn bộ vòng đời cử tri và luồng quyết định để một người không-kỹ-thuật
-đọc cũng hiểu hệ hoạt động ra sao.
+quyền lực**. Cử tri là **con người** (thiết kế nhắm tới 1 PhoenixKey DID = 1 người thật —
+điều kiện này hôm nay là điểm treo chưa đóng, `CONTRACT.md §3 [IDENT-ONE-PERSON]`), không
+phải số dư ví. FEAT mô tả toàn bộ vòng đời cử tri và luồng quyết định để một người
+không-kỹ-thuật đọc cũng hiểu hệ hoạt động ra sao.
 
 Nguyên lý nền (từ contract §2, KHÔNG vi phạm):
 
 1. **Quyền tham gia ≠ quyền lực.** Ai có DID đều bỏ phiếu được; trọng số phải kiếm.
 2. **Chi phí thâu tóm = chi phí đóng góp thật.** Không có đường tắt mua quyền lực.
 3. **Token đơn thuần bị vô hiệu hóa** (cap C4 + công thức nhân).
-4. **Sybil — HAI TRỤC khác bản chất:** chi phí-mỗi-DID (cộng dồn theo `N`: DID sinh trắc + C1 +
-   C3) và đòn bẩy-trong-công-thức (KHÔNG phụ thuộc `N`: D8, contract §5). D8 **không thay được**
-   một lớp ở trục đầu. Mức tuyên bố thật của C1/C3: contract §2 nguyên lý 2.
+4. **Sybil — HAI TRỤC khác bản chất:** chi phí-mỗi-DID (cộng dồn theo `N`: DID người-thật + C1 +
+   C3 — trục này CHƯA có hiệu lực hôm nay, `CONTRACT.md §3 [IDENT-ONE-PERSON]`) và đòn bẩy-trong-
+   công-thức (KHÔNG phụ thuộc `N`: D8, contract §5). D8 **không thay được** một lớp ở trục đầu.
+   Mức tuyên bố thật của C1/C3: contract §2 nguyên lý 2.
 5. **Sàn phi tập trung Byzantine — không thực thể/nhóm nhỏ nào chiếm đa số.** Khi kiểm
    phiếu, VP hiệu dụng mỗi DID bị clamp `1/BFT_FLOOR` (mặc định `1/21`); quyết định trọng
    yếu cần **điều kiện kép**: đủ tỉ lệ VP **và** đủ số DID độc lập thuận (§3.6).

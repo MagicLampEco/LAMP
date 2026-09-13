@@ -174,11 +174,15 @@ fn release_tx(
 }
 
 fn run(tx: Transaction, d_in: CustodyDatum, draws: List<ReleaseDraw>) -> Bool {
-  // Interface MỚI: spend(proposal_policy, seed_policy, ms_per_epoch, datum, redeemer, ref, tx).
+  // Interface: spend(proposal_policy, seed_policy, ms_per_epoch, lamp_policy, token_name,
+  //                  datum, redeemer, ref, tx). Release KHÔNG đụng 2 param cuối (chỉ
+  //                  MigrateIn dùng) — truyền giá trị thật cho nhất quán fixture.
   custody.custody.spend(
     prop_policy,
     seed_policy,
     ms_per_epoch,
+    lamp_policy,
+    lamp_name,
     Some(d_in),
     Release { proposal_ref: prop_ref(), draws },
     util.mk_ref(0),
@@ -630,7 +634,7 @@ test release_missing_datum() fail {
       [pay(alice, 300)], 5 * ms_per_epoch, [], assets.zero,
     )
   custody.custody.spend(
-    prop_policy, seed_policy, ms_per_epoch, None,
+    prop_policy, seed_policy, ms_per_epoch, lamp_policy, lamp_name, None,
     Release { proposal_ref: prop_ref(), draws }, util.mk_ref(0), tx,
   )
 }
@@ -1190,3 +1194,68 @@ test release_epoch_unbounded() fail {
   run(tx, datum(ledger_in), draws)
 }
 // ════════════════════════════════════════════════════════════
+
+// ════════════════════════════════════════════════════════════
+// 37. C-REL-ADDR (fail) — [F2] địa chỉ kho GIỮ NGUYÊN, kể cả stake credential.
+//   `count_*_at_script` chỉ so PAYMENT credential ⇒ trước F2 stake credential của kho
+//   hoàn toàn tự do. `!is_vk` KHÔNG chặn (payment credential vẫn là Script). Mọi vế khác
+//   giữ đúng ca dương (proposal Executed, spec khớp, time-lock qua) → cô lập C-REL-ADDR.
+// ════════════════════════════════════════════════════════════
+test release_stake_credential_hijack() fail {
+  let cust_addr = util.script_address(cust_sh)
+  let ledger_in = [LedgerEntry { bucket_id: bucket_ops, policy: lamp_policy, name: lamp_name, amount: 1000 }]
+  let ledger_out = [LedgerEntry { bucket_id: bucket_ops, policy: lamp_policy, name: lamp_name, amount: 700 }]
+  let draws = happy_draws()
+  let spec = release.spend_spec_hash(instance_id, draws)
+  let cust_in =
+    util.mk_input(util.mk_ref(0), util.mk_output(cust_addr, with_nft(lamp_val(5_000_000, 5000)), datum(ledger_in)))
+  let d_out =
+    CustodyDatum { ..datum(ledger_out), ledger: ledger_out, epoch: 5, consumed_proposals: [prop_id] }
+  let cust_out =
+    util.mk_output(
+      util.script_address_staked(cust_sh, #"deadbeef"),
+      with_nft(lamp_val(5_000_000, 4700)),
+      d_out,
+    )
+  let tx =
+    Transaction {
+      ..placeholder,
+      inputs: [cust_in],
+      reference_inputs: [proposal_input(Executed, spec, 4)],
+      outputs: [cust_out, pay(alice, 300)],
+      mint: assets.zero,
+      validity_range: epoch_range(5 * ms_per_epoch),
+    }
+  run(tx, datum(ledger_in), draws)
+}
+
+// ════════════════════════════════════════════════════════════
+// 38. C-REL-REFSCRIPT (fail) — [F3] không đính script tham chiếu vào kho.
+//   Griefing ăn dần dư địa min-ADA. Soi gương Genesis lamp_mint + Reserve reserve_draw.
+// ════════════════════════════════════════════════════════════
+test release_reference_script_attached() fail {
+  let cust_addr = util.script_address(cust_sh)
+  let ledger_in = [LedgerEntry { bucket_id: bucket_ops, policy: lamp_policy, name: lamp_name, amount: 1000 }]
+  let ledger_out = [LedgerEntry { bucket_id: bucket_ops, policy: lamp_policy, name: lamp_name, amount: 700 }]
+  let draws = happy_draws()
+  let spec = release.spend_spec_hash(instance_id, draws)
+  let cust_in =
+    util.mk_input(util.mk_ref(0), util.mk_output(cust_addr, with_nft(lamp_val(5_000_000, 5000)), datum(ledger_in)))
+  let d_out =
+    CustodyDatum { ..datum(ledger_out), ledger: ledger_out, epoch: 5, consumed_proposals: [prop_id] }
+  let cust_out =
+    Output {
+      ..util.mk_output(cust_addr, with_nft(lamp_val(5_000_000, 4700)), d_out),
+      reference_script: Some(#"5c81"),
+    }
+  let tx =
+    Transaction {
+      ..placeholder,
+      inputs: [cust_in],
+      reference_inputs: [proposal_input(Executed, spec, 4)],
+      outputs: [cust_out, pay(alice, 300)],
+      mint: assets.zero,
+      validity_range: epoch_range(5 * ms_per_epoch),
+    }
+  run(tx, datum(ledger_in), draws)
+}

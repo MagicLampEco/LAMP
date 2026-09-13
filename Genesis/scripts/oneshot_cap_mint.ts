@@ -250,10 +250,13 @@ async function main() {
   // `reserve_thread.ak:10-18`). MET nằm ở ví ⇒ chủ ví tự tiêu nó ⇒ KHÔNG validator nào chạy
   // ⇒ rút trọn 9,63 tỷ Reserve trong đúng một giao dịch. Nên MET phải hạ cánh ở reserve_draw.
   //
-  // Script này KHÔNG tự dựng được reserve_draw: 9 tham số của nó gồm reserve_dest,
-  // treasury_auth_policy/name và gate_script_hash (reserve_gate của Treasury,
-  // `Treasury/onchain/validators/reserve_gate.ak:55-62`) — chưa nơi nào trong repo chốt giá
-  // trị. FAIL-CLOSED: đòi RESERVE_DRAW_HASH, thiếu thì DỪNG, KHÔNG rơi ngược về ví.
+  // Script này KHÔNG tự dựng được reserve_draw: 12 tham số của nó gồm kho_nft_policy/name,
+  // treasury_auth_policy/name, gate_script_hash (reserve_gate của Treasury, chữ ký
+  // `validator reserve_gate(`), custody_script_hash và reserve_cap — chưa nơi nào trong repo
+  // chốt giá trị. (Khe `reserve_dest: Address` mà chú thích cũ nhắc tới đã BỊ GỠ ở đợt
+  // "Δ Reserve vào SỔ": kho nay định danh bằng NFT, không bằng địa chỉ.)
+  // Đường dựng đúng là `_reserve_layer2.ts::deriveReserveWiring`, qua `reserveDrawParamList`.
+  // FAIL-CLOSED: đòi RESERVE_DRAW_HASH, thiếu thì DỪNG, KHÔNG rơi ngược về ví.
   const reserveDrawHash = (process.env.RESERVE_DRAW_HASH ?? "").trim().toLowerCase();
   if (!/^[0-9a-f]{56}$/.test(reserveDrawHash)) {
     throw new Error(

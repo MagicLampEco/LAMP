@@ -17,6 +17,12 @@
 // script hash / policy id **KHÁC**, im lặng. Tiền nạp vào địa chỉ script sai thì không ai
 // mở được. TypeScript không bắt được vì tham số đi theo `unknown[]`.
 
+// ⚠ CẦN SỐ KHE ĐỌC TỪ BLUEPRINT (thay vì nhận `declared` gõ tay)? Dùng
+// `assertParamCountFromBlueprint` / `declaredParamCount` ở `Genesis/offchain/src/applyGate.ts`
+// và `blueprintGate` ở `Genesis/offchain/src/blueprintSource.ts` — chúng phân biệt ba trạng
+// thái (khớp · lệch · KHÔNG ĐO ĐƯỢC) và là nơi giữ luật đó cho cả kho. Đừng chép lại xuống
+// đây: hai bản cạnh nhau là cách một bản lỏng hơn bản kia mà không ai giải thích được vì sao.
+
 /**
  * Ném APPLY-001 khi số tham số truyền vào KHÁC số blueprint khai.
  *

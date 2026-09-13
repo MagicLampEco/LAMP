@@ -16,6 +16,7 @@ import {
   Constr, getAddressDetails, toUnit, fromText, Data, scriptFromNative,
   type MintingPolicy, type Validator,
 } from "@lucid-evolution/lucid";
+import { assertParamCountFromBlueprint } from "../../Genesis/offchain/src/applyGate.js";
 import dotenv from "dotenv";
 import { resolve } from "node:path";
 import { readFile, writeFile } from "node:fs/promises";
@@ -65,6 +66,17 @@ const pkh = getAddressDetails(myAddr).paymentCredential!.hash;
 
 const bp = JSON.parse(await readFile(resolve(process.cwd(), "../onchain/plutus.json"), "utf8"));
 const get = (t: string) => bp.validators.find((v: { title: string }) => v.title === t).compiledCode;
+
+// ── Cổng đếm khe APPLY-001/002: mọi lượt apply-param phải đi qua đây ──────────
+// Script này TỰ đọc plutus.json thay vì đi qua `config.ts::applyValidator`, nên nó không
+// hưởng cổng ở đó. `applyParamsToScript` KHÔNG báo lỗi khi thiếu/thừa tham số: nó apply một
+// phần rồi trả về một script hash / policy id KHÁC, im lặng. Số khe đọc TỪ blueprint đang
+// mở ở trên — không gõ tay. Ba trạng thái: khớp im lặng · lệch APPLY-001 · không đo được
+// APPLY-002 (xem `Genesis/offchain/src/applyGate.ts`).
+const applyChecked = (title: string, params: unknown[]): string => {
+  assertParamCountFromBlueprint(bp, title, "Faucet", params.length);
+  return applyParamsToScript(get(title), params as never);
+};
 
 const link = (h: string) => `https://preview.cexplorer.io/tx/${h}`;
 const out: Record<string, unknown> = { network: "Preview", txs: [] as unknown[] };
@@ -119,12 +131,12 @@ const genesis = utxos0.reduce((a, b) => (b.assets.lovelace > a.assets.lovelace ?
 const genesisRef = new Constr(0, [genesis.txHash, BigInt(genesis.outputIndex)]);
 console.log(`[deploy] genesis ref: ${genesis.txHash}#${genesis.outputIndex}`);
 
-const faucetNftPolicy: MintingPolicy = { type: "PlutusV3", script: applyParamsToScript(get("faucet_nft.faucet_nft.mint"), [genesisRef]) };
+const faucetNftPolicy: MintingPolicy = { type: "PlutusV3", script: applyChecked("faucet_nft.faucet_nft.mint", [genesisRef]) };
 const faucetNftPid = mintingPolicyToId(faucetNftPolicy);
 
 const poolParams = [faucetNftPid, didPolicyId, LAMP_POLICY, LAMP_NAME, MS_PER_EPOCH];
-const faucetPoolScript: Validator = { type: "PlutusV3", script: applyParamsToScript(get("faucet_pool.faucet_pool.spend"), poolParams) };
-const faucetAccountScript: Validator = { type: "PlutusV3", script: applyParamsToScript(get("faucet_account.faucet_account.spend"), poolParams) };
+const faucetPoolScript: Validator = { type: "PlutusV3", script: applyChecked("faucet_pool.faucet_pool.spend", poolParams) };
+const faucetAccountScript: Validator = { type: "PlutusV3", script: applyChecked("faucet_account.faucet_account.spend", poolParams) };
 
 const poolAddr = credentialToAddress("Preview", scriptHashToCredential(validatorToScriptHash(faucetPoolScript)));
 const accountAddr = credentialToAddress("Preview", scriptHashToCredential(validatorToScriptHash(faucetAccountScript)));

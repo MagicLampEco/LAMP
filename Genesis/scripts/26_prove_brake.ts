@@ -23,7 +23,14 @@ import {
   supplyStateToCbor, supplyStateFromCbor, supplyStateRedeemerToCbor, mintRouteToCbor,
 } from "../offchain/src/datum.js";
 import { rehydrate, writeState } from "./_canonical_v2.js";
-import { deriveReserveWiring, reserveStateDatum, drawWindow } from "./_reserve_layer2.js";
+import {
+  deriveReserveWiring, reserveStateDatum, drawWindow, resolveDelegationAdmin,
+} from "./_reserve_layer2.js";
+import {
+  custodyDatumToCbor, custodyDatumFromCbor, custodyRedeemerToCbor,
+} from "../../Treasury/offchain/src/datum.js";
+import { planMigrateDatum } from "../../Treasury/offchain/src/migrate.js";
+import { RESERVE_SOURCE_TAG } from "../../Treasury/offchain/src/constants.js";
 import { reserveStateFromCbor, drawRedeemerToCbor } from "../../Reserve/offchain/src/datum.js";
 import { attachGateSpend } from "../../Treasury/offchain/src/reserveGateBuilder.js";
 
@@ -59,6 +66,7 @@ async function main(): Promise<void> {
     authTxHash:    state.reserve.authRef.txHash,
     authIndex:     state.reserve.authRef.outputIndex,
     network:       wiring.network,
+    delegationAdminPkh: resolveDelegationAdmin(wiring.pkh),
   });
 
   const drawU = theOneHolding(await lucid.utxosAt(reserve.drawAddr), wiring.metUnit, "meter NFT tại reserve_draw");
@@ -93,15 +101,32 @@ async function main(): Promise<void> {
       .pay.ToContract(wiring.ssAddr,
         { kind: "inline", value: supplyStateToCbor({ ...s0, reserve_minted: s0.reserve_minted + o.delta }) },
         { lovelace: NFT_ADA, [wiring.threadUnit]: 1n })
-      .pay.ToAddress(reserve.custodyAddr, { lovelace: NFT_ADA, [wiring.lampUnit]: o.delta })
+      // KHO' — Δ vào value VÀ vào sổ. Xem khối giải thích dài ở `25_gated_draw.ts`.
+      //
+      // Vì sao chỗ này quan trọng HƠN ở script kia, dù script kia mới là đường chạy thật:
+      // đây là bộ ca ÂM TÍNH. Dựng sai hình dạng thì mọi ca đều bị từ chối — nhưng bị từ chối
+      // vì `reserve_draw` Luật 9/10 thấy Δ không vào sổ, KHÔNG phải vì cái phanh đang được đo.
+      // Bộ kiểm khi đó ĐỎ đúng chỗ, đúng tên, và **không chứng minh điều gì**. Một ca âm tính
+      // không phân biệt được hai bên đột biến thì nó không kiểm gì cả.
+      .collectFrom([custU], custodyRedeemerToCbor({ kind: "MigrateIn", source: RESERVE_SOURCE_TAG }))
+      .attach.SpendingValidator(rs.custody)
+      .pay.ToContract(custU.address,
+        { kind: "inline", value: custodyDatumToCbor(
+          planMigrateDatum(
+            custodyDatumFromCbor(custU.datum!), wiring.lampPid, wiring.tokenName, o.delta, o.epoch,
+          )) },
+        { ...custU.assets, [wiring.lampUnit]: (custU.assets[wiring.lampUnit] ?? 0n) + o.delta })
       .validFrom(o.loMs).validTo(o.hiMs)
       .addSigner(walletAddr);
 
     if (o.withGate) {
+      // `custodyRole: "input"` — kho đang bị TIÊU ở trên; PlutusV3 cấm một TxIn nằm đồng thời
+      // ở `tx.inputs` và `tx.reference_inputs`.
       txb = attachGateSpend(txb, {
         lucid, authUtxo: authU, gateScript: rs.gate, gateAddress: reserve.gateAddr,
         authPolicyId: reserve.authPid, authName,
-        custodyUtxo: custU, lampPolicyId: wiring.lampPid, tokenName: wiring.tokenName,
+        custodyUtxo: custU, custodyRole: "input",
+        lampPolicyId: wiring.lampPid, tokenName: wiring.tokenName,
         floorOildrop: reserve.floorOildrop,
       });
     }

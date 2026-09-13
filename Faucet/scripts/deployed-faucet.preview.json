@@ -1,7 +1,9 @@
 {
   "network": "Preview",
-  "canonical": true,
-  "note": "CANONICAL lamp_mint tLAMP (registry-gate + A-DEST). Pool nạp từ FOUNDATION redeem, faucet nhả 100/claim. Cùng policy 7a1a7aed với Preprod (native-sig deterministic).",
+  "canonical": false,
+  "note": "tLAMP đúc bởi lamp_mint 12 tham số (validator ĐÚNG là registry-gate + A-DEST, nhưng CẢ BỐN khe marker neo bằng native-sig ví deploy — xem Genesis/scripts/canonical_mint.ts:109-123). Pool nạp từ FOUNDATION redeem, faucet nhả 100/claim. Cùng policy 7a1a7aed với Preprod vì native-sig chỉ phụ thuộc khoá, không phụ thuộc mạng.",
+  "_policyIdSource": "Genesis/offchain/src/lampPolicies.ts — NGUỒN DUY NHẤT. Bản ghi: 'preview-native-sig-12param'. Trạng thái: SUPERSEDED (chờ 'preview-oneshot-14param' đúc lại theo đường registry-gate 14 tham số). Đọc bằng activeLampPolicyId('preview'), KHÔNG chép giá trị dưới đây.",
+  "_remintableMarkerWarning": "MỘT khoá đúc thêm được: marker native-sig KHÔNG one-shot ⇒ đúc SUPPLY NFT lượt hai ⇒ SupplyState thứ hai với dist_minted = 0 ⇒ đúc lại trọn cap; và đúc MET giữ ở ví ⇒ nhánh ReserveDraw thoả mà không validator nào chạy. Nguyên văn: Genesis/scripts/_guards.ts:52-56. Trần 36 tỷ dưới policy này là lời hứa vận hành, không phải ràng buộc của chuỗi.",
   "tlamp": {
     "policyId": "7a1a7aed5ec47acc37b6fa82695c1219bf76895b505b01161367adf9",
     "assetName": "744c414d50",

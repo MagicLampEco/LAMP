@@ -5,9 +5,11 @@
 //   - parkedOf: đọc LAMP từ custody UTxO assets.
 //   - attachGateSpend fail-fast: parked ≥ floor → ném RGATE-001; auth qty ≠ 1 → RGATE-002.
 //
+//   - attachGateSpend vai custody: "reference" → readFrom; "input" → KHÔNG readFrom.
+//
 // Phần dựng TX đầy đủ (.complete()) cần lucid provider + UTxO ví thật → KHÔNG test offline
 // ở đây (TODO: integration test với emulator khi có harness). Logic onchain đã phủ ở
-// reserve_auth.ak / reserve_gate.ak (aiken check: 74 checks xanh).
+// reserve_auth.ak / reserve_gate.ak.
 
 import { describe, it, expect } from "vitest";
 import type { UTxO } from "@lucid-evolution/lucid";
@@ -128,5 +130,66 @@ describe("attachGateSpend — fail-fast ép sàn + auth NFT trước khi build",
     expect(() =>
       attachGateSpend({} as any, gateParams({ authUtxo: authUtxo(2n) })),
     ).toThrow(/RGATE-002/);
+  });
+});
+
+// ── Vai custody: reference HAY input (G-CUST-1 nhận cả hai; PlutusV3 cấm CẢ HAI CÙNG LÚC) ──
+//
+// `reserve_gate.ak` G-CUST-1 tìm custody trong tập GỘP `tx.inputs ∪ tx.reference_inputs`, nên
+// on-chain nhận cả hai vai. Nhưng ledger vẫn ép `BabbageNonDisjointRefInputs` cho PlutusV3: một
+// TxIn KHÔNG thể vừa ở input list vừa ở reference list. Đường rút Reserve BẮT BUỘC tiêu custody
+// (Luật 9+10 của reserve_draw, để `custody` nhánh MigrateIn ghi Δ vào SỔ) ⇒ ở đường đó gate
+// không được `.readFrom` chính UTxO ấy.
+//
+// Stub ghi lại lời gọi — đủ để phân biệt hai nhánh mà không cần provider.
+function stubTxb(): { calls: string[]; txb: any } {
+  const calls: string[] = [];
+  const txb: any = {
+    collectFrom: (...a: unknown[]) => { calls.push(`collectFrom:${(a[0] as UTxO[])[0]!.txHash.slice(0, 4)}`); return txb; },
+    readFrom: (...a: unknown[]) => { calls.push(`readFrom:${(a[0] as UTxO[])[0]!.txHash.slice(0, 4)}`); return txb; },
+    attach: { SpendingValidator: () => { calls.push("attach"); return txb; } },
+    pay: { ToAddressWithData: () => { calls.push("payAuth"); return txb; } },
+  };
+  return { calls, txb };
+}
+
+describe("attachGateSpend — vai custody", () => {
+  const CUST_TX = "ab".repeat(32).slice(0, 4);   // tiền tố txHash của custodyUtxo
+
+  it("mặc định (không truyền custodyRole) = reference → CÓ readFrom custody", () => {
+    const { calls, txb } = stubTxb();
+    attachGateSpend(txb, gateParams());
+    expect(calls).toContain(`readFrom:${CUST_TX}`);
+  });
+
+  it("custodyRole 'reference' → CÓ readFrom custody", () => {
+    const { calls, txb } = stubTxb();
+    attachGateSpend(txb, gateParams({ custodyRole: "reference" }));
+    expect(calls).toContain(`readFrom:${CUST_TX}`);
+  });
+
+  // Vế mua được thứ gì: chứng minh nhánh "input" KHÔNG đưa custody vào reference list. Thiếu vế
+  // này thì đường rút Reserve dựng ra một tx mà ledger từ chối, và không bài nào kêu.
+  it("custodyRole 'input' → KHÔNG readFrom (drawBuilder đang TIÊU chính UTxO đó)", () => {
+    const { calls, txb } = stubTxb();
+    attachGateSpend(txb, gateParams({ custodyRole: "input" }));
+    expect(calls.some((c) => c.startsWith("readFrom"))).toBe(false);
+  });
+
+  it("cả hai vai vẫn spend auth + re-output auth về gate (phần gate không đổi)", () => {
+    for (const role of ["reference", "input"] as const) {
+      const { calls, txb } = stubTxb();
+      attachGateSpend(txb, gateParams({ custodyRole: role }));
+      expect(calls).toContain(`collectFrom:${"cd".repeat(32).slice(0, 4)}`);  // auth UTxO
+      expect(calls).toContain("payAuth");
+    }
+  });
+
+  it("kiểm sàn chạy ở CẢ HAI vai (parked đọc từ value, không phụ thuộc custody bị tiêu)", () => {
+    for (const role of ["reference", "input"] as const) {
+      expect(() =>
+        attachGateSpend(stubTxb().txb, gateParams({ custodyRole: role, custodyUtxo: custodyUtxo(150n), floorOildrop: 100n })),
+      ).toThrow(/RGATE-001/);
+    }
   });
 });

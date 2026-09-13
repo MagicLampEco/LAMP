@@ -127,13 +127,33 @@ validator custody(
   seed_policy        : ByteArray,   // policy id của custody_seed NFT (asset name = instance_id)
   // ── thời gian mạng ──
   ms_per_epoch       : Int,         // Preview/Mainnet khác — như Distribution
+  // ── định danh LAMP: nhánh MigrateIn đo Δ theo cặp này ──
+  lamp_policy        : ByteArray,   // minting policy LAMP/tLAMP (Genesis lamp_mint)
+  token_name         : ByteArray,   // asset name — "tLAMP" testnet / "LAMP" mainnet
 ) { ... }
 ```
 
-> **Hardening v1 — LỖ #5 (custody nay ĐÒI NFT authenticity hiện diện khi spend).** Param validator
-> đổi thành `(proposal_policy, seed_policy, ms_per_epoch)`. `lamp_policy/lamp_name` KHÔNG còn ở param —
-> định danh LAMP (cho bất biến fixed-supply) đọc từ `accepted_assets`/datum theo từng instance, không
-> hard-code vào script hash (một instance token doanh nghiệp khác LAMP vẫn dùng cùng code). `seed_policy`
+**5 tham số, ĐÚNG thứ tự trên.** Nguồn: chữ ký `validator custody(` trong
+`Treasury/onchain/validators/custody.ak`.
+
+> ⚠️ **`lamp_policy`/`token_name` VẪN LÀ THAM SỐ — đừng đọc từ datum.** Một bản spec trước từng ghi
+> param là `(proposal_policy, seed_policy, ms_per_epoch)` và "bỏ `lamp_policy`/`lamp_name`, đọc từ
+> `accepted_assets` trong datum". Mã bác điều đó tại chỗ, và lý do ngược nằm ngay trong chú thích của
+> `validator custody(`: nhánh `MigrateIn` phải **đo Δ** (`C-MIG-6`/`C-MIG-7`/`C-MIG-8`) nên bắt buộc
+> phải biết token nào là LAMP; mà đọc "token nào là LAMP" từ datum thì **datum do người gửi đặt** —
+> tức người dựng tx tự khai token cần đo, và phép đo mất nghĩa. `datum.accepted_assets` vẫn được dùng,
+> nhưng chỉ ở vai **danh mục được nhận** (`C-MIG-9`: cặp `(lamp_policy, token_name)` phải ∈
+> `accepted_assets`), KHÔNG ở vai định danh.
+>
+> Hệ quả phải nói thẳng: `lamp_policy`/`token_name` là tham số apply-time ⇒ **nướng vào script hash**
+> ⇒ đổi token thì phải đúc lại `custody`. Đã tính và chấp nhận. Một instance cho token doanh nghiệp
+> khác LAMP là **một instance khác** (param khác, hash khác) — đó vốn là mô hình đa thuê bao, không
+> phải chi phí thêm.
+>
+> Bản spec 3-tham-số đã sinh ra mã sai: một bộ dựng giao dịch trong kho truyền **2** tham số cho
+> `custody`. Đây là lý do mục này ghi rõ số tham số và trích theo tên chữ ký.
+
+> **Hardening v1 — LỖ #5 (custody nay ĐÒI NFT authenticity hiện diện khi spend).** `seed_policy`
 > là policy id của NFT do `custody_seed` mint (asset name = `instance_id`). **Mọi nhánh spend (Collect,
 > Release) ÉP `quantity_of(cust_in.value, seed_policy, instance_id) == 1` VÀ `quantity_of(cust_out.value,
 > seed_policy, instance_id) == 1`** (C-NFT-1 dưới). NFT authenticity đã mint sẵn ở genesis mà KHÔNG dùng

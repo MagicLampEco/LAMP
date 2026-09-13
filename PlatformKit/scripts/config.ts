@@ -22,6 +22,14 @@ import {
   type LucidEvolution, type Validator,
 } from "@lucid-evolution/lucid";
 import { msPerEpoch, type Network } from "@magiclamp/utils";
+// Cổng đếm khe apply-param — số khe ĐỌC từ blueprint Treasury (PlatformKit dùng chung
+// blueprint đó), không nhận số gõ tay. Lý do đầy đủ:
+// `Genesis/offchain/src/blueprintSource.ts`.
+import { blueprintGate } from "../../Genesis/offchain/src/blueprintSource.js";
+import {
+  CUSTODY_SEED_TITLE, CUSTODY_TITLE, custodyParamList, custodyTokenName, resolveLampPolicy,
+  type ResolvedLampPolicy,
+} from "../../Treasury/scripts/custodyParams.js";
 import { readFile, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
@@ -83,7 +91,27 @@ export async function rawValidator(title: string): Promise<RawValidator> {
   return v;
 }
 
+/**
+ * Cổng đếm khe của blueprint Treasury (PlatformKit apply chung blueprint đó). Đọc tệp LAZY
+ * — lần apply đầu tiên, không lúc import.
+ */
+export const TREASURY_GATE = blueprintGate(TREASURY_PLUTUS_JSON, "Treasury");
+
+// Re-export để script chỉ cần một đường import.
+export {
+  custodyParamList, custodyTokenName, resolveLampPolicy, CUSTODY_TITLE, CUSTODY_SEED_TITLE,
+};
+export type { ResolvedLampPolicy };
+
+/**
+ * Apply params → Validator PlutusV3, QUA cổng đếm khe.
+ *
+ * Trước bản vá này hàm gọi thẳng `applyParamsToScript`, và `03_onboard_platform.ts:133` áp
+ * BA tham số vào `custody` (blueprint khai NĂM) mà không gì ném — ra một custody_hash trông
+ * hợp lệ và sai. Cổng tra theo `compiledCode`; code lạ ⇒ APPLY-002 (fail-closed).
+ */
 export function applyValidator(compiledCode: string, params: unknown[]): Validator {
+  TREASURY_GATE.assertParamCountOfCode(compiledCode, params.length);
   return {
     type: "PlutusV3",
     script: applyParamsToScript(compiledCode, params as never),

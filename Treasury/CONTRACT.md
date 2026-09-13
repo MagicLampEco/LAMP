@@ -18,8 +18,9 @@ OriLife `animal_fee` cắt 7%; MAGIC AppEconomics). Reconcile `Foundation-Bootst
 - Treasury = **instance** param hóa. MagicLamp = một instance; team eco khác = instance khác (open SDK).
 - Tham số instance: `(governance_ref, accepted_assets[], buckets[], protocol_cut_bps)` — nằm ở **datum**
   (DAO chỉnh không đổi script hash). Param **validator** (bất biến đời instance, hardening v1 §10 H5):
-  `(proposal_policy, seed_policy, ms_per_epoch)`. `governance_ref` là **ràng buộc cứng** ở release
-  (§10 H1A), không còn field trang trí.
+  `(proposal_policy, seed_policy, ms_per_epoch, lamp_policy, token_name)` — **5 tham số**, nguồn: chữ
+  ký `validator custody(` trong `Treasury/onchain/validators/custody.ak`. `governance_ref` là **ràng
+  buộc cứng** ở release (§10 H1A), không còn field trang trí.
 - **Custody tách accounting:** value nằm ở 1 (hoặc shard) UTxO custody; **bucket = sổ kế toán trong
   datum**, KHÔNG phải mỗi bucket một UTxO (chống bloat + min-ADA). DAO chỉnh % từng bucket.
 - **Emergency bucket tách physical** (isolation) — không gộp custody với bucket thường.
@@ -146,7 +147,10 @@ testnet → đổi param/script hash KHÔNG cần migrate (lý do làm ngay bây
   PHẢI tính `spend_spec_hash` với ĐÚNG `instance_id` đích (commit target instance). Tính sai ⇒ proposal
   không chi được ở instance nào. Đây là ràng buộc đúng-đắn của Governance, KHÔNG còn lỗ hổng on-chain.
 - **H5 — custody ĐÒI NFT authenticity khi spend.** Param custody → `(proposal_policy, seed_policy,
-  ms_per_epoch)` (bỏ `lamp_policy/lamp_name`). Mọi spend (Collect/Release) ép
+  ms_per_epoch, lamp_policy, token_name)`. `lamp_policy`/`token_name` **VẪN LÀ THAM SỐ** — nhánh
+  `MigrateIn` phải đo Δ nên phải biết token nào là LAMP, mà đọc điều đó từ `accepted_assets` trong
+  datum thì **datum do người gửi đặt**. `accepted_assets` chỉ giữ vai danh mục được nhận (`C-MIG-9`).
+  Mọi spend (Collect/Release/MigrateIn) ép
   `quantity_of(value, seed_policy, instance_id) == 1` cho custody_in **và** custody_out. `custody_seed`
   param → chỉ `genesis_ref` (bỏ `custody_script_hash`), chọn output custody bằng **self-reference NFT**
   → phá vòng phụ thuộc seed↔custody. NFT mint sẵn ở genesis mà không dùng khi spend là sai gốc; mất

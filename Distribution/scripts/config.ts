@@ -27,6 +27,7 @@ import { msPerEpoch, type Network } from "@magiclamp/utils";
 import { assertCommitteeShape } from "../offchain/src/committee.js";
 import { assertParamCount as assertParamCountGate } from "../offchain/src/applyGate.js";
 import { readFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 
@@ -331,7 +332,22 @@ export async function currentEpoch(): Promise<bigint> {
 
 // ── deployed.json (state file giữa các bước) ───────────────────
 
-export const DEPLOYED_PATH = resolve(__dirname, "deployed.json");
+/**
+ * Tệp trạng thái triển khai, TÁCH THEO MẠNG.
+ *
+ * Bản trước là MỘT tệp `deployed.json` dùng chung cho mọi mạng. Cái đắt không phải mất tệp —
+ * triển khai Preprod đè lên trạng thái Preview rồi `loadDeployed()` vẫn trả về một đối tượng
+ * **hợp lệ về hình dạng**, chỉ là của mạng khác. Script chạy tiếp, dựng địa chỉ theo tham số mạng
+ * NÀY rồi đi tìm UTxO trên mạng KIA, và câu báo lỗi sẽ nói về UTxO chứ không nói về tệp. Không
+ * nhánh nào kêu đúng chỗ.
+ *
+ * Tách tệp chữa được triệu chứng. Phép so `state.network` ở `loadDeployed()` mới là thứ chữa gốc:
+ * trường `network` VỐN ĐÃ nằm trong tệp từ đầu, chỉ là không dòng nào đọc nó.
+ */
+export const DEPLOYED_PATH = resolve(__dirname, `deployed.${NETWORK}.json`);
+
+/** Đường tệp dùng chung của bản cũ — chỉ để nhận diện và CHẶN, không bao giờ đọc nội dung. */
+const DEPLOYED_PATH_LEGACY = resolve(__dirname, "deployed.json");
 
 export interface BeaconRef {
   txHash: string;
@@ -353,13 +369,18 @@ export interface DeployedState {
     lampName: string;
     beaconNftPolicy: string;
     treasuryNftPolicy: string;
-    /** claim_account_nft policy id — tham số 8 của claim_account, 6 của treasury. */
+    /**
+     * claim_account_nft policy id — tham số CUỐI của cả hai validator (thứ 8 của
+     * `claim_account`, thứ 6 của `treasury`). Thêm 2026-08-12 (PR #22 điểm 1).
+     * Xem `applyGate.ts` / báo cáo vá APPLY-001: thiếu trường này ở CẢ HAI validator
+     * chính là lỗi mà cổng đó sinh ra để chặn.
+     *
+     * Trường này từng được khai HAI LẦN trong cùng một kiểu, mỗi lần một chú thích, và
+     * `tsc` báo TS2300 — nhưng phép kiểm kiểu của gói này đang đỏ sẵn vì lý do khác
+     * (phụ thuộc chưa cài), nên dòng đỏ đó nằm lẫn và không ai đọc. Gộp làm một.
+     */
     accountNftPolicy: string;
     claimAccountHash: string;
-    // tham số CUỐI (thứ 8 claim_account / thứ 6 treasury), thêm 2026-08-12 (PR #22
-    // điểm 1) — policy id của claim_account_nft. XEM applyGate.ts / báo cáo vá
-    // APPLY-001: thiếu trường này ở CẢ HAI validator là chính lỗi cổng này chặn.
-    accountNftPolicy: string;
   };
   // test-LAMP token (02)
   testLamp?: { policyId: string; assetName: string; minted: string };
@@ -388,18 +409,66 @@ export interface DeployedState {
   wallets?: { aPkh: string; bPkh: string };
 }
 
+/**
+ * Đọc trạng thái triển khai của ĐÚNG mạng đang chạy.
+ *
+ * Phân biệt BA trạng thái thay vì gộp làm một như bản trước — bản trước bắt mọi ngoại lệ rồi báo
+ * "chưa có deployed.json", nên một tệp HỎNG cũng đọc thành "chưa triển khai bao giờ":
+ *   • chưa có tệp        → chạy deploy trước;
+ *   • có tệp mà không đọc/giải mã được → tệp hỏng, KHÔNG phải chưa triển khai;
+ *   • tệp thuộc mạng khác → chặn thẳng, in ra CẢ HAI giá trị.
+ */
 export async function loadDeployed(): Promise<DeployedState> {
+  let raw: string;
   try {
-    return JSON.parse(await readFile(DEPLOYED_PATH, "utf8")) as DeployedState;
+    raw = await readFile(DEPLOYED_PATH, "utf8");
   } catch {
+    if (existsSync(DEPLOYED_PATH_LEGACY)) {
+      throw new Error(
+        `DEPLOYED-NET-002: không có '${DEPLOYED_PATH}', nhưng tệp dùng chung của bản cũ ` +
+          `'${DEPLOYED_PATH_LEGACY}' vẫn còn. KHÔNG tự đọc nó: một tệp dùng chung không tự khai ` +
+          `nó thuộc mạng nào, và đoán sai ở đây là dựng địa chỉ của mạng này rồi đi tìm UTxO ở ` +
+          `mạng khác. Mở tệp đó ra, đọc trường "network", rồi đổi tên thành 'deployed.<mạng>.json'.`,
+      );
+    }
     throw new Error(
-      `chưa có deployed.json (${DEPLOYED_PATH}) — chạy 'npm run deploy' rồi 'npm run genesis' trước.`,
+      `DEPLOYED-NET-000: chưa có '${DEPLOYED_PATH}' — chạy 'npm run deploy' rồi 'npm run genesis' trước.`,
     );
   }
+
+  let state: DeployedState;
+  try {
+    state = JSON.parse(raw) as DeployedState;
+  } catch (e) {
+    throw new Error(
+      `DEPLOYED-NET-001: '${DEPLOYED_PATH}' TỒN TẠI nhưng không giải mã được (${String(e)}). ` +
+        `Đây là tệp HỎNG, không phải "chưa triển khai" — đừng chạy lại deploy đè lên nó trước ` +
+        `khi biết nó đang giữ gì.`,
+    );
+  }
+
+  if (state.network !== NETWORK) {
+    throw new Error(
+      `DEPLOYED-NET-003: '${DEPLOYED_PATH}' ghi network='${state.network}' nhưng đang chạy ` +
+        `NETWORK='${NETWORK}'. Trạng thái này HỢP LỆ VỀ HÌNH DẠNG nhưng thuộc mạng khác — dùng nó ` +
+        `sẽ dựng địa chỉ đúng cú pháp trỏ vào những UTxO không tồn tại ở đây, và lỗi sẽ hiện ra ` +
+        `dưới dạng "không tìm thấy UTxO" chứ không chỉ về tệp này.`,
+    );
+  }
+
+  return state;
 }
 
 import { writeFile } from "node:fs/promises";
 export async function saveDeployed(state: DeployedState): Promise<void> {
+  // Gác CẢ CHIỀU GHI, không chỉ chiều đọc: một tệp ghi sai mạng sẽ đọc lại êm ru ở lượt sau và
+  // lúc đó không còn dữ kiện nào để phát hiện. Chặn ở đây là chặn lúc còn biết mình đang làm gì.
+  if (state.network !== NETWORK) {
+    throw new Error(
+      `DEPLOYED-NET-004: sắp ghi trạng thái có network='${state.network}' trong khi đang chạy ` +
+        `NETWORK='${NETWORK}'. Hai giá trị này lệch nhau là lỗi dựng trạng thái, không phải lỗi tệp.`,
+    );
+  }
   await writeFile(DEPLOYED_PATH, JSON.stringify(state, null, 2) + "\n", "utf8");
 }
 

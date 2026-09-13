@@ -132,8 +132,9 @@ phiên sau. Hai hook đã chừa chỗ:
 
 ### 5.1 Multi-drop per-DID
 DAO tăng `drops_per_epoch` cho DID uy tín / nhu cầu cao (vd Org hoạt động liên tục → nhiều
-drop/epoch, nhỏ giọt nhanh hơn). Gắn Governance VP (C3 uy tín) + DID sinh trắc PhoenixKey
-(chống sybil chia nhiều DID để né cap). Vested-cap `E` vẫn giữ → multi-drop chỉ **rút nhanh
+drop/epoch, nhỏ giọt nhanh hơn). Gắn Governance VP (C3 uy tín) — chống sybil-chia-nhiều-DID-để-né-cap
+phụ thuộc điểm treo `Governance/VotingPower/CONTRACT.md §3 [IDENT-ONE-PERSON]` (chưa đóng hôm nay).
+Vested-cap `E` vẫn giữ → multi-drop chỉ **rút nhanh
 hơn tới `E`**, không tăng tổng nhận. Nguồn VP:
 `LAMP/Governance/VotingPower/CONTRACT.md`.
 

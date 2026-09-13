@@ -19,12 +19,17 @@ import dotenv from "dotenv";
 import { resolve } from "node:path";
 import { readFile, writeFile } from "node:fs/promises";
 
-import { custodyDatumToCbor } from "../../Treasury/offchain/src/datum.js";
+import {
+  custodyDatumToCbor, custodyDatumFromCbor, custodyRedeemerToCbor,
+} from "../../Treasury/offchain/src/datum.js";
+import { RESERVE_SOURCE_TAG } from "../../Treasury/offchain/src/constants.js";
+import { planMigrateDatum } from "../../Treasury/offchain/src/migrate.js";
 import type { CustodyDatum } from "../../Treasury/offchain/src/types.js";
 import { reserveStateToCbor, drawRedeemerToCbor } from "../../Reserve/offchain/src/datum.js";
 import { buildReserveAuthMintTx } from "../../Treasury/offchain/src/reserveAuthBuilder.js";
 import { attachGateSpend } from "../../Treasury/offchain/src/reserveGateBuilder.js";
 import { msPerEpoch, assertMsPerEpochMatchesNetwork } from "../offchain/src/constants.js";
+import { assertParamCount } from "../../Genesis/offchain/src/applyGate.js";
 
 // Secret: MỘT nguồn duy nhất — $AGENT_SECRETS. KHÔNG có đường dự phòng nướng cứng.
 // Đường dự phòng cũ trỏ vào bộ nhà agent ở chỗ cũ — chỗ đó đã dời, nên hằng số ấy là
@@ -71,6 +76,23 @@ const gg = (t: string) => gbp.validators.find((v: { title: string }) => v.title 
 const gt = (t: string) => tbp.validators.find((v: { title: string }) => v.title === t).compiledCode;
 const gr = (t: string) => rbp.validators.find((v: { title: string }) => v.title === t).compiledCode;
 
+// ── Cổng APPLY-001: mọi lượt apply-param phải đi qua đây ───────────────────────
+// `applyParamsToScript` KHÔNG báo lỗi khi thiếu hoặc thừa tham số. Nó apply một phần rồi
+// trả về script hash / policy id KHÁC, im lặng — script chạy êm vào một địa chỉ không ai
+// giữ, và với `lamp_mint` thì đúc LAMP dưới policy id sai (LAMP không burn được,
+// `Treasury/CONTRACT.md §5`). TypeScript không bắt được vì tham số đi theo `unknown[]`.
+// Cổng thuần ở `Genesis/offchain/src/applyGate.ts`; ở đây chỉ nối số khai của blueprint vào.
+const mkApply = (bp: { validators: Array<{ title: string; parameters?: unknown[]; compiledCode: string }> }) =>
+  (title: string, params: unknown[]): string => {
+    const v = bp.validators.find((x) => x.title === title);
+    if (!v) throw new Error(`APPLY-002: blueprint không khai validator "${title}".`);
+    assertParamCount(title, (v.parameters ?? []).length, params.length);
+    return applyParamsToScript(v.compiledCode, params as never[]);
+  };
+const apG = mkApply(gbp);
+const apT = mkApply(tbp);
+const apR = mkApply(rbp);
+
 const link = (h: string) => `https://preview.cexplorer.io/tx/${h}`;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 async function waitVisible(txHash: string, addr: string, tries = 40): Promise<void> {
@@ -103,42 +125,94 @@ console.log(`custody genesis: ${seedCustody.txHash}#${seedCustody.outputIndex}`)
 console.log(`auth genesis: ${seedAuth.txHash}#${seedAuth.outputIndex}`);
 
 // ── Policies & validators ───────────────────────────────────────────────
-const threadPolicy: MintingPolicy = { type: "PlutusV3", script: applyParamsToScript(gg("thread_nft.thread_nft.mint"), [threadRef]) };
+const threadPolicy: MintingPolicy = { type: "PlutusV3", script: apG("thread_nft.thread_nft.mint", [threadRef]) };
 const threadPid = mintingPolicyToId(threadPolicy);
-const reserveThreadPolicy: MintingPolicy = { type: "PlutusV3", script: applyParamsToScript(gr("reserve_thread.reserve_thread.mint"), [reserveRef, RESERVE_THREAD_NAME]) };
+const reserveThreadPolicy: MintingPolicy = { type: "PlutusV3", script: apR("reserve_thread.reserve_thread.mint", [reserveRef, RESERVE_THREAD_NAME]) };
 const reserveThreadPid = mintingPolicyToId(reserveThreadPolicy);
 
-// lamp_mint với meter = reserve_thread (THẬT, không placeholder).
-const tlampPolicy: MintingPolicy = { type: "PlutusV3", script: applyParamsToScript(gg("lamp_mint.lamp_mint.mint"), [threadPid, SUPPLY_NAME, TOKEN_NAME, [pkh], 1n, reserveThreadPid, RESERVE_THREAD_NAME]) };
+// ── THỨ TỰ ĐÚC ĐÃ ĐỔI: custody_seed TRƯỚC lamp_mint TRƯỚC custody ─────────────
+// Bản cũ đi custody → custody_seed (seed nướng `custodyHash`). Vòng đó đã bị PHÁ ở on-chain:
+// `custody_seed` nay chỉ nhận `genesis_ref` và chọn output custody bằng self-reference NFT.
+// Thứ tự mới là thứ tự BẮT BUỘC, không phải sở thích:
+//   custodySeedPid = f(custodyRef)                       — không phụ thuộc lamp
+//   tlampPid       = f(…, custodySeedPid, INSTANCE_ID)   — khe #13-14 A-DEST đường Reserve
+//   custodyHash    = f(…, custodySeedPid, tlampPid, …)   — khe #4-5 để MigrateIn đo Δ
+// Đảo bất kỳ hai bước = một policy-id khác, im lặng, và LAMP không burn được.
+const custodyRefData = new Constr(0, [seedCustody.txHash, BigInt(seedCustody.outputIndex)]);
+const custodySeedPolicy: MintingPolicy = { type: "PlutusV3", script: apT("custody_seed.custody_seed.mint", [custodyRefData]) };
+const custodySeedPid = mintingPolicyToId(custodySeedPolicy);
+const custodyNftUnit = toUnit(custodySeedPid, INSTANCE_ID);
+
+// ┌──────────────────────────────────────────────────────────────────────────────┐
+// │ ⛔ CHƯA NỐI ĐƯỢC — lamp_mint nay khai 14 tham số, lời gọi dưới đây truyền 7. │
+// └──────────────────────────────────────────────────────────────────────────────┘
+// Cổng APPLY-001 (`mkApply` → `assertParamCount`) sẽ NÉM ở đúng dòng này. Đó là hành vi
+// ĐÚNG và có chủ ý: fail-closed. KHÔNG điền giá trị bừa cho đủ số — apply-param nướng vào
+// policy-id, nên một giá trị bịa ra không sinh lỗi mà sinh MỘT TOKEN KHÁC, và LAMP đúc dưới
+// policy-id sai thì không thu hồi được (`Treasury/CONTRACT.md §5`, không burn).
+//
+// Bảy khe bản demo này CÓ dữ kiện:  #1 threadPid · #2 SUPPLY_NAME · #3 TOKEN_NAME ·
+//   #11-12 reserveThreadPid/RESERVE_THREAD_NAME (meter) · #13-14 custodySeedPid/INSTANCE_ID
+//   (A-DEST đường Reserve = (seed_policy, instance_id) của instance custody — chốt ở
+//   `lamp_mint.ak` khối "HAI CẶP KHO, KHÔNG PHẢI MỘT").
+// Năm khe demo KHÔNG có dữ kiện, và đây là chỗ cần quyết định chứ không phải chỗ đoán:
+//   #4 dist_cap · #5 reserve_cap — cap nay là THAM SỐ apply-time, không còn hằng biên dịch.
+//   #6-7 registry_nft_policy/name — WHO-gate v2 đọc bảng Registry on-chain; demo này chưa
+//        đúc Registry NFT nào, và một registry trỏ vào hư không đóng nhánh DistributionVest.
+//   #8 token_tag — nhãn authority tra trong bảng registry.
+//   #9-10 kho_nft_policy/name — kho DISTRIBUTION (`Distribution/.../treasury.ak`), KHÁC kho
+//        Treasury custody ở #13-14. Demo này không dựng kho Distribution.
+// ⇒ Sửa đúng nghĩa là mở rộng màn diễn sang v2/registry-gate, không phải thêm bảy phần tử.
+//
+// ⛔ VÀ KHÔNG CHỈ `lamp_mint` — hai chữ ký nữa đã đổi sau bản demo này (11/09):
+//   · `reserve_auth` 2 → 3 khe (thêm #3 `floor_oildrop`; luật A-FLOOR-1 bác sàn chết).
+//   · `reserve_draw` 11 → 12 khe (thêm #12 `reserve_cap`; Luật 1b ép `total_oildrop == reserve_cap`).
+// Cả hai chỗ gọi bên dưới vẫn dựng mảng BẰNG TAY, nên ngoài việc sai số khe chúng còn đi vòng
+// qua hai cổng dựng danh sách tham số duy nhất có thật:
+//   `reserveAuthParamList`/`reserveGateParamList` (FLOOR-PAIR-001 — ép sàn ở `reserve_auth` #3
+//   khớp sàn ở `reserve_gate` #5) và `reserveDrawParamList` (APPLY-003 + RESERVE-CAP-002).
+// Nối lại phải đi qua các hàm đó, KHÔNG phải thêm một phần tử vào mảng tay — mảng tay là chính
+// thứ làm hai bản sao thứ tự khe trôi khỏi nhau mà không gì báo.
+const tlampPolicy: MintingPolicy = { type: "PlutusV3", script: apG("lamp_mint.lamp_mint.mint", [threadPid, SUPPLY_NAME, TOKEN_NAME, [pkh], 1n, reserveThreadPid, RESERVE_THREAD_NAME]) };
 const tlampPid = mintingPolicyToId(tlampPolicy);
 const lampUnit = toUnit(tlampPid, TOKEN_NAME);
 
-const ssScript: Validator = { type: "PlutusV3", script: applyParamsToScript(gg("supply_state.supply_state.spend"), [tlampPid, threadPid, TOKEN_NAME]) };
+const ssScript: Validator = { type: "PlutusV3", script: apG("supply_state.supply_state.spend", [tlampPid, threadPid, TOKEN_NAME]) };
 const ssAddr = credentialToAddress("Preview", scriptHashToCredential(validatorToScriptHash(ssScript)));
 const threadUnit = toUnit(threadPid, SUPPLY_NAME);
 
-// custody (Treasury) — reserve_dest.
-const custodyScript: Validator = { type: "PlutusV3", script: applyParamsToScript(gt("custody.custody.spend"), [PROPOSAL_POLICY, MS_PER_EPOCH]) };
+// custody (Treasury) — KHO giữ SỔ. Không còn là "reserve_dest" (một địa chỉ): Δ vào đây phải
+// vào VALUE **và** vào DÒNG SỔ, do chính validator này ép ở nhánh MigrateIn.
+const custodyScript: Validator = { type: "PlutusV3", script: apT("custody.custody.spend", [
+  PROPOSAL_POLICY,          // #1 proposal_policy
+  custodySeedPid,           // #2 seed_policy — NFT one-shot định danh instance kho
+  MS_PER_EPOCH,             // #3 ms_per_epoch
+  tlampPid, TOKEN_NAME,     // #4-5 LAMP — MigrateIn đo Δ theo đúng cặp này
+]) };
 const custodyHash = validatorToScriptHash(custodyScript);
 const custodyAddr = credentialToAddress("Preview", scriptHashToCredential(custodyHash));
 
 // reserve_auth (one-shot, ref ghim seedAuth) — auth NFT credential.
-const authPolicy: MintingPolicy = { type: "PlutusV3", script: applyParamsToScript(gt("reserve_auth.reserve_auth.mint"), [authRef, AUTH_NAME]) };
+const authPolicy: MintingPolicy = { type: "PlutusV3", script: apT("reserve_auth.reserve_auth.mint", [authRef, AUTH_NAME]) };
 const authPid = mintingPolicyToId(authPolicy);
 const authUnit = toUnit(authPid, AUTH_NAME);
 
-// custody_seed (one-shot, ref ghim seedCustody).
-const custodyRefData = new Constr(0, [seedCustody.txHash, BigInt(seedCustody.outputIndex)]);
-const custodySeedPolicy: MintingPolicy = { type: "PlutusV3", script: applyParamsToScript(gt("custody_seed.custody_seed.mint"), [custodyRefData, custodyHash]) };
-const custodySeedPid = mintingPolicyToId(custodySeedPolicy);
-const custodyNftUnit = toUnit(custodySeedPid, INSTANCE_ID);
-
-const gateScript: Validator = { type: "PlutusV3", script: applyParamsToScript(gt("reserve_gate.reserve_gate.spend"), [custodySeedPid, INSTANCE_ID, tlampPid, TOKEN_NAME, FLOOR_OILDROP, authPid, AUTH_NAME]) };
+const gateScript: Validator = { type: "PlutusV3", script: apT("reserve_gate.reserve_gate.spend", [custodySeedPid, INSTANCE_ID, tlampPid, TOKEN_NAME, FLOOR_OILDROP, authPid, AUTH_NAME]) };
 const gateHash = validatorToScriptHash(gateScript);
 const gateAddr = credentialToAddress("Preview", scriptHashToCredential(gateHash));
 
-// reserve_draw — giữ ReserveState (param lamp + thread + dest=custody + auth + gate hash).
-const reserveDrawScript: Validator = { type: "PlutusV3", script: applyParamsToScript(gr("reserve_draw.reserve_draw.spend"), [tlampPid, TOKEN_NAME, reserveThreadPid, RESERVE_THREAD_NAME, MS_PER_EPOCH, new Constr(0, [new Constr(1, [custodyHash]), new Constr(1, [])]), authPid, AUTH_NAME, gateHash]) };
+// reserve_draw — giữ ReserveState. Khe #6 cũ là `reserve_dest: Address` (một ĐỊA CHỈ): rót
+// đúng địa chỉ mà sai hình dạng thì Δ nằm trong SÂN kho, ngoài SỔ kho, không tiêu lại được.
+// Ba khe thay nó: kho định danh bằng NFT (#6-7) và bị ghim vào ĐÚNG validator giữ nó (#11).
+const reserveDrawScript: Validator = { type: "PlutusV3", script: apR("reserve_draw.reserve_draw.spend", [
+  tlampPid, TOKEN_NAME,                        // #1-2  LAMP — đo Δ mint
+  reserveThreadPid, RESERVE_THREAD_NAME,       // #3-4  reserve thread NFT (meter)
+  MS_PER_EPOCH,                                // #5    quy đổi epoch
+  custodySeedPid, INSTANCE_ID,                 // #6-7  KHO NFT — Luật 9 ép TIÊU đúng 1 UTxO mang nó
+  authPid, AUTH_NAME,                          // #8-9  auth NFT Treasury-pull
+  gateHash,                                    // #10   auth PHẢI tiêu TỪ gate này
+  custodyHash,                                 // #11   Luật 10 — kho NFT ở ĐÚNG script custody
+]) };
 const reserveDrawAddr = credentialToAddress("Preview", scriptHashToCredential(validatorToScriptHash(reserveDrawScript)));
 const reserveThreadUnit = toUnit(reserveThreadPid, RESERVE_THREAD_NAME);
 
@@ -254,7 +328,25 @@ const epochNow = () => BigInt(Math.floor((Date.now() - 90_000) / Number(MS_PER_E
   const sIn = Data.from(supplyUtxo.datum!) as Constr<Data>;
   const sOut = new Constr(0, [sIn.fields[0], (sIn.fields[1] as bigint) + DRAW_OILDROP, sIn.fields[2], sIn.fields[3]]);
 
-  // reserve_dest = custody addr → delta LAMP về custody (value thô).
+  // ── KHO': Δ vào VALUE **VÀ** vào SỔ, cùng một tx ────────────────────────────
+  // Bản cũ ở đây làm `.pay.ToAddress(custodyAddr, { …, [lampUnit]: DRAW_OILDROP })` — một UTxO
+  // KHÔNG datum tại địa chỉ kho. Validator kho đòi datum ⇒ số LAMP đó nằm trong SÂN kho và
+  // ngoài SỔ kho: không hình dạng giao dịch nào tiêu lại được. Đóng băng ngoài sổ = ĐỐT, chỉ
+  // khác tên. Nay kho bị TIÊU (redeemer MigrateIn) và TÁI TẠO với sổ đã cộng Δ.
+  const custodyDatumIn = custodyDatumFromCbor(custodyUtxo.datum!);
+  const custodyDatumOut = planMigrateDatum(custodyDatumIn, tlampPid, TOKEN_NAME, DRAW_OILDROP, t);
+  // Value ra: phi-lovelace == vào ⊕ Δ (kho NFT giữ NGUYÊN); lovelace chỉ được TĂNG — lượt
+  // migrate ĐẦU thêm asset mới + một dòng datum ⇒ min-UTxO tăng, nên C-MIG-7 nới `>=`.
+  //
+  // ⚠ Ở ĐÂY lovelace giữ NGUYÊN (không bơm thêm). Nếu ledger từ chối output vì min-UTxO thì
+  // đường sửa là SEED kho với dư địa ADA lớn hơn (`RESERVED_MIN_ADA` ở bước T1), KHÔNG phải
+  // hạ Δ: `Collect` mang item ADA chỉ tồn tại nếu ADA nằm trong `accepted_assets` — thứ là
+  // bất biến đời instance, không nhánh nào đổi được. Seed thiếu ADA = không có đường sửa.
+  const custodyValueOut = {
+    ...custodyUtxo.assets,
+    [lampUnit]: (custodyUtxo.assets[lampUnit] ?? 0n) + DRAW_OILDROP,
+  };
+
   let txb = lucid.newTx()
     // reserve_draw: spend ReserveState (mang meter NFT) + recreate.
     .collectFrom([reserveUtxo], drawRedeemerToCbor())
@@ -267,16 +359,23 @@ const epochNow = () => BigInt(Math.floor((Date.now() - 90_000) / Number(MS_PER_E
     .collectFrom([supplyUtxo], Data.to(new Constr(0, [])))
     .attach.SpendingValidator(ssScript)
     .pay.ToContract(ssAddr, { kind: "inline", value: Data.to(sOut) }, { lovelace: supplyUtxo.assets.lovelace, [threadUnit]: 1n })
-    // delta LAMP → reserve_dest (custody addr) value thô.
-    .pay.ToAddress(custodyAddr, { lovelace: RESERVED_MIN_ADA, [lampUnit]: DRAW_OILDROP })
+    // KHO custody: TIÊU (MigrateIn) — Luật 9+10 của reserve_draw ép đúng việc này, và chính
+    // việc bị tiêu mới kích custody để nó ghi Δ vào sổ.
+    .collectFrom([custodyUtxo], custodyRedeemerToCbor({ kind: "MigrateIn", source: RESERVE_SOURCE_TAG }))
+    .attach.SpendingValidator(custodyScript)
+    // KHO': địa chỉ lấy TỪ CHÍNH custodyUtxo (C-MIG-ADDR ép giữ nguyên cả stake credential).
+    .pay.ToContract(custodyUtxo.address, { kind: "inline", value: custodyDatumToCbor(custodyDatumOut) }, custodyValueOut)
     .validFrom(loMs).validTo(hiMs)
     .addSignerKey(pkh);
 
-  // gate spend (parked<floor) + custody reference.
+  // gate spend (parked<floor). custody ở vai INPUT — nó đang bị TIÊU ở trên, và PlutusV3 cấm
+  // một TxIn nằm đồng thời ở tx.inputs và tx.reference_inputs. Để vai mặc định "reference" ở
+  // đây thì tx không dựng nổi.
   txb = attachGateSpend(txb, {
     lucid, authUtxo, gateScript, gateAddress: gateAddr,
     authPolicyId: authPid, authName: AUTH_NAME,
-    custodyUtxo, lampPolicyId: tlampPid, tokenName: TOKEN_NAME, floorOildrop: FLOOR_OILDROP,
+    custodyUtxo, custodyRole: "input",
+    lampPolicyId: tlampPid, tokenName: TOKEN_NAME, floorOildrop: FLOOR_OILDROP,
   });
 
   const tx = await txb.complete({ coinSelection: true });

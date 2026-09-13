@@ -59,6 +59,19 @@ pub fn count_outputs_with_nft(
   list.count(outputs, fn(o) { assets.quantity_of(o.value, policy, name) == 1 })
 }
 
+/// Input đầu tiên mang NFT (policy, name) qty == 1. FAIL nếu không có.
+/// Dùng ở Luật 10 (reserve_draw) để soi ĐỊA CHỈ của UTxO kho — "có mặt" không thay được
+/// "validator nào chạy", nên phải cầm chính Input đó lên chứ không chỉ đếm.
+pub fn input_with_nft(
+  inputs : List<Input>,
+  policy : PolicyId,
+  name   : AssetName,
+) -> Input {
+  expect Some(i) =
+    list.find(inputs, fn(i) { assets.quantity_of(i.output.value, policy, name) == 1 })
+  i
+}
+
 /// Output đầu tiên mang NFT (policy, name). FAIL nếu không có.
 pub fn output_with_nft(
   outputs : List<Output>,

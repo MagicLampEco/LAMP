@@ -19,6 +19,8 @@ import {
   NETWORK, MS_PER_EPOCH,
   makeLucidOrNull, walletPkh,
   resolveProposalPolicy,
+  resolveLampPolicy, custodyTokenName, custodyParamList,
+  CUSTODY_SEED_TITLE, CUSTODY_TITLE, TREASURY_GATE,
   applyCustodySeed, seedPolicyId,
   rawValidator, applyValidator, scriptHash, scriptAddress,
   loadRegistry, saveOnboarded, explorerTx,
@@ -102,6 +104,8 @@ async function main(): Promise<void> {
 
   const registry = await loadRegistry();
   const proposal = resolveProposalPolicy();
+  const lampPolicy = resolveLampPolicy(NETWORK);
+  const tokenName = custodyTokenName(NETWORK);
   const { ref: genesisRef, source: genSource, utxo } = await resolveGenesisRef();
   const createdEpoch = BigInt(process.env.CREATED_EPOCH ?? "0");
 
@@ -111,6 +115,9 @@ async function main(): Promise<void> {
     { name: "registry_authority", value: registry.registryAuthority, placeholder: registry.authoritySource !== "env" },
     { name: "proposal_policy",    value: proposal.policy,            placeholder: proposal.source !== "env" },
     { name: "genesis_ref",        value: `${genesisRef.transaction_id}#${genesisRef.output_index}`, placeholder: genSource === "placeholder" },
+    // lamp_policy là apply-param #4 của custody ⇒ nướng vào custody_hash. Sổ policy chưa có
+    // bản ACTIVE cho mạng này ⇒ placeholder ⇒ KHÔNG được dựng tx thật.
+    { name: "lamp_policy",        value: lampPolicy.policy,          placeholder: lampPolicy.source === "placeholder" },
   ]);
   const dry = !guard.allowLive;          // F14: placeholder → ÉP DRY
 
@@ -120,19 +127,32 @@ async function main(): Promise<void> {
   console.log(`beacon_policy:      ${registry.beaconPolicy}`);
   console.log(`registry address:   ${registry.registryAddress}`);
   console.log(`proposal_policy:    ${proposal.policy}  (${proposal.source})`);
+  console.log(`lamp_policy:        ${lampPolicy.policy}  (${lampPolicy.source}) — ${lampPolicy.reason}`);
+  console.log(`token_name:         ${tokenName}`);
   console.log(`genesis_ref:        ${genesisRef.transaction_id}#${genesisRef.output_index}  (${genSource})`);
   console.log(`created_epoch:      ${createdEpoch}\n`);
   warnLiveBlocked(guard);                // F14: cảnh báo nếu LIVE bị chặn vì placeholder
 
   // ── Apply custody (Treasury) — lấy seed_policy + custody_hash ──
-  const rawSeed = await rawValidator("custody_seed.custody_seed.mint");
+  // `applyCustodySeed` nhận compiledCode trần nên KHÔNG tự gác được — cổng chạy ở đây.
+  const rawSeed = await rawValidator(CUSTODY_SEED_TITLE);
+  TREASURY_GATE.assertParamCount(CUSTODY_SEED_TITLE, 1);
   const custodySeed = applyCustodySeed(rawSeed.compiledCode, genesisRef);
   const seedPolicy = seedPolicyId(custodySeed);
 
-  const rawCustody = await rawValidator("custody.custody.spend");
-  const custodyScript = applyValidator(rawCustody.compiledCode, [
-    proposal.policy, seedPolicy, MS_PER_EPOCH,
-  ]);
+  // custody khai NĂM khe (custody.ak:89-95). Danh sách dựng bằng `custodyParamList` — thứ
+  // tự khe chỉ sống ở `Treasury/scripts/custodyParams.ts`, không viết lại ở đây.
+  const rawCustody = await rawValidator(CUSTODY_TITLE);
+  const custodyScript = applyValidator(
+    rawCustody.compiledCode,
+    custodyParamList({
+      proposalPolicy: proposal.policy,
+      seedPolicy,
+      msPerEpoch: MS_PER_EPOCH,
+      lampPolicy: lampPolicy.policy,
+      tokenName,
+    }),
+  );
   const custodyHash = scriptHash(custodyScript);
   const custodyAddr = scriptAddress(custodyScript);
 

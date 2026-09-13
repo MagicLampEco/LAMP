@@ -148,6 +148,14 @@ Chi tiết + lệnh chạy: `Genesis/canonical-preprod-runbook.md`.
 **Lượt chạy 2026-09-03 trên Preprod — Lớp 1 XANH TOÀN BỘ.**
 `lamp_policy` = `d9c09230079b810ab5ed92e8db4c190d42efc42db6aac028656f7e07`
 
+> ⚠️ **Con số trên KHÔNG phải nguồn.** Nguồn duy nhất: `Genesis/offchain/src/lampPolicies.ts`
+> (bản ghi `preprod-oneshot-12param`).
+> Trạng thái bản này: **SUPERSEDED** — bị thay bởi `preprod-oneshot-14param`, chưa đúc; policy id
+> này sinh từ `lamp_mint` **12 tham số**, mã hôm nay là **14** ⇒ dựng lại ra policy id KHÁC.
+> Đo lại: `cd Genesis/offchain && npx vitest run ../tests/lampPolicies.test.ts`.
+> Lượt chạy dưới đây vẫn là bằng chứng ĐÚNG về **đường ống** (cổng, thứ tự, phủ định one-shot);
+> nó KHÔNG còn là bằng chứng về **định danh token** sẽ dùng.
+
 | bước | việc | trạng thái |
 |---|---|---|
 | 0 | `v2:dry` — wiring khô, không chạm mạng | ✅ 5 marker ra 5 policy-id khác nhau, cổng APPLY-001/002 im |

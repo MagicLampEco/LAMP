@@ -289,9 +289,16 @@ export async function buildClaimTx(params: ClaimParams): Promise<ClaimResult> {
   {
     const t = params.treasury;
     if (!t.utxo.datum) throw new Error("CLAIM-020: treasury.utxo has no inline datum");
-    const treasuryAddress = credentialToAddress(
-      network, scriptHashToCredential(validatorToScriptHash(t.script)),
-    );
+    // Kho: MANG ĐỊA CHỈ THEO TỪ INPUT, KHÔNG dựng lại từ script hash.
+    // `claim_account.ak:105` (C-SOLV-5) ép `tre_in_addr == tre_out_addr` — so CẢ `Address`,
+    // kể cả stake credential; còn `credentialToAddress(network, scriptHashToCredential(...))`
+    // LUÔN trả dạng enterprise (không stake credential). Hai vế chỉ trùng nhau CHỪNG NÀO kho
+    // còn ngụ ở UTxO enterprise — trùng ngẫu nhiên, không phải do ràng buộc nào.
+    // Đường UPDATE: `claim_account` spend CHẠY ⇒ kho ở địa chỉ base thì tx bị chuỗi từ chối.
+    // Đường CREATE: không có account input nên `claim_account` KHÔNG chạy, tx qua được —
+    // nhưng NFT "TRSY" bị âm thầm hạ từ base xuống enterprise, mất uỷ quyền stake mà không
+    // ai đỏ. Mang theo từ input bịt cả hai đường bằng cùng một dòng.
+    const treasuryAddress = t.utxo.address;
     const prevTreasury = decodeTreasuryDatum(Data.from(t.utxo.datum));
 
     // Authenticity: treasury UTxO PHẢI mang đúng 1 NFT "TRSY" (chống treasury giả).

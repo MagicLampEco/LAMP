@@ -14,6 +14,7 @@ import {
   scriptFromNative, mintingPolicyToId, toUnit as u, Lucid, Blockfrost, Data,
   type Validator,
 } from "@lucid-evolution/lucid";
+import { assertParamCountFromBlueprint } from "../../Genesis/offchain/src/applyGate.js";
 import { readFile } from "node:fs/promises";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -31,14 +32,25 @@ const CLAIM_AMOUNT_OILDROP = 100n * 1_000_000n;      // 100 tLAMP/claim
 const POOL_LOVELACE = 5_000_000n;                // min-ADA pool
 const SEED_OILDROP = BigInt(process.env.SEED_OILDROP ?? (9_000n * 1_000_000n).toString()); // mặc định 9000 tLAMP
 
-async function gCode(mod: string, title: string): Promise<string> {
-  const bp = JSON.parse(await readFile(resolve(__dirname, `../../${mod}/onchain/plutus.json`), "utf8"));
+// ── Cổng đếm khe APPLY-001/002 cho blueprint của MODULE KHÁC ─────────────────
+// Script này apply validator của Genesis bằng cách tự đọc `plutus.json` của module đó, nên
+// nó KHÔNG hưởng cổng ở `config.ts::applyValidator` (cổng đó gắn với blueprint Faucet).
+// `applyParamsToScript` không báo lỗi khi thiếu/thừa tham số — nó sinh policy id khác, im
+// lặng. Số khe đọc TỪ blueprint của đúng module, không gõ tay.
+//
+// ⚠ Đường `lamp_mint` bên dưới truyền 12 tham số trong khi mã hôm nay khai 14
+// (`Genesis/onchain/validators/lamp_mint.ak`) ⇒ cổng sẽ NÉM APPLY-001. Đó là hành vi ĐÚNG:
+// policy id 12 tham số dựng lại từ mã hiện tại ra một giá trị KHÁC (xem
+// `Genesis/offchain/src/lampPolicies.ts`, bản ghi `preprod-oneshot-12param`). Đừng nới cổng
+// để "chạy cho xong".
+async function applyFrom(mod: string, title: string, p: unknown[]): Promise<Validator> {
+  const path = resolve(__dirname, `../../${mod}/onchain/plutus.json`);
+  const bp = JSON.parse(await readFile(path, "utf8"));
   const v = (bp.validators as { title: string; compiledCode: string }[]).find((x) => x.title === title);
   if (!v) throw new Error(`${title} not found in ${mod}/plutus.json`);
-  return v.compiledCode;
+  assertParamCountFromBlueprint(bp, title, mod, p.length);
+  return { type: "PlutusV3", script: applyParamsToScript(v.compiledCode, p as never) };
 }
-const applyV = (code: string, p: unknown[]): Validator =>
-  ({ type: "PlutusV3", script: applyParamsToScript(code, p as never) });
 
 async function main(): Promise<void> {
   console.log(`=== Seed CANONICAL faucet pool (${NETWORK}) ===\n`);
@@ -50,7 +62,7 @@ async function main(): Promise<void> {
   const nPid = mintingPolicyToId(native);
 
   // 2. Tái dựng canonical lamp_mint (12-param) → lampPid.
-  const lampMint = applyV(await gCode("Genesis", "lamp_mint.lamp_mint.mint"),
+  const lampMint = await applyFrom("Genesis", "lamp_mint.lamp_mint.mint",
     [nPid, SUPPLY_NAME, TLAMP_NAME, DIST_CAP, RESERVE_CAP, nPid, REG, TOKEN_TAG, nPid, KHO, nPid, MET]);
   const lampPid = validatorToScriptHash(lampMint);
   const lampUnit = u(lampPid, TLAMP_NAME);

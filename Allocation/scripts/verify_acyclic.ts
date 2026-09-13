@@ -26,6 +26,7 @@ import {
   Constr,
   type Validator,
 } from "@lucid-evolution/lucid";
+import { assertParamCountFromBlueprint } from "../../Genesis/offchain/src/applyGate.js";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
@@ -43,11 +44,18 @@ const THRESHOLD = 1n;
 const MS_PER_EPOCH = 86_400_000n;
 const DROP_VALUE = 1_000_000n;
 
-async function rawCompiled(title: string): Promise<string> {
+// ── Cổng đếm khe APPLY-001/002 ───────────────────────────────────────────────
+// `applyParamsToScript` KHÔNG báo lỗi khi thiếu/thừa tham số: nó apply một phần rồi trả về
+// một script hash KHÁC, im lặng — và ở script này hậu quả còn xảo hơn bình thường, vì nó
+// dùng chính việc "apply trót lọt cả 4 bước" làm BẰNG CHỨNG đồ thị là DAG. Apply thiếu vẫn
+// trót lọt ⇒ bằng chứng vẫn in ra "✔" trong khi chẳng chứng minh gì. Số khe đọc TỪ
+// blueprint, không gõ tay. Lý do đầy đủ: `Genesis/offchain/src/applyGate.ts`.
+async function applyChecked(title: string, params: unknown[]): Promise<Validator> {
   const json = JSON.parse(await readFile(resolve(__dirname, "../onchain/plutus.json"), "utf8"));
-  const v = json.validators.find((x: any) => x.title === title);
+  const v = json.validators.find((x: { title: string }) => x.title === title);
   if (!v) throw new Error(`validator ${title} không thấy trong plutus.json`);
-  return v.compiledCode;
+  assertParamCountFromBlueprint(json, title, "Allocation", params.length);
+  return { type: "PlutusV3", script: applyParamsToScript(v.compiledCode as string, params as never) };
 }
 
 /** OutputReference = Constr(0, [tx_id_bytes, output_index_int]) — khớp Aiken. */
@@ -60,58 +68,46 @@ async function main() {
 
   // ── Bước 1 (ĐÁY DAG): budget_nft(genesis_ref, channel_id, lamp_policy, lamp_name) ──
   // KHÔNG cần hash của bất kỳ script nào khác → apply được NGAY (đáy đồ thị).
-  const budgetNftScript: Validator = {
-    type: "PlutusV3",
-    script: applyParamsToScript(await rawCompiled("budget_nft.budget_nft.mint"), [
-      outputRef(GENESIS_TXID, GENESIS_IDX),
-      CHANNEL_ID,
-      LAMP_POLICY,
-      LAMP_NAME,
-    ] as never),
-  };
+  const budgetNftScript: Validator = await applyChecked("budget_nft.budget_nft.mint", [
+    outputRef(GENESIS_TXID, GENESIS_IDX),
+    CHANNEL_ID,
+    LAMP_POLICY,
+    LAMP_NAME,
+  ]);
   // policy id của minting policy = script hash của chính nó.
   const budgetNftPolicy = validatorToScriptHash(budgetNftScript);
   console.log(`[1] budget_nft.policy_id      = ${budgetNftPolicy}`);
 
   // ── Bước 2: claim_account(..., budget_nft_policy) — chỉ dep budget_nft_policy (bước 1) ──
-  const claimScript: Validator = {
-    type: "PlutusV3",
-    script: applyParamsToScript(await rawCompiled("claim_account.claim_account.spend"), [
-      COMMITTEE,
-      THRESHOLD,
-      MS_PER_EPOCH,
-      LAMP_POLICY,
-      LAMP_NAME,
-      DROP_VALUE,
-      budgetNftPolicy,            // ← đầu ra bước 1 (KHÔNG cần channel_budget_hash nữa)
-    ] as never),
-  };
+  const claimScript: Validator = await applyChecked("claim_account.claim_account.spend", [
+    COMMITTEE,
+    THRESHOLD,
+    MS_PER_EPOCH,
+    LAMP_POLICY,
+    LAMP_NAME,
+    DROP_VALUE,
+    budgetNftPolicy,            // ← đầu ra bước 1 (KHÔNG cần channel_budget_hash nữa)
+  ]);
   const claimHash = validatorToScriptHash(claimScript);
   console.log(`[2] claim_account.script_hash = ${claimHash}`);
 
   // ── Bước 3: treasury(claim_account_hash, lamp_policy, lamp_name) — dep claim (bước 2) ──
-  const treasuryScript: Validator = {
-    type: "PlutusV3",
-    script: applyParamsToScript(await rawCompiled("treasury.treasury.spend"), [
-      claimHash,                  // ← đầu ra bước 2
-      LAMP_POLICY,
-      LAMP_NAME,
-    ] as never),
-  };
+  const treasuryScript: Validator = await applyChecked("treasury.treasury.spend", [
+    claimHash,                  // ← đầu ra bước 2
+    LAMP_POLICY,
+    LAMP_NAME,
+  ]);
   const treasuryHash = validatorToScriptHash(treasuryScript);
   console.log(`[3] treasury.script_hash      = ${treasuryHash}`);
 
   // ── Bước 4: channel_budget(committee, threshold, budget_nft_policy, claim_account_hash) ──
   // Dep budget_nft_policy (bước 1) + claim_account_hash (bước 2) — MỘT chiều, KHÔNG vòng lại.
-  const channelBudgetScript: Validator = {
-    type: "PlutusV3",
-    script: applyParamsToScript(await rawCompiled("channel_budget.channel_budget.spend"), [
-      COMMITTEE,
-      THRESHOLD,
-      budgetNftPolicy,            // ← bước 1
-      claimHash,                  // ← bước 2
-    ] as never),
-  };
+  const channelBudgetScript: Validator = await applyChecked("channel_budget.channel_budget.spend", [
+    COMMITTEE,
+    THRESHOLD,
+    budgetNftPolicy,            // ← bước 1
+    claimHash,                  // ← bước 2
+  ]);
   const channelBudgetHash = validatorToScriptHash(channelBudgetScript);
   console.log(`[4] channel_budget.script_hash= ${channelBudgetHash}`);
 

@@ -5,18 +5,46 @@
 > lượt claim đổi cả số dư lẫn UTxO của pool**. Muốn biết trạng thái thật thì **tra theo địa chỉ
 > pool**, đừng đọc số ở đây. Vế UTxO cũng vậy — xem cảnh báo trong `scripts/deployed-faucet.*.json`.
 
-> Cập nhật 2026-07-14. **Faucet nhả tLAMP CANONICAL** (`lamp_mint` registry-gate + A-DEST),
-> KHÔNG còn dùng token one-shot. Lý do: token one-shot khác policy → validator hệ
-> (Distribution / Treasury custody / Governance) từ chối, và KHÔNG test được Reserve-Treasury.
-> Faucet param `(policy, name)` rồi khoá cứng 100/claim ⇒ token tới từ đâu không quan trọng;
-> nạp pool bằng tLAMP canonical (redeem từ kho treasury.ak) là đủ.
+> ⚠️ **Policy id trong tệp này KHÔNG phải nguồn.** Nguồn duy nhất cho "mạng nào đang dùng policy
+> nào, và bản nào đã bị thay": `Genesis/offchain/src/lampPolicies.ts`. Đọc bằng hàm
+> `activeLampPolicyId(network)` — nó NÉM khi mạng chưa có bản `ACTIVE`, thay vì trả một giá trị
+> trông hợp lệ. Đừng chép policy id sang repo khác.
 
-## Canonical tLAMP — CHUNG cả 2 mạng
+> Cập nhật 2026-07-14, soát lại 2026-09-11. **Faucet nhả tLAMP đúc bởi `lamp_mint`**
+> (registry-gate + A-DEST), KHÔNG còn dùng token one-shot *fixed-supply* của bản đầu. Lý do:
+> token one-shot đó khác policy → validator hệ (Distribution / Treasury custody / Governance)
+> từ chối, và KHÔNG test được Reserve-Treasury. Faucet param `(policy, name)` rồi khoá cứng
+> 100/claim ⇒ token tới từ đâu không quan trọng; nạp pool bằng tLAMP đúc từ `lamp_mint`
+> (redeem từ kho `treasury.ak`) là đủ.
+>
+> Chữ **"CANONICAL"** ở bản trước đã gỡ: policy đang nhả là `7a1a7aed…`, nay mang trạng thái
+> **SUPERSEDED** trong sổ `Genesis/offchain/src/lampPolicies.ts`.
+
+## tLAMP `7a1a7aed…` — bản ĐÃ BỊ THAY, đang còn chạy
+
+> ⚠️ **Con số dưới đây KHÔNG phải nguồn.** Nguồn duy nhất: `Genesis/offchain/src/lampPolicies.ts`.
+> Trạng thái bản này: **SUPERSEDED** — bị thay bởi bản ghi `preprod-oneshot-12param`
+> (`d9c09230…`), và cả hai đang chờ bản `preprod-oneshot-14param` / `preview-oneshot-14param`
+> đúc lại theo đường registry-gate 14 tham số. Đo lại:
+> `cd Genesis/offchain && npx vitest run ../tests/lampPolicies.test.ts` — đọc ở **dòng tổng kết
+> `Tests N passed`**, không đọc ở mã thoát của một đường ống. Bài
+> `"mạng chưa có bản ACTIVE nào"` khẳng định `activeLampPolicyId("preprod")` **NÉM**, không rơi
+> ngược về giá trị dưới đây.
+
 - **Policy id:** `7a1a7aed5ec47acc37b6fa82695c1219bf76895b505b01161367adf9`
 - **Unit:** `7a1a7aed5ec47acc37b6fa82695c1219bf76895b505b01161367adf9744c414d50`
 - Asset name: `744c414d50` ("tLAMP"), decimals 6 (1 tLAMP = 10^6 oildrop).
-- Policy GIỐNG NHAU xuyên mạng vì `lamp_mint` neo bởi native-sig ví deploy (deterministic),
-  không phải one-shot genesis-ref. ⇒ Preprod và Preview cùng 1 policy + cùng faucet address.
+- Policy GIỐNG NHAU xuyên mạng vì cả bốn khe marker của `lamp_mint` đều neo bởi native-sig ví
+  deploy (`Genesis/scripts/canonical_mint.ts:109-123`), không phải one-shot genesis-ref.
+  ⇒ Preprod và Preview cùng 1 policy + cùng faucet address.
+- **Cái "chung cả 2 mạng" đó là TRIỆU CHỨNG, không phải tiện lợi.** Native-sig không one-shot:
+  người giữ khoá ví deploy đúc lại SUPPLY NFT lượt hai ⇒ SupplyState thứ hai với `dist_minted`
+  = 0 ⇒ đúc lại trọn cap; và đúc MET giữ ở ví ⇒ nhánh `ReserveDraw` thoả mà không validator nào
+  chạy. Nguyên văn hệ quả: `Genesis/scripts/_guards.ts:52-56`. Validator thì đúng là
+  registry-gate + A-DEST — nhưng câu "registry-gate" một mình che mất đúng vế này.
+- Bản thay thế (`d9c09230…`) đúc marker bằng `oneshot_nft.ak` neo `genesis_ref` `525b80f4…e301#1`;
+  lượt đúc SUPPLY NFT thứ hai **bị chặn** (`Genesis/scripts/canonical-v2-state.json`,
+  khối `oneshotProof`).
 - **Faucet pool address (cả 2 mạng):** `addr_test1wq5kway3ng4amxt47l2ugk7h0cvr7zyfp706uacqqmqcg7sg80hqc`
 - Faucet hash: `296774919a2bdd9975f7d5c45bd77e183f08890f9fae770006c1847a`
 - claim_amount: **100 tLAMP/claim**, permissionless on-chain — pool đang sống là **bản v1**
@@ -66,7 +94,8 @@ chạy thành 180 ngày, `RECLAIM = 1001 epoch` thành ~13,7 năm. Cổng gác
 - Faucet cho dev token canonical để test **downstream**: transfer, claim Distribution, **nạp Treasury custody**, vote.
 - **ReserveDraw** (mint E/1000 từ reserve) là hành vi NHÀ PHÁT HÀNH (cần reserve meter/thread NFT +
   `reserve_gate`), KHÔNG phải hành vi người cầm token → test qua `Faucet/scripts/demo_reserve_e2e.ts`,
-  không qua faucet. Cùng token canonical `7a1a7aed`.
+  không qua faucet. Cùng token `7a1a7aed` — **bản SUPERSEDED**, xem sổ
+  `Genesis/offchain/src/lampPolicies.ts`.
 
 ## DEPRECATED (one-shot fixed-supply — KHÔNG dùng)
 - Preprod one-shot `59113c3e32d4dd3dc9b6c4fbed134fabbd37353f839df80c357f72dd` — bỏ.

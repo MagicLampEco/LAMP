@@ -30,6 +30,9 @@
 //   S-LEDGER-0 sổ CANONICAL: strict-sorted ∧ mọi dòng > 0 (no-dup O(n) + chống dòng
 //             0/âm lọt qua seed — đặc biệt dòng ADA âm bù reserved).
 //   S-ACC-0   mọi dòng sổ thuộc accepted_assets (đa thuê bao nhất quán).
+//   S-LEDGER-RESERVED sổ genesis KHÔNG chứa dòng ở bucket dành riêng nào: nguồn Reserve
+//             (`migrate.reserve_inflow_bucket_id`, chỉ MigrateIn được ghi) và thưởng uỷ
+//             quyền (`stake_reward.stake_reward_bucket_id`, chỉ StakeRewardIn được ghi).
 //   S-CONSUMED-0 consumed_proposals == [] (chống seed pre-mark né replay-guard).
 //
 // BURN — CẤM hoàn toàn (else fail): NFT authenticity sống suốt vòng đời instance.
@@ -41,6 +44,8 @@ use cardano/assets.{PolicyId}
 use cardano/transaction.{InlineDatum, OutputReference, Transaction}
 use magiclamp/treasury/collect
 use magiclamp/treasury/ledger
+use magiclamp/treasury/migrate
+use magiclamp/treasury/stake_reward
 use magiclamp/treasury/types.{AssetKey, CustodyDatum, LedgerEntry}
 use magiclamp/treasury/util
 
@@ -56,6 +61,21 @@ fn all_lines_accepted(ledger_lines: List<LedgerEntry>, accepted: List<AssetKey>)
     ledger_lines,
     fn(e) {
       list.any(accepted, fn(a) { a.policy == e.policy && a.name == e.name })
+    },
+  )
+}
+
+/// S-LEDGER-RESERVED (F4): sổ genesis KHÔNG được chứa dòng ở BẤT KỲ bucket DÀNH RIÊNG nào
+/// — nguồn Reserve (`migrate.reserve_inflow_bucket_id`) hoặc thưởng uỷ quyền
+/// (`stake_reward.stake_reward_bucket_id`). Hai bucket đó chỉ có nghĩa khi mọi số dư trong
+/// chúng đến từ đúng nhánh sinh ra chúng (`MigrateIn` / `StakeRewardIn`); một dòng khai
+/// khống lúc seed làm hỏng đúng tính chất kiểm toán mà hằng ấy sinh ra để giữ, và nó lọt
+/// qua S-SEED-0 dễ dàng vì chỉ cần nạp đủ value tương ứng.
+fn no_reserved_bucket_lines(ledger_lines: List<LedgerEntry>) -> Bool {
+  list.all(
+    ledger_lines,
+    fn(e) {
+      e.bucket_id != migrate.reserve_inflow_bucket_id && e.bucket_id != stake_reward.stake_reward_bucket_id
     },
   )
 }
@@ -131,6 +151,9 @@ validator custody_seed(genesis_ref: OutputReference) {
 
     // ── S-ACC-0: mọi dòng sổ thuộc accepted_assets ─────────────────────────
     expect all_lines_accepted(seed_datum.ledger, seed_datum.accepted_assets)
+
+    // ── S-LEDGER-RESERVED (F4): sổ genesis không chứa bucket dành riêng Reserve ──
+    expect no_reserved_bucket_lines(seed_datum.ledger)
 
     // ── S-CONSUMED-0: genesis CHƯA chi proposal nào (single-use marker rỗng) ─
     expect seed_datum.consumed_proposals == []
