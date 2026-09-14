@@ -26,6 +26,11 @@
 // đòi cả hai: có policy mà không có hạt giống thì không đo được việc hạt giống còn sống hay đã
 // bị chính giao dịch này tiêu mất.
 //
+// Và bước này KHÔNG chỉ kiểm định dạng của policy ấy: cổng RESERVE-KHO-003 dẫn xuất policy TỪ
+// hạt giống rồi so với biến (`_custodySeedRef.ts::reserveKhoParamsFromEnv`). Không có phép so
+// đó thì một policy chép lại từ lượt chạy TRƯỚC vẫn qua mọi cổng — nó đủ 56 ký tự hex — và chỗ
+// lệch chỉ lộ ra sau khi giao dịch không-làm-lại-được này đã lên chuỗi.
+//
 // Chạy:
 //   NETWORK=Preprod CUSTODY_SEED_TX=… CUSTODY_SEED_IDX=… tsx 20_canonical_genesis.ts   # dựng + eval
 //   NETWORK=Preprod CUSTODY_SEED_TX=… CUSTODY_SEED_IDX=… SUBMIT=true tsx 20_canonical_genesis.ts
@@ -38,56 +43,15 @@ import {
   DIST_CAP, RESERVE_CAP, STATE_PATH, writeState, type CanonicalState,
 } from "./_canonical_v2.js";
 import {
-  assertSeedNotCustody, custodySeedRefFromEnv, refKey, type OutputRef,
+  assertSeedNotCustody, custodySeedRefFromEnv, refKey, reserveKhoParamsFromEnv,
+  type OutputRef,
 } from "./_custodySeedRef.js";
+import { INSTANCE_ID, custodySeedPolicyId } from "./_reserve_layer2.js";
 
 /** min-ADA mỗi UTxO mang đúng 1 NFT + datum nhỏ. Dư một chút cho an toàn. */
 const NFT_ADA = 2_000_000n;
 /** Năm output NFT + phí + trả lại. Dưới mức này thì Lucid gãy ở bước cân bằng, khó đọc. */
 const MIN_BALANCE = 15_000_000n;
-
-/**
- * `instance_id` mặc định của instance custody đích = asset name kho NFT (khe #14 `lamp_mint`).
- * Khớp `_reserve_layer2.ts::INSTANCE_ID` (`fromText("lamp-reserve")`), giữ dạng hex ở đây để
- * tệp này không phải import `_reserve_layer2.ts` — chiều import ngược lại đã có.
- */
-const RESERVE_KHO_NAME_MAC_DINH = "6c616d702d72657365727665"; // "lamp-reserve"
-
-/**
- * Cặp NFT kho Treasury custody cho khe #13-14 của `lamp_mint` — FAIL-CLOSED, không mặc định
- * cho `policy`.
- *
- * Vì sao nó là ĐẦU VÀO của bước genesis chứ không phải kết quả: `custody_seed` nướng một hạt
- * giống RIÊNG (luật S-MINT-2 cấm gộp giao dịch đúc custody NFT với policy mint khác), nên
- * `custody_seed` policy id KHÔNG suy ra được từ `genesis_ref` của lượt này. Mà `lamp_mint`
- * nướng nó vào policy-id, nên nó phải biết TRƯỚC giao dịch không-làm-lại-được này.
- *
- * Cách lấy: chọn UTxO hạt giống custody, rồi
- * `deriveCustody(txHash, idx, {...}).custodySeedPid` (`_reserve_layer2.ts`).
- */
-function reserveKhoParams(): { pid: string; name: string } {
-  const pid = (process.env.RESERVE_KHO_NFT_POLICY ?? "").trim().toLowerCase();
-  const name = (process.env.RESERVE_KHO_NFT_NAME ?? RESERVE_KHO_NAME_MAC_DINH).trim().toLowerCase();
-  if (!/^[0-9a-f]{56}$/.test(pid)) {
-    throw new Error(
-      `RESERVE-KHO-001: chưa đặt RESERVE_KHO_NFT_POLICY (nhận "${pid}"). Đây là policy id của ` +
-      `'custody_seed' áp trên HẠT GIỐNG CUSTODY — khe #13 của lamp_mint, đích đường ReserveDraw. ` +
-      `Nó KHÔNG suy ra được từ genesis_ref của lượt này (custody_seed nướng hạt giống riêng, ` +
-      `luật S-MINT-2), nên phải chọn hạt giống custody TRƯỚC bước genesis. Lấy bằng ` +
-      `deriveCustody(txHash, idx, {...}).custodySeedPid trong _reserve_layer2.ts. Bỏ trống là ` +
-      `nướng một cặp kho sai vào policy-id: lamp_mint cho Δ rót vào kho A, reserve_draw đòi tiêu ` +
-      `NFT của kho B, không tầng nào báo, và apply-param không sửa được sau khi gửi.`,
-    );
-  }
-  if (!/^[0-9a-f]+$/.test(name) || name.length % 2 !== 0 || name.length > 64) {
-    throw new Error(
-      `RESERVE-KHO-002: RESERVE_KHO_NFT_NAME = "${name}" — cần hex độ dài chẵn, tối đa 32 byte. ` +
-      `Đây là instance_id của instance custody đích (custody_seed luật S-PARAM-0 ép ` +
-      `datum.instance_id == nft_name).`,
-    );
-  }
-  return { pid, name };
-}
 
 /** `BeaconDatum = Constr(0, [epoch, BeaconKind, drop_value])` (`lampdist/types.ak:30-34`). */
 function beaconDatum(epoch: bigint, dropValue: bigint): string {
@@ -152,7 +116,7 @@ async function main(): Promise<void> {
     const idx = Number(process.env.ADOPT_GENESIS_IDX ?? "0");
     if (!/^[0-9a-f]{64}$/.test(adopt)) throw new Error("ADOPT_GENESIS_TX phải là 64 ký tự hex.");
     assertSeedNotCustody({ txHash: adopt, outputIndex: idx }, custodySeed, "genesis_ref nhặt lại");
-    return adoptExisting(lucid, pkh, adopt, idx);
+    return adoptExisting(lucid, pkh, adopt, idx, custodySeed);
   }
 
   const byAda = (a: UTxO, b: UTxO) => Number((b.assets.lovelace ?? 0n) - (a.assets.lovelace ?? 0n));
@@ -176,7 +140,10 @@ async function main(): Promise<void> {
   console.log();
 
   // ── Tính toàn bộ wiring từ hạt giống ─────────────────────────────────────
-  const reserveKho = reserveKhoParams();
+  const reserveKho = await reserveKhoParamsFromEnv(process.env, custodySeed, {
+    derivePid: custodySeedPolicyId, defaultName: INSTANCE_ID,
+  });
+  console.log(`✓ RESERVE-KHO-003: khe #13 khớp hạt giống ${refKey(custodySeed)} → ${reserveKho.pid}`);
   const { wiring, scripts } = await deriveWiring({
     genesisTxHash: seed.txHash, genesisIndex: seed.outputIndex, pkh, tokenName: TOKEN_NAME,
     reserveKhoPid: reserveKho.pid, reserveKhoName: reserveKho.name,
@@ -302,11 +269,17 @@ function toDropUnit(w: { markers: { beaconPid: string } }): string {
  */
 async function adoptExisting(
   lucid: Awaited<ReturnType<typeof makeLucid>>,
-  pkh: string, txHash: string, idx: number,
+  pkh: string, txHash: string, idx: number, custodySeed: OutputRef,
 ): Promise<void> {
   console.log(`=== NHẶT LẠI state của lượt genesis đã gửi ===`);
   console.log(`genesis_ref: ${txHash}#${idx}\n`);
-  const reserveKho = reserveKhoParams();
+  // Đường nhặt lại cũng đi qua RESERVE-KHO-003, dù genesis đã lên chuỗi. Ở đây nó không còn
+  // phòng ngừa được gì — nó ĐỌC TÊN nguyên nhân. Khe #13 lệch thì mọi unit dẫn xuất đều lệch,
+  // nên bốn phép đếm marker bên dưới sẽ ra "✗" cả bốn mà không nói vì sao; cổng này đứng trước
+  // và nói thẳng là hạt giống custody trong env không phải hạt giống của lượt genesis ấy.
+  const reserveKho = await reserveKhoParamsFromEnv(process.env, custodySeed, {
+    derivePid: custodySeedPolicyId, defaultName: INSTANCE_ID,
+  });
   const { wiring } = await deriveWiring({
     genesisTxHash: txHash, genesisIndex: idx, pkh, tokenName: TOKEN_NAME,
     reserveKhoPid: reserveKho.pid, reserveKhoName: reserveKho.name,

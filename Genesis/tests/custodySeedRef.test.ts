@@ -18,6 +18,7 @@
 import { describe, it, expect } from "vitest";
 import {
   assertCustodyKhoPair, assertSeedNotCustody, custodySeedRefFromEnv, refKey, sameRef,
+  reserveKhoParamsFromEnv, type DeriveSeedPolicyId,
 } from "../scripts/_custodySeedRef.js";
 
 /** policy id 28 byte hợp lệ (56 hex). Hai cái KHÁC NHAU để phân biệt được hai cực. */
@@ -178,5 +179,69 @@ describe("refKey / sameRef — khuôn so UTxO dùng chung", () => {
   it("sameRef phân biệt chỉ số", () => {
     expect(sameRef({ txHash: TX_A, outputIndex: 0 }, { txHash: TX_A, outputIndex: 0 })).toBe(true);
     expect(sameRef({ txHash: TX_A, outputIndex: 0 }, { txHash: TX_A, outputIndex: 1 })).toBe(false);
+  });
+});
+
+// ══ CỔNG RESERVE-KHO-003 — đối chứng khe #13 với hạt giống ═══════════════════
+//
+// VÌ SAO BÀI NÀY TỒN TẠI, VÀ NÓ KHÁC CUSTODY-REF-001 Ở ĐÂU
+// CUSTODY-REF-001 chạy ở bước Lớp 2, so cặp dẫn xuất với cặp ĐÃ NƯỚNG trong state — tức sau
+// khi giao dịch genesis đã lên chuỗi. Cổng dưới đây chạy TẠI bước genesis, so cặp dẫn xuất
+// với BIẾN MÔI TRƯỜNG, trước khi có gì được gửi. Cùng phép đo, hai thời điểm; chỉ cái thứ hai
+// còn quay lui được.
+//
+// Trước bản này, bước genesis chỉ kiểm ĐỊNH DẠNG của `RESERVE_KHO_NFT_POLICY`. Ca
+// "policy hợp lệ nhưng của hạt giống KHÁC" bên dưới là ca DUY NHẤT phân biệt được hai cực đó:
+// nó ĐỎ với cổng đối chứng, và nó XANH với mọi phép kiểm định dạng.
+describe("reserveKhoParamsFromEnv — RESERVE-KHO-001/002/003", () => {
+  const SEED = { txHash: TX_A, outputIndex: 3 };
+  /** Nhà dẫn xuất giả: policy CHỈ phụ thuộc hạt giống, đúng như `custody_seed` thật. */
+  const derivePid: DeriveSeedPolicyId = async (tx, ix) => (tx === TX_A && ix === 3 ? PID_A : PID_B);
+  const opts = { derivePid, defaultName: NAME_A };
+
+  it("khớp: trả về cặp đã chuẩn hoá, không ném", async () => {
+    await expect(
+      reserveKhoParamsFromEnv({ RESERVE_KHO_NFT_POLICY: PID_A.toUpperCase() }, SEED, opts),
+    ).resolves.toEqual({ pid: PID_A, name: NAME_A });
+  });
+
+  it("ĐỎ: policy ĐÚNG ĐỊNH DẠNG nhưng của hạt giống KHÁC — RESERVE-KHO-003", async () => {
+    // PID_B đủ 56 ký tự hex ⇒ qua sạch RESERVE-KHO-001. Chỉ đối chứng mới thấy nó sai.
+    await expect(reserveKhoParamsFromEnv({ RESERVE_KHO_NFT_POLICY: PID_B }, SEED, opts))
+      .rejects.toThrow(/RESERVE-KHO-003/);
+  });
+
+  it("ĐỎ: cùng hạt giống nhưng lệch CHỈ SỐ ⇒ policy khác ⇒ RESERVE-KHO-003", async () => {
+    // Chỉ số là một nửa của `OutputReference`. Lệch một đơn vị là ra một policy id khác, và
+    // không dòng nào kêu nếu chỉ kiểm định dạng.
+    await expect(
+      reserveKhoParamsFromEnv(
+        { RESERVE_KHO_NFT_POLICY: PID_A }, { txHash: TX_A, outputIndex: 4 }, opts,
+      ),
+    ).rejects.toThrow(/RESERVE-KHO-003/);
+  });
+
+  it("câu lỗi RESERVE-KHO-003 nói CẢ HAI vế và đưa giá trị đúng để dán vào", async () => {
+    const loi = await reserveKhoParamsFromEnv({ RESERVE_KHO_NFT_POLICY: PID_B }, SEED, opts)
+      .then(() => "", (e: Error) => e.message);
+    expect(loi).toContain(`${TX_A}#3`);                        // hạt giống nào
+    expect(loi).toContain(PID_B);                              // giá trị đang đặt
+    expect(loi).toContain(`RESERVE_KHO_NFT_POLICY=${PID_A}`);  // giá trị đúng, dán được
+  });
+
+  it("ĐỎ: chưa đặt policy — RESERVE-KHO-001, và KHÔNG chạy phép dẫn xuất", async () => {
+    let goi = 0;
+    const dem: DeriveSeedPolicyId = async (tx, ix) => { goi++; return derivePid(tx, ix); };
+    await expect(reserveKhoParamsFromEnv({}, SEED, { ...opts, derivePid: dem }))
+      .rejects.toThrow(/RESERVE-KHO-001/);
+    expect(goi, "cổng định dạng phải chặn TRƯỚC khi chạy phép dẫn xuất").toBe(0);
+  });
+
+  it("ĐỎ: asset name không phải hex chẵn byte — RESERVE-KHO-002", async () => {
+    await expect(
+      reserveKhoParamsFromEnv(
+        { RESERVE_KHO_NFT_POLICY: PID_A, RESERVE_KHO_NFT_NAME: "abc" }, SEED, opts,
+      ),
+    ).rejects.toThrow(/RESERVE-KHO-002/);
   });
 });

@@ -22,7 +22,7 @@
 // "Unsupported type". Đó là hai bên đột biến mà đầu vào của ca này phân biệt được.
 import { describe, it, expect } from "vitest";
 import { getAddressDetails, fromText } from "@lucid-evolution/lucid";
-import { deriveCustody } from "../scripts/_reserve_layer2.js";
+import { custodySeedPolicyId, deriveCustody } from "../scripts/_reserve_layer2.js";
 
 /** UTxO hạt giống — giá trị bất kỳ, chỉ cần đúng hình dạng: 32 byte + chỉ số. */
 const SEED_TX = "1".repeat(64);
@@ -107,5 +107,29 @@ describe("deriveCustody — lời gọi vắt qua ranh giới hai gói", () => {
   it("ĐỎ: chạy Mainnet với proposal_policy là giá trị chết — POISON-002", async () => {
     await expect(deriveCustody(SEED_TX, SEED_IX, { ...base, network: "Mainnet" }))
       .rejects.toThrow(/POISON-002/);
+  });
+});
+
+// ══ `custodySeedPolicyId` — nguồn của cổng đối chứng RESERVE-KHO-003 ═══════════
+//
+// Cổng RESERVE-KHO-003 ở bước genesis so `RESERVE_KHO_NFT_POLICY` với giá trị hàm này trả về.
+// Cổng ấy chỉ có nghĩa nếu giá trị nó đo TRÙNG giá trị thật sẽ được đúc ở bước Lớp 2 — nên
+// hai bài dưới đây ghim đúng chỗ hai bên có thể trôi khỏi nhau.
+describe("custodySeedPolicyId", () => {
+  // ĐỘT BIẾN NÀY PHÂN BIỆT ĐƯỢC HAI CỰC: hiện thực lại phép dẫn xuất trong `custodySeedPolicyId`
+  // (thay vì gọi chung `custodySeedScript`) ⇒ hai giá trị vẫn đều là hash 28 byte hợp lệ, mọi
+  // bài kiểm định dạng vẫn xanh, và cổng đối chứng vẫn "khớp" — với một giá trị KHÔNG phải cái
+  // được đúc. Chỉ ca này đỏ.
+  it("TRÙNG KHÍT `deriveCustody().custodySeedPid` — cùng một nguồn dẫn xuất", async () => {
+    const w = await deriveCustody(SEED_TX, SEED_IX, base);
+    expect(await custodySeedPolicyId(SEED_TX, SEED_IX)).toBe(w.custodySeedPid);
+  });
+
+  // Hai nửa của `OutputReference`, mỗi nửa một ca. Khe nào không thật sự đi vào hash thì cổng
+  // RESERVE-KHO-003 ở trên "khớp" cho cả những hạt giống nó phải từ chối.
+  it("đổi hash HOẶC đổi chỉ số → policy id ĐỔI", async () => {
+    const goc = await custodySeedPolicyId(SEED_TX, SEED_IX);
+    expect(await custodySeedPolicyId("2".repeat(64), SEED_IX)).not.toBe(goc);
+    expect(await custodySeedPolicyId(SEED_TX, SEED_IX + 1)).not.toBe(goc);
   });
 });

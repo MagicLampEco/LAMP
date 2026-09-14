@@ -317,6 +317,41 @@ export interface DeriveCustodyOptions {
 }
 
 /**
+ * `custody_seed` áp trên MỘT hạt giống — tách riêng vì nó là phần DUY NHẤT của `deriveCustody`
+ * chỉ phụ thuộc hạt giống.
+ *
+ * VÌ SAO TÁCH: khe #13 của `lamp_mint` (`reserve_kho_nft_policy`) là policy id này, và nó phải
+ * biết TRƯỚC bước genesis — nhưng `deriveCustody` đòi `lampPid`, mà `lampPid` chỉ có SAU khi
+ * genesis đã nướng khe #13. Vòng đó là lý do bước genesis trước đây chỉ kiểm ĐỊNH DẠNG của
+ * `RESERVE_KHO_NFT_POLICY` và không có đối chứng nào. Vòng chỉ tồn tại ở `deriveCustody`, không
+ * tồn tại ở phép dẫn xuất: `custody_seed` khai đúng MỘT tham số, và đó là `OutputReference`.
+ *
+ * ⚠ Đây là NGUỒN DUY NHẤT của phép dẫn xuất. `deriveCustody` gọi chính hàm này, nên cổng đối
+ * chứng ở bước genesis và giá trị thật lúc đúc không thể trôi khỏi nhau.
+ */
+export async function custodySeedScript(
+  custodyTxHash: string, custodyIndex: number,
+): Promise<MintingPolicy> {
+  const custodyRef = encodeOutputRef(custodyTxHash, custodyIndex);
+  return { type: "PlutusV3" as const,
+    script: (await applyOf("Treasury", "custody_seed.custody_seed.mint", [custodyRef])).script };
+}
+
+/**
+ * Policy id của `custody_seed` suy từ hạt giống — giá trị PHẢI nằm ở khe #13 của `lamp_mint`.
+ *
+ * Dùng ở `20_canonical_genesis.ts` làm ĐỐI CHỨNG cho `RESERVE_KHO_NFT_POLICY`: một phép kiểm
+ * định dạng trả lời "chuỗi này có 56 ký tự hex không", không trả lời "chuỗi này có phải policy
+ * của hạt giống đang cầm không" — và đúng cái sai nguy hiểm ở đây (chép nhầm policy của một
+ * lượt chạy trước) đi qua phép kiểm định dạng không sứt mẻ gì.
+ */
+export async function custodySeedPolicyId(
+  custodyTxHash: string, custodyIndex: number,
+): Promise<string> {
+  return validatorToScriptHash(await custodySeedScript(custodyTxHash, custodyIndex) as Validator);
+}
+
+/**
  * Phần két, tách riêng vì nó KHÔNG phụ thuộc auth NFT.
  *
  * Tách ra là điều kiện để giao dịch đúc custody chạy TRƯỚC khi chọn hạt giống auth. Thứ tự đó
@@ -351,9 +386,7 @@ export async function deriveCustody(
     );
   }
 
-  const custodyRef = encodeOutputRef(custodyTxHash, custodyIndex);
-  const custodySeed = { type: "PlutusV3" as const,
-    script: (await applyOf("Treasury", "custody_seed.custody_seed.mint", [custodyRef])).script };
+  const custodySeed = await custodySeedScript(custodyTxHash, custodyIndex);
   const custodySeedPid = validatorToScriptHash(custodySeed as Validator);
 
   const custody = await applyOf("Treasury", "custody.custody.spend", [
