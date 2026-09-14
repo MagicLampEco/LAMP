@@ -1,6 +1,7 @@
 {
   "name": "@magiclamp/genesis-sdk",
   "version": "0.1.0",
+  "private": true,
   "type": "module",
   "description": "Genesis off-chain SDK — lazy-mint tLAMP (SupplyState cap-gated)",
   "scripts": {
