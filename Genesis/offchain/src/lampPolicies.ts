@@ -169,25 +169,41 @@ export const LAMP_POLICY_REGISTRY: readonly LampPolicyRecord[] = [
     ],
   },
   {
+    // `id` GIỮ NGUYÊN từ lúc bản ghi này còn PENDING-MINT. `preprod-oneshot-12param`
+    // đang trỏ tới đúng chuỗi này ở `supersededBy` — đổi `id` là gãy con trỏ đó, im lặng.
     id: "preprod-oneshot-14param",
     network: "preprod",
     assetName: "744c414d50",
-    policyId: null,
-    status: "PENDING-MINT",
+    policyId: "8169b76cdaba83cf7c9ae32ebd2bb3a58aa215c7dc0b62c8f5e268dd",
+    status: "ACTIVE",
     mintParamCount: 14,
     anchor: "oneshot-markers",
     anchorNote:
-      "Bản sẽ đúc lại theo đường registry-gate với `lamp_mint` 14 tham số hiện hành " +
-      "(`Genesis/onchain/validators/lamp_mint.ak`). Marker one-shot theo `genesis_ref` mới.",
+      "Đúc theo đường registry-gate với `lamp_mint` 14 tham số " +
+      "(`Genesis/onchain/validators/lamp_mint.ak`). Cả bốn khe marker neo `oneshot_nft.ak` — " +
+      "cổng `MARKER-001` của `20_canonical_genesis.ts` đã xác nhận không khe nào là native-sig " +
+      "trước khi dựng giao dịch. Hạt giống genesis: `a00ab3de…1fee#5`. Khe #13-14 " +
+      "(`reserve_kho_nft_*`) = policy id của `custody_seed` áp trên hạt giống custody " +
+      "`a00ab3de…1fee#4`, tức `b4f9a9ee5373f5201928f0db79e6ba87fff2f06b920cef743d42ce23`.",
     supersededBy: null,
-    recordedAt: "2026-09-11",
+    recordedAt: "2026-09-14",
     evidence: [
-      "Chưa có tx. Bản ghi này tồn tại ĐỂ ĐỌC RA LÀ NÉM — xem `activeLampPolicyId`.",
+      "Tx A (genesis, 5 marker one-shot): 612525047f0912518ca53aae732aa11fc418d38b8b55f84ceb84fc9b81ed36a6",
+      "Tx B (DistributionVest → KHO): 47679b091e4db1d633efbd28f0747dfb8ddc0ddf403128c6f2bafe4532e2da39",
+      "Blockfrost preprod /addresses/addr_test1wqcnq8kkza7kw8409pt8ytywgeat4strz5sxt0g5wdl9a8q0r2v2g/utxos " +
+        "(2026-09-14): kho giữ 10000000000 oildrop dưới đúng policy này.",
+      "Blueprint dựng lại từ mã cùng lượt: `lamp_mint.lamp_mint.mint` khai 14 tham số.",
     ],
     caveats: [
-      "CHƯA ĐÚC ⇒ chưa có policy id. Mọi chỗ cần giá trị phải DỪNG, không được đệm rỗng.",
-      "Sau khi đúc: điền `policyId`, đổi `status` → `ACTIVE`, và ĐỂ NGUYÊN `id`. Đổi `id` làm " +
-        "gãy mọi `supersededBy` đang trỏ tới nó mà không dòng nào kêu.",
+      "Đây là bản ACTIVE DUY NHẤT của preprod. `activeLampPolicyId(\"preprod\")` nay TRẢ VỀ " +
+        "thay vì ném — đường đọc không đổi, chỉ trạng thái đổi.",
+      "Lớp 2 (rút Reserve) CHƯA chạy: `24_reserve_layer2_init.ts` dừng ở `GOV-REF-001` vì " +
+        "`GOVERNANCE_SCRIPT_HASH` chưa có giá trị, và trong kho chưa có validator nào tên " +
+        "`governance`. Nên policy này đã đúc được và rót vào kho được, nhưng nhánh `ReserveDraw` " +
+        "của nó chưa có lượt chạy nào trên chuỗi — đừng đọc 'ACTIVE' thành 'mọi nhánh đã thông'.",
+      "Cổng `POISON-002` trong `deriveCustody` chỉ fail-closed khi `network === \"Mainnet\"`; " +
+        "trên preprod `proposal_policy` giữ chỗ đi lọt CÓ CHỦ Ý. Một lượt preprod xanh KHÔNG " +
+        "chứng minh nhánh chi của két thông.",
     ],
   },
 
