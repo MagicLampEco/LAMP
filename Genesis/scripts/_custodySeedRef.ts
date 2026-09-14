@@ -84,6 +84,83 @@ export function custodySeedRefFromEnv(
   return { txHash: tx, outputIndex: Number(idxRaw) };
 }
 
+/** Nhà dẫn xuất policy id `custody_seed` từ một hạt giống — `_reserve_layer2.ts::custodySeedPolicyId`. */
+export type DeriveSeedPolicyId = (txHash: string, outputIndex: number) => Promise<string>;
+
+/**
+ * Cặp NFT kho Treasury custody cho khe #13-14 của `lamp_mint` — FAIL-CLOSED, không mặc định
+ * cho `policy`, và ĐỐI CHỨNG với hạt giống trước khi cho đi tiếp.
+ *
+ * Vì sao nó là ĐẦU VÀO của bước genesis chứ không phải kết quả: `custody_seed` nướng một hạt
+ * giống RIÊNG (luật S-MINT-2 cấm gộp giao dịch đúc custody NFT với policy mint khác), nên
+ * `custody_seed` policy id KHÔNG suy ra được từ `genesis_ref` của lượt genesis. Mà `lamp_mint`
+ * nướng nó vào policy-id, nên nó phải biết TRƯỚC giao dịch không-làm-lại-được ấy.
+ *
+ * ⚠ `custodySeed` và `derivePid` đều BẮT BUỘC, KHÔNG mặc định — và đó là toàn bộ điểm của bản
+ * này. Bản trước chỉ kiểm ĐỊNH DẠNG của `RESERVE_KHO_NFT_POLICY`: nó trả lời "chuỗi này có 56
+ * ký tự hex không", KHÔNG trả lời "chuỗi này có phải policy của hạt giống đang cầm không". Cách
+ * hỏng thường gặp nhất ở đây — chép lại policy của một lượt chạy TRƯỚC trong khi
+ * `CUSTODY_SEED_TX` đã đổi sang hạt giống mới — đi qua phép kiểm định dạng không sứt mẻ gì, và
+ * hậu quả (`lamp_mint` cho Δ rót vào kho A, `reserve_draw` đòi NFT của kho B) chỉ lộ ra sau khi
+ * giao dịch không-làm-lại-được đã lên chuỗi.
+ *
+ * Đối chứng làm được vì `custody_seed` khai đúng MỘT tham số là `OutputReference` — không vòng
+ * nào cả. Nó chưa từng được viết chỉ vì `deriveCustody` là hàm hỏng cho tới 2026-09-14.
+ *
+ * `derivePid` truyền vào chứ không import: tệp này cố ý không kéo theo `_reserve_layer2.ts`
+ * (tệp đó nạp `config.ts`, đọc env ngay lúc nạp module). Bên gọi thật truyền
+ * `custodySeedPolicyId`; bài kiểm truyền một nhà dẫn xuất dựng tại chỗ.
+ */
+export async function reserveKhoParamsFromEnv(
+  env: Record<string, string | undefined>,
+  custodySeed: OutputRef,
+  o: { derivePid: DeriveSeedPolicyId; defaultName: string },
+): Promise<{ pid: string; name: string }> {
+  const pid = norm(env.RESERVE_KHO_NFT_POLICY ?? "");
+  const name = norm(env.RESERVE_KHO_NFT_NAME ?? o.defaultName);
+  if (!/^[0-9a-f]{56}$/.test(pid)) {
+    throw new Error(
+      `RESERVE-KHO-001: chưa đặt RESERVE_KHO_NFT_POLICY (nhận "${pid}"). Đây là policy id của ` +
+        `'custody_seed' áp trên HẠT GIỐNG CUSTODY — khe #13 của lamp_mint, đích đường ReserveDraw. ` +
+        `Nó KHÔNG suy ra được từ genesis_ref của lượt genesis (custody_seed nướng hạt giống riêng, ` +
+        `luật S-MINT-2), nên phải chọn hạt giống custody TRƯỚC bước genesis. Lấy bằng ` +
+        `custodySeedPolicyId(txHash, idx) trong _reserve_layer2.ts. Bỏ trống là nướng một cặp kho ` +
+        `sai vào policy-id: lamp_mint cho Δ rót vào kho A, reserve_draw đòi tiêu NFT của kho B, ` +
+        `không tầng nào báo, và apply-param không sửa được sau khi gửi.`,
+    );
+  }
+  if (!HEX.test(name) || name.length % 2 !== 0 || name.length > 64) {
+    throw new Error(
+      `RESERVE-KHO-002: RESERVE_KHO_NFT_NAME = "${name}" — cần hex độ dài chẵn, tối đa 32 byte. ` +
+        `Đây là instance_id của instance custody đích (custody_seed luật S-PARAM-0 ép ` +
+        `datum.instance_id == nft_name).`,
+    );
+  }
+
+  // ── CỔNG RESERVE-KHO-003 — ĐỐI CHỨNG, không phải kiểm định dạng ───────────────
+  //
+  // BA TRẠNG THÁI (khớp · lệch · không đọc được) đã xử XONG trước dòng này, nên phép so `!==`
+  // dưới đây không rơi vào bẫy "hai vế cùng rỗng thì bằng nhau": vế env đã qua RESERVE-KHO-001
+  // ở trên, vế dẫn xuất thì `derivePid` hoặc trả một hash thật hoặc ném. Viết ra vì nếu không,
+  // người đọc sau tưởng chỗ này bỏ qua trạng thái mù — trong chính tệp lập luận về nó.
+  const derived = norm(await o.derivePid(custodySeed.txHash, custodySeed.outputIndex));
+  if (derived !== pid) {
+    throw new Error(
+      `RESERVE-KHO-003: RESERVE_KHO_NFT_POLICY KHÔNG phải policy của hạt giống custody đang cầm.\n` +
+        `  hạt giống ${refKey(custodySeed)}  ⇒  ${derived}\n` +
+        `  RESERVE_KHO_NFT_POLICY  =  ${pid}\n` +
+        `Hai giá trị này là HAI MẶT của một sự thật, và phép kiểm định dạng ở trên không so được ` +
+        `chúng: một policy chép lại từ lượt chạy TRƯỚC vẫn đủ 56 ký tự hex. Đi tiếp là nướng khe ` +
+        `#13 của lamp_mint theo một kho KHÁC cái mà bước Lớp 2 sẽ đúc ⇒ lamp_mint cho Δ rót vào ` +
+        `kho A, reserve_draw đòi tiêu NFT của kho B, không tầng nào báo, và apply-param nướng vào ` +
+        `policy-id nên KHÔNG sửa được sau khi gửi.\n` +
+        `Sửa: đặt RESERVE_KHO_NFT_POLICY=${derived} (policy của đúng hạt giống đang cầm), hoặc đổi ` +
+        `CUSTODY_SEED_TX/CUSTODY_SEED_IDX về hạt giống đã sinh ra ${pid}.`,
+    );
+  }
+  return { pid, name };
+}
+
 /**
  * Một cặp NFT kho có ĐỌC ĐƯỢC không. Trả về lý do không đọc được, hoặc `undefined`.
  *
