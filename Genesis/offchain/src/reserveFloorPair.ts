@@ -34,6 +34,8 @@
  * Tách khỏi phép so sánh, đúng khuôn `reserveKhoPair.ts::khongDocDuoc`: phép so bằng chạy SAU,
  * và chỉ chạy trên hai giá trị đã biết là đọc được.
  */
+import { assertNotLookalike } from "./lampPolicies.js";
+
 function khongDocDuoc(v: bigint | undefined, nhan: string): string | undefined {
   if (v === undefined || v === null) return `${nhan} KHÔNG có (undefined)`;
   if (typeof v !== "bigint") {
@@ -171,7 +173,9 @@ export function reserveGateParamList(p: ReserveGateParamValues): unknown[] {
   assertFloorPair(p.reserveAuthFloorOildrop, p.floorOildrop);
   return [
     p.custodyNftPolicy, p.custodyNftName,   // #1-2
-    p.lampPolicy, p.tokenName,              // #3-4
+    // Khe #3 chở policy id của LAMP ⇒ đi qua cổng hàng nhái. Xem chú thích cùng cổng ở
+    // `reserveKhoPair.ts::reserveDrawParamList` — cùng lý do chọn chỗ đặt.
+    assertNotLookalike(p.lampPolicy, "reserve_gate #3 lamp_policy"), p.tokenName,  // #3-4
     p.floorOildrop,                          // #5
     p.authPolicy, p.authName,               // #6-7
   ];

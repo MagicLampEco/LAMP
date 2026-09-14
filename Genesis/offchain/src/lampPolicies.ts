@@ -332,6 +332,55 @@ export function lookalikePolicy(policyId: string): LookalikePolicyRecord | null 
   return NON_LAMP_LOOKALIKE_POLICIES.find((r) => r.policyId === needle) ?? null;
 }
 
+/**
+ * CỔNG LOOKALIKE-001/002 — chặn một policy id trước khi nó đi vào apply-param.
+ *
+ * VÌ SAO CẦN MỘT HÀM NÉM KHI ĐÃ CÓ `lookalikePolicy`
+ *   `lookalikePolicy` trả `record | null`. Một hàm trả `null` là một cuốn TỪ ĐIỂN, không phải
+ *   một cái cổng: đường mặc định của nó là đường ĐI TIẾP, và người gọi phải nhớ tự kiểm. Đo
+ *   được ở kho này trước bản vá: hàm ấy có 0 chỗ gọi trong mã sản xuất — chỗ duy nhất nhắc tới
+ *   nó là định nghĩa của chính nó và bài kiểm của chính nó. Một cổng không ai gọi thì nó không
+ *   phải cổng lỏng, nó là cổng VẮNG MẶT.
+ *
+ *   Và cổng vắng mặt là lớp lỗi mà phép đo đảo KHÔNG bắt được: đảo một chốt không tồn tại thì
+ *   không sinh ra tín hiệu nào. Phép đo đảo phát hiện *cổng đo sai đại lượng*; nó không phát
+ *   hiện *chỗ lẽ ra phải có cổng*. Hai việc khác nhau.
+ *
+ * BA TRẠNG THÁI, KHÔNG PHẢI HAI
+ *   nhận được · là hàng nhái · KHÔNG ĐỌC ĐƯỢC. Trạng thái thứ ba ném TRƯỚC, vì nó là trạng thái
+ *   mù: một chuỗi rỗng không có trong sổ hàng nhái, nên một cổng chỉ tra sổ sẽ cho nó đi qua và
+ *   apply-param vẫn ra bytes, vẫn ra script hash, vẫn deploy êm — địa chỉ sai vĩnh viễn.
+ *
+ * @param slot tên khe đang điền, để câu lỗi nói được hỏng ở đâu (`"reserve_draw #1 lamp_policy"`).
+ */
+export function assertNotLookalike(policyId: string, slot: string): string {
+  const v = (policyId ?? "").trim().toLowerCase();
+  if (!/^[0-9a-f]{56}$/.test(v)) {
+    throw new Error(
+      `${LAMP_POLICY_ERRORS.POLICY_ID_MALFORMED}: khe ${slot} nhận "${policyId}" — cần policy id ` +
+        `28 byte (56 ký tự hex). Đây là trạng thái MÙ, không phải trạng thái "chưa có trong sổ ` +
+        `hàng nhái": một chuỗi rỗng cũng không có trong sổ đó. Giá trị này sắp đi vào apply-param, ` +
+        `mà apply-param nhận rác vẫn ra bytes, vẫn ra script hash, vẫn deploy êm — và địa chỉ sai ` +
+        `thì sai vĩnh viễn, không lỗi nào được ném ở bất cứ tầng nào sau đây.`,
+    );
+  }
+  const nhai = lookalikePolicy(v);
+  if (nhai) {
+    throw new Error(
+      `LOOKALIKE-001: khe ${slot} nhận một policy ĐÃ BIẾT là hàng nhái, không phải LAMP.\n` +
+        `  policy id : ${v}\n` +
+        `  mạng      : ${nhai.network}\n` +
+        `  asset name: ${nhai.assetName}\n` +
+        `  thực chất : ${nhai.whatItActuallyIs.split(".")[0]}.\n` +
+        `Asset name trùng KHÔNG phải bằng chứng: policy id là điều kiện ĐỦ, còn asset name chỉ ` +
+        `phân biệt các dòng BÊN TRONG một policy đã được xác thực. Tra sổ đầy đủ ở ` +
+        `NON_LAMP_LOOKALIKE_POLICIES. Lấy policy đúng bằng activeLampPolicyId(<mạng>) — hàm đó ` +
+        `NÉM khi mạng chưa có bản ACTIVE, và đó là câu trả lời đúng, không phải một giá trị đoán.`,
+    );
+  }
+  return v;
+}
+
 /** Mã lỗi của sổ policy. Tên gợi nhớ, không ký hiệu trơ. */
 export const LAMP_POLICY_ERRORS = {
   MISSING_RECORD: "TLAMP-SRC-001-MISSING-RECORD",

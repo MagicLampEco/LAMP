@@ -19,6 +19,7 @@ import {
   lampPolicyRecord,
   readPolicyIdOf,
   lookalikePolicy,
+  assertNotLookalike,
   type LampPolicyRecord,
 } from "../offchain/src/lampPolicies.js";
 
@@ -270,5 +271,70 @@ describe("token giả dạng mang tên LAMP/tLAMP", () => {
     // (`mintParamCount`, `anchor`) giả định token do `lamp_mint` sinh ra.
     const ids = LAMP_POLICY_REGISTRY.map((r) => r.policyId);
     expect(ids).not.toContain(UNCAPPED_DEMO);
+  });
+});
+
+// ══ `assertNotLookalike` — CỔNG, khác cuốn TỪ ĐIỂN ở ngay trên ════════════════
+//
+// Khối `lookalikePolicy` ở trên kiểm một phép TRA: hỏi sổ, trả bản ghi hoặc `null`. Khối này
+// kiểm một phép GÁC, và hai thứ đó khác nhau ở ĐƯỜNG MẶC ĐỊNH: đường mặc định của phép tra là
+// đi tiếp, đường mặc định của phép gác là dừng.
+//
+// Ca quan trọng nhất dưới đây KHÔNG phải ca hàng nhái — là ca chuỗi rỗng. Nó phân biệt được
+// đúng hai cực: một cổng chỉ tra sổ sẽ cho nó ĐI QUA (vì rỗng không có trong sổ), còn cổng
+// đúng phải chặn nó TRƯỚC, vì đó là trạng thái mù chứ không phải trạng thái "sạch".
+describe("assertNotLookalike — ba trạng thái, chặn trạng thái MÙ trước", () => {
+  const UNCAPPED_DEMO = "28e916b097be13ed955330f00710bd93e2ea74bbc89aa5f5cd0f12b4";
+  const SACH = "d9c09230079b810ab5ed92e8db4c190d42efc42db6aac028656f7e07";
+  const KHE = "reserve_draw #1 lamp_policy";
+
+  it("XANH: policy id hợp lệ, không có trong sổ hàng nhái ⇒ trả giá trị ĐÃ CHUẨN HOÁ", () => {
+    expect(assertNotLookalike(SACH, KHE)).toBe(SACH);
+    // Trả về bản thường hoá, không trả nguyên đầu vào: giá trị này đi thẳng vào apply-param,
+    // và `"AB…" !== "ab…"` cho bộ tuần tự hoá là hai chuỗi khác nhau.
+    expect(assertNotLookalike(`  ${SACH.toUpperCase()}  `, KHE)).toBe(SACH);
+  });
+
+  it("ĐỎ: policy ĐÃ BIẾT là hàng nhái ⇒ LOOKALIKE-001, kèm tên khe", () => {
+    expect(() => assertNotLookalike(UNCAPPED_DEMO, KHE)).toThrow(/LOOKALIKE-001/);
+    expect(() => assertNotLookalike(UNCAPPED_DEMO, KHE)).toThrow(new RegExp(KHE));
+  });
+
+  it("ĐỎ: hàng nhái viết HOA hoặc dính khoảng trắng vẫn bị bắt", () => {
+    // Đột biến phân biệt được: bỏ `.trim().toLowerCase()` trước khi tra sổ ⇒ ca này xanh
+    // trở lại và cổng lọt đúng thứ nó sinh ra để chặn.
+    expect(() => assertNotLookalike(`\t${UNCAPPED_DEMO.toUpperCase()}\n`, KHE))
+      .toThrow(/LOOKALIKE-001/);
+  });
+
+  it("ĐỎ: chuỗi RỖNG — trạng thái mù, và sổ hàng nhái KHÔNG nhìn thấy nó", () => {
+    // Hai vế của cùng một ca, cố ý đứng cạnh nhau: vế đầu chứng minh phép TRA cho rỗng đi
+    // qua, vế sau chứng minh phép GÁC thì không. Tách ra hai bài thì mất chính chỗ đối chiếu.
+    expect(lookalikePolicy("")).toBeNull();
+    expect(() => assertNotLookalike("", KHE)).toThrow(/TLAMP-SRC-003-POLICY-ID-MALFORMED/);
+  });
+
+  it("ĐỎ: mọi hình dạng KHÔNG ĐỌC ĐƯỢC ⇒ 003, không phải 001", () => {
+    const mu = [
+      "   ",
+      "0".repeat(55),                    // thiếu 1 ký tự
+      "0".repeat(57),                    // thừa 1 ký tự
+      "z".repeat(56),                    // đúng độ dài, không phải hex
+      `${"0".repeat(54)}#1`,             // dính hậu tố kiểu OutputReference
+      undefined as unknown as string,
+      null as unknown as string,
+    ];
+    for (const v of mu) {
+      expect(() => assertNotLookalike(v, KHE), `phải chặn ${JSON.stringify(v)}`)
+        .toThrow(/TLAMP-SRC-003-POLICY-ID-MALFORMED/);
+      expect(() => assertNotLookalike(v, KHE)).not.toThrow(/LOOKALIKE-001/);
+    }
+  });
+
+  it("câu lỗi trạng thái mù phải nói vì sao apply-param KHÔNG cứu được", () => {
+    // Người đọc câu lỗi này đang ở trước một lệnh dựng script. Nếu câu lỗi chỉ nói "sai định
+    // dạng" thì phản xạ tự nhiên là sửa chuỗi cho đủ 56 ký tự rồi chạy tiếp — mà 56 ký tự hex
+    // bất kỳ cũng qua được hình dạng. Câu lỗi phải nói rõ tầng sau KHÔNG kiểm hộ.
+    expect(() => assertNotLookalike("", KHE)).toThrow(/apply-param/);
   });
 });
