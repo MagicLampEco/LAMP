@@ -7,7 +7,7 @@
 // phải một biến cụ thể nào.
 
 import { describe, it, expect, vi } from "vitest";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import {
   requiredHashParam, requiredHexParam, CONSEQUENCE_METER, CONSEQUENCE_DIST_DEST,
   assertOneShotMarkers, REMINTABLE_ACK,
@@ -405,7 +405,8 @@ describe("CALL-SITE — không apply-param nào đi vòng cổng gác", () => {
 // ─────────────────────────────────────────────────────────────────────────────
 // MARKER-001 — marker đúc dưới native-sig thì KHÔNG one-shot.
 //
-// Ca gốc (hồi quy): `0630c28` vá đúng MỘT tệp (`oneshot_cap_mint.ts`) và để nguyên bốn tệp
+// Ca gốc (hồi quy): `0630c28` vá đúng MỘT tệp (`oneshot_cap_mint.ts`, đã xoá khỏi kho — tra
+// `git show b9a795d -- Genesis/scripts/oneshot_cap_mint.ts`) và để nguyên bốn tệp
 // bên cạnh vẫn nhét `nPid` (native-sig ví deploy) vào cả bốn khe marker của `lamp_mint`.
 // Cùng một mẫu "vá bản sao đang nhìn, để nguyên bản sống bên cạnh" đã đẻ ra chính `_guards.ts`.
 // Bộ test dưới ép CẢ BỐN tệp phải đi qua cổng — đó mới là thứ hỏng, không phải một tệp nào.
@@ -414,6 +415,19 @@ describe("assertOneShotMarkers — MARKER-001", () => {
   // Cùng quy ước đường dẫn với khối CALL-SITE ở trên: tương đối theo cwd của vitest
   // (`Genesis/offchain`), KHÔNG dùng `import.meta.url` — xem lý do ghi ở đó.
   const SCRIPTS_DIR = "../scripts";
+
+  /**
+   * Giữ lại các dòng MÃ: bỏ dòng chú thích `//` và dòng `import`.
+   *
+   * Không phải bộ tách cú pháp — chú thích khối `/* … *\/` và chuỗi có chứa `//` vẫn lọt.
+   * Chỗ này cố ý dừng ở mức đó: cái cần loại là dòng văn xuôi giải thích lịch sử, và dựng
+   * một trình phân tích cú pháp trong tệp kiểm là đổi một lỗ nhỏ lấy một lỗ khác khó soi hơn.
+   */
+  const codeLines = (src: string): string[] =>
+    src.split("\n")
+      .map((l) => l.trimStart())
+      .filter((l) => !l.startsWith("//") && !l.startsWith("*") && !l.startsWith("import"));
+
   const NATIVE = "cd".repeat(28);
   const ONESHOT = "ef".repeat(28);
   const io = (env: Record<string, string | undefined>, warn = silent) => ({
@@ -488,23 +502,47 @@ describe("assertOneShotMarkers — MARKER-001", () => {
     }
   });
 
-  it("HỒI QUY: cả bốn script dùng scriptFromNative đều phải đi qua cổng", () => {
+  it("HỒI QUY: MỌI script dùng scriptFromNative đều phải đi qua cổng", () => {
     // Đây là phép kiểm thật của bài này. Bảy test trên chỉ chứng minh cổng hoạt động;
     // test này chứng minh cổng ĐƯỢC MẮC VÀO — thứ mà `0630c28` đã bỏ sót.
-    const files = [
-      "canonical_mint.ts", "canonical_mint_resume.ts",
-      "canonical_compute.ts", "preview_registry_e2e.ts",
-    ];
+    //
+    // QUÉT THƯ MỤC, KHÔNG GÕ DANH SÁCH. Bản trước liệt kê bốn tên tệp, và danh sách đó
+    // hỏng được theo HAI chiều mà không chiều nào kêu: thêm một script thứ năm dùng
+    // `scriptFromNative` thì nó đứng ngoài vòng đo, còn xoá một tệp trong danh sách thì
+    // `readFileSync` ném ENOENT — một bài đỏ nói về tệp thiếu chứ không nói về cổng.
+    // Quét thư mục thì tập đo tự lớn theo kho.
+    const files = readdirSync(SCRIPTS_DIR)
+      .filter((f: string) => f.endsWith(".ts"))
+      .sort();
+    // Vùng quét phải KHÔNG RỖNG — thư mục sai đường thì `readdirSync` trả mảng rỗng và
+    // vòng lặp không chạy lần nào, tức bài xanh đúng lúc nó không đo được gì.
+    expect(files.length, `${SCRIPTS_DIR}: không thấy tệp .ts nào — sai đường dẫn?`)
+      .toBeGreaterThan(5);
     for (const f of files) {
       const src = readFileSync(`${SCRIPTS_DIR}/${f}`, "utf8");
-      if (!src.includes("scriptFromNative")) continue; // đã chuyển sang one-shot ⇒ khỏi cần cổng
-      // Đếm LỜI GỌI, không đếm chuỗi: dòng `import { assertOneShotMarkers }` cũng chứa tên
-      // đó, nên `includes(...)` vẫn xanh sau khi lời gọi bị gỡ — đã kiểm bằng đột biến.
-      const calls = src.split("\n")
-        .filter((l: string) => !l.trimStart().startsWith("import"))
-        .filter((l: string) => /\bassertOneShotMarkers\s*\(/.test(l));
+      const code = codeLines(src);
+      // ĐẾM LỜI GỌI Ở CẢ HAI VẾ, không đếm chuỗi. Vế "có gọi cổng chưa" đã đếm lời gọi từ
+      // đầu; vế "có dùng native-sig không" thì chưa, và nó đi lọt suốt vì danh sách bốn tên
+      // tệp che mất. Quét cả thư mục làm lộ ra ngay: `23_prove_oneshot.ts` nhắc
+      // `scriptFromNative` trong CHÚ THÍCH để giải thích vì sao đường cũ không kiểm được
+      // one-shot — `includes(...)` đọc đó thành "tệp này đúc marker bằng native-sig".
+      // Một bộ dò bắt nhầm ca hợp lệ thì sẽ bị ai đó tắt, và lúc tắt nó mang theo cả ca thật.
+      if (!code.some((l) => /\bscriptFromNative\s*\(/.test(l))) continue;
+      const calls = code.filter((l) => /\bassertOneShotMarkers\s*\(/.test(l));
       expect(calls.length, `${f} đúc marker bằng native-sig mà KHÔNG GỌI assertOneShotMarkers`)
         .toBeGreaterThan(0);
     }
+  });
+
+  it("bộ dò native-sig phải phân biệt LỜI GỌI với CHÚ THÍCH", () => {
+    // Ca đối xứng cho chính cái vừa sửa. Thiếu nó thì lần sau ai đó rút gọn `codeLines`
+    // về `includes(...)` và bộ kiểm vẫn xanh.
+    const inComment = `// đường cũ đúc marker bằng \`scriptFromNative({type:"sig"})\`\nconst x = 1;`;
+    expect(codeLines(inComment).some((l) => /\bscriptFromNative\s*\(/.test(l))).toBe(false);
+    const realCall = `const pol = scriptFromNative({ type: "sig", keyHash: pkh });`;
+    expect(codeLines(realCall).some((l) => /\bscriptFromNative\s*\(/.test(l))).toBe(true);
+    // `import` cũng không phải lời gọi.
+    const imported = `import { scriptFromNative } from "@lucid-evolution/lucid";`;
+    expect(codeLines(imported).some((l) => /\bscriptFromNative\s*\(/.test(l))).toBe(false);
   });
 });

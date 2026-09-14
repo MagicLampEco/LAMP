@@ -55,6 +55,10 @@ Vì LAMP **no-burn**, mint LAMP vào kho SAI (1-pkh/placeholder/claim_account) =
   > Trạng thái đầy đủ: `Genesis/duong-toi-duc-lamp.md` §3.3 và bảng cuối §4.
   > Vế **"vấn đề thật, nặng hơn"** ở trên (một khoá hai cổng) không phụ thuộc điều này — vẫn nguyên.
 - 🔴 **Preprod rehearsal:** phải dùng CÙNG `treasury.ak` (không native-sig) mới trung thực; hiện chưa dựng.
-- ⬜ Thiếu: bước genesis đặt kho-NFT tại `treasury.ak` thật (thay placeholder `"ce"*28` ở `preview_registry_e2e.ts:32`); script deploy 12-param production (bản hiện là v1 8-param hoặc demo Preview khoá cứng).
+- ✅ Đã có (2026-09-02): bước genesis đặt kho-NFT tại `treasury.ak` thật, không còn placeholder —
+  `Genesis/scripts/20_canonical_genesis.ts:208` đúc kho-NFT bằng `treasury_nft.ak` thật; script
+  deploy 12/14-param production ở `Genesis/scripts/_canonical_v2.ts` + `20_canonical_genesis.ts`
+  … `26_prove_brake.ts`. Script demo cũ dùng placeholder (`preview_registry_e2e.ts:32`) đã xoá
+  khỏi kho (tra `git show 930480e -- Genesis/scripts/preview_registry_e2e.ts`).
 
 — LAMP agent

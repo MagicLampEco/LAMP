@@ -19,12 +19,14 @@
 //   Một `OutputReference` chỉ tiêu được MỘT lần trong lịch sử chuỗi, nên tiêu nó trong
 //   đúng một giao dịch là đúc xong toàn bộ marker, mỗi cái đúng một bản, vĩnh viễn.
 //
-//   Hệ quả thực dụng: `canonical_mint.ts` phải đòi `BEACON_NFT_POLICY` từ ngoài vì nó
+//   Hệ quả thực dụng: `canonical_mint.ts` (đã xoá khỏi kho — tra `git show 930480e --
+//   Genesis/scripts/canonical_mint.ts`) từng phải đòi `BEACON_NFT_POLICY` từ ngoài vì nó
 //   không ghim `genesis_ref` nào (xem `requireBeaconPolicy()` ở tệp đó). Ở đây beacon
 //   suy ra được từ chính hạt giống ⇒ hết một khe phải gõ tay, hết một chỗ gõ sai.
 //
 // KHÁC BẢN DIỄN TẬP CŨ Ở ĐÂU (đây là toàn bộ lý do viết mới thay vì sửa)
-//   `canonical_mint.ts:108` đúc CẢ BỐN marker bằng `scriptFromNative({type:"sig"})`.
+//   `canonical_mint.ts:108` (đã xoá khỏi kho — tra `git show 930480e --
+//   Genesis/scripts/canonical_mint.ts`) đúc CẢ BỐN marker bằng `scriptFromNative({type:"sig"})`.
 //   Native-sig KHÔNG one-shot: người giữ khoá ví đúc lại SUPPLY NFT bất cứ lúc nào ⇒
 //   SupplyState thứ hai ⇒ `dist_minted` về 0 ⇒ đúc lại trọn cap. Cổng `assertOneShotMarkers`
 //   (`_guards.ts`) biến lỗ đó thành một câu phải gõ ra, nhưng không lấp được nó.
@@ -85,7 +87,8 @@ export function encodeOutputRef(txHash: string, index: number): Constr<LucidData
   return new Constr(0, [txHash, BigInt(index)]);
 }
 
-// ── Blueprint Distribution (fail-closed, giống `canonical_mint.ts::applyDist`) ──
+// ── Blueprint Distribution (fail-closed; đường cũ `canonical_mint.ts::applyDist` đã xoá khỏi
+//    kho, tra `git show 930480e -- Genesis/scripts/canonical_mint.ts`) ──
 
 type RawDist = { title: string; compiledCode: string; parameters?: unknown[] };
 let distCache: RawDist[] | undefined;
