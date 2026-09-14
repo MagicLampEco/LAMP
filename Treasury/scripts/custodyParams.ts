@@ -60,10 +60,20 @@ function toLampNetwork(network: Network): LampNetwork {
  * (`Genesis/offchain/src/lampPolicies.ts`) → placeholder DEV.
  *
  * Placeholder KHÔNG phải giá trị đệm im lặng: nó trả về kèm `source: "placeholder"`, và van
- * F14 ở `config.ts::evaluateLiveGuards` ép rơi về DRY nên không tx nào ra mạng với nó. Sổ
- * policy hiện khai `PENDING-MINT` cho cả Preview lẫn Preprod (chưa đúc bản 14 tham số) nên
- * đường giữa NÉM là chuyện bình thường, và câu ném đó được giữ nguyên trong `reason` — nó
- * nói được người đọc phải làm gì, câu "không lấy được policy" thì không.
+ * F14 ở `config.ts::evaluateLiveGuards` ép rơi về DRY nên không tx nào ra mạng với nó.
+ *
+ * Trạng thái sổ policy (đo 2026-09-14, đừng nhớ mòn — mở
+ * `Genesis/offchain/src/lampPolicies.ts` ra đếm lại):
+ *   · **Preprod** đã có bản ACTIVE (`preprod-oneshot-14param`) ⇒ đường giữa TRẢ VỀ, và van
+ *     `lamp_policy` của F14 KHÔNG còn ép Preprod về DRY.
+ *   · **Preview** vẫn `PENDING-MINT` ⇒ đường giữa NÉM, và ném là chuyện bình thường ở đó.
+ * Câu ném được giữ nguyên trong `reason` — nó nói được người đọc phải làm gì, câu "không lấy
+ * được policy" thì không.
+ *
+ * ⚠️ `lamp_policy` là apply-param #4 của `custody` (xem `custodyParamList` dưới), nên đổi giá
+ * trị này là đổi `custody_hash` và `custodyAddr`. Một mạng vừa chuyển từ placeholder sang giá
+ * trị thật thì địa chỉ két của nó đã đổi — đó là hành vi ĐÚNG, nhưng mọi bản chép địa chỉ cũ
+ * ra ngoài đều đã lệch, và không cổng nào trong tệp này nhìn thấy điều đó.
  *
  * @param env bảng biến môi trường (tiêm vào để bài kiểm không phải đụng `process.env` thật)
  */

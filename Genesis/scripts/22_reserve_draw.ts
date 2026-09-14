@@ -27,7 +27,7 @@
 import { type UTxO } from "@lucid-evolution/lucid";
 import { NETWORK, SUBMIT, makeLucid, walletPkh, explorerTx } from "./config.js";
 import { supplyStateToCbor, supplyStateFromCbor, supplyStateRedeemerToCbor, mintRouteToCbor } from "../offchain/src/datum.js";
-import { rehydrate, writeState, waitFor } from "./_canonical_v2.js";
+import { rehydrate, writeState, waitFor, isWaitTimeout } from "./_canonical_v2.js";
 import { assertSeedNotSpent, custodySeedRefFromState, refKey } from "./_custodySeedRef.js";
 
 const NFT_ADA = 2_000_000n;
@@ -129,15 +129,39 @@ async function main(): Promise<void> {
     console.log(`  Trần phát hành thật = ${s2.dist_cap + s2.reserve_cap} oildrop = 36 tỷ LAMP,`);
     console.log(`  KHÔNG phải 26,37 tỷ như policy mồi mainnet.`);
   } catch (e) {
-    console.log(
-      `\n⚠ CHƯA ĐO ĐƯỢC (không phải "hỏng"): chưa đọc lại được SupplyState mang số mới.\n` +
-      `  ${e instanceof Error ? e.message : e}\n` +
-      `  Giao dịch ĐÃ gửi và đã ghi vào sổ. Đo lại bằng chính nó: ${explorerTx(hash)}\n` +
-      `  Hoặc chạy: tsx verify_canonical_v2.ts`,
-    );
+    // BA trạng thái, không phải hai. `waitFor` hết giờ = chưa đọc được. Mọi ngoại lệ KHÁC phát ra
+    // từ hàm đọc là HỎNG THẬT, và ít nhất hai trong số đó là thảm hoạ: `theOneHolding` ném khi
+    // tìm thấy HAI UTxO mang SUPPLY NFT (thread NFT nhân đôi ⇒ `dist_minted` về 0 ⇒ đúc lại trọn
+    // cap), và `.datum!` ném `TypeError` khi SupplyState quay về không có inline datum. Gộp cả
+    // hai vào nhãn "chưa đo được" là dạy người đọc bỏ qua đúng dòng đáng dừng nhất.
+    const msg = e instanceof Error ? e.message : String(e);
+    if (isWaitTimeout(e)) {
+      process.exitCode = 2;
+      console.log(
+        `\n⚠ CHƯA ĐO ĐƯỢC (không phải "hỏng"): chưa đọc lại được SupplyState mang số mới.\n` +
+        `  ${msg}\n` +
+        `  Giao dịch ĐÃ gửi và đã ghi vào sổ. Đo lại bằng chính nó: ${explorerTx(hash)}\n` +
+        `  Hoặc chạy: tsx verify_canonical_v2.ts`,
+      );
+    } else {
+      process.exitCode = 1;
+      console.error(
+        `\n❌ HỎNG khi đọc lại SupplyState — KHÔNG phải chỉ mục chậm:\n` +
+        `  ${msg}\n` +
+        `  Giao dịch ĐÃ gửi (${hash}) và đã ghi vào sổ, nên không mất dấu. ĐỪNG chạy bước kế\n` +
+        `  trước khi hiểu dòng trên: tsx verify_canonical_v2.ts`,
+      );
+    }
   }
   console.log(`\n⚠ CHƯA chứng minh trần nhịp δ ≤ E/1000 — MET còn ở ví, reserve_draw chưa chạy (Lớp 2).`);
-  console.log(`\n✅ Xong. Bước kế: tsx 23_prove_oneshot.ts`);
+  // `✅ Xong` chỉ được in khi phép đối chiếu ĐÃ chạy và ĐÃ khớp. Đầu tệp này khai rằng màu của
+  // bước này quyết định có phát hành hay không — nên một dấu ✅ đứng sau một trạng thái mù là
+  // một khẳng định mà không phép đo nào đỡ.
+  if (process.exitCode === undefined) {
+    console.log(`\n✅ Xong. Bước kế: tsx 23_prove_oneshot.ts`);
+  } else {
+    console.log(`\nKHÔNG in "Xong": xem dòng ⚠/❌ ở trên. Mã thoát ${process.exitCode}.`);
+  }
 }
 
 main().catch((e) => { console.error("❌", e instanceof Error ? e.message : e); process.exit(1); });

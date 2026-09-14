@@ -24,12 +24,16 @@
 
 > ⚠️ **Con số dưới đây KHÔNG phải nguồn.** Nguồn duy nhất: `Genesis/offchain/src/lampPolicies.ts`.
 > Trạng thái bản này: **SUPERSEDED** — bị thay bởi bản ghi `preprod-oneshot-12param`
-> (`d9c09230…`), và cả hai đang chờ bản `preprod-oneshot-14param` / `preview-oneshot-14param`
-> đúc lại theo đường registry-gate 14 tham số. Đo lại:
+> (`d9c09230…`). **Preprod đã có bản kế nhiệm ACTIVE** — `preprod-oneshot-14param`, policy id
+> `8169b76cdaba83cf7c9ae32ebd2bb3a58aa215c7dc0b62c8f5e268dd`, đúc ngày 2026-09-14 theo đường
+> registry-gate 14 tham số. Preview thì chưa: `preview-oneshot-14param` còn `PENDING-MINT`.
+> ⚠️ Nghĩa là `activeLampPolicyId("preprod")` nay **TRẢ VỀ** chứ không còn ném. Đừng đọc câu
+> này thành "policy dưới đây là bản đang sống" — bản dưới đây vẫn `SUPERSEDED`, nó chỉ là bản
+> mà pool faucet hiện tại đang giữ token.
+> Nguồn duy nhất cho trạng thái: `Genesis/offchain/src/lampPolicies.ts` (bản ghi
+> `preprod-oneshot-14param`). Đo lại:
 > `cd Genesis/offchain && npx vitest run ../tests/lampPolicies.test.ts` — đọc ở **dòng tổng kết
-> `Tests N passed`**, không đọc ở mã thoát của một đường ống. Bài
-> `"mạng chưa có bản ACTIVE nào"` khẳng định `activeLampPolicyId("preprod")` **NÉM**, không rơi
-> ngược về giá trị dưới đây.
+> `Tests N passed`**, không đọc ở mã thoát của một đường ống.
 
 - **Policy id:** `7a1a7aed5ec47acc37b6fa82695c1219bf76895b505b01161367adf9`
 - **Unit:** `7a1a7aed5ec47acc37b6fa82695c1219bf76895b505b01161367adf9744c414d50`

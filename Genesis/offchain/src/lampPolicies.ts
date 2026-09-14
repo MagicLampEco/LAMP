@@ -196,7 +196,20 @@ export const LAMP_POLICY_REGISTRY: readonly LampPolicyRecord[] = [
     ],
     caveats: [
       "Đây là bản ACTIVE DUY NHẤT của preprod. `activeLampPolicyId(\"preprod\")` nay TRẢ VỀ " +
-        "thay vì ném — đường đọc không đổi, chỉ trạng thái đổi.",
+        "thay vì ném. Đường đọc không đổi, nhưng ĐỪNG đọc câu đó thành \"không có gì đổi\": " +
+        "có một van fail-closed cắm đúng vào cái NÉM đó, và nó vừa mở. " +
+        "`Treasury/scripts/custodyParams.ts::resolveLampPolicy` bắt `LampPolicySourceError` " +
+        "rồi lùi về `PLACEHOLDER_LAMP_POLICY`; `Treasury/scripts/01_seed_custody.ts` khai khe " +
+        "`lamp_policy` là placeholder khi `source === \"placeholder\"`, và đó là MỘT trong các " +
+        "van F14 ép rơi về DRY. Từ nay Preprod không còn nằm trong danh sách đó. " +
+        "Nói đúng mức: F14 ghép bằng VÀ trên nhiều tham số, nên riêng van này mở CHƯA làm " +
+        "Preprod chạy LIVE — `proposal_policy`/`governance_ref`/`delegation_admin` vẫn " +
+        "placeholder nếu không đặt biến. Đây là mất MỘT lớp, không phải thủng.",
+      "Hệ quả thứ hai, xuyên module: `lamp_policy` là apply-param #4 của `custody` " +
+        "(`Treasury/scripts/custodyParams.ts::custodyParamList`), nên nó nướng vào " +
+        "`custody_hash` và `custodyAddr`. Trước bản ghi này Preprod áp `PLACEHOLDER_LAMP_POLICY`; " +
+        "từ nay áp `8169b76c…`. Cùng một mã, KHÁC địa chỉ két. Địa chỉ custody Preprod nào đã " +
+        "được chép ra ngoài trước 2026-09-14 thì nay lệch, và không dòng nào tự kêu.",
       "Lớp 2 (rút Reserve) CHƯA chạy: `24_reserve_layer2_init.ts` dừng ở `GOV-REF-001` vì " +
         "`GOVERNANCE_SCRIPT_HASH` chưa có giá trị, và trong kho chưa có validator nào tên " +
         "`governance`. Nên policy này đã đúc được và rót vào kho được, nhưng nhánh `ReserveDraw` " +

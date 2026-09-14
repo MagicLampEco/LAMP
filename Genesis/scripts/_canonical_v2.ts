@@ -43,6 +43,11 @@ import { NETWORK, applyPolicy, applyValidator, policyId, rawValidator } from "./
 import { assertParamCount as assertParamCountGate } from "../offchain/src/applyGate.js";
 import { lampMintParamList } from "../offchain/src/reserveKhoPair.js";
 import type { FloorSource } from "./_floorLabel.js";
+import { waitTimeoutError } from "./_waitTimeout.js";
+// Xuất lại để chỗ gọi (`21_vest_to_kho.ts`, `22_reserve_draw.ts`) chỉ phải nhớ MỘT đường import.
+// Định nghĩa nằm ở `_waitTimeout.ts` vì tệp này ném lúc import khi môi trường chưa dựng, nên bài
+// kiểm không với tới được — xem đầu tệp đó.
+export { WAIT_TIMEOUT_CODE, isWaitTimeout } from "./_waitTimeout.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -546,10 +551,7 @@ export async function waitFor<T>(
     if (i === 0) console.log(`   (chờ chỉ mục nhà cung cấp bắt kịp — ${what})`);
     await new Promise((r) => setTimeout(r, delayMs));
   }
-  throw new Error(
-    `hết ${(tries * delayMs) / 1000}s chờ ${what}. Giao dịch có thể ĐÃ thành công trên chuỗi mà ` +
-    `chỉ mục nhà cung cấp chưa bắt kịp — kiểm bằng 'npm run v2:verify' trước khi kết luận là hỏng.`,
-  );
+  throw waitTimeoutError((tries * delayMs) / 1000, what);
 }
 
 /** In wiring ra màn hình theo một khuôn duy nhất, để log các bước đối chiếu được nhau. */
