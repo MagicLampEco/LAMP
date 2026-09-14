@@ -17,8 +17,9 @@
 // DUY NHẤT phân biệt được cổng thật với một phép so trần.
 import { describe, it, expect } from "vitest";
 import {
-  assertCustodyKhoPair, assertSeedNotCustody, custodySeedRefFromEnv, refKey, sameRef,
-  reserveKhoParamsFromEnv, type DeriveSeedPolicyId,
+  assertCustodyKhoPair, assertSeedNotCustody, assertSeedNotSpent, custodySeedRefFromEnv,
+  custodySeedRefFromState, refKey, sameRef, txInputKeys,
+  reserveKhoParamsFromEnv, type BuiltTx, type DeriveSeedPolicyId, type OutputRef,
 } from "../scripts/_custodySeedRef.js";
 
 /** policy id 28 byte hợp lệ (56 hex). Hai cái KHÁC NHAU để phân biệt được hai cực. */
@@ -243,5 +244,299 @@ describe("reserveKhoParamsFromEnv — RESERVE-KHO-001/002/003", () => {
         { RESERVE_KHO_NFT_POLICY: PID_A, RESERVE_KHO_NFT_NAME: "abc" }, SEED, opts,
       ),
     ).rejects.toThrow(/RESERVE-KHO-002/);
+  });
+});
+
+// ══ SEED-CHON-DONG-001 / -003 — hạt giống phải SỐNG SÓT qua mọi bước trước L2a ══
+//
+// VÌ SAO BÀI NÀY TỒN TẠI
+// Cổng canh chọn-đồng trước đây chỉ có ở `20_canonical_genesis.ts`, tức bước ĐẦU. Giữa nó và
+// bước L2a (chỗ hạt giống ĐƯỢC PHÉP tiêu) còn ba giao dịch có gửi thật — `20b` · `21` · `22` —
+// và cả ba gọi `.complete()`, tức chạy chọn-đồng mặc định trên toàn bộ ví. Tiêu nhầm ở một
+// trong ba bước đó thì bước ấy vẫn thành công, và policy khe #13 chết vĩnh viễn.
+//
+// (`23_prove_oneshot.ts` KHÔNG nằm trong danh sách: nó dựng giao dịch trong `try` rồi cố ý
+// không ký và không gửi — đo được, 0 lần `.submit()`, 0 lần `sign.withWallet`.)
+//
+// ĐỘT BIẾN PHÂN BIỆT ĐƯỢC HAI CỰC: gỡ `assertSeedNotSpent` ở bất kỳ bước nào ⇒ giao dịch tiêu
+// hạt giống đi lọt, và không phép kiểm định dạng nào kêu vì mọi giá trị đều đúng hình dạng.
+
+/** Một `TxInputList` giả lập từ danh sách khoá `txHash#index`. */
+const danhSach = (keys: string[]) => {
+  const list = keys.map((k) => {
+    const [h, i] = k.split("#");
+    return { transaction_id: () => ({ to_hex: () => h as string }), index: () => Number(i) };
+  });
+  return { len: () => list.length, get: (n: number) => list[n]! };
+};
+
+function txVoi(...keys: string[]): BuiltTx {
+  return { toTransaction: () => ({ body: () => ({ inputs: () => danhSach(keys) }) }) };
+}
+
+/**
+ * Giao dịch có CẢ HAI trường: input chi tiêu và input collateral.
+ *
+ * Phải dựng riêng vì `collateral_inputs` là accessor TÙY CHỌN trên `BuiltTx` — một stub chỉ khai
+ * `inputs()` vẫn hợp kiểu, và đó đúng là hình dạng làm cổng collateral xanh ở cả hai cực nếu
+ * không có ca nào đưa vào trường thứ hai.
+ */
+function txVoiTheChap(chiTieu: string[], theChap: string[]): BuiltTx {
+  return {
+    toTransaction: () => ({
+      body: () => ({
+        inputs: () => danhSach(chiTieu),
+        collateral_inputs: () => danhSach(theChap),
+      }),
+    }),
+  };
+}
+
+const KHAC = "9".repeat(64);
+const SEED_REF: OutputRef = { txHash: TX_A, outputIndex: 3 };
+
+describe("txInputKeys + assertSeedNotSpent — SEED-CHON-DONG-001", () => {
+  it("đọc ĐỦ mọi input, đúng thứ tự, và chuẩn hoá chữ hoa", () => {
+    expect(txInputKeys(txVoi(`${TX_A.toUpperCase()}#0`, `${KHAC}#7`)))
+      .toEqual([`${TX_A}#0`, `${KHAC}#7`]);
+  });
+
+  it("giao dịch KHÔNG chạm hạt giống → im", () => {
+    expect(() => assertSeedNotSpent(txVoi(`${KHAC}#3`, `${TX_A}#4`), SEED_REF, "b")).not.toThrow();
+  });
+
+  // Hai ca dưới là hai nửa của `OutputReference`. Bỏ một nửa khỏi phép so thì cổng vẫn xanh ở
+  // ca kia, và người đọc thấy đúng màu.
+  it("ĐỎ: input trùng CẢ hash lẫn chỉ số — SEED-CHON-DONG-001", () => {
+    expect(() => assertSeedNotSpent(txVoi(`${KHAC}#0`, `${TX_A}#3`), SEED_REF, "Tx B"))
+      .toThrow(/SEED-CHON-DONG-001/);
+  });
+
+  it("trùng hash mà LỆCH chỉ số → KHÔNG phải hạt giống, phải im", () => {
+    expect(() => assertSeedNotSpent(txVoi(`${TX_A}#2`), SEED_REF, "b")).not.toThrow();
+  });
+
+  it("câu lỗi nêu TÊN BƯỚC và liệt kê input — đủ để biết hỏng ở đâu", () => {
+    const loi = (() => {
+      try { assertSeedNotSpent(txVoi(`${TX_A}#3`), SEED_REF, "Tx C (22 ReserveDraw)"); return ""; }
+      catch (e) { return e instanceof Error ? e.message : String(e); }
+    })();
+    expect(loi).toContain("Tx C (22 ReserveDraw)");
+    expect(loi).toContain(refKey(SEED_REF));
+  });
+
+  // ── Đường TIÊU thứ hai: collateral ────────────────────────────────────────
+  //
+  // `collateral_inputs` là trường RIÊNG, không nằm trong `inputs()`. Nó chỉ bị ledger nuốt khi
+  // giao dịch trượt pha 2 — nhánh thất bại, nhánh không ai nhìn. Bộ chọn collateral của thư viện
+  // quét toàn bộ UTxO ví và không biết gì về hạt giống custody.
+  it("ĐỎ: hạt giống bị ghim làm COLLATERAL ⇒ SEED-CHON-DONG-004, dù KHÔNG bị chi tiêu", () => {
+    // Đây là hình dạng đã tái hiện trên Emulator: inputs trỏ một UTxO khác, collateral trỏ
+    // đúng hạt giống. Cổng chỉ đọc `inputs()` im lặng ở đúng ca này.
+    expect(() =>
+      assertSeedNotSpent(txVoiTheChap([`${KHAC}#1`], [`${TX_A}#3`]), SEED_REF, "Tx B (21 vest → kho)"),
+    ).toThrow(/SEED-CHON-DONG-004/);
+  });
+
+  it("câu lỗi collateral phải nói CÁCH SỬA khác với ca chi tiêu", () => {
+    // Hai ca cần hai hành động khác nhau: chi tiêu thì gộp ADA cho chọn-đồng; collateral thì
+    // phải cho ví một UTxO thuần ADA khác để bộ chọn bám vào. Một câu lỗi chung cho cả hai là
+    // gửi người chạy đi sửa sai chỗ.
+    const loi = (() => {
+      try { assertSeedNotSpent(txVoiTheChap([`${KHAC}#1`], [`${TX_A}#3`]), SEED_REF, "b"); return ""; }
+      catch (e) { return e instanceof Error ? e.message : String(e); }
+    })();
+    expect(loi).toContain("collateral");
+    expect(loi).toContain("trượt pha 2");
+  });
+
+  it("collateral trỏ UTxO KHÁC → im, cổng không bắt bừa mọi collateral", () => {
+    expect(() =>
+      assertSeedNotSpent(txVoiTheChap([`${KHAC}#1`], [`${KHAC}#0`]), SEED_REF, "b"),
+    ).not.toThrow();
+  });
+
+  it("giao dịch KHÔNG khai collateral (accessor vắng mặt) vẫn đi qua được", () => {
+    // `txVoi` không khai `collateral_inputs`. Vắng accessor ≠ collateral rỗng ≠ hạt giống nằm
+    // trong collateral — ca này giữ cho phép đọc tùy chọn không biến thành lỗi cho mọi bước.
+    expect(() => assertSeedNotSpent(txVoi(`${KHAC}#1`), SEED_REF, "b")).not.toThrow();
+  });
+
+  // ── Trạng thái MÙ ─────────────────────────────────────────────────────────
+  it("ĐỎ: danh sách input RỖNG ⇒ SEED-CHON-DONG-002, không được đọc thành 'sạch'", () => {
+    // Một tx đã `.complete()` luôn có ≥1 input. Rỗng nghĩa là phép đọc hỏng — và `includes`
+    // trên mảng rỗng trả `false`, tức cổng nói "ổn" bằng đúng giọng của trạng thái không biết.
+    expect(() => assertSeedNotSpent(txVoi(), SEED_REF, "Tx A (genesis)"))
+      .toThrow(/SEED-CHON-DONG-002/);
+  });
+});
+
+describe("custodySeedRefFromState — SEED-CHON-DONG-003", () => {
+  it("state có ghi → đó là nguồn, và nói rõ nguồn là state", () => {
+    const r = custodySeedRefFromState(SEED_REF, {});
+    expect(r.source).toBe("state");
+    expect(refKey(r.ref)).toBe(refKey(SEED_REF));
+  });
+
+  it("state có ghi + env TRÙNG → im, vẫn dùng state", () => {
+    const r = custodySeedRefFromState(SEED_REF, { CUSTODY_SEED_TX: TX_A, CUSTODY_SEED_IDX: "3" });
+    expect(r.source).toBe("state");
+  });
+
+  // Ca này là toàn bộ điểm của cổng -003: hai nguồn bất đồng là trạng thái MÙ. Cổng không được
+  // tự chọn hộ — chọn hộ là biến một lần gõ sai thành một quyết định im lặng.
+  it("ĐỎ: state và env LỆCH chỉ số → SEED-CHON-DONG-003, không tự chọn hộ", () => {
+    expect(() => custodySeedRefFromState(SEED_REF, { CUSTODY_SEED_TX: TX_A, CUSTODY_SEED_IDX: "4" }))
+      .toThrow(/SEED-CHON-DONG-003/);
+  });
+
+  it("ĐỎ: state và env LỆCH hash → SEED-CHON-DONG-003", () => {
+    expect(() => custodySeedRefFromState(SEED_REF, { CUSTODY_SEED_TX: KHAC, CUSTODY_SEED_IDX: "3" }))
+      .toThrow(/SEED-CHON-DONG-003/);
+  });
+
+  // State ghi TRƯỚC đợt vá này không có trường đó. Đường lùi là env — và env tự ném khi trống,
+  // nên không có đường nào đi tiếp mà KHÔNG có hạt giống.
+  it("state thiếu trường → lùi về env, và khai rõ nguồn là env", () => {
+    const r = custodySeedRefFromState(undefined, { CUSTODY_SEED_TX: TX_A, CUSTODY_SEED_IDX: "3" });
+    expect(r.source).toBe("env");
+    expect(refKey(r.ref)).toBe(refKey(SEED_REF));
+  });
+
+  it("ĐỎ: state thiếu VÀ env trống → CUSTODY-SEED-001, không có đường đi tiếp", () => {
+    expect(() => custodySeedRefFromState(undefined, {})).toThrow(/CUSTODY-SEED-001/);
+  });
+
+  // Hình dạng hỏng trong state KHÔNG được đọc thành "có giá trị", VÀ KHÔNG được lùi im lặng
+  // về env. Bản đầu của ca này khẳng định `source === "env"` là đúng ý đồ — nó ghim một hành vi
+  // fail-open: phép đối chiếu -003 nằm BÊN TRONG nhánh state-đọc-được, nên state hỏng cộng env
+  // trỏ một hạt giống KHÁC thì không vế nào bất đồng với vế nào, và ba bước sau canh nhầm một
+  // UTxO đã chết. Nay tách: vắng mặt → lùi (đúng); có mặt mà hỏng → ném.
+  it("ĐỎ: state có trường nhưng hash SAI HÌNH DẠNG ⇒ SEED-CHON-DONG-005, KHÔNG lùi về env", () => {
+    expect(() =>
+      custodySeedRefFromState(
+        { txHash: "abc", outputIndex: 3 }, { CUSTODY_SEED_TX: TX_A, CUSTODY_SEED_IDX: "3" },
+      ),
+    ).toThrow(/SEED-CHON-DONG-005/);
+  });
+
+  // Ca này phân biệt hai cực mà ca trên KHÔNG phân biệt: env ở đây trỏ ĐÚNG hạt giống của
+  // state. Một cổng "lùi về env rồi so" sẽ thấy hai vế khớp và im. Chỉ cổng ném-khi-state-hỏng
+  // mới đỏ ở đây — tức nó đo "state có đọc được không", không đo "hai vế có khớp không".
+  it("ĐỎ: state hỏng vẫn ném kể cả khi env trỏ đúng giá trị mong đợi", () => {
+    expect(() =>
+      custodySeedRefFromState(
+        { txHash: `${TX_A}ff`, outputIndex: 0 }, { CUSTODY_SEED_TX: TX_A, CUSTODY_SEED_IDX: "0" },
+      ),
+    ).toThrow(/SEED-CHON-DONG-005/);
+  });
+
+  it("ĐỎ: state có trường nhưng chỉ số ÂM ⇒ SEED-CHON-DONG-005, không phải CUSTODY-SEED-001", () => {
+    // Bản đầu ném CUSTODY-SEED-001 — câu lỗi đó chỉ nói về `CUSTODY_SEED_TX`/`IDX`, tức bảo
+    // người chạy đi sửa env trong khi thứ hỏng là tệp trạng thái. Nhãn phải mang đúng nguyên
+    // nhân, không mang nguyên nhân của nhánh kế bên.
+    expect(() => custodySeedRefFromState({ txHash: TX_A, outputIndex: -1 }, {}))
+      .toThrow(/SEED-CHON-DONG-005/);
+  });
+
+  // `envSet` phải đo CẢ CẶP biến. Đo mỗi `CUSTODY_SEED_TX` thì đặt lẻ `CUSTODY_SEED_IDX` làm
+  // cổng đối chiếu tắt im lặng. Đột biến phân biệt được: đổi `envSet` sang chỉ đo `TX` ⇒ ca này
+  // chuyển từ ném sang trả về state, tức xanh sai.
+  it("ĐỎ: env đặt LẺ nửa chỉ số (thiếu CUSTODY_SEED_TX) vẫn phải kích hoạt phép đối chiếu", () => {
+    expect(() =>
+      custodySeedRefFromState({ txHash: TX_A, outputIndex: 0 }, { CUSTODY_SEED_IDX: "0" }),
+    ).toThrow(/CUSTODY-SEED-001/);
+  });
+});
+
+// ══ RESERVE-KHO-004 — khe #14 không có bậc tự do ════════════════════════════════
+//
+// VÌ SAO BÀI NÀY TỒN TẠI
+// `RESERVE-KHO-003` vá khe #13 (policy) bằng một phép đối chứng. Khe #14 (asset name) ngay bên
+// cạnh vẫn chỉ được kiểm ĐỊNH DẠNG — đúng lớp lỗ vừa vá, còn nguyên ở khe hàng xóm. Đợt vá lấy
+// phạm vi bằng phạm vi của triệu chứng là đợt vá để lại nguyên nguyên nhân.
+//
+// Khác khe #13 ở chỗ khe #14 không cần dẫn xuất gì: giá trị hợp lệ của nó là HẰNG, ép bởi
+// `custodySeedDatum()` gán cứng `instance_id` cộng luật S-PARAM-0 của `custody_seed.ak:114`.
+//
+// ĐỘT BIẾN PHÂN BIỆT HAI CỰC: gỡ cổng ⇒ một asset name đúng định dạng nhưng khác `INSTANCE_ID`
+// đi lọt, và mọi phép kiểm hình dạng vẫn xanh vì nó ĐÚNG hình dạng.
+describe("reserveKhoParamsFromEnv — RESERVE-KHO-004 (khe #14)", () => {
+  const SEED = { txHash: TX_A, outputIndex: 3 };
+  const derivePid: DeriveSeedPolicyId = async () => PID_A;
+  const opts = { derivePid, defaultName: NAME_A };
+
+  it("không đặt RESERVE_KHO_NFT_NAME → lấy mặc định, đi qua", async () => {
+    const r = await reserveKhoParamsFromEnv({ RESERVE_KHO_NFT_POLICY: PID_A }, SEED, opts);
+    expect(r.name).toBe(NAME_A);
+  });
+
+  it("đặt ĐÚNG giá trị bắt buộc → đi qua (khai ra giá trị là việc hợp lệ)", async () => {
+    const r = await reserveKhoParamsFromEnv(
+      { RESERVE_KHO_NFT_POLICY: PID_A, RESERVE_KHO_NFT_NAME: NAME_A.toUpperCase() }, SEED, opts,
+    );
+    expect(r.name).toBe(NAME_A);
+  });
+
+  // NAME_B lệch ĐÚNG một byte cuối so với NAME_A và vẫn là hex chẵn 12 byte — nên nó đi qua
+  // RESERVE-KHO-002 không sứt mẻ gì. Đây là ca duy nhất phân biệt cổng đối chứng với cổng
+  // định dạng.
+  it("ĐỎ: hex hợp lệ nhưng LỆCH một byte — RESERVE-KHO-004, không phải -002", async () => {
+    await expect(
+      reserveKhoParamsFromEnv(
+        { RESERVE_KHO_NFT_POLICY: PID_A, RESERVE_KHO_NFT_NAME: NAME_B }, SEED, opts,
+      ),
+    ).rejects.toThrow(/RESERVE-KHO-004/);
+  });
+
+  it("câu lỗi in CẢ hai vế và nêu giá trị bắt buộc — dán được vào môi trường", async () => {
+    const loi = await reserveKhoParamsFromEnv(
+      { RESERVE_KHO_NFT_POLICY: PID_A, RESERVE_KHO_NFT_NAME: NAME_B }, SEED, opts,
+    ).then(() => "", (e) => (e instanceof Error ? e.message : String(e)));
+    expect(loi).toContain(NAME_B);
+    expect(loi).toContain(NAME_A);
+    expect(loi).toContain("S-PARAM-0");
+  });
+
+  // Thứ tự cổng phải đúng: sai HÌNH DẠNG thì -002 nói trước, vì câu của nó là câu đọc được cho
+  // ca đó. Gộp hai ca vào một mã lỗi là bắt người vận hành đọc sai hướng.
+  it("sai hình dạng thì -002 nói trước, KHÔNG phải -004", async () => {
+    await expect(
+      reserveKhoParamsFromEnv(
+        { RESERVE_KHO_NFT_POLICY: PID_A, RESERVE_KHO_NFT_NAME: "abc" }, SEED, opts,
+      ),
+    ).rejects.toThrow(/RESERVE-KHO-002/);
+  });
+
+  // Cách gõ sai SỐ MỘT ở khe này là gõ thẳng chuỗi người đọc được thay vì hex của nó — và
+  // chính chú thích của cổng in `"lamp-reserve"` ra ngay cạnh, mời gõ đúng cái sai ấy. Ca đó
+  // chết ở -002 chứ không tới -004, nên câu của -002 phải tự mang giá trị bắt buộc. Không có ca
+  // này thì người vận hành nhận một câu lỗi đúng mà không hành động được.
+  it("gõ chuỗi thường thay vì hex: -002 vẫn phải NÊU giá trị bắt buộc", async () => {
+    const loi = await reserveKhoParamsFromEnv(
+      { RESERVE_KHO_NFT_POLICY: PID_A, RESERVE_KHO_NFT_NAME: "lamp-reserve" }, SEED, opts,
+    ).then(() => "", (e) => (e instanceof Error ? e.message : String(e)));
+    expect(loi).toContain("RESERVE-KHO-002");
+    expect(loi).toContain(NAME_A);
+  });
+
+  // Cổng so với THAM SỐ `o.defaultName`, không so với một hằng gõ lại trong chính hàm. Quyết
+  // định đó được chú thích bốn dòng và trước ca này thì KHÔNG ai canh: thay vế phải bằng chuỗi
+  // hex gõ cứng ⇒ bộ kiểm vẫn xanh nguyên. Ca này là ca duy nhất phân biệt hai cực — nó truyền
+  // một `defaultName` KHÁC hằng thật và đòi cổng đi theo tham số.
+  it("cổng đi theo THAM SỐ defaultName, không theo một hằng gõ cứng", async () => {
+    const optsB = { derivePid, defaultName: NAME_B };
+    // Với defaultName = NAME_B thì NAME_B là giá trị hợp lệ…
+    const r = await reserveKhoParamsFromEnv(
+      { RESERVE_KHO_NFT_POLICY: PID_A, RESERVE_KHO_NFT_NAME: NAME_B }, SEED, optsB,
+    );
+    expect(r.name).toBe(NAME_B);
+    // …và NAME_A, tức hằng thật của đường ống, phải bị TỪ CHỐI. Một cổng gõ cứng NAME_A sẽ đảo
+    // ngược đúng hai kỳ vọng này.
+    await expect(
+      reserveKhoParamsFromEnv(
+        { RESERVE_KHO_NFT_POLICY: PID_A, RESERVE_KHO_NFT_NAME: NAME_A }, SEED, optsB,
+      ),
+    ).rejects.toThrow(/RESERVE-KHO-004/);
   });
 });

@@ -28,6 +28,7 @@ import { type UTxO } from "@lucid-evolution/lucid";
 import { NETWORK, makeLucid, walletPkh, explorerTx } from "./config.js";
 import { supplyStateToCbor, supplyStateFromCbor, supplyStateRedeemerToCbor, mintRouteToCbor } from "../offchain/src/datum.js";
 import { rehydrate, writeState, waitFor } from "./_canonical_v2.js";
+import { assertSeedNotSpent, custodySeedRefFromState, refKey } from "./_custodySeedRef.js";
 
 const NFT_ADA = 2_000_000n;
 const RESERVE_LAMP = BigInt(process.env.RESERVE_LAMP ?? "1000");
@@ -46,6 +47,11 @@ async function main(): Promise<void> {
   const walletAddr = await lucid.wallet().address();
   const { state, wiring, scripts } = await rehydrate();
   if (pkh !== wiring.pkh) throw new Error(`SAI VÍ: state ghi pkh=${wiring.pkh}, ví hiện tại ${pkh}.`);
+
+  // Bước này đặc biệt đắt nếu hỏng: nó đúc theo ĐÚNG nhánh ReserveDraw mà hạt giống custody
+  // bảo vệ. Tiêu nhầm hạt giống ở đây là tự cắt đường của chính mình ở lượt sau.
+  const seed = custodySeedRefFromState(state.reserve?.custodyRef, process.env);
+  console.log(`hạt giống custody phải giữ nguyên: ${refKey(seed.ref)} (nguồn: ${seed.source})`);
 
   const delta = RESERVE_LAMP * 1_000_000n;
   console.log(`=== Tx C — ReserveDraw (${NETWORK}) — nhánh đã CHẾT trên mainnet ===`);
@@ -79,6 +85,8 @@ async function main(): Promise<void> {
     // (`lamp_mint.ak:252` đòi `quantity_of(tx.mint, meter_policy, meter_name) == 0`).
     .pay.ToAddress(walletAddr, { lovelace: NFT_ADA, [wiring.metUnit]: 1n })
     .complete();
+
+  assertSeedNotSpent(tx, seed.ref, "Tx C (22 ReserveDraw)");
 
   const hash = await (await tx.sign.withWallet().complete()).submit();
   console.log(`\n📤 Tx C: ${hash}\n   ${explorerTx(hash)}`);

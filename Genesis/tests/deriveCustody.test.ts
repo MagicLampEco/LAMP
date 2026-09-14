@@ -119,7 +119,13 @@ describe("custodySeedPolicyId", () => {
   // ĐỘT BIẾN NÀY PHÂN BIỆT ĐƯỢC HAI CỰC: hiện thực lại phép dẫn xuất trong `custodySeedPolicyId`
   // (thay vì gọi chung `custodySeedScript`) ⇒ hai giá trị vẫn đều là hash 28 byte hợp lệ, mọi
   // bài kiểm định dạng vẫn xanh, và cổng đối chứng vẫn "khớp" — với một giá trị KHÔNG phải cái
-  // được đúc. Chỉ ca này đỏ.
+  // được đúc.
+  //
+  // ĐÃ CHẠY THẬT, không phải suy luận (2026-09-14): cho `custodySeedPolicyId` dẫn xuất theo
+  // `custodyIndex + 1` — vẫn ra một policy id 28 byte hợp lệ, chỉ khác cái `deriveCustody` dùng.
+  // Chạy trọn bộ kiểm Genesis: `1 failed | 292 passed | 3 skipped (296)`, và ca đỏ duy nhất là
+  // ca ngay dưới đây. Bản đầu của chú thích này khẳng định "chỉ ca này đỏ" mà CHƯA chạy phép
+  // đo — đúng thứ mà "có bài đỏ ở chốt X ≠ chốt X được ghim" cảnh báo.
   it("TRÙNG KHÍT `deriveCustody().custodySeedPid` — cùng một nguồn dẫn xuất", async () => {
     const w = await deriveCustody(SEED_TX, SEED_IX, base);
     expect(await custodySeedPolicyId(SEED_TX, SEED_IX)).toBe(w.custodySeedPid);
@@ -131,5 +137,51 @@ describe("custodySeedPolicyId", () => {
     const goc = await custodySeedPolicyId(SEED_TX, SEED_IX);
     expect(await custodySeedPolicyId("2".repeat(64), SEED_IX)).not.toBe(goc);
     expect(await custodySeedPolicyId(SEED_TX, SEED_IX + 1)).not.toBe(goc);
+  });
+});
+
+// ══ NỐI THẬT: cổng khe #13-14 chạy với phép dẫn xuất THẬT ═══════════════════════
+//
+// VÌ SAO CẦN CA NÀY DÙ ĐÃ CÓ BÀI ĐƠN VỊ
+// Bộ ca của `reserveKhoParamsFromEnv` ở `custodySeedRef.test.ts` truyền một nhà dẫn xuất DỰNG
+// TẠI CHỖ. Nó đo được logic của cổng, và KHÔNG đo được thứ quan trọng không kém: hai đầu có
+// khớp nhau không. Một cổng logic đúng, nối vào một nguồn sai, vẫn "khớp" — với một giá trị
+// không phải cái sẽ được đúc. Đây là lớp lỗi mà mọi bài dùng hàng giả đều xanh ở cả hai cực.
+//
+// Ca này nối `custodySeedPolicyId` thật (đọc blueprint từ đĩa, apply-param thật) vào cổng thật,
+// với `INSTANCE_ID` thật — tức đúng bộ ba mà `20_canonical_genesis.ts` truyền vào lúc chạy.
+import { INSTANCE_ID } from "../scripts/_reserve_layer2.js";
+import { reserveKhoParamsFromEnv } from "../scripts/_custodySeedRef.js";
+
+describe("reserveKhoParamsFromEnv nối phép dẫn xuất THẬT", () => {
+  const SEED = { txHash: SEED_TX, outputIndex: SEED_IX };
+  const opts = { derivePid: custodySeedPolicyId, defaultName: INSTANCE_ID };
+
+  it("policy ĐÚNG của hạt giống đang cầm → đi qua, và trả về đúng cặp #13-14", async () => {
+    const pid = await custodySeedPolicyId(SEED_TX, SEED_IX);
+    const r = await reserveKhoParamsFromEnv({ RESERVE_KHO_NFT_POLICY: pid }, SEED, opts);
+    expect(r.pid).toBe(pid);
+    expect(r.name).toBe(INSTANCE_ID);
+  });
+
+  // Ca hỏng THẬT của thực địa: chép policy từ một lượt chạy trước trong khi hạt giống đã đổi.
+  // Giá trị chép về luôn đúng định dạng — vì nó từng là một giá trị thật.
+  it("ĐỎ: policy của hạt giống KHÁC → RESERVE-KHO-003, dù đúng định dạng 56 hex", async () => {
+    const pidKhac = await custodySeedPolicyId("7".repeat(64), SEED_IX);
+    expect(pidKhac).toMatch(/^[0-9a-f]{56}$/);
+    await expect(reserveKhoParamsFromEnv({ RESERVE_KHO_NFT_POLICY: pidKhac }, SEED, opts))
+      .rejects.toThrow(/RESERVE-KHO-003/);
+  });
+
+  // Khe #14 nối thật: `INSTANCE_ID` là giá trị `custodySeedDatum()` gán cứng, và
+  // `custody_seed.ak` luật S-PARAM-0 ép NFT mang đúng tên đó.
+  it("ĐỎ: asset name khác INSTANCE_ID thật → RESERVE-KHO-004", async () => {
+    const pid = await custodySeedPolicyId(SEED_TX, SEED_IX);
+    await expect(
+      reserveKhoParamsFromEnv(
+        { RESERVE_KHO_NFT_POLICY: pid, RESERVE_KHO_NFT_NAME: "6c616d702d7265736572766f" },
+        SEED, opts,
+      ),
+    ).rejects.toThrow(/RESERVE-KHO-004/);
   });
 });

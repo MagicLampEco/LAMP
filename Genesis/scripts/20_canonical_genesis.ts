@@ -43,8 +43,8 @@ import {
   DIST_CAP, RESERVE_CAP, STATE_PATH, writeState, type CanonicalState,
 } from "./_canonical_v2.js";
 import {
-  assertSeedNotCustody, custodySeedRefFromEnv, refKey, reserveKhoParamsFromEnv,
-  type OutputRef,
+  assertSeedNotCustody, assertSeedNotSpent, custodySeedRefFromEnv, refKey,
+  reserveKhoParamsFromEnv, type OutputRef,
 } from "./_custodySeedRef.js";
 import { INSTANCE_ID, custodySeedPolicyId } from "./_reserve_layer2.js";
 
@@ -196,41 +196,18 @@ async function main(): Promise<void> {
       { lovelace: NFT_ADA, [toDropUnit(wiring)]: 1n })
     .complete();
 
-  // ── CỔNG SEED-CHON-DONG-001 — đo KẾT QUẢ, không đo ý định ───────────────────
+  // Cổng SEED-CHON-DONG-001 — xem `_custodySeedRef.ts`. Đo input THẬT của giao dịch vừa dựng,
+  // nên nó vẫn đúng sau khi thư viện đổi cách chọn-đồng.
   //
-  // `.collectFrom([seed])` chỉ ghim hạt giống GENESIS. `.complete()` ở trên chạy chọn-đồng mặc
-  // định trên TOÀN BỘ UTxO ví, không loại trừ gì. Tx này trả ra năm lần `NFT_ADA` cộng phí, nên
-  // hạt giống không đủ thì chọn-đồng CHẮC CHẮN kéo thêm input — và không gì ngăn nó trúng hạt
-  // giống custody.
-  //
-  // Hỏng ra sao, và vì sao nó không kêu: `lamp_mint` đã nướng policy trên `custody_seed` áp
-  // trên đúng UTxO đó. Tiêu nhầm ở đây thì tx VẪN hợp lệ, VẪN lên chuỗi, mọi thứ trông thành
-  // công — tới lượt đúc NFT custody mới biết policy ấy vĩnh viễn không đúc được nữa, và lúc đó
-  // genesis đã xong, không quay lui.
-  //
-  // Đo sau khi dựng chứ không loại trước khi dựng: phép loại đo Ý ĐỊNH và đúng cho tới khi thư
-  // viện đổi cách chọn; phép này đo KẾT QUẢ nên vẫn đúng sau khi nó đổi.
-  {
-    const custodyRef = custodySeedRefFromEnv(process.env);
-    const wanted = `${custodyRef.txHash}#${custodyRef.outputIndex}`;
-    const used = tx.toTransaction().body().inputs();
-    const inputs: string[] = [];
-    for (let i = 0; i < used.len(); i++) {
-      const ti = used.get(i);
-      inputs.push(`${ti.transaction_id().to_hex()}#${ti.index()}`);
-    }
-    if (inputs.includes(wanted)) {
-      throw new Error(
-        `SEED-CHON-DONG-001: chọn-đồng đã kéo HẠT GIỐNG CUSTODY ${wanted} vào Tx A.\n` +
-        `Tx A tiêu nó ⇒ policy \`custody_seed\` áp trên UTxO đó KHÔNG BAO GIỜ đúc được nữa, ` +
-        `trong khi khe #13 của \`lamp_mint\` đã nướng chính policy đó. Genesis vẫn thành công, ` +
-        `lỗi chỉ lộ ở bước đúc custody — lúc đó không quay lui được.\n` +
-        `Sửa: tách hạt giống custody khỏi ví trước khi chạy (gửi nó sang một địa chỉ khác), ` +
-        `hoặc gộp thêm ADA vào hạt giống genesis để chọn-đồng không cần input thứ hai.\n` +
-        `Input Tx A đang có: ${inputs.join(", ")}`,
-      );
-    }
-  }
+  // ĐỘ PHỦ, viết theo phép đếm chứ không theo trí nhớ — `grep -c assertSeedNotSpent` trong
+  // `Genesis/scripts` ra ĐÚNG BỐN chỗ gọi: bước này · 20b · 21 · 22. Hai bước hay bị kể nhầm
+  // vào, mỗi bước sai một kiểu:
+  //   · `23_prove_oneshot.ts` KHÔNG gọi, và không cần: nó dựng giao dịch trong `try` rồi cố ý
+  //     không ký, không gửi.
+  //   · L2a (`24_reserve_layer2_init.ts`) KHÔNG gọi, và KHÔNG ĐƯỢC gọi: nó `collectFrom([seed])`
+  //     — tiêu hạt giống là việc của nó. Gọi cổng ở đó thì cổng ném mọi lần.
+  // Nói "hạt giống phải sống sót qua cả sáu bước" là tự mâu thuẫn ở vế L2a.
+  assertSeedNotSpent(tx, custodySeed, "Tx A (genesis)");
 
   console.log(`\n✓ Tx A dựng xong + eval script OK (CBOR ${tx.toCBOR().length / 2} byte).`);
 
@@ -249,9 +226,22 @@ async function main(): Promise<void> {
 
   const state: CanonicalState = {
     wiring, tx: { genesis: hash }, minted: { dist: "0", reserve: "0" },
+    // Hạt giống custody ghi NGAY TỪ ĐÂY, không đợi bước Lớp 2.
+    //
+    // Nó là giá trị mà chính lượt này đã dùng để nướng khe #13 của `lamp_mint`, nên đây là
+    // chỗ duy nhất biết nó chắc chắn đúng. Ghi ra làm được hai việc mà env không làm được:
+    // bốn bước giữa đây và L2a đọc được hạt giống để canh chọn-đồng mà KHÔNG cần người chạy
+    // gõ lại env ở từng bước; và cổng `CUSTODY-SEED-002` ở `24_reserve_layer2_init.ts` — vốn
+    // so `state.reserve.custodyRef` với env — từ nay có vế thứ nhất để so. Trước bản này
+    // `state.reserve` luôn `undefined` lúc bước 24 chạy, nên cổng đó đối chiếu với hư không.
+    //
+    // `authRef` để chỗ trống theo đúng khuôn bước 24 đang dùng (`outputIndex: -1`), và mọi
+    // chỗ đọc đã canh bằng `(authRef?.outputIndex ?? -1) < 0`.
+    reserve: { custodyRef: custodySeed, authRef: { txHash: "", outputIndex: -1 } },
   };
   await writeState(state);
   console.log(`\n✅ Genesis xong. State → ${STATE_PATH}`);
+  console.log(`   hạt giống custody đã ghi vào state: ${refKey(custodySeed)}`);
   console.log("Bước kế: tsx 21_vest_to_kho.ts");
 }
 
@@ -327,8 +317,19 @@ async function adoptExisting(
     );
   }
 
-  await writeState({ wiring, tx: { genesis: txHash }, minted: { dist: "0", reserve: "0" } });
+  // Đường nhặt-lại GHI HẠT GIỐNG y như đường chính. Nó biết giá trị đúng ở mức chắc chắn ngang
+  // đường kia: `custodySeed` vừa đi qua `reserveKhoParamsFromEnv` ở trên, tức đã đối chứng với
+  // khe #13 bằng RESERVE-KHO-003. Bỏ trường này ở đây thì lượt phục hồi — đúng lượt mà state
+  // trước đó đã mất — sinh ra một state không có `reserve.custodyRef`, và cổng CUSTODY-SEED-002
+  // ở bước 24 lại đối chiếu với hư không: cổng mất đúng ở lượt cần nó nhất.
+  await writeState({
+    wiring,
+    tx: { genesis: txHash },
+    minted: { dist: "0", reserve: "0" },
+    reserve: { custodyRef: custodySeed, authRef: { txHash: "", outputIndex: -1 } },
+  });
   console.log(`\n✅ State đã nhặt lại → ${STATE_PATH}`);
+  console.log(`   hạt giống custody đã ghi vào state: ${refKey(custodySeed)}`);
   console.log("Bước kế: tsx 21_vest_to_kho.ts");
 }
 
