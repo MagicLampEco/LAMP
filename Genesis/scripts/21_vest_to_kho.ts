@@ -16,6 +16,7 @@ import { type UTxO } from "@lucid-evolution/lucid";
 import { NETWORK, makeLucid, walletPkh, explorerTx } from "./config.js";
 import { supplyStateToCbor, supplyStateFromCbor, supplyStateRedeemerToCbor, mintRouteToCbor } from "../offchain/src/datum.js";
 import { rehydrate, treasuryDatum, writeState } from "./_canonical_v2.js";
+import { assertSeedNotSpent, custodySeedRefFromState, refKey } from "./_custodySeedRef.js";
 
 const NFT_ADA = 2_000_000n;
 /** Lượng đúc thử, tính bằng LAMP (1 LAMP = 1e6 oildrop). */
@@ -40,6 +41,10 @@ async function main(): Promise<void> {
   if (pkh !== wiring.pkh) {
     throw new Error(`SAI VÍ: state ghi pkh=${wiring.pkh}, ví hiện tại ${pkh}. Registry chỉ uỷ quyền cho pkh trong state.`);
   }
+
+  // Hạt giống custody phải sống sót tới bước L2a — đọc TRƯỚC khi dựng giao dịch.
+  const seed = custodySeedRefFromState(state.reserve?.custodyRef, process.env);
+  console.log(`hạt giống custody phải giữ nguyên: ${refKey(seed.ref)} (nguồn: ${seed.source})`);
 
   const delta = DELTA_LAMP * 1_000_000n;
   console.log(`=== Tx B — DistributionVest → KHO (${NETWORK}) ===`);
@@ -93,6 +98,10 @@ async function main(): Promise<void> {
       { lovelace: NFT_ADA, [wiring.lampUnit]: delta })
     .addSigner(walletAddr)                       // authority trong entry registry phải ký
     .complete();
+
+  // Tx B trả ra hai output kèm min-ADA và phí, nên chọn-đồng gần như chắc chắn phải kéo thêm
+  // input ngoài các UTxO đã ghim — và không gì ngăn nó trúng hạt giống custody.
+  assertSeedNotSpent(tx, seed.ref, "Tx B (21 vest → kho)");
 
   const hash = await (await tx.sign.withWallet().complete()).submit();
   console.log(`📤 Tx B: ${hash}\n   ${explorerTx(hash)}`);

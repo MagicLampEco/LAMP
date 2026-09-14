@@ -250,3 +250,118 @@ export function assertSeedNotCustody(
     );
   }
 }
+
+// ══ SEED-CHON-DONG — hạt giống custody phải SỐNG SÓT qua mọi bước trước L2a ═════
+//
+// VÌ SAO CẢ MỘT MỤC CHO MỘT PHÉP `includes`
+//   Hạt giống custody được chốt TRƯỚC bước genesis và chỉ được tiêu ở bước L2a. Giữa hai mốc
+//   đó có SÁU giao dịch, mỗi cái gọi `.complete()` và chạy chọn-đồng mặc định trên TOÀN BỘ
+//   UTxO ví. `.collectFrom([...])` chỉ ghim input BẮT BUỘC; nó không cấm chọn-đồng kéo thêm.
+//   Mọi giao dịch ở đây đều trả ra nhiều output kèm phí, nên chọn-đồng gần như chắc chắn phải
+//   lấy thêm input — và không gì ngăn nó trúng hạt giống custody.
+//
+//   Hỏng ra sao: tiêu nhầm thì giao dịch VẪN hợp lệ, VẪN lên chuỗi, bước đó báo thành công.
+//   Tới lượt L2a mới biết `custody_seed` áp trên UTxO ấy không còn gì để tiêu, và policy đó đã
+//   nướng vào khe #13 của `lamp_mint` từ lâu ⇒ nhánh ReserveDraw của token đã đúc chết vĩnh
+//   viễn. Đúng hình dạng khuyết tật `meter_nft_policy = 28 byte 0` của bản mồi mainnet.
+//
+// ĐO KẾT QUẢ, KHÔNG ĐO Ý ĐỊNH
+//   Phép "loại hạt giống khỏi tập UTxO trước khi dựng" đo Ý ĐỊNH, và nó đúng cho tới lần thư
+//   viện đổi cách chọn. Phép dưới đây đọc input THẬT của giao dịch đã dựng, nên nó vẫn đúng
+//   sau khi thư viện đổi. Giá phải trả: phải gọi SAU `.complete()` và TRƯỚC `.submit()`.
+
+/**
+ * Bề mặt tối thiểu của một giao dịch đã dựng mà phép đo này cần.
+ *
+ * Khai theo HÌNH DẠNG chứ không import kiểu của lucid: tệp này cố ý không kéo theo
+ * `_reserve_layer2.ts`/`config.ts` (chúng đọc env ngay lúc nạp module), và một giao diện hình
+ * dạng thì bài kiểm dựng stub được mà không cần một giao dịch thật.
+ */
+export interface TxInputList {
+  len(): number;
+  get(i: number): { transaction_id(): { to_hex(): string }; index(): number | bigint };
+}
+export interface BuiltTx {
+  toTransaction(): { body(): { inputs(): TxInputList } };
+}
+
+/** Khoá `txHash#index` của MỌI input trong một giao dịch đã dựng, theo đúng thứ tự. */
+export function txInputKeys(tx: BuiltTx): string[] {
+  const used = tx.toTransaction().body().inputs();
+  const keys: string[] = [];
+  for (let i = 0; i < used.len(); i++) {
+    const ti = used.get(i);
+    keys.push(`${norm(ti.transaction_id().to_hex())}#${Number(ti.index())}`);
+  }
+  return keys;
+}
+
+/**
+ * CỔNG SEED-CHON-DONG-001 — giao dịch vừa dựng KHÔNG được tiêu hạt giống custody.
+ *
+ * Gọi ở MỌI bước giữa genesis và L2a, ngay sau `.complete()`. Bỏ sót một bước là bỏ ngỏ đúng
+ * lớp hỏng này ở bước đó — cổng phải gác MỌI lối vào khái niệm, không phải lối đầu và lối cuối.
+ *
+ * @param buoc tên bước, để câu lỗi nói được hỏng ở đâu (`"Tx A (genesis)"`, `"21 vest"`…).
+ */
+export function assertSeedNotSpent(tx: BuiltTx, custody: OutputRef, buoc: string): void {
+  const keys = txInputKeys(tx);
+  const wanted = refKey(custody);
+  if (keys.includes(wanted)) {
+    throw new Error(
+      `SEED-CHON-DONG-001: chọn-đồng đã kéo HẠT GIỐNG CUSTODY ${wanted} vào ${buoc}.\n` +
+        `Bước này tiêu nó ⇒ policy \`custody_seed\` áp trên UTxO đó KHÔNG BAO GIỜ đúc được nữa, ` +
+        `trong khi khe #13 của \`lamp_mint\` đã nướng chính policy đó. Bước này vẫn thành công, ` +
+        `lỗi chỉ lộ ở bước đúc custody (L2a) — lúc đó không quay lui được.\n` +
+        `Sửa: tách hạt giống custody khỏi ví trước khi chạy (gửi nó sang một địa chỉ khác), ` +
+        `hoặc gộp thêm ADA vào các UTxO khác để chọn-đồng không cần chạm tới nó.\n` +
+        `Input của ${buoc}: ${keys.join(", ")}`,
+    );
+  }
+}
+
+/** Hạt giống custody lấy từ đâu ra — để bên gọi IN RA, chứ không để nó tự đoán. */
+export type SeedSource = "state" | "env";
+
+/**
+ * Hạt giống custody cho các bước SAU genesis: đọc từ tệp trạng thái, đối chiếu với env.
+ *
+ * BA TRẠNG THÁI, và không trạng thái nào được im:
+ *   • state CÓ ghi  → đó là nguồn, vì nó là giá trị mà bước genesis ĐÃ dùng để nướng khe #13.
+ *     env cũng đặt mà LỆCH ⇒ ném `SEED-CHON-DONG-003`: hai nguồn bất đồng là trạng thái mù,
+ *     không phải trạng thái chọn-một-trong-hai.
+ *   • state CHƯA ghi → lùi về env, và `custodySeedRefFromEnv` tự ném nếu env cũng trống. Đây là
+ *     đường cho tệp trạng thái ghi TRƯỚC đợt vá này; bên gọi phải in ra `source` để người chạy
+ *     thấy mình đang đứng trên đường lùi.
+ *   • cả hai trống → ném, ở `custodySeedRefFromEnv`.
+ *
+ * Vì sao state là nguồn chứ không phải env: env là thứ người gõ lại ở MỖI bước, và gõ lại giữa
+ * chừng thì không gì kêu. State là thứ bước genesis đã ghi ra, cùng lượt với việc nướng policy —
+ * nó là nguồn THỨ HAI thật sự, không phải một bản chép của cùng một lần gõ.
+ */
+export function custodySeedRefFromState(
+  fromState: OutputRef | undefined,
+  env: Record<string, string | undefined>,
+): { ref: OutputRef; source: SeedSource } {
+  const envSet = (env.CUSTODY_SEED_TX ?? "").trim() !== "";
+  if (fromState && TX_HASH.test(norm(fromState.txHash)) && Number.isInteger(fromState.outputIndex)
+      && fromState.outputIndex >= 0) {
+    const ref = { txHash: norm(fromState.txHash), outputIndex: fromState.outputIndex };
+    if (envSet) {
+      const fromEnv = custodySeedRefFromEnv(env);
+      if (!sameRef(ref, fromEnv)) {
+        throw new Error(
+          `SEED-CHON-DONG-003: hạt giống custody trong tệp trạng thái LỆCH biến môi trường.\n` +
+            `  state (bước genesis đã dùng) = ${refKey(ref)}\n` +
+            `  CUSTODY_SEED_TX/IDX          = ${refKey(fromEnv)}\n` +
+            `Khe #13 của lamp_mint đã nướng theo giá trị trong state, nên env mới là vế sai — ` +
+            `nhưng cổng này KHÔNG tự chọn hộ: hai nguồn bất đồng nghĩa là một trong hai lượt gõ ` +
+            `đã sai, và đi tiếp với vế nào cũng là đoán. Bỏ CUSTODY_SEED_TX/CUSTODY_SEED_IDX khỏi ` +
+            `môi trường để dùng state, hoặc sửa chúng về ${refKey(ref)}.`,
+        );
+      }
+    }
+    return { ref, source: "state" };
+  }
+  return { ref: custodySeedRefFromEnv(env), source: "env" };
+}
