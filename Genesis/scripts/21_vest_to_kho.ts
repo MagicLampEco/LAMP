@@ -13,7 +13,7 @@
 //
 // Chạy: NETWORK=Preprod tsx 21_vest_to_kho.ts     (DELTA_LAMP=10000 mặc định)
 import { type UTxO } from "@lucid-evolution/lucid";
-import { NETWORK, makeLucid, walletPkh, explorerTx } from "./config.js";
+import { NETWORK, SUBMIT, makeLucid, walletPkh, explorerTx } from "./config.js";
 import { supplyStateToCbor, supplyStateFromCbor, supplyStateRedeemerToCbor, mintRouteToCbor } from "../offchain/src/datum.js";
 import { rehydrate, treasuryDatum, writeState } from "./_canonical_v2.js";
 
@@ -72,7 +72,7 @@ async function main(): Promise<void> {
   }
   const s1 = { ...s0, dist_minted: s0.dist_minted + delta };
 
-  const khoBefore = (await lucid.utxosAt(wiring.treAddr))
+  const treasuryBefore = (await lucid.utxosAt(wiring.treAddr))
     .reduce((s, u) => s + (u.assets[wiring.lampUnit] ?? 0n), 0n);
 
   const tx = await lucid.newTx()
@@ -94,21 +94,49 @@ async function main(): Promise<void> {
     .addSigner(walletAddr)                       // authority trong entry registry phải ký
     .complete();
 
-  const hash = await (await tx.sign.withWallet().complete()).submit();
+  const signed = await tx.sign.withWallet().complete();
+  if (!SUBMIT) {
+    console.log(
+      `\n(SUBMIT=false ⇒ KHÔNG gửi, KHÔNG ghi state.)\n` +
+      `Tx dựng xong và ký được; Δ = ${delta} oildrop vào ${wiring.treAddr}.\n` +
+      `Gửi thật: SUBMIT=true tsx 21_vest_to_kho.ts`,
+    );
+    return;
+  }
+
+  const hash = await signed.submit();
   console.log(`📤 Tx B: ${hash}\n   ${explorerTx(hash)}`);
   await lucid.awaitTx(hash);
 
-  // ── Đối chiếu A-DEST bằng số đo, không bằng "tx đã qua" ──────────────────
-  const khoAfter = (await lucid.utxosAt(wiring.treAddr))
-    .reduce((s, u) => s + (u.assets[wiring.lampUnit] ?? 0n), 0n);
-  const grew = khoAfter - khoBefore;
-  console.log(`\nKHO: ${khoBefore} → ${khoAfter} oildrop (tăng ${grew})`);
-  if (grew < delta) throw new Error(`A-DEST HỎNG: kho chỉ tăng ${grew}, cần ≥ ${delta}.`);
-  console.log(`✓ A-DEST: toàn bộ Δ vào kho, không đồng nào ra ví.`);
-
+  // GHI SỔ TRƯỚC, ĐỐI CHIẾU SAU. Thứ tự này không phải sở thích: lượt gửi ở trên là bất khả
+  // hồi, nên từ đây trở đi mọi nhánh thoát đều phải để lại `hash` trên đĩa. Bản trước đối chiếu
+  // trước rồi mới ghi, nên một lần đối chiếu đỏ NHẦM đã ném ở giữa và cuốn sổ ở lại với
+  // `dist: "0"` cho một chuỗi đã đúc thật — sổ và chuỗi lệch nhau vĩnh viễn, không ai kêu.
   state.tx.vest = hash;
   state.minted.dist = s1.dist_minted.toString();
   await writeState(state);
+
+  // ── Đối chiếu A-DEST bằng số đo, không bằng "tx đã qua" ──────────────────
+  // Hỏi GIAO DỊCH, đừng hỏi bảng tra theo địa chỉ. Bảng UTxO-theo-địa-chỉ nhất quán DẦN: hỏi nó
+  // ngay sau `awaitTx` thì một lượt ĐÃ THÀNH CÔNG đọc y hệt một lượt hỏng. Đã xảy ra thật
+  // 2026-09-14 — dòng "A-DEST HỎNG: kho chỉ tăng 0" in ra cho giao dịch `47679b09…`, trong khi
+  // kho nhận đủ 10.000 LAMP. Bảng địa chỉ vẫn dùng vì nó đo đúng ĐỘ TĂNG RÒNG, thứ mà một mình
+  // output của tx không nói được; cái đổi là NHÃN khi nó chưa kịp: "CHƯA ĐO ĐƯỢC" chứ không
+  // "HỎNG", và không ném. Ném ở đây là ném SAU một thao tác bất khả hồi — nó không cứu được gì,
+  // chỉ bỏ lại một cuốn sổ dở dang.
+  const treasuryDelta = (await lucid.utxosAt(wiring.treAddr))
+    .reduce((s, u) => s + (u.assets[wiring.lampUnit] ?? 0n), 0n) - treasuryBefore;
+  if (treasuryDelta >= delta) {
+    console.log(`\nKHO: +${treasuryDelta} oildrop`);
+    console.log(`✓ A-DEST: toàn bộ Δ vào kho, không đồng nào ra ví.`);
+  } else {
+    console.log(
+      `\n⚠ A-DEST CHƯA ĐO ĐƯỢC (không phải "hỏng"): bảng UTxO theo địa chỉ mới trả +${treasuryDelta},` +
+      ` cần ≥ ${delta}. Bảng này nhất quán dần nên số 0 ngay sau khi gửi là bình thường.\n` +
+      `  Đo lại bằng chính giao dịch: ${explorerTx(hash)}\n` +
+      `  Hoặc chạy: tsx verify_canonical_v2.ts (mục "KHO A-DEST").`,
+    );
+  }
   console.log(`\n✅ Xong. Bước kế: tsx 22_reserve_draw.ts (nhánh đã CHẾT trên mainnet).`);
 }
 
