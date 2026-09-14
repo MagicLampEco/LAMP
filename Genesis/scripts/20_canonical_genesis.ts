@@ -197,8 +197,16 @@ async function main(): Promise<void> {
     .complete();
 
   // Cổng SEED-CHON-DONG-001 — xem `_custodySeedRef.ts`. Đo input THẬT của giao dịch vừa dựng,
-  // nên nó vẫn đúng sau khi thư viện đổi cách chọn-đồng. Bốn bước sau (20b · 21 · 22 · 23) và
-  // bước L2a đều gọi cùng hàm này: hạt giống phải sống sót qua CẢ SÁU, không phải qua bước đầu.
+  // nên nó vẫn đúng sau khi thư viện đổi cách chọn-đồng.
+  //
+  // ĐỘ PHỦ, viết theo phép đếm chứ không theo trí nhớ — `grep -c assertSeedNotSpent` trong
+  // `Genesis/scripts` ra ĐÚNG BỐN chỗ gọi: bước này · 20b · 21 · 22. Hai bước hay bị kể nhầm
+  // vào, mỗi bước sai một kiểu:
+  //   · `23_prove_oneshot.ts` KHÔNG gọi, và không cần: nó dựng giao dịch trong `try` rồi cố ý
+  //     không ký, không gửi.
+  //   · L2a (`24_reserve_layer2_init.ts`) KHÔNG gọi, và KHÔNG ĐƯỢC gọi: nó `collectFrom([seed])`
+  //     — tiêu hạt giống là việc của nó. Gọi cổng ở đó thì cổng ném mọi lần.
+  // Nói "hạt giống phải sống sót qua cả sáu bước" là tự mâu thuẫn ở vế L2a.
   assertSeedNotSpent(tx, custodySeed, "Tx A (genesis)");
 
   console.log(`\n✓ Tx A dựng xong + eval script OK (CBOR ${tx.toCBOR().length / 2} byte).`);
@@ -309,8 +317,19 @@ async function adoptExisting(
     );
   }
 
-  await writeState({ wiring, tx: { genesis: txHash }, minted: { dist: "0", reserve: "0" } });
+  // Đường nhặt-lại GHI HẠT GIỐNG y như đường chính. Nó biết giá trị đúng ở mức chắc chắn ngang
+  // đường kia: `custodySeed` vừa đi qua `reserveKhoParamsFromEnv` ở trên, tức đã đối chứng với
+  // khe #13 bằng RESERVE-KHO-003. Bỏ trường này ở đây thì lượt phục hồi — đúng lượt mà state
+  // trước đó đã mất — sinh ra một state không có `reserve.custodyRef`, và cổng CUSTODY-SEED-002
+  // ở bước 24 lại đối chiếu với hư không: cổng mất đúng ở lượt cần nó nhất.
+  await writeState({
+    wiring,
+    tx: { genesis: txHash },
+    minted: { dist: "0", reserve: "0" },
+    reserve: { custodyRef: custodySeed, authRef: { txHash: "", outputIndex: -1 } },
+  });
   console.log(`\n✅ State đã nhặt lại → ${STATE_PATH}`);
+  console.log(`   hạt giống custody đã ghi vào state: ${refKey(custodySeed)}`);
   console.log("Bước kế: tsx 21_vest_to_kho.ts");
 }
 

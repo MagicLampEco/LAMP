@@ -282,18 +282,50 @@ export interface TxInputList {
   get(i: number): { transaction_id(): { to_hex(): string }; index(): number | bigint };
 }
 export interface BuiltTx {
-  toTransaction(): { body(): { inputs(): TxInputList } };
+  toTransaction(): {
+    body(): {
+      inputs(): TxInputList;
+      /**
+       * TRƯỜNG RIÊNG, không nằm trong `inputs()`. Khai `| undefined` vì hàm dựng có thể chưa
+       * đặt collateral (giao dịch không đính script), và `?` vì một bản thư viện cũ hơn có thể
+       * không có accessor này — hai ca đó phải phân biệt được với "có collateral, rỗng".
+       */
+      collateral_inputs?(): TxInputList | undefined;
+    };
+  };
 }
 
-/** Khoá `txHash#index` của MỌI input trong một giao dịch đã dựng, theo đúng thứ tự. */
-export function txInputKeys(tx: BuiltTx): string[] {
-  const used = tx.toTransaction().body().inputs();
+/** Đọc một danh sách input thành khoá `txHash#index`. Danh sách vắng mặt ⇒ mảng rỗng. */
+function keysOf(list: TxInputList | undefined): string[] {
+  if (!list) return [];
   const keys: string[] = [];
-  for (let i = 0; i < used.len(); i++) {
-    const ti = used.get(i);
+  for (let i = 0; i < list.len(); i++) {
+    const ti = list.get(i);
     keys.push(`${norm(ti.transaction_id().to_hex())}#${Number(ti.index())}`);
   }
   return keys;
+}
+
+/** Khoá `txHash#index` của MỌI input CHI TIÊU trong một giao dịch đã dựng, theo đúng thứ tự. */
+export function txInputKeys(tx: BuiltTx): string[] {
+  return keysOf(tx.toTransaction().body().inputs());
+}
+
+/**
+ * Khoá của MỌI input COLLATERAL — trường khác `inputs()`, và là một đường TIÊU thứ hai.
+ *
+ * Vì sao phải đọc riêng: `collateral_inputs` chỉ bị ledger nuốt khi giao dịch TRƯỢT PHA 2, tức
+ * ở đúng nhánh thất bại mà không ai nhìn. Bốn bước được gác đều đính script Plutus nên đều mang
+ * collateral, và bộ chọn collateral của thư viện quét TOÀN BỘ UTxO ví — nó không biết gì về hạt
+ * giống custody. Một cổng chỉ đọc `inputs()` nói "không tiêu" cho một giao dịch đang cầm hạt
+ * giống làm vật thế chấp.
+ *
+ * Đã tái hiện trên Emulator: `inputs() = [tx#1]` trong khi `collateral_inputs() = [tx#0]`, và
+ * `tx#0` chính là hạt giống — cổng bản đầu im lặng.
+ */
+export function txCollateralKeys(tx: BuiltTx): string[] {
+  const body = tx.toTransaction().body();
+  return keysOf(body.collateral_inputs?.());
 }
 
 /**
@@ -307,6 +339,41 @@ export function txInputKeys(tx: BuiltTx): string[] {
 export function assertSeedNotSpent(tx: BuiltTx, custody: OutputRef, buoc: string): void {
   const keys = txInputKeys(tx);
   const wanted = refKey(custody);
+
+  // Danh sách RỖNG là trạng thái KHÔNG ĐO ĐƯỢC, không phải trạng thái sạch. Một giao dịch đã
+  // `.complete()` luôn có ≥1 input, nên rỗng ở đây nghĩa là phép đọc đã hỏng — `BuiltTx` khai
+  // theo hình dạng nên một đối tượng khác thoả hình dạng, hoặc một bản thư viện đổi chỗ chứa
+  // input, đều biến cổng thành no-op mà mọi ca kiểm vẫn xanh (ca nào cũng đưa vào danh sách
+  // không rỗng). Chính lý lẽ "đo KẾT QUẢ thì bền sau khi thư viện đổi" đặt cược vào đúng kịch
+  // bản này, nên nhánh im lặng phải bị đóng.
+  if (keys.length === 0) {
+    throw new Error(
+      `SEED-CHON-DONG-002: KHÔNG ĐỌC ĐƯỢC input của ${buoc} — danh sách input rỗng.\n` +
+        `Một giao dịch đã \`.complete()\` luôn tiêu ít nhất một UTxO, nên đây là trạng thái MÙ, ` +
+        `không phải trạng thái "không chạm hạt giống". Cho qua lúc này là nói "tôi không biết" ` +
+        `bằng giọng của "ổn".\n` +
+        `Nguyên nhân thường gặp: đối tượng truyền vào không phải giao dịch đã dựng, hoặc bản ` +
+        `thư viện đã đổi bề mặt \`toTransaction().body().inputs()\`.`,
+    );
+  }
+
+  // Collateral bị nuốt khi giao dịch trượt pha 2 ⇒ nó là đường TIÊU thứ hai. Câu lỗi tách
+  // riêng vì cách sửa khác hẳn: chi tiêu thẳng thì gộp ADA cho chọn-đồng, còn collateral thì
+  // phải cho ví một UTxO thuần ADA khác để bộ chọn collateral bám vào.
+  const colKeys = txCollateralKeys(tx);
+  if (colKeys.includes(wanted)) {
+    throw new Error(
+      `SEED-CHON-DONG-004: ${buoc} đã ghim HẠT GIỐNG CUSTODY ${wanted} làm COLLATERAL.\n` +
+        `Giao dịch này không chi tiêu hạt giống, nên cổng đọc \`inputs()\` không thấy gì — nhưng ` +
+        `collateral bị ledger NUỐT khi giao dịch trượt pha 2. Lúc đó hạt giống mất vĩnh viễn, ` +
+        `policy \`custody_seed\` đã nướng vào khe #13 của \`lamp_mint\` không bao giờ đúc được ` +
+        `nữa, và màn hình chỉ báo "giao dịch lỗi, chạy lại" — không một chữ nào về hạt giống.\n` +
+        `Sửa: để trong ví một UTxO thuần ADA KHÁC đủ lớn cho collateral, hoặc tách hạt giống ` +
+        `custody sang một địa chỉ khác trước khi chạy.\n` +
+        `Collateral của ${buoc}: ${colKeys.join(", ")}`,
+    );
+  }
+
   if (keys.includes(wanted)) {
     throw new Error(
       `SEED-CHON-DONG-001: chọn-đồng đã kéo HẠT GIỐNG CUSTODY ${wanted} vào ${buoc}.\n` +
@@ -322,6 +389,21 @@ export function assertSeedNotSpent(tx: BuiltTx, custody: OutputRef, buoc: string
 
 /** Hạt giống custody lấy từ đâu ra — để bên gọi IN RA, chứ không để nó tự đoán. */
 export type SeedSource = "state" | "env";
+
+/**
+ * Một `OutputRef` đọc trong tệp trạng thái có ĐỌC ĐƯỢC không.
+ *
+ * Tách thành hàm riêng vì nó được dùng ở HAI nhánh ngược dấu nhau — nhánh ném khi hỏng và
+ * nhánh nhận khi đọc được. Viết điều kiện hai lần là mở đường cho hai bản trôi khỏi nhau, và
+ * lúc đó có một khoảng giá trị không rơi vào nhánh nào.
+ */
+function docDuocRef(r: OutputRef): boolean {
+  return (
+    TX_HASH.test(norm(r.txHash)) &&
+    Number.isInteger(r.outputIndex) &&
+    r.outputIndex >= 0
+  );
+}
 
 /**
  * Hạt giống custody cho các bước SAU genesis: đọc từ tệp trạng thái, đối chiếu với env.
@@ -343,9 +425,34 @@ export function custodySeedRefFromState(
   fromState: OutputRef | undefined,
   env: Record<string, string | undefined>,
 ): { ref: OutputRef; source: SeedSource } {
-  const envSet = (env.CUSTODY_SEED_TX ?? "").trim() !== "";
-  if (fromState && TX_HASH.test(norm(fromState.txHash)) && Number.isInteger(fromState.outputIndex)
-      && fromState.outputIndex >= 0) {
+  // Đo CẢ CẶP biến, không chỉ nửa đầu: `CUSTODY_SEED_TX` và `CUSTODY_SEED_IDX` cùng định danh
+  // MỘT `OutputReference`. Chỉ đo nửa đầu thì người chỉ đặt `CUSTODY_SEED_IDX` (gõ sót dòng
+  // kia, hoặc gõ sai tên biến còn lại) làm cổng đối chiếu -003 TẮT trong im lặng, và màn hình
+  // vẫn in `(nguồn: state)` trông bình thường. Đặt lẻ một nửa phải rơi vào
+  // `custodySeedRefFromEnv` để nó ném CUSTODY-SEED-001.
+  const envSet =
+    (env.CUSTODY_SEED_TX ?? "").trim() !== "" || (env.CUSTODY_SEED_IDX ?? "").trim() !== "";
+
+  // Trạng thái thứ ba: state CÓ trường nhưng KHÔNG ĐỌC ĐƯỢC. Bản đầu gộp nó vào nhánh "state
+  // chưa ghi" rồi lùi im lặng về env — fail-open, và nó vô hiệu hoá đúng cổng -003: phép đối
+  // chiếu nằm BÊN TRONG khối state-đọc-được, nên state hỏng + env trỏ một hạt giống khác thì
+  // không vế nào bất đồng với vế nào. "Chưa ghi" và "ghi hỏng" là hai việc khác nhau: cái đầu
+  // là tệp trạng thái cũ (hợp lệ, có đường lùi), cái sau là dữ liệu đã hỏng.
+  if (fromState !== undefined && fromState !== null && !docDuocRef(fromState)) {
+    throw new Error(
+      `SEED-CHON-DONG-005: tệp trạng thái CÓ trường hạt giống custody nhưng KHÔNG ĐỌC ĐƯỢC.\n` +
+        `  reserve.custodyRef.txHash      = ${JSON.stringify(fromState.txHash)}\n` +
+        `  reserve.custodyRef.outputIndex = ${JSON.stringify(fromState.outputIndex)}\n` +
+        `Cần hash 64 ký tự hex và chỉ số nguyên >= 0. Đây KHÔNG phải ca "state chưa ghi" — ở ca ` +
+        `đó trường vắng mặt và lùi về biến môi trường là đúng. Ở đây trường CÓ mặt và hỏng, nên ` +
+        `lùi về env là đi tiếp bằng một giá trị không ai đối chiếu được: cổng SEED-CHON-DONG-003 ` +
+        `chỉ so hai nguồn khi vế state đọc được, nên nó sẽ im đúng lúc cần kêu.\n` +
+        `Sửa: khôi phục tệp trạng thái từ lượt genesis, hoặc chạy lại bước genesis. Đừng gõ tay ` +
+        `giá trị vào env để đi tiếp — khe #13 đã nướng theo giá trị THẬT của lượt genesis.`,
+    );
+  }
+
+  if (fromState && docDuocRef(fromState)) {
     const ref = { txHash: norm(fromState.txHash), outputIndex: fromState.outputIndex };
     if (envSet) {
       const fromEnv = custodySeedRefFromEnv(env);

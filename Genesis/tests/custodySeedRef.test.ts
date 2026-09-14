@@ -262,14 +262,32 @@ describe("reserveKhoParamsFromEnv — RESERVE-KHO-001/002/003", () => {
 // hạt giống đi lọt, và không phép kiểm định dạng nào kêu vì mọi giá trị đều đúng hình dạng.
 
 /** Một `TxInputList` giả lập từ danh sách khoá `txHash#index`. */
-function txVoi(...keys: string[]): BuiltTx {
+const danhSach = (keys: string[]) => {
   const list = keys.map((k) => {
     const [h, i] = k.split("#");
     return { transaction_id: () => ({ to_hex: () => h as string }), index: () => Number(i) };
   });
+  return { len: () => list.length, get: (n: number) => list[n]! };
+};
+
+function txVoi(...keys: string[]): BuiltTx {
+  return { toTransaction: () => ({ body: () => ({ inputs: () => danhSach(keys) }) }) };
+}
+
+/**
+ * Giao dịch có CẢ HAI trường: input chi tiêu và input collateral.
+ *
+ * Phải dựng riêng vì `collateral_inputs` là accessor TÙY CHỌN trên `BuiltTx` — một stub chỉ khai
+ * `inputs()` vẫn hợp kiểu, và đó đúng là hình dạng làm cổng collateral xanh ở cả hai cực nếu
+ * không có ca nào đưa vào trường thứ hai.
+ */
+function txVoiTheChap(chiTieu: string[], theChap: string[]): BuiltTx {
   return {
     toTransaction: () => ({
-      body: () => ({ inputs: () => ({ len: () => list.length, get: (n: number) => list[n]! }) }),
+      body: () => ({
+        inputs: () => danhSach(chiTieu),
+        collateral_inputs: () => danhSach(theChap),
+      }),
     }),
   };
 }
@@ -305,6 +323,51 @@ describe("txInputKeys + assertSeedNotSpent — SEED-CHON-DONG-001", () => {
     })();
     expect(loi).toContain("Tx C (22 ReserveDraw)");
     expect(loi).toContain(refKey(SEED_REF));
+  });
+
+  // ── Đường TIÊU thứ hai: collateral ────────────────────────────────────────
+  //
+  // `collateral_inputs` là trường RIÊNG, không nằm trong `inputs()`. Nó chỉ bị ledger nuốt khi
+  // giao dịch trượt pha 2 — nhánh thất bại, nhánh không ai nhìn. Bộ chọn collateral của thư viện
+  // quét toàn bộ UTxO ví và không biết gì về hạt giống custody.
+  it("ĐỎ: hạt giống bị ghim làm COLLATERAL ⇒ SEED-CHON-DONG-004, dù KHÔNG bị chi tiêu", () => {
+    // Đây là hình dạng đã tái hiện trên Emulator: inputs trỏ một UTxO khác, collateral trỏ
+    // đúng hạt giống. Cổng chỉ đọc `inputs()` im lặng ở đúng ca này.
+    expect(() =>
+      assertSeedNotSpent(txVoiTheChap([`${KHAC}#1`], [`${TX_A}#3`]), SEED_REF, "Tx B (21 vest → kho)"),
+    ).toThrow(/SEED-CHON-DONG-004/);
+  });
+
+  it("câu lỗi collateral phải nói CÁCH SỬA khác với ca chi tiêu", () => {
+    // Hai ca cần hai hành động khác nhau: chi tiêu thì gộp ADA cho chọn-đồng; collateral thì
+    // phải cho ví một UTxO thuần ADA khác để bộ chọn bám vào. Một câu lỗi chung cho cả hai là
+    // gửi người chạy đi sửa sai chỗ.
+    const loi = (() => {
+      try { assertSeedNotSpent(txVoiTheChap([`${KHAC}#1`], [`${TX_A}#3`]), SEED_REF, "b"); return ""; }
+      catch (e) { return e instanceof Error ? e.message : String(e); }
+    })();
+    expect(loi).toContain("collateral");
+    expect(loi).toContain("trượt pha 2");
+  });
+
+  it("collateral trỏ UTxO KHÁC → im, cổng không bắt bừa mọi collateral", () => {
+    expect(() =>
+      assertSeedNotSpent(txVoiTheChap([`${KHAC}#1`], [`${KHAC}#0`]), SEED_REF, "b"),
+    ).not.toThrow();
+  });
+
+  it("giao dịch KHÔNG khai collateral (accessor vắng mặt) vẫn đi qua được", () => {
+    // `txVoi` không khai `collateral_inputs`. Vắng accessor ≠ collateral rỗng ≠ hạt giống nằm
+    // trong collateral — ca này giữ cho phép đọc tùy chọn không biến thành lỗi cho mọi bước.
+    expect(() => assertSeedNotSpent(txVoi(`${KHAC}#1`), SEED_REF, "b")).not.toThrow();
+  });
+
+  // ── Trạng thái MÙ ─────────────────────────────────────────────────────────
+  it("ĐỎ: danh sách input RỖNG ⇒ SEED-CHON-DONG-002, không được đọc thành 'sạch'", () => {
+    // Một tx đã `.complete()` luôn có ≥1 input. Rỗng nghĩa là phép đọc hỏng — và `includes`
+    // trên mảng rỗng trả `false`, tức cổng nói "ổn" bằng đúng giọng của trạng thái không biết.
+    expect(() => assertSeedNotSpent(txVoi(), SEED_REF, "Tx A (genesis)"))
+      .toThrow(/SEED-CHON-DONG-002/);
   });
 });
 
@@ -344,17 +407,44 @@ describe("custodySeedRefFromState — SEED-CHON-DONG-003", () => {
     expect(() => custodySeedRefFromState(undefined, {})).toThrow(/CUSTODY-SEED-001/);
   });
 
-  // Hình dạng hỏng trong state KHÔNG được đọc thành "có giá trị". Một state bị sửa tay với hash
-  // cụt đi qua `if (fromState)` không sứt mẻ gì nếu cổng chỉ kiểm sự tồn tại.
-  it("state có trường nhưng hash SAI HÌNH DẠNG → không nhận, lùi về env", () => {
-    const r = custodySeedRefFromState(
-      { txHash: "abc", outputIndex: 3 }, { CUSTODY_SEED_TX: TX_A, CUSTODY_SEED_IDX: "3" },
-    );
-    expect(r.source).toBe("env");
+  // Hình dạng hỏng trong state KHÔNG được đọc thành "có giá trị", VÀ KHÔNG được lùi im lặng
+  // về env. Bản đầu của ca này khẳng định `source === "env"` là đúng ý đồ — nó ghim một hành vi
+  // fail-open: phép đối chiếu -003 nằm BÊN TRONG nhánh state-đọc-được, nên state hỏng cộng env
+  // trỏ một hạt giống KHÁC thì không vế nào bất đồng với vế nào, và ba bước sau canh nhầm một
+  // UTxO đã chết. Nay tách: vắng mặt → lùi (đúng); có mặt mà hỏng → ném.
+  it("ĐỎ: state có trường nhưng hash SAI HÌNH DẠNG ⇒ SEED-CHON-DONG-005, KHÔNG lùi về env", () => {
+    expect(() =>
+      custodySeedRefFromState(
+        { txHash: "abc", outputIndex: 3 }, { CUSTODY_SEED_TX: TX_A, CUSTODY_SEED_IDX: "3" },
+      ),
+    ).toThrow(/SEED-CHON-DONG-005/);
   });
 
-  it("ĐỎ: state có trường nhưng chỉ số ÂM → không nhận, và env trống ⇒ ném", () => {
+  // Ca này phân biệt hai cực mà ca trên KHÔNG phân biệt: env ở đây trỏ ĐÚNG hạt giống của
+  // state. Một cổng "lùi về env rồi so" sẽ thấy hai vế khớp và im. Chỉ cổng ném-khi-state-hỏng
+  // mới đỏ ở đây — tức nó đo "state có đọc được không", không đo "hai vế có khớp không".
+  it("ĐỎ: state hỏng vẫn ném kể cả khi env trỏ đúng giá trị mong đợi", () => {
+    expect(() =>
+      custodySeedRefFromState(
+        { txHash: `${TX_A}ff`, outputIndex: 0 }, { CUSTODY_SEED_TX: TX_A, CUSTODY_SEED_IDX: "0" },
+      ),
+    ).toThrow(/SEED-CHON-DONG-005/);
+  });
+
+  it("ĐỎ: state có trường nhưng chỉ số ÂM ⇒ SEED-CHON-DONG-005, không phải CUSTODY-SEED-001", () => {
+    // Bản đầu ném CUSTODY-SEED-001 — câu lỗi đó chỉ nói về `CUSTODY_SEED_TX`/`IDX`, tức bảo
+    // người chạy đi sửa env trong khi thứ hỏng là tệp trạng thái. Nhãn phải mang đúng nguyên
+    // nhân, không mang nguyên nhân của nhánh kế bên.
     expect(() => custodySeedRefFromState({ txHash: TX_A, outputIndex: -1 }, {}))
-      .toThrow(/CUSTODY-SEED-001/);
+      .toThrow(/SEED-CHON-DONG-005/);
+  });
+
+  // `envSet` phải đo CẢ CẶP biến. Đo mỗi `CUSTODY_SEED_TX` thì đặt lẻ `CUSTODY_SEED_IDX` làm
+  // cổng đối chiếu tắt im lặng. Đột biến phân biệt được: đổi `envSet` sang chỉ đo `TX` ⇒ ca này
+  // chuyển từ ném sang trả về state, tức xanh sai.
+  it("ĐỎ: env đặt LẺ nửa chỉ số (thiếu CUSTODY_SEED_TX) vẫn phải kích hoạt phép đối chiếu", () => {
+    expect(() =>
+      custodySeedRefFromState({ txHash: TX_A, outputIndex: 0 }, { CUSTODY_SEED_IDX: "0" }),
+    ).toThrow(/CUSTODY-SEED-001/);
   });
 });
