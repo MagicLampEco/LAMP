@@ -54,7 +54,7 @@ Distribution/
       beacon.ak                 # post DropParam (committee, NFT-auth)
       beacon_nft.ak             # NFT authenticity beacon (one-shot theo genesis_ref)
       treasury.ak               # release LAMP cho redeem + sổ cái solvency (cum ≤ pool)
-      treasury_nft.ak           # NFT "TRSY" authenticity kho (one-shot) — chống kho giả
+      treasury_nft.ak           # NFT "TREASURY" authenticity kho (one-shot) — chống kho giả
   offchain/src/                 # TypeScript (Lucid Evolution)
     datum.ts committee.ts            # codec Data + committee threshold
     beaconBuilder.ts claimBuilder.ts redeemBuilder.ts   # tx builders (redeem tính vested)

@@ -356,7 +356,7 @@ async function main(): Promise<void> {
   console.log(`   trong một epoch, hoặc rút lượt hai cùng epoch, hoặc rút mà không kích cổng sàn`);
   console.log(`   — cả ba đều bị validator từ chối, không phải bị cảnh báo.`);
   console.log(`\n   Bước kế: tsx 25_gated_draw.ts (rút THẬT qua cổng), rồi tsx 26_prove_brake.ts.`);
-  console.log(`\n   Ghi chú tên: asset name meter là "${MET_NAME}" (MET), auth là "${AUTH_NAME}" (TPULL),`);
+  console.log(`\n   Ghi chú tên: asset name meter là "${MET_NAME}" (METER), auth là "${AUTH_NAME}" (TREASURYPULL),`);
   console.log(`   custody instance là "${INSTANCE_ID}".`);
 }
 

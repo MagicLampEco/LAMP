@@ -81,13 +81,13 @@ async function findBeacon(
   return u;
 }
 
-/** Tìm treasury UTxO canonical (mang đúng 1 NFT TRSY). Re-resolve sau mỗi Claim/Redeem. */
+/** Tìm treasury UTxO canonical (mang đúng 1 NFT TREASURY). Re-resolve sau mỗi Claim/Redeem. */
 async function findTreasury(
   lucid: LucidEvolution, address: string, trsyUnit: string,
 ): Promise<UTxO> {
   const utxos = await lucid.utxosAt(address);
   const u = utxos.find((x) => (x.assets[trsyUnit] ?? 0n) === 1n);
-  if (!u) throw new Error(`không tìm thấy treasury UTxO chứa NFT TRSY ${trsyUnit}`);
+  if (!u) throw new Error(`không tìm thấy treasury UTxO chứa NFT TREASURY ${trsyUnit}`);
   return u;
 }
 
@@ -173,7 +173,7 @@ async function main(): Promise<void> {
   await ensureCollateral(lucid);
 
   // SOLVENCY co-spend (C-SOLV-*): mỗi Claim spend treasury (GrantEntitlement) →
-  // outstanding_entitlement += amount ≤ pool. Treasury UTxO canonical mang NFT TRSY.
+  // outstanding_entitlement += amount ≤ pool. Treasury UTxO canonical mang NFT TREASURY.
   //
   // CREATE vs UPDATE: 03_genesis KHÔNG còn tạo tài khoản (xem đầu 03), nên lần chạy đầu
   // đi đường CREATE — mở tài khoản + cấp E + ĐÚC NFT tên blake2b_256(owner) trong CÙNG
@@ -253,10 +253,10 @@ async function main(): Promise<void> {
     );
   }
 
-  // Treasury canonical mang TRSY + còn LAMP (redeem path bind TRSY on-chain mới).
+  // Treasury canonical mang TREASURY + còn LAMP (redeem path bind TREASURY on-chain mới).
   const treasuryU = (await lucid.utxosAt(state.treasury.address))
     .find((u) => (u.assets[trsyUnit] ?? 0n) === 1n && (u.assets[lampUnit] ?? 0n) > 0n);
-  if (!treasuryU) throw new Error("không tìm thấy treasury UTxO (TRSY + còn LAMP)");
+  if (!treasuryU) throw new Error("không tìm thấy treasury UTxO (TREASURY + còn LAMP)");
   const dropBeacon = await findBeacon(lucid, state.beacon.address, dropNft);
 
   const redeem = await buildRedeemTx({

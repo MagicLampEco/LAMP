@@ -171,7 +171,7 @@ async function main(): Promise<void> {
   }
 
   // ── Resolve treasury_nft_policy (LUÔN ONE-SHOT Aiken treasury_nft) ──
-  // Authenticity treasury (TRSY) là sống còn cho solvency → KHÔNG có native-sig fallback.
+  // Authenticity treasury (TREASURY) là sống còn cho solvency → KHÔNG có native-sig fallback.
   // policyId derive từ 1 genesis_ref ví; reuse genesis_ref của beacon one-shot khi có
   // (1 UTxO consume thoả CẢ hai policy trong cùng genesis tx), else pick ref riêng.
   // BEACON_NFT_POLICY env override: beacon không one-shot nội bộ → treasury_nft cần ref riêng.
@@ -182,9 +182,9 @@ async function main(): Promise<void> {
     treasuryNftGenesisRef = await pickGenesisRef(lucid);
   }
   const treasuryNftPolicy = await treasuryNftPolicyIdFromRef(treasuryNftGenesisRef);
-  console.log(`treasury_nft_policy: ${treasuryNftPolicy}  (ONE-SHOT Aiken treasury_nft — TRSY)`);
+  console.log(`treasury_nft_policy: ${treasuryNftPolicy}  (ONE-SHOT Aiken treasury_nft — TREASURY)`);
   console.log(`   genesis_ref:      ${treasuryNftGenesisRef.txHash}#${treasuryNftGenesisRef.outputIndex}`);
-  console.log("   (supply = 1 TUYỆT ĐỐI; 03_genesis PHẢI consume đúng UTxO này khi mint TRSY)");
+  console.log("   (supply = 1 TUYỆT ĐỐI; 03_genesis PHẢI consume đúng UTxO này khi mint TREASURY)");
 
   const committeeData = committee.keyHashes;   // List<ByteArray> = array of hex strings
   const thresholdData = BigInt(committee.threshold);

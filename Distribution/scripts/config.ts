@@ -30,6 +30,11 @@ import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 
+// Re-export, KHÔNG định nghĩa lại: `03_genesis.ts`/`04_e2e.ts` (đường đang chạy) và các
+// script cũ vẫn `import { TREASURY_NFT_ASSET_NAME } from "./config.js"` — nguồn DUY NHẤT
+// của giá trị nằm ở `../offchain/src/constants.ts` (xem lý do ở khối treasury_nft dưới).
+export { TREASURY_NFT_ASSET_NAME } from "../offchain/src/constants.js";
+
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 // BÍ MẬT: tệp này nhận GIÁ TRỊ qua biến môi trường, KHÔNG mở kho khoá và KHÔNG biết
@@ -150,16 +155,16 @@ export async function resolveCommittee(lucid: LucidEvolution): Promise<Committee
 // Genesis/Faucet deploy trước, NHƯNG asset NAME = canonical tLAMP để khớp
 // token thật Genesis/Faucet mint — tránh deploy Distribution tìm sai asset) ──
 // 02_mint_test_lamp.ts ghi policy + name vào deployed.json. Asset name "tLAMP".
-export const LAMP_ASSET_NAME = "744c414d50"; // "tLAMP" — canonical (khớp Genesis/Faucet)
+export { LAMP_ASSET_NAME } from "../offchain/src/constants.js";
 
 // ── Beacon NFT (authenticity) ──────────────────────────────────
 // CONTRACT v2 "Capped Drop": chỉ còn 1 beacon DropParam{D} duy nhất. Bỏ
 // PParam/Randomness/MerkleRoot (cơ chế lottery đã gỡ). Asset name "DROP".
 // MVP self-contained: 03_genesis.ts mint 1 beacon NFT bằng NATIVE sig policy của
 // ví deploy (one-shot), ghi policy id vào deployed.json. Khi agent beacon_nft ship
-// policy thật, đọc từ blueprint thay native. PHẢI khớp offchain
-// DEFAULT_BEACON_ASSET_NAMES.DropParam + onchain util.beacon_name.
-export const DROP_ASSET_NAME = "44524f50"; // "DROP"
+// policy thật, đọc từ blueprint thay native. Giá trị lấy từ `constants.ts` — cùng
+// một nguồn với `DEFAULT_BEACON_ASSET_NAMES.DropParam` và onchain `util.beacon_name`.
+export { DROP_ASSET_NAME } from "../offchain/src/constants.js";
 
 /**
  * Native one-shot minting policy (sig của ví deploy) — dùng cho cả test-LAMP (02)
@@ -208,13 +213,16 @@ export async function beaconNftPolicyIdFromRef(ref: GenesisRef): Promise<string>
 
 // ── Treasury authenticity NFT ONE-SHOT (Aiken `treasury_nft`) ──────────
 // Cùng mẫu one-shot beacon_nft: policy parameterized bởi 1 genesis OutputReference.
-// Mint chỉ hợp lệ khi tx CONSUME đúng UTxO đó → supply 1 NFT "TRSY" TUYỆT ĐỐI.
+// Mint chỉ hợp lệ khi tx CONSUME đúng UTxO đó → supply 1 NFT "TREASURY" TUYỆT ĐỐI.
 // Policy id phải tính TRƯỚC ở 01_deploy để bake vào claim_account (param 7), NFT thật
 // chỉ mint ở 03_genesis (consume đúng genesis_ref). Treasury_nft KHÔNG có native-sig
 // fallback — authenticity treasury là sống còn cho solvency, luôn one-shot.
-
-/** Asset-name hex treasury authenticity NFT — PHẢI khớp onchain util.treasury_nft_name. */
-export const TREASURY_NFT_ASSET_NAME = "54525359"; // "TRSY"
+//
+// Asset-name hex `TREASURY_NFT_ASSET_NAME` (PHẢI khớp onchain util.treasury_nft_name):
+// giữ DUY NHẤT ở `../offchain/src/constants.ts`, re-export ở đầu tệp này — trước đây
+// tệp này giữ một bản định nghĩa RIÊNG, hai nơi cùng một giá trị mà không ai báo khi
+// một bên đổi còn bên kia quên (ca thật: đợt đổi REG/MET/TRSY/TPULL 2026-09-14 phải sửa
+// tay cả hai chỗ).
 
 /** Compiled code (chưa apply) của minting validator treasury_nft. */
 export async function rawTreasuryNft(): Promise<RawValidator> {
@@ -381,13 +389,13 @@ export interface DeployedState {
   // validator (genesisRef baked vào policy id); "native-sig" = MVP fallback (Preview).
   beaconNftMode?: "oneshot" | "native-sig";
   beaconNftGenesisRef?: GenesisRef;
-  // treasury authenticity NFT (TRSY) one-shot genesis ref (01 → 03). LUÔN one-shot Aiken
+  // treasury authenticity NFT (TREASURY) one-shot genesis ref (01 → 03). LUÔN one-shot Aiken
   // treasury_nft. policyId baked vào claim_account (param 7); NFT mint ở 03 consume ref.
   treasuryNftGenesisRef?: GenesisRef;
   // genesis UTxOs (03) — txHash#index để bước sau resolve.
   // v2: 1 beacon DropParam duy nhất (bỏ pparam/randomness/merkle).
   // 2026-08-14: claimAccountA/B thành TUỲ CHỌN. Sau PR #22, tài khoản KHÔNG còn tạo được
-  // ở 03_genesis: mở tài khoản đòi đúc NFT (A-ACC-6 cần MỘT INPUT mang TRSY, mà ở 03 TRSY
+  // ở 03_genesis: mở tài khoản đòi đúc NFT (A-ACC-6 cần MỘT INPUT mang TREASURY, mà ở 03 TREASURY
   // vừa được ĐÚC nên chưa có input nào) và đòi `treasury.GrantEntitlement` với granted > 0.
   // Tài khoản nay mở ở 04_e2e qua đường CREATE của claimBuilder.
   genesis?: {

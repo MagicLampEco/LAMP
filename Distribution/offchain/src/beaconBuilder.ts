@@ -17,10 +17,11 @@ import type { Network } from "@magiclamp/utils";
 import type { BeaconDatum, BeaconKind } from "./types.js";
 import { beaconDatumToCbor, beaconRedeemerToCbor } from "./datum.js";
 import { assertCommitteeSigners } from "./committee.js";
+import { DROP_ASSET_NAME } from "./constants.js";
 
-/** Asset-name hex NFT từng kind — PHẢI khớp onchain util.beacon_name. */
+/** Asset-name hex NFT từng kind — PHẢI khớp onchain util.beacon_name. Giá trị ở `constants.ts`. */
 export const DEFAULT_BEACON_ASSET_NAMES: Record<BeaconKind, string> = {
-  DropParam: "44524f50", // "DROP"
+  DropParam: DROP_ASSET_NAME,
 };
 
 export interface PostBeaconParams {

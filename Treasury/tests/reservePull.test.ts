@@ -24,7 +24,7 @@ import {
 const LAMP_POLICY = "77".repeat(28);       // 56 hex
 const LAMP_NAME = "744c414d50";            // "tLAMP"
 const AUTH_POLICY = "a1".repeat(28);
-const AUTH_NAME = "5450554c4c";            // "TPULL"
+const AUTH_NAME = "545245415355525950554c4c"; // "TREASURYPULL"
 const CUST_POLICY = "c0".repeat(28);
 const CUST_NAME = "435553";                // "CUS"
 

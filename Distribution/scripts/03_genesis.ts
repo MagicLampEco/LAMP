@@ -12,8 +12,8 @@
 //   1. Tài khoản phải mang NFT tên blake2b_256(owner) mới spend được (claim_account C-ACC-0).
 //      Tài khoản rỗng không NFT = UTxO chết ở địa chỉ script, đúng loại mất-vĩnh-viễn mà
 //      hệ KHÔNG BURN không có đường lùi.
-//   2. Đúc NFT đó (claim_account_nft A-ACC-6) đòi tx có MỘT INPUT mang TRSY — mà trong
-//      chính tx genesis, TRSY vừa được ĐÚC nên chưa tồn tại input nào. Bất khả thi trong
+//   2. Đúc NFT đó (claim_account_nft A-ACC-6) đòi tx có MỘT INPUT mang TREASURY — mà trong
+//      chính tx genesis, TREASURY vừa được ĐÚC nên chưa tồn tại input nào. Bất khả thi trong
 //      cùng một tx, không phải chuyện xếp lại thứ tự output.
 //   3. Và đường đúc còn đi kèm `treasury.GrantEntitlement` với `granted > 0` — tức tài
 //      khoản phải được cấp entitlement NGAY lúc mở, không có khái niệm "mở rỗng trước".
@@ -124,9 +124,9 @@ async function main(): Promise<void> {
   }
   const lampUnit = toUnit(state.testLamp.policyId, state.testLamp.assetName);
 
-  // ── Treasury authenticity NFT (TRSY) ONE-SHOT ────────────────
+  // ── Treasury authenticity NFT (TREASURY) ONE-SHOT ────────────────
   // policyId đã bake vào claim_account ở 01 (param 7); ở đây re-derive từ genesis_ref
-  // rồi mint TRSY consume đúng UTxO đó. Desync → fail-closed.
+  // rồi mint TREASURY consume đúng UTxO đó. Desync → fail-closed.
   if (!state.treasuryNftGenesisRef) {
     throw new Error(
       "thiếu treasuryNftGenesisRef trong deployed.json — chạy lại 01_deploy " +
@@ -168,7 +168,7 @@ async function main(): Promise<void> {
   }
   console.log();
 
-  // ── 1 tx: mint 2 NFT (DROP beacon + TRSY treasury) + tạo 2 output ──
+  // ── 1 tx: mint 2 NFT (DROP beacon + TREASURY treasury) + tạo 2 output ──
   // one-shot: redeemer MintGenesis = Constr(0, []), và PHẢI consume đúng genesis_ref
   //           (validator ép `list.any(inputs, == genesis_ref)`).
   // native-sig (beacon fallback Preview): Data.void(), không cần consume ref cụ thể.
@@ -202,7 +202,7 @@ async function main(): Promise<void> {
     ? txb.mintAssets({ [dropNft]: 1n }, MINT_GENESIS).attach.MintingPolicy(nftPolicy)
     : txb.mintAssets({ [dropNft]: 1n }, Data.void()).attach.MintingPolicy(nftPolicy);
 
-  // Mint treasury TRSY NFT (one-shot, MintGenesis). NFT này gắn vào treasury UTxO bên dưới.
+  // Mint treasury TREASURY NFT (one-shot, MintGenesis). NFT này gắn vào treasury UTxO bên dưới.
   txb = txb
     .mintAssets({ [trsyNft]: 1n }, MINT_GENESIS)
     .attach.MintingPolicy(treasuryNftPolicy);
@@ -211,7 +211,7 @@ async function main(): Promise<void> {
     // 1 beacon UTxO (DropParam)
     .pay.ToAddressWithData(state.beacon.address, { kind: "inline", value: dropDatum },
       { lovelace: BEACON_MIN_ADA, [dropNft]: 1n })
-    // treasury UTxO (pool LAMP + TRSY authenticity NFT)
+    // treasury UTxO (pool LAMP + TREASURY authenticity NFT)
     .pay.ToAddressWithData(state.treasury.address, { kind: "inline", value: trDatum },
       { lovelace: TREASURY_MIN_ADA, [lampUnit]: TREASURY_FUND, [trsyNft]: 1n })
     .complete();

@@ -3,14 +3,14 @@
 // Treasury UTxO giữ sổ cái solvency (outstanding_entitlement) + LAMP pool. claim_account
 // đọc treasury qua reference/co-spend để ép outstanding_entitlement ≤ pool. Nếu treasury
 // KHÔNG có authenticity NFT, kẻ tấn công tạo treasury giả (cùng datum shape, pool LAMP
-// fake lớn) tại cùng address → bypass solvency. NFT "TRSY" duy nhất chứng thực treasury
+// fake lớn) tại cùng address → bypass solvency. NFT "TREASURY" duy nhất chứng thực treasury
 // canonical → singleton TUYỆT ĐỐI toàn cục (không chỉ per-tx).
 //
 // FIRST-PRINCIPLES — one-shot: policy parameterized bởi 1 genesis OutputReference. Mint
 //   chỉ hợp lệ khi tx CONSUME đúng UTxO genesis đó → policy chạy đúng 1 lần → supply 1
 //   NFT cố định, KHÔNG re-mint. Bất biến mạnh nhất không cần state on-chain.
 //
-// MINT shape: (TRSY, +1) đúng 1, không hơn không kém. BURN cấm (else fail).
+// MINT shape: (TREASURY, +1) đúng 1, không hơn không kém. BURN cấm (else fail).
 
 use aiken/collection/dict
 use aiken/collection/list
@@ -90,7 +90,7 @@ fn nt_other_input() -> Input {
 
 const nt_treasury_sh: ByteArray = #"77777777"
 
-/// Output kho hợp lệ: ở SCRIPT, mang TRSY, TreasuryDatum nợ mở = 0.
+/// Output kho hợp lệ: ở SCRIPT, mang TREASURY, TreasuryDatum nợ mở = 0.
 fn nt_carrier(outstanding: Int) -> Output {
   let v = assets.from_lovelace(2_000_000) |> assets.add(nt_policy, util.treasury_nft_name(), 1)
   util.mk_output(
@@ -112,7 +112,7 @@ test trnft_mint_happy() {
 }
 
 test trnft_mint_to_wallet_fails() fail {
-  // Ca sinh ra bản vá: đúc TRSY thẳng vào VÍ. Trước đây PASS — và sổ cái solvency từ đó
+  // Ca sinh ra bản vá: đúc TREASURY thẳng vào VÍ. Trước đây PASS — và sổ cái solvency từ đó
   // do người dựng tx viết, `treasury.ak` không bao giờ chạy, C-SOLV-2 chết câm.
   let v = assets.from_lovelace(2_000_000) |> assets.add(nt_policy, util.treasury_nft_name(), 1)
   let to_wallet =

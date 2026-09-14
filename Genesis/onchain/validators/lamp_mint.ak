@@ -392,7 +392,7 @@ const partner_b: ByteArray = #"9b"
 // meter NFT = reserve_thread NFT (Reserve module — định danh đường ReserveDraw permissionless).
 const meter_pol: PolicyId = #"6655"
 
-const meter_nm: ByteArray = #"4d4554"
+const meter_nm: ByteArray = #"4d45544552"
 
 /// Input mang meter NFT (= reserve_thread NFT) — bằng chứng tx đi qua reserve_draw (gate nhịp).
 fn meter_input() -> Input {

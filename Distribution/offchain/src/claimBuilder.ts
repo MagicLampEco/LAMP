@@ -7,7 +7,7 @@
 //
 // SOLVENCY ON-CHAIN (C-SOLV-*): MỌI Claim PHẢI co-spend treasury UTxO (GrantEntitlement):
 //   treasury.outstanding_entitlement += amount, ép outstanding_entitlement ≤ pool LAMP.
-//   → bất biến global Σ(E−redeemed) ≤ pool ép được PER-TX qua sổ cái singleton (NFT "TRSY").
+//   → bất biến global Σ(E−redeemed) ≤ pool ép được PER-TX qua sổ cái singleton (NFT "TREASURY").
 //   Đây thay thế chốt off-chain assertClaimSolvency (vẫn giữ làm pre-flight cảnh báo sớm).
 //
 // Invariants:
@@ -89,18 +89,18 @@ export interface ClaimParams {
    * Treasury validator ép outstanding_entitlement ≤ pool → over-grant vượt quỹ FAIL on-chain.
    * **BẮT BUỘC** (2026-08-12, review PR #22 điểm 4). Trước đây là tuỳ chọn và builder in
    * ra "(off-chain only — no treasury co-spend)" như thể đó là một chế độ hợp lệ — nhưng
-   * on-chain MỌI Claim đều đòi đúng 1 input + 1 output mang TRSY (`find_treasury_in`
+   * on-chain MỌI Claim đều đòi đúng 1 input + 1 output mang TREASURY (`find_treasury_in`
    * `expect [i]`), nên nhánh không-treasury CHỈ dựng ra được tx chắc chắn fail. Cùng loại
    * lỗi mà PR #23 đang vá ở `mintBuilder` — builder kẹt ở hình dạng validator không nhận.
    */
   treasury: {
-    /** Treasury UTxO hiện tại (mang NFT "TRSY", inline TreasuryDatum). */
+    /** Treasury UTxO hiện tại (mang NFT "TREASURY", inline TreasuryDatum). */
     utxo:        UTxO;
     /** Applied treasury validator (định nghĩa treasury address). */
     script:      Validator;
     /** Treasury authenticity NFT policy id (compile-time param). */
     nftPolicy:   string;
-    /** NFT asset-name hex; mặc định "TRSY". */
+    /** NFT asset-name hex; mặc định "TREASURY". */
     nftAssetName?: string;
   };
 
@@ -296,12 +296,12 @@ export async function buildClaimTx(params: ClaimParams): Promise<ClaimResult> {
     // còn ngụ ở UTxO enterprise — trùng ngẫu nhiên, không phải do ràng buộc nào.
     // Đường UPDATE: `claim_account` spend CHẠY ⇒ kho ở địa chỉ base thì tx bị chuỗi từ chối.
     // Đường CREATE: không có account input nên `claim_account` KHÔNG chạy, tx qua được —
-    // nhưng NFT "TRSY" bị âm thầm hạ từ base xuống enterprise, mất uỷ quyền stake mà không
+    // nhưng NFT "TREASURY" bị âm thầm hạ từ base xuống enterprise, mất uỷ quyền stake mà không
     // ai đỏ. Mang theo từ input bịt cả hai đường bằng cùng một dòng.
     const treasuryAddress = t.utxo.address;
     const prevTreasury = decodeTreasuryDatum(Data.from(t.utxo.datum));
 
-    // Authenticity: treasury UTxO PHẢI mang đúng 1 NFT "TRSY" (chống treasury giả).
+    // Authenticity: treasury UTxO PHẢI mang đúng 1 NFT "TREASURY" (chống treasury giả).
     const nftUnit = toUnit(t.nftPolicy, t.nftAssetName ?? TREASURY_NFT_ASSET_NAME);
     const nftQty = t.utxo.assets[nftUnit] ?? 0n;
     if (nftQty !== 1n) {

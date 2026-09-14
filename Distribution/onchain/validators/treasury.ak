@@ -191,7 +191,7 @@ validator treasury(
         // quấy chiếm nó liên tục (churn UTxO, đua chèn tx) mà không tốn gì ngoài phí.
         expect util.committee_approved(committee, threshold, tx.extra_signatories)
 
-        // Refill KHÔNG có lý do đụng mint (không tạo tài khoản, không đúc TRSY).
+        // Refill KHÔNG có lý do đụng mint (không tạo tài khoản, không đúc TREASURY).
         expect assets.is_zero(tx.mint)
 
         // GỘP: N ≥ 1 input ở script → ĐÚNG 1 output ở script. Kho lại về singleton.
@@ -215,7 +215,7 @@ validator treasury(
 
         // Phải có ÍT NHẤT một input mang datum, nếu không `committee_hash` của output
         // không được ràng vào bất cứ đâu (committee tự đặt giá trị mới). Không bao giờ
-        // gây kẹt: carrier TRSY luôn có datum (ép từ genesis `treasury_nft.ak`), nên mọi
+        // gây kẹt: carrier TREASURY luôn có datum (ép từ genesis `treasury_nft.ak`), nên mọi
         // Refill thật — gộp tiền rót VÀO kho — đều có nó trong tập input.
         expect Some(ch) = ch_opt
         expect out_datum.committee_hash == ch
@@ -224,7 +224,7 @@ validator treasury(
         expect out_datum.outstanding_entitlement == ledger_in
 
         // Giá trị: mọi asset khác bảo toàn TUYỆT ĐỐI (chống rút ADA và chống đánh cắp
-        // NFT "TRSY" ra ngoài), CHỈ LAMP được phép TĂNG một lượng `deposited >= 0`.
+        // NFT "TREASURY" ra ngoài), CHỈ LAMP được phép TĂNG một lượng `deposited >= 0`.
         let lamp_in = assets.quantity_of(value_in, lamp_policy, lamp_name)
         let lamp_out = assets.quantity_of(tre_out.value, lamp_policy, lamp_name)
         let deposited = lamp_out - lamp_in
@@ -634,7 +634,7 @@ test grant_with_mixed_mint_rejected() fail {
 test release_with_mint_rejected() fail {
   // (i) ReleaseForRedeem GIỮ NGUYÊN C-MINT-0: tx trả nợ mà có mint → reject. Nhờ đó,
   // tx mở tài khoản (bắt buộc có mint) KHÔNG thể mượn nhánh này để thoả điều kiện
-  // "có input TRSY" của `claim_account_nft` mà né đường ghi sổ.
+  // "có input TREASURY" của `claim_account_nft` mà né đường ghi sổ.
   let base =
     release_tx(tt_lamp_val(5_000_000, 1000), tt_lamp_val(5_000_000, 900), 500, 400, 0, 100, [])
   let tx =
@@ -649,7 +649,7 @@ test release_with_mint_rejected() fail {
 // VÁ 2026-08-12 — điểm 2: REFILL (gộp + nạp thêm LAMP)
 // ══════════════════════════════════════════════════════════════
 
-/// Value của một UTxO kho: ADA + LAMP (+ NFT "TRSY" nếu là carrier canonical).
+/// Value của một UTxO kho: ADA + LAMP (+ NFT "TREASURY" nếu là carrier canonical).
 fn tt_val(lovelace: Int, lamp: Int, trsy: Bool) -> assets.Value {
   let v = tt_lamp_val(lovelace, lamp)
   if trsy {
@@ -699,8 +699,8 @@ fn refill(own_ix: Int, datum_opt: Option<TreasuryDatum>, tx: Transaction) -> Boo
 
 test refill_merge_two_and_deposit_ok() {
   // (j) Gộp 2 UTxO kho + nạp thêm 400 LAMP từ ví.
-  //   vào: A(TRSY, 5 ADA, 1000 LAMP, nợ 300) + B(2 ADA, 500 LAMP, nợ 200)
-  //   ra : 1 UTxO (TRSY, 7 ADA, 1900 LAMP, nợ 500 = 300+200)
+  //   vào: A(TREASURY, 5 ADA, 1000 LAMP, nợ 300) + B(2 ADA, 500 LAMP, nợ 200)
+  //   ra : 1 UTxO (TREASURY, 7 ADA, 1900 LAMP, nợ 500 = 300+200)
   let a = tre_in_d(0, 5_000_000, 1000, 300, True)
   let b = tre_in_d(1, 2_000_000, 500, 200, False)
   let o = tre_out_d(7_000_000, 1900, 500, True)
@@ -718,8 +718,8 @@ test refill_merge_two_second_input_same_verdict() {
 
 test refill_absorb_no_datum_utxo_ok() {
   // (k) Hút một UTxO KHÔNG datum (LAMP rót về kho qua A-DEST) vào carrier canonical.
-  //   vào: A(TRSY, 5 ADA, 1000 LAMP, nợ 300) + bare(2 ADA, 700 LAMP, KHÔNG datum)
-  //   ra : 1 UTxO (TRSY, 7 ADA, 1700 LAMP, nợ 300 — sổ cái của bare bị bỏ qua)
+  //   vào: A(TREASURY, 5 ADA, 1000 LAMP, nợ 300) + bare(2 ADA, 700 LAMP, KHÔNG datum)
+  //   ra : 1 UTxO (TREASURY, 7 ADA, 1700 LAMP, nợ 300 — sổ cái của bare bị bỏ qua)
   let a = tre_in_d(0, 5_000_000, 1000, 300, True)
   let bare = tre_in_bare(1, 2_000_000, 700)
   let o = tre_out_d(7_000_000, 1700, 300, True)
@@ -752,7 +752,7 @@ test refill_lamp_decrease_rejected() fail {
 }
 
 test refill_trsy_stolen_rejected() fail {
-  // Cùng họ với (l): bỏ NFT "TRSY" khỏi output (đem ra ví) → value ra ≠ Σ vào → reject.
+  // Cùng họ với (l): bỏ NFT "TREASURY" khỏi output (đem ra ví) → value ra ≠ Σ vào → reject.
   let a = tre_in_d(0, 5_000_000, 1000, 300, True)
   let b = tre_in_d(1, 2_000_000, 500, 200, False)
   let o = tre_out_d(7_000_000, 1500, 500, False)

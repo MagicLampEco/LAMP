@@ -80,8 +80,8 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 
 // ── Hằng Lớp 2 ───────────────────────────────────────────────────────────────
 
-/** asset name auth NFT Treasury-pull — "TPULL". Cùng giá trị ở `reserve_draw` và `reserve_gate`. */
-export const AUTH_NAME = fromText("TPULL");
+/** asset name auth NFT Treasury-pull — "TREASURYPULL". Cùng giá trị ở `reserve_draw` và `reserve_gate`. */
+export const AUTH_NAME = fromText("TREASURYPULL");
 
 /**
  * `instance_id` của custody, ĐỒNG THỜI là asset name custody NFT.

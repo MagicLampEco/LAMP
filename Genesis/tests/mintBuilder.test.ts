@@ -109,7 +109,7 @@ function params14(overrides: Partial<MintParamsV14> = {}): MintParamsV14 {
   return {
     ...commonParams(),
     mintParamCount: 14,
-    registryRefUtxo: utxo("addr_test1wregistry", { [`${REG_PID}524547`]: 1n }, "d87980"),
+    registryRefUtxo: utxo("addr_test1wregistry", { [`${REG_PID}5245474953545259`]: 1n }, "d87980"),
     registryNftPolicyId: REG_PID,
     distKhoRefUtxo: utxo(KHO_ADDR, { [`${KHO_PID}4b484f`]: 1n }),
     distKhoNftPolicyId: KHO_PID,
@@ -361,7 +361,7 @@ async function mintTheoDeployed(d: DeployedGate, lucid: MintParams["lucid"]) {
   return buildMintTx({
     ...common,
     mintParamCount: d.mintParamCount,
-    registryRefUtxo: utxo("addr_test1wregistry", { [`${REG_PID}524547`]: 1n }, "d87980"),
+    registryRefUtxo: utxo("addr_test1wregistry", { [`${REG_PID}5245474953545259`]: 1n }, "d87980"),
     registryNftPolicyId: REG_PID,
     distKhoRefUtxo: utxo(d.khoAddress, { [`${KHO_PID}4b484f`]: 1n }),
     distKhoNftPolicyId: KHO_PID,

@@ -144,7 +144,7 @@ describe("requiredHexParam — asset-name cũng qua cổng (gác nửa cặp = t
   it("SUBMIT bật + thiếu ⇒ ném", () => {
     expect(() =>
       requiredHexParam("METER_NFT_NAME", {
-        submit: true, placeholder: "4d4554", consequence: CONSEQUENCE_METER,
+        submit: true, placeholder: "4d45544552", consequence: CONSEQUENCE_METER,
         env: {}, warn: silent,
       }),
     ).toThrow(/METER_NFT_NAME chưa set/);
@@ -152,16 +152,16 @@ describe("requiredHexParam — asset-name cũng qua cổng (gác nửa cặp = t
 
   it("SUBMIT tắt + thiếu ⇒ trả placeholder, không ném", () => {
     const got = requiredHexParam("METER_NFT_NAME", {
-      submit: false, placeholder: "4d4554", consequence: CONSEQUENCE_METER,
+      submit: false, placeholder: "4d45544552", consequence: CONSEQUENCE_METER,
       env: {}, warn: silent,
     });
-    expect(got).toEqual({ name: "METER_NFT_NAME", value: "4d4554", source: "placeholder" });
+    expect(got).toEqual({ name: "METER_NFT_NAME", value: "4d45544552", source: "placeholder" });
   });
 
   it("hex lẻ ký tự ⇒ ném (không có nửa byte)", () => {
     expect(() =>
       requiredHexParam("METER_NFT_NAME", {
-        submit: true, placeholder: "4d4554", consequence: CONSEQUENCE_METER,
+        submit: true, placeholder: "4d45544552", consequence: CONSEQUENCE_METER,
         env: { METER_NFT_NAME: "4d455" }, warn: silent,
       }),
     ).toThrow(/sai dạng/);
@@ -171,10 +171,10 @@ describe("requiredHexParam — asset-name cũng qua cổng (gác nửa cặp = t
   // `TOKEN_NAME=LAMP`, `METER_NFT_NAME=tLAMP` — gõ ASCII thay vì hex, dài chẵn, đi lọt
   // mọi phép kiểm độ dài.
   it("độ dài CHẴN nhưng có ký tự không-hex ⇒ ném (ASCII gõ nhầm vào ô hex)", () => {
-    for (const v of ["LAMP", "4d4554zz", "0x4d4554"]) {
+    for (const v of ["LAMP", "4d45544552zz", "0x4d45544552"]) {
       expect(() =>
         requiredHexParam("TOKEN_NAME", {
-          submit: true, placeholder: "4d4554", consequence: "x",
+          submit: true, placeholder: "4d45544552", consequence: "x",
           env: { TOKEN_NAME: v }, warn: silent,
         }),
       ).toThrow(/sai dạng/);
@@ -184,7 +184,7 @@ describe("requiredHexParam — asset-name cũng qua cổng (gác nửa cặp = t
   it("đường placeholder CÓ gọi warn (im lặng là cách lỗi cũ lọt)", () => {
     const warn = vi.fn();
     requiredHexParam("METER_NFT_NAME", {
-      submit: false, placeholder: "4d4554", consequence: CONSEQUENCE_METER,
+      submit: false, placeholder: "4d45544552", consequence: CONSEQUENCE_METER,
       env: {}, warn,
     });
     expect(warn).toHaveBeenCalledOnce();
@@ -194,7 +194,7 @@ describe("requiredHexParam — asset-name cũng qua cổng (gác nửa cặp = t
 
   it("độ dài tự do được chấp nhận (asset-name không cố định 28 byte)", () => {
     const got = requiredHexParam("METER_NFT_NAME", {
-      submit: true, placeholder: "4d4554", consequence: CONSEQUENCE_METER,
+      submit: true, placeholder: "4d45544552", consequence: CONSEQUENCE_METER,
       env: { METER_NFT_NAME: "535550504c59" }, warn: silent,
     });
     expect(got.value).toBe("535550504c59");
@@ -233,7 +233,7 @@ describe("ĐỐI XỨNG — hai tham số cùng loại phải hành xử y hệt
     ).toThrow();
     expect(() =>
       requiredHexParam("METER_NFT_NAME", {
-        submit: true, placeholder: "4d4554", consequence: CONSEQUENCE_METER, env, warn: silent,
+        submit: true, placeholder: "4d45544552", consequence: CONSEQUENCE_METER, env, warn: silent,
       }),
     ).toThrow();
   });
@@ -275,7 +275,7 @@ describe("giá trị CHẾT — đúng dạng vẫn phải bị chặn khi GỬI
   it("asset-name cũng qua cùng cổng — gác nửa cặp là tái lập lỗi cũ", () => {
     expect(() =>
       requiredHexParam("METER_NFT_NAME", {
-        submit: true, consequence: CONSEQUENCE_METER, placeholder: "4d4554",
+        submit: true, consequence: CONSEQUENCE_METER, placeholder: "4d45544552",
         env: { METER_NFT_NAME: "0000" }, warn: silent,
       }),
     ).toThrow(/GIÁ TRỊ CHẾT/);

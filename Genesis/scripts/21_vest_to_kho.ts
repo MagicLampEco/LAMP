@@ -2,11 +2,11 @@
 //
 // Bước này kiểm ba luật cùng lúc, và cả ba đều là thứ bản mồi mainnet KHÔNG có:
 //
-//   WHO   — `registry.validate_mint` đọc bảng registry từ một reference input mang REG NFT,
+//   WHO   — `registry.validate_mint` đọc bảng registry từ một reference input mang REGISTRY NFT,
 //           tìm entry `token_tag`, rồi đòi authority trong entry ký. Bản mainnet gác bằng
 //           DANH SÁCH pkh nướng sẵn (`deployed.ts:71-76` — "baked-pkh-list", không đọc
 //           registry, không đọc DID) nên xoay khoá phải đúc lại policy.
-//   WHERE — A-DEST: đọc hash kho ĐỘNG từ reference input mang TRSY NFT, rồi đòi ĐỘ TĂNG
+//   WHERE — A-DEST: đọc hash kho ĐỘNG từ reference input mang TREASURY NFT, rồi đòi ĐỘ TĂNG
 //           RÒNG của LAMP tại kho ≥ Δ. Đo độ tăng ròng chứ không đo tổng mặt output, nên
 //           mẹo "tiêu UTxO kho rồi trả lại đúng số cũ" không lọt.
 //   HOW MUCH — SupplyState cộng đúng Δ vào `dist_minted`, ≤ cap, đơn điệu, không burn.
@@ -59,8 +59,8 @@ async function main(): Promise<void> {
       `(registry.ak::find_registry_datum) — ở ví thì cổng KHÔNG mở. Chạy 20b_place_registry.ts.`,
     );
   }
-  const regU = theOneHolding(atReg, wiring.regUnit, "REG NFT");
-  const khoU = theOneHolding(await lucid.utxosAt(wiring.treAddr), wiring.khoUnit,    "TRSY NFT");
+  const regU = theOneHolding(atReg, wiring.regUnit, "REGISTRY NFT");
+  const khoU = theOneHolding(await lucid.utxosAt(wiring.treAddr), wiring.khoUnit,    "TREASURY NFT");
 
   // Đọc SupplyState THẬT từ chuỗi, không lấy số trong state file: state file là bản ghi
   // của mình, chuỗi mới là sự thật. Lệch nhau thì dừng ở dưới.
@@ -80,7 +80,7 @@ async function main(): Promise<void> {
     .attach.SpendingValidator(scripts.supplyState)
     .mintAssets({ [wiring.lampUnit]: delta }, mintRouteToCbor("DistributionVest"))
     .attach.MintingPolicy(scripts.lampMint)
-    // Hai reference input: bảng registry (WHO) + TRSY NFT (WHERE). Chỉ ĐỌC, không tiêu —
+    // Hai reference input: bảng registry (WHO) + TREASURY NFT (WHERE). Chỉ ĐỌC, không tiêu —
     // nên không validator nào của chúng chạy, và cả hai vẫn nguyên cho lượt sau.
     .readFrom([regU, khoU])
     // SupplyState trở lại đúng địa chỉ cũ, CHỈ mang thread NFT + ada

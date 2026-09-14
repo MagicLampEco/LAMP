@@ -10,11 +10,11 @@
 // thoả ⇒ 9,63 tỷ LAMP Reserve không rút được qua policy đó (deployed.ts:118-119). Nên ở đây
 // NĂM marker đúc trong ĐÚNG một giao dịch, không chia lượt, không để dành:
 //
-//   SUPPLY (oneshot_nft) → SupplyState, neo định danh bộ đếm cap
-//   REG    (oneshot_nft) → bảng registry token_tag → authority (WHO-gate)
-//   MET    (oneshot_nft) → cửa DUY NHẤT của nhánh ReserveDraw  ← khe đã chết ở mainnet
-//   TRSY   (treasury_nft) → kho A-DEST, nơi DistributionVest bắt buộc rót LAMP vào
-//   DROP   (beacon_nft)   → beacon của Distribution, cần cho đường claim/redeem về sau
+//   SUPPLY   (oneshot_nft)   → SupplyState, neo định danh bộ đếm cap
+//   REGISTRY (oneshot_nft)   → bảng registry token_tag → authority (WHO-gate)
+//   METER    (oneshot_nft)   → cửa DUY NHẤT của nhánh ReserveDraw  ← khe đã chết ở mainnet
+//   TREASURY (treasury_nft)  → kho A-DEST, nơi DistributionVest bắt buộc rót LAMP vào
+//   DROP     (beacon_nft)    → beacon của Distribution, cần cho đường claim/redeem về sau
 //
 // DROP nằm trong danh sách vì đúng cái lý do trên: `beaconPid` đã nướng vào `claim_account`
 // ⇒ vào `treHash` ⇒ vào ĐỊA CHỈ KHO. Không đúc nó bây giờ thì địa chỉ kho vẫn đúng, nhưng
@@ -218,7 +218,7 @@ async function main(): Promise<void> {
     // tập dùng chính `oneshot_nft`, nên bảng registry ở đây BẤT BIẾN — xem runbook.
     .pay.ToContract(wiring.regAddr, { kind: "inline", value: registryDatum(pkh) },
       { lovelace: NFT_ADA, [wiring.regUnit]: 1n })
-    // KHO A-DEST: TRSY NFT bắt buộc hạ cánh ở một Script, mang TreasuryDatum, nợ mở = 0
+    // KHO A-DEST: TREASURY NFT bắt buộc hạ cánh ở một Script, mang TreasuryDatum, nợ mở = 0
     // (`treasury_nft.ak:50-56`). Chính ràng buộc này giữ cho A-DEST không trỏ về một ví.
     .pay.ToContract(wiring.treAddr, { kind: "inline", value: treasuryDatum(pkh) },
       { lovelace: NFT_ADA, [wiring.khoUnit]: 1n })
@@ -322,10 +322,10 @@ async function adoptExisting(
 
   const atReg = await lucid.utxosAt(wiring.regAddr);
   const checks: [string, bigint][] = [
-    ["SUPPLY @ supply_state", cnt(atSs, wiring.threadUnit)],
-    ["TRSY   @ KHO",          cnt(atTre, wiring.khoUnit)],
-    ["DROP   @ beacon",       cnt(atBcn, toDropUnit(wiring))],
-    ["MET    @ ví",           cnt(atWlt, wiring.metUnit)],
+    ["SUPPLY   @ supply_state", cnt(atSs, wiring.threadUnit)],
+    ["TREASURY @ KHO",          cnt(atTre, wiring.khoUnit)],
+    ["DROP     @ beacon",       cnt(atBcn, toDropUnit(wiring))],
+    ["METER    @ ví",           cnt(atWlt, wiring.metUnit)],
   ];
   let bad = 0;
   console.log();

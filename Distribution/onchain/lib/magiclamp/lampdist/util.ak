@@ -150,9 +150,9 @@ pub fn beacon_name(kind: BeaconKind) -> AssetName {
 }
 
 /// Asset name treasury authenticity NFT — singleton sổ cái solvency.
-/// "TRSY". claim_account đọc treasury (cum_entitlement) qua NFT này → chống treasury giả.
+/// "TREASURY". claim_account đọc treasury (cum_entitlement) qua NFT này → chống treasury giả.
 pub fn treasury_nft_name() -> AssetName {
-  #"54525359"  // "TRSY"
+  #"5452454153555259"  // "TREASURY"
 }
 
 // ── Tests cho helper thuần ────────────────────────────────────

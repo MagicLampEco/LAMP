@@ -190,7 +190,7 @@ const lamp_nm: ByteArray = #"744c414d50"
 
 const auth_pol: PolicyId = #"a1a1"
 
-const auth_nm: ByteArray = #"5450554c4c"
+const auth_nm: ByteArray = #"545245415355525950554c4c"
 
 // SÀN = 100 oildrop (đơn vị test gọn).
 const floor: Int = 100

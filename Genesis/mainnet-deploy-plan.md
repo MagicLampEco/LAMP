@@ -241,7 +241,7 @@ ngược nhau**, nên tách ra:
 **Ràng buộc đang giữ an toàn:** cổng A' dưới đây chặn mọi bước mint giá trị thật.
 A1 đóng theo đường "policy mới" làm cổng đó rơi vào một trạng thái khác về chất: kho
 `dist_treasury` cũ — chỗ duy nhất cổng không mở được vì chưa từng bị tiêu — **không còn nằm
-trên đường mint giá trị thật nữa**. Policy mới dùng `treasury.ak` làm kho, và TRSY NFT bị
+trên đường mint giá trị thật nữa**. Policy mới dùng `treasury.ak` làm kho, và TREASURY NFT bị
 `treasury_nft.ak:50-56` ép hạ cánh ở một Script mang `TreasuryDatum` nợ mở = 0. Nên việc
 phát biểu lại cổng theo `hash + commit nguồn` giờ **áp cho lần deploy mới**, không còn là
 thứ ràng với A1 nữa.

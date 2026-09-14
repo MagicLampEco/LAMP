@@ -42,7 +42,7 @@ Treasury {
   outstanding_entitlement : Int,        // SỔ CÁI solvency: SỐ CÒN NỢ = Σ(E − redeemed) (oildrop)
 }
 ```
-- Treasury UTxO mang **NFT authenticity "TRSY"** (policy `treasury_nft`, one-shot, supply = 1
+- Treasury UTxO mang **NFT authenticity "TREASURY"** (policy `treasury_nft`, one-shot, supply = 1
   TUYỆT ĐỐI) → singleton toàn cục, chống treasury giả cùng script-hash.
 - `outstanding_entitlement` = **số còn nợ người dùng**: `+granted` khi GrantEntitlement,
   `−released` khi ReleaseForRedeem — hai vế đi cặp với pool.
@@ -68,8 +68,8 @@ Validator ÉP:
 4. Treasury nhả đúng `amount` LAMP cho `owner`; **bảo toàn value** treasury (tái dùng treasury.ak,
    `treasury_out.value = treasury_in.value − amount`), **không burn**.
 5. Chống double-satisfaction: đếm theo **payment script hash** (bài học C1/C2/M1).
-6. **TRSY binding (C-SOLV-4/5):** treasury co-spend PHẢI là treasury canonical mang đúng 1 NFT
-   "TRSY", **ngụ tại một script** (không phải ví) và **ra đúng địa chỉ đã vào** (C-SOLV-5);
+6. **TREASURY binding (C-SOLV-4/5):** treasury co-spend PHẢI là treasury canonical mang đúng 1 NFT
+   "TREASURY", **ngụ tại một script** (không phải ví) và **ra đúng địa chỉ đã vào** (C-SOLV-5);
    sổ cái `outstanding_entitlement` **giảm đúng `amount`** khi redeem (C-SOLV-3). Đối xứng với
    Claim path — chống redeem rút từ treasury giả.
 7. (Tùy chọn anti-spam) ép `current_epoch > last_redeem_epoch` — chỉ thêm nếu cần; MVP có thể bỏ vì
@@ -83,15 +83,15 @@ Mọi **Claim** (committee cấp/tăng `entitlement`) BẮT BUỘC co-spend trea
 3. **C-SOLV-2 (SOLVENCY):** `outstanding_entitlement_out ≤ treasury pool LAMP` → committee KHÔNG cấp
    E vượt số dư quỹ → redeem không bao giờ kẹt vì cạn pool.
 4. **C-VAL-0:** pool LAMP + mọi asset BẤT BIẾN khi grant (chỉ datum đổi).
-5. Treasury là singleton per-tx theo script hash + NFT "TRSY" toàn cục → sổ cái serial-hoá MỌI
+5. Treasury là singleton per-tx theo script hash + NFT "TREASURY" toàn cục → sổ cái serial-hoá MỌI
    Claim/Redeem → sổ cái **BẰNG** `Σ(E − redeemed)`, nên `Σ(E − redeemed) ≤ pool` ép được PER-TX.
 6. `claim_account.spend` (Claim) ràng buộc `nợ_out = nợ_in + amount` để khoá amount nhất quán giữa
    account và sổ cái; treasury validator độc lập ép C-SOLV-2 + C-VAL-0.
-7. **C-SOLV-5 (nơi trú của TRSY):** ràng ĐÚNG hash treasury trong `claim_account` là bất khả thi vì
+7. **C-SOLV-5 (nơi trú của TREASURY):** ràng ĐÚNG hash treasury trong `claim_account` là bất khả thi vì
    vòng tham số (`treasury`→`claim_account_hash`→`treasury_nft_policy`→`treasury_hash`). Thay bằng
    hai tầng không cần vòng: (a) `treasury_nft` ép NFT genesis hạ cánh ở **một Script** mang
    `TreasuryDatum` với nợ mở `= 0`; (b) `claim_account` ép carrier ngụ tại Script và **không đổi
-   nhà** trong tx. Trước bản vá hai hàm tra cứu lọc THUẦN theo NFT — TRSY nằm ở ví thì sổ cái do
+   nhà** trong tx. Trước bản vá hai hàm tra cứu lọc THUẦN theo NFT — TREASURY nằm ở ví thì sổ cái do
    người dựng tx tự viết và `treasury.ak` không bao giờ chạy.
 
 ## 5. Hooks DAO (post-MVP — CHỪA CHỖ, KHÔNG build MVP)
@@ -115,7 +115,7 @@ Mọi **Claim** (committee cấp/tăng `entitlement`) BẮT BUỘC co-spend trea
 - `D`, `drops_per_epoch` là **tham số** (committee/DAO), KHÔNG hardcode.
 - **SOLVENCY (C-SOLV-*):** `outstanding_entitlement` ≤ treasury pool LAMP ép on-chain ở MỌI Claim;
   sổ cái BẰNG `Σ(E − redeemed)` (tăng khi grant, giảm khi redeem) → `Σ(E − redeemed) ≤ pool`. Treasury
-  authenticity = NFT "TRSY" one-shot (supply 1). `05_verify_solvency.ts` = kiểm tra vận hành
+  authenticity = NFT "TREASURY" one-shot (supply 1). `05_verify_solvency.ts` = kiểm tra vận hành
   độc lập (defense-in-depth), KHÔNG còn là chốt duy nhất.
 
 ## 8. Spec + build (song song bám CONTRACT)

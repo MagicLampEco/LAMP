@@ -16,7 +16,7 @@ Policy LAMP đang chạy trên mainnet — `55d3e01bb6c469e02665e4b6573ce65bbaf7
 | trần phát hành THỰC TẾ | **26,37 tỷ**, không phải 36 tỷ | 36 tỷ |
 | WHO-gate | danh sách pkh nướng sẵn, 1-of-1 (`deployed.ts:71-76`) | đọc bảng registry theo `token_tag` |
 | xoay khoá vận hành | không được — phải đúc lại policy | sửa entry registry, không redeploy |
-| A-DEST | không ép on-chain ở bản đang chạy | ép: hash kho đọc động từ TRSY NFT |
+| A-DEST | không ép on-chain ở bản đang chạy | ép: hash kho đọc động từ TREASURY NFT |
 
 ⚠️ **Con số 12 ở cột phải là bản đã CHẠY trong runbook này, KHÔNG phải mã trong cây.** Mã hiện tại có
 **14 tham số** — hai khe `reserve_kho_nft_policy`/`reserve_kho_nft_name` thêm sau cùng khi vá A-DEST
@@ -67,7 +67,7 @@ chỉ tiêu được một lần trong lịch sử chuỗi. Marker nào không �
 | SUPPLY | `oneshot_nft` | `supply_state` | neo định danh bộ đếm cap |
 | REG | `oneshot_nft` | ví (xem hạn chế bên dưới) | bảng `token_tag` → authority |
 | MET | `oneshot_nft` | ví ở Lớp 1 → **`reserve_draw` ở Lớp 2** | cửa DUY NHẤT của nhánh `ReserveDraw`; ở ví là cửa KHÔNG KHOÁ |
-| TRSY | `treasury_nft` | `treasury.ak` (KHO) | đích A-DEST, đọc hash kho động |
+| TREASURY | `treasury_nft` | `treasury.ak` (KHO) | đích A-DEST, đọc hash kho động |
 | DROP | `beacon_nft` | `beacon.ak` | beacon Distribution, cần cho claim/redeem |
 
 DROP có mặt vì đúng cái lý do đã giết nhánh Reserve của mainnet: `beaconPid` đã nướng vào

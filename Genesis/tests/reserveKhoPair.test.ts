@@ -58,10 +58,10 @@ const CUSTODY_HASH = "99".repeat(28);
 const KHAC_PID = "ab".repeat(28);        // một custody_seed KHÁC — đúng hình dạng, sai instance
 
 const SUPPLY_NAME = "535550504c59";      // "SUPPLY"
-const REG_NAME = "524547";               // "REG"
-const KHO_NAME = "54525359";             // "TRSY"
-const MET_NAME = "4d4554";               // "MET"
-const AUTH_NAME = "5450554c4c";          // "TPULL"
+const REG_NAME = "5245474953545259";     // "REGISTRY"
+const KHO_NAME = "5452454153555259";     // "TREASURY"
+const MET_NAME = "4d45544552";           // "METER"
+const AUTH_NAME = "545245415355525950554c4c"; // "TREASURYPULL"
 const TOKEN_TAG = "4c414d50";            // "LAMP"
 const TOKEN_NAME = "744c414d50";         // "tLAMP"
 const INSTANCE_ID = "6c616d702d72657365727665"; // "lamp-reserve"

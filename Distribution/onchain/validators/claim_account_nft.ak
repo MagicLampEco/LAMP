@@ -16,7 +16,7 @@
 //   (1) committee M-of-N ký  ⇒ không ai tự mở tài khoản;
 //   (2) tên NFT == blake2b_256(datum.owner) ⇒ NFT dính chặt vào ví chủ (binding A-1,
 //       cùng khuôn với `registry_write` bên Genesis) — không tái dùng NFT cho ví khác;
-//   (3) TRONG CÙNG TX phải có ĐÚNG 1 input mang NFT "TRSY" ⇒ treasury bị SPEND ⇒
+//   (3) TRONG CÙNG TX phải có ĐÚNG 1 input mang NFT "TREASURY" ⇒ treasury bị SPEND ⇒
 //       `treasury.spend` BẮT BUỘC chạy. Mà hai redeemer còn lại của treasury đều ép
 //       `assets.is_zero(tx.mint)`, nên tx có mint tài khoản CHỈ đi lọt qua
 //       `GrantEntitlement` ⇒ khoản nợ LUÔN được ghi sổ + qua cửa solvency `nợ ≤ pool`.
@@ -90,9 +90,9 @@ validator claim_account_nft(
     // `vested − redeemed` ⇒ chênh lệch thành LAMP không ai đòi lại được. Chặn ngay ở đây.
     expect cad.redeemed == 0
 
-    // ── A-ACC-6: CÙNG TX phải có ĐÚNG 1 input mang NFT "TRSY" ─────────────
+    // ── A-ACC-6: CÙNG TX phải có ĐÚNG 1 input mang NFT "TREASURY" ─────────────
     // Đây là bản lề của cả bản vá: treasury bị SPEND ⇒ `treasury.spend` chạy ⇒ khoản nợ
-    // được ghi sổ. "ĐÚNG 1" (không phải ">= 1") để không có hai carrier TRSY nhập nhằng.
+    // được ghi sổ. "ĐÚNG 1" (không phải ">= 1") để không có hai carrier TREASURY nhập nhằng.
     let trsy = util.treasury_nft_name()
     expect [_trsy_in] =
       list.filter(
@@ -148,7 +148,7 @@ fn an_carrier(name: ByteArray, redeemed: Int) -> Output {
   util.mk_output(util.script_address(an_ca_sh), v, an_ca_datum(1000, redeemed))
 }
 
-/// Input treasury mang NFT "TRSY" (kho canonical).
+/// Input treasury mang NFT "TREASURY" (kho canonical).
 fn an_trsy_input() -> Input {
   let v =
     assets.from_lovelace(2_000_000)
@@ -223,10 +223,10 @@ test acct_nft_mint_wrong_name_fails() fail {
   an_run(an_tx(bogus, 1, [an_carrier(bogus, 0)], [an_trsy_input()], [#"c1", #"c2"]))
 }
 
-// (e) tx KHÔNG có input TRSY → FAIL (mệnh đề bản lề)
+// (e) tx KHÔNG có input TREASURY → FAIL (mệnh đề bản lề)
 test acct_nft_mint_without_trsy_input_fails() fail {
   let name = blake2b_256(an_owner)
-  // input là UTxO ví thường, không NFT TRSY ⇒ treasury không bị spend ⇒ nợ không vào sổ.
+  // input là UTxO ví thường, không NFT TREASURY ⇒ treasury không bị spend ⇒ nợ không vào sổ.
   let plain =
     util.mk_input(
       util.mk_ref(3),
@@ -265,7 +265,7 @@ test acct_nft_mint_two_units_fails() fail {
   an_run(an_tx(name, 2, [an_carrier(name, 0)], [an_trsy_input()], [#"c1", #"c2"]))
 }
 
-// Hai TRSY input (hai kho nhập nhằng) → FAIL.
+// Hai TREASURY input (hai kho nhập nhằng) → FAIL.
 test acct_nft_two_trsy_inputs_fails() fail {
   let name = blake2b_256(an_owner)
   let v =

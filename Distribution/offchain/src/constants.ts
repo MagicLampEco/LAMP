@@ -13,5 +13,17 @@ export const DEFAULT_DROPS_PER_EPOCH = 1n;
  */
 export const D_GENESIS = 100_000_000n; // 100 LAMP/drop·epoch
 
+// ── Asset-name hex — MỘT nguồn cho cả offchain lẫn scripts ───────────────────
+// Ba hằng dưới đây từng được chép tay ở nhiều tệp. Chép tay kiểu đó hỏng IM LẶNG:
+// lúc đổi giá trị, bản chưa đổi vẫn biên dịch, vẫn chạy, và chỉ báo lỗi ở tầng
+// validator ("mint fail") — nơi không nói một chữ nào về việc có hai bản hằng.
+// Cần giá trị ở chỗ khác thì IMPORT từ đây, đừng gõ lại.
+
 /** Asset-name hex treasury authenticity NFT — PHẢI khớp onchain util.treasury_nft_name. */
-export const TREASURY_NFT_ASSET_NAME = "54525359"; // "TRSY"
+export const TREASURY_NFT_ASSET_NAME = "5452454153555259"; // "TREASURY"
+
+/** Asset-name hex beacon DropParam — PHẢI khớp onchain util.beacon_name(DropParam). */
+export const DROP_ASSET_NAME = "44524f50"; // "DROP"
+
+/** Asset-name hex token LAMP testnet — khớp token Genesis/Faucet đúc thật. */
+export const LAMP_ASSET_NAME = "744c414d50"; // "tLAMP"

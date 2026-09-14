@@ -52,12 +52,12 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 
 /** asset name thread NFT — "SUPPLY". Neo định danh SupplyState. */
 export const SUPPLY_NAME = fromText("SUPPLY");
-/** asset name registry NFT — "REG". Bảng token_tag → authority. */
-export const REG_NAME = fromText("REG");
-/** asset name meter NFT — "MET". Cửa duy nhất của nhánh ReserveDraw. */
-export const MET_NAME = fromText("MET");
-/** asset name kho NFT — "TRSY", ép bởi `treasury_nft.ak` (`lampdist/util.ak:154-156`). */
-export const KHO_NAME = "54525359";
+/** asset name registry NFT — "REGISTRY". Bảng token_tag → authority. */
+export const REG_NAME = fromText("REGISTRY");
+/** asset name meter NFT — "METER". Cửa duy nhất của nhánh ReserveDraw. */
+export const MET_NAME = fromText("METER");
+/** asset name kho NFT — "TREASURY", ép bởi `treasury_nft.ak` (`lampdist/util.ak:154-156`). */
+export const TREASURY_NAME = "5452454153555259";
 /** asset name beacon NFT — "DROP", ép bởi `beacon_nft.ak` (`lampdist/util.ak:146-149`). */
 export const DROP_NAME = "44524f50";
 
@@ -279,7 +279,7 @@ export async function deriveWiring(
       distCap: DIST_CAP, reserveCap: RESERVE_CAP,                // #4-5  26,37 + 9,63 = 36 tỷ
       registryNftPolicy: regPid, registryNftName: REG_NAME,      // #6-7  WHO-gate
       tokenTag: TOKEN_TAG,                                       // #8
-      distKhoNftPolicy: khoPid, distKhoNftName: KHO_NAME,        // #9-10 kho DISTRIBUTION
+      distKhoNftPolicy: khoPid, distKhoNftName: TREASURY_NAME,   // #9-10 kho DISTRIBUTION
       meterNftPolicy: metPid, meterNftName: MET_NAME,            // #11-12 meter = reserve thread
       // #13-14 kho TREASURY CUSTODY của đường ReserveDraw. KHÔNG suy ra được từ genesis_ref:
       // nó là `(custody_seed policy id, instance_id)` của instance custody, mà `custody_seed`
@@ -331,7 +331,7 @@ export async function deriveWiring(
       threadUnit: toUnit(threadPid, SUPPLY_NAME),
       regUnit:    toUnit(regPid, REG_NAME),
       metUnit:    toUnit(metPid, MET_NAME),
-      khoUnit:    toUnit(khoPid, KHO_NAME),
+      khoUnit:    toUnit(khoPid, TREASURY_NAME),
       reserveKhoPid:  o.reserveKhoPid.trim().toLowerCase(),
       reserveKhoName: o.reserveKhoName.trim().toLowerCase(),
       ssHash,
@@ -558,9 +558,9 @@ export function printWiring(w: CanonicalWiring): void {
   console.log(`pkh:           ${w.pkh}`);
   console.log(`token_name:    ${w.tokenName}`);
   console.log(`thread(SUPPLY):${w.markers.threadPid}`);
-  console.log(`registry(REG): ${w.markers.regPid}`);
-  console.log(`meter(MET):    ${w.markers.metPid}`);
-  console.log(`kho(TRSY):     ${w.markers.khoPid}`);
+  console.log(`registry(REGISTRY): ${w.markers.regPid}`);
+  console.log(`meter(METER):       ${w.markers.metPid}`);
+  console.log(`kho(TREASURY): ${w.markers.khoPid}`);
   console.log(`kho Reserve:   ${w.reserveKhoPid} / ${w.reserveKhoName}  (lamp_mint #13-14)`);
   console.log(`beacon(DROP):  ${w.markers.beaconPid}`);
   console.log(`lamp_policy:   ${w.lampPid}`);
