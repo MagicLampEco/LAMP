@@ -21,7 +21,7 @@
 // tự dựng `new Constr(...)` của gói nó ⇒ ca đầu tiên dưới đây ĐỎ với đúng câu
 // "Unsupported type". Đó là hai bên đột biến mà đầu vào của ca này phân biệt được.
 import { describe, it, expect } from "vitest";
-import { getAddressDetails } from "@lucid-evolution/lucid";
+import { getAddressDetails, fromText } from "@lucid-evolution/lucid";
 import { deriveCustody } from "../scripts/_reserve_layer2.js";
 
 /** UTxO hạt giống — giá trị bất kỳ, chỉ cần đúng hình dạng: 32 byte + chỉ số. */
@@ -58,7 +58,12 @@ describe("deriveCustody — lời gọi vắt qua ranh giới hai gói", () => {
     expect(w.custodyHash).toMatch(/^[0-9a-f]{56}$/);
     expect(w.treasuryStakeHash).toMatch(/^[0-9a-f]{56}$/);
     expect(w.custodySeedPid).toMatch(/^[0-9a-f]{56}$/);
-    expect(w.custodyNftUnit.startsWith(w.custodySeedPid)).toBe(true);
+
+    // KHÔNG kiểm `custodyNftUnit.startsWith(custodySeedPid)` — đó là hằng đúng theo dựng
+    // (`custodyNftUnit = toUnit(custodySeedPid, INSTANCE_ID)`), không đột biến nào làm nó đỏ.
+    // Thứ đo được là phần asset name: nó phải là `instance_id` thật, vì `custody_seed.ak`
+    // luật S-PARAM-0 ép `datum.instance_id == nft_name`, hai chỗ lệch thì tx đúc bị từ chối.
+    expect(w.custodyNftUnit.slice(56)).toBe(fromText("lamp-reserve"));
   });
 
   // `delegation_admin` nướng vào hash `treasury_stake` ⟹ vào PHẦN STAKE của địa chỉ kho.
@@ -77,8 +82,30 @@ describe("deriveCustody — lời gọi vắt qua ranh giới hai gói", () => {
   // `delegationAdminPkh` cố ý KHÔNG có mặc định: nó quyết ai được uỷ quyền phần stake của
   // kho. Một mặc định im lặng ở đây là một quyết định về quyền được đưa ra bởi việc KHÔNG
   // gõ gì.
-  it("ĐỎ: thiếu delegation_admin — ném, không tự điền", async () => {
+  //
+  // ⚠ MỖI CA PHẢI KHỚP CHÍNH MÃ LỖI CỦA CHỐT NÓ CANH. Bản đầu của ba ca dưới đây viết
+  // `rejects.toThrow()` không mẫu, và phép đo đảo cho thấy nó KHÔNG ghim gì: gỡ HẲN cả hai
+  // cổng `TSTAKE-ADMIN-001`/`-002` ở `_reserve_layer2.ts` rồi chạy trọn bộ kiểm Genesis vẫn
+  // ra 262 passed | 3 skipped. Ngoại lệ trượt xuống `TSTAKE-005` bên gói Treasury (sai độ
+  // dài) và chết ở đó — ĐÚNG MÀU, ĐÚNG TÊN BÀI, và chứng minh không điều gì.
+  it("ĐỎ: thiếu delegation_admin — TSTAKE-ADMIN-001, không tự điền", async () => {
     await expect(deriveCustody(SEED_TX, SEED_IX, { ...base, delegationAdminPkh: "" }))
-      .rejects.toThrow();
+      .rejects.toThrow(/TSTAKE-ADMIN-001/);
+  });
+
+  // Giá trị CHẾT: đúng hình dạng, không có tiền ảnh blake2b-224 ⇒ không chữ ký nào thoả
+  // nhánh `publish`. Cổng độ dài cho nó đi lọt, nên nó cần một chốt riêng và một ca riêng.
+  it("ĐỎ: delegation_admin toàn 0 / toàn f — TSTAKE-ADMIN-002", async () => {
+    for (const chet of ["0".repeat(56), "f".repeat(56)]) {
+      await expect(deriveCustody(SEED_TX, SEED_IX, { ...base, delegationAdminPkh: chet }))
+        .rejects.toThrow(/TSTAKE-ADMIN-002/);
+    }
+  });
+
+  // POISON-002 fail-closed trên mạng thật. Mọi ca trên đặt `network: "Preprod"` nên nhánh
+  // Mainnet không lượt nào chạm — tức chốt đó đang KHÔNG ĐO ĐƯỢC, không phải đang xanh.
+  it("ĐỎ: chạy Mainnet với proposal_policy là giá trị chết — POISON-002", async () => {
+    await expect(deriveCustody(SEED_TX, SEED_IX, { ...base, network: "Mainnet" }))
+      .rejects.toThrow(/POISON-002/);
   });
 });

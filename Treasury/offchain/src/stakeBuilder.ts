@@ -19,9 +19,10 @@
 //   Treasury/offchain → Treasury/offchain/node_modules/@lucid-evolution/plutus/dist/index.cjs
 //   cùng một lớp Constr? false
 //
-// Cả kho có 19 bản cài `plutus` riêng biệt, TẤT CẢ đều mang số hiệu `0.1.31`. Số hiệu giống
-// hệt nhau cộng với việc phải soi gói `plutus` chứ không phải `lucid` là HAI lớp nguỵ trang
-// chồng lên nhau, không phải một.
+// Cây làm việc có **14** bản cài `plutus` riêng biệt (19 nếu đếm cả `.claude/worktrees/`,
+// là bản sao tạm — đừng đọc con số đó thành số gói triển khai). TẤT CẢ mang số hiệu `0.1.31`.
+// Số hiệu giống hệt nhau, cộng với việc phải soi gói `plutus` chứ không phải `lucid`, là HAI
+// lớp nguỵ trang chồng lên nhau — không phải một.
 //
 // Nên ranh giới giữa hai gói chở DỮ LIỆU, không chở THỂ HIỆN LỚP: bên gọi truyền vào nhà
 // dựng `Constr` của chính mình (`mkConstr`). Tham số đó **BẮT BUỘC, không có mặc định** —
@@ -72,8 +73,20 @@ function normHex(s: string): string {
  */
 export type ConstrFactory = (index: number, fields: unknown[]) => unknown;
 
-/** Nhà dựng của chính gói này. Dùng cho mọi lời gọi KHÔNG vắt qua ranh giới gói. */
-export const mkLocalConstr: ConstrFactory = (index, fields) => new Constr(index, fields);
+/**
+ * Nhà dựng của chính gói NÀY. CỐ Ý KHÔNG `export`.
+ *
+ * Nếu export, một tệp ở gói khác thấy dòng `import { treasuryStakeParamList } from …` rồi
+ * thêm `mkLocalConstr` vào cùng ngoặc — IDE tự gợi ý, `tsc` im hoàn toàn (hai class CÙNG
+ * KIỂU CẤU TRÚC), và runtime ném lại đúng câu lỗi cũ. Dựng lại được, đã đo:
+ *
+ *   mkLocalConstr (Treasury) gọi từ gói khác → Could not serialize the data: Unsupported type
+ *   nhà dựng của chính gói đó               → KHÔNG NÉM
+ *
+ * Bản vá cấm nhà dựng lạ bằng CHỮ ở `treasuryStakeParamList`; không export là vế bằng CỔNG.
+ * Bài kiểm nội gói dựng `(i, f) => new Constr(i, f)` tại chỗ, không nhập ký hiệu này.
+ */
+const mkLocalConstr: ConstrFactory = (index, fields) => new Constr(index, fields);
 
 /**
  * Danh sách khe apply-param của `treasury_stake` — THỨ TỰ chỉ được viết ở đây.
@@ -84,9 +97,25 @@ export function treasuryStakeParamList(p: TreasuryStakeParams, mkConstr: ConstrF
   if (typeof mkConstr !== "function") {
     throw new Error(
       "TSTAKE-006: thiếu `mkConstr`. Khe `reward_cred` phải là `Constr` của bản lucid mà BÊN " +
-      "GỌI đang dùng — cùng gói thì truyền `mkLocalConstr`, khác gói thì truyền " +
-      "`(i, f) => new Constr(i, f)` với `Constr` của gói đó. Bỏ trống ⇒ `applyParamsToScript` " +
-      "ném `Unsupported type` ở một chỗ khác hẳn, không nhắc gì tới nguyên nhân.",
+      "GỌI đang dùng — truyền `(i, f) => new Constr(i, f)` với `Constr` import từ chính " +
+      "`node_modules` của gói đang gọi. Bỏ trống ⇒ `applyParamsToScript` ném " +
+      "`Unsupported type` ở một chỗ khác hẳn, không nhắc gì tới nguyên nhân.",
+    );
+  }
+  // `typeof === "function"` đo ĐƯỢC-LÀ-HÀM, không đo HÀM-CỦA-AI. Một nhà dựng trả
+  // `{ index, fields }` thuần (mock rò từ bài kiểm sang mã thật, hay một adapter viết vội)
+  // đi qua cổng trên trơn tru rồi chết ở `applyParamsToScript` — tức cổng dựng ra để lỗi nổ
+  // TẠI CHỖ lại mù đúng nửa số đường vào. Phép thử một lời gọi, đóng nửa đó:
+  const thamDo = mkConstr(0, []) as { constructor?: { name?: string } } | null;
+  if (thamDo === null || typeof thamDo !== "object" || thamDo.constructor?.name !== "Constr") {
+    throw new Error(
+      `TSTAKE-007: \`mkConstr\` trả về ${thamDo === null ? "null" : typeof thamDo === "object"
+        ? `đối tượng lớp \`${thamDo.constructor?.name ?? "?"}\`` : typeof thamDo} — cần một ` +
+      "thể hiện `Constr`. Đối tượng thuần cùng hình dạng (`{ index, fields }`) KHÔNG dùng " +
+      "được: `applyParamsToScript` nhận diện theo LỚP, nên nó sẽ ném `Unsupported type` ở " +
+      "một tệp khác hẳn tệp có lỗi. Cổng này CHỈ đo được-là-Constr, KHÔNG đo Constr-của-gói-" +
+      "nào — vế đó không kiểm được từ đây, nên nó được giữ bằng việc không export nhà dựng " +
+      "cục bộ (xem đầu tệp).",
     );
   }
   if (normHex(p.instanceId).length === 0) {
