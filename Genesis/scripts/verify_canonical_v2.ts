@@ -134,7 +134,15 @@ async function main(): Promise<void> {
   //
   // Chỉ đòi nhãn khi Lớp 2 ĐÃ chạy: một state mới đi tới Lớp 1 thì chưa có sàn nào để dán nhãn,
   // và bắt nó đỏ là dựng một cảnh báo luôn có lời giải thích vô hại — thứ dạy người đọc lướt qua.
-  if (state.reserve?.custodyRef) {
+  //
+  // ⚠ VỊ TỪ PHẢI LÀ `authRef`, KHÔNG PHẢI `custodyRef`. Hai trường nằm cạnh nhau trong cùng khối
+  // `reserve` nên trông thay được cho nhau, nhưng chúng khai hai sự kiện khác nhau: bước genesis
+  // ghi `custodyRef` (hạt giống SẼ tiêu), còn `authRef` chỉ có giá trị đọc được sau khi Lớp 2
+  // chạy thật. Dùng `custodyRef` thì mọi state hậu-genesis đều rơi vào nhánh này, `state.floorSource`
+  // chưa được đặt, `parseFloorSource(undefined)` ném, và verify ĐỎ GIẢ — đúng thứ đoạn chú thích
+  // ngay trên vừa nói là phải tránh. Ba chỗ đọc khác trong kho đã canh bằng `authRef`
+  // (`25_gated_draw.ts`, `26_prove_brake.ts`, và phần đầu tệp này); chỗ này là chỗ còn lệch.
+  if ((state.reserve?.authRef?.outputIndex ?? -1) >= 0) {
     try {
       const nguonSan = parseFloorSource(state.floorSource, "state.floorSource");
       check(state.floorOildrop !== undefined,
