@@ -384,11 +384,18 @@ export async function deriveCustody(
   //
   // `reward_cred` trỏ về chính credential thanh toán của kho ⟹ thưởng uỷ quyền chỉ đi được
   // vào kho, và `StakeRewardIn` là đường duy nhất ghi nó vào sổ.
+  //
+  // `mkConstr` truyền vào là nhà dựng của bản lucid CỦA TỆP NÀY. `Genesis/scripts` và
+  // `Treasury/offchain` có hai bản cài `@lucid-evolution/plutus` riêng — đó mới là gói giữ
+  // lớp `Constr`, không phải `@lucid-evolution/lucid`. Hai bản cài ⇒ hai class khác danh
+  // tính ⇒ một `Constr` dựng bên kia đi vào `applyParamsToScript` bên này ném
+  // `Unsupported type`, và câu lỗi không nhắc gì tới hai bản cài.
+  // Ranh giới giữa hai gói chở DỮ LIỆU, không chở THỂ HIỆN LỚP.
   const stakeParams = treasuryStakeParamList({
     instanceId: INSTANCE_ID,
     rewardCred: { kind: "Script", hash: custodyHash },
     delegationAdmin: requireDelegationAdmin(o.delegationAdminPkh),
-  });
+  }, (index, fields) => new Constr(index, fields));
   const treasuryStake = await applyOf(
     "Treasury", "treasury_stake.treasury_stake.withdraw", stakeParams,
   ) as Validator;
