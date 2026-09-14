@@ -38,6 +38,21 @@ const base: LampPolicyRecord = {
   caveats: [],
 };
 
+/**
+ * Bản CHƯA ĐÚC — `policyId: null`. Dựng bằng tay CÓ CHỦ Ý.
+ *
+ * Trước đây các ca dưới đây mượn chính bản ghi thật đang ở `PENDING-MINT` làm vật liệu thử. Cách
+ * đó chết đúng lúc sổ tiến lên (bản ghi được đúc ⇒ `ACTIVE`), tức bộ kiểm đỏ vì DỮ LIỆU đúng chứ
+ * không vì MÃ sai — và người đọc không phân biệt được hai chuyện đó từ màu của nó. Nhánh
+ * "chưa có giá trị" là nhánh vĩnh viễn của đường đọc, nên nó phải có vật liệu vĩnh viễn.
+ */
+const pendingMint: LampPolicyRecord = {
+  ...base,
+  id: "test-pending",
+  policyId: null,
+  status: "PENDING-MINT",
+};
+
 const codeOf = (fn: () => unknown): string => {
   try {
     fn();
@@ -54,6 +69,14 @@ describe("khớp — bản ACTIVE đọc ra được", () => {
     const pid = activeLampPolicyId("mainnet");
     expect(pid).toMatch(/^[0-9a-f]{56}$/);
     expect(pid).toBe("55d3e01bb6c469e02665e4b6573ce65bbaf7a50ad2024e247eb180f0");
+  });
+
+  it("preprod có đúng một bản ACTIVE và trả về policy id 56 hex", () => {
+    // Đo trên chuỗi 2026-09-14: Tx A `61252504…` sinh 5 marker one-shot, Tx B `47679b09…` rót
+    // 10.000 LAMP vào KHO dưới đúng policy này. Bản dựng 14 tham số, neo `oneshot-markers`.
+    const pid = activeLampPolicyId("preprod");
+    expect(pid).toMatch(/^[0-9a-f]{56}$/);
+    expect(pid).toBe("8169b76cdaba83cf7c9ae32ebd2bb3a58aa215c7dc0b62c8f5e268dd");
   });
 
   it("bản mainnet KHÔNG chép giá trị — nó trỏ về LAMP_MAINNET ở deployed.ts", async () => {
@@ -88,7 +111,7 @@ describe("lệch — bản ghi đọc được nhưng không phải thứ bên g
 
   it("PENDING-MINT KHÔNG được gộp vào mã SUPERSEDED — 'chưa có giá trị' khác 'đã bị thay', " +
     "gộp mã là bắt người đọc đi tìm bản thay thế cho thứ chưa từng tồn tại", () => {
-    expect(codeOf(() => lampPolicyIdRequireActive("preprod-oneshot-14param"))).toBe(
+    expect(codeOf(() => readPolicyIdOf(pendingMint))).toBe(
       LAMP_POLICY_ERRORS.POLICY_ID_EMPTY,
     );
   });
@@ -103,7 +126,7 @@ describe("KHÔNG ĐỌC ĐƯỢC — phải ném, tuyệt đối không trả ch
   });
 
   it("policyId = null (chưa đúc) ⇒ TLAMP-SRC-002", () => {
-    expect(codeOf(() => historicalLampPolicyId("preprod-oneshot-14param"))).toBe(
+    expect(codeOf(() => readPolicyIdOf(pendingMint))).toBe(
       LAMP_POLICY_ERRORS.POLICY_ID_EMPTY,
     );
   });
@@ -132,10 +155,13 @@ describe("KHÔNG ĐỌC ĐƯỢC — phải ném, tuyệt đối không trả ch
   });
 
   it("mạng chưa có bản ACTIVE nào ⇒ TLAMP-SRC-005, KHÔNG rơi ngược về bản SUPERSEDED", () => {
-    expect(codeOf(() => activeLampPolicyId("preprod"))).toBe(
-      LAMP_POLICY_ERRORS.NO_ACTIVE_RECORD,
-    );
-    expect(codeOf(() => activeLampPolicyId("preview"))).toBe(
+    // Bảng bịa: một bản đã bị thay + một bản chờ đúc, KHÔNG bản nào ACTIVE. Đường đọc phải ném,
+    // chứ không được lấy bản SUPERSEDED ra dùng thay.
+    const khongCoActive: LampPolicyRecord[] = [
+      { ...base, id: "test-superseded", status: "SUPERSEDED", supersededBy: "test-pending" },
+      pendingMint,
+    ];
+    expect(codeOf(() => selectActivePolicyId(khongCoActive, "preprod"))).toBe(
       LAMP_POLICY_ERRORS.NO_ACTIVE_RECORD,
     );
   });
@@ -143,11 +169,11 @@ describe("KHÔNG ĐỌC ĐƯỢC — phải ném, tuyệt đối không trả ch
   it("TLAMP-SRC-005 phải NÊU TÊN bản đang chờ đúc — người đọc cần biết chờ cái gì", () => {
     let msg = "";
     try {
-      activeLampPolicyId("preprod");
+      selectActivePolicyId([pendingMint], "preprod");
     } catch (e) {
       msg = String(e);
     }
-    expect(msg).toContain("preprod-oneshot-14param");
+    expect(msg).toContain("test-pending");
   });
 
   it("sổ tự mâu thuẫn (2 bản ACTIVE cùng mạng) ⇒ TLAMP-SRC-006, không chọn bừa bản đầu", () => {

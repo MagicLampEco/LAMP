@@ -154,25 +154,31 @@ làm đầu vào rồi suy ngược ra trần nhịp là đi ngược luật.
 
 **Luật:** Reserve chỉ nhả **vào kho Treasury**, không nhả vào bất kỳ địa chỉ nào khác.
 
-**Cách ép luật đó khác nhau giữa hai đường phát hành, và đường Reserve đang ở giữa một lần đổi
-cách.** Ghi rõ ra vì đây đúng là chỗ dễ đọc nhầm một câu mô tả *đích mong muốn* thành một câu mô tả
-*cơ chế đang chạy*:
+**Cả hai đường phát hành ĐỀU đã nhận diện kho bằng NFT chính danh của kho**; chỗ khác nhau còn lại
+là **đọc kho ở đâu** (reference input hay spend input) và **validator nào đo độ tăng ròng**. Ghi rõ
+ra vì đây đúng là chỗ dễ đọc nhầm một câu mô tả *đích mong muốn* thành một câu mô tả *cơ chế đang
+chạy*:
 
 | Đường | Nhận diện kho bằng | Đo cái gì | Ép ở |
 |---|---|---|---|
 | Distribution | **NFT chính danh của kho** (hash kho đọc động từ reference input) | **độ tăng ròng** LAMP tại script kho | `Genesis/onchain/validators/lamp_mint.ak`, nhánh `DistributionVest` — `script_hash_of_holder` + `qty_delta_at_script` |
-| Reserve — bản đang trên nhánh chính | **địa chỉ** (tham số nướng vào script hash) | **tổng mặt output** LAMP tới credential đó | `Reserve/onchain/validators/reserve_draw.ak`, Luật 9 — `qty_to_credential` |
-| Reserve — bản đã có mã, chưa vào nhánh chính | **NFT chính danh của kho** + payment credential của `custody` | không đo đích; ép giao dịch phải **tiêu** đúng một UTxO mang kho NFT, để chính validator kho ép Δ vào sổ | `reserve_draw.ak` sau khi đổi, xem `EMIT-DEST-NFT` ở §6 |
+| Reserve | **NFT chính danh của kho** + script hash của Treasury `custody` (kho đọc ở **spend** input, không phải reference input — chính việc bị tiêu mới làm validator kho chạy) | `reserve_draw` không đo đích và không đo lượng: nó ép giao dịch phải **tiêu** đúng một UTxO mang kho NFT, để chính validator kho ép Δ vào sổ. **Độ tăng ròng** LAMP tại script kho do nhánh `ReserveDraw` của `lamp_mint.ak` đo — §5 | `Reserve/onchain/validators/reserve_draw.ak`, **Luật 9** — `count_inputs_with_nft`, và **Luật 10** — `is_at_script(kho_in.output.address, custody_script_hash)` |
 
-Vì sao đổi: **rót đúng địa chỉ không phải rót vào sổ.** Một UTxO hạ cánh đúng địa chỉ kho nhưng
+Vì sao đã đổi: **rót đúng địa chỉ không phải rót vào sổ.** Một UTxO hạ cánh đúng địa chỉ kho nhưng
 sai hình dạng (không datum kho đòi) thì nằm **trong sân** kho và **ngoài sổ** kho — không giao dịch
 nào tiêu lại được, tức là đốt trá hình, trái `EMIT-NOBURN`. Đo **tổng mặt output** còn cho phép tái
 chế: kho đang giữ sẵn `X ≥ delta`, trả lại đúng `X`, phần mới đi ra ví.
 
-Bản đang trên nhánh chính vẫn **an toàn**, nhưng nhờ một lập luận hẹp hơn chứ không nhờ phép đo:
-output giữ trạng thái không ôm LAMP và `Δmint == delta`, nên không còn nguồn LAMP nào khác để phép
-đo tổng bị lợi dụng. Lập luận đó không sống sót qua một thay đổi ở chỗ khác — đó là lý do phải đổi
-cách ép, không phải đổi câu chữ.
+Bản cũ — nhận diện kho bằng **địa chỉ** nướng vào script hash, đo **tổng mặt output** LAMP tới
+credential đó (`qty_to_credential`) — vẫn **an toàn**, nhưng nhờ một lập luận hẹp hơn chứ không nhờ
+phép đo: output giữ trạng thái không ôm LAMP và `Δmint == delta`, nên không còn nguồn LAMP nào khác
+để phép đo tổng bị lợi dụng. Lập luận đó không sống sót qua một thay đổi ở chỗ khác — đó là lý do
+đã đổi cách ép, chứ không phải đổi câu chữ.
+
+Bản cũ **không còn là một lựa chọn**: `reserve_draw` không còn gọi `qty_to_credential`, và chính
+hình dạng cũ nay là ca âm có tên trong tệp đó — `reject_missing_kho_input` ("rót vào địa chỉ rồi
+thôi") và `reject_delta_to_datumless_utxo_at_kho_address` (đúng địa chỉ kho, không tiêu kho, Δ đóng
+băng ngoài sổ). Hai ca âm của Luật 10: `reject_kho_nft_at_other_script`, `reject_kho_nft_at_wallet`.
 
 ---
 
@@ -197,7 +203,7 @@ cách ép, không phải đổi câu chữ.
 |---|---|---|
 | `EMIT-CAP`, `EMIT-NOBURN`, `EMIT-STATE` | Genesis | `validators/lamp_mint.ak` |
 | `EMIT-DEST` — đường **Distribution** | Genesis | `validators/lamp_mint.ak`, nhánh `DistributionVest` (`script_hash_of_holder`, `qty_delta_at_script`) |
-| `EMIT-DEST` — đường **Reserve** | Reserve | `validators/reserve_draw.ak` (Luật 9). Nhánh `ReserveDraw` của `lamp_mint.ak` **không** ép đích — nó chỉ ép giao dịch đi qua đúng một meter NFT |
+| `EMIT-DEST` — đường **Reserve** | Reserve **và** Genesis (hai lớp) | `validators/reserve_draw.ak` — Luật 9 (`count_inputs_with_nft`) ép kho BỊ TIÊU, Luật 10 (`is_at_script` với `custody_script_hash`) ép kho đó đúng là Treasury `custody`. Nhánh `ReserveDraw` của `lamp_mint.ak` ép lớp thứ hai, soi gương `DistributionVest`: `script_hash_of_holder` + `qty_delta_at_script` trên cặp `reserve_kho_nft_*` (**không** phải cặp `kho_nft_*` của `DistributionVest` — hai cặp trỏ hai kho khác nhau) |
 | `EMIT-EPOCH`, `EMIT-RATE`, `EMIT-POT` | Reserve | `validators/reserve_draw.ak`, hằng ở `lib/magiclamp/reserve/math.ak` (`release_epochs`, `max_per_epoch`) |
 | `EMIT-GATE` | Treasury | validator giữ cổng cầu — xem `Treasury/reserve-pull.md` |
 
@@ -212,7 +218,6 @@ phía trên, và trôi **im lặng** vì con trỏ vẫn trỏ vào một dòng 
 |---|---|---|---|
 | `EMIT-FLOOR-IMPL` | Cổng cầu chưa ép sàn ở dạng **tỷ lệ** `1%·C` (§3.2); bản đang có dùng một ngưỡng tuyệt đối | Fail-closed theo cả hai cách đọc: không thoả sàn thì **không** nhả. Ngưỡng dùng trong kịch bản diễn tập **không phải** giá trị vận hành. | tham số triển khai module Treasury |
 | `EMIT-INFLATION-DENOM` | Kho này không định nghĩa đại lượng "lạm phát"/"pha loãng" — không mẫu số nào được khai cho nó | Tệp này chỉ phát biểu tốc độ nhả theo mẫu số **tổng trần**, và gọi đúng tên mẫu số đó (§3.4). Không tài liệu nào trong kho được phát biểu một tỷ lệ lạm phát chừng nào đại lượng đó còn chưa có định nghĩa. | §3.4 tệp này |
-| `EMIT-DEST-NFT` | Đường Reserve chưa nhận diện kho bằng **NFT chính danh** trên nhánh chính; bản trên nhánh chính nhận diện bằng **địa chỉ** và đo tổng mặt output (§3.5). Bản đổi cách đã có mã nhưng chưa vào nhánh chính | Fail-closed ở cả hai bản: không chứng minh được `delta` đã tới kho thì **không** nhả. Mọi tham số của `reserve_draw` là apply-param, và ràng buộc `RSV-PARAM-FREEZE` ở `Reserve/CONTRACT.md` giữ **chưa gửi meter NFT vào instance nào** — nên chưa instance nào của bản cũ đang giữ quota. | `Reserve/onchain/validators/reserve_draw.ak` (Luật 9) |
 
 Danh mục này ghi **trạng thái hiện thực**, không ghi lựa chọn đang cân nhắc. Luật thì đã đủ ở §3;
 chỗ còn lại là mã đuổi theo luật, và mọi bước trung gian đều nghiêng về phía không nhả.
@@ -221,7 +226,7 @@ chỗ còn lại là mã đuổi theo luật, và mọi bước trung gian đề
 
 ## 7. Các câu ĐÃ BỊ THAY
 
-Ghi lại để người đọc bản cũ không kết luận ngược. Ba câu dưới đây từng nằm trong kho và **đã bị
+Ghi lại để người đọc bản cũ không kết luận ngược. Bốn câu dưới đây từng nằm trong kho và **đã bị
 thay bởi tệp này**:
 
 | Câu cũ | Vì sao bị thay |
@@ -229,6 +234,7 @@ thay bởi tệp này**:
 | *"Gate nhịp Reserve = theo mức Treasury, **KHÔNG theo epoch**"* | Vế cổng cầu đúng và được giữ (§3.2). Vế *"không theo epoch"* sai: nó phủ nhận trần nhịp, mà trần nhịp là vế trả lời một câu hỏi khác. Hai vế bổ sung nhau, không loại trừ nhau. |
 | *"Reserve module hiện tại (trần E/1000/epoch) là thiết kế **CŨ** — cần thiết kế lại"* | Sai. Trần E/1000 là vế A của luật hiện hành và là phần **đã có mã, đã chạy xanh trên mạng thử**. Không có gì phải viết lại. |
 | *"nhả theo một **hàm nội suy** giữa sàn và trần (1%·C → 2%·C)"* | Không được giữ. Cổng cầu là **một ngưỡng nhị phân** (§3.2). Dải nội suy đòi hai tham số và một hàm chưa từng được định nghĩa; không có mã nào hiện thực nó. |
+| *"đường Reserve nhận diện kho bằng **địa chỉ** và đo **tổng mặt output** (`qty_to_credential`); bản đổi cách đã có mã nhưng **chưa vào nhánh chính**"* — từng là điểm treo `EMIT-DEST-NFT` ở §6 | Hết hiệu lực: bản đổi cách **đã ở trên nhánh chính**. `reserve_draw.ak` nay ép Luật 9 (`count_inputs_with_nft`) + Luật 10 (`is_at_script` với `custody_script_hash`), và nhánh `ReserveDraw` của `lamp_mint.ak` ép thêm `script_hash_of_holder` + `qty_delta_at_script` trên `reserve_kho_nft_*`. `qty_to_credential` không còn được `reserve_draw` gọi. Mục treo đã **xoá** khỏi §6 thay vì đính chính bên cạnh — §3.5 là nơi duy nhất mô tả cách ép hiện hành. |
 
 Một câu cũ khác — *"§7b chưa định nghĩa `C` đo bằng gì on-chain"* — nay **hết hiệu lực**: `C` đã
 có định nghĩa ở §2.2, và `SupplyState` đã bắt buộc có mặt trong mọi giao dịch mint (§2.1).
