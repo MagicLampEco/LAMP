@@ -173,6 +173,20 @@ pub fn prop_output_with(d: ProposalDatum, val: assets.Value) -> Output {
   util.mk_output(util.script_address(prop_sh), val, d)
 }
 
+// Proposal output tại ĐÚNG payment credential nhưng KÈM stake credential của người
+// tiêu. Giá trị, NFT và datum giữ y hệt `prop_output` — cố ý, để ca dùng nó chỉ còn
+// một biến duy nhất là địa chỉ. Đổi thêm bất cứ thứ gì thì ca sẽ chết ở chốt khác và
+// đo nhầm sang chốt đó.
+pub fn prop_output_staked(d: ProposalDatum) -> Output {
+  let val =
+    assets.from_lovelace(2_000_000) |> assets.add(prop_policy, #"0001", 1)
+  util.mk_output(util.script_address_staked(prop_sh, stake_pkh), val, d)
+}
+
+// Stake credential của người tiêu — không thuộc về hệ. Giá trị cụ thể không quan trọng,
+// chỉ cần KHÁC `None` của `util.script_address`.
+pub const stake_pkh: ByteArray = #"5747"
+
 // Proposal input với value TÙY BIẾN. Cần cho ca phải làm đẳng thức value THOẢ để đo
 // riêng một ràng buộc khác (vd `qty == 1`) — đổi mỗi output thì đẳng thức value vỡ
 // trước, và ca đó sẽ đo nhầm sang chốt bảo toàn value.

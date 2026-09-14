@@ -141,6 +141,21 @@ fn utxo_preserved(
     // value đi qua NGUYÊN VẸN: mọi asset, mọi lovelace. Ràng NFT thôi thì người tiêu
     // giữ NFT + datum y nguyên rồi hút hết ADA còn lại ra ví mình, không gì kêu lên.
     out.value == in_out.value,
+    // ĐỊA CHỈ ĐẦY ĐỦ, không chỉ payment credential. Mọi vế trên đi qua `util.*_at_script`,
+    // mà `util.is_at_script` CỐ Ý chỉ so payment_credential — đúng cho việc ĐẾM (so cả
+    // address thì người tiêu tách output sang một stake credential khác để lách `n_out ==
+    // 1`), nhưng không đủ cho việc ÉP ĐÍCH. Một hàm đang gánh hai vai, và vai thứ hai
+    // chưa có ai ép: `Address { Script(own_hash), stake_credential: <của người tiêu> }`
+    // thoả n_out, thoả qty, thoả đẳng thức value, thoả datum — UTxO vẫn tiêu lại được
+    // bằng chính validator này, nên không nhánh nào gãy và không gì kêu lên.
+    //
+    // Hai thứ mất khi thiếu vế này, cả hai đều im lặng:
+    //   · phần thưởng uỷ thác của số ADA khoá trong UTxO chảy về tài khoản thưởng của
+    //     người đặt stake credential — không phải của hệ;
+    //   · off-chain tra UTxO theo ĐỊA CHỈ (`utxosAt(proposalAddr)`) không còn thấy nó.
+    //     Tiêu thì vẫn tiêu được (payment credential không đổi), nhưng công cụ vận hành
+    //     bình thường coi như proposal biến mất.
+    out.address == in_out.address,
   }
 }
 

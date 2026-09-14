@@ -167,6 +167,14 @@ fn tally_out_with(d_out: TallyDatum, val: Value) -> Output {
   util.mk_output(util.script_address(tally_sh), val, d_out)
 }
 
+// Acc ra tại ĐÚNG payment credential nhưng kèm stake credential của người tiêu. Value
+// và NFT giữ y hệt `tally_out` — cố ý, để biến duy nhất còn lại là địa chỉ.
+fn tally_out_staked(d_out: TallyDatum) -> Output {
+  let val =
+    assets.from_lovelace(2_000_000) |> assets.add(tally_policy, #"01", 1)
+  util.mk_output(util.script_address_staked(tally_sh, #"5747"), val, d_out)
+}
+
 // "Rút cạn": giữ NGUYÊN NFT và nguyên datum, chỉ hút ADA — 1_999_999 lovelace đi vào
 // ví người tiêu. Chọn cách này vì nó đi lọt mọi ràng buộc cũ (NFT còn, datum còn).
 fn drained_value() -> Value {
@@ -869,6 +877,45 @@ test sum_batch_rejects_value_drain() fail {
     sum_tx_full(
       tally_input(d_in),
       tally_out_with(d_out, drained_value()),
+      [vote_input(v, 1)],
+      burn,
+    )
+  expect run_sum(tx, d_in)
+  True
+}
+
+// ── Bảo toàn ĐỊA CHỈ: hai ca trên đo value, hai ca dưới đo thứ value không đo được.
+//    `util.is_at_script` chỉ so payment credential (đúng cho việc ĐẾM), nên một acc ra
+//    tại `Script(tally_sh) + stake credential của người tiêu` thoả n_in/n_out, thoả qty,
+//    thoả đẳng thức value, thoả mọi phép derive. Với Tally acc thì hệ quả đắt hơn
+//    Proposal một bậc: acc là nơi phiếu dồn về qua nhiều lượt SumBatch, nên một lượt
+//    đẩy acc sang địa chỉ khác làm lượt sau không tra ra nó nữa. PHẢI từ chối. ──
+test finalize_rejects_stake_credential_swap() fail {
+  let top = [TopEntry { vp_raw: 400, choice: Yes }]
+  let d_in = summing(700, 200, 100, 30, 25, top)
+  let d_out =
+    TallyDatum {
+      ..d_in,
+      phase: Clamped,
+      yes_power_eff: 400,
+      no_power_eff: 200,
+      abstain_power_eff: 100,
+    }
+  let tx = finalize_tx_full(tally_input(d_in), tally_out_staked(d_out), 10)
+  expect run_finalize(tx, d_in)
+  True
+}
+
+test sum_batch_rejects_stake_credential_swap() fail {
+  let nl = #"aa01"
+  let v = vote_datum(Yes, 10, 10, 10, 10, nl)
+  let d_in = summing(0, 0, 0, 0, 0, [])
+  let d_out = summing(v1_vp, 0, 0, 1, 1, [TopEntry { vp_raw: v1_vp, choice: Yes }])
+  let burn = assets.zero |> assets.add(null_policy, nl, -1)
+  let tx =
+    sum_tx_full(
+      tally_input(d_in),
+      tally_out_staked(d_out),
       [vote_input(v, 1)],
       burn,
     )

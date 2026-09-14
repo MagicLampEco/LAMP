@@ -20,8 +20,8 @@ use cardano/transaction.{Input, OutputReference, Transaction}
 use magiclamp/governance/proposal_fixtures.{
   lifecycle_tx, lifecycle_tx_full, lifecycle_tx_many, lifecycle_tx_out,
   ms_per_epoch, prop_datum, prop_input, prop_input_second, prop_input_with,
-  prop_output, prop_output_with, prop_policy, tally_policy, tally_ref, tally_sh,
-  wp_policy, wp_ref,
+  prop_output, prop_output_staked, prop_output_with, prop_policy, tally_policy,
+  tally_ref, tally_sh, wp_policy, wp_ref,
 }
 use magiclamp/governance/types.{Executed, Open, ProposalDatum, Tallied}
 use magiclamp/governance/util
@@ -102,6 +102,64 @@ test execute_proposal_rejects_value_drain() fail {
     lifecycle_tx_out(
       d_in,
       prop_output_with(d_out, drained_value()),
+      [tally_ref(200, 100, 21, 30), wp_ref(21, 0, 0, 2, 3)],
+      25 * ms_per_epoch,
+    )
+  expect run(tx, d_in, proposal.ExecuteProposal)
+  True
+}
+
+// ════════════════════════════════════════════════════════════
+// Bảo toàn ĐỊA CHỈ — vế mà cả khối bảo toàn value ở trên KHÔNG đo được.
+//
+// Mọi phép đếm/tìm của `util` so payment credential chứ không so address, và đó là
+// lựa chọn ĐÚNG cho việc đếm (so cả address thì người tiêu tách output sang một stake
+// credential khác để lách `n_out == 1`). Hệ quả là output tại
+// `Script(prop_sh) + stake credential của người tiêu` thoả n_in/n_out, thoả qty, thoả
+// đẳng thức value, thoả datum — bốn ca dưới đây xanh hết nếu không có vế địa chỉ.
+//
+// Phép đo đảo, không phải suy đoán: gỡ `out.address == in_out.address` khỏi
+// `proposal.utxo_preserved` thì đúng bốn ca này xanh trở lại và không ca nào khác đổi màu.
+//
+// Bốn nhánh chứ không một: `utxo_preserved` được gọi từ cả bốn (`proposal.ak` — bốn
+// lời gọi), nên một ca duy nhất chỉ chứng minh cho nhánh nó chạy qua.
+// ════════════════════════════════════════════════════════════
+
+test open_proposal_rejects_stake_credential_swap() fail {
+  let d = open_datum()
+  let tx = lifecycle_tx_out(d, prop_output_staked(d), [], 12 * ms_per_epoch)
+  expect run(tx, d, proposal.OpenProposal)
+  True
+}
+
+test close_voting_rejects_stake_credential_swap() fail {
+  let d = open_datum()
+  let tx = lifecycle_tx_out(d, prop_output_staked(d), [], 25 * ms_per_epoch)
+  expect run(tx, d, proposal.CloseVoting)
+  True
+}
+
+test record_tally_rejects_stake_credential_swap() fail {
+  let d_in = open_datum()
+  let d_out = prop_datum(Tallied, 200, 100, 30)
+  let tx =
+    lifecycle_tx_out(
+      d_in,
+      prop_output_staked(d_out),
+      [tally_ref(200, 100, 21, 30)],
+      25 * ms_per_epoch,
+    )
+  expect run(tx, d_in, proposal.RecordTally)
+  True
+}
+
+test execute_proposal_rejects_stake_credential_swap() fail {
+  let d_in = prop_datum(Tallied, 200, 100, 30)
+  let d_out = prop_datum(Executed, 200, 100, 30)
+  let tx =
+    lifecycle_tx_out(
+      d_in,
+      prop_output_staked(d_out),
       [tally_ref(200, 100, 21, 30), wp_ref(21, 0, 0, 2, 3)],
       25 * ms_per_epoch,
     )

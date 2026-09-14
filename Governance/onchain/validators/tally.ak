@@ -63,6 +63,11 @@ fn utxo_preserved(
     // value NGUYÊN VẸN: giữ NFT thôi thì người tiêu giữ NFT + datum đúng rồi hút hết
     // ADA của acc ra ví mình, và không ràng buộc cũ nào kêu lên.
     out.value == in_out.value,
+    // ĐỊA CHỈ ĐẦY ĐỦ. `util.is_at_script` chỉ so payment_credential — đúng cho việc ĐẾM,
+    // không đủ cho việc ÉP ĐÍCH; lý lẽ đầy đủ ở `proposal.utxo_preserved`, cùng một lỗ.
+    // Với Tally acc thì hệ quả đắt hơn một bậc: acc là nơi phiếu dồn về qua nhiều lượt
+    // SumBatch, nên một lượt đẩy acc sang địa chỉ khác làm lượt sau không tra ra nó nữa.
+    out.address == in_out.address,
   }
 }
 
