@@ -133,7 +133,14 @@ export async function reserveKhoParamsFromEnv(
     throw new Error(
       `RESERVE-KHO-002: RESERVE_KHO_NFT_NAME = "${name}" — cần hex độ dài chẵn, tối đa 32 byte. ` +
         `Đây là instance_id của instance custody đích (custody_seed luật S-PARAM-0 ép ` +
-        `datum.instance_id == nft_name).`,
+        `datum.instance_id == nft_name).\n` +
+        // Cổng -004 dưới đây mới là chỗ nói ra giá trị bắt buộc, nhưng nó KHÔNG BAO GIỜ chạy
+        // cho cách gõ sai phổ biến nhất: gõ thẳng chuỗi người đọc được thay vì hex của nó. Ca
+        // đó chết ở đây, nên câu lỗi ở đây phải tự mang theo giá trị đúng.
+        `  giá trị BẮT BUỘC = ${norm(o.defaultName)}\n` +
+        `Khe này không có bậc tự do — bỏ hẳn RESERVE_KHO_NFT_NAME khỏi môi trường là cách chắc ` +
+        `nhất. Lưu ý đây là HEX, không phải chuỗi thường: đặt \`lamp-reserve\` sẽ dừng ở đúng ` +
+        `câu lỗi này.`,
     );
   }
 
@@ -152,8 +159,16 @@ export async function reserveKhoParamsFromEnv(
   // kiểm ĐỊNH DẠNG — đúng cái lỗ mà `RESERVE-KHO-003` vừa vá cho khe #13, còn nguyên ở khe bên
   // cạnh. Một biến môi trường mà giá trị hợp lệ DUY NHẤT là giá trị mặc định thì nó không phải
   // một tuỳ chọn, nó là một cái bẫy: nó mời người vận hành gõ vào đó, và mọi thứ gõ vào đều sai.
-  // Giữ biến lại (runbook đang dùng, và khai ra giá trị là việc tốt) nhưng chặn mọi giá trị
-  // khác, thay vì lặng lẽ nhận rồi hỏng ở bước không quay lui được.
+  // Giữ biến lại nhưng chặn mọi giá trị khác, thay vì lặng lẽ nhận rồi hỏng ở bước không quay
+  // lui được.
+  //
+  // ⚠ ĐÍNH CHÍNH lý do giữ. Bản đầu viết "runbook đang dùng" — đo lại thì SAI:
+  // `grep -rn "RESERVE_KHO" --include=*.md` trên toàn kho trả đúng một dòng,
+  // `Genesis/canonical-preprod-runbook.md`, và dòng đó nói `RESERVE_KHO_NFT_POLICY`.
+  // `RESERVE_KHO_NFT_NAME` không xuất hiện trong bất kỳ tệp `.md` nào. Lý do giữ thật sự chỉ
+  // còn một: khai ra giá trị ở môi trường là thứ người vận hành đọc lại được sau sự cố. Đó là
+  // lý do YẾU HƠN, nên ghi ra để lần sau ai muốn bỏ hẳn biến này không phải đi bác một tiền đề
+  // đã sai — bỏ biến thì bậc tự do bằng 0 và cổng dưới đây không còn việc gì để làm.
   //
   // GHI CHÚ cho người đọc sau: `Treasury/scripts/01_seed_custody.ts` có một đường sinh instance
   // KHÁC, ở đó `INSTANCE_ID` đọc được từ env. Đường đó KHÔNG phải đường L2a của kho này, và

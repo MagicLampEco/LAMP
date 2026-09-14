@@ -417,4 +417,36 @@ describe("reserveKhoParamsFromEnv — RESERVE-KHO-004 (khe #14)", () => {
       ),
     ).rejects.toThrow(/RESERVE-KHO-002/);
   });
+
+  // Cách gõ sai SỐ MỘT ở khe này là gõ thẳng chuỗi người đọc được thay vì hex của nó — và
+  // chính chú thích của cổng in `"lamp-reserve"` ra ngay cạnh, mời gõ đúng cái sai ấy. Ca đó
+  // chết ở -002 chứ không tới -004, nên câu của -002 phải tự mang giá trị bắt buộc. Không có ca
+  // này thì người vận hành nhận một câu lỗi đúng mà không hành động được.
+  it("gõ chuỗi thường thay vì hex: -002 vẫn phải NÊU giá trị bắt buộc", async () => {
+    const loi = await reserveKhoParamsFromEnv(
+      { RESERVE_KHO_NFT_POLICY: PID_A, RESERVE_KHO_NFT_NAME: "lamp-reserve" }, SEED, opts,
+    ).then(() => "", (e) => (e instanceof Error ? e.message : String(e)));
+    expect(loi).toContain("RESERVE-KHO-002");
+    expect(loi).toContain(NAME_A);
+  });
+
+  // Cổng so với THAM SỐ `o.defaultName`, không so với một hằng gõ lại trong chính hàm. Quyết
+  // định đó được chú thích bốn dòng và trước ca này thì KHÔNG ai canh: thay vế phải bằng chuỗi
+  // hex gõ cứng ⇒ bộ kiểm vẫn xanh nguyên. Ca này là ca duy nhất phân biệt hai cực — nó truyền
+  // một `defaultName` KHÁC hằng thật và đòi cổng đi theo tham số.
+  it("cổng đi theo THAM SỐ defaultName, không theo một hằng gõ cứng", async () => {
+    const optsB = { derivePid, defaultName: NAME_B };
+    // Với defaultName = NAME_B thì NAME_B là giá trị hợp lệ…
+    const r = await reserveKhoParamsFromEnv(
+      { RESERVE_KHO_NFT_POLICY: PID_A, RESERVE_KHO_NFT_NAME: NAME_B }, SEED, optsB,
+    );
+    expect(r.name).toBe(NAME_B);
+    // …và NAME_A, tức hằng thật của đường ống, phải bị TỪ CHỐI. Một cổng gõ cứng NAME_A sẽ đảo
+    // ngược đúng hai kỳ vọng này.
+    await expect(
+      reserveKhoParamsFromEnv(
+        { RESERVE_KHO_NFT_POLICY: PID_A, RESERVE_KHO_NFT_NAME: NAME_A }, SEED, optsB,
+      ),
+    ).rejects.toThrow(/RESERVE-KHO-004/);
+  });
 });
