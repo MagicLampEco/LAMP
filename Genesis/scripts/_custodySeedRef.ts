@@ -137,6 +137,43 @@ export async function reserveKhoParamsFromEnv(
     );
   }
 
+  // ── CỔNG RESERVE-KHO-004 — khe #14 KHÔNG phải một lựa chọn ────────────────────
+  //
+  // Khe #14 là asset name của NFT kho mà đường ReserveDraw rót vào. Giá trị của nó bị ràng
+  // buộc CHẾT bởi hai chỗ, không có bậc tự do nào:
+  //
+  //   `_reserve_layer2.ts::custodySeedDatum` gán cứng `instance_id: INSTANCE_ID`
+  //   `custody_seed.ak:114` (S-PARAM-0) ép `seed_datum.instance_id == nft_name`
+  //
+  // ⇒ NFT kho mà bước L2a đúc ra CHẮC CHẮN mang asset name `INSTANCE_ID`. Nướng một giá trị
+  // khác vào khe #14 là nướng một cái kho không bao giờ tồn tại.
+  //
+  // VÌ SAO ĐÂY LÀ CỔNG CHỨ KHÔNG PHẢI MẶC ĐỊNH. Bản trước đọc `RESERVE_KHO_NFT_NAME` rồi chỉ
+  // kiểm ĐỊNH DẠNG — đúng cái lỗ mà `RESERVE-KHO-003` vừa vá cho khe #13, còn nguyên ở khe bên
+  // cạnh. Một biến môi trường mà giá trị hợp lệ DUY NHẤT là giá trị mặc định thì nó không phải
+  // một tuỳ chọn, nó là một cái bẫy: nó mời người vận hành gõ vào đó, và mọi thứ gõ vào đều sai.
+  // Giữ biến lại (runbook đang dùng, và khai ra giá trị là việc tốt) nhưng chặn mọi giá trị
+  // khác, thay vì lặng lẽ nhận rồi hỏng ở bước không quay lui được.
+  //
+  // GHI CHÚ cho người đọc sau: `Treasury/scripts/01_seed_custody.ts` có một đường sinh instance
+  // KHÁC, ở đó `INSTANCE_ID` đọc được từ env. Đường đó KHÔNG phải đường L2a của kho này, và
+  // cổng dưới đây cố ý so với `o.defaultName` — giá trị mà chính đường ống này sẽ dùng — chứ
+  // không so với một hằng gõ lại. Bên gọi thật truyền `INSTANCE_ID` của `_reserve_layer2.ts`.
+  if (name !== norm(o.defaultName)) {
+    throw new Error(
+      `RESERVE-KHO-004: RESERVE_KHO_NFT_NAME KHÔNG phải instance_id mà bước Lớp 2 sẽ đúc.\n` +
+        `  RESERVE_KHO_NFT_NAME = ${name}\n` +
+        `  giá trị BẮT BUỘC     = ${norm(o.defaultName)}\n` +
+        `Khe #14 không có bậc tự do: custodySeedDatum() gán cứng instance_id, và custody_seed.ak ` +
+        `luật S-PARAM-0 ép datum.instance_id == nft_name, nên NFT kho đúc ra chắc chắn mang tên ` +
+        `${norm(o.defaultName)}. Nướng giá trị khác vào khe #14 là nướng một cái kho không bao giờ ` +
+        `tồn tại: lamp_mint đòi A-DEST rót vào (pid, ${name}) trong khi thứ duy nhất được đúc là ` +
+        `(pid, ${norm(o.defaultName)}) ⇒ đường ReserveDraw không rót được lượt nào, và apply-param ` +
+        `nướng vào policy-id nên KHÔNG sửa được sau khi gửi.\n` +
+        `Sửa: bỏ RESERVE_KHO_NFT_NAME khỏi môi trường, hoặc đặt đúng ${norm(o.defaultName)}.`,
+    );
+  }
+
   // ── CỔNG RESERVE-KHO-003 — ĐỐI CHỨNG, không phải kiểm định dạng ───────────────
   //
   // BA TRẠNG THÁI (khớp · lệch · không đọc được) đã xử XONG trước dòng này, nên phép so `!==`

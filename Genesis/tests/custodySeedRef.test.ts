@@ -358,3 +358,63 @@ describe("custodySeedRefFromState — SEED-CHON-DONG-003", () => {
       .toThrow(/CUSTODY-SEED-001/);
   });
 });
+
+// ══ RESERVE-KHO-004 — khe #14 không có bậc tự do ════════════════════════════════
+//
+// VÌ SAO BÀI NÀY TỒN TẠI
+// `RESERVE-KHO-003` vá khe #13 (policy) bằng một phép đối chứng. Khe #14 (asset name) ngay bên
+// cạnh vẫn chỉ được kiểm ĐỊNH DẠNG — đúng lớp lỗ vừa vá, còn nguyên ở khe hàng xóm. Đợt vá lấy
+// phạm vi bằng phạm vi của triệu chứng là đợt vá để lại nguyên nguyên nhân.
+//
+// Khác khe #13 ở chỗ khe #14 không cần dẫn xuất gì: giá trị hợp lệ của nó là HẰNG, ép bởi
+// `custodySeedDatum()` gán cứng `instance_id` cộng luật S-PARAM-0 của `custody_seed.ak:114`.
+//
+// ĐỘT BIẾN PHÂN BIỆT HAI CỰC: gỡ cổng ⇒ một asset name đúng định dạng nhưng khác `INSTANCE_ID`
+// đi lọt, và mọi phép kiểm hình dạng vẫn xanh vì nó ĐÚNG hình dạng.
+describe("reserveKhoParamsFromEnv — RESERVE-KHO-004 (khe #14)", () => {
+  const SEED = { txHash: TX_A, outputIndex: 3 };
+  const derivePid: DeriveSeedPolicyId = async () => PID_A;
+  const opts = { derivePid, defaultName: NAME_A };
+
+  it("không đặt RESERVE_KHO_NFT_NAME → lấy mặc định, đi qua", async () => {
+    const r = await reserveKhoParamsFromEnv({ RESERVE_KHO_NFT_POLICY: PID_A }, SEED, opts);
+    expect(r.name).toBe(NAME_A);
+  });
+
+  it("đặt ĐÚNG giá trị bắt buộc → đi qua (khai ra giá trị là việc hợp lệ)", async () => {
+    const r = await reserveKhoParamsFromEnv(
+      { RESERVE_KHO_NFT_POLICY: PID_A, RESERVE_KHO_NFT_NAME: NAME_A.toUpperCase() }, SEED, opts,
+    );
+    expect(r.name).toBe(NAME_A);
+  });
+
+  // NAME_B lệch ĐÚNG một byte cuối so với NAME_A và vẫn là hex chẵn 12 byte — nên nó đi qua
+  // RESERVE-KHO-002 không sứt mẻ gì. Đây là ca duy nhất phân biệt cổng đối chứng với cổng
+  // định dạng.
+  it("ĐỎ: hex hợp lệ nhưng LỆCH một byte — RESERVE-KHO-004, không phải -002", async () => {
+    await expect(
+      reserveKhoParamsFromEnv(
+        { RESERVE_KHO_NFT_POLICY: PID_A, RESERVE_KHO_NFT_NAME: NAME_B }, SEED, opts,
+      ),
+    ).rejects.toThrow(/RESERVE-KHO-004/);
+  });
+
+  it("câu lỗi in CẢ hai vế và nêu giá trị bắt buộc — dán được vào môi trường", async () => {
+    const loi = await reserveKhoParamsFromEnv(
+      { RESERVE_KHO_NFT_POLICY: PID_A, RESERVE_KHO_NFT_NAME: NAME_B }, SEED, opts,
+    ).then(() => "", (e) => (e instanceof Error ? e.message : String(e)));
+    expect(loi).toContain(NAME_B);
+    expect(loi).toContain(NAME_A);
+    expect(loi).toContain("S-PARAM-0");
+  });
+
+  // Thứ tự cổng phải đúng: sai HÌNH DẠNG thì -002 nói trước, vì câu của nó là câu đọc được cho
+  // ca đó. Gộp hai ca vào một mã lỗi là bắt người vận hành đọc sai hướng.
+  it("sai hình dạng thì -002 nói trước, KHÔNG phải -004", async () => {
+    await expect(
+      reserveKhoParamsFromEnv(
+        { RESERVE_KHO_NFT_POLICY: PID_A, RESERVE_KHO_NFT_NAME: "abc" }, SEED, opts,
+      ),
+    ).rejects.toThrow(/RESERVE-KHO-002/);
+  });
+});
