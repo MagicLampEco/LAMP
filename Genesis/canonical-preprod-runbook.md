@@ -150,14 +150,16 @@ bộ policy-id được **dựng lại và so** với state — lệch một ch�
 
 > ⚠️ **Con số trên KHÔNG phải nguồn.** Nguồn duy nhất: `Genesis/offchain/src/lampPolicies.ts`
 > (bản ghi `preprod-oneshot-12param`).
-> Trạng thái bản này: **SUPERSEDED** — bị thay bởi `preprod-oneshot-14param`, chưa đúc.
-> Lý do: policy id này sinh từ `lamp_mint` **12 tham số**, mã hôm nay là **14**
+> Trạng thái bản này: **SUPERSEDED** — đã bị thay bởi `preprod-oneshot-14param`, và bản thay
+> thế **đã đúc** ngày 2026-09-14 (`8169b76cdaba83cf7c9ae32ebd2bb3a58aa215c7dc0b62c8f5e268dd`).
+> Lý do bị thay: policy id này sinh từ `lamp_mint` **12 tham số**, mã hôm nay là **14**
 > (`Genesis/onchain/validators/lamp_mint.ak` — xem chữ ký `validator lamp_mint(`), nên dựng lại
 > từ mã hiện tại ra policy id **KHÁC**. Tham số nằm TRONG policy id; không có đường build lại
 > cho khớp. Đo lại:
-> `cd Genesis/offchain && npx vitest run ../tests/lampPolicies.test.ts` — bài
-> `"mạng chưa có bản ACTIVE nào"` khẳng định `activeLampPolicyId("preprod")` NÉM, không rơi
-> ngược về giá trị cũ.
+> `cd Genesis/offchain && npx vitest run ../tests/lampPolicies.test.ts` — đọc ở dòng tổng kết
+> `Tests N passed`.
+> ⚠️ `activeLampPolicyId("preprod")` nay **TRẢ VỀ** `8169b76c…`, không còn ném. Nếu anh đang
+> đọc một câu cũ nào trong kho nói rằng nó ném, câu đó đã hết hiệu lực từ 2026-09-14.
 
 | bước | giao dịch | kết quả |
 |---|---|---|

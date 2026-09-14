@@ -25,9 +25,10 @@
 //
 // Chạy: NETWORK=Preprod tsx 22_reserve_draw.ts    (RESERVE_LAMP=1000 mặc định)
 import { type UTxO } from "@lucid-evolution/lucid";
-import { NETWORK, makeLucid, walletPkh, explorerTx } from "./config.js";
+import { NETWORK, SUBMIT, makeLucid, walletPkh, explorerTx } from "./config.js";
 import { supplyStateToCbor, supplyStateFromCbor, supplyStateRedeemerToCbor, mintRouteToCbor } from "../offchain/src/datum.js";
-import { rehydrate, writeState, waitFor } from "./_canonical_v2.js";
+import { rehydrate, writeState, waitFor, isWaitTimeout } from "./_canonical_v2.js";
+import { assertSeedNotSpent, custodySeedRefFromState, refKey } from "./_custodySeedRef.js";
 
 const NFT_ADA = 2_000_000n;
 const RESERVE_LAMP = BigInt(process.env.RESERVE_LAMP ?? "1000");
@@ -46,6 +47,11 @@ async function main(): Promise<void> {
   const walletAddr = await lucid.wallet().address();
   const { state, wiring, scripts } = await rehydrate();
   if (pkh !== wiring.pkh) throw new Error(`SAI VÍ: state ghi pkh=${wiring.pkh}, ví hiện tại ${pkh}.`);
+
+  // Bước này đặc biệt đắt nếu hỏng: nó đúc theo ĐÚNG nhánh ReserveDraw mà hạt giống custody
+  // bảo vệ. Tiêu nhầm hạt giống ở đây là tự cắt đường của chính mình ở lượt sau.
+  const seed = custodySeedRefFromState(state.reserve?.custodyRef, process.env);
+  console.log(`hạt giống custody phải giữ nguyên: ${refKey(seed.ref)} (nguồn: ${seed.source})`);
 
   const delta = RESERVE_LAMP * 1_000_000n;
   console.log(`=== Tx C — ReserveDraw (${NETWORK}) — nhánh đã CHẾT trên mainnet ===`);
@@ -80,27 +86,82 @@ async function main(): Promise<void> {
     .pay.ToAddress(walletAddr, { lovelace: NFT_ADA, [wiring.metUnit]: 1n })
     .complete();
 
-  const hash = await (await tx.sign.withWallet().complete()).submit();
+  // Cổng đứng TRƯỚC nhánh SUBMIT=false — cùng lý do đã viết ở `21_vest_to_kho.ts`.
+  assertSeedNotSpent(tx, seed.ref, "Tx C (22 ReserveDraw)");
+
+  const signed = await tx.sign.withWallet().complete();
+  if (!SUBMIT) {
+    console.log(
+      `\n(SUBMIT=false ⇒ KHÔNG gửi, KHÔNG ghi state.)\n` +
+      `Tx dựng xong và ký được — nghĩa là nhánh ReserveDraw QUA ĐƯỢC khâu dựng, meter NFT có\n` +
+      `thật và tiêu được. Đó chính là chỗ policy mồi mainnet không tới nổi.\n` +
+      `Hạt giống custody KHÔNG nằm trong input lẫn collateral của giao dịch này.\n` +
+      `Gửi thật: SUBMIT=true tsx 22_reserve_draw.ts`,
+    );
+    return;
+  }
+
+  const hash = await signed.submit();
   console.log(`\n📤 Tx C: ${hash}\n   ${explorerTx(hash)}`);
   await lucid.awaitTx(hash);
 
-  const s2 = await waitFor(
-    `SupplyState.reserve_minted = ${s1.reserve_minted}`,
-    async () => supplyStateFromCbor(
-      theOneHolding(await lucid.utxosAt(wiring.ssAddr), wiring.threadUnit, "SUPPLY NFT").datum!,
-    ),
-    (s) => s.reserve_minted === s1.reserve_minted,
-  );
-  console.log(`\n✓ reserve_minted: ${s0.reserve_minted} → ${s2.reserve_minted} oildrop`);
-  console.log(`✓ NHÁNH ReserveDraw MỞ ĐƯỢC trên policy này.`);
-  console.log(`  Trần phát hành thật = ${s2.dist_cap + s2.reserve_cap} oildrop = 36 tỷ LAMP,`);
-  console.log(`  KHÔNG phải 26,37 tỷ như policy mồi mainnet.`);
-  console.log(`\n⚠ CHƯA chứng minh trần nhịp δ ≤ E/1000 — MET còn ở ví, reserve_draw chưa chạy (Lớp 2).`);
-
+  // GHI SỔ TRƯỚC, ĐỐI CHIẾU SAU — cùng lý do đã viết ở `21_vest_to_kho.ts`, và chỗ này là bản
+  // thứ hai của cùng một khuyết tật: bản trước gọi `waitFor` rồi mới `writeState`, nên một lần
+  // chờ hết giờ (chỉ mục chậm, không phải chuỗi hỏng) sẽ ném ở giữa và bỏ lại cuốn sổ không có
+  // `hash` cho một giao dịch đã lên chuỗi thật. Số ghi ở đây là `s1` — số MÌNH vừa gửi đi;
+  // dòng đối chiếu bên dưới mới là số ĐỌC VỀ. Hai số đó khác vai, đừng gộp.
   state.tx.reserveDraw = hash;
-  state.minted.reserve = s2.reserve_minted.toString();
+  state.minted.reserve = s1.reserve_minted.toString();
   await writeState(state);
-  console.log(`\n✅ Xong. Bước kế: tsx 23_prove_oneshot.ts`);
+
+  // Đối chiếu: đọc lại SupplyState trên chuỗi. Không ném — ném ở đây là ném SAU một thao tác
+  // bất khả hồi, nó không cứu được gì. Chờ hết giờ ⇒ "CHƯA ĐO ĐƯỢC", không phải "HỎNG".
+  try {
+    const s2 = await waitFor(
+      `SupplyState.reserve_minted = ${s1.reserve_minted}`,
+      async () => supplyStateFromCbor(
+        theOneHolding(await lucid.utxosAt(wiring.ssAddr), wiring.threadUnit, "SUPPLY NFT").datum!,
+      ),
+      (s) => s.reserve_minted === s1.reserve_minted,
+    );
+    console.log(`\n✓ reserve_minted: ${s0.reserve_minted} → ${s2.reserve_minted} oildrop`);
+    console.log(`✓ NHÁNH ReserveDraw MỞ ĐƯỢC trên policy này.`);
+    console.log(`  Trần phát hành thật = ${s2.dist_cap + s2.reserve_cap} oildrop = 36 tỷ LAMP,`);
+    console.log(`  KHÔNG phải 26,37 tỷ như policy mồi mainnet.`);
+  } catch (e) {
+    // BA trạng thái, không phải hai. `waitFor` hết giờ = chưa đọc được. Mọi ngoại lệ KHÁC phát ra
+    // từ hàm đọc là HỎNG THẬT, và ít nhất hai trong số đó là thảm hoạ: `theOneHolding` ném khi
+    // tìm thấy HAI UTxO mang SUPPLY NFT (thread NFT nhân đôi ⇒ `dist_minted` về 0 ⇒ đúc lại trọn
+    // cap), và `.datum!` ném `TypeError` khi SupplyState quay về không có inline datum. Gộp cả
+    // hai vào nhãn "chưa đo được" là dạy người đọc bỏ qua đúng dòng đáng dừng nhất.
+    const msg = e instanceof Error ? e.message : String(e);
+    if (isWaitTimeout(e)) {
+      process.exitCode = 2;
+      console.log(
+        `\n⚠ CHƯA ĐO ĐƯỢC (không phải "hỏng"): chưa đọc lại được SupplyState mang số mới.\n` +
+        `  ${msg}\n` +
+        `  Giao dịch ĐÃ gửi và đã ghi vào sổ. Đo lại bằng chính nó: ${explorerTx(hash)}\n` +
+        `  Hoặc chạy: tsx verify_canonical_v2.ts`,
+      );
+    } else {
+      process.exitCode = 1;
+      console.error(
+        `\n❌ HỎNG khi đọc lại SupplyState — KHÔNG phải chỉ mục chậm:\n` +
+        `  ${msg}\n` +
+        `  Giao dịch ĐÃ gửi (${hash}) và đã ghi vào sổ, nên không mất dấu. ĐỪNG chạy bước kế\n` +
+        `  trước khi hiểu dòng trên: tsx verify_canonical_v2.ts`,
+      );
+    }
+  }
+  console.log(`\n⚠ CHƯA chứng minh trần nhịp δ ≤ E/1000 — MET còn ở ví, reserve_draw chưa chạy (Lớp 2).`);
+  // `✅ Xong` chỉ được in khi phép đối chiếu ĐÃ chạy và ĐÃ khớp. Đầu tệp này khai rằng màu của
+  // bước này quyết định có phát hành hay không — nên một dấu ✅ đứng sau một trạng thái mù là
+  // một khẳng định mà không phép đo nào đỡ.
+  if (process.exitCode === undefined) {
+    console.log(`\n✅ Xong. Bước kế: tsx 23_prove_oneshot.ts`);
+  } else {
+    console.log(`\nKHÔNG in "Xong": xem dòng ⚠/❌ ở trên. Mã thoát ${process.exitCode}.`);
+  }
 }
 
 main().catch((e) => { console.error("❌", e instanceof Error ? e.message : e); process.exit(1); });

@@ -29,6 +29,7 @@
 import { type UTxO } from "@lucid-evolution/lucid";
 import { NETWORK, makeLucid, walletPkh, explorerTx } from "./config.js";
 import { rehydrate, registryDatum } from "./_canonical_v2.js";
+import { assertSeedNotSpent, custodySeedRefFromState, refKey } from "./_custodySeedRef.js";
 
 const NFT_ADA = 2_000_000n;
 
@@ -37,8 +38,13 @@ async function main(): Promise<void> {
 
   const lucid = await makeLucid();
   const pkh = await walletPkh(lucid);
-  const { wiring } = await rehydrate();
+  const { state, wiring } = await rehydrate();
   if (pkh !== wiring.pkh) throw new Error(`SAI VÍ: state ghi pkh=${wiring.pkh}, ví hiện tại ${pkh}.`);
+
+  // Hạt giống custody phải sống sót tới bước L2a. Đọc TRƯỚC khi dựng giao dịch để một state
+  // thiếu nó dừng ngay ở đây, chứ không dừng sau khi đã gửi.
+  const seed = custodySeedRefFromState(state.reserve?.custodyRef, process.env);
+  console.log(`hạt giống custody phải giữ nguyên: ${refKey(seed.ref)} (nguồn: ${seed.source})`);
 
   console.log(`=== Dời REG NFT về Script(regPid) (${NETWORK}) ===`);
   console.log(`regPid:   ${wiring.markers.regPid}`);
@@ -59,6 +65,10 @@ async function main(): Promise<void> {
     .pay.ToContract(wiring.regAddr, { kind: "inline", value: registryDatum(pkh) },
       { lovelace: NFT_ADA, [wiring.regUnit]: 1n })
     .complete();
+
+  // `.collectFrom(inWallet)` chỉ ghim UTxO mang REG NFT; `.complete()` vừa chạy chọn-đồng mặc
+  // định trên toàn bộ ví để trả phí, không loại trừ gì.
+  assertSeedNotSpent(tx, seed.ref, "20b (dời REG NFT)");
 
   const hash = await (await tx.sign.withWallet().complete()).submit();
   console.log(`📤 Tx: ${hash}\n   ${explorerTx(hash)}`);

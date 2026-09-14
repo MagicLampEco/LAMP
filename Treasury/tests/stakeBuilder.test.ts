@@ -42,10 +42,14 @@ const ADMIN = "5e".repeat(28);
 const base = { instanceId: INSTANCE, rewardCred: { kind: "Script" as const, hash: CUSTODY_HASH }, delegationAdmin: ADMIN };
 const applied = applyTreasuryStake(STAKE_RAW.script, base);
 
+/** Nhà dựng `Constr` của gói NÀY, dựng tại chỗ. `stakeBuilder.ts` cố ý không export nhà
+ *  dựng cục bộ của nó — một ký hiệu export được là một ký hiệu gói khác import nhầm được. */
+const mkConstr = (index: number, fields: unknown[]): unknown => new Constr(index, fields);
+
 // ══ Thứ tự + hình dạng khe ═════════════════════════════════════════════
 describe("treasuryStakeParamList", () => {
   it("đúng BA khe, thứ tự [instance_id, reward_cred, delegation_admin]", () => {
-    const l = treasuryStakeParamList(base);
+    const l = treasuryStakeParamList(base, mkConstr);
     expect(l).toHaveLength(3);
     expect(l[0]).toBe(INSTANCE);
     expect(l[2]).toBe(ADMIN);
@@ -55,28 +59,61 @@ describe("treasuryStakeParamList", () => {
   // thì apply vẫn chạy, hash vẫn ra, địa chỉ vẫn hợp lệ — và validator từ chối MỌI lần rút
   // thưởng. Không có gì kêu cho tới lúc đó.
   it("reward_cred kiểu Script là Constr 1, VerificationKey là Constr 0", () => {
-    const s = treasuryStakeParamList(base)[1] as Constr<unknown>;
+    const s = treasuryStakeParamList(base, mkConstr)[1] as Constr<unknown>;
     expect(s.index).toBe(1);
     expect(s.fields).toEqual([CUSTODY_HASH]);
-    const v = treasuryStakeParamList({ ...base, rewardCred: { kind: "VerificationKey", hash: ADMIN } })[1] as Constr<unknown>;
+    const v = treasuryStakeParamList({ ...base, rewardCred: { kind: "VerificationKey", hash: ADMIN } }, mkConstr)[1] as Constr<unknown>;
     expect(v.index).toBe(0);
   });
 
   it("ĐỎ: instance_id rỗng — validator từ chối nó ngay dòng đầu", () => {
-    expect(() => treasuryStakeParamList({ ...base, instanceId: "" })).toThrow(/TSTAKE-003/);
+    expect(() => treasuryStakeParamList({ ...base, instanceId: "" }, mkConstr)).toThrow(/TSTAKE-003/);
   });
 
   it("ĐỎ: reward_cred.hash sai độ dài", () => {
-    expect(() => treasuryStakeParamList({ ...base, rewardCred: { kind: "Script", hash: "aa" } })).toThrow(/TSTAKE-004/);
+    expect(() => treasuryStakeParamList({ ...base, rewardCred: { kind: "Script", hash: "aa" } }, mkConstr)).toThrow(/TSTAKE-004/);
   });
 
   it("ĐỎ: delegation_admin sai độ dài", () => {
-    expect(() => treasuryStakeParamList({ ...base, delegationAdmin: "aa" })).toThrow(/TSTAKE-005/);
+    expect(() => treasuryStakeParamList({ ...base, delegationAdmin: "aa" }, mkConstr)).toThrow(/TSTAKE-005/);
+  });
+
+  // Ca đối xứng cho ranh giới hai gói. Hai bản cài `@lucid-evolution` cùng số hiệu là hai
+  // class `Constr` khác danh tính; một `Constr` dựng ở gói kia đi vào `applyParamsToScript`
+  // của gói này ném `Unsupported type` — câu lỗi không nhắc gì tới hai bản cài, nên lớp lỗi
+  // này chỉ lộ ra ở một lần chạy thật.
+  //
+  // Đầu vào của ca này phân biệt được hai bên đột biến: gỡ `mkConstr` rồi quay về
+  // `new Constr(...)` ngay trong hàm ⇒ nhà dựng thăm dò KHÔNG được gọi ⇒ ca ĐỎ.
+  it("khe reward_cred dựng bằng nhà dựng của BÊN GỌI, không phải của tệp này", () => {
+    const daubuoc: number[] = [];
+    const mkTham = (index: number, fields: unknown[]): unknown => {
+      daubuoc.push(index);
+      return new Constr(index, fields);   // thật, vì cổng TSTAKE-007 đòi một thể hiện Constr
+    };
+    const l = treasuryStakeParamList(base, mkTham);
+    expect(daubuoc, "hàm KHÔNG gọi nhà dựng được truyền vào — nó đang tự dựng Constr của gói này")
+      .toEqual([0, 1]);   // [0] = lượt thăm dò của TSTAKE-007, [1] = khe reward_cred thật
+    expect((l[1] as Constr<unknown>).fields).toEqual([CUSTODY_HASH]);
+  });
+
+  it("ĐỎ: thiếu nhà dựng Constr — ném ngay, không để lỗi nổ ở applyParamsToScript", () => {
+    expect(() => (treasuryStakeParamList as unknown as (p: unknown) => unknown[])(base))
+      .toThrow(/TSTAKE-006/);
+  });
+
+  // `typeof === "function"` đo ĐƯỢC-LÀ-HÀM, không đo HÀM-CỦA-AI. Một nhà dựng trả đối tượng
+  // thuần CÙNG HÌNH DẠNG đi lọt cổng đó rồi chết ở `applyParamsToScript` — tức ở một tệp
+  // khác hẳn tệp có lỗi. Ca này ghim nửa còn lại.
+  it("ĐỎ: nhà dựng trả đối tượng thuần thay vì Constr — TSTAKE-007", () => {
+    const gia = (index: number, fields: unknown[]): unknown => ({ index, fields });
+    expect(() => treasuryStakeParamList(base, gia)).toThrow(/TSTAKE-007/);
+    expect(() => treasuryStakeParamList(base, () => null)).toThrow(/TSTAKE-007/);
   });
 
   it("ĐỎ: chuỗi không phải hex, và hex lẻ byte", () => {
-    expect(() => treasuryStakeParamList({ ...base, delegationAdmin: "zz".repeat(28) })).toThrow(/TSTAKE-001/);
-    expect(() => treasuryStakeParamList({ ...base, instanceId: "abc" })).toThrow(/TSTAKE-002/);
+    expect(() => treasuryStakeParamList({ ...base, delegationAdmin: "zz".repeat(28) }, mkConstr)).toThrow(/TSTAKE-001/);
+    expect(() => treasuryStakeParamList({ ...base, instanceId: "abc" }, mkConstr)).toThrow(/TSTAKE-002/);
   });
 });
 

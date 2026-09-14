@@ -34,19 +34,40 @@ pub type TallyRedeemer {
   Finalize
 }
 
-/// Bảo toàn Tally NFT: đúng 1 input + 1 output tại Tally script hash, output mang NFT.
-fn nft_preserved(
+/// Bảo toàn Tally acc UTxO: đúng 1 input + 1 output tại Tally script hash, output mang
+/// đúng 1 NFT, và TOÀN BỘ value đi qua nguyên vẹn.
+///
+/// Tên cũ là `nft_preserved` — đổi vì nó không còn chỉ giữ NFT. Tech-Spec.md:703 (§9.3)
+/// chốt: "Tally acc output value == input value (chỉ datum đổi); min-ADA các Vote UTxO
+/// bị tiêu trả về owner (không vào acc, không drain)". Luật áp cho CẢ HAI nhánh spend —
+/// acc không nhận thêm, cũng không mất đi. Cùng lớp lỗi đã vá ở `proposal.utxo_preserved`.
+fn utxo_preserved(
   own_hash: ByteArray,
   tally_policy: PolicyId,
   tx: Transaction,
 ) -> Bool {
   let n_in = util.count_inputs_at_script(tx.inputs, own_hash)
   let n_out = util.count_outputs_at_script(tx.outputs, own_hash)
+  let in_out = util.input_at_script(tx.inputs, own_hash)
   let out = util.output_at_script(tx.outputs, own_hash)
+  // `dict.size == 1` nói "đúng 1 TÊN tài sản", KHÔNG nói "đúng 1 token": số lượng nằm
+  // ở giá trị của cặp, không ở số cặp. Bóc lấy qty — cùng khuôn read_weight_param.
+  //
+  // Vế qty KHÔNG bị đẳng thức value bên dưới nuốt: đẳng thức chỉ nói hai bên BẰNG
+  // NHAU, không nói số lượng TUYỆT ĐỐI là 1; một acc mang sẵn 2 đơn vị đi qua êm ru.
+  expect [Pair(_, qty)] = dict.to_pairs(assets.tokens(out.value, tally_policy))
   and {
     n_in == 1,
     n_out == 1,
-    dict.size(assets.tokens(out.value, tally_policy)) == 1,
+    qty == 1,
+    // value NGUYÊN VẸN: giữ NFT thôi thì người tiêu giữ NFT + datum đúng rồi hút hết
+    // ADA của acc ra ví mình, và không ràng buộc cũ nào kêu lên.
+    out.value == in_out.value,
+    // ĐỊA CHỈ ĐẦY ĐỦ. `util.is_at_script` chỉ so payment_credential — đúng cho việc ĐẾM,
+    // không đủ cho việc ÉP ĐÍCH; lý lẽ đầy đủ ở `proposal.utxo_preserved`, cùng một lỗ.
+    // Với Tally acc thì hệ quả đắt hơn một bậc: acc là nơi phiếu dồn về qua nhiều lượt
+    // SumBatch, nên một lượt đẩy acc sang địa chỉ khác làm lượt sau không tra ra nó nữa.
+    out.address == in_out.address,
   }
 }
 
@@ -172,7 +193,7 @@ validator tally(
           sum_batch_consistent(d_in, d_out, wp, votes),
           // nullifier mỗi phiếu BỊ ĐỐT trong tx — one-shot, không cộng 2 lần (Finding 3).
           nullifiers_burned(tx, nullifier_policy, votes),
-          nft_preserved(own_hash, tally_policy, tx),
+          utxo_preserved(own_hash, tally_policy, tx),
         }
       }
 
@@ -200,7 +221,7 @@ validator tally(
           d_out.top_did_vp == d_in.top_did_vp,
           // ÉP clamp đúng: power_eff == apply_clamp(d_out raw + heap), F từ WeightParam.
           clamp_consistent(d_out, wp.bft_floor),
-          nft_preserved(own_hash, tally_policy, tx),
+          utxo_preserved(own_hash, tally_policy, tx),
         }
       }
     }
