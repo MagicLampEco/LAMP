@@ -154,6 +154,32 @@ fn tally_out(d_out: TallyDatum) -> Output {
   util.mk_output(util.script_address(tally_sh), val, d_out)
 }
 
+// ── Value tùy biến — cho ca soi bảo toàn value + số lượng NFT (§9.3 Tech-Spec) ──
+
+fn tally_input_with(d_in: TallyDatum, val: Value) -> Input {
+  util.mk_input(
+    util.mk_ref(0),
+    util.mk_output(util.script_address(tally_sh), val, d_in),
+  )
+}
+
+fn tally_out_with(d_out: TallyDatum, val: Value) -> Output {
+  util.mk_output(util.script_address(tally_sh), val, d_out)
+}
+
+// "Rút cạn": giữ NGUYÊN NFT và nguyên datum, chỉ hút ADA — 1_999_999 lovelace đi vào
+// ví người tiêu. Chọn cách này vì nó đi lọt mọi ràng buộc cũ (NFT còn, datum còn).
+fn drained_value() -> Value {
+  assets.from_lovelace(1) |> assets.add(tally_policy, #"01", 1)
+}
+
+// Hai đơn vị cùng asset name ở CẢ hai đầu ⇒ đẳng thức bảo toàn value THOẢ, nên thứ
+// duy nhất còn từ chối được là vế số lượng. Chỉ đổi một đầu thì ca sẽ chết ở chốt bảo
+// toàn value và đo nhầm sang đó.
+fn doubled_nft_value() -> Value {
+  assets.from_lovelace(2_000_000) |> assets.add(tally_policy, #"01", 2)
+}
+
 fn run_finalize(tx: Transaction, d_in: TallyDatum) -> Bool {
   tally.tally.spend(
     tally_policy,
@@ -185,12 +211,37 @@ fn run_sum(tx: Transaction, d_in: TallyDatum) -> Bool {
 // ════════════════════════════════════════════════════════════
 
 fn finalize_tx(d_in: TallyDatum, d_out: TallyDatum, bft: Int) -> Transaction {
+  finalize_tx_full(tally_input(d_in), tally_out(d_out), bft)
+}
+
+// Khuôn gốc: nhận thẳng Input/Output để đổi được value. finalize_tx gọi về đây, nên
+// chỉ có MỘT chỗ dựng Transaction cho nhánh Finalize.
+fn finalize_tx_full(inp: Input, out: Output, bft: Int) -> Transaction {
+  finalize_tx_many([inp], [out], bft)
+}
+
+// Nhiều input / nhiều output — cho ca double-satisfaction.
+fn finalize_tx_many(
+  inputs: List<Input>,
+  outputs: List<Output>,
+  bft: Int,
+) -> Transaction {
   Transaction {
     ..placeholder,
-    inputs: [tally_input(d_in)],
+    inputs,
     reference_inputs: [wp_input(bft)],
-    outputs: [tally_out(d_out)],
+    outputs,
   }
+}
+
+// Tally acc thứ HAI (output_reference + asset name khác) — cho ca double-satisfaction.
+fn tally_input_second(d_in: TallyDatum) -> Input {
+  let val =
+    assets.from_lovelace(2_000_000) |> assets.add(tally_policy, #"02", 1)
+  util.mk_input(
+    util.mk_ref(5),
+    util.mk_output(util.script_address(tally_sh), val, d_in),
+  )
 }
 
 // ── TC1: clamp ΣVP THÔ. ΣVP=1000, F=10 → τ=100. Whale Yes vp_raw=400 vượt → trừ 300 ──
@@ -302,11 +353,21 @@ fn sum_tx(
   votes_in: List<Input>,
   burn_mint: Value,
 ) -> Transaction {
+  sum_tx_full(tally_input(d_in), tally_out(d_out), votes_in, burn_mint)
+}
+
+// Khuôn gốc nhánh SumBatch — xem ghi chú ở finalize_tx_full.
+fn sum_tx_full(
+  inp: Input,
+  out: Output,
+  votes_in: List<Input>,
+  burn_mint: Value,
+) -> Transaction {
   Transaction {
     ..placeholder,
-    inputs: [tally_input(d_in), ..votes_in],
+    inputs: [inp, ..votes_in],
     reference_inputs: [wp_input(10)],
-    outputs: [tally_out(d_out)],
+    outputs: [out],
     mint: burn_mint,
   }
 }
@@ -767,6 +828,113 @@ test finalize_rejects_d8_violating_weight_table() fail {
       reference_inputs: [wp_input_d8_violating(10)],
       outputs: [tally_out(d_out)],
     }
+  expect run_finalize(tx, d_in)
+  True
+}
+
+// ════════════════════════════════════════════════════════════
+// Bảo toàn UTxO — Tech-Spec.md:703 (§9.3): "Tally acc output value == input value
+// (chỉ datum đổi); min-ADA các Vote UTxO bị tiêu trả về owner (không vào acc, không
+// drain)". Luật này áp cho CẢ HAI nhánh spend: acc không nhận thêm, cũng không mất đi.
+// Cùng lớp lỗi vừa vá ở validators/proposal.ak (`utxo_preserved`).
+// ════════════════════════════════════════════════════════════
+
+// ── Finalize: datum ra đúng clamp, NFT còn nguyên, nhưng ADA bị hút ra. PHẢI từ chối. ──
+test finalize_rejects_value_drain() fail {
+  let top = [TopEntry { vp_raw: 400, choice: Yes }]
+  let d_in = summing(700, 200, 100, 30, 25, top)
+  let d_out =
+    TallyDatum {
+      ..d_in,
+      phase: Clamped,
+      yes_power_eff: 400,
+      no_power_eff: 200,
+      abstain_power_eff: 100,
+    }
+  let tx =
+    finalize_tx_full(tally_input(d_in), tally_out_with(d_out, drained_value()), 10)
+  expect run_finalize(tx, d_in)
+  True
+}
+
+// ── SumBatch: dựng đúng khuôn sum_derive_happy (phiếu thật, nullifier đốt đúng, derive
+//    đúng) — thứ DUY NHẤT khác ca xanh là acc bị rút ADA. PHẢI từ chối. ──
+test sum_batch_rejects_value_drain() fail {
+  let nl = #"aa01"
+  let v = vote_datum(Yes, 10, 10, 10, 10, nl)
+  let d_in = summing(0, 0, 0, 0, 0, [])
+  let d_out = summing(v1_vp, 0, 0, 1, 1, [TopEntry { vp_raw: v1_vp, choice: Yes }])
+  let burn = assets.zero |> assets.add(null_policy, nl, -1)
+  let tx =
+    sum_tx_full(
+      tally_input(d_in),
+      tally_out_with(d_out, drained_value()),
+      [vote_input(v, 1)],
+      burn,
+    )
+  expect run_sum(tx, d_in)
+  True
+}
+
+// ── Số lượng NFT: hai đơn vị ở CẢ hai đầu ⇒ đẳng thức bảo toàn value THOẢ, và
+//    `dict.size(...) == 1` cũ cũng thoả vì nó đếm số TÊN tài sản chứ không đếm số
+//    lượng. Chỉ vế số lượng từ chối được. PHẢI từ chối. ──
+test finalize_rejects_duplicated_nft() fail {
+  let d_in = summing(700, 200, 100, 30, 25, [])
+  let d_out =
+    TallyDatum {
+      ..d_in,
+      phase: Clamped,
+      yes_power_eff: 700,
+      no_power_eff: 200,
+      abstain_power_eff: 100,
+    }
+  let tx =
+    finalize_tx_full(
+      tally_input_with(d_in, doubled_nft_value()),
+      tally_out_with(d_out, doubled_nft_value()),
+      10,
+    )
+  expect run_finalize(tx, d_in)
+  True
+}
+
+// ── Double satisfaction: `n_in == 1` / `n_out == 1` đã có trong mã từ trước, nhưng
+//    phép đo đảo cho thấy không ca nào ghim. `output_at_script` lấy output KHỚP ĐẦU
+//    TIÊN, nên không đếm thì một output hợp lệ thoả cho nhiều acc cùng script — acc
+//    thứ hai bị tiêu mà không ai kiểm datum ra của nó. PHẢI từ chối. ──
+test finalize_rejects_two_inputs_at_script() fail {
+  let d_in = summing(700, 200, 100, 30, 25, [])
+  let d_out =
+    TallyDatum {
+      ..d_in,
+      phase: Clamped,
+      yes_power_eff: 700,
+      no_power_eff: 200,
+      abstain_power_eff: 100,
+    }
+  let tx =
+    finalize_tx_many(
+      [tally_input(d_in), tally_input_second(d_in)],
+      [tally_out(d_out)],
+      10,
+    )
+  expect run_finalize(tx, d_in)
+  True
+}
+
+test finalize_rejects_two_outputs_at_script() fail {
+  let d_in = summing(700, 200, 100, 30, 25, [])
+  let d_out =
+    TallyDatum {
+      ..d_in,
+      phase: Clamped,
+      yes_power_eff: 700,
+      no_power_eff: 200,
+      abstain_power_eff: 100,
+    }
+  let tx =
+    finalize_tx_many([tally_input(d_in)], [tally_out(d_out), tally_out(d_out)], 10)
   expect run_finalize(tx, d_in)
   True
 }

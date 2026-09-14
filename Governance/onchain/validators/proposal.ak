@@ -105,9 +105,16 @@ fn read_weight_param(
   wp
 }
 
-/// Proposal NFT bảo toàn: đúng 1 input + 1 output tại Proposal script hash, output
-/// mang đúng NFT one-shot (value giữ NFT). Chống đốt/đổi địa chỉ Proposal UTxO.
-fn nft_preserved(
+/// Proposal UTxO bảo toàn: đúng 1 input + 1 output tại Proposal script hash, output
+/// mang đúng 1 NFT one-shot, và TOÀN BỘ value đi qua nguyên vẹn.
+///
+/// Tên cũ là `nft_preserved` — đổi vì nó không còn chỉ giữ NFT. Giữ NFT là điều kiện
+/// CẦN, không đủ: Tech-Spec.md:591 chốt "CloseVoting/RecordTally: Proposal output
+/// value == input value (giữ NFT + ADA nguyên)", dẫn lại bài học audit Distribution M1
+/// (§8.1) — delta token đúng nhưng ADA bị rút lén. Tech-Spec gọi tên hai nhánh, nhưng
+/// cả bốn nhánh đều tiêu chính UTxO này nên cả bốn đều ép, không có lý do để nhánh nào
+/// được rút ADA.
+fn utxo_preserved(
   own_hash: ByteArray,
   proposal_policy: PolicyId,
   inputs: List<Input>,
@@ -115,13 +122,34 @@ fn nft_preserved(
 ) -> Bool {
   let n_in = util.count_inputs_at_script(inputs, own_hash)
   let n_out = util.count_outputs_at_script(outputs, own_hash)
+  let in_out = util.input_at_script(inputs, own_hash)
   let out = util.output_at_script(outputs, own_hash)
+  // "đúng 1 TÊN tài sản" (dict.size == 1) KHÔNG phải "đúng 1 token": số lượng nằm ở
+  // giá trị của cặp, không ở số cặp. Phải bóc lấy qty và ép == 1 — cùng khuôn với
+  // read_tally/read_weight_param, nơi ràng buộc này đã có sẵn.
+  //
+  // Vế này KHÔNG bị đẳng thức value bên dưới nuốt, dù thoạt nhìn có vẻ vậy:
+  // `out.value == in_out.value` chỉ nói hai bên BẰNG NHAU, không nói số lượng TUYỆT
+  // ĐỐI là 1. Một UTxO đã mang sẵn 2 đơn vị (chỉ xảy ra nếu tham số deploy
+  // proposal_policy trỏ vào một policy không one-shot) đi qua đẳng thức đó êm ru.
+  expect [Pair(_, qty)] = dict.to_pairs(assets.tokens(out.value, proposal_policy))
   and {
     n_in == 1,
     n_out == 1,
     // output giữ đúng 1 NFT proposal_policy (one-shot, không đốt).
-    dict.size(assets.tokens(out.value, proposal_policy)) == 1,
+    qty == 1,
+    // value đi qua NGUYÊN VẸN: mọi asset, mọi lovelace. Ràng NFT thôi thì người tiêu
+    // giữ NFT + datum y nguyên rồi hút hết ADA còn lại ra ví mình, không gì kêu lên.
+    out.value == in_out.value,
   }
+}
+
+/// Datum output PHẢI y hệt datum input — dùng cho các nhánh theo thiết kế KHÔNG đổi
+/// trạng thái gì. Liệt kê từng trường là cách hỏng im lặng: thêm một trường vào
+/// ProposalDatum thì danh sách cũ vẫn biên dịch, vẫn xanh, và trường mới thành tự do.
+/// So sánh cả record đóng luôn đường đó và rẻ hơn (một phép so trên Data).
+fn datum_unchanged(d_in: ProposalDatum, d_out: ProposalDatum) -> Bool {
+  d_out == d_in
 }
 
 /// Decode ProposalDatum output tại own script hash.
@@ -132,6 +160,42 @@ fn out_datum(own_hash: ByteArray, outputs: List<Output>) -> ProposalDatum {
   pd
 }
 
+// ════════════════════════════════════════════════════════════════════════════════
+// ĐỘ PHỦ CỦA BỘ KIỂM — đọc trước khi gỡ bất cứ dòng nào bên dưới
+// ════════════════════════════════════════════════════════════════════════════════
+//
+// Các vế trong những khối `and { … }` dưới đây đều có ca âm riêng ghim chúng: gỡ một
+// vế ra rồi chạy `aiken check` thì có ít nhất một test đỏ. Các tiền điều kiện dạng
+// `expect` thì KHÔNG — đo ngày 2026-09-14 bằng cách gỡ từng cái rồi chạy trọn bộ:
+// mười hai `expect` dưới đây gỡ ra mà bộ kiểm VẪN XANH.
+//
+// Điều đó KHÔNG có nghĩa chúng thừa. Chúng chia làm hai loại, và hai loại có rủi ro
+// khác hẳn nhau:
+//
+//   (A) ĐANG ĐƯỢC MỘT LỚP SAU CHE — gỡ ra thì tx vẫn bị từ chối, nhưng bởi lớp khác:
+//       · Execute ▸ `expect td.phase == Clamped`   ← `clamp_consistent` che: datum pha
+//         Summing có ba trường *_eff chưa ràng, và chính clamp_consistent bắt ra sai.
+//       · Execute ▸ `expect wp.bft_floor >= 1`     ← `clamp_consistent` che: F = 0 làm
+//         phép chia trong công thức trần τ = ΣVP/F nổ ⇒ validator crash ⇒ từ chối.
+//       · Execute ▸ `expect td.proposal_id == d_in.proposal_id` ← `pass()` + ràng buộc
+//         datum ra che trong các ca hiện có.
+//       Hệ quả phải nhớ: ba bài `execute_summing_phase_reject`,
+//       `execute_wp_bft_zero_reject`, `execute_forged_tally_wrong_script_reject` ĐỎ
+//       đúng dòng mang tên chúng, nhưng KHÔNG chứng minh được ba `expect` này ghim
+//       gì. Gỡ lớp che (đổi `clamp_consistent`, đổi `pass`) thì phải THÊM ca cho ba
+//       `expect` này, đừng tin vào màu xanh còn lại.
+//
+//   (B) CHƯA CÓ CA NÀO CHẠM TỚI — không lớp nào che, chỉ là bộ kiểm chưa đi qua:
+//       · Open  ▸ `status == Open`, `vote_close > vote_open`, `snapshot == vote_open`
+//       · Close ▸ `status == Open`, `epoch >= vote_close`
+//       · Tally ▸ `status == Open`, `td.proposal_id`, `td.weight_param_ref`,
+//                 `td.phase == Clamped`
+//       Loại này là nợ kiểm thử thẳng thắn: một ca âm cho mỗi cái là đủ.
+//
+// Cách đo lại (rẻ, ~25 giây một chốt): thay chốt bằng `expect True` / `True,` → chạy
+// `aiken check` → đọc `"status": "fail"` trong output JSON → khôi phục. Đừng suy luận
+// thay cho phép đo: vế `qty == 1` trong `utxo_preserved` từng trông y như một vế chết
+// cho tới khi ca kiểm được sửa cho cô lập đúng đại lượng.
 validator proposal(
   proposal_policy: PolicyId,
   tally_policy: PolicyId,
@@ -156,7 +220,16 @@ validator proposal(
         expect d_in.status == Open
         expect d_in.vote_close_epoch > d_in.vote_open_epoch
         expect d_in.snapshot_epoch == d_in.vote_open_epoch
-        nft_preserved(own_hash, proposal_policy, tx.inputs, tx.outputs)
+        // Ba expect trên chỉ nói về datum VÀO. Proposal UTxO là singleton, nên mỗi lần
+        // tiêu nó là một lần ghi lại TOÀN BỘ datum: không ràng datum RA thì ai tiêu
+        // được một proposal đang Open cũng đặt lại được spend_spec_hash (đích chi
+        // Treasury đọc) hay status=Executed. Nhánh này theo thiết kế không đổi trạng
+        // thái gì ⇒ datum ra phải y datum vào.
+        let d_out = out_datum(own_hash, tx.outputs)
+        and {
+          datum_unchanged(d_in, d_out),
+          utxo_preserved(own_hash, proposal_policy, tx.inputs, tx.outputs),
+        }
       }
 
       // ── CloseVoting: epoch ≥ vote_close; status giữ Open; value bảo toàn ──
@@ -164,10 +237,13 @@ validator proposal(
         expect d_in.status == Open
         expect epoch >= d_in.vote_close_epoch
         let d_out = out_datum(own_hash, tx.outputs)
+        // Chú thích tại chỗ khai báo redeemer đã chốt: nhánh này "chỉ gate thời gian +
+        // giữ value". Giữ 2 trường (status, proposal_id) trên 12 thì 10 trường còn lại
+        // tự do đúng lúc hết hạn bỏ phiếu — đổi được spend_spec_hash và
+        // execute_after_epoch, rồi các nhánh sau chỉ chép lại giá trị đã bị đổi.
         and {
-          d_out.status == Open,
-          d_out.proposal_id == d_in.proposal_id,
-          nft_preserved(own_hash, proposal_policy, tx.inputs, tx.outputs),
+          datum_unchanged(d_in, d_out),
+          utxo_preserved(own_hash, proposal_policy, tx.inputs, tx.outputs),
         }
       }
 
@@ -197,7 +273,13 @@ validator proposal(
           d_out.execute_after_epoch == d_in.execute_after_epoch,
           d_out.released_cumulative == d_in.released_cumulative,
           d_out.weight_param_ref == d_in.weight_param_ref,
-          nft_preserved(own_hash, proposal_policy, tx.inputs, tx.outputs),
+          // ba mốc epoch cũng phải giữ nguyên: RecordTally chỉ ghi kết quả, không có
+          // lý do gì đổi lịch. Bỏ trống thì đẩy được vote_close_epoch lên sau khi đã
+          // chốt kết quả — Vote đọc đúng trường này để biết còn nhận phiếu hay không.
+          d_out.vote_open_epoch == d_in.vote_open_epoch,
+          d_out.vote_close_epoch == d_in.vote_close_epoch,
+          d_out.snapshot_epoch == d_in.snapshot_epoch,
+          utxo_preserved(own_hash, proposal_policy, tx.inputs, tx.outputs),
         }
       }
 
@@ -241,7 +323,7 @@ validator proposal(
         let d_out = out_datum(own_hash, tx.outputs)
         and {
           execute_transition_ok(d_in, d_out),
-          nft_preserved(own_hash, proposal_policy, tx.inputs, tx.outputs),
+          utxo_preserved(own_hash, proposal_policy, tx.inputs, tx.outputs),
         }
       }
     }
