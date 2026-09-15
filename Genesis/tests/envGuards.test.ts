@@ -482,7 +482,7 @@ describe("CALL-SITE — không apply-param nào đi vòng cổng gác", () => {
 // MARKER-001 — marker đúc dưới native-sig thì KHÔNG one-shot.
 //
 // Ca gốc (hồi quy): `0630c28` vá đúng MỘT tệp (`oneshot_cap_mint.ts`, đã xoá khỏi kho — tra
-// `git show b9a795d -- Genesis/scripts/oneshot_cap_mint.ts`) và để nguyên bốn tệp
+// `git show b9a795d:Genesis/scripts/oneshot_cap_mint.ts`) và để nguyên bốn tệp
 // bên cạnh vẫn nhét `nPid` (native-sig ví deploy) vào cả bốn khe marker của `lamp_mint`.
 // Cùng một mẫu "vá bản sao đang nhìn, để nguyên bản sống bên cạnh" đã đẻ ra chính `_guards.ts`.
 // Bộ test dưới ép CẢ BỐN tệp phải đi qua cổng — đó mới là thứ hỏng, không phải một tệp nào.

@@ -123,7 +123,7 @@ và A4 an toàn trong lúc hai mục đó còn mở (xem bảng ở cuối tệp
 > Diễn tập xanh **KHÔNG** chứng minh tính DUY NHẤT của thread NFT — thứ neo toàn bộ định danh
 > SupplyState. Lý do cụ thể, không phải lo xa: kịch bản diễn tập **không dùng** `thread_nft.ak`.
 > `Genesis/scripts/canonical_mint.ts:44` và `canonical_mint_resume.ts:37` (hai tệp đã xoá khỏi
-> kho — tra `git show 930480e -- Genesis/scripts/canonical_mint.ts`) dựng
+> kho — tra `git show 930480e:Genesis/scripts/canonical_mint.ts`) dựng
 > `scriptFromNative({ type: "sig", keyHash: pkh })` rồi lấy `nPid` đó làm policy cho CẢ BỐN
 > mốc SUPPLY/REG/KHO/MET (`canonical_mint.ts:48-50`). Policy native-sig **mint lại được bao
 > nhiêu lần tuỳ ý** bằng chính khoá ví đó. `thread_nft.ak:20-26` mới là one-shot thật: nó đòi

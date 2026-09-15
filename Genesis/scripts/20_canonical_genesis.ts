@@ -152,7 +152,7 @@ async function main(): Promise<void> {
 
   // ── Cổng MARKER-001: không khe nào được là native-sig ────────────────────
   // Cổng này tồn tại vì bản diễn tập cũ (`canonical_mint.ts:108`, đã xoá khỏi kho — tra
-  // `git show 930480e -- Genesis/scripts/canonical_mint.ts`) đúc cả bốn marker bằng
+  // `git show 930480e:Genesis/scripts/canonical_mint.ts`) đúc cả bốn marker bằng
   // `scriptFromNative({type:"sig"})` — đúc lại được bao nhiêu lần tuỳ ý. Ở đây nó phải im
   // lặng: bốn khe đều là policy one-shot. Nó kêu = wiring đã trôi, DỪNG.
   assertOneShotMarkers(

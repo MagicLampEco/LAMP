@@ -59,6 +59,6 @@ Vì LAMP **no-burn**, mint LAMP vào kho SAI (1-pkh/placeholder/claim_account) =
   `Genesis/scripts/20_canonical_genesis.ts:208` đúc kho-NFT bằng `treasury_nft.ak` thật; script
   deploy 12/14-param production ở `Genesis/scripts/_canonical_v2.ts` + `20_canonical_genesis.ts`
   … `26_prove_brake.ts`. Script demo cũ dùng placeholder (`preview_registry_e2e.ts:32`) đã xoá
-  khỏi kho (tra `git show 930480e -- Genesis/scripts/preview_registry_e2e.ts`).
+  khỏi kho (tra `git show 930480e:Genesis/scripts/preview_registry_e2e.ts`).
 
 — LAMP agent

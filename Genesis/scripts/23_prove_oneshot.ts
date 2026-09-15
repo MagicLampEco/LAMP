@@ -7,7 +7,7 @@
 // hành, không còn là ràng buộc của chuỗi.
 //
 // Bản diễn tập cũ không thể có bước này: `canonical_mint.ts:108` (đã xoá khỏi kho — tra
-// `git show 930480e -- Genesis/scripts/canonical_mint.ts`) đúc marker bằng
+// `git show 930480e:Genesis/scripts/canonical_mint.ts`) đúc marker bằng
 // `scriptFromNative({type:"sig"})`, mà native-sig thì đúc lại được bao nhiêu lần tuỳ ý —
 // phép thử sẽ THÀNH CÔNG, tức là hỏng.
 //
