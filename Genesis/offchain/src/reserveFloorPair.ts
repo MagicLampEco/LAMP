@@ -28,14 +28,14 @@
 // BẰNG NHAU, và đó đúng là hai ca nguy hiểm nhất — hai chỗ chưa điền thì cổng nào chỉ so bằng
 // cũng im lặng cho qua, tức nói "tôi không biết" bằng giọng của "ổn".
 
+import { assertNotLookalike } from "./lampPolicies.js";
+
 /**
  * Một vế sàn có ĐỌC ĐƯỢC không. Trả về lý do KHÔNG đọc được, hoặc `undefined` khi đọc được.
  *
  * Tách khỏi phép so sánh, đúng khuôn `reserveKhoPair.ts::khongDocDuoc`: phép so bằng chạy SAU,
  * và chỉ chạy trên hai giá trị đã biết là đọc được.
  */
-import { assertNotLookalike } from "./lampPolicies.js";
-
 function khongDocDuoc(v: bigint | undefined, nhan: string): string | undefined {
   if (v === undefined || v === null) return `${nhan} KHÔNG có (undefined)`;
   if (typeof v !== "bigint") {

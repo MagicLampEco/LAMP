@@ -27,6 +27,8 @@
 //   · KHÔNG ĐỌC ĐƯỢC (thiếu / rỗng / sai hình dạng hex) → ném APPLY-003, KHÔNG cho qua.
 // Trạng thái thứ ba là trạng thái mù; cho qua nó là nói "tôi không biết" bằng giọng "ổn".
 
+import { assertNotLookalike } from "./lampPolicies.js";
+
 /**
  * Một cái kho được định danh bằng NFT: `(policy id one-shot, asset name)`.
  *
@@ -40,8 +42,6 @@ export interface KhoNftPair {
   /** Asset name NFT kho (hex, 1..32 byte). */
   name: string;
 }
-
-import { assertNotLookalike } from "./lampPolicies.js";
 
 const HEX = /^[0-9a-f]+$/;
 

@@ -69,6 +69,7 @@ import { NETWORK } from "./config.js";
 import { assertParamCount as assertParamCountGate } from "../offchain/src/applyGate.js";
 import { reserveDrawParamList } from "../offchain/src/reserveKhoPair.js";
 import { reserveAuthParamList, reserveGateParamList } from "../offchain/src/reserveFloorPair.js";
+import { assertNotLookalike } from "../offchain/src/lampPolicies.js";
 import type { CustodyDatum } from "../../Treasury/offchain/src/types.js";
 import { treasuryStakeParamList } from "../../Treasury/offchain/src/stakeBuilder.js";
 import {
@@ -393,9 +394,12 @@ export async function deriveCustody(
     PROPOSAL_POLICY_PLACEHOLDER,  // #1 proposal_policy — xem cảnh báo 28 byte 0 ở trên
     custodySeedPid,               // #2 seed_policy — ghim NFT one-shot làm định danh két
     MS_PER_EPOCH,                 // #3 ms_per_epoch
-    o.lampPid, o.tokenName,       // #4-5 LAMP — nhánh `MigrateIn` đo Δ theo đúng cặp này.
-                                  //      Không đọc "token nào là LAMP" từ datum được: datum do
-                                  //      người gửi đặt. ⇒ tham số apply-time, nướng vào hash.
+    // #4-5 LAMP — nhánh `MigrateIn` đo Δ theo đúng cặp này. Không đọc "token nào là LAMP" từ
+    // datum được: datum do người gửi đặt ⇒ tham số apply-time, nướng vào hash. Khe #4 chở policy
+    // id của LAMP nên đi qua cổng hàng nhái, như `reserve_draw` #1 và `reserve_gate` #3. Két là
+    // chỗ đầu tiên của lượt dẫn xuất nhận `lampPid`, và nó được dẫn xuất RIÊNG, trước Lớp 2 —
+    // nên không cổng nào ở hai hàm dựng kia gác hộ nó được.
+    assertNotLookalike(o.lampPid, "custody #4 lamp_policy"), o.tokenName,
   ]) as Validator;
   const custodyHash = hashOf(custody);
 

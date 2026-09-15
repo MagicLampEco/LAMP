@@ -241,8 +241,9 @@ describe.skipIf(haveBlueprint)("apply-param THẬT — KHÔNG ĐO ĐƯỢC", () 
 // ══ Cổng hàng nhái ĐƯỢC GỌI ở điểm nghẽn — khe #3 của `reserve_gate` ══════════
 //
 // Cùng lý do với `reserveKhoPair.test.ts`: điều phải ghim không phải nội dung câu lỗi mà là
-// SỰ CÓ MẶT của lời gọi trên đường dựng tham số thật. `reserve_gate` #3 là khe thứ hai — và là
-// khe cuối — trong Genesis có chở policy id của LAMP.
+// SỰ CÓ MẶT của lời gọi trên đường dựng tham số thật. Genesis có BA khe chở policy id của LAMP:
+// `reserve_draw` #1, `reserve_gate` #3, và `custody` #4 (gác trong `deriveCustody`, kiểm ở
+// `deriveCustody.test.ts`).
 describe("LOOKALIKE-001 tại điểm nghẽn apply-param của reserve_gate", () => {
   const HANG_NHAI = "28e916b097be13ed955330f00710bd93e2ea74bbc89aa5f5cd0f12b4";
 

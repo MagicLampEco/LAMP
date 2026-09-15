@@ -108,6 +108,20 @@ describe("deriveCustody — lời gọi vắt qua ranh giới hai gói", () => {
     await expect(deriveCustody(SEED_TX, SEED_IX, { ...base, network: "Mainnet" }))
       .rejects.toThrow(/POISON-002/);
   });
+
+  // Két là chỗ ĐẦU TIÊN của lượt dẫn xuất nhận `lampPid`, và nó được dẫn xuất RIÊNG, trước Lớp
+  // 2 — nên cổng ở `reserveDrawParamList`/`reserveGateParamList` không gác hộ nó. Bỏ lời gọi
+  // `assertNotLookalike` ở khe #4 thì hai ca này xanh trở lại, và két nướng policy nhái vào hash.
+  it("ĐỎ: lampPid là hàng nhái đã biết ⇒ LOOKALIKE-001 tại khe custody #4", async () => {
+    const HANG_NHAI = "28e916b097be13ed955330f00710bd93e2ea74bbc89aa5f5cd0f12b4";
+    await expect(deriveCustody(SEED_TX, SEED_IX, { ...base, lampPid: HANG_NHAI }))
+      .rejects.toThrow(/LOOKALIKE-001: khe custody #4 lamp_policy/);
+  });
+
+  it("ĐỎ: lampPid KHÔNG ĐỌC ĐƯỢC ⇒ chặn ở cùng chỗ, mã 003", async () => {
+    await expect(deriveCustody(SEED_TX, SEED_IX, { ...base, lampPid: "" }))
+      .rejects.toThrow(/TLAMP-SRC-003-POLICY-ID-MALFORMED/);
+  });
 });
 
 // ══ `custodySeedPolicyId` — nguồn của cổng đối chứng RESERVE-KHO-003 ═══════════
