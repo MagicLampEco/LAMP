@@ -42,6 +42,7 @@ import { fileURLToPath } from "node:url";
 import { NETWORK, applyPolicy, applyValidator, policyId, rawValidator } from "./config.js";
 import { assertParamCount as assertParamCountGate } from "../offchain/src/applyGate.js";
 import { lampMintParamList } from "../offchain/src/reserveKhoPair.js";
+import { TREASURY_NFT_ASSET_NAME, DROP_ASSET_NAME } from "../../Distribution/offchain/src/constants.js";
 import type { FloorSource } from "./_floorLabel.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -56,10 +57,15 @@ export const SUPPLY_NAME = fromText("SUPPLY");
 export const REG_NAME = fromText("REGISTRY");
 /** asset name meter NFT — "METER". Cửa duy nhất của nhánh ReserveDraw. */
 export const MET_NAME = fromText("METER");
-/** asset name kho NFT — "TREASURY", ép bởi `treasury_nft.ak` (`lampdist/util.ak:154-156`). */
-export const TREASURY_NAME = "5452454153555259";
-/** asset name beacon NFT — "DROP", ép bởi `beacon_nft.ak` (`lampdist/util.ak:146-149`). */
-export const DROP_NAME = "44524f50";
+/**
+ * asset name kho NFT — "TREASURY", ép bởi `treasury_nft.ak` (`lampdist/util.ak::treasury_nft_name`).
+ * IMPORT, không chép: giá trị này đi vào khe #9-10 (A-DEST) của `lamp_mint`, còn `treasury_nft.ak`
+ * chỉ đúc đúng tên của `util.ak`. Hai bản chép tay lệch một byte thì A-DEST trỏ vào một NFT không
+ * bao giờ tồn tại. `Distribution/tests/assetNameSource.test.ts` ghim hằng này với `util.ak`.
+ */
+export const TREASURY_NAME = TREASURY_NFT_ASSET_NAME;
+/** asset name beacon NFT — "DROP", ép bởi `beacon_nft.ak` (`lampdist/util.ak::beacon_name`). */
+export const DROP_NAME = DROP_ASSET_NAME;
 
 /** token_tag của LAMP trong bảng registry — đã chốt (`Genesis/kho-a-dest.md`). */
 export const TOKEN_TAG = "4c414d50";
