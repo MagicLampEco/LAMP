@@ -70,8 +70,9 @@ export interface LampPolicyRecord {
 }
 
 /**
- * tLAMP đúc bởi `canonical_mint.ts` (đã xoá khỏi kho — tra `git show 930480e --
- * Genesis/scripts/canonical_mint.ts`) — policy id GIỐNG NHAU trên Preprod và Preview.
+ * tLAMP đúc bởi `canonical_mint.ts` (đã xoá khỏi kho — tra
+ * `git show 930480e:Genesis/scripts/canonical_mint.ts`) — policy id GIỐNG NHAU trên Preprod
+ * và Preview.
  * Giống nhau KHÔNG phải trùng hợp: cả bốn khe marker đều là policy của
  * `scriptFromNative({type:"sig", keyHash: pkh_ví_deploy})`, mà native-sig chỉ phụ thuộc khoá
  * ⇒ mạng nào cũng ra cùng một giá trị. Chính tính chất làm nó "tiện" là tính chất làm nó hỏng.
@@ -82,7 +83,8 @@ const NATIVE_SIG_TLAMP_POLICY_ID =
 
 const NATIVE_SIG_ANCHOR_NOTE =
   "Bốn khe marker (thread/registry/kho/meter) đều trỏ vào policy native-sig của ví deploy " +
-  "(`Genesis/scripts/canonical_mint.ts:109-123` — tệp đã xoá khỏi kho, tra `git show 930480e`). " +
+  "(`Genesis/scripts/canonical_mint.ts:109-123` — tệp đã xoá khỏi kho, tra " +
+  "`git show 930480e:Genesis/scripts/canonical_mint.ts`). " +
   "Native-sig KHÔNG one-shot ⇒ người giữ MỘT khoá " +
   "đúc lại SUPPLY NFT lượt hai ⇒ dựng SupplyState thứ hai với `dist_minted = 0` ⇒ đúc lại trọn cap; " +
   "và đúc MET giữ ở ví ⇒ nhánh ReserveDraw thoả mà không validator nào chạy. Hệ quả ghi nguyên văn " +
@@ -132,13 +134,13 @@ export const LAMP_POLICY_REGISTRY: readonly LampPolicyRecord[] = [
       "Faucet/deployed-artifacts.md:15-19 (policy id + câu khai native-sig, không one-shot)",
       "Faucet/scripts/deployed-faucet.preprod.json:6",
       "Genesis/scripts/canonical_mint.ts:109-123 (đường đúc: native marker + lamp_mint 12 tham số; " +
-        "tệp đã xoá khỏi kho, tra `git show 930480e`)",
+        "tệp đã xoá khỏi kho, tra `git show 930480e:Genesis/scripts/canonical_mint.ts`)",
     ],
     caveats: [
       "ĐANG CÓ HẠ NGUỒN GÕ CỨNG giá trị này (CarpetMint). Đổi sang bản mới là việc DI TRÚ có " +
         "lịch, không phải việc sửa một dòng — bản cũ vẫn còn token trên chuỗi và vẫn tiêu được.",
       "`mintParamCount: 12` là SUY từ đường đúc (`canonical_mint.ts`, đã xoá khỏi kho — tra " +
-        "`git show 930480e`, truyền 12 giá trị), CHƯA " +
+        "`git show 930480e:Genesis/scripts/canonical_mint.ts`, truyền 12 giá trị), CHƯA " +
         "đối chiếu byte với bytecode trên chuỗi. Cần chắc thì đọc ngược `/script_info` rồi dựng lại.",
       "Ba tệp `Faucet/scripts/deployed-faucet*.json` từng khai bản này là 'registry-gate + A-DEST' " +
         "trống trơn. Validator ĐÚNG là registry-gate, nhưng câu đó bỏ mất vế quyết định: marker " +

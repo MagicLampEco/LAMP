@@ -40,7 +40,7 @@
 - Asset name: `744c414d50` ("tLAMP"), decimals 6 (1 tLAMP = 10^6 oildrop).
 - Policy GIỐNG NHAU xuyên mạng vì cả bốn khe marker của `lamp_mint` đều neo bởi native-sig ví
   deploy (`Genesis/scripts/canonical_mint.ts:109-123` — tệp đã xoá khỏi kho, tra
-  `git show 930480e -- Genesis/scripts/canonical_mint.ts`), không phải one-shot genesis-ref.
+  `git show 930480e:Genesis/scripts/canonical_mint.ts`), không phải one-shot genesis-ref.
   ⇒ Preprod và Preview cùng 1 policy + cùng faucet address.
 - **Cái "chung cả 2 mạng" đó là TRIỆU CHỨNG, không phải tiện lợi.** Native-sig không one-shot:
   người giữ khoá ví deploy đúc lại SUPPLY NFT lượt hai ⇒ SupplyState thứ hai với `dist_minted`
@@ -68,7 +68,7 @@
 - Claim thử (verify): `d6570a366fa0d4e182bea46147ca56d73cd554bc6ef0b0a5dace76e6179b8277` (pool 9000→8900)
 - State file: `scripts/deployed-faucet.preprod.json`
 - Canonical genesis+mint (đường cũ, đã chạy lượt này): `Genesis/scripts/canonical_mint.ts` —
-  tệp đã xoá khỏi kho (tra `git show 930480e -- Genesis/scripts/canonical_mint.ts`);
+  tệp đã xoá khỏi kho (tra `git show 930480e:Genesis/scripts/canonical_mint.ts`);
   `canonical-state.json` vẫn còn. Đường đang sống cho lượt genesis+mint mới: `Genesis/scripts/_canonical_v2.ts`
   + `20_canonical_genesis.ts` … `26_prove_brake.ts` (runbook: `Genesis/canonical-preprod-runbook.md`).
 
@@ -80,13 +80,13 @@
 - LƯU Ý pollution: mạng Preview có nhiều thread/beacon từ các run genesis cũ (native-sig re-mintable).
   Release phải chọn beacon `drop_value` LỚN NHẤT — quy tắc vận hành này vẫn đúng, nhưng script
   minh hoạ nó (`Distribution/scripts/fix_beacon_redeem.ts`) đã xoá khỏi kho (tra
-  `git show 9b14688 -- Distribution/scripts/fix_beacon_redeem.ts`). HIỆN CHƯA có script thay
+  `git show 9b14688:Distribution/scripts/fix_beacon_redeem.ts`). HIỆN CHƯA có script thay
   thế cho bước chọn-beacon-lớn-nhất này.
 
 ## Nạp lại pool (refill) khi cạn
 Pool nhả 100/claim, cạn dần. Refill = mint canonical thêm vào kho → release qua claim_account
 → FOUNDATION → nạp tiếp vào pool. Script minh hoạ bước nạp này (`Faucet/scripts/seed_canonical_pool.ts`)
-đã xoá khỏi kho (tra `git show 9b14688 -- Faucet/scripts/seed_canonical_pool.ts`). HIỆN CHƯA có
+đã xoá khỏi kho (tra `git show 9b14688:Faucet/scripts/seed_canonical_pool.ts`). HIỆN CHƯA có
 script thay thế cho việc nạp pool từ canonical mint — `Faucet/scripts/01_mint_pool.ts` đang sống
 chỉ làm one-shot fixed-supply (mục DEPRECATED ở trên), không phải refill từ FOUNDATION.
 KHÔNG có đường "rút bụng" (faucet.ak anti-drain).

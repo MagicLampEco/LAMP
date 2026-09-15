@@ -187,7 +187,7 @@ export const CONSEQUENCE_DIST_DEST =
 //   nguyên bốn tệp bên cạnh vẫn đúc cả bốn marker bằng `scriptFromNative({type:"sig"})`:
 //   `canonical_mint.ts:108`, `canonical_mint_resume.ts:94`, `canonical_compute.ts:41`,
 //   `preview_registry_e2e.ts:53`. CẢ NĂM tệp trên đã xoá khỏi kho — tra
-//   `git show <sha> -- <đường dẫn>`: `oneshot_cap_mint.ts` sha `b9a795d`; `canonical_mint.ts`,
+//   `git show <sha>:<đường dẫn>`: `oneshot_cap_mint.ts` sha `b9a795d`; `canonical_mint.ts`,
 //   `canonical_mint_resume.ts`, `preview_registry_e2e.ts` sha `930480e`; `canonical_compute.ts`
 //   sha `9b14688`. Đúng lại một lần nữa cái mẫu đã đẻ ra tệp này: vá bản sao đang nhìn, để
 //   nguyên bản sống bên cạnh.
@@ -202,8 +202,9 @@ export const CONSEQUENCE_DIST_DEST =
 //       trong một tx, chi phí bằng phí mạng.
 //
 // VÌ SAO KHÔNG CẤM THẲNG:
-//   `canonical_mint_resume.ts` (đã xoá khỏi kho — tra `git show 930480e --
-//   Genesis/scripts/canonical_mint_resume.ts`) từng phải nối tiếp được một lượt chạy ĐANG
+//   `canonical_mint_resume.ts` (đã xoá khỏi kho — tra
+//   `git show 930480e:Genesis/scripts/canonical_mint_resume.ts`) từng phải nối tiếp được một
+//   lượt chạy ĐANG
 //   SỐNG trên Preprod, mà lượt đó đã đúc marker dưới native-sig rồi. Cấm cứng là chặn luôn
 //   đường thu dọn. Nên cổng này biến một lỗ IM LẶNG thành một lựa chọn phải GÕ RA — và gõ ra
 //   thì có vết.

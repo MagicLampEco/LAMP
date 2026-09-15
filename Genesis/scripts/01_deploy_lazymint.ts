@@ -55,7 +55,7 @@ import {
 // ➜ Đường deploy canonical đang chạy thật (Preprod/Preview): **`Genesis/scripts/_canonical_v2.ts`**
 //   (wiring) + `20_canonical_genesis.ts` … `26_prove_brake.ts` (runbook:
 //   `Genesis/canonical-preprod-runbook.md`). Bản cũ `canonical_mint.ts` / `canonical_mint_resume.ts`
-//   đã xoá khỏi kho (tra `git show 930480e -- Genesis/scripts/canonical_mint.ts`).
+//   đã xoá khỏi kho (tra `git show 930480e:Genesis/scripts/canonical_mint.ts`).
 // ➜ Builder thư viện cho bên tích hợp: **`Genesis/offchain/src/mintBuilder.ts`**.
 //
 // Giữ tệp lại để truy vết đường v1, KHÔNG xoá vội — nhưng đừng sửa nó thành v2: việc đó
