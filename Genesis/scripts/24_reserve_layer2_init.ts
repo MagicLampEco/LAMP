@@ -40,6 +40,7 @@ import {
   assertCustodyKhoPair, custodySeedRefFromEnv, refKey, sameRef,
 } from "./_custodySeedRef.js";
 import { floorSourceWarning } from "./_floorLabel.js";
+import { requiredHashParam } from "./_guards.js";
 import { custodyDatumToCbor } from "../../Treasury/offchain/src/datum.js";
 import { mintAuthRedeemerToCbor } from "../../Treasury/offchain/src/reserveAuthBuilder.js";
 import { Constr, Data } from "@lucid-evolution/lucid";
@@ -93,7 +94,23 @@ function governanceRef(): string {
       `KHÔNG làm lại được. Đặt GOVERNANCE_SCRIPT_HASH=<56 ký tự hex> rồi chạy lại.`,
     );
   }
-  return v;
+  // Ném ở trên mới lo vế THIẾU; vế HÌNH DẠNG thì chưa ai lo. Câu lỗi trên nói "56 ký tự hex"
+  // nhưng không gì ép điều đó: `GOVERNANCE_SCRIPT_HASH=abc` đi thẳng vào datum lượt sinh, và
+  // datum đó BẤT BIẾN trên một NFT one-shot — không có lượt thứ hai để sửa.
+  //
+  // Cổng gác chung lo đúng phần còn thiếu: hex, đủ 28 byte, và không phải giá trị CHẾT
+  // (00×28 — đúng cái giá trị mà bản trước điền vào và biến két thành hố một chiều).
+  // Truyền `submit: true` bất kể chế độ chạy: vế THIẾU đã xử ở trên, nên cờ này chỉ còn
+  // tác dụng bật phép kiểm giá trị chết, và bước này không có chế độ "thử cho vui" —
+  // một két seed sai còn tệ hơn một két chưa seed.
+  return requiredHashParam("GOVERNANCE_SCRIPT_HASH", {
+    env: process.env,
+    submit: true,
+    warn: console.warn,
+    consequence:
+      "nhánh Release của két không bao giờ thoả ⇒ két chỉ nhận, không bao giờ chi, và lượt " +
+      "sinh one-shot KHÔNG làm lại được",
+  }).value;
 }
 
 async function main(): Promise<void> {
