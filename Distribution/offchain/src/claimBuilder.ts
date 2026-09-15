@@ -231,12 +231,28 @@ export async function buildClaimTx(params: ClaimParams): Promise<ClaimResult> {
     // ── CREATE path ────────────────────────────────────────────────
     mode = "create";
     const accountLovelace = params.accountLovelace ?? DEFAULT_ACCOUNT_LOVELACE;
+
+    // CLAIM-004: `??` chỉ bắt null/undefined, KHÔNG bắt 0n — nên một caller truyền
+    // `dropsPerEpoch: 0n` ghi thẳng `drops_per_epoch = 0` vào datum. Đó là bẫy MỘT CHIỀU:
+    // `claim_account.ak:119` (`expect datum.drops_per_epoch > 0`) giết nhánh `Redeem` vĩnh
+    // viễn, trong khi khoản nợ đã vào sổ kho ở chính tx này và chỉ giảm được qua
+    // `ReleaseForRedeem` (`treasury.ak:92`) — vốn cần một lần redeem thành công. Kết quả là
+    // một khoản nợ khống bào mòn `outstanding_out ≤ pool_in` (`treasury.ak:170`) mãi mãi.
+    // `vested.ts:36` không chặn hộ (nó nhận `>= 0`), nên chốt phải nằm ở đây.
+    const dropsPerEpoch = params.dropsPerEpoch ?? DEFAULT_DROPS_PER_EPOCH;
+    if (dropsPerEpoch <= 0n) {
+      throw new Error(
+        `CLAIM-004: dropsPerEpoch must be > 0 (got ${dropsPerEpoch}) — tài khoản tạo với ` +
+        `drops_per_epoch = 0 không bao giờ redeem được, mà khoản nợ thì đã vào sổ kho`,
+      );
+    }
+
     newDatum = {
       owner,
       entitlement:     amount,
       redeemed:        0n,
       start_epoch:     currentEpoch,
-      drops_per_epoch: params.dropsPerEpoch ?? DEFAULT_DROPS_PER_EPOCH,
+      drops_per_epoch: dropsPerEpoch,
     };
 
     // C-ACC-1 / A-ACC-2..A-ACC-4: đúc ĐÚNG 1 NFT tên blake2b_256(owner), hạ cánh ngay

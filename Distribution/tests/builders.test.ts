@@ -191,6 +191,42 @@ describe("buildClaimTx — CREATE path", () => {
     });
     expect(rec.payData[0]!.datum).toBe(claimAccountDatumToCbor(res.newDatum));
   });
+
+  // CLAIM-004 — bẫy một chiều: `??` không bắt 0n, nên `dropsPerEpoch: 0n` từng ghi thẳng
+  // `drops_per_epoch = 0` vào datum. Khi đó `claim_account.ak:119` giết nhánh Redeem vĩnh
+  // viễn, còn khoản nợ đã vào sổ kho và chỉ giảm qua ReleaseForRedeem (cần một lần redeem).
+  it("CLAIM-004: từ chối dropsPerEpoch = 0 (bẫy nợ khống không redeem được)", async () => {
+    const { lucid } = mockLucid("addr_wallet");
+    await expect(buildClaimTx({
+      lucid, claimScript: FAKE_CLAIM, network: NETWORK,
+      ownerPkh: OWNER, amount: lampOildrop(250n), currentEpoch: 5n,
+      committeeKeyHashes: COMMITTEE, treasury: trsyParam(0n), accountNft: accNft,
+      dropsPerEpoch: 0n,
+    })).rejects.toThrow(/CLAIM-004/);
+  });
+
+  it("CLAIM-004: từ chối dropsPerEpoch âm", async () => {
+    const { lucid } = mockLucid("addr_wallet");
+    await expect(buildClaimTx({
+      lucid, claimScript: FAKE_CLAIM, network: NETWORK,
+      ownerPkh: OWNER, amount: lampOildrop(250n), currentEpoch: 5n,
+      committeeKeyHashes: COMMITTEE, treasury: trsyParam(0n), accountNft: accNft,
+      dropsPerEpoch: -1n,
+    })).rejects.toThrow(/CLAIM-004/);
+  });
+
+  // Cực đối của hai ca trên: giá trị hợp lệ KHÁC mặc định vẫn phải đi qua và vào đúng datum.
+  // Không có ca này thì chốt CLAIM-004 có thể siết quá tay mà bộ kiểm vẫn xanh.
+  it("dropsPerEpoch dương khác mặc định vẫn qua và vào datum", async () => {
+    const { lucid } = mockLucid("addr_wallet");
+    const res = await buildClaimTx({
+      lucid, claimScript: FAKE_CLAIM, network: NETWORK,
+      ownerPkh: OWNER, amount: lampOildrop(250n), currentEpoch: 5n,
+      committeeKeyHashes: COMMITTEE, treasury: trsyParam(0n), accountNft: accNft,
+      dropsPerEpoch: 7n,
+    });
+    expect(res.newDatum.drops_per_epoch).toBe(7n);
+  });
 });
 
 describe("buildClaimTx — UPDATE path", () => {
