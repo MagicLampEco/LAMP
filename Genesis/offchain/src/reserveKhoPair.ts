@@ -27,6 +27,8 @@
 //   · KHÔNG ĐỌC ĐƯỢC (thiếu / rỗng / sai hình dạng hex) → ném APPLY-003, KHÔNG cho qua.
 // Trạng thái thứ ba là trạng thái mù; cho qua nó là nói "tôi không biết" bằng giọng "ổn".
 
+import { assertNotLookalike } from "./lampPolicies.js";
+
 /**
  * Một cái kho được định danh bằng NFT: `(policy id one-shot, asset name)`.
  *
@@ -242,7 +244,11 @@ export function reserveDrawParamList(p: ReserveDrawParamValues): unknown[] {
     );
   }
   return [
-    p.lampPolicy, p.tokenName,                              // #1-2
+    // Khe #1 chở policy id của LAMP, nên nó đi qua cổng hàng nhái. Gác Ở ĐÂY chứ không ở từng
+    // nơi gọi: apply-param là chỗ một giá trị rác vẫn ra bytes, vẫn ra script hash, vẫn deploy
+    // êm — và số hàm dựng tham số bằng số validator nên tập này KHÔNG TRÔI, còn số nơi gọi thì
+    // còn tăng. Gác ở tập không trôi.
+    assertNotLookalike(p.lampPolicy, "reserve_draw #1 lamp_policy"), p.tokenName,  // #1-2
     p.reserveThreadPolicy, p.reserveThreadName,             // #3-4
     p.msPerEpoch,                                            // #5
     norm(p.khoNft.policy), norm(p.khoNft.name),             // #6-7

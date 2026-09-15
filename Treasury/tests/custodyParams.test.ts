@@ -58,6 +58,30 @@ describe("custodyParamList — khớp ĐÚNG số khe blueprint khai", () => {
   });
 });
 
+// Khe #4 chở policy id của LAMP. `resolveLampPolicy` nhận `LAMP_POLICY_ID` từ env sau một phép
+// kiểm HÌNH DẠNG, và policy nhái thì đúng hình dạng — nên cổng phải nằm ở hàm dựng, chỗ mọi
+// lời gọi apply custody đi qua.
+describe("custodyParamList — khe #4 đi qua cổng hàng nhái", () => {
+  const HANG_NHAI = "28e916b097be13ed955330f00710bd93e2ea74bbc89aa5f5cd0f12b4";
+
+  it("placeholder DEV `ee`×28 vẫn dựng được — nó không có trong sổ hàng nhái", () => {
+    expect(custodyParamList({ ...SAMPLE, lampPolicy: PLACEHOLDER_LAMP_POLICY })[3])
+      .toBe(PLACEHOLDER_LAMP_POLICY);
+  });
+
+  it("ĐỎ: lamp_policy là hàng nhái đã biết ⇒ LOOKALIKE-001", () => {
+    expect(() => custodyParamList({ ...SAMPLE, lampPolicy: HANG_NHAI }))
+      .toThrow(/LOOKALIKE-001: khe custody #4 lamp_policy/);
+  });
+
+  it("ĐỎ: lamp_policy KHÔNG ĐỌC ĐƯỢC ⇒ 003", () => {
+    for (const mu of ["", "  ", "33".repeat(27)]) {
+      expect(() => custodyParamList({ ...SAMPLE, lampPolicy: mu }))
+        .toThrow(/TLAMP-SRC-003-POLICY-ID-MALFORMED/);
+    }
+  });
+});
+
 describe("ca ÂM TÍNH — danh sách BA khe cũ phải bị chặn", () => {
   // Đây chính là hình dạng mã trước bản vá. Nếu ca này xanh thì cổng không canh gì.
   it("áp 3 tham số vào custody (khai 5) → APPLY-001", () => {

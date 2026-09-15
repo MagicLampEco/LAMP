@@ -16,7 +16,7 @@
 
 import { LAMP_NAME, TLAMP_NAME } from "../../Genesis/offchain/src/constants.js";
 import {
-  activeLampPolicyId, LampPolicySourceError, type LampNetwork,
+  activeLampPolicyId, assertNotLookalike, LampPolicySourceError, type LampNetwork,
 } from "../../Genesis/offchain/src/lampPolicies.js";
 import type { Network } from "@magiclamp/utils";
 
@@ -135,5 +135,11 @@ export interface CustodyParams {
  * lúc nào không ai biết.
  */
 export function custodyParamList(p: CustodyParams): unknown[] {
-  return [p.proposalPolicy, p.seedPolicy, p.msPerEpoch, p.lampPolicy, p.tokenName];
+  return [
+    p.proposalPolicy, p.seedPolicy, p.msPerEpoch,
+    // Khe #4 chở policy id của LAMP ⇒ đi qua cổng hàng nhái. `resolveLampPolicy` nhận
+    // `LAMP_POLICY_ID` từ env chỉ sau phép kiểm HÌNH DẠNG, mà policy nhái thì đúng hình dạng.
+    assertNotLookalike(p.lampPolicy, "custody #4 lamp_policy"),
+    p.tokenName,
+  ];
 }

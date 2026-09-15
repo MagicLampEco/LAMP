@@ -1,6 +1,7 @@
 {
   "name": "@magiclamp/lampdist-sdk",
   "version": "0.1.0",
+  "private": true,
   "type": "module",
   "description": "LampDistribution off-chain SDK — Drop Lottery (LAMP-Distribution v1.0)",
   "scripts": {

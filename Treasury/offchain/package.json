@@ -1,6 +1,7 @@
 {
   "name": "@magiclamp/treasury-sdk",
   "version": "0.1.0",
+  "private": true,
   "type": "module",
   "description": "Treasury off-chain SDK — Custody collect (LAMP Treasury v1)",
   "scripts": {

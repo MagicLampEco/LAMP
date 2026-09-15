@@ -1,6 +1,7 @@
 {
   "name": "@magiclamp/platform-kit",
   "version": "0.1.0",
+  "private": true,
   "type": "module",
   "description": "PlatformKit — SDK onboarding: mỗi Platform đăng ký có Treasury custody instance + entry trong Registry on-chain",
   "scripts": {

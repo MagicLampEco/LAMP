@@ -237,3 +237,37 @@ describe.skipIf(haveBlueprint)("apply-param THẬT — KHÔNG ĐO ĐƯỢC", () 
     console.warn(`[KHÔNG ĐO ĐƯỢC] reserveFloorPair.test.ts bỏ qua phần blueprint: thiếu ${TREASURY_BP}`);
   });
 });
+
+// ══ Cổng hàng nhái ĐƯỢC GỌI ở điểm nghẽn — khe #3 của `reserve_gate` ══════════
+//
+// Cùng lý do với `reserveKhoPair.test.ts`: điều phải ghim không phải nội dung câu lỗi mà là
+// SỰ CÓ MẶT của lời gọi trên đường dựng tham số thật. Genesis có BA khe chở policy id của LAMP:
+// `reserve_draw` #1, `reserve_gate` #3, và `custody` #4 (gác trong `deriveCustody`, kiểm ở
+// `deriveCustody.test.ts`).
+describe("LOOKALIKE-001 tại điểm nghẽn apply-param của reserve_gate", () => {
+  const HANG_NHAI = "28e916b097be13ed955330f00710bd93e2ea74bbc89aa5f5cd0f12b4";
+
+  it("XANH: lamp_policy sạch ⇒ dựng đủ 7 tham số, khe #3 mang đúng policy id", () => {
+    const list = reserveGateParamList(gateArgs(SAN, SAN));
+    expect(list.length).toBe(7);
+    expect(list[2]).toBe(LAMP_PID);
+  });
+
+  it("ĐỎ: lamp_policy là hàng nhái đã biết ⇒ KHÔNG dựng nổi danh sách tham số", () => {
+    expect(() => reserveGateParamList({ ...gateArgs(SAN, SAN), lampPolicy: HANG_NHAI }))
+      .toThrow(/LOOKALIKE-001/);
+  });
+
+  it("ĐỎ: lamp_policy KHÔNG ĐỌC ĐƯỢC ⇒ chặn ở cùng chỗ, mã 003", () => {
+    for (const mu of ["", "  ", `${"0".repeat(54)}#1`]) {
+      expect(() => reserveGateParamList({ ...gateArgs(SAN, SAN), lampPolicy: mu }))
+        .toThrow(/TLAMP-SRC-003-POLICY-ID-MALFORMED/);
+    }
+  });
+
+  it("cổng hàng nhái KHÔNG chạm `reserveAuthParamList` — 3 khe đó không có policy LAMP nào", () => {
+    const list = reserveAuthParamList(authArgs(SAN, SAN));
+    expect(list.length).toBe(3);
+    expect(list).not.toContain(LAMP_PID);
+  });
+});

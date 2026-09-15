@@ -1,6 +1,7 @@
 {
   "name": "@magiclamp/faucet-sdk",
   "version": "0.1.0",
+  "private": true,
   "type": "module",
   "description": "tLAMP + Faucet off-chain SDK — canonical testnet LAMP (Preview/Preprod)",
   "main":  "dist/offchain/src/index.js",

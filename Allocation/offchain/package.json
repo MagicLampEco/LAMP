@@ -1,6 +1,7 @@
 {
   "name": "@magiclamp/allocation-sdk",
   "version": "0.1.0",
+  "private": true,
   "type": "module",
   "description": "Tokenomics off-chain SDK — Capped Drop + HARD-CAP per-channel (2 lớp: ChannelBudget beacon + treasury con)",
   "scripts": {

@@ -288,3 +288,47 @@ describe.skipIf(haveBlueprints)("apply-param THẬT — KHÔNG ĐO ĐƯỢC", ()
     );
   });
 });
+
+// ══ Cổng hàng nhái ĐƯỢC GỌI ở điểm nghẽn — khe #1 của `reserve_draw` ══════════
+//
+// Khuyết tật gốc mà bản vá này đóng KHÔNG phải "cổng đo sai" — là "cổng không có chỗ gọi nào":
+// `lookalikePolicy` tồn tại đủ lâu với 0 lần gọi trong mã sản xuất. Nên ca đáng viết nhất ở
+// đây không kiểm nội dung câu lỗi (`lampPolicies.test.ts` làm việc đó) mà kiểm MỘT điều: đi
+// qua đường dựng tham số thật thì có chạm cổng không.
+//
+// Chọn `reserveDrawParamList` chứ không chọn từng chỗ gọi: số hàm dựng tham số BẰNG số
+// validator, còn số chỗ gọi thì lớn dần. Gác ở chỗ không trôi.
+describe("LOOKALIKE-001 tại điểm nghẽn apply-param của reserve_draw", () => {
+  const HANG_NHAI = "28e916b097be13ed955330f00710bd93e2ea74bbc89aa5f5cd0f12b4";
+
+  it("XANH: lamp_policy sạch ⇒ dựng đủ 12 tham số, khe #1 mang đúng policy id", () => {
+    const list = reserveDrawParamList(reserveDrawArgs(KHO_DUNG, KHO_DUNG));
+    expect(list.length).toBe(12);
+    expect(list[0]).toBe(LAMP_PID);
+  });
+
+  it("ĐỎ: lamp_policy là hàng nhái đã biết ⇒ KHÔNG dựng nổi danh sách tham số", () => {
+    // Hai cực phân biệt được: bỏ lời gọi `assertNotLookalike` ở `reserveDrawParamList` thì ca
+    // này xanh trở lại — và mảng trả về vẫn hợp lệ, vẫn ra script hash, vẫn deploy êm.
+    expect(() => reserveDrawParamList({ ...reserveDrawArgs(KHO_DUNG, KHO_DUNG), lampPolicy: HANG_NHAI }))
+      .toThrow(/LOOKALIKE-001/);
+  });
+
+  it("ĐỎ: lamp_policy KHÔNG ĐỌC ĐƯỢC ⇒ chặn ở cùng chỗ, mã 003", () => {
+    // Chuỗi rỗng KHÔNG có trong sổ hàng nhái. Một cổng chỉ tra sổ cho nó qua; ca này là chỗ
+    // duy nhất trong tệp phân biệt "cổng gác" với "cổng tra sổ".
+    for (const mu of ["", "  ", "0".repeat(55)]) {
+      expect(() => reserveDrawParamList({ ...reserveDrawArgs(KHO_DUNG, KHO_DUNG), lampPolicy: mu }))
+        .toThrow(/TLAMP-SRC-003-POLICY-ID-MALFORMED/);
+    }
+  });
+
+  it("cổng hàng nhái KHÔNG chạm `lampMintParamList` — `lamp_mint` CHÍNH LÀ policy LAMP", () => {
+    // Đo được, không suy: chữ ký `lamp_mint` không có khe nào chở policy id của LAMP, nên đặt
+    // cổng ở đó là gác một khe không tồn tại. Ca này ghim phép đo ấy để bản sau không "bổ
+    // sung cho đối xứng".
+    const list = lampMintParamList(lampMintArgs(KHO_DUNG));
+    expect(list).not.toContain(HANG_NHAI);
+    expect(list).not.toContain(LAMP_PID);
+  });
+});

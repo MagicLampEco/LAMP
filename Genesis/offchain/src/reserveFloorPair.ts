@@ -28,6 +28,8 @@
 // BẰNG NHAU, và đó đúng là hai ca nguy hiểm nhất — hai chỗ chưa điền thì cổng nào chỉ so bằng
 // cũng im lặng cho qua, tức nói "tôi không biết" bằng giọng của "ổn".
 
+import { assertNotLookalike } from "./lampPolicies.js";
+
 /**
  * Một vế sàn có ĐỌC ĐƯỢC không. Trả về lý do KHÔNG đọc được, hoặc `undefined` khi đọc được.
  *
@@ -171,7 +173,9 @@ export function reserveGateParamList(p: ReserveGateParamValues): unknown[] {
   assertFloorPair(p.reserveAuthFloorOildrop, p.floorOildrop);
   return [
     p.custodyNftPolicy, p.custodyNftName,   // #1-2
-    p.lampPolicy, p.tokenName,              // #3-4
+    // Khe #3 chở policy id của LAMP ⇒ đi qua cổng hàng nhái. Xem chú thích cùng cổng ở
+    // `reserveKhoPair.ts::reserveDrawParamList` — cùng lý do chọn chỗ đặt.
+    assertNotLookalike(p.lampPolicy, "reserve_gate #3 lamp_policy"), p.tokenName,  // #3-4
     p.floorOildrop,                          // #5
     p.authPolicy, p.authName,               // #6-7
   ];
