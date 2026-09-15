@@ -32,9 +32,22 @@ const SUPPLY_NFT_NAME = "535550504c59"; // "SUPPLY"
 const KHO_ADDR = D.khoAddress;
 const KHO_HASH = D.khoHash;
 
-/** Datum supply_state ĐÃ XÁC MINH trên mainnet (dùng làm điểm xuất phát kế hoạch). */
+/**
+ * Datum supply_state ĐÃ XÁC MINH trên mainnet (dùng làm điểm xuất phát kế hoạch).
+ *
+ * KHÔNG phải apply-param: nó không đi vào `applyParamsToScript`, không nướng vào policy-id
+ * hay script-hash nào. Nó là một ẢNH CHỤP trạng thái để tính kế hoạch — sai thì con số kế
+ * hoạch lệch, không phải một địa chỉ không rút ra được.
+ *
+ * Nhưng nó dài đúng 64 ký tự hex, tức trùng khít hình dạng tx-hash của `genesis_ref`, nên
+ * bộ dò literal của `Genesis/tests/envGuards.test.ts` không có cách nào phân biệt. Miễn trừ
+ * phải KHAI, và khai ở đây chứ không ở bài kiểm — dấu dưới đây đi cùng dòng nó miễn trừ.
+ *
+ * Nó vẫn là một BẢN SAO: nguồn thật nằm trên chuỗi. Đối chiếu lại bằng `npm run v2:verify`
+ * trước khi dùng con số kế hoạch cho một quyết định.
+ */
 const MAINNET_SUPPLY_STATE_CBOR =
-  "d8799f1b000000e8d4a51000001b005daf6012ba20001b0022366f192fe000ff";
+  "d8799f1b000000e8d4a51000001b005daf6012ba20001b0022366f192fe000ff"; // APPLY-PARAM-EXEMPT: ảnh chụp datum, không đi vào policy-id
 
 const fmtLamp = (oildrop: bigint) => (oildrop / OILDROP).toLocaleString("en-US") + " LAMP";
 

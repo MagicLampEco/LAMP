@@ -15,6 +15,7 @@
 //   NETWORK=Preprod DRY_GENESIS_TX=<64 hex> DRY_GENESIS_IDX=0 DRY_PKH=<56 hex> tsx v2_wiring_dry.ts
 import { NETWORK, TOKEN_NAME } from "./config.js";
 import { deriveWiring, printWiring } from "./_canonical_v2.js";
+import { requiredHexParam } from "./_guards.js";
 
 /** Giá trị mẫu — CHỈ để xem hình dạng wiring. Không phải hạt giống thật của lượt nào. */
 const SAMPLE_TX  = "0".repeat(63) + "1";
@@ -45,7 +46,24 @@ async function main(): Promise<void> {
   // ra được từ `genesis_ref` — `custody_seed` nướng hạt giống RIÊNG (luật S-MINT-2), nên nó
   // là đầu vào, không phải kết quả.
   const reserveKhoPid  = hex("DRY_RESERVE_KHO_PID", SAMPLE_RESERVE_KHO_PID, 56);
-  const reserveKhoName = (process.env.DRY_RESERVE_KHO_NAME ?? RESERVE_KHO_NAME).trim().toLowerCase();
+  // Asset-name cũng là apply-param (khe #14), nên nó phải qua cùng cổng gác với policy-id —
+  // gác một nửa cặp là tái lập đúng thế bất đối xứng mà `_guards.ts` viết ra để chặn. Trước
+  // đây vế này đọc env TRẦN: `DRY_RESERVE_KHO_NAME=xyz` đi thẳng vào `deriveWiring` và màn
+  // diễn tập in ra một bộ policy-id trông hợp lệ cho một tham số không phải hex.
+  //
+  // `warn` im lặng là CÓ CHỦ Ý, không phải nuốt lỗi: `RESERVE_KHO_NAME` không phải giá trị
+  // mẫu vay tạm mà là hằng của màn diễn tập, do chính tệp này sở hữu (xem chú thích nơi khai
+  // báo). Cảnh báo lần nào cũng in ra dạy người đọc lướt qua nó, và lúc nó đúng thì nó nằm
+  // giữa những lần nó sai. Vế mà cổng thật sự làm việc ở đây là phép kiểm HÌNH DẠNG của một
+  // giá trị người dùng ĐÃ đặt — vế đó vẫn ném như thường.
+  const reserveKhoName = requiredHexParam("DRY_RESERVE_KHO_NAME", {
+    env: process.env,
+    submit: false,
+    warn: () => {},
+    placeholder: RESERVE_KHO_NAME,
+    consequence:
+      "khe #14 của lamp_mint sai ⇒ toàn bộ policy-id in ra dưới đây thuộc về một lượt khác",
+  }).value;
   const sample =
     genesisTxHash === SAMPLE_TX || pkh === SAMPLE_PKH ||
     reserveKhoPid === SAMPLE_RESERVE_KHO_PID;

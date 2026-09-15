@@ -56,7 +56,8 @@
 // biết ai được mint và đọc **kho-NFT** để biết A-DEST rót đi đâu, cả hai qua reference
 // input. Thiếu chúng thì `expect` đầu tiên trong validator crash ⇒ MỌI tx dựng bằng builder
 // này đều fail, không tuỳ tham số. Đường chạy thật duy nhất trước bản vá là
-// `scripts/canonical_mint.ts:99` (`.readFrom([regU, khoU])`) — builder nay theo đúng nó.
+// `scripts/canonical_mint.ts:99` (`.readFrom([regU, khoU])`, tệp đã xoá khỏi kho — tra
+// `git show 930480e -- Genesis/scripts/canonical_mint.ts`) — builder nay theo đúng nó.
 //
 // ⚠ VÁ TIẾP 2026-08-12 (review PR #23). Ba guard, xếp theo mức thiệt hại:
 //   GMB-006 — `recipientDatum` từ TUỲ CHỌN → BẮT BUỘC. Đây là ca DUY NHẤT trong builder

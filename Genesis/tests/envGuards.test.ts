@@ -7,7 +7,7 @@
 // phải một biến cụ thể nào.
 
 import { describe, it, expect, vi } from "vitest";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import {
   requiredHashParam, requiredHexParam, CONSEQUENCE_METER, CONSEQUENCE_DIST_DEST,
   assertOneShotMarkers, REMINTABLE_ACK,
@@ -16,6 +16,31 @@ import {
 const HASH28 = "ab".repeat(28);
 const ZERO28 = "00".repeat(28);
 const silent = () => {};
+
+/** Thư mục script — cả hai phép quét dưới đây đều lấy vùng đo từ đây, không gõ danh sách.
+ *  Đường dẫn tương đối theo cwd của vitest = `Genesis/offchain` (nơi có vitest.config).
+ *  Cố ý KHÔNG dùng `import.meta.url` + node:path: tsconfig của offchain build ra CommonJS
+ *  và không nạp @types/node, nên chúng chỉ thêm lỗi `tsc --noEmit` cho module khác. Sai
+ *  đường dẫn thì `readdirSync` ném ENOENT — đỏ ồn ào, không im lặng xanh. */
+const SCRIPTS_DIR = "../scripts";
+
+/** Tệp `.ts` trong thư mục script, đã sắp. Vùng quét tự lớn theo kho.
+ *  Vế `length` là cổng chống MÙ: thư mục sai đường thì mảng rỗng, vòng lặp không chạy lần
+ *  nào, và bài xanh đúng lúc nó không đo được gì. */
+const scriptFiles = (): string[] => {
+  const files = readdirSync(SCRIPTS_DIR).filter((f: string) => f.endsWith(".ts")).sort();
+  expect(files.length, `${SCRIPTS_DIR}: không thấy tệp .ts nào — sai đường dẫn?`)
+    .toBeGreaterThan(5);
+  return files;
+};
+
+/** Dòng MÃ, bỏ chú thích và `import`. Ở module scope vì cả hai phép quét cần nó — một bộ
+ *  dò đọc chú thích thành lời gọi sẽ bắt nhầm ca hợp lệ, và một bộ dò bắt nhầm sẽ bị ai đó
+ *  tắt, lúc tắt nó mang theo cả ca thật. */
+const codeLines = (src: string): string[] =>
+  src.split("\n")
+    .map((l) => l.trimStart())
+    .filter((l) => !l.startsWith("//") && !l.startsWith("*") && !l.startsWith("import"));
 
 describe("requiredHashParam — SUBMIT bật + thiếu biến ⇒ NÉM", () => {
   it("METER_NFT_POLICY thiếu ⇒ ném", () => {
@@ -326,44 +351,45 @@ describe("giá trị CHẾT — đúng dạng vẫn phải bị chặn khi GỬI
 // liệu tinh vi — parse AST ở đây chỉ biến một tệp test thành một trình biên dịch nhỏ.
 // ══════════════════════════════════════════════════════════════
 describe("CALL-SITE — không apply-param nào đi vòng cổng gác", () => {
-  // Đường dẫn tương đối theo cwd của vitest = `Genesis/offchain` (nơi có vitest.config).
-  // Cố ý KHÔNG dùng `import.meta.url` + node:path: tsconfig của offchain build ra CommonJS
-  // và không nạp @types/node, nên chúng chỉ thêm lỗi `tsc --noEmit` cho module khác. Sai
-  // đường dẫn thì `readFileSync` ném ENOENT — đỏ ồn ào, không im lặng xanh.
-  const SCRIPTS_DIR = "../scripts";
-  const FILES = [
-    "01_deploy_lazymint.ts",
-    "02_mint_vest.ts",
-    "03_mint_more.ts",
-    "config.ts",   // nơi DUY NHẤT sinh token_name — cũng là apply-param của lamp_mint
-  ] as const;
+  // QUÉT THƯ MỤC, KHÔNG GÕ DANH SÁCH — cùng lý lẽ với phép quét native-sig ở dưới. Bản
+  // trước liệt kê bốn tên tệp, và danh sách gõ tay hỏng được theo HAI chiều mà không chiều
+  // nào kêu: thêm một script mới đọc apply-param từ env thì nó đứng ngoài vòng đo, còn xoá
+  // một tệp trong danh sách thì `readFileSync` ném ENOENT — một bài đỏ nói về tệp thiếu chứ
+  // không nói về cổng. Chiều thứ nhất đã xảy ra thật: `_canonical_v2.ts`,
+  // `24_reserve_layer2_init.ts`, `_reserve_layer2.ts`, `v2_wiring_dry.ts`,
+  // `_custodySeedRef.ts` ra đời sau danh sách và không tệp nào trong số đó từng được đo.
 
   /** Tên env trông như tham số hash / policy-id / asset-name ⇒ phải qua cổng gác. */
   const LOOKS_LIKE_PARAM = /(_POLICY|_NAME|_HASH|_DEST)$/;
   /** `process.env.X` và `process.env["X"]`. */
   const ENV_READ = /process\.env(?:\.([A-Z][A-Z0-9_]*)|\[["']([A-Z][A-Z0-9_]*)["']\])/g;
 
+  // Quét DÒNG MÃ, không quét văn bản thô: một chú thích giải thích vì sao đường cũ đọc
+  // `process.env.X_POLICY` trần sẽ bị đọc thành một lần đọc env thật.
   const scan = (src: string): string[] =>
-    [...src.matchAll(ENV_READ)]
+    [...codeLines(src).join("\n").matchAll(ENV_READ)]
       .map((m) => m[1] ?? m[2]!)
       .filter((name) => LOOKS_LIKE_PARAM.test(name));
 
-  for (const file of FILES) {
-    it(`${file}: mọi env dạng hash/hex đều đi qua required*Param`, () => {
+  it("MỌI script: env dạng hash/hex đều đi qua required*Param", () => {
+    const viPham: string[] = [];
+    for (const file of scriptFiles()) {
       const src = readFileSync(`${SCRIPTS_DIR}/${file}`, "utf8");
       const ungated = scan(src)
         .filter((name) => !src.includes(`requiredHashParam("${name}"`))
         .filter((name) => !src.includes(`requiredHexParam("${name}"`));
+      for (const name of new Set(ungated)) viPham.push(`${file}: ${name}`);
+    }
 
-      // Thông điệp lỗi phải NÊU TÊN biến sót — "có gì đó chưa gác" là vô dụng lúc 3h sáng.
-      expect(
-        [...new Set(ungated)],
-        `${file}: apply-param đọc từ env mà KHÔNG qua _guards.ts — nó nằm trong policy-id/` +
-        `script-hash, sai là không sửa được (LAMP không burn). Bọc bằng requiredHashParam/` +
-        `requiredHexParam, hoặc đổi tên biến nếu nó không phải apply-param.`,
-      ).toEqual([]);
-    });
-  }
+    // Thông điệp lỗi phải NÊU TÊN TỆP và TÊN BIẾN sót — "có gì đó chưa gác" là vô dụng
+    // lúc 3h sáng, và với vùng quét cả thư mục thì thiếu tên tệp còn tệ hơn nữa.
+    expect(
+      viPham,
+      `apply-param đọc từ env mà KHÔNG qua _guards.ts — nó nằm trong policy-id/script-hash, ` +
+      `sai là không sửa được (LAMP không burn). Bọc bằng requiredHashParam/requiredHexParam, ` +
+      `hoặc đổi tên biến nếu nó không phải apply-param.`,
+    ).toEqual([]);
+  });
 
   // Nửa còn lại của cùng một lỗ: gác hết env vẫn chưa đủ nếu tham số KHÔNG đọc từ env mà
   // nướng thẳng literal vào mã — đúng cách `GENESIS_REF_HASH` (64 hex, neo one-shot Preview)
@@ -371,17 +397,54 @@ describe("CALL-SITE — không apply-param nào đi vòng cổng gác", () => {
   // + `_guards.ts`, không có ngoại lệ "giá trị này chắc đúng".
   const LONG_HEX_LITERAL = /["'`]([0-9a-fA-F]{40,})["'`]/g;
 
-  for (const file of FILES) {
-    it(`${file}: không nướng cứng literal hash/policy-id vào mã`, () => {
+  // Vùng quét rộng ra cả thư mục thì xuất hiện ca hợp lệ ĐẦU TIÊN: một CBOR datum nướng cứng
+  // (`mint_release_plan.ts::MAINNET_SUPPLY_STATE_CBOR`) — không phải apply-param, nên bị bắt
+  // là bắt nhầm. Đã thử lọc nó bằng độ dài và ĐO RA LÀ SAI: chuỗi đó dài đúng 64 ký tự, trùng
+  // khít hình dạng tx-hash của `genesis_ref`. Không có phép đo nào trên chính chuỗi đó phân
+  // biệt được hai bên.
+  //
+  // Nên miễn trừ phải là thứ người viết KHAI, và khai TẠI CHỖ: một dấu `APPLY-PARAM-EXEMPT`
+  // trên cùng dòng với literal. Ba tính chất, đều cần:
+  //   · nó đi cùng mã, nên không trôi khỏi thứ nó miễn trừ;
+  //   · nó hiện trong diff, nên thêm một miễn trừ là một việc ai cũng thấy;
+  //   · danh sách kỳ vọng dưới đây là danh sách ĐÓNG — thêm một miễn trừ mà không sửa bài
+  //     kiểm thì bài đỏ. Một cơ chế loại trừ không đếm được là một phép đo nói "đúng" trong
+  //     khi nó chỉ đúng trên phần còn lại.
+  const EXEMPT_MARK = "APPLY-PARAM-EXEMPT";
+  const MIEN_TRU_DA_KHAI = ["mint_release_plan.ts"] as const;
+
+  it("MỌI script: không nướng cứng literal hash/policy-id vào mã", () => {
+    const viPham: string[] = [];
+    const mienTru: string[] = [];
+    for (const file of scriptFiles()) {
       const src = readFileSync(`${SCRIPTS_DIR}/${file}`, "utf8");
-      expect(
-        [...src.matchAll(LONG_HEX_LITERAL)].map((m) => m[1]!),
-        `${file}: hex ≥ 20 byte nướng cứng trong mã. Nếu nó là apply-param (genesis_ref, ` +
-        `policy-id, script-hash) thì nó ĐÚNG trên đúng một network và SAI im lặng trên mọi ` +
-        `network khác — đọc từ env qua requiredHashParam thay vì hard-code.`,
-      ).toEqual([]);
-    });
-  }
+      // Quét DÒNG MÃ: tx-hash dẫn trong chú thích là BẰNG CHỨNG, không phải apply-param.
+      // Quét văn bản thô thì mọi chú thích dẫn chứng đều thành vi phạm, và một bộ dò bắt
+      // nhầm ca hợp lệ sẽ bị ai đó tắt — lúc tắt nó mang theo cả ca thật.
+      for (const line of codeLines(src)) {
+        if (![...line.matchAll(LONG_HEX_LITERAL)].length) continue;
+        if (line.includes(EXEMPT_MARK)) mienTru.push(file);
+        else viPham.push(`${file}: ${line.slice(0, 40)}…`);
+      }
+    }
+
+    expect(
+      viPham,
+      `hex ≥ 20 byte nướng cứng trong dòng mã. Nếu nó là apply-param (genesis_ref, policy-id, ` +
+      `script-hash) thì nó ĐÚNG trên đúng một network và SAI im lặng trên mọi network khác — ` +
+      `đọc từ env qua requiredHashParam thay vì hard-code. Nếu nó KHÔNG phải apply-param thì ` +
+      `khai tại chỗ bằng dấu ${EXEMPT_MARK} kèm lý do, và bổ sung tên tệp vào danh sách ` +
+      `MIEN_TRU_DA_KHAI của bài kiểm này — miễn trừ phải đếm được.`,
+    ).toEqual([]);
+
+    // Vế ĐẾM phần bị loại. Khai một chỗ trông đã giống xử lý xong, nhưng một lời khai không
+    // thay được một phép đếm: danh sách phải khớp CẢ HAI CHIỀU. Thừa ⇒ có miễn trừ mới lẻn
+    // vào; thiếu ⇒ một dấu miễn trừ đã chết mà không ai gỡ, và nó sẽ che ca thật sau này.
+    expect(
+      [...new Set(mienTru)].sort(),
+      `số miễn trừ ${EXEMPT_MARK} đang có hiệu lực không khớp danh sách đã khai`,
+    ).toEqual([...MIEN_TRU_DA_KHAI]);
+  });
 
   it("chính bộ dò này phải bắt được ca hồi quy (kẻo nó xanh vì regex hỏng)", () => {
     // Literal Preview cũ ở 02/03 — bộ dò literal phải thấy nó.
@@ -389,6 +452,19 @@ describe("CALL-SITE — không apply-param nào đi vòng cổng gác", () => {
     expect([...old.matchAll(LONG_HEX_LITERAL)]).toHaveLength(1);
     // asset-name ngắn ("SUPPLY", "tLAMP") KHÔNG bị bắt nhầm.
     expect([...`const S = "535550504c59";`.matchAll(LONG_HEX_LITERAL)]).toHaveLength(0);
+    // policy-id / script-hash 28 byte — hình dạng apply-param phổ biến nhất. PHẢI bắt.
+    expect([...`const P = "${"ab".repeat(28)}";`.matchAll(LONG_HEX_LITERAL)]).toHaveLength(1);
+  });
+
+  it(`dấu ${EXEMPT_MARK} phải miễn trừ ĐÚNG dòng mang nó, không miễn trừ dòng hàng xóm`, () => {
+    // Ca đối xứng cho cơ chế miễn trừ. Thiếu nó thì một lần sửa biến phép kiểm "dòng này có
+    // dấu không" thành "tệp này có dấu không", và khi đó MỘT dấu mở cửa cho CẢ TỆP —
+    // đúng kiểu hỏng mà không màu nào đổi.
+    const co = `const C = "${"d8".repeat(32)}"; // ${EXEMPT_MARK}: datum, không phải apply-param`;
+    const khong = `const P = "${"ab".repeat(28)}";`;
+    const lines = codeLines([co, khong].join("\n"));
+    expect(lines.filter((l) => [...l.matchAll(LONG_HEX_LITERAL)].length)).toHaveLength(2);
+    expect(lines.filter((l) => l.includes(EXEMPT_MARK))).toHaveLength(1);
   });
 
   it("bộ dò env phải bắt được ca hồi quy (kẻo nó xanh vì regex hỏng)", () => {
@@ -405,15 +481,21 @@ describe("CALL-SITE — không apply-param nào đi vòng cổng gác", () => {
 // ─────────────────────────────────────────────────────────────────────────────
 // MARKER-001 — marker đúc dưới native-sig thì KHÔNG one-shot.
 //
-// Ca gốc (hồi quy): `0630c28` vá đúng MỘT tệp (`oneshot_cap_mint.ts`) và để nguyên bốn tệp
+// Ca gốc (hồi quy): `0630c28` vá đúng MỘT tệp (`oneshot_cap_mint.ts`, đã xoá khỏi kho — tra
+// `git show b9a795d -- Genesis/scripts/oneshot_cap_mint.ts`) và để nguyên bốn tệp
 // bên cạnh vẫn nhét `nPid` (native-sig ví deploy) vào cả bốn khe marker của `lamp_mint`.
 // Cùng một mẫu "vá bản sao đang nhìn, để nguyên bản sống bên cạnh" đã đẻ ra chính `_guards.ts`.
 // Bộ test dưới ép CẢ BỐN tệp phải đi qua cổng — đó mới là thứ hỏng, không phải một tệp nào.
 
 describe("assertOneShotMarkers — MARKER-001", () => {
-  // Cùng quy ước đường dẫn với khối CALL-SITE ở trên: tương đối theo cwd của vitest
-  // (`Genesis/offchain`), KHÔNG dùng `import.meta.url` — xem lý do ghi ở đó.
-  const SCRIPTS_DIR = "../scripts";
+  // `SCRIPTS_DIR`, `scriptFiles()` và `codeLines()` nay ở module scope — khối CALL-SITE ở
+  // trên dùng chung đúng ba thứ đó. Hai bản sao của cùng một bộ dò sẽ trôi khỏi nhau, và
+  // chiều trôi nguy hiểm là bản này siết còn bản kia nới: cả hai vẫn xanh.
+  //
+  // `codeLines` không phải bộ tách cú pháp — chú thích khối và chuỗi có chứa `//` vẫn lọt.
+  // Cố ý dừng ở mức đó: cái cần loại là dòng văn xuôi giải thích lịch sử, và dựng một trình
+  // phân tích cú pháp trong tệp kiểm là đổi một lỗ nhỏ lấy một lỗ khác khó soi hơn.
+
   const NATIVE = "cd".repeat(28);
   const ONESHOT = "ef".repeat(28);
   const io = (env: Record<string, string | undefined>, warn = silent) => ({
@@ -488,23 +570,41 @@ describe("assertOneShotMarkers — MARKER-001", () => {
     }
   });
 
-  it("HỒI QUY: cả bốn script dùng scriptFromNative đều phải đi qua cổng", () => {
+  it("HỒI QUY: MỌI script dùng scriptFromNative đều phải đi qua cổng", () => {
     // Đây là phép kiểm thật của bài này. Bảy test trên chỉ chứng minh cổng hoạt động;
     // test này chứng minh cổng ĐƯỢC MẮC VÀO — thứ mà `0630c28` đã bỏ sót.
-    const files = [
-      "canonical_mint.ts", "canonical_mint_resume.ts",
-      "canonical_compute.ts", "preview_registry_e2e.ts",
-    ];
-    for (const f of files) {
+    //
+    // QUÉT THƯ MỤC, KHÔNG GÕ DANH SÁCH. Bản trước liệt kê bốn tên tệp, và danh sách đó
+    // hỏng được theo HAI chiều mà không chiều nào kêu: thêm một script thứ năm dùng
+    // `scriptFromNative` thì nó đứng ngoài vòng đo, còn xoá một tệp trong danh sách thì
+    // `readFileSync` ném ENOENT — một bài đỏ nói về tệp thiếu chứ không nói về cổng.
+    // Quét thư mục thì tập đo tự lớn theo kho. `scriptFiles()` mang sẵn cổng chống-mù
+    // (mảng rỗng ⇒ đỏ), nên vùng quét không thể im lặng co về 0.
+    for (const f of scriptFiles()) {
       const src = readFileSync(`${SCRIPTS_DIR}/${f}`, "utf8");
-      if (!src.includes("scriptFromNative")) continue; // đã chuyển sang one-shot ⇒ khỏi cần cổng
-      // Đếm LỜI GỌI, không đếm chuỗi: dòng `import { assertOneShotMarkers }` cũng chứa tên
-      // đó, nên `includes(...)` vẫn xanh sau khi lời gọi bị gỡ — đã kiểm bằng đột biến.
-      const calls = src.split("\n")
-        .filter((l: string) => !l.trimStart().startsWith("import"))
-        .filter((l: string) => /\bassertOneShotMarkers\s*\(/.test(l));
+      const code = codeLines(src);
+      // ĐẾM LỜI GỌI Ở CẢ HAI VẾ, không đếm chuỗi. Vế "có gọi cổng chưa" đã đếm lời gọi từ
+      // đầu; vế "có dùng native-sig không" thì chưa, và nó đi lọt suốt vì danh sách bốn tên
+      // tệp che mất. Quét cả thư mục làm lộ ra ngay: `23_prove_oneshot.ts` nhắc
+      // `scriptFromNative` trong CHÚ THÍCH để giải thích vì sao đường cũ không kiểm được
+      // one-shot — `includes(...)` đọc đó thành "tệp này đúc marker bằng native-sig".
+      // Một bộ dò bắt nhầm ca hợp lệ thì sẽ bị ai đó tắt, và lúc tắt nó mang theo cả ca thật.
+      if (!code.some((l) => /\bscriptFromNative\s*\(/.test(l))) continue;
+      const calls = code.filter((l) => /\bassertOneShotMarkers\s*\(/.test(l));
       expect(calls.length, `${f} đúc marker bằng native-sig mà KHÔNG GỌI assertOneShotMarkers`)
         .toBeGreaterThan(0);
     }
+  });
+
+  it("bộ dò native-sig phải phân biệt LỜI GỌI với CHÚ THÍCH", () => {
+    // Ca đối xứng cho chính cái vừa sửa. Thiếu nó thì lần sau ai đó rút gọn `codeLines`
+    // về `includes(...)` và bộ kiểm vẫn xanh.
+    const inComment = `// đường cũ đúc marker bằng \`scriptFromNative({type:"sig"})\`\nconst x = 1;`;
+    expect(codeLines(inComment).some((l) => /\bscriptFromNative\s*\(/.test(l))).toBe(false);
+    const realCall = `const pol = scriptFromNative({ type: "sig", keyHash: pkh });`;
+    expect(codeLines(realCall).some((l) => /\bscriptFromNative\s*\(/.test(l))).toBe(true);
+    // `import` cũng không phải lời gọi.
+    const imported = `import { scriptFromNative } from "@lucid-evolution/lucid";`;
+    expect(codeLines(imported).some((l) => /\bscriptFromNative\s*\(/.test(l))).toBe(false);
   });
 });

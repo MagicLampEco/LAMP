@@ -108,7 +108,8 @@ không chứng minh *chỉ có một SupplyState*. Bước này chứng minh ph�
 2. **vận hành** — dựng thật một giao dịch đúc SUPPLY NFT thứ hai và xác nhận nó bị chặn.
    Giao dịch thử KHÔNG bao giờ được ký và KHÔNG bao giờ được gửi.
 
-Bản diễn tập cũ (`canonical_mint.ts`) không thể có bước này: nó đúc marker bằng
+Bản diễn tập cũ (`canonical_mint.ts`, đã xoá khỏi kho — tra
+`git show 930480e -- Genesis/scripts/canonical_mint.ts`) không thể có bước này: nó đúc marker bằng
 `scriptFromNative({type:"sig"})`, mà native-sig đúc lại được tuỳ ý — phép thử sẽ **thành
 công**, tức là hỏng.
 

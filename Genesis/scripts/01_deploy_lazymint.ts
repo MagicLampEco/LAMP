@@ -52,12 +52,14 @@ import {
 // `config.ts::applyPolicy` chặn bằng `APPLY-001`, nên chạy script này sẽ **dừng có lỗi rõ
 // ràng** thay vì đi tiếp và deploy nhầm.
 //
-// ➜ Đường deploy canonical đang chạy thật (Preprod/Preview): **`canonical_mint.ts`**
-//   (`.readFrom([regU, khoU])` ở dòng 99) và `canonical_mint_resume.ts`.
+// ➜ Đường deploy canonical đang chạy thật (Preprod/Preview): **`Genesis/scripts/_canonical_v2.ts`**
+//   (wiring) + `20_canonical_genesis.ts` … `26_prove_brake.ts` (runbook:
+//   `Genesis/canonical-preprod-runbook.md`). Bản cũ `canonical_mint.ts` / `canonical_mint_resume.ts`
+//   đã xoá khỏi kho (tra `git show 930480e -- Genesis/scripts/canonical_mint.ts`).
 // ➜ Builder thư viện cho bên tích hợp: **`Genesis/offchain/src/mintBuilder.ts`**.
 //
 // Giữ tệp lại để truy vết đường v1, KHÔNG xoá vội — nhưng đừng sửa nó thành v2: việc đó
-// đã có `canonical_mint.ts` làm rồi.
+// đã có `_canonical_v2.ts` làm rồi.
 
 const GUARD_IO = { env: process.env, warn: (m: string) => console.warn(m) };
 const TEST_MINT_OILDROP = BigInt(process.env.TEST_MINT_OILDROP ?? "100000000"); // 100 tLAMP

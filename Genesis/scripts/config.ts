@@ -161,7 +161,9 @@ interface RawValidator {
 /**
  * Blueprint mà cổng APPLY-001 phải tra được. KHÔNG chỉ Genesis: script trong thư mục này
  * áp param cho CẢ validator của Distribution (`claim_account` / `treasury`, lấy qua
- * `distCode()` ở canonical_mint.ts / canonical_mint_resume.ts / oneshot_cap_mint.ts).
+ * `applyDist()` ở `_canonical_v2.ts` / `_reserve_layer2.ts` — đường cũ `distCode()` ở
+ * `canonical_mint.ts` / `canonical_mint_resume.ts` / `oneshot_cap_mint.ts` đã xoá khỏi kho,
+ * tra `git show 930480e -- Genesis/scripts/canonical_mint.ts`).
  * Chỉ nạp blueprint Genesis thì mọi compiledCode Distribution KHÔNG có `meta` — cổng mù
  * đúng con đường cần canh nhất.
  */
