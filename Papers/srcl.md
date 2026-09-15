@@ -41,7 +41,7 @@ DAO — ban quản trị là một nhóm nhỏ điều phối, còn đây là s�
 | `SRCL-KICH-HOAT-001` | con số ngưỡng, và nội dung văn kiện lâm thời | đại lượng đã định (số người ký văn kiện thành lập); con số và văn kiện chưa công bố ⇒ SRCL **không kích hoạt** | mục này |
 | `SRCL-PHAP-NHAN-005` | khoảng thời gian giữa **đủ người ký** và **pháp nhân tồn tại** | ngưỡng ở `SRCL-KICH-HOAT-001` đo *ý định thành lập*, không đo *đã thành lập* — hai mốc này không trùng nhau. Chừng nào chưa có mốc đo được cho vế thứ hai ⇒ **cấm** mô tả tài sản SRCL nhận vào là "đã có pháp nhân đứng tên", và đợt 1 giữ bên thụ hưởng là **kho cộng đồng on-chain**, không phải một pháp nhân | mục này; `pot-catalog.md` §3 `PHAP-NHAN-001` |
 | `SRCL-ADMIN-002` | ai giữ `delegation_admin`, lộ trình chuyển giao | chưa công bố ⇒ **cấm** mô tả cơ chế là "bất biến" hoặc "không có admin" trong mọi tài liệu | §8 |
-| `SRCL-UYTHAC-003` | nhánh `publish` của `srcl_stake.ak` nhận mọi certificate ngoài huỷ-đăng-ký, không đòi chữ ký | ⇒ **cấm** mô tả đóng góp của người tham gia là "được bảo đảm" hoặc "không ai can thiệp được" | §8 |
+| `SRCL-UYTHAC-003` | nhánh `publish` của `srcl_stake.ak` nhận mọi certificate ngoài huỷ-đăng-ký, không đòi chữ ký | ⇒ **cấm** mô tả đóng góp của người tham gia là "được bảo đảm" hoặc "không ai can thiệp được". Bản vá **đã tồn tại và đã có bài kiểm** — commit `d1d554c` (PR #16) gác `publish` bằng `list.has(self.extra_signatories, owner)`, kèm ca `n6_publish_delegate_no_sig_rejected`; lần chuyển mã sang thư mục hiện tại lấy một bản cũ hơn nên bản vá không đi theo. Ràng buộc này gỡ được khi commit đó được chuyển lại, không cần viết mới | §8 |
 | `SRCL-QUANTRI-004` | tầng quản trị chưa dựng được giao dịch (`Governance/SPEC.md`), khoá `authority` còn 1-of-1 (`Treasury/CONTRACT.md` ▸ F12) | ⇒ **cấm** mô tả việc chi tiêu là "đã được cộng đồng kiểm soát"; đúng mức chỉ nói *cổng có trong mã, tầng quản trị chưa chạy* | §5 |
 
 ---
@@ -168,14 +168,16 @@ Hai đợt cùng cơ chế, khác pot / nguồn LAMP / bên hưởng thụ / quy
   | văn bản | điều khoản đáng đọc |
   |---|---|
   | **Luật số 71/2025/QH15** — Công nghiệp công nghệ số, ký 14/6/2025, hiệu lực **01/01/2026** | Điều 46 định nghĩa tài sản số; Điều 47 phân loại và loại trừ chứng khoán; Điều 48 giao Chính phủ quy định điều kiện kinh doanh dịch vụ tài sản mã hoá |
-  | **Nghị quyết số 05/2025/NQ-CP** — thí điểm thị trường tài sản mã hoá, ký 09/9/2025, thí điểm **5 năm** | Điều 3 khoản 2 (định nghĩa) · Điều 4 khoản 7 và khoản 9 · Điều 5 khoản 1 và 2 (điều kiện tổ chức phát hành) · Điều 6 khoản 1 và 2 (đối tượng được chào bán) · Điều 7 khoản 2 · Điều 8 khoản 2 |
+  | **Nghị quyết số 05/2025/NQ-CP** — thí điểm thị trường tài sản mã hoá, ban hành 09/9/2025, thí điểm **5 năm** | Điều 3 khoản 2 (định nghĩa) · Điều 4 khoản 7 và khoản 9 · Điều 5 khoản 1 và 2 (điều kiện tổ chức phát hành) · Điều 6 khoản 1 và 2 (đối tượng được chào bán) · Điều 7 khoản 2 · Điều 8 khoản 2 |
   | **Thông tư 32/2026/TT-BTC** (27/3/2026) · **41/2026/TT-BTC** (09/4/2026) · **15/2026/TT-BTC** | thuế GTGT/TNDN/TNCN · kê khai, khấu trừ tại nguồn, quyết toán · nguyên tắc kế toán |
   | **Luật số 109/2025/QH15** — Thuế TNCN, hiệu lực 01/7/2026 | bổ sung "thu nhập từ chuyển nhượng tài sản số" vào thu nhập chịu thuế |
   | **Luật số 14/2022/QH15** — Phòng chống rửa tiền | Điều 4 (đối tượng báo cáo) |
   | **Luật Doanh nghiệp số 59/2020/QH14** | Điều 12 (người đại diện theo pháp luật là **một cá nhân**) · Điều 74 · Điều 120 |
 
 - **Khung thí điểm đặt ra những điều kiện mà tài liệu này nêu thẳng, không diễn giải.** Trích
-  nguyên văn Nghị quyết 05/2025/NQ-CP, bản ký số của Văn phòng Chính phủ ngày 10/9/2025:
+  nguyên văn Nghị quyết 05/2025/NQ-CP, bản PDF ký số của Văn phòng Chính phủ. Hai mốc thời gian
+  dưới đây khác nhau và đều đúng, nêu rõ để không bị đọc thành mâu thuẫn: văn bản **ban hành
+  09/9/2025** (mốc ở bảng trên), còn **10/9/2025** là dấu thời gian ký số đặt lên tệp PDF.
   - Điều 5 khoản 1: *"Tổ chức phát hành tài sản mã hóa là doanh nghiệp Việt Nam, đăng ký hoạt
     động dưới hình thức công ty trách nhiệm hữu hạn hoặc công ty cổ phần theo Luật Doanh nghiệp."*
   - Điều 5 khoản 2: *"Tài sản mã hóa phải được phát hành dựa trên **tài sản cơ sở là tài sản
