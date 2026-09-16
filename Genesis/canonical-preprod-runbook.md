@@ -45,7 +45,7 @@ cd Genesis/scripts && npm install
 ## Bước 0 — soi wiring khô (không chạm mạng, không cần ví)
 
 ```bash
-AGENT_SECRETS=<đường dẫn> NETWORK=Preprod npm run v2:dry
+BLOCKFROST_KEY=… WALLET_SEED="…" NETWORK=Preprod npm run v2:dry
 ```
 
 Tính trọn bộ policy-id / script-hash / địa chỉ từ một hạt giống mẫu. Chạy được trên máy
@@ -56,8 +56,8 @@ số thì `applyParamsToScript` KHÔNG báo lỗi, nó ra một policy-id khác,
 ## Bước 1 — Tx A: đúc trọn bộ marker one-shot
 
 ```bash
-AGENT_SECRETS=<đường dẫn> NETWORK=Preprod npm run v2:genesis                 # dựng + eval, KHÔNG gửi
-AGENT_SECRETS=<đường dẫn> NETWORK=Preprod SUBMIT=true npm run v2:genesis     # gửi thật
+BLOCKFROST_KEY=… WALLET_SEED="…" NETWORK=Preprod npm run v2:genesis                 # dựng + eval, KHÔNG gửi
+BLOCKFROST_KEY=… WALLET_SEED="…" NETWORK=Preprod SUBMIT=true npm run v2:genesis     # gửi thật
 ```
 
 **Bước này không làm lại được.** Cả năm marker nướng cùng một `genesis_ref`, và một UTxO
@@ -79,7 +79,7 @@ vẫn đúng, nhưng đường claim/redeem chết câm — và lúc phát hiệ
 ## Bước 2 — Tx B: `DistributionVest` → KHO
 
 ```bash
-AGENT_SECRETS=<đường dẫn> NETWORK=Preprod DELTA_LAMP=10000 npm run v2:vest
+BLOCKFROST_KEY=… WALLET_SEED="…" NETWORK=Preprod DELTA_LAMP=10000 npm run v2:vest
 ```
 
 Kiểm ba luật cùng lúc: **WHO** (authority đọc từ bảng registry, không phải pkh nướng sẵn),
@@ -89,7 +89,7 @@ rồi trả lại đúng số cũ" không lọt), **HOW MUCH** (`dist_minted += 
 ## Bước 3 — Tx C: `ReserveDraw` — nhánh đã CHẾT trên mainnet
 
 ```bash
-AGENT_SECRETS=<đường dẫn> NETWORK=Preprod RESERVE_LAMP=1000 npm run v2:reserve
+BLOCKFROST_KEY=… WALLET_SEED="…" NETWORK=Preprod RESERVE_LAMP=1000 npm run v2:reserve
 ```
 
 Đây là phép thử quan trọng nhất của cả màn diễn tập. Xanh = policy mới không mang khuyết
@@ -98,7 +98,7 @@ tật của bản mồi. **Đỏ = đừng phát hành.**
 ## Bước 4 — bằng chứng one-shot (phủ định)
 
 ```bash
-AGENT_SECRETS=<đường dẫn> NETWORK=Preprod npm run v2:oneshot
+BLOCKFROST_KEY=… WALLET_SEED="…" NETWORK=Preprod npm run v2:oneshot
 ```
 
 `mainnet-deploy-plan.md` mục C nói rõ: một lượt Preprod xanh chứng minh *đường ống thông*,
@@ -118,7 +118,7 @@ công**, tức là hỏng.
 ## Đối chiếu bất cứ lúc nào (đọc-không-ghi)
 
 ```bash
-AGENT_SECRETS=<đường dẫn> NETWORK=Preprod npm run v2:verify
+BLOCKFROST_KEY=… WALLET_SEED="…" NETWORK=Preprod npm run v2:verify
 ```
 
 Mọi số đọc từ chuỗi. `canonical-v2-state.json` chỉ dùng để biết `genesis_ref`; từ đó toàn
@@ -224,9 +224,9 @@ bản chạy 2026-09-03 chỉ có bốn, vì `custody` lúc đó chưa bị tiê
 | `supply_state.spend` | `reserve_minted += δ` ≤ cap, đơn điệu |
 
 ```bash
-AGENT_SECRETS=<đường dẫn> NETWORK=Preprod npm run v2:l2       # lắp phanh (3 tx)
-AGENT_SECRETS=<đường dẫn> NETWORK=Preprod npm run v2:l2draw   # rút thật QUA cổng
-AGENT_SECRETS=<đường dẫn> NETWORK=Preprod npm run v2:l2brake  # 3 phép PHỦ ĐỊNH + 1 đối chứng
+BLOCKFROST_KEY=… WALLET_SEED="…" NETWORK=Preprod npm run v2:l2       # lắp phanh (3 tx)
+BLOCKFROST_KEY=… WALLET_SEED="…" NETWORK=Preprod npm run v2:l2draw   # rút thật QUA cổng
+BLOCKFROST_KEY=… WALLET_SEED="…" NETWORK=Preprod npm run v2:l2brake  # 3 phép PHỦ ĐỊNH + 1 đối chứng
 ```
 
 | bước | giao dịch | kết quả |
