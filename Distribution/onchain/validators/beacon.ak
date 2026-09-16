@@ -20,9 +20,19 @@ validator beacon(
   // ⚠ THÊM 2026-09-16 (vá Issue #72, lỗ 2 + lỗ 3) — ĐẶT CUỐI theo đúng khuôn đã dùng ở
   // `claim_account.ak` và `treasury.ak`: tham số mới đi sau cùng để không xáo trộn thứ tự
   // các tham số cũ trong chuỗi apply-param offchain.
-  // `beacon_nft(genesis_ref)` KHÔNG nướng hash beacon, nên thêm tham số ở đây chỉ đổi
-  // ĐỊA CHỈ beacon; `beacon_nft_policy` giữ nguyên ⇒ `claim_account` (nhận policy đó)
-  // KHÔNG đổi hash theo.
+  //
+  // ⚠ PHẠM VI ĐÚC LẠI — bản trước của chú thích này ghi "thêm tham số ở đây chỉ đổi ĐỊA
+  // CHỈ beacon", và câu đó đúng về HASH nhưng sai về VIỆC PHẢI LÀM. Địa chỉ beacon đổi
+  // kéo theo cả cụm, vì DROP NFT ghim beacon nằm Ở ĐỊA CHỈ CŨ và nó không đi đâu được:
+  // muốn dời nó phải tiêu UTxO cũ, mà tiêu UTxO cũ thì phải qua chính validator cũ —
+  // validator ấy không có nhánh nào cho phép NFT rời script (`expect nft_out == 1` ngay
+  // dưới), và `beacon_nft` là one-shot nên cũng không đốt được. Beacon mới do đó cần một
+  // DROP NFT MỚI ⇒ `beacon_nft` đúc lại ⇒ `beacon_nft_policy` đổi ⇒ `claim_account` và
+  // `treasury` (cùng nhận policy đó làm tham số) đổi hash theo.
+  //
+  // Bộ phải đúc lại là {`beacon_nft`, `beacon`, `claim_account`, `treasury`} — bốn, không
+  // phải một. Đây là chi phí thật của mỗi lần thêm tham số vào tệp này, và nó không hiện
+  // ra ở phép so hash.
   ms_per_epoch      : Int,
 ) {
   spend(
@@ -183,8 +193,14 @@ fn bt_run(in_epoch: Int, tx: Transaction) -> Bool {
 }
 
 test beacon_happy() {
-  // post ở cửa sổ 6, nhãn 6, D 100 → 110 LAMP (đúng +10%)
-  bt_run(5, beacon_tx(5, 6, [#"c1", #"c2"], 110_000_000, 6))
+  // post ở cửa sổ 6, nhãn 6, D 100 → 105 LAMP (+5%: một điểm THUẦN BÊN TRONG mọi biên).
+  //
+  // Trước 2026-09-17 ca này dùng 110 LAMP và do đó TRÙNG TỪNG BYTE đối số với
+  // `beacon_delta_exactly_at_limit_ok` bên dưới. Hai bài giống hệt nhau không cho độ phủ
+  // gấp đôi: chúng sống chết cùng nhau, nên bài thứ hai chỉ làm phép đếm bài kiểm nói to
+  // hơn thứ nó đo. Nay hai bài đứng ở hai chỗ khác nhau — bài này ở trong ruột, bài kia
+  // đúng trên biên ±10%.
+  bt_run(5, beacon_tx(5, 6, [#"c1", #"c2"], 105_000_000, 6))
 }
 
 test beacon_epoch_not_increasing() fail {
@@ -239,8 +255,16 @@ test beacon_range_straddles_boundary_rejected() fail {
 
 test beacon_drop_below_floor_rejected() fail {
   // D dưới sàn 10 LAMP. Ca "đóng băng vesting của người đang chờ".
-  // ⚠ Ca này ĐỎ ở C-BCN-5 trước khi tới C-BCN-4 (−99% vượt xa ±10%), nên một mình nó
-  // KHÔNG ghim được cái sàn — xem `beacon_floor_is_the_binding_clause` ngay dưới.
+  // ⚠ Một mình ca này KHÔNG ghim được cái sàn — xem `beacon_floor_is_the_binding_clause`
+  // ngay dưới.
+  //
+  // Lý do KHÔNG phải thứ tự mệnh đề: C-BCN-4 đứng TRƯỚC C-BCN-5 trong thân validator, nên
+  // ca này chạm đúng cái sàn đầu tiên. (Bản trước của chú thích này viết ngược — nó đọc
+  // thứ tự từ thứ tự các khối `test` chứ không từ thân hàm.) Lý do thật là cùng đầu vào
+  // ấy ĐỒNG THỜI thủng C-BCN-5 (−99% vượt xa ±10%), nên gỡ hẳn cái sàn đi thì ca này vẫn
+  // đỏ. Đo 2026-09-17, gỡ hai dòng biên cứng rồi chạy trọn bộ: 132 checks, 2 errors, và
+  // hai ca đỏ là `beacon_floor_is_the_binding_clause` + `beacon_ceiling_is_the_binding_clause`
+  // — ca này nằm trong phần XANH.
   bt_run(5, beacon_tx(5, 6, [#"c1", #"c2"], 1_000_000, 6))
 }
 
@@ -296,9 +320,12 @@ test beacon_upper_bound_is_the_binding_clause() fail {
 /// D vượt trần 10.000 LAMP. Ca NẶNG NHẤT trong Issue #72: không có trần thì committee
 /// đặt D đủ lớn là mọi tài khoản vested trọn entitlement trong đúng một cửa sổ.
 ///
-/// ⚠ Ca này ĐỎ ở C-BCN-5 trước khi tới C-BCN-4 (nhảy từ 100 lên 20.000 LAMP vượt xa
-/// ±10%), nên MỘT MÌNH nó KHÔNG chứng minh C-BCN-4 được ghim — xem
+/// ⚠ MỘT MÌNH nó KHÔNG chứng minh C-BCN-4 được ghim — xem
 /// `beacon_ceiling_is_the_binding_clause` ngay dưới, ca đó mới phân biệt được hai chốt.
+/// Không phải vì thứ tự mệnh đề (C-BCN-4 đứng TRƯỚC C-BCN-5 trong thân validator; ca này
+/// chạm đúng cái trần đầu tiên) mà vì cùng đầu vào ấy thủng luôn C-BCN-5 — nhảy 100 →
+/// 20.000 LAMP vượt xa ±10% — nên gỡ hẳn cái trần thì ca này vẫn đỏ. Số đo ở chú thích
+/// của `beacon_drop_below_floor_rejected`.
 test beacon_drop_above_ceiling_rejected() fail {
   bt_run(5, beacon_tx(5, 6, [#"c1", #"c2"], 20_000_000_000, 6))
 }

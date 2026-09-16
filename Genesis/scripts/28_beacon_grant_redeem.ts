@@ -59,7 +59,14 @@
 // ║ này vẫn nhắm cụm CŨ và cố ý KHÔNG đổi, vì đổi bây giờ là làm hỏng vòng đầu-cuối đang  ║
 // ║ chạy trên cụm cũ.                                                                    ║
 // ║                                                                                      ║
-// ║ SAU lượt đúc lại, hai thứ trong tệp này TRỞ THÀNH SAI và phải sửa cùng lượt:          ║
+// ║ ⚠ HIỆU LỰC NGAY KHI BẢN VÁ VÀO NHÁNH CHÍNH — KHÔNG đợi lượt đúc lại. Tệp này KHÔNG   ║
+// ║ đọc hash từ sổ; nó gọi `deriveWiring()`, và hàm đó TÍNH hash TỪ MÃ NGUỒN `.ak` đang   ║
+// ║ có trên đĩa. Đo bằng thực thi 2026-09-17: bản vá làm lệch 4 trường (`treHash`,        ║
+// ║ `treAddr`, `beaconHash`, `beaconAddr`), `rehydrate()` ném DRIFT, và 10 script dừng    ║
+// ║ ngay — trước khi ai kịp đúc lại thứ gì. Câu "cụm đang chạy ở nguyên đó" đúng với TỆP  ║
+// ║ này và sai với HÀM nó gọi.                                                            ║
+// ║                                                                                      ║
+// ║ Hai thứ dưới đây thì phải sửa cùng lượt đúc lại:                                      ║
 // ║   (1) `BACKDATE_EPOCHS` — C-ACC-2 từ chối mọi giá trị ≠ 0. Bỏ hẳn tham số này.        ║
 // ║   (2) nhãn beacon tính bằng `beaconEpochOnChain + 1` — C-BCN-3 đòi nhãn = cửa sổ      ║
 // ║       hiện tại. Dùng `epochWindow(msPerEpoch)` (`Distribution/offchain/src/           ║
