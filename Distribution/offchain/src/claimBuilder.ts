@@ -56,7 +56,13 @@ export interface ClaimParams {
    */
   claimAccountUtxo?: UTxO;
 
-  /** drops_per_epoch cho account mới (CREATE). Mặc định 1 (MVP). */
+  /**
+   * drops_per_epoch cho account mới (CREATE). Mặc định 1 (MVP).
+   *
+   * BẮT BUỘC `> 0` — `0`, số âm, hoặc thứ không phải `bigint` đều ném `CLAIM-004`. Ràng buộc
+   * này ghi ở đây chứ không chỉ trong thân hàm: người dùng SDK đọc `ClaimParams`, không đọc
+   * thân hàm cách đó 180 dòng.
+   */
   dropsPerEpoch?: bigint;
 
   /** Min-ADA cho ClaimAccount UTxO mới (CREATE path). Mặc định 2 ADA. */
@@ -207,6 +213,23 @@ export async function buildClaimTx(params: ClaimParams): Promise<ClaimResult> {
     }
     const prev = decodeClaimAccountDatum(Data.from(claimAccountUtxo.datum));
 
+    // CLAIM-005: cùng cái bẫy một chiều của CLAIM-004, khác lối vào. Ở đây `drops_per_epoch`
+    // KHÔNG do caller đặt — nó đọc từ datum cũ và được bảo toàn nguyên (dòng dưới). Nên một
+    // tài khoản đã mang `drops_per_epoch = 0` (tạo trước bản vá này, hoặc bởi một tx không đi
+    // qua builder này — trên chuỗi chưa chặn, xem Issue) vẫn nhận thêm entitlement được, và
+    // mỗi lần nhận lại đẩy `outstanding_entitlement` lên (`treasury.ak:166`) cho một tài khoản
+    // mà `claim_account.ak:119` đã giết nhánh Redeem vĩnh viễn.
+    //
+    // Phép kiểm này đứng TRƯỚC phép kiểm owner có chủ đích: kiểm owner là bộ lọc NGHIỆP VỤ
+    // (ai được cấp), kiểm này là phép kiểm TÍNH TOÀN VẸN (dữ liệu có hợp lệ không). Trộn hai
+    // loại vào một chỗ thì thứ tự giữa chúng thành ngẫu nhiên, và không có gì báo khi đặt nhầm.
+    if (prev.drops_per_epoch <= 0n) {
+      throw new Error(
+        `CLAIM-005: account hiện có drops_per_epoch = ${prev.drops_per_epoch} — cấp thêm ` +
+        `entitlement chỉ làm phình outstanding_entitlement cho một tài khoản chưa redeem được`,
+      );
+    }
+
     if (normHex(prev.owner) !== owner) {
       throw new Error(
         `CLAIM-003: ownerPkh mismatch — datum owner ${prev.owner} ≠ ${owner}`, // C-CLAIM-3
@@ -231,12 +254,31 @@ export async function buildClaimTx(params: ClaimParams): Promise<ClaimResult> {
     // ── CREATE path ────────────────────────────────────────────────
     mode = "create";
     const accountLovelace = params.accountLovelace ?? DEFAULT_ACCOUNT_LOVELACE;
+
+    // CLAIM-004: `??` chỉ bắt null/undefined, KHÔNG bắt 0n — nên một caller truyền
+    // `dropsPerEpoch: 0n` ghi thẳng `drops_per_epoch = 0` vào datum. Đó là bẫy MỘT CHIỀU:
+    // `claim_account.ak:119` (`expect datum.drops_per_epoch > 0`) giết nhánh `Redeem` vĩnh
+    // viễn, trong khi khoản nợ đã vào sổ kho ở chính tx này và chỉ giảm được qua
+    // `ReleaseForRedeem` (`treasury.ak:92`) — vốn cần một lần redeem thành công. Kết quả là
+    // một khoản nợ khống bào mòn `outstanding_out ≤ pool_in` (`treasury.ak:170`) mãi mãi.
+    // `vested.ts:36` không chặn hộ (nó nhận `>= 0`), nên chốt phải nằm ở đây.
+    // Kiểm KIỂU chứ không chỉ kiểm DẤU: đây là SDK mở, caller từ JavaScript không kiểu truyền
+    // được `NaN` hoặc chuỗi rác. `NaN <= 0n` trả `false` — mọi phép so sánh với NaN đều false —
+    // nên một chốt chỉ so dấu sẽ CHO QUA đúng ca tệ nhất, và `NaN` đi tiếp vào datum.
+    const dropsPerEpoch = params.dropsPerEpoch ?? DEFAULT_DROPS_PER_EPOCH;
+    if (typeof dropsPerEpoch !== "bigint" || dropsPerEpoch <= 0n) {
+      throw new Error(
+        `CLAIM-004: dropsPerEpoch must be a bigint > 0 (got ${String(dropsPerEpoch)}) — tài ` +
+        `khoản tạo với drops_per_epoch = 0 không bao giờ redeem được, mà khoản nợ thì đã vào sổ kho`,
+      );
+    }
+
     newDatum = {
       owner,
       entitlement:     amount,
       redeemed:        0n,
       start_epoch:     currentEpoch,
-      drops_per_epoch: params.dropsPerEpoch ?? DEFAULT_DROPS_PER_EPOCH,
+      drops_per_epoch: dropsPerEpoch,
     };
 
     // C-ACC-1 / A-ACC-2..A-ACC-4: đúc ĐÚNG 1 NFT tên blake2b_256(owner), hạ cánh ngay

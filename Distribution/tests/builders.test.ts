@@ -191,6 +191,55 @@ describe("buildClaimTx — CREATE path", () => {
     });
     expect(rec.payData[0]!.datum).toBe(claimAccountDatumToCbor(res.newDatum));
   });
+
+  // CLAIM-004 — bẫy một chiều: `??` không bắt 0n, nên `dropsPerEpoch: 0n` từng ghi thẳng
+  // `drops_per_epoch = 0` vào datum. Khi đó `claim_account.ak:119` giết nhánh Redeem vĩnh
+  // viễn, còn khoản nợ đã vào sổ kho và chỉ giảm qua ReleaseForRedeem (cần một lần redeem).
+  it("CLAIM-004: từ chối dropsPerEpoch = 0 (bẫy nợ khống không redeem được)", async () => {
+    const { lucid } = mockLucid("addr_wallet");
+    await expect(buildClaimTx({
+      lucid, claimScript: FAKE_CLAIM, network: NETWORK,
+      ownerPkh: OWNER, amount: lampOildrop(250n), currentEpoch: 5n,
+      committeeKeyHashes: COMMITTEE, treasury: trsyParam(0n), accountNft: accNft,
+      dropsPerEpoch: 0n,
+    })).rejects.toThrow(/CLAIM-004/);
+  });
+
+  it("CLAIM-004: từ chối dropsPerEpoch âm", async () => {
+    const { lucid } = mockLucid("addr_wallet");
+    await expect(buildClaimTx({
+      lucid, claimScript: FAKE_CLAIM, network: NETWORK,
+      ownerPkh: OWNER, amount: lampOildrop(250n), currentEpoch: 5n,
+      committeeKeyHashes: COMMITTEE, treasury: trsyParam(0n), accountNft: accNft,
+      dropsPerEpoch: -1n,
+    })).rejects.toThrow(/CLAIM-004/);
+  });
+
+  // Cực đối của hai ca trên: giá trị hợp lệ KHÁC mặc định vẫn phải đi qua và vào đúng datum.
+  // Không có ca này thì chốt CLAIM-004 có thể siết quá tay mà bộ kiểm vẫn xanh.
+  it("dropsPerEpoch dương khác mặc định vẫn qua và vào datum", async () => {
+    const { lucid } = mockLucid("addr_wallet");
+    const res = await buildClaimTx({
+      lucid, claimScript: FAKE_CLAIM, network: NETWORK,
+      ownerPkh: OWNER, amount: lampOildrop(250n), currentEpoch: 5n,
+      committeeKeyHashes: COMMITTEE, treasury: trsyParam(0n), accountNft: accNft,
+      dropsPerEpoch: 7n,
+    });
+    expect(res.newDatum.drops_per_epoch).toBe(7n);
+  });
+
+  // Chốt chỉ so DẤU cho `NaN` đi lọt: mọi phép so sánh với NaN trả false, nên `NaN <= 0n`
+  // là false và `NaN` vào thẳng datum. Đây là bề mặt thật của một SDK mở — caller từ
+  // JavaScript không kiểu không bị trình biên dịch chặn.
+  it("CLAIM-004: từ chối dropsPerEpoch không phải bigint (NaN đi lọt chốt chỉ so dấu)", async () => {
+    const { lucid } = mockLucid("addr_wallet");
+    await expect(buildClaimTx({
+      lucid, claimScript: FAKE_CLAIM, network: NETWORK,
+      ownerPkh: OWNER, amount: lampOildrop(250n), currentEpoch: 5n,
+      committeeKeyHashes: COMMITTEE, treasury: trsyParam(0n), accountNft: accNft,
+      dropsPerEpoch: NaN as unknown as bigint,
+    })).rejects.toThrow(/CLAIM-004/);
+  });
 });
 
 describe("buildClaimTx — UPDATE path", () => {
@@ -231,6 +280,33 @@ describe("buildClaimTx — UPDATE path", () => {
       lucid, claimScript: FAKE_CLAIM, network: NETWORK,
       ownerPkh: OWNER, amount: 0n, currentEpoch: 1n, committeeKeyHashes: COMMITTEE, treasury: trsyParam(0n),
     })).rejects.toThrow(/amount must be > 0/);
+  });
+
+  // CLAIM-005 — cùng bẫy một chiều của CLAIM-004, khác lối vào: ở UPDATE thì `drops_per_epoch`
+  // đọc từ datum cũ chứ không do caller đặt, nên chốt CREATE không với tới được.
+  it("CLAIM-005: từ chối cấp thêm entitlement cho account đang mang drops_per_epoch = 0", async () => {
+    const { lucid } = mockLucid("addr_wallet");
+    const prev = { owner: OWNER, entitlement: lampOildrop(100n), redeemed: 0n, start_epoch: 3n, drops_per_epoch: 0n };
+    await expect(buildClaimTx({
+      lucid, claimScript: FAKE_CLAIM, network: NETWORK,
+      ownerPkh: OWNER, amount: lampOildrop(60n), currentEpoch: 9n,
+      claimAccountUtxo: claimUtxo(prev),
+      committeeKeyHashes: COMMITTEE, treasury: trsyParam(0n),
+    })).rejects.toThrow(/CLAIM-005/);
+  });
+
+  // Ca này đo THỨ TỰ, không đo sự tồn tại của chốt: owner sai VÀ dpe = 0 cùng lúc thì phải
+  // nghe CLAIM-005 trước. Phép kiểm tính toàn vẹn đặt sau một bộ lọc nghiệp vụ thì im lặng
+  // đúng bằng lúc chưa có nó — và tệ hơn, vì đọc mã thấy có nên người đọc dừng tìm.
+  it("CLAIM-005 đứng TRƯỚC bộ lọc owner — dpe = 0 + owner sai vẫn nghe CLAIM-005", async () => {
+    const { lucid } = mockLucid("addr_wallet");
+    const prev = { owner: "00".repeat(28), entitlement: 1n, redeemed: 0n, start_epoch: 0n, drops_per_epoch: 0n };
+    await expect(buildClaimTx({
+      lucid, claimScript: FAKE_CLAIM, network: NETWORK,
+      ownerPkh: OWNER, amount: 1n, currentEpoch: 1n,
+      claimAccountUtxo: claimUtxo(prev),
+      committeeKeyHashes: COMMITTEE, treasury: trsyParam(0n),
+    })).rejects.toThrow(/CLAIM-005/);
   });
 
   it("rejects owner mismatch on update", async () => {
