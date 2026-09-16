@@ -24,6 +24,7 @@
 
 use aiken/collection/list
 use aiken/crypto.{blake2b_256}
+use aiken/interval
 use cardano/assets
 use cardano/transaction.{
   DatumHash, InlineDatum, Input, NoDatum, Output, OutputReference, Transaction,
@@ -46,6 +47,12 @@ validator treasury(
   // ở nhánh GrantEntitlement: tx mở tài khoản buộc phải đúc NFT tài khoản, mà C-MINT-0
   // cũ (`is_zero(tx.mint)` áp cho MỌI redeemer) chặn luôn đường đó.
   account_nft_policy : ByteArray,
+  // ⚠ THÊM 2026-09-16 (vá Issue #72, lỗ 1) — ĐẶT CUỐI, cùng lý do với tham số trên.
+  // Chỉ dùng ở nhánh CREATE của `GrantEntitlement`, để ghim `start_epoch` vào cửa sổ
+  // thật. Đổi hash treasury (⇒ đổi địa chỉ kho), KHÔNG đổi policy id của LAMP: kho được
+  // định danh qua SUPPLY NFT chứ không qua script-hash — xem `lamp_mint.ak`, tham số
+  // `kho_nft_policy`/`kho_nft_name`.
+  ms_per_epoch       : Int,
 ) {
   spend(
     datum_opt : Option<TreasuryDatum>,
@@ -141,6 +148,32 @@ validator treasury(
             // CREATE: account mới, entitlement cũ = 0, redeemed PHẢI = 0 (no double-count
             // redeemed làm lệch cumulative; claim_account validator KHÔNG chạy nên ép tại đây).
             expect ca_out.redeemed == 0
+
+            // ── C-ACC-2 (2026-09-16, vá Issue #72 lỗ 1): GHIM `start_epoch` ──────────
+            // Trước bản vá KHÔNG validator nào trên đường CREATE chạm `start_epoch` —
+            // soát cả ba chỗ có thẩm quyền (`claim_account_nft.MintAccount`, nhánh này,
+            // và `claim_account.spend` vốn KHÔNG chạy ở CREATE vì không có input tài
+            // khoản). Bên dựng tx do đó đặt `start_epoch` lùi bao xa tuỳ ý, `elapsed`
+            // lớn ngay lập tức, và trọn `entitlement` vested trong giao dịch kế tiếp.
+            // Đo được trên Preprod: tài khoản mở ở cửa sổ 4142 mang `start_epoch = 4141`
+            // rồi rút ngay. Lịch vesting khi ấy là kỷ luật vận hành, không phải mã ép.
+            //
+            // Đây là chỗ ĐÚNG để ghim, không phải `claim_account_nft`: cổng NFT cũng
+            // chạy ở CREATE, nhưng thêm tham số cho nó sẽ đổi `account_nft_policy`, mà
+            // policy đó là tham số của CẢ `claim_account` LẪN treasury ⇒ ba script đổi
+            // hash thay vì một.
+            //
+            // `get_epoch_strict` chứ không `get_epoch`: đại lượng cần ở đây phải chặn
+            // được chiều LÙI, mà đầu dưới của validity range đặt lùi bao xa cũng hợp lệ
+            // với sổ cái — dùng `get_epoch` ở đây là vá bằng chính thứ đang thủng. Ép cả
+            // hai đầu cùng cửa sổ thì `start_epoch` kẹp đúng cửa sổ thật từ hai phía.
+            //
+            // Chiều TIẾN cũng phải chặn, và nó không phải chuyện thẩm mỹ: `start_epoch`
+            // đặt xa ở tương lai ⇒ không bao giờ vested ⇒ `Redeem` không chạy được ⇒
+            // khoản nợ đã vào `outstanding_entitlement` mà KHÔNG CÓ ĐƯỜNG LÙI (sổ chỉ
+            // giảm qua `ReleaseForRedeem`, vốn cần một tài khoản rút được). Đúng cái bẫy
+            // một-chiều mà C-ACC-1 ngay dưới đây sinh ra để chặn, chỉ khác lối vào.
+            expect ca_out.start_epoch == util.get_epoch_strict(tx, ms_per_epoch)
 
             // C-ACC-1 (2026-08-12, khép nốt vá điểm 1): đường CREATE BẮT BUỘC đúc NFT tài
             // khoản cho ĐÚNG ví này. Không có dòng này thì cổng NFT chỉ là "được phép",
@@ -353,18 +386,34 @@ const tt_threshold: Int = 2
 
 const tt_acct_nft_policy: ByteArray = #"acac"
 
+const tt_mspe: Int = 432_000_000
+
+/// Cửa sổ mà mọi ca GRANT dưới đây chạy trong đó. Chọn 0 để `start_epoch: 0` sẵn có ở
+/// `tt_ca_d` vẫn là giá trị ĐÚNG — các ca cũ do đó giữ nguyên ý nghĩa, phần thêm vào chỉ
+/// là cửa sổ mà trước đây chúng không khai.
+const tt_window: Int = 0
+
 fn tt_tre_d(cum: Int) -> TreasuryDatum {
   TreasuryDatum { committee_hash: #"cccc", outstanding_entitlement: cum }
 }
 
 fn tt_ca_d(entitlement: Int, redeemed: Int) -> ClaimAccountDatum {
+  tt_ca_d_at(entitlement, redeemed, tt_window)
+}
+
+fn tt_ca_d_at(entitlement: Int, redeemed: Int, start_epoch: Int) -> ClaimAccountDatum {
   ClaimAccountDatum {
     owner: tt_owner,
     entitlement: entitlement,
     redeemed: redeemed,
-    start_epoch: 0,
+    start_epoch: start_epoch,
     drops_per_epoch: 1,
   }
+}
+
+/// Validity range nằm gọn trong một cửa sổ — thoả Luật 2b (`util.get_epoch_strict`).
+fn tt_range(window: Int) -> interval.Interval {
+  interval.between(window * tt_mspe, window * tt_mspe + 1000)
 }
 
 fn tt_lamp_val(lovelace: Int, lamp: Int) -> assets.Value {
@@ -403,6 +452,7 @@ fn release(cum_in: Int, tx: Transaction) -> Bool {
   treasury.spend(
     tt_ca_sh, tt_lamp_policy, tt_lamp_name, tt_committee, tt_threshold,
     tt_acct_nft_policy,
+    tt_mspe,
     Some(tt_tre_d(cum_in)), ReleaseForRedeem, util.mk_ref(0), tx,
   )
 }
@@ -465,13 +515,34 @@ fn grant_tx(
   redeemed_out: Int,
   sigs        : List<ByteArray>,
 ) -> Transaction {
+  grant_tx_at(pool, cum_in, cum_out, ent_in_opt, ent_out, redeemed_out, sigs,
+    tt_window, tt_range(tt_window))
+}
+
+/// Bản đầy đủ: chọn được `start_epoch` ghi vào tài khoản VÀ validity range của tx — hai
+/// đại lượng mà C-ACC-2 ràng vào nhau. Mọi ca cũ đi qua `grant_tx` ở trên, nơi hai thứ đó
+/// khớp; các ca âm tính bên dưới bẻ đúng một trong hai.
+fn grant_tx_at(
+  pool        : Int,
+  cum_in      : Int,
+  cum_out     : Int,
+  ent_in_opt  : Option<Int>,
+  ent_out     : Int,
+  redeemed_out: Int,
+  sigs        : List<ByteArray>,
+  start_epoch : Int,
+  vr          : interval.Interval,
+) -> Transaction {
   let tre_addr = util.script_address(tt_tre_sh)
   let ca_addr = util.script_address(tt_ca_sh)
   let val = tt_lamp_val(5_000_000, pool)
   let tre_in = util.mk_input(util.mk_ref(0), util.mk_output(tre_addr, val, tt_tre_d(cum_in)))
   let tre_out = util.mk_output(tre_addr, val, tt_tre_d(cum_out))
   let ca_out =
-    util.mk_output(ca_addr, assets.from_lovelace(2_000_000), tt_ca_d(ent_out, redeemed_out))
+    util.mk_output(
+      ca_addr, assets.from_lovelace(2_000_000),
+      tt_ca_d_at(ent_out, redeemed_out, start_epoch),
+    )
   let base_inputs =
     when ent_in_opt is {
       Some(ent_in) -> {
@@ -495,6 +566,7 @@ fn grant_tx(
       None -> assets.add(assets.zero, tt_acct_nft_policy, tt_acct_nft_name(), 1)
       Some(_) -> assets.zero
     },
+    validity_range: vr,
   }
 }
 
@@ -502,6 +574,7 @@ fn grant(cum_in: Int, tx: Transaction) -> Bool {
   treasury.spend(
     tt_ca_sh, tt_lamp_policy, tt_lamp_name, tt_committee, tt_threshold,
     tt_acct_nft_policy,
+    tt_mspe,
     Some(tt_tre_d(cum_in)), GrantEntitlement, util.mk_ref(0), tx,
   )
 }
@@ -518,6 +591,82 @@ test grant_create_happy() {
 test grant_create_without_minting_account_nft_rejected() fail {
   let tx = Transaction { ..grant_tx(5000, 0, 1000, None, 1000, 0, [#"c1", #"c2"]), mint: assets.zero }
   grant(0, tx)
+}
+
+// ── C-ACC-2 (Issue #72, lỗ 1): `start_epoch` phải là cửa sổ HIỆN TẠI ──────────
+//
+// Ca âm tính trung tâm. Trước bản vá cả năm ca dưới đây đều XANH, và ca đầu là ca đã
+// chạy thật trên Preprod: tài khoản mở ở cửa sổ 4142 mang `start_epoch = 4141` rồi rút
+// ngay trong giao dịch kế tiếp.
+
+/// LÙI NGÀY — chiều tấn công thật. Cửa sổ 7, ghi `start_epoch = 6` ⇒ `elapsed` đã bằng 1
+/// ngay lúc tài khoản vừa mở.
+test grant_create_backdated_start_epoch_rejected() fail {
+  grant(0, grant_tx_at(5000, 0, 1000, None, 1000, 0, [#"c1", #"c2"], 6, tt_range(7)))
+}
+
+/// LÙI XA — cùng lỗ, thang khác: `start_epoch = 0` ở cửa sổ 7 cho `elapsed = 7`, đủ để
+/// vested trọn `entitlement` ngay lượt rút đầu.
+test grant_create_far_backdated_start_epoch_rejected() fail {
+  grant(0, grant_tx_at(5000, 0, 1000, None, 1000, 0, [#"c1", #"c2"], 0, tt_range(7)))
+}
+
+/// TIẾN NGÀY — không phải chuyện thẩm mỹ. `start_epoch` ở tương lai ⇒ không bao giờ
+/// vested ⇒ `Redeem` không chạy ⇒ nợ đã vào `outstanding_entitlement` mà chỉ
+/// `ReleaseForRedeem` mới rút ra được, và nhánh ấy cần một tài khoản rút được. Bẫy
+/// một-chiều, cùng họ với ca C-ACC-1 ngay trên.
+test grant_create_future_start_epoch_rejected() fail {
+  grant(0, grant_tx_at(5000, 0, 1000, None, 1000, 0, [#"c1", #"c2"], 9, tt_range(7)))
+}
+
+/// Luật 2b — không đầu trên thì tx không tự khai nổi cửa sổ của nó. Fail-closed.
+/// Ca này cũng là ca chứng minh vì sao C-ACC-2 KHÔNG dùng được `util.get_epoch`: hàm đó
+/// nhận đúng khoảng `interval.after` này và trả về 7, tức mọi ca trên vẫn lọt.
+test grant_create_unbounded_range_rejected() fail {
+  grant(0,
+    grant_tx_at(5000, 0, 1000, None, 1000, 0, [#"c1", #"c2"], 7, interval.after(7 * tt_mspe)))
+}
+
+/// Cửa sổ vắt qua biên epoch ⇒ hai đầu rơi hai cửa sổ ⇒ từ chối. Bên dựng tx phải kéo
+/// đầu trên về sát cuối cửa sổ.
+///
+/// ⚠ Ca này KHÔNG ghim được đầu trên của Luật 2b: gỡ mệnh đề ấy ra thì nó vẫn đỏ, chỉ là
+/// đỏ ở C-ACC-2 (`e` thành 6, mà `start_epoch` ghi 7). Ca ghim thật ở ngay dưới.
+test grant_create_range_straddles_boundary_rejected() fail {
+  grant(0,
+    grant_tx_at(
+      5000, 0, 1000, None, 1000, 0, [#"c1", #"c2"], 7,
+      interval.between(7 * tt_mspe - 1000, 7 * tt_mspe + 1000),
+    ))
+}
+
+/// Ca PHÂN BIỆT cho ĐẦU TRÊN của Luật 2b. Đầu dưới rơi cửa sổ 7, đầu trên rơi cửa sổ 8,
+/// `start_epoch` ghi 7 — tức KHỚP với `get_epoch(lower)`. Còn mệnh đề đầu trên thì từ
+/// chối; gỡ nó ra thì tx này ĐƯỢC CHẤP NHẬN.
+///
+/// Đây chính là đường lùi ngày mà lỗ 1 nói tới, ở dạng tinh vi hơn ca `backdated`: kẻ
+/// dựng tx không cần ghi một `start_epoch` sai, chỉ cần kéo dài đầu trên của validity
+/// range. Viết SAU khi phép đo đảo báo mệnh đề đầu trên không bài nào canh.
+test grant_create_upper_bound_is_the_binding_clause() fail {
+  grant(0,
+    grant_tx_at(
+      5000, 0, 1000, None, 1000, 0, [#"c1", #"c2"], 7,
+      interval.between(7 * tt_mspe, 8 * tt_mspe),
+    ))
+}
+
+/// ĐỐI CHỨNG: cùng khuôn, `start_epoch` khớp cửa sổ ⇒ XANH. Không có ca này thì năm ca
+/// đỏ ở trên xanh được bằng cách làm hỏng bất cứ thứ gì khác trong `grant_tx_at`.
+test grant_create_start_epoch_matches_window_ok() {
+  grant(0, grant_tx_at(5000, 0, 1000, None, 1000, 0, [#"c1", #"c2"], 7, tt_range(7)))
+}
+
+/// C-ACC-2 chỉ áp ở CREATE. Đường UPDATE không được đụng `start_epoch` — chỗ ép điều đó
+/// là `claim_account.ak` nhánh `Claim` (`out_datum.start_epoch == datum.start_epoch`),
+/// nên treasury cố ý im ở đây. Ca này canh cho lần sửa sau không vô tình siết cả UPDATE:
+/// tài khoản cũ mang `start_epoch = 0` vẫn cấp thêm E được ở cửa sổ 7.
+test grant_update_keeps_old_start_epoch_ok() {
+  grant(0, grant_tx_at(5000, 0, 1000, Some(400), 1400, 0, [#"c1", #"c2"], 0, tt_range(7)))
 }
 
 /// Và đúc NFT cho VÍ KHÁC cũng không qua — tên phải là blake2b_256 của đúng owner ghi
@@ -693,6 +842,7 @@ fn refill(own_ix: Int, datum_opt: Option<TreasuryDatum>, tx: Transaction) -> Boo
   treasury.spend(
     tt_ca_sh, tt_lamp_policy, tt_lamp_name, tt_committee, tt_threshold,
     tt_acct_nft_policy,
+    tt_mspe,
     datum_opt, Refill, util.mk_ref(own_ix), tx,
   )
 }

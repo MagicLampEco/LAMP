@@ -530,11 +530,12 @@ export async function reapplyValidators(state: DeployedState): Promise<{
   ]);
   const rawBeacon = await rawValidator("beacon.beacon.spend");
   const beaconScript = applyValidator(rawBeacon.compiledCode, [
-    committee, threshold, p.beaconNftPolicy,
+    committee, threshold, p.beaconNftPolicy, msPerEpochBaked,
   ]);
   const rawTreasury = await rawValidator("treasury.treasury.spend");
   const treasuryScript = applyValidator(rawTreasury.compiledCode, [
     p.claimAccountHash, p.lampPolicy, p.lampName, committee, threshold, p.accountNftPolicy,
+    msPerEpochBaked,
   ]);
 
   // verify hash khớp

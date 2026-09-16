@@ -17,6 +17,17 @@ pub fn clamp(x: Int, lo: Int, hi: Int) -> Int {
   }
 }
 
+/// |a − b| — khoảng cách tuyệt đối giữa hai số nguyên.
+/// Dùng ở `beacon.ak` C-BCN-5 để chặn tốc độ đổi D theo CẢ HAI chiều bằng một mệnh đề:
+/// viết thành hai bất đẳng thức có hướng thì mỗi lần thêm một chiều lại phải nhớ chiều kia.
+pub fn abs_diff(a: Int, b: Int) -> Int {
+  if a > b {
+    a - b
+  } else {
+    b - a
+  }
+}
+
 test ceil_div_exact() {
   ceil_div(200, 100) == 2
 }
@@ -43,4 +54,16 @@ test clamp_low() {
 
 test clamp_high() {
   clamp(500, 10, 100) == 100
+}
+
+test abs_diff_up() {
+  abs_diff(110, 100) == 10
+}
+
+test abs_diff_down() {
+  abs_diff(100, 110) == 10
+}
+
+test abs_diff_equal() {
+  abs_diff(100, 100) == 0
 }
