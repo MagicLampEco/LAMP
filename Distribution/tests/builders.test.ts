@@ -17,7 +17,7 @@ import { accountNftName, mintAccountRedeemerToCbor } from "../offchain/src/accou
 import {
   committeeThreshold, assertCommitteeShape, assertCommitteeSigners,
 } from "../offchain/src/committee.js";
-import { TREASURY_NFT_ASSET_NAME } from "../offchain/src/constants.js";
+import { TREASURY_NFT_ASSET_NAME, epochWindow } from "../offchain/src/constants.js";
 import { applyValidator } from "../scripts/blueprint.js";
 import { lampOildrop } from "./helpers.js";
 
@@ -32,12 +32,13 @@ interface Recorded {
   payAddr:     { address: string; assets: Record<string, bigint> }[];
   signers:     string[];
   validFrom:   number[];
+  validTo:     number[];
 }
 
 function mockLucid(walletAddress: string): { lucid: any; rec: Recorded } {
   const rec: Recorded = {
     collectFrom: [], attach: [], attachMint: [], mint: [], readFrom: [],
-    payData: [], payAddr: [], signers: [], validFrom: [],
+    payData: [], payAddr: [], signers: [], validFrom: [], validTo: [],
   };
   const txb: any = {
     collectFrom(utxos: UTxO[], redeemer: string) { rec.collectFrom.push({ utxos, redeemer }); return txb; },
@@ -59,6 +60,7 @@ function mockLucid(walletAddress: string): { lucid: any; rec: Recorded } {
     },
     addSignerKey(k: string) { rec.signers.push(k); return txb; },
     validFrom(ms: number) { rec.validFrom.push(ms); return txb; },
+    validTo(ms: number) { rec.validTo.push(ms); return txb; },
     async complete() { return { __mockTx: true }; },
   };
   const lucid = {
@@ -203,6 +205,37 @@ describe("buildClaimTx — CREATE path", () => {
       committeeKeyHashes: COMMITTEE, treasury: trsyParam(0n), accountNft: accNft,
       dropsPerEpoch: 0n,
     })).rejects.toThrow(/CLAIM-004/);
+  });
+
+  // ── Issue #72 lỗ 1 (C-ACC-2) — đường CREATE phải khai CẢ HAI đầu validity range ──
+  // Trước bản vá, `validFromMs` một mình được ghi là "BẮT BUỘC live tx CREATE" ngay trong
+  // `ClaimParams` — tức bên dựng đã tả đúng ràng buộc mà bên kiểm chưa từng có. Nay
+  // `treasury.ak` C-ACC-2 ép cả hai đầu rơi cùng cửa sổ, vì đầu dưới đặt lùi bao xa cũng
+  // hợp lệ với sổ cái nên nó không ghim nổi `start_epoch`.
+  it("CREATE-002: từ chối CREATE có validFromMs mà THIẾU validToMs", async () => {
+    const { lucid } = mockLucid("addr_wallet");
+    await expect(buildClaimTx({
+      lucid, claimScript: FAKE_CLAIM, network: NETWORK,
+      ownerPkh: OWNER, amount: lampOildrop(250n), currentEpoch: 5n,
+      committeeKeyHashes: COMMITTEE, treasury: trsyParam(0n), accountNft: accNft,
+      validFromMs: 5n * 432_000_000n,
+    })).rejects.toThrow(/CREATE-002/);
+  });
+
+  it("CREATE-002: đủ cả hai đầu thì qua, và tx mang đúng cặp lo/hi", async () => {
+    const { lucid, rec } = mockLucid("addr_wallet");
+    const w = epochWindow(432_000_000n, 5n * 432_000_000n + 432_000_000n / 2n);
+    const res = await buildClaimTx({
+      lucid, claimScript: FAKE_CLAIM, network: NETWORK,
+      ownerPkh: OWNER, amount: lampOildrop(250n), currentEpoch: w.epoch,
+      committeeKeyHashes: COMMITTEE, treasury: trsyParam(0n), accountNft: accNft,
+      validFromMs: w.loMs, validToMs: w.hiMs,
+    });
+    expect(res.mode).toBe("create");
+    expect(rec.validFrom).toEqual([Number(w.loMs)]);
+    expect(rec.validTo).toEqual([Number(w.hiMs)]);
+    // start_epoch ghi vào datum PHẢI là cửa sổ mà cặp lo/hi rơi vào — đúng thứ C-ACC-2 so.
+    expect(res.newDatum.start_epoch).toBe(w.epoch);
   });
 
   it("CLAIM-004: từ chối dropsPerEpoch âm", async () => {
@@ -382,6 +415,140 @@ describe("buildPostBeaconTx — DropParam{D}", () => {
       newBeacon: { epoch: 10n, kind: "DropParam", drop_value: D },
       committeeKeyHashes: COMMITTEE,
     })).rejects.toThrow(/exactly 1 authenticity NFT/);
+  });
+
+  // ── Issue #72 lỗ 3: biên của D, ép ở beacon.ak C-BCN-4/5 ─────────────
+  // Chốt thật nằm ở validator; các ca dưới đây kiểm rằng builder KHÔNG dựng ra tx chắc
+  // chắn bị chuỗi từ chối, và từ chối bằng một câu nói ra con số + cái biên nó vượt.
+
+  it("BEACON-004: từ chối D vượt TRẦN cứng (ca nặng nhất — vested trọn E trong một cửa sổ)", async () => {
+    const { lucid } = mockLucid("addr_wallet");
+    await expect(buildPostBeaconTx({
+      lucid, beaconScript: FAKE_BEACON, network: NETWORK,
+      beaconNftPolicy: NFT_POLICY,
+      beaconUtxo: beaconUtxo(9n, D, { lovelace: 2_000_000n, [NFT_UNIT]: 1n }),
+      newBeacon: { epoch: 10n, kind: "DropParam", drop_value: 10_000_000_001n },
+      committeeKeyHashes: COMMITTEE,
+    })).rejects.toThrow(/BEACON-004/);
+  });
+
+  it("BEACON-004: từ chối D dưới SÀN cứng (ca đóng băng vesting)", async () => {
+    const { lucid } = mockLucid("addr_wallet");
+    await expect(buildPostBeaconTx({
+      lucid, beaconScript: FAKE_BEACON, network: NETWORK,
+      beaconNftPolicy: NFT_POLICY,
+      beaconUtxo: beaconUtxo(9n, D, { lovelace: 2_000_000n, [NFT_UNIT]: 1n }),
+      newBeacon: { epoch: 10n, kind: "DropParam", drop_value: 9_999_999n },
+      committeeKeyHashes: COMMITTEE,
+    })).rejects.toThrow(/BEACON-004/);
+  });
+
+  it("BEACON-005: từ chối một lượt đổi vượt ±10% khi biết D hiện tại", async () => {
+    const { lucid } = mockLucid("addr_wallet");
+    await expect(buildPostBeaconTx({
+      lucid, beaconScript: FAKE_BEACON, network: NETWORK,
+      beaconNftPolicy: NFT_POLICY,
+      beaconUtxo: beaconUtxo(9n, 100_000_000n, { lovelace: 2_000_000n, [NFT_UNIT]: 1n }),
+      newBeacon: { epoch: 10n, kind: "DropParam", drop_value: 110_000_001n },
+      committeeKeyHashes: COMMITTEE,
+      currentDropValue: 100_000_000n,
+    })).rejects.toThrow(/BEACON-005/);
+  });
+
+  it("BEACON-005: +10% CHẴN đi qua — mệnh đề là ≤, không phải <", async () => {
+    const { lucid } = mockLucid("addr_wallet");
+    const res = await buildPostBeaconTx({
+      lucid, beaconScript: FAKE_BEACON, network: NETWORK,
+      beaconNftPolicy: NFT_POLICY,
+      beaconUtxo: beaconUtxo(9n, 100_000_000n, { lovelace: 2_000_000n, [NFT_UNIT]: 1n }),
+      newBeacon: { epoch: 10n, kind: "DropParam", drop_value: 110_000_000n },
+      committeeKeyHashes: COMMITTEE,
+      currentDropValue: 100_000_000n,
+    });
+    expect(res.newBeacon.drop_value).toBe(110_000_000n);
+  });
+
+  it("BEACON-005: chiều GIẢM bị chặn riêng — hạ thẳng về sàn trong một lượt", async () => {
+    const { lucid } = mockLucid("addr_wallet");
+    await expect(buildPostBeaconTx({
+      lucid, beaconScript: FAKE_BEACON, network: NETWORK,
+      beaconNftPolicy: NFT_POLICY,
+      beaconUtxo: beaconUtxo(9n, 100_000_000n, { lovelace: 2_000_000n, [NFT_UNIT]: 1n }),
+      newBeacon: { epoch: 10n, kind: "DropParam", drop_value: 10_000_000n },
+      committeeKeyHashes: COMMITTEE,
+      currentDropValue: 100_000_000n,
+    })).rejects.toThrow(/BEACON-005/);
+  });
+
+  // ── Issue #72 lỗ 2: nhãn epoch phải là cửa sổ hiện tại (C-BCN-3) ─────
+
+  it("BEACON-006: từ chối nhãn epoch không khớp cửa sổ hiện tại", async () => {
+    const { lucid } = mockLucid("addr_wallet");
+    const msPerEpoch = 432_000_000n;
+    const wrongLabel = epochWindow(msPerEpoch).epoch + 2n;
+    await expect(buildPostBeaconTx({
+      lucid, beaconScript: FAKE_BEACON, network: NETWORK,
+      beaconNftPolicy: NFT_POLICY,
+      beaconUtxo: beaconUtxo(9n, D, { lovelace: 2_000_000n, [NFT_UNIT]: 1n }),
+      newBeacon: { epoch: wrongLabel, kind: "DropParam", drop_value: D },
+      committeeKeyHashes: COMMITTEE,
+      msPerEpoch,
+    })).rejects.toThrow(/BEACON-006/);
+  });
+
+  it("BEACON-006: nhãn == cửa sổ hiện tại đi qua, và tx mang CẢ HAI đầu validity range", async () => {
+    const { lucid, rec } = mockLucid("addr_wallet");
+    const msPerEpoch = 432_000_000n;
+    const w = epochWindow(msPerEpoch);
+    const res = await buildPostBeaconTx({
+      lucid, beaconScript: FAKE_BEACON, network: NETWORK,
+      beaconNftPolicy: NFT_POLICY,
+      beaconUtxo: beaconUtxo(w.epoch - 1n, D, { lovelace: 2_000_000n, [NFT_UNIT]: 1n }),
+      newBeacon: { epoch: w.epoch, kind: "DropParam", drop_value: D },
+      committeeKeyHashes: COMMITTEE,
+      msPerEpoch,
+    });
+    expect(res.newBeacon.epoch).toBe(w.epoch);
+    // Đầu TRÊN là phần mới, và là phần duy nhất chứng minh được nhãn không bị dán lùi.
+    expect(rec.validFrom).toEqual([Number(w.loMs)]);
+    expect(rec.validTo).toEqual([Number(w.hiMs)]);
+  });
+});
+
+// ── epochWindow — Luật 2b phía bên dựng tx ────────────────────────────
+// Hàm thuần, nhưng nhánh biên của nó là thứ hỏng vài lần mỗi chu kỳ mà không có gì báo:
+// cửa sổ mặc định vắt qua biên epoch ⇒ validator từ chối ⇒ lỗi chỉ nói "validator crashed".
+describe("epochWindow — cả hai đầu rơi cùng một cửa sổ", () => {
+  const MSPE = 432_000_000n;
+
+  it("giữa cửa sổ: hai đầu cùng epoch, hi là mốc mặc định", () => {
+    const mid = 100n * MSPE + MSPE / 2n;
+    const w = epochWindow(MSPE, mid);
+    expect(w.epoch).toBe(100n);
+    expect(w.loMs / MSPE).toBe(w.epoch);
+    expect(w.hiMs / MSPE).toBe(w.epoch);
+    expect(w.hiMs).toBe(w.loMs + 90_000n);
+  });
+
+  it("SÁT BIÊN: mốc mặc định vắt sang cửa sổ sau ⇒ hi bị kéo về cuối cửa sổ", () => {
+    // 30 s trước biên epoch 101: lo còn ở 100, lo+90 s thì đã sang 101.
+    const nearEnd = 101n * MSPE - 30_000n + 60_000n;
+    const w = epochWindow(MSPE, nearEnd);
+    expect(w.epoch).toBe(100n);
+    expect(w.loMs / MSPE).toBe(w.epoch);
+    expect(w.hiMs / MSPE).toBe(w.epoch);      // ← mệnh đề Luật 2b
+    expect(w.hiMs).toBeLessThan(101n * MSPE); // kéo về trước biên
+    expect(w.hiMs).toBeGreaterThan(w.loMs);   // và vẫn là một khoảng hợp lệ
+  });
+
+  it("hiMs > loMs ở MỌI mốc trong một cửa sổ — không sinh ra khoảng rỗng", () => {
+    for (const frac of [1n, 10n, 100n, 500n, 900n, 990n, 999n]) {
+      const t = 100n * MSPE + MSPE * frac / 1000n;
+      const w = epochWindow(MSPE, t);
+      expect(w.hiMs).toBeGreaterThan(w.loMs);
+      expect(w.loMs / MSPE).toBe(w.epoch);
+      expect(w.hiMs / MSPE).toBe(w.epoch);
+    }
   });
 });
 

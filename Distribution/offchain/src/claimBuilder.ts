@@ -137,6 +137,19 @@ export interface ClaimParams {
    * get_epoch đọc lower_bound → start_epoch). Bỏ trống → KHÔNG set (unit test off-chain).
    */
   validFromMs?: bigint;
+
+  /**
+   * POSIX ms cho upper_bound validity_range — BẮT BUỘC live tx CREATE kể từ C-ACC-2.
+   *
+   * Trước bản vá Issue #72 chỉ có đầu dưới, và đầu dưới MỘT MÌNH không chứng minh được
+   * `start_epoch` là cửa sổ thật: sổ cái nhận tx khi `lower ≤ now`, nên `lower` đặt lùi
+   * bao xa cũng hợp lệ. Validator nay ép CẢ HAI đầu rơi cùng cửa sổ ("Luật 2b").
+   *
+   * Lấy cặp lo/hi bằng `epochWindow(msPerEpoch)` trong `constants.ts` — nó kéo `hi` về sát
+   * cuối cửa sổ khi khoảng mặc định vắt qua biên epoch. Tự đặt tay thì mấy lần mỗi chu kỳ
+   * sẽ có một tx bị từ chối mà không có gì nói vì sao.
+   */
+  validToMs?: bigint;
 }
 
 export interface ClaimResult {
@@ -373,9 +386,24 @@ export async function buildClaimTx(params: ClaimParams): Promise<ClaimResult> {
 
   for (const k of signers) txb = txb.addSignerKey(k);
 
-  // validity_range lower_bound → validator get_epoch (CREATE start_epoch). Live tx bắt buộc.
+  // validity_range → validator get_epoch_strict (CREATE start_epoch). Live tx bắt buộc CẢ HAI
+  // đầu: C-ACC-2 ép chúng rơi cùng một cửa sổ, vì đầu dưới một mình đặt lùi được tuỳ ý.
   if (params.validFromMs !== undefined) {
     txb = txb.validFrom(Number(params.validFromMs));
+  }
+  if (params.validToMs !== undefined) {
+    txb = txb.validTo(Number(params.validToMs));
+  }
+
+  // CREATE-002 — chặn ở đây thay vì để chuỗi từ chối. Nhánh CREATE không có đầu trên thì
+  // validator ném, mà lỗi từ chuỗi chỉ nói "validator crashed"; câu dưới nói ĐÚNG thứ thiếu.
+  if (mode === "create" && params.validFromMs !== undefined && params.validToMs === undefined) {
+    throw new Error(
+      "CREATE-002: đường CREATE thiếu `validToMs`. C-ACC-2 (treasury.ak) ép cả hai đầu " +
+        "validity_range rơi cùng một cửa sổ epoch — đầu dưới một mình đặt lùi bao xa cũng " +
+        "hợp lệ với sổ cái, nên nó không ghim được `start_epoch`. Lấy cặp lo/hi bằng " +
+        "`epochWindow(msPerEpoch)` trong `constants.ts`.",
+    );
   }
 
   const tx = await txb.complete();

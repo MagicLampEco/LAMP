@@ -1,13 +1,47 @@
-// LampDistribution constants — Preview MVP (SPEC §7)
+// LampDistribution constants — Capped Drop v2.
 // Đơn vị: oildrop (1 LAMP = 10^6 oildrop). Q-format: Q = 10^9.
+//
+// ⚠ ĐỔI TÊN 2026-09-16 (vá Issue #72, lỗ 3). Bốn hằng dưới đây trước mang tiền tố `p_`
+// và thuộc thiết kế **P-beacon** — thiết kế đã bị Capped Drop v2 thay (`CONTRACT.md:58`
+// nay chỉ còn nhắc nó như quá khứ: "như P-beacon cũ"). Từ lúc bị thay tới nay chúng
+// KHÔNG được validator nào đọc: đo bằng `grep -rn "p_min\|p_max\|max_p_delta_q"` trên
+// `validators/` + `lib/` cho ra đúng ba dòng khai báo, không dòng dùng nào.
+//
+// Một bộ hằng mang tên của thiết kế đã chết, không ai đọc, nằm cạnh thiết kế đang sống
+// là thứ đọc-là-tin: người sau mở `constants.ak` thấy có sàn/trần thì tin rằng D bị
+// chặn. Nay chúng mang tên của đại lượng thật (`drop_value`) VÀ được `beacon.ak` đọc,
+// nên cái tên và cái thực khớp nhau.
+//
+// CON SỐ thì thừa kế nguyên từ P, chưa qua một vòng chốt nào cho D — ghi ra để người
+// đọc sau không tưởng đây là số đã cân. Đổi chúng là đổi biên độ điều hành, không phải
+// đổi cơ chế: cơ chế nằm ở `beacon.ak`, ba dòng `expect` mang mã C-BCN-2/3/4.
 
-pub const q : Int = 1_000_000_000
+pub const q: Int = 1_000_000_000
 
-// P parameter (oildrop/drop)
-pub const p_genesis : Int = 100_000_000      // 100 LAMP
-pub const p_min     : Int = 10_000_000       // 10 LAMP  [hard floor]
-pub const p_max     : Int = 10_000_000_000   // 10_000 LAMP [hard ceiling]
+// ── Biên của D (drop_value, oildrop/drop·epoch) ──────────────────────────────
+// `beacon.ak` ép mọi giá trị post lên beacon nằm trong [min, max].
 
-// P adjustment
-pub const max_p_delta_q : Int = 100_000_000  // ±10% = 0.10 × Q
-pub const p_ema_window  : Int = 3            // α = 0.5
+pub const drop_value_genesis: Int = 100_000_000
+//                                  100 LAMP — giá trị beacon mở sổ
+
+pub const drop_value_min: Int = 10_000_000
+//                              10 LAMP — SÀN CỨNG. Committee không đóng băng được
+//                              vesting của tài khoản đang mở dở bằng cách hạ D về ~0.
+
+pub const drop_value_max: Int = 10_000_000_000
+//                              10_000 LAMP — TRẦN CỨNG. Đây là mệnh đề khiến câu
+//                              "lịch vesting ràng buộc cả bên phát hành" đứng được:
+//                              không có nó, committee đặt D đủ lớn là mọi tài khoản
+//                              vested trọn `entitlement` trong đúng một cửa sổ.
+
+// ── Biên của MỘT LẦN đổi D ───────────────────────────────────────────────────
+// `beacon.ak` ép |D_mới − D_cũ| · q ≤ D_cũ · max_drop_delta_q, tức ±10% mỗi lượt post.
+// Chỉ có nghĩa khi mỗi cửa sổ post được tối đa một lượt — `beacon.ak` ép điều đó bằng
+// C-BCN-2 (`epoch` đơn điệu TĂNG) đi cặp với C-BCN-3 (`epoch` == cửa sổ hiện tại).
+// Bỏ một trong hai thì trần này vô hiệu: post n lượt trong một cửa sổ ⇒ đổi 1,1^n lần.
+pub const max_drop_delta_q: Int = 100_000_000
+//                                0,10 × q
+
+// ĐÃ BỎ 2026-09-16: `p_ema_window` (α = 0.5). Nó là tham số của vòng làm trơn EMA trong
+// P-beacon; Capped Drop không có vòng đó. Giữ lại một hằng không có cơ chế tương ứng là
+// giữ một lời hứa về hành vi mà không mã nào thực hiện.

@@ -291,7 +291,31 @@ pub type BeaconNftRedeemer {
 | **C-RDM-4a** | `out_datum.owner / entitlement / start_epoch / drops_per_epoch` bất biến | `claim_account.ak:98-101` |
 | **C-RDM-3** | `lamp_to_owner(tx.outputs, owner, lamp_policy, lamp_name) ≥ amount` | `claim_account.ak:107` |
 
-**Ghi chú `find_drop_value`** (`claim_account.ak:119-135`): tìm reference input mang `quantity_of(value, beacon_nft_policy, #"44524f50") == 1`, giải datum `BeaconDatum`, kiểm `kind == DropParam`, trả `drop_value`. Từ chối nếu không tìm thấy hoặc datum sai.
+**Ghi chú `find_drop_value`** (hàm `find_drop_value` trong `claim_account.ak`): tìm reference input mang `quantity_of(value, beacon_nft_policy, #"44524f50") == 1`, giải datum `BeaconDatum`, kiểm `kind == DropParam`, trả `drop_value`. Từ chối nếu không tìm thấy hoặc datum sai.
+
+Hàm này **cố ý bỏ qua** `BeaconDatum.epoch`: D có hiệu lực ngay khi được post, không có độ trễ một cửa sổ. Trước 2026-09-16 điều đó khiến trường `epoch` không nói về epoch nào cả — nó chỉ là bộ đếm lượt post, vì `beacon.ak` chỉ ép nó tăng. Nay `beacon.ak` C-BCN-3 ép nó BẰNG cửa sổ mà lượt post chạy trong đó, nên nhãn là một sự thật đo được (*"D này được đặt ở cửa sổ N"*) chứ không phải một cam kết về thời điểm áp dụng.
+
+#### Đồng hồ epoch — hai đại lượng, KHÔNG thay nhau được
+
+| hàm | đọc | chặn được chiều nào | dùng ở |
+|---|---|---|---|
+| `get_epoch` | chỉ `lower_bound` | chỉ chiều TIẾN (nhãn tương lai) | `claim_account` nhánh `Redeem` |
+| `get_epoch_strict` | CẢ HAI đầu, ép cùng một cửa sổ | cả hai chiều | `treasury` C-ACC-2 · `beacon` C-BCN-3 |
+
+Sổ cái nhận tx khi `lower ≤ now ≤ upper`, nên `lower` đặt lùi bao xa cũng hợp lệ ⇒ `get_epoch` một mình **không** ghim được một nhãn thời gian. Nó đủ ở `Redeem` vì ở đó epoch nhỏ đi thì người dựng tx THIỆT (`elapsed` nhỏ ⇒ vested nhỏ). Ở mọi chỗ GHI một mốc thời gian thì phải dùng `get_epoch_strict` ("Luật 2b", cùng khuôn với `reserve_draw` bên Genesis).
+
+#### Bất biến thêm 2026-09-16 (Issue #72)
+
+| ID | Phát biểu | Code |
+|---|---|---|
+| **C-ACC-2** | CREATE: `ca_out.start_epoch == get_epoch_strict(tx, ms_per_epoch)` | `treasury.ak`, nhánh `GrantEntitlement` ▸ CREATE |
+| **C-BCN-3** | `out_datum.epoch == get_epoch_strict(tx, ms_per_epoch)` | `beacon.ak` |
+| **C-BCN-4** | `drop_value_min ≤ out_datum.drop_value ≤ drop_value_max` | `beacon.ak` |
+| **C-BCN-5** | `abs_diff(D_out, D_in) × q ≤ D_in × max_drop_delta_q` (±10% một lượt) | `beacon.ak` |
+
+**C-BCN-2 + C-BCN-3 đi CẶP** và cặp ấy mới là thứ có giá trị: mỗi cửa sổ post được tối đa MỘT lượt (lượt thứ hai cùng cửa sổ có `epoch` bằng lượt trước ⇒ đứt C-BCN-2; mang nhãn cửa sổ sau ⇒ đứt C-BCN-3). Đó là điều kiện để C-BCN-5 là một trần thật — không có nó thì post `n` lượt trong một cửa sổ đổi được `1,1ⁿ` lần.
+
+**Phần C-BCN-4/5 KHÔNG bịt**: committee vẫn dời được D trong toàn dải `[min, max]`, chỉ là mất nhiều cửa sổ. Một tài khoản đang vesting dở do đó không gặp vách, nhưng cũng không được bảo đảm một tốc độ vesting cố định. Con số `min`/`max`/`±10%` thừa kế từ thiết kế P-beacon cũ và **chưa qua một vòng chốt nào cho D** — xem `onchain/lib/magiclamp/lampdist/constants.ak`.
 
 ---
 

@@ -336,11 +336,12 @@ export async function deriveWiring(
   ]));
   const treasury = { type: "PlutusV3" as const,
     script: (await applyDist("treasury.treasury.spend", [
-      claimHash, lampPid, o.tokenName, committee, threshold, accountPid,
+      claimHash, lampPid, o.tokenName, committee, threshold, accountPid, MS_PER_EPOCH,
     ])).script };
   const treHash = hashOf(treasury);
   const beacon = { type: "PlutusV3" as const,
-    script: (await applyDist("beacon.beacon.spend", [committee, threshold, beaconPid])).script };
+    script: (await applyDist("beacon.beacon.spend",
+      [committee, threshold, beaconPid, MS_PER_EPOCH])).script };
   const beaconHash = hashOf(beacon);
 
   return {

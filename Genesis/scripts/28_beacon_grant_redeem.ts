@@ -44,7 +44,30 @@
 // committee lùi được `start_epoch` bao xa tuỳ ý ⇒ **lịch vesting KHÔNG ràng buộc được chính
 // committee**. Với màn diễn tập Preprod, ví chủ tài khoản CŨNG là ví committee nên không ai
 // bị thiệt. Với mainnet thì đây là một lỗ phải bịt trước khi vesting được rao như một lời
-// hứa với người dùng. Đã ghi vào `_Agents/topics/claim-redeem-ban-do-khoang-trong.md`.
+// hứa với người dùng.
+//
+// ╔══════════════════════════════════════════════════════════════════════════════════════╗
+// ║ ĐỌC TRƯỚC KHI DÙNG TỆP NÀY SAU 2026-09-16 — ba đoạn mô tả ở TRÊN nói về CỤM ĐANG     ║
+// ║ CHẠY, và cụm đó nay là cụm TRƯỚC BẢN VÁ.                                             ║
+// ║                                                                                      ║
+// ║ Ba lỗ mà đoạn trên mô tả ĐÃ ĐƯỢC VÁ trong mã (Issue #72) nhưng CHƯA ĐƯỢC TRIỂN KHAI: ║
+// ║   · `treasury.ak` C-ACC-2 — ghim `start_epoch` vào cửa sổ hiện tại lúc CREATE;        ║
+// ║   · `beacon.ak`   C-BCN-3 — nhãn `epoch` phải BẰNG cửa sổ tx chạy trong đó;           ║
+// ║   · `beacon.ak`   C-BCN-4/5 — D nằm trong biên cứng, mỗi lượt đổi ≤ ±10%.             ║
+// ║                                                                                      ║
+// ║ Bản vá đổi hash của `treasury` và `beacon` ⇒ nó CHỈ có hiệu lực từ cụm đúc lại. Tệp   ║
+// ║ này vẫn nhắm cụm CŨ và cố ý KHÔNG đổi, vì đổi bây giờ là làm hỏng vòng đầu-cuối đang  ║
+// ║ chạy trên cụm cũ.                                                                    ║
+// ║                                                                                      ║
+// ║ SAU lượt đúc lại, hai thứ trong tệp này TRỞ THÀNH SAI và phải sửa cùng lượt:          ║
+// ║   (1) `BACKDATE_EPOCHS` — C-ACC-2 từ chối mọi giá trị ≠ 0. Bỏ hẳn tham số này.        ║
+// ║   (2) nhãn beacon tính bằng `beaconEpochOnChain + 1` — C-BCN-3 đòi nhãn = cửa sổ      ║
+// ║       hiện tại. Dùng `epochWindow(msPerEpoch)` (`Distribution/offchain/src/           ║
+// ║       constants.ts`) và đặt CẢ HAI đầu validity range, không chỉ `validFrom`.         ║
+// ║                                                                                      ║
+// ║ Cả hai chỗ sẽ ĐỎ ở chuỗi chứ không im lặng — nhưng lỗi chuỗi chỉ nói "validator       ║
+// ║ crashed", nên dòng này tồn tại để người gặp nó biết đi đâu.                           ║
+// ╚══════════════════════════════════════════════════════════════════════════════════════╝
 //
 // Ở đây `start_epoch` được đặt = `epoch hiện tại − BACKDATE_EPOCHS`, và giao dịch CREATE
 // mang `validFrom` nằm TRONG chính epoch đó — nên `get_epoch` của chính giao dịch ấy khớp
