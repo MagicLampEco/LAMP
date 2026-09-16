@@ -11,7 +11,18 @@
 //             ra 0. Đây là bước đầu tiên, và nó KHÔNG phụ thuộc gì khác.
 //   grant   — `GrantEntitlement` + `MintAccount`: mở tài khoản cho ví vận hành, ghi nợ E vào
 //             sổ kho. Đúc NFT tài khoản (C-ACC-1) là BẮT BUỘC ở đường CREATE.
+//   topup   — `Claim` đường UPDATE: E += amount trên tài khoản ĐÃ có. Đường CREATE chỉ chạy
+//             được MỘT lần cho mỗi ví (tên NFT = blake2b_256(owner)), nên mọi lần cấp thêm
+//             sau đó đi lối này.
 //   redeem  — `Redeem`: tính `vested` rồi kéo LAMP về địa chỉ ví thường.
+//   send    — chuyển thường LAMP từ ví vận hành sang một ví KHÁC. Không đụng validator nào;
+//             có ở đây vì nó là bước cuối của cùng một đường (kho → ví → nhà tiêu thụ).
+//
+// TRẦN CỦA `topup` — đọc trước khi đặt số. `Claim` ép `drops_per_epoch` BẤT BIẾN
+// (`claim_account.ak` nhánh `Claim`), nên tăng E không tăng tốc độ mở khoá. Trong một cửa sổ
+// epoch, phần rút ra được bị chặn cứng ở `D · drops_per_epoch · elapsed`. Muốn rút nhiều hơn
+// trần đó trong CÙNG một cửa sổ thì phải nâng D bằng một lượt `beacon` mới — D là tham số
+// quản trị đọc tại thời điểm redeem từ beacon reference input, đúng chỗ nó sinh ra để đổi.
 //
 // ĐỒNG HỒ EPOCH — chỗ dễ đọc nhầm nhất, đọc kỹ trước khi đổi số.
 // `util.get_epoch(tx, ms_per_epoch) = validity_range.lower_bound / ms_per_epoch`
@@ -51,7 +62,7 @@ import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   Data, applyParamsToScript, validatorToScriptHash, credentialToAddress,
-  scriptHashToCredential, toUnit,
+  scriptHashToCredential, toUnit, getAddressDetails,
   type UTxO, type Validator, type MintingPolicy, type LucidEvolution,
 } from "@lucid-evolution/lucid";
 
@@ -62,7 +73,7 @@ import {
 import { buildPostBeaconTx } from "../../Distribution/offchain/src/beaconBuilder.js";
 import { buildClaimTx } from "../../Distribution/offchain/src/claimBuilder.js";
 import { buildRedeemTx } from "../../Distribution/offchain/src/redeemBuilder.js";
-import { decodeTreasuryDatum } from "../../Distribution/offchain/src/datum.js";
+import { decodeTreasuryDatum, decodeClaimAccountDatum } from "../../Distribution/offchain/src/datum.js";
 import { D_GENESIS, OILDROP_PER_LAMP } from "../../Distribution/offchain/src/constants.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -76,6 +87,14 @@ const ENTITLEMENT = BigInt(process.env.ENTITLEMENT_OILDROP ?? "2002000000");
 const DROPS_PER_EPOCH = BigInt(process.env.DROPS_PER_EPOCH ?? "21");
 /** Số cửa sổ lùi `start_epoch`. 1 ⇒ redeem được ngay; 0 ⇒ chờ hết một cửa sổ 5 ngày. */
 const BACKDATE_EPOCHS = BigInt(process.env.BACKDATE_EPOCHS ?? "1");
+/** `STEP=topup` — oildrop cấp THÊM vào tài khoản đã có (đường UPDATE của `Claim`). */
+const TOPUP = BigInt(process.env.TOPUP_OILDROP ?? "0");
+/** `STEP=send` — địa chỉ nhận của lượt chuyển thường. Phải là ví payment-key. */
+const SEND_TO = (process.env.SEND_TO ?? "").trim();
+/** `STEP=send` — oildrop chuyển đi. */
+const SEND_AMOUNT = BigInt(process.env.SEND_OILDROP ?? "0");
+/** Lovelace kèm theo output của `STEP=send`. Đủ trên min-ADA cho một output một tài sản. */
+const SEND_LOVELACE = BigInt(process.env.SEND_LOVELACE ?? "2000000");
 
 const STEP = (process.env.STEP ?? "").toLowerCase();
 
@@ -204,17 +223,34 @@ async function main(): Promise<void> {
       `\nDỪNG: chưa nêu STEP. Thứ tự bắt buộc — beacon → grant → redeem.\n` +
       `  STEP=beacon  đặt D = ${lamp(DROP_VALUE)}\n` +
       `  STEP=grant   cấp E = ${lamp(ENTITLEMENT)}, drops/epoch ${DROPS_PER_EPOCH}, lùi ${BACKDATE_EPOCHS} cửa sổ\n` +
-      `  STEP=redeem  kéo phần đã vested về ví thường`,
+      `  STEP=topup   cấp THÊM E cho tài khoản đã có — đặt TOPUP_OILDROP\n` +
+      `  STEP=redeem  kéo phần đã vested về ví thường\n` +
+      `  STEP=send    chuyển thường sang ví khác — đặt SEND_TO + SEND_OILDROP`,
     );
     return;
   }
 
   // ── STEP beacon ────────────────────────────────────────────────────────────
   if (STEP === "beacon") {
+    // `beacon.ak:45` ép `out_datum.epoch > datum.epoch` — ĐƠN ĐIỆU TĂNG, không phải "bằng
+    // epoch hiện tại". Lượt post thứ hai trong cùng một cửa sổ vì thế phải mang nhãn epoch
+    // của cửa sổ KẾ, và lượt đầu tiên gặp chỗ này chỉ thấy "validator crashed".
+    //
+    // ⚠ Nhãn `epoch` của beacon KHÔNG ràng buộc gì ở lúc rút: `claim_account.ak`
+    // `find_drop_value` (`:173-187`) đọc đúng `bd.drop_value`, bỏ qua `bd.epoch` — nên một D
+    // dán nhãn cửa sổ 4143 có hiệu lực NGAY trong cửa sổ 4142. Nhãn đó là kế toán, không
+    // phải cổng; ai đọc nó như một cam kết "D này chỉ áp từ cửa sổ sau" là đọc sai.
+    const beaconEpochOnChain = beaconD ? (beaconD[0] as bigint) : 0n;
+    const nextLabel = beaconEpochOnChain + 1n;
+    const beaconEpoch = BigInt(process.env.BEACON_EPOCH ?? (e > nextLabel ? e : nextLabel).toString());
+    if (beaconEpoch <= beaconEpochOnChain) {
+      throw new Error(`BCN-002: nhãn epoch ${beaconEpoch} không lớn hơn nhãn đang trên chuỗi ${beaconEpochOnChain} (beacon.ak:45).`);
+    }
+    console.log(`\nNhãn epoch beacon: ${beaconEpochOnChain} → ${beaconEpoch}   D: ${lamp((beaconD?.[2] as bigint) ?? 0n)} → ${lamp(DROP_VALUE)}`);
     const r = await buildPostBeaconTx({
       lucid, beaconUtxo, beaconScript: scripts.beacon, network: NETWORK,
       beaconNftPolicy: wiring.markers.beaconPid,
-      newBeacon: { epoch: e, kind: "DropParam", drop_value: DROP_VALUE },
+      newBeacon: { epoch: beaconEpoch, kind: "DropParam", drop_value: DROP_VALUE },
       committeeKeyHashes: canonicalCommittee(pkh),
       threshold: Number(CANONICAL_COMMITTEE_THRESHOLD),
     });
@@ -262,6 +298,103 @@ async function main(): Promise<void> {
     return;
   }
 
+  // ── STEP topup ─────────────────────────────────────────────────────────────
+  // Đường UPDATE của `Claim`: E += amount. `drops_per_epoch` và `start_epoch` BẤT BIẾN
+  // (`claim_account.ak` nhánh `Claim` ép cả hai), nên bước này KHÔNG nới trần rút trong
+  // cửa sổ hiện tại — trần đó là `D · drops_per_epoch · elapsed` và chỉ `beacon` nới được.
+  if (STEP === "topup") {
+    if (myAccounts.length !== 1) {
+      throw new Error(`TOPUP-000: cần ĐÚNG 1 tài khoản ở ${claimAddr}, đếm ${myAccounts.length}. Chạy STEP=grant trước.`);
+    }
+    if (TOPUP <= 0n) throw new Error(`TOPUP-001: đặt TOPUP_OILDROP > 0 (đang ${TOPUP}).`);
+    if (!beaconD || (beaconD[2] as bigint) <= 0n) {
+      throw new Error(`TOPUP-005: beacon drop_value đang = 0 ⇒ redeem sau đó rút ra 0. Chạy STEP=beacon trước.`);
+    }
+    const accUtxo = myAccounts[0]!;
+    if (!accUtxo.datum) throw new Error(`TOPUP-002: tài khoản ${refKey(accUtxo)} không có inline datum.`);
+    const accDatum = decodeClaimAccountDatum(Data.from(accUtxo.datum));
+
+    // `otherOutstanding` phải LOẠI tài khoản đang claim — builder tự tính lại phần của nó
+    // từ `amount` + datum cũ. Truyền thẳng sổ nợ kho vào đây là đếm tài khoản này HAI LẦN.
+    const thisOutstanding = accDatum.entitlement - accDatum.redeemed;
+    const otherOutstanding = tDatum.outstanding_entitlement - thisOutstanding;
+    if (otherOutstanding < 0n) {
+      throw new Error(
+        `TOPUP-003: sổ nợ kho ${tDatum.outstanding_entitlement} nhỏ hơn phần chưa rút của chính ` +
+        `tài khoản này (${thisOutstanding}). Hai con số này không thể lệch chiều đó — dừng.`,
+      );
+    }
+
+    const eAfter = accDatum.entitlement + TOPUP;
+    const capThisWindow = (beaconD![2] as bigint) * accDatum.drops_per_epoch
+      * (e > accDatum.start_epoch ? e - accDatum.start_epoch : 0n);
+    const vestedAfter = eAfter < capThisWindow ? eAfter : capThisWindow;
+    console.log(
+      `\nTài khoản ${refKey(accUtxo)}\n` +
+      `  E hiện tại   : ${lamp(accDatum.entitlement)}\n` +
+      `  đã rút       : ${lamp(accDatum.redeemed)}\n` +
+      `  start_epoch  : ${accDatum.start_epoch}   drops/epoch: ${accDatum.drops_per_epoch}\n` +
+      `  E sau topup  : ${lamp(eAfter)}\n` +
+      `  trần cửa sổ  : D·dpe·elapsed = ${lamp(capThisWindow)}\n` +
+      `  rút được sau bước này: ${lamp(vestedAfter - accDatum.redeemed)}`,
+    );
+
+    const r = await buildClaimTx({
+      lucid, claimScript: cs.claim, network: NETWORK,
+      ownerPkh: pkh, amount: TOPUP,
+      currentEpoch: e,
+      claimAccountUtxo: accUtxo,          // ⇒ đường UPDATE, builder KHÔNG đúc NFT
+      treasury: {
+        utxo: treasuryUtxo, script: scripts.treasury,
+        nftPolicy: wiring.markers.khoPid, nftAssetName: "54525359",
+      },
+      committeeKeyHashes: canonicalCommittee(pkh),
+      threshold: Number(CANONICAL_COMMITTEE_THRESHOLD),
+      solvency: { treasuryLamp: pool, otherOutstanding },
+      validFromMs: msInEpoch(e),
+    });
+    if (r.mode !== "update") throw new Error(`TOPUP-004: builder trả mode='${r.mode}', chờ 'update'.`);
+    console.log(`\n${r.summary}`);
+    await finish(lucid, r.tx, "Claim (UPDATE, topup)");
+    return;
+  }
+
+  // ── STEP send ──────────────────────────────────────────────────────────────
+  // Chuyển thường, không validator nào chạy. Chốt duy nhất đáng có ở đây là chốt ĐÍCH:
+  // Cardano KHÔNG chạy validator lúc TẠO output, nên rót vào một địa chỉ script mà không
+  // biết bên trong nó đòi hình dạng UTxO nào là cách khoá tài sản vĩnh viễn mà không gì
+  // đỏ lên. Nên bước này CHỈ nhận ví payment-key; rót vào kho có script thì phải đi qua
+  // một runner riêng biết hình dạng mà kho đó đòi.
+  if (STEP === "send") {
+    if (!SEND_TO) throw new Error(`SEND-000: đặt SEND_TO = địa chỉ nhận.`);
+    if (SEND_AMOUNT <= 0n) throw new Error(`SEND-001: đặt SEND_OILDROP > 0 (đang ${SEND_AMOUNT}).`);
+    const det = getAddressDetails(SEND_TO);
+    if (det.networkId !== (NETWORK === "Mainnet" ? 1 : 0)) {
+      throw new Error(`SEND-002: ${SEND_TO} thuộc networkId ${det.networkId}, không phải ${NETWORK}.`);
+    }
+    if (det.paymentCredential?.type !== "Key") {
+      throw new Error(
+        `SEND-003: ${SEND_TO} có payment credential kiểu '${det.paymentCredential?.type}', ` +
+        `không phải 'Key'. Bước này chỉ rót vào ví thường. Rót vào kho có script cần biết ` +
+        `script hash + hình dạng UTxO kho đó nhận — dùng runner riêng, đừng rót mù.`,
+      );
+    }
+    const have = (await lucid.wallet().getUtxos())
+      .reduce((s, u) => s + (u.assets[wiring.lampUnit] ?? 0n), 0n);
+    if (have < SEND_AMOUNT) {
+      throw new Error(`SEND-004: ví đang có ${lamp(have)}, cần ${lamp(SEND_AMOUNT)}. Chạy topup + redeem trước.`);
+    }
+    console.log(
+      `\nChuyển thường\n  từ  : ví vận hành (${lamp(have)} đang có)\n` +
+      `  tới : ${SEND_TO}\n  số  : ${lamp(SEND_AMOUNT)}\n  kèm : ${SEND_LOVELACE} lovelace`,
+    );
+    const tx = await lucid.newTx()
+      .pay.ToAddress(SEND_TO, { lovelace: SEND_LOVELACE, [wiring.lampUnit]: SEND_AMOUNT })
+      .complete();
+    await finish(lucid, tx, "Chuyển thường");
+    return;
+  }
+
   // ── STEP redeem ────────────────────────────────────────────────────────────
   if (STEP === "redeem") {
     if (myAccounts.length !== 1) {
@@ -282,7 +415,7 @@ async function main(): Promise<void> {
     return;
   }
 
-  throw new Error(`STEP='${STEP}' không hợp lệ. Chọn: beacon | grant | redeem.`);
+  throw new Error(`STEP='${STEP}' không hợp lệ. Chọn: beacon | grant | topup | redeem | send.`);
 }
 
 /**
