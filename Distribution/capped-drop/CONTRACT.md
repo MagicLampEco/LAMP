@@ -94,6 +94,16 @@ Mọi **Claim** (committee cấp/tăng `entitlement`) BẮT BUỘC co-spend trea
    nhà** trong tx. Trước bản vá hai hàm tra cứu lọc THUẦN theo NFT — TRSY nằm ở ví thì sổ cái do
    người dựng tx tự viết và `treasury.ak` không bao giờ chạy.
 
+## 4c. Refill (gộp kho, `treasury.spend` redeemer `Refill`) — danh mục trạng thái
+
+Refill gộp N UTxO ở địa chỉ kho về một singleton, cộng sổ cái các input mang datum qua
+`fold_ledger` (`treasury.ak:298-320`). `fold_ledger` ép mọi input có datum khai CÙNG
+`committee_hash`, nhưng KHÔNG ép từng số hạng `outstanding_entitlement` không-âm trước khi cộng.
+
+| mã định danh | treo cái gì | ràng buộc TẠM đang có hiệu lực (fail-closed) | khai ở file nào |
+|---|---|---|---|
+| RFL-KILL-ONCHAIN-01 | `fold_ledger` tự nó chưa ép từng số hạng ≥ 0 — một UTxO tự đặt tại địa chỉ kho (Cardano không chạy validator lúc TẠO), khai đúng `committee_hash` công khai kèm `outstanding_entitlement` ÂM, kéo sổ nợ TỔNG sau Refill xuống thấp hơn thật. Vá on-chain đổi script hash (= địa chỉ kho đang chạy) | Chốt off-chain `RFL-013` (`Distribution/offchain/src/refillBuilder.ts`) chặn mọi input như vậy TRƯỚC khi cộng vào sổ cái — đủ cho mọi Refill đi qua builder này. KHÔNG chặn một giao dịch dựng tay thẳng vào validator bằng con đường khác | `Distribution/onchain/validators/treasury.ak:298-320` (mã), builder + test ở `Distribution/offchain/src/refillBuilder.ts` + `Distribution/tests/refillBuilder.test.ts` |
+
 ## 5. Hooks DAO (post-MVP — CHỪA CHỖ, KHÔNG build MVP)
 
 - **Multi-drop per-DID:** DAO tăng `drops_per_epoch` cho DID uy tín/nhu cầu cao (Org hoạt động liên

@@ -19,24 +19,47 @@
 //   NETWORK=Preprod tsx 27_refill_treasury.ts                       # liệt kê rồi dừng
 //   NETWORK=Preprod REFILL_INPUTS="<tx>#<ix>,<tx>#<ix>" tsx 27_refill_treasury.ts
 //   NETWORK=Preprod REFILL_INPUTS="…" SUBMIT=true tsx 27_refill_treasury.ts   # gửi thật
-import { type UTxO } from "@lucid-evolution/lucid";
+import { type UTxO, Data } from "@lucid-evolution/lucid";
 import { NETWORK, SUBMIT, makeLucid, walletPkh, explorerTx } from "./config.js";
 import {
   rehydrate, canonicalCommittee, CANONICAL_COMMITTEE_THRESHOLD,
 } from "./_canonical_v2.js";
 import { assertRefillOutputMatches } from "./_refillReadback.js";
 import { buildRefillTx } from "../../Distribution/offchain/src/refillBuilder.js";
+import { decodeTreasuryDatum } from "../../Distribution/offchain/src/datum.js";
 
 /** LAMP nạp THÊM từ ví, đơn vị oildrop. Mặc định 0 — thuần gộp. */
 const DEPOSIT_OILDROP = BigInt(process.env.REFILL_DEPOSIT_OILDROP ?? "0");
 
 const refKey = (u: UTxO) => `${u.txHash}#${u.outputIndex}`;
 
+/**
+ * Giải mã `outstanding_entitlement` của một UTxO kho, nếu có datum. `undefined` khi UTxO
+ * không mang datum (A-DEST hạ cánh — hợp lệ, không phải lỗi), `null` khi mang datum nhưng
+ * KHÔNG giải mã được thành TreasuryDatum (RFL-012 xử ở builder, tại đây chỉ cần biết "lạ").
+ */
+function ledgerOf(u: UTxO): bigint | null | undefined {
+  if (!u.datum) return undefined;
+  try {
+    return decodeTreasuryDatum(Data.from(u.datum)).outstanding_entitlement;
+  } catch {
+    return null;
+  }
+}
+
 function describe(u: UTxO, lampUnit: string, khoUnit: string): string {
   const lovelace = u.assets["lovelace"] ?? 0n;
   const lamp = u.assets[lampUnit] ?? 0n;
   const trsy = u.assets[khoUnit] ?? 0n;
-  const shape = u.datum ? "inline datum" : u.datumHash ? "DATUM-HASH (không gộp được)" : "không datum";
+  let shape: string;
+  if (u.datumHash && !u.datum) {
+    shape = "DATUM-HASH (không gộp được)";
+  } else {
+    const led = ledgerOf(u);
+    shape = led === undefined ? "không datum"
+      : led === null ? "inline datum LẠ (không giải mã được TreasuryDatum)"
+      : `inline datum, outstanding_entitlement=${led}`;
+  }
   return `${refKey(u)}  ${lovelace} lovelace · ${lamp} oildrop · TRSY×${trsy} · ${shape}`;
 }
 
@@ -60,11 +83,24 @@ async function main(): Promise<void> {
     // đã loại: ai cũng đỗ được một UTxO ở địa chỉ script công khai này (Cardano không chạy
     // validator lúc TẠO). Người vận hành đang cứu kho là người có lý do NHẤT để dán nguyên cái
     // script đưa cho họ — không phải chỗ để đặt cược vào sự cẩn thận của con người.
-    const goiY = all.filter((u) => !u.datumHash || u.datum);
+    // RFL-013 (`refillBuilder.ts`): `outstanding_entitlement` ÂM cũng phải loại khỏi gợi ý — nó
+    // GỘP ĐƯỢC bằng chuỗi (`fold_ledger` không ép số hạng không-âm) nhưng builder này từ chối,
+    // vì cộng nó vào sổ cái kéo tổng nợ xuống thấp hơn thật. Loại theo hình dạng, không theo địa
+    // chỉ ai đặt — script này không biết ai đặt một UTxO ở địa chỉ kho công khai.
+    const boAm = all.filter((u) => {
+      const led = ledgerOf(u);
+      return led !== undefined && led !== null && led < 0n;
+    });
+    const boAmKeys = new Set(boAm.map(refKey));
+    const goiY = all.filter((u) => (!u.datumHash || u.datum) && !boAmKeys.has(refKey(u)));
     const bo = all.filter((u) => u.datumHash && !u.datum);
     if (bo.length) {
       console.log(`\n⚠️  ${bo.length} UTxO mang DATUM-HASH — không tx nào gộp được (fold_ledger fail), đã loại khỏi gợi ý:`);
       for (const u of bo) console.log(`  · ${refKey(u)}`);
+    }
+    if (boAm.length) {
+      console.log(`\n⚠️  ${boAm.length} UTxO khai outstanding_entitlement ÂM — RFL-013 từ chối, đã loại khỏi gợi ý:`);
+      for (const u of boAm) console.log(`  · ${describe(u, wiring.lampUnit, wiring.khoUnit)}`);
     }
     console.log(
       `\nDỪNG: chưa nêu input. Script này KHÔNG tự chọn — xem lý do ở đầu tệp.\n` +

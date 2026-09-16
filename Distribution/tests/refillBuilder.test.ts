@@ -245,6 +245,27 @@ describe("buildRefillTx — cổng chặn trước khi mất collateral", () => 
       .rejects.toThrow(/RFL-012/);
   });
 
+  // Người lạ đọc `committee_hash` (giá trị công khai trên chuỗi) rồi chép đúng nó vào datum của
+  // một UTxO tự đặt tại địa chỉ kho, khai `outstanding_entitlement` ÂM. `fold_ledger` không ép
+  // từng số hạng >= 0, chỉ ép `committee_hash` khớp — decoy khai ĐÚNG committee_hash thật nên
+  // không rơi vào RFL-004. Σ sổ cái sau khi cộng decoy vẫn DƯƠNG (1) và vẫn nhỏ hơn pool ra (10):
+  // một phép kiểm chỉ nhìn TỔNG (kiểu `if (ledgerIn < 0)` hay RFL-009 `ledgerIn > lampAfter`)
+  // sẽ KHÔNG bắt được ca này — chỉ phép kiểm nhìn TỪNG SỐ HẠNG mới bắt được, đúng luận điểm
+  // RFL-013 dựng ra để đóng.
+  it("RFL-013: một số hạng ÂM lọt qua vì Σ sổ cái sau cộng vẫn dương và vẫn dưới pool", async () => {
+    const { lucid } = mockLucid("addr_op");
+    const c = utxo({ ix: 2, trsy: 1n, lamp: 10n, datum: treDatum(1_000_000n) });
+    const decoy = utxo({ ix: 9, datum: treDatum(-999_999n) }); // cùng CH mặc định, Σ = 1 ≤ 10
+    await expect(buildRefillTx(baseParams(lucid, [c, decoy])))
+      .rejects.toThrow(/RFL-013/);
+  });
+
+  it("RFL-013 không chặn biên = 0 — chỉ chặn ÂM, không chặn KHÔNG", async () => {
+    const { lucid } = mockLucid("addr_op");
+    const zero = utxo({ ix: 9, lamp: 5n, datum: treDatum(0n) });
+    await expect(buildRefillTx(baseParams(lucid, [carrier(), zero]))).resolves.toBeDefined();
+  });
+
   it("RFL-006: input mang datum-hash — fold_ledger fail, không tx nào gộp được", async () => {
     const { lucid } = mockLucid("addr_op");
     const dh = utxo({ ix: 1, lamp: 5n, datum: null, datumHash: "ff".repeat(32) });

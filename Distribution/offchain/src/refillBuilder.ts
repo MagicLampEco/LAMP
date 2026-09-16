@@ -28,6 +28,15 @@
 //   :246  out_datum.outstanding_entitlement ≤ lamp_out
 // Cộng thêm `fold_ledger` (`:298-320`): input datum-hash → fail; mọi input có datum phải khai
 // CÙNG một `committee_hash`.
+//
+// RFL-005 và RFL-013 CHẶT HƠN `treasury.ak`: chuỗi CHẤP NHẬN giao dịch mà hai chốt này từ chối.
+// RFL-005 vì `claim_account.ak` đòi thêm điều `treasury.ak` không đòi (kho phải mang TRSY).
+// RFL-013 vì `fold_ledger` không ép từng số hạng `outstanding_entitlement` không-âm trước khi
+// cộng (chỉ ép `:95` ở nhánh ReleaseForRedeem, KHÔNG mang sang Refill) — RFL-013 chỉ đóng đường
+// vào QUA ĐÚNG BUILDER NÀY, không đổi được `fold_ledger` trên chuỗi (đổi validator = đổi script
+// hash = đổi địa chỉ kho đang chạy). Ràng buộc tạm khai đủ ba nơi: mã này,
+// `Distribution/capped-drop/Exec-Spec.md` (danh mục trạng thái), và một Issue đứng tên cho lần
+// vá on-chain kế tiếp.
 
 import {
   Data, toUnit,
@@ -190,6 +199,26 @@ export async function buildRefillTx(params: RefillParams): Promise<RefillResult>
         `RFL-004: hai input khai committee_hash khác nhau ('${committeeHash}' vs '${ch}'). ` +
         `\`fold_ledger\` (treasury.ak:312) ép mọi input có datum phải khai CÙNG một giá trị. ` +
         `Nhiều khả năng đang trộn UTxO của hai lần triển khai khác nhau.`,
+      );
+    }
+    // ── RFL-013: chặn số hạng ÂM trước khi cộng vào sổ cái ───────────────
+    // `fold_ledger` (treasury.ak:298-320) cộng thẳng `outstanding_entitlement` của MỌI input có
+    // datum, chỉ ép `committee_hash` khớp — mà `committee_hash` là giá trị CÔNG KHAI trên chuỗi,
+    // ai cũng đọc và chép được vào datum của một UTxO tự đặt tại địa chỉ kho (không cần khoá ký
+    // của committee, vì `committee_approved` chỉ canh CHỮ KÝ của cả giao dịch, không canh AI đã
+    // tạo ra input đó). Một input như vậy mang `outstanding_entitlement` ÂM sẽ kéo sổ nợ TỔNG
+    // xuống thấp hơn thật, và sổ nợ thấp hơn thật là điều kiện đầu vào cho `GrantEntitlement`
+    // (treasury.ak:170, `<= pool_in`) chấp nhận cấp thêm nợ vượt quá cái pool thật sự gánh nổi —
+    // khác đường với vụ "nợ khống DƯƠNG qua UTxO giả" mà `treasury.ak:246` đã đóng, vì kiểm tra
+    // đó xét TỔNG sau khi cộng, không xét từng số hạng trước khi cộng.
+    if (td.outstanding_entitlement < 0n) {
+      throw new Error(
+        `RFL-013: UTxO ${u.txHash}#${u.outputIndex} khai outstanding_entitlement = ` +
+        `${td.outstanding_entitlement} < 0. \`fold_ledger\` không ép từng số hạng không-âm, chỉ ` +
+        `ép committee_hash khớp — giá trị đó công khai nên ai cũng chép được vào một UTxO giả đặt ` +
+        `tại địa chỉ kho. Cộng số âm này vào sổ cái làm sổ nợ TỔNG thấp hơn thật, mở đường Grant ` +
+        `sau vượt quỹ. Bỏ UTxO này khỏi tập gộp — không có input của kho THẬT mang số âm; giá trị ` +
+        `trong nó (nếu có) nằm lại vĩnh viễn ở địa chỉ kho cho tới khi \`fold_ledger\` được vá.`,
       );
     }
     ledgerIn += td.outstanding_entitlement;
