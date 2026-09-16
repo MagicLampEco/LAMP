@@ -30,8 +30,10 @@ một token khác. Câu hỏi chưa bao giờ là *có* đổi hay không, chỉ
 
 ## Chuẩn bị
 
-- `$AGENT_SECRETS` trỏ tới tệp biến môi trường có khoá Blockfrost Preprod và seed ví
-  (tên biến tra trong `scripts/config.ts`, mục `BF_KEY_BY_NETWORK` / `SEED_VAR_BY_NETWORK`).
+- Khoá Blockfrost Preprod và seed ví đặt NGAY TRƯỚC lệnh, dạng `BLOCKFROST_KEY=… WALLET_SEED="…" tsx <tệp>.ts`
+  (`scripts/config.ts` đọc đúng hai tên đó qua `process.env`, và ném `SECRETS-001`/`SECRETS-002`
+  khi thiếu). Đặt trước lệnh để giá trị sống trong đúng một tiến trình và không đi qua tệp nào —
+  runbook này cố ý KHÔNG nói kho khoá nằm ở đâu.
 - Ví Preprod ≥ **15 tADA** (5 output NFT + phí).
 - Blueprint đã dựng: `aiken build` trong `Genesis/onchain/` **và** `Distribution/onchain/`.
   Wiring đọc cả hai; thiếu một cái thì cổng APPLY-002 dừng ngay chứ không đoán.
