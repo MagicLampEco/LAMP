@@ -1,8 +1,9 @@
 // Genesis scripts config — Preview deploy lazy-mint (self-contained).
 //
-// Đọc .env (BLOCKFROST_KEY, PRIVATE_KEY/WALLET_SEED, NETWORK=Preview). KHÔNG hard-code
-// secret. SUBMIT=false (mặc định) → build tx + in CBOR, KHÔNG gửi lên chain (an toàn,
-// kiểm tra logic trước khi tốn tADA). SUBMIT=true để gửi thật.
+// Nhận BLOCKFROST_KEY, PRIVATE_KEY/WALLET_SEED, NETWORK qua BIẾN MÔI TRƯỜNG (xem khối
+// BÍ MẬT bên dưới — tệp này KHÔNG mở tệp nào để lấy chúng). KHÔNG hard-code secret.
+// SUBMIT=false (mặc định) → build tx + in CBOR, KHÔNG gửi lên chain (an toàn, kiểm tra
+// logic trước khi tốn tADA). SUBMIT=true để gửi thật.
 
 import {
   Lucid, Blockfrost, getAddressDetails,
