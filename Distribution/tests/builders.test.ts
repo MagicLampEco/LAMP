@@ -227,6 +227,19 @@ describe("buildClaimTx — CREATE path", () => {
     });
     expect(res.newDatum.drops_per_epoch).toBe(7n);
   });
+
+  // Chốt chỉ so DẤU cho `NaN` đi lọt: mọi phép so sánh với NaN trả false, nên `NaN <= 0n`
+  // là false và `NaN` vào thẳng datum. Đây là bề mặt thật của một SDK mở — caller từ
+  // JavaScript không kiểu không bị trình biên dịch chặn.
+  it("CLAIM-004: từ chối dropsPerEpoch không phải bigint (NaN đi lọt chốt chỉ so dấu)", async () => {
+    const { lucid } = mockLucid("addr_wallet");
+    await expect(buildClaimTx({
+      lucid, claimScript: FAKE_CLAIM, network: NETWORK,
+      ownerPkh: OWNER, amount: lampOildrop(250n), currentEpoch: 5n,
+      committeeKeyHashes: COMMITTEE, treasury: trsyParam(0n), accountNft: accNft,
+      dropsPerEpoch: NaN as unknown as bigint,
+    })).rejects.toThrow(/CLAIM-004/);
+  });
 });
 
 describe("buildClaimTx — UPDATE path", () => {
@@ -267,6 +280,33 @@ describe("buildClaimTx — UPDATE path", () => {
       lucid, claimScript: FAKE_CLAIM, network: NETWORK,
       ownerPkh: OWNER, amount: 0n, currentEpoch: 1n, committeeKeyHashes: COMMITTEE, treasury: trsyParam(0n),
     })).rejects.toThrow(/amount must be > 0/);
+  });
+
+  // CLAIM-005 — cùng bẫy một chiều của CLAIM-004, khác lối vào: ở UPDATE thì `drops_per_epoch`
+  // đọc từ datum cũ chứ không do caller đặt, nên chốt CREATE không với tới được.
+  it("CLAIM-005: từ chối cấp thêm entitlement cho account đang mang drops_per_epoch = 0", async () => {
+    const { lucid } = mockLucid("addr_wallet");
+    const prev = { owner: OWNER, entitlement: lampOildrop(100n), redeemed: 0n, start_epoch: 3n, drops_per_epoch: 0n };
+    await expect(buildClaimTx({
+      lucid, claimScript: FAKE_CLAIM, network: NETWORK,
+      ownerPkh: OWNER, amount: lampOildrop(60n), currentEpoch: 9n,
+      claimAccountUtxo: claimUtxo(prev),
+      committeeKeyHashes: COMMITTEE, treasury: trsyParam(0n),
+    })).rejects.toThrow(/CLAIM-005/);
+  });
+
+  // Ca này đo THỨ TỰ, không đo sự tồn tại của chốt: owner sai VÀ dpe = 0 cùng lúc thì phải
+  // nghe CLAIM-005 trước. Phép kiểm tính toàn vẹn đặt sau một bộ lọc nghiệp vụ thì im lặng
+  // đúng bằng lúc chưa có nó — và tệ hơn, vì đọc mã thấy có nên người đọc dừng tìm.
+  it("CLAIM-005 đứng TRƯỚC bộ lọc owner — dpe = 0 + owner sai vẫn nghe CLAIM-005", async () => {
+    const { lucid } = mockLucid("addr_wallet");
+    const prev = { owner: "00".repeat(28), entitlement: 1n, redeemed: 0n, start_epoch: 0n, drops_per_epoch: 0n };
+    await expect(buildClaimTx({
+      lucid, claimScript: FAKE_CLAIM, network: NETWORK,
+      ownerPkh: OWNER, amount: 1n, currentEpoch: 1n,
+      claimAccountUtxo: claimUtxo(prev),
+      committeeKeyHashes: COMMITTEE, treasury: trsyParam(0n),
+    })).rejects.toThrow(/CLAIM-005/);
   });
 
   it("rejects owner mismatch on update", async () => {
