@@ -143,6 +143,45 @@ validator treasury(
             let ca_in = find_claim_account_input(tx.inputs, claim_account_hash)
             // CREATE-vs-UPDATE rạch ròi: nếu có input thì redeemed bảo toàn (claim_account
             // validator đã ép); ở đây chỉ cần entitlement cũ để tính granted.
+
+            // ── C-ACC-3 (2026-09-17): DỜI MỐC THEO BÌNH QUÂN GIA QUYỀN khi top-up ────
+            // C-ACC-2 ngay dưới chỉ ghim `start_epoch` ở nhánh CREATE. Một mình nó KHÔNG
+            // ghim được lịch vesting, và chỗ hở đo được chứ không phải suy đoán: mở tài
+            // khoản E=400 ở cửa sổ 0 (hợp lệ, `start_epoch = 0`), để già 100 cửa sổ, rồi
+            // cấp thêm lên E=1400. Mốc cũ được giữ nguyên ⇒ `elapsed = 100` ⇒
+            // `raw = D · dpe · 100` vượt E ⇒ giao dịch KẾ TIẾP rút trọn 1400 — phần vừa
+            // cấp ra khỏi kho trong đúng cửa sổ nó được cấp. Một tài khoản mồi đủ già là
+            // đủ, và committee nào cũng mở được một cái từ hôm nay.
+            //
+            // Mốc phải theo LÔ CẤP PHÁT, không theo tài khoản. Bình quân gia quyền theo
+            // entitlement là cách rẻ nhất giữ đúng nghĩa đó mà không đổi hình dạng datum
+            // (giữ danh sách tranche thì datum phình theo số lần cấp, và min-ADA theo nó):
+            //
+            //     start' = ( E_cũ · start_cũ  +  granted · cửa_sổ_này ) / E_mới
+            //
+            // LÀM TRÒN LÊN, không xuống: chia sàn cho mốc SỚM hơn ⇒ vested NHIỀU hơn ⇒
+            // lệch về phía người rút. Cộng `E_mới − 1` trước khi chia là trần, tức mọi sai
+            // số làm tròn rơi về phía kho — đúng chiều fail-closed.
+            //
+            // Hai ca biên đều ra đúng nghĩa: `E_cũ = 0` (cấp vào tài khoản rỗng) cho
+            // `start' = cửa_sổ_này`; `granted` nhỏ so với `E_cũ` chỉ dời mốc một chút.
+            // `E_mới > 0` bảo đảm bởi `granted > 0` bên dưới, nhưng ép tại chỗ để phép
+            // chia không bao giờ gặp 0 — abort cũng là fail-closed, chỉ là câu vô nghĩa.
+            //
+            // `get_epoch_strict` chứ không `get_epoch`, cùng lý do đã ghi ở C-ACC-2: đầu
+            // dưới của validity range đặt lùi bao xa cũng hợp lệ với sổ cái, nên
+            // `get_epoch` một mình là vá bằng chính thứ đang thủng.
+            //
+            // Giá trị CHÍNH XÁC ghim ở đây; `claim_account.ak` nhánh `Claim` chỉ ép mốc
+            // dời VỀ PHÍA SAU. Tách được vì `Claim` bắt buộc co-spend treasury (C-SOLV-1
+            // binding) ⇒ hai mệnh đề luôn chạy trong cùng một giao dịch.
+            expect ca_out.entitlement > 0
+            let window_upd = util.get_epoch_strict(tx, ms_per_epoch)
+            let weighted_num =
+              ca_in.entitlement * ca_in.start_epoch + ( ca_out.entitlement - ca_in.entitlement ) * window_upd
+            expect
+              ca_out.start_epoch == ( weighted_num + ca_out.entitlement - 1 ) / ca_out.entitlement
+
             ca_in.entitlement
           } else {
             // CREATE: account mới, entitlement cũ = 0, redeemed PHẢI = 0 (no double-count
@@ -661,12 +700,44 @@ test grant_create_start_epoch_matches_window_ok() {
   grant(0, grant_tx_at(5000, 0, 1000, None, 1000, 0, [#"c1", #"c2"], 7, tt_range(7)))
 }
 
-/// C-ACC-2 chỉ áp ở CREATE. Đường UPDATE không được đụng `start_epoch` — chỗ ép điều đó
-/// là `claim_account.ak` nhánh `Claim` (`out_datum.start_epoch == datum.start_epoch`),
-/// nên treasury cố ý im ở đây. Ca này canh cho lần sửa sau không vô tình siết cả UPDATE:
-/// tài khoản cũ mang `start_epoch = 0` vẫn cấp thêm E được ở cửa sổ 7.
-test grant_update_keeps_old_start_epoch_ok() {
+/// C-ACC-3 — top-up DỜI mốc theo bình quân gia quyền. Tài khoản cũ E=400 mang
+/// `start_epoch = 0`, cấp thêm 1000 ở cửa sổ 7 ⇒ E mới 1400 và
+/// `start' = ⌈(400·0 + 1000·7) / 1400⌉ = ⌈5,0⌉ = 5`.
+/// Bản trước ca này tên `grant_update_keeps_old_start_epoch_ok` và nó codify đúng hành
+/// vi HỎNG (mốc cũ giữ nguyên) — xoá chứ không giữ kèm đính chính.
+test grant_update_moves_start_epoch_by_weighted_average_ok() {
+  grant(0, grant_tx_at(5000, 0, 1000, Some(400), 1400, 0, [#"c1", #"c2"], 5, tt_range(7)))
+}
+
+/// Và hành vi CŨ nay bị từ chối. Ca này là bằng chứng lỗ đã đóng, không phải bằng chứng
+/// mệnh đề tồn tại — cùng đầu vào với ca trên, chỉ khác đúng `start_epoch`.
+test grant_update_keeping_old_start_epoch_rejected() fail {
   grant(0, grant_tx_at(5000, 0, 1000, Some(400), 1400, 0, [#"c1", #"c2"], 0, tt_range(7)))
+}
+
+/// Ca ĐO ĐƯỢC đã mở lỗ: tài khoản già 100 cửa sổ nhận top-up. Trước C-ACC-3 mốc giữ 0
+/// ⇒ `elapsed = 100` ⇒ `raw = D · dpe · 100` vượt E ⇒ rút trọn 1400 ngay giao dịch kế.
+/// Nay `start' = ⌈(400·0 + 1000·100) / 1400⌉ = ⌈71,43⌉ = 72` ⇒ `elapsed` còn 28.
+test grant_update_on_aged_account_moves_start_forward_ok() {
+  grant(0, grant_tx_at(5000, 0, 1000, Some(400), 1400, 0, [#"c1", #"c2"], 72, tt_range(100)))
+}
+
+/// Cùng ca đó giữ mốc cũ ⇒ TỪ CHỐI. Đây là ca đóng đúng lỗ `poc_F2`.
+test grant_update_on_aged_account_keeping_old_start_rejected() fail {
+  grant(0, grant_tx_at(5000, 0, 1000, Some(400), 1400, 0, [#"c1", #"c2"], 0, tt_range(100)))
+}
+
+/// Ghim CHIỀU LÀM TRÒN, không chỉ ghim công thức. 71 là giá trị chia SÀN; chỉ 72 (chia
+/// TRẦN) mới qua. Không có ca này thì đổi `⌈⌉` thành `⌊⌋` không bài nào kêu, mà chiều ấy
+/// lệch về phía người rút ở mọi lần top-up.
+test grant_update_weighted_rounding_down_rejected() fail {
+  grant(0, grant_tx_at(5000, 0, 1000, Some(400), 1400, 0, [#"c1", #"c2"], 71, tt_range(100)))
+}
+
+/// Ca biên: cấp vào tài khoản RỖNG (E cũ = 0) ⇒ bình quân gia quyền suy về đúng cửa sổ
+/// hiện tại, giống hệt CREATE. `⌈(0·0 + 1000·7) / 1000⌉ = 7`.
+test grant_update_into_empty_account_starts_now_ok() {
+  grant(0, grant_tx_at(5000, 0, 1000, Some(0), 1000, 0, [#"c1", #"c2"], 7, tt_range(7)))
 }
 
 /// Và đúc NFT cho VÍ KHÁC cũng không qua — tên phải là blake2b_256 của đúng owner ghi
@@ -707,6 +778,12 @@ test grant_cum_mismatch_rejected() fail {
 
 test grant_pool_drained_rejected() fail {
   // C-VAL-0: grant KHÔNG được rút LAMP pool. out pool 4000 ≠ in 5000 → reject.
+  //
+  // Ca này TỪNG đỏ mà không chạm C-VAL-0: tx dựng tay thiếu `mint` NFT tài khoản và
+  // thiếu `validity_range`, nên nó chết ở cổng NFT của nhánh CREATE, mấy chục dòng
+  // TRƯỚC chỗ mang tên nó. Đo bằng cách gỡ hẳn `expect tre_out.value == tre_in.value`:
+  // trước khi thêm hai trường dưới đây, bộ kiểm vẫn XANH — tức không bài nào canh chốt
+  // ấy, mà bài này thì đỏ đúng dòng và đúng tên. "Có bài đỏ ở chốt X" ≠ "chốt X được ghim".
   let tre_addr = util.script_address(tt_tre_sh)
   let ca_addr = util.script_address(tt_ca_sh)
   let tre_in = util.mk_input(util.mk_ref(0), util.mk_output(tre_addr, tt_lamp_val(5_000_000, 5000), tt_tre_d(0)))
@@ -718,7 +795,8 @@ test grant_pool_drained_rejected() fail {
       inputs: [tre_in],
       outputs: [tre_out, ca_out],
       extra_signatories: [#"c1", #"c2"],
-      mint: assets.zero,
+      mint: assets.add(assets.zero, tt_acct_nft_policy, tt_acct_nft_name(), 1),
+      validity_range: tt_range(tt_window),
     }
   grant(0, tx)
 }

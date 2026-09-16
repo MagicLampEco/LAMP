@@ -521,34 +521,50 @@ describe("buildPostBeaconTx — DropParam{D}", () => {
 describe("epochWindow — cả hai đầu rơi cùng một cửa sổ", () => {
   const MSPE = 432_000_000n;
 
-  it("giữa cửa sổ: hai đầu cùng epoch, hi là mốc mặc định", () => {
-    const mid = 100n * MSPE + MSPE / 2n;
-    const w = epochWindow(MSPE, mid);
-    expect(w.epoch).toBe(100n);
+  // Ba mệnh đề, và mệnh đề thứ ba là mệnh đề bị thiếu trước đây:
+  //   (1) lo và hi cùng một cửa sổ          — điều validator ép (`get_epoch_strict`)
+  //   (2) hi > lo                           — khoảng không rỗng
+  //   (3) lo ≤ now ≤ hi                     — khoảng CHỨA thời điểm gửi
+  // (1)+(2) xanh trọn vẹn trên bản cũ trong khi (3) đỏ ở 60 giây đầu mỗi cửa sổ: khoảng
+  // hợp lệ, không rỗng, cùng epoch — và đã hết hạn.
+  function assertWindow(nowMs: bigint) {
+    const w = epochWindow(MSPE, nowMs);
     expect(w.loMs / MSPE).toBe(w.epoch);
     expect(w.hiMs / MSPE).toBe(w.epoch);
-    expect(w.hiMs).toBe(w.loMs + 90_000n);
-  });
+    expect(w.hiMs).toBeGreaterThan(w.loMs);
+    expect(w.loMs).toBeLessThanOrEqual(nowMs);
+    expect(w.hiMs).toBeGreaterThanOrEqual(nowMs);
+    return w;
+  }
 
-  it("SÁT BIÊN: mốc mặc định vắt sang cửa sổ sau ⇒ hi bị kéo về cuối cửa sổ", () => {
-    // 30 s trước biên epoch 101: lo còn ở 100, lo+90 s thì đã sang 101.
-    const nearEnd = 101n * MSPE - 30_000n + 60_000n;
-    const w = epochWindow(MSPE, nearEnd);
+  // Bốn mốc đầu là bốn mốc ĐỎ đo được trên bản cũ, giữ nguyên số. Chúng phân biệt được hai
+  // cực: mốc giữa cửa sổ xanh ở cả bản cũ lẫn bản mới nên một mình nó không kiểm gì.
+  it.each([
+    ["ngay lúc cửa sổ mở", 100n * MSPE],
+    ["+1 ms", 100n * MSPE + 1n],
+    ["+30 s — giữa dải hỏng cũ", 100n * MSPE + 30_000n],
+    ["+59.999 s — mốc từng cho khoảng ÂM", 100n * MSPE + 59_999n],
+    ["+60 s — mốc đầu tiên bản cũ đúng", 100n * MSPE + 60_000n],
+    ["giữa cửa sổ", 100n * MSPE + MSPE / 2n],
+    ["1 s trước biên — vùng chết cũ", 101n * MSPE - 1_000n],
+    ["ms cuối cùng của cửa sổ", 101n * MSPE - 1n],
+  ])("%s: lo ≤ now ≤ hi và hai đầu cùng cửa sổ", (_ten, nowMs) => {
+    const w = assertWindow(nowMs as bigint);
     expect(w.epoch).toBe(100n);
-    expect(w.loMs / MSPE).toBe(w.epoch);
-    expect(w.hiMs / MSPE).toBe(w.epoch);      // ← mệnh đề Luật 2b
-    expect(w.hiMs).toBeLessThan(101n * MSPE); // kéo về trước biên
-    expect(w.hiMs).toBeGreaterThan(w.loMs);   // và vẫn là một khoảng hợp lệ
   });
 
-  it("hiMs > loMs ở MỌI mốc trong một cửa sổ — không sinh ra khoảng rỗng", () => {
-    for (const frac of [1n, 10n, 100n, 500n, 900n, 990n, 999n]) {
-      const t = 100n * MSPE + MSPE * frac / 1000n;
-      const w = epochWindow(MSPE, t);
-      expect(w.hiMs).toBeGreaterThan(w.loMs);
-      expect(w.loMs / MSPE).toBe(w.epoch);
-      expect(w.hiMs / MSPE).toBe(w.epoch);
-    }
+  it("nhãn epoch là cửa sổ đang chạy, không phải cửa sổ mà cái đệm 60 s rơi vào", () => {
+    expect(epochWindow(MSPE, 100n * MSPE).epoch).toBe(100n);
+    expect(epochWindow(MSPE, 100n * MSPE - 1n).epoch).toBe(99n);
+  });
+
+  it("hi sát cuối cửa sổ — không bỏ phí giây cuối", () => {
+    expect(epochWindow(MSPE, 100n * MSPE).hiMs).toBe(101n * MSPE - 1n);
+  });
+
+  it("msPerEpoch ≤ 0 thì NÉM, không trả về một cửa sổ vô nghĩa", () => {
+    expect(() => epochWindow(0n, 1n)).toThrow();
+    expect(() => epochWindow(-1n, 1n)).toThrow();
   });
 });
 

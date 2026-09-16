@@ -76,6 +76,7 @@ import {
   MET_NAME, MS_PER_EPOCH, RESERVE_CAP, encodeOutputRef, type CanonicalWiring,
 } from "./_canonical_v2.js";
 import type { FloorSource } from "./_floorLabel.js";
+import { epochAt, windowAt } from "./_epochWindow.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -659,26 +660,26 @@ export function custodySeedDatum(
   };
 }
 
-/** Epoch hiện tại theo mẫu số của mạng. Lùi 90 s cho an toàn biên (giống `reserve_draw` đọc lower_bound). */
+/**
+ * Epoch hiện tại theo mẫu số của mạng. Phần tính nằm ở `_epochWindow.ts` (thuần, kiểm được);
+ * ở đây chỉ đọc đồng hồ.
+ *
+ * Bản trước lùi 90 s với lý do "an toàn biên (giống `reserve_draw` đọc lower_bound)", và lý do
+ * đó sai đại lượng: `reserve_draw` lùi vì nó suy `t` cho một lượt RÚT từ `lower_bound`, còn hàm
+ * này chỉ ĐẶT NHÃN. Lùi ở đây không mua được gì, và trong 90 giây đầu mỗi epoch nó ghi nhãn của
+ * epoch TRƯỚC — vào `start_epoch`, trường mà Luật 7 (`reserve_draw.ak:206`) ép bất biến, tức
+ * sai ở đó là sai vĩnh viễn.
+ */
 export function epochNow(msPerEpoch = MS_PER_EPOCH): bigint {
-  return BigInt(Math.floor((Date.now() - 90_000) / Number(msPerEpoch)));
+  return epochAt(Date.now(), Number(msPerEpoch));
 }
 
 /**
- * Cửa sổ hiệu lực cho một lượt rút: `lo` và `hi` PHẢI rơi cùng một epoch.
- *
- * `reserve_draw` Luật 2b ép `hi / ms_per_epoch == t` với `t` tính từ `lo`. Không ép thì epoch
- * trôi theo ttl của node và người rút chọn được nhịp. Hàm này kéo `hi` về sát cuối epoch khi
- * cửa sổ mặc định vắt qua biên.
+ * Cửa sổ hiệu lực cho một lượt rút: `lo` và `hi` PHẢI rơi cùng một epoch, VÀ khoảng phải chứa
+ * thời điểm gửi. Phần tính ở `_epochWindow.ts` ▸ `windowAt` — lỗ cũ và số đo ghi ở đó.
  */
 export function drawWindow(msPerEpoch = MS_PER_EPOCH): { loMs: number; hiMs: number; t: bigint } {
-  const loMs = Date.now() - 60_000;
-  const t = BigInt(Math.floor(loMs / Number(msPerEpoch)));
-  let hiMs = loMs + 90_000;
-  if (BigInt(Math.floor(hiMs / Number(msPerEpoch))) !== t) {
-    hiMs = Number((t + 1n) * msPerEpoch) - 1000;
-  }
-  return { loMs, hiMs, t };
+  return windowAt(Date.now(), Number(msPerEpoch));
 }
 
 export function printReserveWiring(r: ReserveWiring): void {

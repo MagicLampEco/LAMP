@@ -40,12 +40,38 @@ export function epochWindow(
   msPerEpoch: bigint,
   nowMs: bigint = BigInt(Date.now()),
 ): { loMs: bigint; hiMs: bigint; epoch: bigint } {
-  // Lùi 60 s: đồng hồ node và đồng hồ máy dựng không bao giờ khớp tuyệt đối, và lệch
-  // theo chiều `lower > now` làm tx bị từ chối là "chưa tới hạn".
-  const loMs = nowMs - 60_000n;
-  const epoch = loMs / msPerEpoch;
-  const defaultHi = loMs + 90_000n;
-  const endOfWindow = (epoch + 1n) * msPerEpoch - 1000n;
-  const hiMs = defaultHi / msPerEpoch === epoch ? defaultHi : endOfWindow;
+  // Bản trước suy cửa sổ từ `lo = now − 60s` chứ không từ `now`, và nó hỏng ở hai dải,
+  // đo được (mspe = 432_000_000, biên cửa sổ 100 tại 43_200_000_000):
+  //
+  //   now = biên + 0       epoch=99   hi >= now?  false     (nhãn của cửa sổ TRƯỚC)
+  //   now = biên + 30_000  epoch=99   hi >= now?  false     (hi sớm hơn now 31 giây)
+  //   now = biên + 59_999  epoch=99   hi − lo = −999 ms     (khoảng ÂM)
+  //   now = cuối − 999     epoch=100  hi >= now?  false
+  //
+  // Tức 60 giây ĐẦU mỗi cửa sổ trả về một khoảng hiệu lực ĐÃ HẾT HẠN mang nhãn cửa sổ
+  // trước — đúng lúc vận hành tự nhiên nhất: chạy post beacon ngay khi cửa sổ mới mở.
+  // Xác suất thô 60s/5 ngày không phải xác suất thật, vì lịch "chạy đầu cửa sổ" rơi TRỌN
+  // vào dải hỏng.
+  if (msPerEpoch <= 0n) {
+    throw new Error(`epochWindow: msPerEpoch phải > 0, nhận ${msPerEpoch}`);
+  }
+  // Cửa sổ suy từ `now`. Đây là đại lượng đúng: nhãn phải nói về cửa sổ mà giao dịch
+  // THẬT SỰ chạy trong, không về cửa sổ mà cái đệm đồng hồ rơi vào.
+  const epoch = nowMs / msPerEpoch;
+  const windowStart = epoch * msPerEpoch;
+  // Lùi 60 s cho lệch đồng hồ node/máy dựng — nhưng KẸP trong cửa sổ, không để nó đẩy
+  // `lo` sang cửa sổ trước.
+  const backdated = nowMs - 60_000n;
+  const loMs = backdated > windowStart ? backdated : windowStart;
+  // Hết cửa sổ, trừ 1 ms: `get_epoch_strict` ép `hi / mspe == lo / mspe`, mà
+  // `(e+1)·mspe` chia ra `e+1`. Bản trước trừ 1000 ms và đó là nguồn của vùng chết ~1 s
+  // ở cuối mỗi cửa sổ.
+  //
+  // Đổi kèm theo, có chủ ý: TTL nay là phần còn lại của cửa sổ chứ không phải 90 giây.
+  // Hằng 90 s chép từ `drawWindow` bên Genesis, nơi nó phục vụ một script chạy MỘT MÌNH;
+  // ở đây giao dịch cần đủ chữ ký committee mới gửi được, và không luật nào onchain đòi
+  // nó ngắn. Không mở rủi ro mới: input đã bị tiêu nên không phát lại được, còn gửi muộn
+  // trong CÙNG cửa sổ chính là điều C-BCN-3 cho phép.
+  const hiMs = (epoch + 1n) * msPerEpoch - 1n;
   return { loMs, hiMs, epoch };
 }

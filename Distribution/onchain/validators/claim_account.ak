@@ -84,14 +84,29 @@ validator claim_account(
     when redeemer is {
       // ── CLAIM (committee cấp/tăng entitlement) ─────────────
       Claim { amount } -> {
-        expect amount > 0
+        // ⚠ Đánh số theo `capped-drop/Tech-Spec.md §3.3`, KHÔNG theo thứ tự xuất hiện ở
+        // đây. Bản trước đánh số theo dòng và lệch hẳn một bậc so với đặc tả: chốt mà đặc
+        // tả gọi `C-CLAIM-5` (redeemed bất biến) thì mã gọi `C-CLAIM-4`, và mã dùng lại
+        // `C-CLAIM-5` cho một chốt khác. Cùng một mã, hai nghĩa, và cả hai chỗ tra ra một
+        // dòng có thật — hỏng ở chiều im lặng nhất.
         // C-CLAIM-1
+        expect amount > 0
+        // C-CLAIM-2
         expect util.committee_approved(committee, threshold, tx.extra_signatories)
-        // C-CLAIM-2/3/4: entitlement += amount; các field khác bất biến.
+        // C-CLAIM-4 · C-CLAIM-3 · C-CLAIM-5: entitlement += amount; các field khác bất biến.
         expect out_datum.owner == datum.owner
         expect out_datum.entitlement == datum.entitlement + amount
         expect out_datum.redeemed == datum.redeemed
-        expect out_datum.start_epoch == datum.start_epoch
+        // C-CLAIM-6 (2026-09-17, đi cặp với C-ACC-3 ở `treasury.ak`): mốc chỉ được dời
+        // VỀ PHÍA SAU. Bản trước ép `==`, tức top-up cộng phần cấp MỚI vào mốc CŨ — đo
+        // được: tài khoản già 100 cửa sổ nhận top-up rồi rút trọn ngay giao dịch kế.
+        // GIÁ TRỊ CHÍNH XÁC (bình quân gia quyền theo entitlement) do treasury ghim; ở
+        // đây chỉ chặn chiều LÙI, vì tách vai như thế mới đúng: validator này không nhìn
+        // thấy `granted`, còn treasury thì có cả `ca_in` lẫn `ca_out`.
+        // Tách an toàn vì `Claim` BẮT BUỘC co-spend treasury (C-SOLV-1 binding ngay dưới)
+        // ⇒ không tồn tại đường chạy mệnh đề này mà không chạy C-ACC-3.
+        expect out_datum.start_epoch >= datum.start_epoch
+        // C-CLAIM-7
         expect out_datum.drops_per_epoch == datum.drops_per_epoch
 
         // C-SOLV-1 (binding): MỌI Claim PHẢI co-spend treasury (GrantEntitlement) và
@@ -330,6 +345,32 @@ test claim_happy_path() {
   // cấp E: 0 → 1000; treasury cum 0 → 1000 ≤ pool 5000.
   let in_d = ca_datum(0, 0, 5, 1)
   let out_d = ca_datum(1000, 0, 5, 1)
+  let tx = claim_tx(in_d, out_d, [#"c1", #"c2"], acc_value(), 0, 1000, 5000)
+  claim_account.spend(
+    t_committee, t_threshold, t_mspe, t_lamp_policy, t_lamp_name, t_beacon_policy,
+    t_treasury_nft_policy, t_acct_nft_policy, Some(in_d), Claim { amount: 1000 }, util.mk_ref(0), tx,
+  )
+}
+
+/// C-CLAIM-5 chiều ĐƯỢC PHÉP: top-up dời mốc về SAU. Giá trị chính xác (bình quân gia
+/// quyền) do `treasury.ak` ▸ C-ACC-3 ghim — validator này không nhìn thấy `granted` nên
+/// không tính lại được, và không cần: `Claim` bắt buộc co-spend treasury.
+test claim_start_epoch_moves_forward_ok() {
+  let in_d = ca_datum(400, 0, 5, 1)
+  let out_d = ca_datum(1400, 0, 9, 1)
+  let tx = claim_tx(in_d, out_d, [#"c1", #"c2"], acc_value(), 0, 1000, 5000)
+  claim_account.spend(
+    t_committee, t_threshold, t_mspe, t_lamp_policy, t_lamp_name, t_beacon_policy,
+    t_treasury_nft_policy, t_acct_nft_policy, Some(in_d), Claim { amount: 1000 }, util.mk_ref(0), tx,
+  )
+}
+
+/// C-CLAIM-5 chiều BỊ CHẶN. Bài này canh đúng chỗ vừa được NỚI (`==` xuống `>=`): không
+/// có nó thì một bản sửa sau hạ tiếp xuống "không kiểm gì" và không bài nào kêu — mốc lùi
+/// được nghĩa là `elapsed` thổi lên tuỳ ý, tức lỗ Issue #72 mở lại qua đường `Claim`.
+test claim_start_epoch_moving_backward_rejected() fail {
+  let in_d = ca_datum(400, 0, 5, 1)
+  let out_d = ca_datum(1400, 0, 4, 1)
   let tx = claim_tx(in_d, out_d, [#"c1", #"c2"], acc_value(), 0, 1000, 5000)
   claim_account.spend(
     t_committee, t_threshold, t_mspe, t_lamp_policy, t_lamp_name, t_beacon_policy,
