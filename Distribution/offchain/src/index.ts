@@ -13,3 +13,4 @@ export * from "./committee.js";
 export * from "./beaconBuilder.js";
 export * from "./claimBuilder.js";
 export * from "./redeemBuilder.js";
+export * from "./refillBuilder.js";

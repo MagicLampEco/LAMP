@@ -87,6 +87,20 @@ export const GOV_DID = "did:phoenix:org:magiclamp";
 /** Redeemer `Constr(0, [])` — dùng chung cho MintGenesis / Void của mọi policy one-shot. */
 export const MINT_GENESIS = Data.to(new Constr(0, []));
 
+/**
+ * Committee của màn canonical: ĐÚNG ví vận hành, ngưỡng 1 — bản tự-kiểm 1-of-1.
+ *
+ * Hai giá trị này được NƯỚNG vào `claim_account_nft` · `claim_account` · `treasury` · `beacon`
+ * lúc apply-param, tức chúng nằm trong SCRIPT HASH và do đó trong ĐỊA CHỈ KHO. Đổi một trong
+ * hai là đổi địa chỉ, im lặng. Mọi bên dựng giao dịch cho kho (ví dụ `treasury.ak:192`
+ * `committee_approved`) phải đọc TỪ ĐÂY, đừng gõ lại con số — một bản chép sai ngưỡng dựng ra
+ * giao dịch thiếu chữ ký, và chỗ đó chỉ lộ khi chuỗi từ chối, tức sau khi đã mất collateral.
+ */
+export const CANONICAL_COMMITTEE_THRESHOLD = 1n;
+export function canonicalCommittee(pkh: string): string[] {
+  return [pkh];
+}
+
 // ── OutputReference ─────────────────────────────────────────────────────────
 
 /** `OutputReference = Constr(0, [transaction_id: bytes, output_index: int])`. */
@@ -312,8 +326,8 @@ export async function deriveWiring(
   const ssHash = hashOf(supplyState);
 
   // ── Distribution: claim_account → treasury (KHO), chia sẻ lampPid ─────────
-  const committee = [o.pkh];
-  const threshold = 1n;
+  const committee = canonicalCommittee(o.pkh);
+  const threshold = CANONICAL_COMMITTEE_THRESHOLD;
   const accountPid = policyId({ type: "PlutusV3",
     script: (await applyDist("claim_account_nft.claim_account_nft.mint",
       [committee, threshold, khoPid])).script });
