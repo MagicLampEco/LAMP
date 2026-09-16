@@ -354,6 +354,36 @@ export const NON_LAMP_LOOKALIKE_POLICIES: readonly LookalikePolicyRecord[] = [
       "Faucet/deployed-artifacts.md:103 (đã đánh dấu bỏ)",
     ],
   },
+  {
+    policyId: "3628b069a032490ca24863f48fe36f902d6cf676e1f5b5d3e7845d44",
+    network: "preprod",
+    assetName: "744c414d50",
+    whatItActuallyIs:
+      "Native script `sig` neo vào payment key hash của một ví trả phí trên Preprod, đúc " +
+      "2026-07-31, cung 1.000.000 oildrop. KHÔNG đi qua `lamp_mint`: không SupplyState, " +
+      "không cổng WHO, không trần phát hành — giữ khoá là đúc thêm được. " +
+      "Đây là token thử của một đợt cũ, đã hết dùng. " +
+      "⚠ Lý do nó phải nằm trong sổ này KHÔNG phải nguồn gốc của nó mà là VỊ TRÍ của nó: " +
+      "nó nằm SẴN trong UTxO của một ví triển khai. Ba bản nhái kia phải đi tìm mới gặp; " +
+      "bản này thì đã ở trong túi. Một vòng chọn tài sản theo TÊN hiển thị (`asset_name` == " +
+      "`744c414d50`) thay vì theo `policy_id` sẽ nhặt đúng nó TRƯỚC bản thật, và không cần " +
+      "một kẻ tấn công nào — chỉ cần một vòng lặp đọc ví. Đó là kịch bản hỏng bản ghi này chặn.",
+    supplySnapshot: {
+      quantityOildrop: "1000000",
+      mintOrBurnCount: 1,
+      measuredAt: "2026-09-16",
+      howToRemeasure:
+        "Koios preprod `script_info` cho hash trên (xác nhận là native `sig`, đọc `keyHash` " +
+        "trong thân script), rồi `asset_history` cho unit `3628b069…744c414d50`. Hỏi " +
+        "`asset_history` TRƯỚC `asset_info` — cùng lý do đã ghi ở bản ghi `28e916b0…`: bảng " +
+        "tổng hợp nhất quán dần, lịch sử giao dịch thì không.",
+    },
+    evidence: [
+      "Koios preprod script_info (đo 2026-09-16): type `timelock`, value {\"type\":\"sig\",\"keyHash\":\"7c0f99bdc7f0a9377af5f31f1149e23fe69d40e5634efd87f87981e3\"}, creation_tx 9840a0c2ae9065c64d3f50702d5e225cbb99e772214b287389099bc6ea86dd4a",
+      "Koios preprod asset_history unit 3628b069…744c414d50 (đo 2026-09-16): ĐÚNG MỘT minting_tx 9840a0c2…, quantity 1000000, block_time 1785506897 (2026-07-31)",
+      "Koios preprod asset_info (đo 2026-09-16): total_supply 1000000, mint_cnt 1, burn_cnt 0 — ở bản ghi NÀY bảng tổng hợp khớp lịch sử; đừng suy từ đó ra rằng nó khớp ở bản ghi khác (xem `28e916b0…`)",
+    ],
+  },
 ] as const;
 
 /**
