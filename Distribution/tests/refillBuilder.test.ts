@@ -245,6 +245,23 @@ describe("buildRefillTx — cổng chặn trước khi mất collateral", () => 
       .rejects.toThrow(/RFL-012/);
   });
 
+  // Người lạ đọc `committee_hash` (giá trị công khai trên chuỗi) rồi chép đúng nó vào datum của
+  // một UTxO tự đặt tại địa chỉ kho, khai `outstanding_entitlement` ÂM. `fold_ledger` không ép
+  // từng số hạng >= 0 — cộng thẳng số âm này sẽ kéo sổ nợ TỔNG xuống thấp hơn thật.
+  it("RFL-013: một input khai outstanding_entitlement ÂM", async () => {
+    const { lucid } = mockLucid("addr_op");
+    const decoy = utxo({ ix: 9, lamp: 5n, datum: treDatum(-1_000_000n) });
+    await expect(buildRefillTx(baseParams(lucid, [carrier(), decoy])))
+      .rejects.toThrow(/RFL-013/);
+  });
+
+  it("RFL-013 đứng TRƯỚC RFL-004 — số âm bị chặn dù committee_hash đã khớp", async () => {
+    const { lucid } = mockLucid("addr_op");
+    const decoy = utxo({ ix: 9, lamp: 5n, datum: treDatum(-1n, CH) }); // cùng CH, không phải khác
+    await expect(buildRefillTx(baseParams(lucid, [carrier(), decoy])))
+      .rejects.toThrow(/RFL-013/);
+  });
+
   it("RFL-006: input mang datum-hash — fold_ledger fail, không tx nào gộp được", async () => {
     const { lucid } = mockLucid("addr_op");
     const dh = utxo({ ix: 1, lamp: 5n, datum: null, datumHash: "ff".repeat(32) });

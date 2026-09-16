@@ -192,6 +192,25 @@ export async function buildRefillTx(params: RefillParams): Promise<RefillResult>
         `Nhiều khả năng đang trộn UTxO của hai lần triển khai khác nhau.`,
       );
     }
+    // ── RFL-013: chặn số hạng ÂM trước khi cộng vào sổ cái ───────────────
+    // `fold_ledger` (treasury.ak:298-320) cộng thẳng `outstanding_entitlement` của MỌI input có
+    // datum, chỉ ép `committee_hash` khớp — mà `committee_hash` là giá trị CÔNG KHAI trên chuỗi,
+    // ai cũng đọc và chép được vào datum của một UTxO tự đặt tại địa chỉ kho (không cần khoá ký
+    // của committee, vì `committee_approved` chỉ canh CHỮ KÝ của cả giao dịch, không canh AI đã
+    // tạo ra input đó). Một input như vậy mang `outstanding_entitlement` ÂM sẽ kéo sổ nợ TỔNG
+    // xuống thấp hơn thật, và sổ nợ thấp hơn thật là điều kiện đầu vào cho `GrantEntitlement`
+    // (treasury.ak:170, `<= pool_in`) chấp nhận cấp thêm nợ vượt quá cái pool thật sự gánh nổi —
+    // khác đường với vụ "nợ khống DƯƠNG qua UTxO giả" mà `treasury.ak:246` đã đóng, vì kiểm tra
+    // đó xét TỔNG sau khi cộng, không xét từng số hạng trước khi cộng.
+    if (td.outstanding_entitlement < 0n) {
+      throw new Error(
+        `RFL-013: UTxO ${u.txHash}#${u.outputIndex} khai outstanding_entitlement = ` +
+        `${td.outstanding_entitlement} < 0. \`fold_ledger\` không ép từng số hạng không-âm, chỉ ` +
+        `ép committee_hash khớp — giá trị đó công khai nên ai cũng chép được vào một UTxO giả đặt ` +
+        `tại địa chỉ kho. Cộng số âm này vào sổ cái làm sổ nợ TỔNG thấp hơn thật, mở đường Grant ` +
+        `sau vượt quỹ. Bỏ UTxO này khỏi tập gộp; không có input của kho THẬT mang số âm.`,
+      );
+    }
     ledgerIn += td.outstanding_entitlement;
   }
   if (committeeHash === undefined) {
