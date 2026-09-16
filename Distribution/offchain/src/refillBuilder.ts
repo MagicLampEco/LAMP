@@ -95,6 +95,14 @@ export interface RefillResult {
   /** Lượng nạp thêm — `deposited` ở `treasury.ak:230`. */
   deposited:       bigint;
   newTreasuryDatum: TreasuryDatum;
+  /**
+   * Σ lovelace mà builder đã TÍNH cho output kho (`mergedAssets.lovelace`). Dùng để đọc lại
+   * giao dịch ĐÃ DỰNG sau `complete()` và đối chiếu — xem RFL-010 ở `27_refill_treasury.ts`.
+   * Lucid có thể ÂM THẦM nâng lovelace của output lên min-ADA khi bó tài sản gộp mang nhiều
+   * loại (`@lucid-evolution/lucid` `Pay.ts ▸ ToAddressWithData`), và `summary` bên dưới in ra
+   * đúng con số ĐÃ TÍNH này chứ không phải con số Lucid thật sự DỰNG.
+   */
+  outputLovelace:  bigint;
   summary:         string;
 }
 
@@ -113,6 +121,24 @@ export async function buildRefillTx(params: RefillParams): Promise<RefillResult>
   // ── RFL-001: phải có input ────────────────────────────────────────────
   if (treasuryUtxos.length === 0) {
     throw new Error("RFL-001: treasuryUtxos rỗng — Refill cần ít nhất 1 UTxO kho.");
+  }
+
+  // ── RFL-011: cấm nêu cùng một UTxO hai lần ─────────────────────────────
+  // Input của một tx Cardano là một TẬP HỢP: chuỗi chỉ tiêu nó MỘT lần bất kể caller liệt kê
+  // bao nhiêu lần, nhưng vòng gộp `mergedAssets` bên dưới cộng theo từng PHẦN TỬ của mảng —
+  // nêu trùng thì cộng hai lần trong khi chuỗi chỉ tiêu một lần. `treasury.ak:232` ép value ra
+  // == Σ value vào TUYỆT ĐỐI ⇒ tx fail và mất collateral; nếu ví vận hành tình cờ có đủ LAMP dư
+  // để `complete()` tự bù chỗ hụt, tx còn lên chuỗi được rồi mới fail — đắt hơn.
+  const seenRefs = new Set<string>();
+  for (const u of treasuryUtxos) {
+    const k = `${normHex(u.txHash)}#${u.outputIndex}`;
+    if (seenRefs.has(k)) {
+      throw new Error(
+        `RFL-011: '${k}' được nêu HAI LẦN trong tập gộp. Chuỗi chỉ tiêu nó một lần; value ra ` +
+        `đã cộng theo số lần nêu ⇒ tx fail và mất collateral. Bỏ bản trùng khỏi REFILL_INPUTS.`,
+      );
+    }
+    seenRefs.add(k);
   }
 
   // ── RFL-002: mọi input CÙNG một địa chỉ ───────────────────────────────
@@ -143,7 +169,20 @@ export async function buildRefillTx(params: RefillParams): Promise<RefillResult>
       );
     }
     if (!u.datum) continue;                       // A-DEST hạ cánh: không datum, bỏ qua sổ cái
-    const td = decodeTreasuryDatum(Data.from(u.datum));
+    let td: TreasuryDatum;
+    try {
+      td = decodeTreasuryDatum(Data.from(u.datum));
+    } catch (e) {
+      // RFL-012: một UTxO ở địa chỉ kho mang inline datum nhưng KHÔNG giải mã được thành
+      // TreasuryDatum — hình dạng thật của "người lạ đặt rác vào địa chỉ script công khai"
+      // (đầu tệp đã cảnh báo). Không bọc thì lỗi ném ra là `DATUM-001` trần trụi, không nói
+      // UTxO nào và không nói phải làm gì.
+      const msg = e instanceof Error ? e.message : String(e);
+      throw new Error(
+        `RFL-012: UTxO ${u.txHash}#${u.outputIndex} mang inline datum không giải mã được ` +
+        `thành TreasuryDatum (${msg}). Bỏ UTxO này ra khỏi tập gộp.`,
+      );
+    }
     const ch = normHex(td.committee_hash);
     if (committeeHash === undefined) committeeHash = ch;
     else if (committeeHash !== ch) {
@@ -203,12 +242,17 @@ export async function buildRefillTx(params: RefillParams): Promise<RefillResult>
     );
   }
 
-  // ── RFL-008: đủ người ký ──────────────────────────────────────────────
-  const signers = committeeSigners.map(normHex);
+  // ── RFL-008: đủ NGƯỜI ký, không phải đủ PHẦN TỬ danh sách ──────────────
+  // `committee_approved` on-chain (`util.ak:96,105`) đếm trên `list.unique(committee)` — thành
+  // viên committee PHÂN BIỆT có mặt trong `extra_signatories`. Đếm độ dài mảng truyền vào thì
+  // `[A, A]` cũng đạt ngưỡng 2 như `[A, B]` — signer trùng bị tính hai lần, và `treasury.ak:192`
+  // từ chối ở đúng ca mà cổng vừa cho qua.
+  const signers = [...new Set(committeeSigners.map(normHex))];
   if (signers.length < committeeThreshold) {
     throw new Error(
-      `RFL-008: mới có ${signers.length} người ký, ngưỡng committee là ${committeeThreshold}. ` +
-      `\`treasury.ak:192\` từ chối ⇒ mất collateral. Bổ sung keyhash trước khi dựng.`,
+      `RFL-008: mới có ${signers.length} người ký PHÂN BIỆT (nhận ${committeeSigners.length} ` +
+      `khoá), ngưỡng committee là ${committeeThreshold}. \`treasury.ak:192\` từ chối ⇒ mất ` +
+      `collateral. Bổ sung keyhash của thành viên KHÁC, không lặp lại khoá đã có.`,
     );
   }
 
@@ -253,5 +297,6 @@ export async function buildRefillTx(params: RefillParams): Promise<RefillResult>
   return {
     tx, merged: treasuryUtxos.length,
     lampBefore, lampAfter, deposited, newTreasuryDatum, summary,
+    outputLovelace: mergedAssets["lovelace"] ?? 0n,
   };
 }

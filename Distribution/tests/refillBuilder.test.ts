@@ -143,6 +143,8 @@ describe("buildRefillTx — gộp hai UTxO đúng hình dạng Preprod", () => {
     expect(r.lampBefore).toBe(10_000_000_000n);
     expect(r.lampAfter).toBe(10_000_000_000n);
     expect(r.deposited).toBe(0n);
+    // RFL-010 (script layer) đối chiếu số này với giao dịch ĐÃ DỰNG — phải đúng Σ lovelace vào.
+    expect(r.outputLovelace).toBe(4_000_000n);
   });
 
   it("gộp được cả UTxO KHÔNG datum (hình dạng A-DEST hạ cánh)", async () => {
@@ -184,6 +186,21 @@ describe("buildRefillTx — cổng chặn trước khi mất collateral", () => 
     await expect(buildRefillTx(baseParams(lucid, []))).rejects.toThrow(/RFL-001/);
   });
 
+  // Input của một tx Cardano là một TẬP HỢP: nêu trùng thì `mergedAssets` cộng hai lần trong
+  // khi chuỗi chỉ tiêu một lần ⇒ `treasury.ak:232` fail, mất collateral.
+  it("RFL-011: cùng một UTxO được nêu hai lần trong tập gộp", async () => {
+    const { lucid } = mockLucid("addr_op");
+    const c = carrier();
+    await expect(buildRefillTx(baseParams(lucid, [c, c]))).rejects.toThrow(/RFL-011/);
+  });
+
+  it("RFL-011 so khoá KHÔNG phân biệt hoa/thường của txHash", async () => {
+    const { lucid } = mockLucid("addr_op");
+    const a = utxo({ ix: 2, trsy: 1n, datum: treDatum(0n) });
+    const b = { ...a, txHash: a.txHash.toUpperCase() } as UTxO;
+    await expect(buildRefillTx(baseParams(lucid, [a, b]))).rejects.toThrow(/RFL-011/);
+  });
+
   it("RFL-002: hai input khác địa chỉ (enterprise vs base cùng script hash)", async () => {
     const { lucid } = mockLucid("addr_op");
     const other = utxo({ ix: 1, lamp: 5n, address: TRE_ADDR + "x" });
@@ -218,6 +235,16 @@ describe("buildRefillTx — cổng chặn trước khi mất collateral", () => 
       .rejects.toThrow(/RFL-005/);
   });
 
+  // Người lạ đặt một UTxO mang inline datum KHÔNG PHẢI TreasuryDatum ở địa chỉ kho (khác hẳn
+  // datum-hash của RFL-006 — đây có datum, chỉ là sai hình dạng). Không bọc thì lỗi ném ra là
+  // `DATUM-001` trần trụi, không nói UTxO nào và không nói phải làm gì.
+  it("RFL-012: input mang inline datum không giải mã được thành TreasuryDatum", async () => {
+    const { lucid } = mockLucid("addr_op");
+    const rac = utxo({ ix: 9, lamp: 5n, datum: Data.to(42n) }); // Int trần, không phải Constr
+    await expect(buildRefillTx(baseParams(lucid, [carrier(), rac])))
+      .rejects.toThrow(/RFL-012/);
+  });
+
   it("RFL-006: input mang datum-hash — fold_ledger fail, không tx nào gộp được", async () => {
     const { lucid } = mockLucid("addr_op");
     const dh = utxo({ ix: 1, lamp: 5n, datum: null, datumHash: "ff".repeat(32) });
@@ -235,6 +262,16 @@ describe("buildRefillTx — cổng chặn trước khi mất collateral", () => 
     const { lucid } = mockLucid("addr_op");
     await expect(buildRefillTx(
       baseParams(lucid, [carrier()], { committeeSigners: [CH], committeeThreshold: 2 }),
+    )).rejects.toThrow(/RFL-008/);
+  });
+
+  // `util.ak:96,105` đếm thành viên committee PHÂN BIỆT có mặt trong signatories, không đếm độ
+  // dài mảng. Hai khoá TRÙNG NHAU không được tính là hai người — nếu đếm PHẦN TỬ thì ca này qua
+  // ở ngưỡng 2 trong khi chuỗi chỉ thấy 1 người ký ⇒ `treasury.ak:192` từ chối, mất collateral.
+  it("RFL-008: đếm NGƯỜI phân biệt, không đếm phần tử — khoá lặp lại không được tính hai lần", async () => {
+    const { lucid } = mockLucid("addr_op");
+    await expect(buildRefillTx(
+      baseParams(lucid, [carrier()], { committeeSigners: [CH, CH], committeeThreshold: 2 }),
     )).rejects.toThrow(/RFL-008/);
   });
 

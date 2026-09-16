@@ -24,6 +24,7 @@ import { NETWORK, SUBMIT, makeLucid, walletPkh, explorerTx } from "./config.js";
 import {
   rehydrate, canonicalCommittee, CANONICAL_COMMITTEE_THRESHOLD,
 } from "./_canonical_v2.js";
+import { assertRefillOutputMatches } from "./_refillReadback.js";
 import { buildRefillTx } from "../../Distribution/offchain/src/refillBuilder.js";
 
 /** LAMP nạp THÊM từ ví, đơn vị oildrop. Mặc định 0 — thuần gộp. */
@@ -55,10 +56,20 @@ async function main(): Promise<void> {
 
   const named = (process.env.REFILL_INPUTS ?? "").split(",").map((s) => s.trim()).filter(Boolean);
   if (named.length === 0) {
+    // Chỉ gợi ý những UTxO GỘP ĐƯỢC. Dán CẢ danh sách thô = đúng chế độ quét-tất-cả mà đầu tệp
+    // đã loại: ai cũng đỗ được một UTxO ở địa chỉ script công khai này (Cardano không chạy
+    // validator lúc TẠO). Người vận hành đang cứu kho là người có lý do NHẤT để dán nguyên cái
+    // script đưa cho họ — không phải chỗ để đặt cược vào sự cẩn thận của con người.
+    const goiY = all.filter((u) => !u.datumHash || u.datum);
+    const bo = all.filter((u) => u.datumHash && !u.datum);
+    if (bo.length) {
+      console.log(`\n⚠️  ${bo.length} UTxO mang DATUM-HASH — không tx nào gộp được (fold_ledger fail), đã loại khỏi gợi ý:`);
+      for (const u of bo) console.log(`  · ${refKey(u)}`);
+    }
     console.log(
       `\nDỪNG: chưa nêu input. Script này KHÔNG tự chọn — xem lý do ở đầu tệp.\n` +
-      `Nêu đích danh rồi chạy lại:\n` +
-      `  REFILL_INPUTS="${all.map(refKey).join(",")}" tsx 27_refill_treasury.ts`,
+      `Soát TỪNG dòng dưới đây trước khi dán — địa chỉ kho là công khai, người lạ đặt được UTxO vào:\n` +
+      `  REFILL_INPUTS="${goiY.map(refKey).join(",")}" tsx 27_refill_treasury.ts`,
     );
     return;
   }
@@ -93,23 +104,45 @@ async function main(): Promise<void> {
 
   console.log(`\n${result.summary}`);
 
-  const signed = await result.tx.sign.withWallet().complete();
+  // RFL-010: đọc lại giao dịch ĐÃ DỰNG trước khi ký hay in bất cứ gì — `summary` ở trên in số
+  // builder đã TÍNH, không phải số Lucid thật sự DỰNG (xem `_refillReadback.ts`).
+  assertRefillOutputMatches(result.tx, wiring.treAddr, result.outputLovelace);
+
   if (!SUBMIT) {
+    // Cố ý KHÔNG ký và KHÔNG in CBOR. Committee canonical hôm nay là 1-of-1
+    // (`_canonical_v2.ts:99-102`) ⇒ chữ ký ví vận hành là ĐỦ, nên một CBOR đã ký đầy đủ dán vào
+    // đây là một giao dịch nộp được NGAY bởi bất kỳ ai đọc log này — vào chat đội, vào issue,
+    // vào log CI — bất cứ lúc nào trước khi các input bị tiêu, kể cả sau khi đội đã quyết định
+    // KHÔNG gộp nữa. Cổng `SUBMIT` chỉ chặn lời gọi `submit()` của TIẾN TRÌNH NÀY; nó không chặn
+    // việc phát hành một công cụ mang quyền ra ngoài.
     console.log(
-      `\n(SUBMIT=false ⇒ KHÔNG gửi.)\n` +
-      `Tx dựng xong và ký được. CBOR:\n${signed.toCBOR()}\n\n` +
+      `\n(SUBMIT=false ⇒ KHÔNG ký, KHÔNG gửi.)\n` +
+      `Tx dựng xong. Hash thân giao dịch: ${result.tx.toHash()}\n` +
+      `Cố ý KHÔNG in CBOR đã ký: committee 1-of-1 nên CBOR đó nộp được NGAY bởi bất kỳ ai đọc log.\n` +
       `Gửi thật: SUBMIT=true REFILL_INPUTS="${named.join(",")}" tsx 27_refill_treasury.ts`,
     );
     return;
   }
 
+  const signed = await result.tx.sign.withWallet().complete();
   const hash = await signed.submit();
   console.log(`\n📤 Refill: ${hash}\n   ${explorerTx(hash)}`);
   await lucid.awaitTx(hash);
 
-  // Đối chiếu bằng CHÍNH chuỗi, không tin vào việc tx đã gửi. Ba trạng thái, không phải hai:
-  // đúng singleton mang đủ TRSY + LAMP · còn nhiều UTxO (gộp thiếu) · đọc không ra (chỉ mục chậm).
+  // Đối chiếu bằng CHÍNH chuỗi, không tin vào việc tx đã gửi. BA trạng thái, không phải hai —
+  // và "không đo được" phải kêu KHÁC "hỏng", to hơn "hỏng" (Forall §Cổng gác): đúng singleton
+  // mang đủ TRSY + LAMP · còn nhiều UTxO (gộp thiếu, THẬT sự hỏng) · đọc không ra gì (chỉ mục
+  // provider trễ sau `awaitTx` — KHÔNG phải "gộp hỏng", tx đã vào block).
   const after = await lucid.utxosAt(wiring.treAddr);
+  if (after.length === 0) {
+    process.exitCode = 2;
+    console.error(
+      `\n⚠️  KHÔNG ĐO ĐƯỢC: chỉ mục provider trả 0 UTxO ở địa chỉ kho ngay sau \`awaitTx\`. Đây ` +
+      `KHÔNG phải "gộp hỏng" — tx ${hash} đã vào block. Đợi rồi chạy lại script KHÔNG đặt ` +
+      `REFILL_INPUTS để chỉ đọc trạng thái, đừng kết luận từ lượt này.`,
+    );
+    return;
+  }
   console.log(`\nSau khi gộp, địa chỉ kho có ${after.length} UTxO:`);
   for (const u of after) console.log(`  · ${describe(u, wiring.lampUnit, wiring.khoUnit)}`);
 
