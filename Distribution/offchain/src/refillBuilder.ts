@@ -28,6 +28,15 @@
 //   :246  out_datum.outstanding_entitlement ≤ lamp_out
 // Cộng thêm `fold_ledger` (`:298-320`): input datum-hash → fail; mọi input có datum phải khai
 // CÙNG một `committee_hash`.
+//
+// RFL-005 và RFL-013 CHẶT HƠN `treasury.ak`: chuỗi CHẤP NHẬN giao dịch mà hai chốt này từ chối.
+// RFL-005 vì `claim_account.ak` đòi thêm điều `treasury.ak` không đòi (kho phải mang TRSY).
+// RFL-013 vì `fold_ledger` không ép từng số hạng `outstanding_entitlement` không-âm trước khi
+// cộng (chỉ ép `:95` ở nhánh ReleaseForRedeem, KHÔNG mang sang Refill) — RFL-013 chỉ đóng đường
+// vào QUA ĐÚNG BUILDER NÀY, không đổi được `fold_ledger` trên chuỗi (đổi validator = đổi script
+// hash = đổi địa chỉ kho đang chạy). Ràng buộc tạm khai đủ ba nơi: mã này,
+// `Distribution/capped-drop/Exec-Spec.md` (danh mục trạng thái), và một Issue đứng tên cho lần
+// vá on-chain kế tiếp.
 
 import {
   Data, toUnit,
@@ -208,7 +217,8 @@ export async function buildRefillTx(params: RefillParams): Promise<RefillResult>
         `${td.outstanding_entitlement} < 0. \`fold_ledger\` không ép từng số hạng không-âm, chỉ ` +
         `ép committee_hash khớp — giá trị đó công khai nên ai cũng chép được vào một UTxO giả đặt ` +
         `tại địa chỉ kho. Cộng số âm này vào sổ cái làm sổ nợ TỔNG thấp hơn thật, mở đường Grant ` +
-        `sau vượt quỹ. Bỏ UTxO này khỏi tập gộp; không có input của kho THẬT mang số âm.`,
+        `sau vượt quỹ. Bỏ UTxO này khỏi tập gộp — không có input của kho THẬT mang số âm; giá trị ` +
+        `trong nó (nếu có) nằm lại vĩnh viễn ở địa chỉ kho cho tới khi \`fold_ledger\` được vá.`,
       );
     }
     ledgerIn += td.outstanding_entitlement;
