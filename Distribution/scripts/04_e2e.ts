@@ -148,8 +148,8 @@ async function grantFor(args: {
 
   if (plan.action === "skip") {
     console.log(
-      `   ${label}: BỎ QUA cấp — tài khoản đang có ${plan.pending} oildrop rút được. Cấp thêm là ` +
-      `rebase (C-ACC-3) nên phần đó sẽ phải vest lại.`,
+      `   ${label}: BỎ QUA cấp — lô hiện tại chưa rút trọn (đang rút được ${plan.pending} oildrop). ` +
+      `Cấp thêm là rebase (C-ACC-3) nên phần đã vest sẽ phải vest lại.`,
     );
     return;
   }
@@ -276,10 +276,16 @@ async function main(): Promise<void> {
   if (redeemPlan.action === "wait") {
     console.log(
       `   ⏸ Chưa có gì để rút: start_epoch=${dA1.start_epoch}, redeemed=${dA1.redeemed}, cửa sổ ${e}. ` +
-      `Chạy lại từ cửa sổ ${redeemPlan.fromEpoch} — lượt sau sẽ BỎ QUA grant A vì còn phần rút được.`,
+      `Chạy lại từ cửa sổ ${redeemPlan.fromEpoch} — lượt sau sẽ BỎ QUA grant A vì lô chưa rút trọn.`,
     );
     console.log("\n⏸ E2E CHƯA hoàn tất — grant + beacon xong, redeem chờ cửa sổ sau.");
     return;
+  }
+  if (redeemPlan.action === "stalled") {
+    throw new Error(
+      `E2E-REDEEM-003: D·drops_per_epoch = ${dNow}·${dA1.drops_per_epoch} ≤ 0 — tài khoản A không bao giờ ` +
+      `rút được. Kiểm beacon DropParam và datum tài khoản.`,
+    );
   }
   if (redeemPlan.action === "exhausted") {
     throw new Error(

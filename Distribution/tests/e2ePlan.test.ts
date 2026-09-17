@@ -192,28 +192,34 @@ describe("planGrant — CREATE / TOPUP rebase / bỏ qua khi còn phần rút đ
     expect(accountDatumMismatches(plan.expected, res.newDatum)).toEqual([]);
   });
 
-  it("tài khoản mở trong CHÍNH cửa sổ này (chưa vest gì): TOPUP, E' = E − redeemed + amount", async () => {
-    const w = epochWindow(MSPE, 100n * MSPE + 5_000n);
+  // Ca chạy lại runner trong cùng cửa sổ: bản trước ra TOPUP ở đây và cấp chồng mỗi lần chạy.
+  it("tài khoản mở trong CHÍNH cửa sổ này (chưa vest gì): BỎ QUA, không cấp chồng", () => {
     const prev = account({ start_epoch: 100n });
+    const plan = planGrant({ account: prev, ownerPkh: OWNER, amount: lampOildrop(250n), dropValue: D, windowEpoch: 100n });
+    expect(plan).toEqual({ action: "skip", pending: 0n });
+  });
+
+  // Ca rebase xoá tiến độ: đã rút hết phần ĐÃ VEST nhưng lô chưa rút trọn.
+  it("đã rút hết phần đã vest mà lô chưa trọn: BỎ QUA, không rebase", () => {
+    const prev = account({ start_epoch: 99n, redeemed: D });
+    const plan = planGrant({ account: prev, ownerPkh: OWNER, amount: lampOildrop(250n), dropValue: D, windowEpoch: 100n });
+    expect(plan).toEqual({ action: "skip", pending: 0n });
+  });
+
+  it("đã rút TRỌN (E == redeemed): TOPUP mở lô mới từ cửa sổ này, datum kỳ vọng = builder", async () => {
+    const w = epochWindow(MSPE, 100n * MSPE + 5_000n);
+    const prev = account({ start_epoch: 90n, redeemed: lampOildrop(250n) });
     const plan = planGrant({ account: prev, ownerPkh: OWNER, amount: lampOildrop(250n), dropValue: D, windowEpoch: w.epoch });
     expect(plan.action).toBe("topup");
     if (plan.action !== "topup") return;
-    expect(plan.expected).toEqual({ ...prev, entitlement: lampOildrop(500n), redeemed: 0n, start_epoch: 100n });
+    expect(plan.expected).toEqual({ ...prev, entitlement: lampOildrop(250n), redeemed: 0n, start_epoch: 100n });
     const { lucid } = mockLucid();
     const res = await buildClaimTx({
       lucid, claimScript: FAKE_CLAIM, network: NETWORK, ownerPkh: OWNER, amount: lampOildrop(250n),
-      claimAccountUtxo: accountUtxo(prev), treasury: treasury(prev.entitlement), committeeKeyHashes: COMMITTEE,
+      claimAccountUtxo: accountUtxo(prev), treasury: treasury(prev.entitlement - prev.redeemed), committeeKeyHashes: COMMITTEE,
       ...grantTimeParams(w),
     });
     expect(accountDatumMismatches(plan.expected, res.newDatum)).toEqual([]);
-  });
-
-  it("đã rút hết (E == redeemed) ở cửa sổ cũ: TOPUP mở lô mới từ cửa sổ này", () => {
-    const prev = account({ start_epoch: 90n, redeemed: lampOildrop(250n) });
-    const plan = planGrant({ account: prev, ownerPkh: OWNER, amount: lampOildrop(250n), dropValue: D, windowEpoch: 100n });
-    expect(plan.action).toBe("topup");
-    if (plan.action !== "topup") return;
-    expect(plan.expected).toEqual({ ...prev, entitlement: lampOildrop(250n), redeemed: 0n, start_epoch: 100n });
   });
 
   // Ca đo được rebase xoá tiến độ: tài khoản đã vest 100 LAMP chưa rút. Cấp thêm lúc này thì
@@ -243,6 +249,16 @@ describe("planRedeem — redeemed' = redeemed + amount", () => {
 
   it("cùng cửa sổ với mốc: chờ, và nói cửa sổ nào rút được", () => {
     expect(planRedeem(account({ start_epoch: 100n }), D, 100n)).toEqual({ action: "wait", fromEpoch: 101n });
+  });
+
+  it("đã rút phần đã vest: cửa sổ rút được = start + ⌊redeemed / (D·dpe)⌋ + 1, không phải cửa sổ kế", () => {
+    // redeemed = 8·rate, start 100 ⇒ vest vượt redeemed từ cửa sổ 109.
+    const prev = account({ entitlement: lampOildrop(1000n), start_epoch: 100n, redeemed: 8n * D });
+    expect(planRedeem(prev, D, 105n)).toEqual({ action: "wait", fromEpoch: 109n });
+  });
+
+  it("D·dpe = 0: stalled, không in một cửa sổ bịa", () => {
+    expect(planRedeem(account({ start_epoch: 100n }), 0n, 105n)).toEqual({ action: "stalled" });
   });
 
   it("đã vest trọn và rút trọn: exhausted, không phải wait", () => {

@@ -83,7 +83,8 @@ export type GrantPlan =
  *    (`E' = E − redeemed + amount`, `redeemed' = 0`, `start' = cửa sổ này` — Tech-Spec
  *    §"Bất biến thêm 2026-09-17"), nên phần đã vest phải vest lại và bước redeem cùng lượt
  *    rút được 0. Runner cũ cấp lại mỗi lượt nên không lượt nào đi tới redeem.
- *  - có tài khoản, không còn gì rút được → TOPUP theo rebase.
+ *  - có tài khoản, lô chưa rút trọn (kể cả chưa vest gì) → cũng BỎ QUA.
+ *  - có tài khoản, đã rút TRỌN (`redeemed ≥ entitlement`) → TOPUP theo rebase.
  */
 export function planGrant(p: {
   account: ClaimAccountDatum | null; ownerPkh: string; amount: bigint;
@@ -108,8 +109,13 @@ export function planGrant(p: {
         `C-ACC-2/3 ghim mốc bằng get_epoch_strict nên mốc tương lai nghĩa là đồng hồ đang lệch.`,
     );
   }
-  const pending = redeemable(a, p.dropValue, e);
-  if (pending > 0n) return { action: "skip", pending };
+  // TOPUP chỉ khi đã rút TRỌN lô. Bản trước topup mỗi khi "không còn gì rút được lúc này" —
+  // gồm cả ca tài khoản mở trong CHÍNH cửa sổ này (chưa vest) và ca vừa rút hết phần đã vest:
+  // chạy lại runner trong cùng cửa sổ là cấp chồng 1.250 LAMP mỗi lần cho tới khi cạn kho,
+  // và ở ca thứ hai là rebase xoá tiến độ vest.
+  if (a.redeemed < a.entitlement) {
+    return { action: "skip", pending: redeemable(a, p.dropValue, e) };
+  }
   return {
     action: "topup",
     expected: { ...a, entitlement: a.entitlement - a.redeemed + p.amount, redeemed: 0n, start_epoch: e },
@@ -119,6 +125,7 @@ export function planGrant(p: {
 export type RedeemPlan =
   | { action: "redeem"; amount: bigint; expected: ClaimAccountDatum }
   | { action: "wait"; fromEpoch: bigint }
+  | { action: "stalled" }
   | { action: "exhausted" };
 
 /** Số rút kỳ vọng và datum kỳ vọng sau Redeem (C-RDM-4: `redeemed' = redeemed + amount`). */
@@ -126,7 +133,11 @@ export function planRedeem(a: ClaimAccountDatum, dropValue: bigint, windowEpoch:
   const amount = redeemable(a, dropValue, windowEpoch);
   if (amount > 0n) return { action: "redeem", amount, expected: { ...a, redeemed: a.redeemed + amount } };
   if (a.redeemed >= a.entitlement) return { action: "exhausted" };
-  const next = a.start_epoch + 1n;
+  // Cửa sổ đầu tiên mà `rate·(t − start) > redeemed`: t = start + ⌊redeemed / rate⌋ + 1.
+  // `rate = D·dpe ≤ 0` thì không cửa sổ nào rút được — nói thẳng, đừng in một cửa sổ bịa.
+  const rate = dropValue * a.drops_per_epoch;
+  if (rate <= 0n) return { action: "stalled" };
+  const next = a.start_epoch + a.redeemed / rate + 1n;
   return { action: "wait", fromEpoch: next > windowEpoch ? next : windowEpoch + 1n };
 }
 
