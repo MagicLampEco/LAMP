@@ -72,11 +72,18 @@ export function epochWindow(
   // `(e+1)·mspe` chia ra `e+1`. Bản trước trừ 1000 ms và đó là nguồn của vùng chết ~1 s
   // ở cuối mỗi cửa sổ.
   //
-  // Đổi kèm theo, có chủ ý: TTL nay là phần còn lại của cửa sổ chứ không phải 90 giây.
-  // Hằng 90 s chép từ `drawWindow` bên Genesis, nơi nó phục vụ một script chạy MỘT MÌNH;
-  // ở đây giao dịch cần đủ chữ ký committee mới gửi được, và không luật nào onchain đòi
-  // nó ngắn. Không mở rủi ro mới: input đã bị tiêu nên không phát lại được, còn gửi muộn
-  // trong CÙNG cửa sổ chính là điều C-BCN-3 cho phép.
-  const hiMs = (epoch + 1n) * msPerEpoch - 1n;
+  //
+  // Và KẸP bởi `now + WINDOW_TTL_MS`: node không quy đổi được slot vượt chân trời dự báo
+  // (~1,5 ngày trên Preprod) và từ chối giao dịch có script với lỗi PastHorizon — đã xảy ra
+  // thật một lần (`Faucet/scripts/demo_reserve_draw_resume.ts`, dòng đầu tệp). Bản trước đặt
+  // đầu trên ở cuối cửa sổ, tức tới gần 5 ngày sau `now` với cửa sổ 5 ngày. TTL 1 giờ thay vì
+  // 90 s như `drawWindow` cũ: giao dịch ở đây cần đủ chữ ký committee mới gửi được.
+  const windowEnd = (epoch + 1n) * msPerEpoch - 1n;
+  const ttlEnd = nowMs + WINDOW_TTL_MS;
+  const hiMs = windowEnd < ttlEnd ? windowEnd : ttlEnd;
   return { loMs, hiMs, epoch };
 }
+
+/** Trần TTL của một giao dịch dựng bằng `epochWindow`: 1 giờ. PHẢI khớp
+ *  `Genesis/scripts/_epochWindow.ts` ▸ `WINDOW_TTL_MS` (chép có nhãn, 2026-09-17). */
+export const WINDOW_TTL_MS = 3_600_000n;
