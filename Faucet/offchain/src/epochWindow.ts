@@ -46,5 +46,5 @@ export function windowAt(
   return { loMs, hiMs, t };
 }
 
-/** Trần TTL — PHẢI khớp `Genesis/scripts/_epochWindow.ts` ▸ `WINDOW_TTL_MS` (chép 2026-09-17). */
+/** Trần TTL — PHẢI khớp `Genesis/scripts/_epochWindow.ts` ▸ `WINDOW_TTL_MS` (chép 2026-09-17); `Genesis/tests/windowTtlSync.test.ts` đỏ khi lệch. */
 export const WINDOW_TTL_MS = 3_600_000;
