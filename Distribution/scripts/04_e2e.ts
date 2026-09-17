@@ -3,34 +3,38 @@
 // Chạy: npm run e2e   (sau 01 → 02 → 03)
 //
 // Flow tất định (CONTRACT v2 §1/§4 — KHÔNG lottery/merkle/nonce):
-//   a. Claim:   committee 2/3 ký → cấp entitlement E cho A (250 LAMP), B (1000 LAMP).
-//   b. Beacon:  committee post DropParam{D} (drop value) cho epoch hiện tại.
+//   a. Grant:   committee 2/3 ký → cấp entitlement E cho A (250 LAMP), B (1000 LAMP).
+//   b. Beacon:  committee post DropParam{D} cho cửa sổ hiện tại (nếu cửa sổ chưa post).
 //   c. Redeem:  A tự tính vested(t) on-chain → nhận LAMP đã mở khoá vào ví (permissionless).
-//   d. Verify:  query lại UTxO, in redeemed (cộng dồn) + LAMP balance.
+//   d. Verify:  đọc lại datum, đối chiếu datum kỳ vọng + LAMP balance.
 //
 //   vested(t) = min(E, D · drops_per_epoch · max(0, t − start_epoch))
 //   amount    = vested − redeemed   (yêu cầu > 0)
 //
 // Mỗi tx: in tx hash + explorer link + await confirm trước khi sang bước sau.
 //
-// LƯU Ý epoch: validator claim_account tính epoch từ validity_range POSIX ms.
-// Lucid set validity range quanh slot hiện tại → epoch khớp currentEpoch ta tính từ tip.
-// Với E (250 hoặc 1000 LAMP) và D (mặc định 100 LAMP), vested epoch đầu = min(E, D·1·0)=0
-// NẾU t==start_epoch. Để A nhận được ngay trong e2e, ta cấp E ở Claim với start_epoch =
-// epoch genesis (đã set ở 03), rồi redeem ở epoch ≥ start_epoch+1 (xem ghi chú redeem).
+// CHẠY HAI LƯỢT, cách nhau ít nhất một cửa sổ epoch validator. Grant đặt
+// `start_epoch` = cửa sổ hiện tại (C-ACC-2 khi CREATE, C-ACC-3 rebase khi cấp thêm), nên
+// trong CÙNG cửa sổ vested = 0 và lượt đầu dừng ở bước c, báo cửa sổ rút được. Lượt sau
+// thấy A còn phần rút được ⇒ BỎ QUA grant A (cấp thêm lúc đó là rebase, xoá tiến độ vest)
+// ⇒ đi tới redeem. Quyết định từng bước nằm ở `e2ePlan.ts` (hàm thuần, có bài kiểm).
 
 import { Data } from "@lucid-evolution/lucid";
 import {
   NETWORK, DROP_ASSET_NAME, TREASURY_NFT_ASSET_NAME, MS_PER_EPOCH,
   makeLucid, walletPkh, loadDeployed, reapplyValidators,
-  toUnit, explorerTx, awaitTx, currentEpoch,
+  toUnit, explorerTx, awaitTx,
 } from "./config.js";
-import { decodeClaimAccountDatum } from "../offchain/src/datum.js";
+import { decodeClaimAccountDatum, decodeBeaconDatum } from "../offchain/src/datum.js";
 import { buildClaimTx }      from "../offchain/src/claimBuilder.js";
 import { buildPostBeaconTx } from "../offchain/src/beaconBuilder.js";
 import { buildRedeemTx }     from "../offchain/src/redeemBuilder.js";
-import { D_GENESIS }         from "../offchain/src/constants.js";
-import type { LucidEvolution, UTxO, TxSignBuilder } from "@lucid-evolution/lucid";
+import { D_GENESIS, epochWindow } from "../offchain/src/constants.js";
+import type { LucidEvolution, UTxO, TxSignBuilder, Validator } from "@lucid-evolution/lucid";
+import {
+  windowNow, grantTimeParams, redeemTimeParams,
+  planGrant, planBeacon, planRedeem, accountDatumMismatches,
+} from "./e2ePlan.js";
 
 const LAMP_A = 250_000_000n;   // 250 LAMP entitlement (oildrop)
 const LAMP_B = 1_000_000_000n; // 1000 LAMP entitlement (oildrop)
@@ -129,6 +133,54 @@ async function ensureCollateral(lucid: LucidEvolution): Promise<void> {
   await sleep(20_000);
 }
 
+/** Cấp E cho một owner theo `planGrant`, rồi đọc lại datum trên chuỗi và đối chiếu kỳ vọng. */
+async function grantFor(args: {
+  lucid: LucidEvolution; label: string; ownerPkh: string; amount: bigint;
+  dropValue: bigint; e: bigint;
+  claimAddress: string; treasuryAddress: string; trsyUnit: string; treasuryNftPolicy: string;
+  claimScript: Validator; treasuryScript: Validator; accountNftScript: Validator;
+  committee: string[]; threshold: number;
+}): Promise<void> {
+  const { lucid, label, ownerPkh, amount, e } = args;
+  const accUtxo = await findClaimAccountOpt(lucid, args.claimAddress, ownerPkh);
+  const before = accUtxo ? decodeClaimAccountDatum(Data.from(accUtxo.datum!)) : null;
+  const plan = planGrant({ account: before, ownerPkh, amount, dropValue: args.dropValue, windowEpoch: e });
+
+  if (plan.action === "skip") {
+    console.log(
+      `   ${label}: BỎ QUA cấp — lô hiện tại chưa rút trọn (đang rút được ${plan.pending} oildrop). ` +
+      `Cấp thêm là rebase (C-ACC-3) nên phần đã vest sẽ phải vest lại.`,
+    );
+    return;
+  }
+  console.log(`   ${label}: ${plan.action === "create" ? "chưa có tài khoản → CREATE (đúc NFT)" : "đã có tài khoản → TOPUP (rebase)"}`);
+
+  // `exactOptionalPropertyTypes`: thêm khoá bằng spread có điều kiện, không gán undefined.
+  const treasuryUtxo = await findTreasury(lucid, args.treasuryAddress, args.trsyUnit);
+  const w = windowNow(MS_PER_EPOCH, e);
+  const res = await buildClaimTx({
+    lucid, claimScript: args.claimScript, network: NETWORK,
+    ownerPkh, amount,
+    ...(accUtxo ? { claimAccountUtxo: accUtxo } : { accountNft: { script: args.accountNftScript } }),
+    treasury: {
+      utxo: treasuryUtxo, script: args.treasuryScript,
+      nftPolicy: args.treasuryNftPolicy, nftAssetName: TREASURY_NFT_ASSET_NAME,
+    },
+    committeeKeyHashes: args.committee, threshold: args.threshold,
+    ...grantTimeParams(w),   // Luật 2b: hai đầu cùng cửa sổ (CREATE-002 áp cả UPDATE)
+  });
+  console.log(res.summary);
+  await submit(lucid, res.tx, `grant ${label}`);
+
+  const after = decodeClaimAccountDatum(
+    Data.from((await findClaimAccount(lucid, args.claimAddress, ownerPkh)).datum!),
+  );
+  const diff = accountDatumMismatches(plan.expected, after);
+  if (diff.length > 0) {
+    throw new Error(`E2E-VERIFY-001: datum ${label} sau grant lệch kỳ vọng — ${diff.join("; ")}`);
+  }
+}
+
 async function main(): Promise<void> {
   console.log("=== LampDistribution Step 4: E2E live flow (Capped Drop v2) ===\n");
 
@@ -149,10 +201,10 @@ async function main(): Promise<void> {
   const committee = state.committee.keyHashes;
   const threshold = state.committee.threshold;
 
-  const epoch = await currentEpoch();
-  // lower_bound POSIX ms cho validity_range → validator get_epoch khớp epoch.
-  const validFromMs = epoch * MS_PER_EPOCH;
-  console.log(`Network: ${NETWORK}   epoch: ${epoch}`);
+  // Cửa sổ của CẢ lượt chạy. Mọi bước dựng tx lấy lại cặp lo/hi qua `windowNow`, ném
+  // WINDOW-001 nếu cửa sổ đã sang trang — kế hoạch tính ở đây sẽ không còn đúng nữa.
+  const e = epochWindow(MS_PER_EPOCH).epoch;
+  console.log(`Network: ${NETWORK}   cửa sổ epoch validator: ${e}`);
   console.log(`Committee: ${committee.length} keys (threshold ${threshold}, source ${state.committee.source})`);
 
   const lampUnit = toUnit(state.testLamp.policyId, state.testLamp.assetName);
@@ -160,96 +212,85 @@ async function main(): Promise<void> {
   const treasuryNftPolicy = state.params.treasuryNftPolicy;
   const trsyUnit = toUnit(treasuryNftPolicy, TREASURY_NFT_ASSET_NAME);
 
-  // balance A trước flow
   const balBefore = (await lucid.wallet().getUtxos())
     .reduce((s, u) => s + (u.assets[lampUnit] ?? 0n), 0n);
   console.log(`Ví A test-LAMP trước: ${balBefore / 1_000_000n} LAMP\n`);
 
-  // ════════════════════════════════════════════════════════════
-  // a. CLAIM — committee cấp entitlement E (A 250 LAMP, B 1000 LAMP)
-  // ════════════════════════════════════════════════════════════
-  console.log("── a. Claim (committee cấp entitlement E) ──");
-
   await ensureCollateral(lucid);
 
-  // SOLVENCY co-spend (C-SOLV-*): mỗi Claim spend treasury (GrantEntitlement) →
-  // outstanding_entitlement += amount ≤ pool. Treasury UTxO canonical mang NFT TRSY.
-  //
-  // CREATE vs UPDATE: 03_genesis KHÔNG còn tạo tài khoản (xem đầu 03), nên lần chạy đầu
-  // đi đường CREATE — mở tài khoản + cấp E + ĐÚC NFT tên blake2b_256(owner) trong CÙNG
-  // MỘT tx (C-ACC-1). Chạy lại lần sau, tài khoản đã có → đường UPDATE, và lúc đó
-  // KHÔNG được đúc gì (claim_account ép `is_zero(tx.mint)`).
-  // `exactOptionalPropertyTypes`: thêm khoá bằng spread có điều kiện, không gán undefined.
-  const accA0 = await findClaimAccountOpt(lucid, state.claimAccount.address, aPkh);
-  const treA  = await findTreasury(lucid, state.treasury.address, trsyUnit);
-  console.log(`   ví A: ${accA0 ? "đã có tài khoản → UPDATE" : "chưa có tài khoản → CREATE (đúc NFT)"}`);
-  const claimA = await buildClaimTx({
-    lucid, claimScript, network: NETWORK,
-    ownerPkh: aPkh, amount: LAMP_A, currentEpoch: epoch,
-    ...(accA0 ? { claimAccountUtxo: accA0 } : { accountNft: { script: accountNftScript } }),
-    treasury: {
-      utxo: treA, script: treasuryScript,
-      nftPolicy: treasuryNftPolicy, nftAssetName: TREASURY_NFT_ASSET_NAME,
-    },
-    committeeKeyHashes: committee, threshold,
-    validFromMs,
-  });
-  console.log(claimA.summary);
-  await submit(lucid, claimA.tx, "claim A");
-
-  // Claim B (ví placeholder) — best-effort: lỗi không chặn flow chính (A → redeem).
-  try {
-    const accB0 = await findClaimAccountOpt(lucid, state.claimAccount.address, bPkh);
-    // treasury đã bị Claim A spend → re-resolve UTxO mới (cum đã += LAMP_A).
-    const treB  = await findTreasury(lucid, state.treasury.address, trsyUnit);
-    const claimB = await buildClaimTx({
-      lucid, claimScript, network: NETWORK,
-      ownerPkh: bPkh, amount: LAMP_B, currentEpoch: epoch,
-      ...(accB0 ? { claimAccountUtxo: accB0 } : { accountNft: { script: accountNftScript } }),
-      treasury: {
-        utxo: treB, script: treasuryScript,
-        nftPolicy: treasuryNftPolicy, nftAssetName: TREASURY_NFT_ASSET_NAME,
-      },
-      committeeKeyHashes: committee, threshold,
-      validFromMs,
-    });
-    console.log(claimB.summary);
-    await submit(lucid, claimB.tx, "claim B");
-  } catch (e) {
-    console.log(`   ⚠ Claim B bỏ qua (best-effort): ${(e as Error).message.slice(0, 120)}`);
-  }
+  // D ĐANG CÓ HIỆU LỰC trên chuỗi — dùng để tính phần rút được trước khi quyết cấp.
+  const beaconBefore = decodeBeaconDatum(
+    Data.from((await findBeacon(lucid, state.beacon.address, dropNft)).datum!),
+  );
 
   // ════════════════════════════════════════════════════════════
-  // b. POST DropParam beacon — committee post D cho epoch hiện tại
+  // a. GRANT — committee cấp entitlement E (A 250 LAMP, B 1000 LAMP)
+  // ════════════════════════════════════════════════════════════
+  // SOLVENCY co-spend (C-SOLV-*): mỗi grant spend treasury (GrantEntitlement), nên treasury
+  // được tìm lại trước MỖI grant. Không còn `try/catch` quanh grant B: lỗi nào ở đây cũng là
+  // lỗi thật (luật on-chain, solvency, cấu hình), và nuốt nó thì bước verify phía sau chạy
+  // trên một trạng thái mà không ai biết là sai.
+  console.log("── a. Grant (committee cấp entitlement E) ──");
+  const grantCommon = {
+    lucid, dropValue: beaconBefore.drop_value, e,
+    claimAddress: state.claimAccount.address, treasuryAddress: state.treasury.address,
+    trsyUnit, treasuryNftPolicy, claimScript, treasuryScript, accountNftScript,
+    committee, threshold,
+  };
+  await grantFor({ ...grantCommon, label: "A", ownerPkh: aPkh, amount: LAMP_A });
+  await grantFor({ ...grantCommon, label: "B", ownerPkh: bPkh, amount: LAMP_B });
+
+  // ════════════════════════════════════════════════════════════
+  // b. POST DropParam beacon — nhãn = cửa sổ hiện tại (C-BCN-3), |ΔD| ≤ 10% (C-BCN-5)
   // ════════════════════════════════════════════════════════════
   console.log("\n── b. Post DropParam beacon (D) ──");
-
-  const dropUtxo = await findBeacon(lucid, state.beacon.address, dropNft);
-  const postD = await buildPostBeaconTx({
-    lucid, beaconUtxo: dropUtxo, beaconScript, network: NETWORK,
-    beaconNftPolicy: state.beaconNftPolicy,
-    newBeacon: { epoch, kind: "DropParam", drop_value: DROP_VALUE },
-    committeeKeyHashes: committee, threshold,
+  const beaconPlan = planBeacon({
+    onChain: beaconBefore, window: windowNow(MS_PER_EPOCH, e),
+    dropValue: DROP_VALUE, msPerEpoch: MS_PER_EPOCH,
   });
-  console.log(postD.summary);
-  await submit(lucid, postD.tx, "post DropParam");
+  if (beaconPlan.action === "skip") {
+    console.log(`   BỎ QUA — cửa sổ ${e} đã có lượt post (C-BCN-2/3: một lượt mỗi cửa sổ).`);
+  } else {
+    const postD = await buildPostBeaconTx({
+      lucid, beaconUtxo: await findBeacon(lucid, state.beacon.address, dropNft),
+      beaconScript, network: NETWORK,
+      beaconNftPolicy: state.beaconNftPolicy,
+      committeeKeyHashes: committee, threshold,
+      ...beaconPlan.params,   // newBeacon + msPerEpoch + currentDropValue
+    });
+    console.log(postD.summary);
+    await submit(lucid, postD.tx, "post DropParam");
+  }
 
   // ════════════════════════════════════════════════════════════
   // c. REDEEM — A tự tính vested(t), nhận LAMP đã mở khoá
   // ════════════════════════════════════════════════════════════
   console.log("\n── c. Redeem (ví A — tất định, self-compute vested) ──");
 
-  // current_epoch dùng cho redeem: phải > start_epoch để vested > 0
-  // (vested = min(E, D·dpe·(t−t0))). start_epoch = epoch genesis (set ở 03).
-  // Đọc start_epoch thực từ datum để tính validFrom chuẩn.
-  const accA1     = await findClaimAccount(lucid, state.claimAccount.address, aPkh);
-  const dA1       = decodeClaimAccountDatum(Data.from(accA1.datum!));
-  const redeemEpoch = await currentEpoch();
-  const redeemValidFromMs = redeemEpoch * MS_PER_EPOCH;
-  if (redeemEpoch <= dA1.start_epoch) {
+  const accA1 = await findClaimAccount(lucid, state.claimAccount.address, aPkh);
+  const dA1   = decodeClaimAccountDatum(Data.from(accA1.datum!));
+  const dropBeacon = await findBeacon(lucid, state.beacon.address, dropNft);
+  const dNow = decodeBeaconDatum(Data.from(dropBeacon.datum!)).drop_value;
+  const redeemPlan = planRedeem(dA1, dNow, e);
+
+  if (redeemPlan.action === "wait") {
     console.log(
-      `   ⚠ epoch hiện tại (${redeemEpoch}) ≤ start_epoch (${dA1.start_epoch}) → vested=0. ` +
-      `Đợi sang epoch kế rồi chạy lại bước redeem (Preview epoch = 1 ngày).`,
+      `   ⏸ Chưa có gì để rút: start_epoch=${dA1.start_epoch}, redeemed=${dA1.redeemed}, cửa sổ ${e}. ` +
+      `Chạy lại từ cửa sổ ${redeemPlan.fromEpoch} — lượt sau sẽ BỎ QUA grant A vì lô chưa rút trọn.`,
+    );
+    console.log("\n⏸ E2E CHƯA hoàn tất — grant + beacon xong, redeem chờ cửa sổ sau.");
+    return;
+  }
+  if (redeemPlan.action === "stalled") {
+    throw new Error(
+      `E2E-REDEEM-003: D·drops_per_epoch = ${dNow}·${dA1.drops_per_epoch} ≤ 0 — tài khoản A không bao giờ ` +
+      `rút được. Kiểm beacon DropParam và datum tài khoản.`,
+    );
+  }
+  if (redeemPlan.action === "exhausted") {
+    throw new Error(
+      `E2E-REDEEM-001: tài khoản A đã rút trọn (${dA1.redeemed}/${dA1.entitlement}) mà grant A không ` +
+      `chạy ở bước a — trạng thái này không phải kết quả của lượt chạy này.`,
     );
   }
 
@@ -257,18 +298,19 @@ async function main(): Promise<void> {
   const treasuryU = (await lucid.utxosAt(state.treasury.address))
     .find((u) => (u.assets[trsyUnit] ?? 0n) === 1n && (u.assets[lampUnit] ?? 0n) > 0n);
   if (!treasuryU) throw new Error("không tìm thấy treasury UTxO (TRSY + còn LAMP)");
-  const dropBeacon = await findBeacon(lucid, state.beacon.address, dropNft);
 
   const redeem = await buildRedeemTx({
     lucid, network: NETWORK,
     claimAccountUtxo: accA1, claimScript,
     treasuryUtxo: treasuryU, treasuryScript,
     dropBeaconUtxo: dropBeacon,
-    currentEpoch: redeemEpoch,
-    validFromMs: redeemValidFromMs,
+    ...redeemTimeParams(windowNow(MS_PER_EPOCH, e)),
     lampPolicyId: state.testLamp.policyId, lampAssetName: state.testLamp.assetName,
     treasuryNftPolicy,
   });
+  if (redeem.amount !== redeemPlan.amount) {
+    throw new Error(`E2E-REDEEM-002: builder tính ${redeem.amount}, kế hoạch tính ${redeemPlan.amount}.`);
+  }
   console.log(redeem.summary);
   await submit(lucid, redeem.tx, "redeem A");
 
@@ -277,8 +319,9 @@ async function main(): Promise<void> {
   // ════════════════════════════════════════════════════════════
   console.log("\n── d. Verify on-chain ──");
 
-  const accA2 = await findClaimAccount(lucid, state.claimAccount.address, aPkh);
-  const dA    = decodeClaimAccountDatum(Data.from(accA2.datum!));
+  const dA = decodeClaimAccountDatum(
+    Data.from((await findClaimAccount(lucid, state.claimAccount.address, aPkh)).datum!),
+  );
   const balAfter = (await lucid.wallet().getUtxos())
     .reduce((s, u) => s + (u.assets[lampUnit] ?? 0n), 0n);
 
@@ -289,11 +332,12 @@ async function main(): Promise<void> {
   console.log(`   Ví A test-LAMP: ${balBefore / 1_000_000n} → ${balAfter / 1_000_000n} LAMP ` +
     `(+${(balAfter - balBefore) / 1_000_000n})`);
 
-  // Bất biến: redeemed cộng dồn = amount đã redeem lần này (genesis redeemed=0).
-  if (dA.redeemed !== redeem.amount) {
-    throw new Error(`redeemed on-chain (${dA.redeemed}) ≠ amount redeem (${redeem.amount})`);
+  // Bất biến C-RDM-4/4a: redeemed' = redeemed + amount, các trường khác bất biến. Bản cũ so
+  // `redeemed == amount`, chỉ đúng khi tài khoản chưa từng rút.
+  const diff = accountDatumMismatches(redeemPlan.expected, dA);
+  if (diff.length > 0) {
+    throw new Error(`E2E-VERIFY-002: datum A sau redeem lệch kỳ vọng — ${diff.join("; ")}`);
   }
-  // Bất biến: tổng nhận ≤ entitlement.
   if (dA.redeemed > dA.entitlement) {
     throw new Error(`redeemed (${dA.redeemed}) > entitlement (${dA.entitlement}) — vi phạm cap E`);
   }
@@ -302,7 +346,7 @@ async function main(): Promise<void> {
       `— có thể do change UTxO/min-ADA; kiểm tra explorer.`);
   }
 
-  console.log("\n✅ E2E hoàn tất — claim → post DropParam → redeem (vested tất định) chạy THẬT trên Preview.");
+  console.log("\n✅ E2E hoàn tất — grant → post DropParam → redeem (vested tất định) chạy THẬT trên Preview.");
 }
 
 main().catch((e) => { console.error("❌", e instanceof Error ? e.message : e); process.exit(1); });
