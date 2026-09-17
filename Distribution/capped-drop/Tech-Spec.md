@@ -369,9 +369,18 @@ chấp nhận rõ ràng (`Genesis/scripts/28_beacon_grant_redeem.ts` ▸ bước
 
 **Vì sao chốt nằm ở CẢ HAI validator.** C-SOLV-1 chỉ ép `Claim` co-spend kho, KHÔNG ép kho
 chạy nhánh `GrantEntitlement` — kho chạy `Refill` thì không mệnh đề C-ACC-3 nào chạy. Hai lớp
-chặn cặp đó độc lập nhau: C-REF-ACC từ phía kho, C-CLAIM-3/5/6 từ phía tài khoản. Gỡ một lớp
-thì lớp kia vẫn đứng về mặt thiết kế; bộ kiểm hiện có ghim từng mệnh đề trên MỘT validator
-một lúc, chưa có bài dựng giao dịch chạy cả hai validator cùng lúc.
+chặn cặp đó: C-REF-ACC từ phía kho, C-CLAIM-3/5/6 từ phía tài khoản. Chúng độc lập với nhau
+**chỉ khi datum tài khoản KHÔNG rebase**. Datum đã rebase đúng thì C-CLAIM-3/5/6 thoả, và
+`claim_account` không đọc redeemer của kho, nên cặp `Claim` + `Refill` khi đó chỉ còn một lớp
+chặn là C-REF-ACC. Thứ bị né là nhánh `GrantEntitlement` của kho; các đẳng thức rebase vẫn bị
+phía tài khoản ép, chữ ký committee vẫn bị `Claim` ép, và `dpe` vẫn bất biến ở `Claim`. Chưa
+dựng giao dịch nào cho thấy né nhánh đó rút thêm được gì.
+
+Đo bằng `Distribution/onchain/validators/claim_treasury_cross_test.ak` (Issue #79): mỗi bài
+dựng MỘT giao dịch và chạy cả hai validator trên nó. Gỡ C-REF-ACC → Claim+Refill với datum
+không rebase vẫn bị `claim_account` từ chối, nhưng với datum đã rebase thì qua trọn
+(`cross_claim_refill_rebased_rejected` đỏ). Gỡ C-CLAIM-3/5/6 → cả hai hình dạng vẫn bị
+C-REF-ACC từ chối.
 
 **Vì sao cần C-ACC-4.** Biên của D (C-BCN-4) một mình không ghim tốc độ vesting: `vested` tỉ lệ
 với `D · dpe`, và `dpe` do committee đặt lúc CREATE. `drops_per_epoch_max` là giá trị tạm cho
