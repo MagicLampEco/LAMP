@@ -29,10 +29,20 @@ pub const drop_value_min: Int = 10_000_000
 //                              vesting của tài khoản đang mở dở bằng cách hạ D về ~0.
 
 pub const drop_value_max: Int = 10_000_000_000
-//                              10_000 LAMP — TRẦN CỨNG. Đây là mệnh đề khiến câu
-//                              "lịch vesting ràng buộc cả bên phát hành" đứng được:
-//                              không có nó, committee đặt D đủ lớn là mọi tài khoản
-//                              vested trọn `entitlement` trong đúng một cửa sổ.
+//                              10_000 LAMP — TRẦN CỨNG của D. Một mình nó KHÔNG ghim
+//                              được lịch vesting: tốc độ mở khoá là `D · drops_per_epoch`,
+//                              và thừa số thứ hai do cùng committee đặt lúc mở tài khoản.
+//                              Câu "lịch vesting ràng buộc cả bên phát hành" chỉ đứng
+//                              được khi có ĐỦ trần D, trần dpe (dưới), và C-ACC-2/3 ở
+//                              `treasury.ak` ghim mốc bắt đầu.
+
+// ── Trần `drops_per_epoch` của một tài khoản ─────────────────────────────────
+// `treasury.ak` C-ACC-4 ép `1 ≤ dpe ≤ trần` ở nhánh CREATE; `claim_account` giữ dpe bất
+// biến ở `Claim`. Tốc độ mở khoá tối đa = `drop_value_max · drops_per_epoch_max`.
+// GIÁ TRỊ TẠM cho Preprod — chốt trước mainnet cùng bộ biên D ở trên. 100 chứa được
+// giá trị vận hành đang dùng (`Genesis/scripts/28_beacon_grant_redeem.ts`, hằng
+// `DROPS_PER_EPOCH`, mặc định 21).
+pub const drops_per_epoch_max: Int = 100
 
 // ── Biên của MỘT LẦN đổi D ───────────────────────────────────────────────────
 // `beacon.ak` ép |D_mới − D_cũ| · q ≤ D_cũ · max_drop_delta_q, tức ±10% mỗi lượt post.

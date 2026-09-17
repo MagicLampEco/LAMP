@@ -17,7 +17,7 @@ import { accountNftName, mintAccountRedeemerToCbor } from "../offchain/src/accou
 import {
   committeeThreshold, assertCommitteeShape, assertCommitteeSigners,
 } from "../offchain/src/committee.js";
-import { TREASURY_NFT_ASSET_NAME, epochWindow } from "../offchain/src/constants.js";
+import { DROPS_PER_EPOCH_MAX, TREASURY_NFT_ASSET_NAME, epochWindow } from "../offchain/src/constants.js";
 import { applyValidator } from "../scripts/blueprint.js";
 import { lampOildrop } from "./helpers.js";
 
@@ -207,6 +207,20 @@ describe("buildClaimTx — CREATE path", () => {
     })).rejects.toThrow(/CLAIM-004/);
   });
 
+  // CLAIM-006 — trần on-chain C-ACC-4. Đo cả hai phía biên: đúng trần qua, trần + 1 bị chặn.
+  it("CLAIM-006: dropsPerEpoch vượt DROPS_PER_EPOCH_MAX bị chặn, đúng trần thì qua", async () => {
+    const { lucid } = mockLucid("addr_wallet");
+    const base = {
+      lucid, claimScript: FAKE_CLAIM, network: NETWORK,
+      ownerPkh: OWNER, amount: lampOildrop(250n), currentEpoch: 5n,
+      committeeKeyHashes: COMMITTEE, treasury: trsyParam(0n), accountNft: accNft,
+    };
+    await expect(buildClaimTx({ ...base, dropsPerEpoch: DROPS_PER_EPOCH_MAX + 1n }))
+      .rejects.toThrow(/CLAIM-006/);
+    const ok = await buildClaimTx({ ...base, lucid: mockLucid("addr_wallet").lucid, dropsPerEpoch: DROPS_PER_EPOCH_MAX });
+    expect(ok.newDatum.drops_per_epoch).toBe(DROPS_PER_EPOCH_MAX);
+  });
+
   // ── Issue #72 lỗ 1 (C-ACC-2) — đường CREATE phải khai CẢ HAI đầu validity range ──
   // Trước bản vá, `validFromMs` một mình được ghi là "BẮT BUỘC live tx CREATE" ngay trong
   // `ClaimParams` — tức bên dựng đã tả đúng ràng buộc mà bên kiểm chưa từng có. Nay
@@ -285,7 +299,10 @@ describe("buildClaimTx — UPDATE path", () => {
     };
   }
 
-  it("increments entitlement, preserves owner+redeemed+start+dpe+assets", async () => {
+  // REBASE (C-CLAIM-4/5/6, 2026-09-17). `redeemed = 40` và `start_epoch = 3 ≠ currentEpoch 9`
+  // CỐ Ý: để mặc định 0 / bằng cửa sổ thì bài này xanh cả khi builder quên trừ `redeemed` hoặc
+  // quên dời mốc.
+  it("rebases account: E = (E − redeemed) + amount, redeemed = 0, start = current; giữ owner+dpe+assets", async () => {
     const { lucid, rec } = mockLucid("addr_wallet");
     const prev = { owner: OWNER, entitlement: lampOildrop(100n), redeemed: lampOildrop(40n), start_epoch: 3n, drops_per_epoch: 1n };
     const DUST = toUnit("ab".repeat(28), "cafe");
@@ -299,12 +316,24 @@ describe("buildClaimTx — UPDATE path", () => {
     expect(rec.collectFrom.filter(c => c.utxos[0]?.assets[TRSY_UNIT] !== 1n)).toHaveLength(1);
     expect(rec.attach).toContain(FAKE_CLAIM);
     expect(res.newDatum).toEqual({
-      owner: OWNER, entitlement: lampOildrop(160n),   // +60
-      redeemed: lampOildrop(40n),                     // unchanged
-      start_epoch: 3n,                            // unchanged
-      drops_per_epoch: 1n,                        // unchanged
+      owner: OWNER, entitlement: lampOildrop(120n),   // 100 − 40 + 60
+      redeemed: 0n,                                   // rebase
+      start_epoch: 9n,                                // = currentEpoch
+      drops_per_epoch: 1n,                            // unchanged
     });
     expect(rec.payData[0]!.assets).toEqual({ lovelace: 2_000_000n, [DUST]: 7n });
+  });
+
+  it("CREATE-002 áp cả UPDATE: có validFromMs mà thiếu validToMs thì từ chối", async () => {
+    const { lucid } = mockLucid("addr_wallet");
+    const prev = { owner: OWNER, entitlement: lampOildrop(100n), redeemed: 0n, start_epoch: 3n, drops_per_epoch: 1n };
+    await expect(buildClaimTx({
+      lucid, claimScript: FAKE_CLAIM, network: NETWORK,
+      ownerPkh: OWNER, amount: lampOildrop(60n), currentEpoch: 9n,
+      claimAccountUtxo: claimUtxo(prev),
+      committeeKeyHashes: COMMITTEE, treasury: trsyParam(0n),
+      validFromMs: 9n * 432_000_000n,
+    })).rejects.toThrow(/CREATE-002: đường UPDATE/);
   });
 
   it("rejects amount ≤ 0", async () => {
@@ -838,8 +867,8 @@ describe("buildClaimTx — solvency guard tích hợp", () => {
 
   it("UPDATE: dùng entitlement−redeemed sau khi tăng để tính outstanding", async () => {
     const { lucid } = mockLucid("addr_wallet");
-    // prev: E=300, redeemed=100 → outstanding cũ 200; +amount 250 → E=550, redeemed=100
-    // → thisOutstandingAfter = 450. other 600 → 1050 > 1000 → reject.
+    // prev: E=300, redeemed=100 → outstanding cũ 200; +amount 250 → rebase E=450, redeemed=0
+    // → thisOutstandingAfter = 450 (không đổi so với trước rebase). other 600 → 1050 > 1000 → reject.
     const prev = { owner: OWNER, entitlement: lampOildrop(300n), redeemed: lampOildrop(100n), start_epoch: 2n, drops_per_epoch: 1n };
     await expect(buildClaimTx({
       lucid, claimScript: FAKE_CLAIM, network: NETWORK,

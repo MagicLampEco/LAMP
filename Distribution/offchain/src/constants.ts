@@ -23,6 +23,11 @@ export const DROP_VALUE_MAX = 10_000_000_000n;  // 10.000 LAMP
 export const MAX_DROP_DELTA_Q = 100_000_000n;   // ±10% × Q
 export const Q = 1_000_000_000n;
 
+/** Trần `drops_per_epoch` của một tài khoản — PHẢI khớp `constants.ak` ▸ `drops_per_epoch_max`,
+ *  nơi `treasury.ak` C-ACC-4 đọc nó. Chép có nhãn: nguồn là tệp `.ak`, bản chép 2026-09-17.
+ *  Giá trị tạm cho Preprod, chốt trước mainnet cùng biên D. */
+export const DROPS_PER_EPOCH_MAX = 100n;
+
 /**
  * Cửa sổ hiệu lực cho một tx PHẢI đóng dấu thời gian — CREATE tài khoản, post beacon.
  * Cả hai đầu rơi cùng một epoch ("Luật 2b", `onchain/lib/.../util.ak` ▸ `get_epoch_strict`).

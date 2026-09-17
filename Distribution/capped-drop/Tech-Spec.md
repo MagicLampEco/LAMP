@@ -290,10 +290,10 @@ mọi ca khác vẫn xanh.
 |---|---|---|
 | **C-CLAIM-1** | `amount > 0` | `claim_account.ak:58` |
 | **C-CLAIM-2** | `committee_approved(committee, threshold, sigs)` | `claim_account.ak:89` |
-| **C-CLAIM-3** | `out_datum.entitlement == datum.entitlement + amount` | `claim_account.ak:62` |
-| **C-CLAIM-4** | `out_datum.owner == datum.owner` (owner bất biến) | `claim_account.ak:61` |
-| **C-CLAIM-5** | `out_datum.redeemed == datum.redeemed` (redeemed không đổi khi Claim) | `claim_account.ak:63` |
-| **C-CLAIM-6** | `out_datum.start_epoch >= datum.start_epoch` (mốc chỉ dời VỀ SAU; giá trị chính xác do C-ACC-3 ghim) | `claim_account.ak` ▸ khối C-CLAIM-6 |
+| **C-CLAIM-3** | `out_datum.entitlement == datum.entitlement − datum.redeemed + amount` (cấp thêm = REBASE, xem §Bất biến thêm 2026-09-17) | `claim_account.ak` ▸ nhánh `Claim` |
+| **C-CLAIM-4** | `out_datum.owner == datum.owner` (owner bất biến) | `claim_account.ak` ▸ nhánh `Claim` |
+| **C-CLAIM-5** | `out_datum.redeemed == 0` | `claim_account.ak` ▸ nhánh `Claim` |
+| **C-CLAIM-6** | `out_datum.start_epoch == get_epoch_strict(tx, ms_per_epoch)` (cận HAI phía) | `claim_account.ak` ▸ nhánh `Claim` |
 | **C-CLAIM-7** | `out_datum.drops_per_epoch == datum.drops_per_epoch` | `claim_account.ak:65` |
 
 #### Redeemer `Redeem`
@@ -334,32 +334,48 @@ Sổ cái nhận tx khi `lower ≤ now ≤ upper`, nên `lower` đặt lùi bao 
 | **C-BCN-4** | `drop_value_min ≤ out_datum.drop_value ≤ drop_value_max` | `beacon.ak` |
 | **C-BCN-5** | `abs_diff(D_out, D_in) × q ≤ D_in × max_drop_delta_q` (±10% một lượt) | `beacon.ak` |
 
-#### Bất biến thêm 2026-09-17 — TOP-UP không được dời mốc về quá khứ
+#### Bất biến thêm 2026-09-17 — cấp thêm = REBASE tài khoản
 
-C-ACC-2 chỉ ghim CREATE. Nhánh UPDATE (top-up một tài khoản đã có) giữ nguyên `start_epoch`
-cũ, và trên một tài khoản đã già thì phần cấp MỚI được tính như thể nó đã vesting từ mốc cũ.
-Đo được: tài khoản `E = 400` mở ở cửa sổ 0, top-up thêm 1000 ở cửa sổ 100 ⇒ `elapsed = 100`
-⇒ `raw = D · dpe · 100` vượt `E = 1400` ⇒ rút TRỌN 1400 ở giao dịch kế tiếp. Lịch vesting của
-phần mới bằng không.
+C-ACC-2 chỉ ghim CREATE. Trước ngày này nhánh UPDATE (cấp thêm cho một tài khoản đã có) giữ
+nguyên `start_epoch` và `redeemed`, nên trên một tài khoản đã già phần cấp MỚI được tính như
+thể nó đã vesting từ mốc cũ. Đo được: `E = 400` mở ở cửa sổ 0, cấp thêm 1000 ở cửa sổ 100 ⇒
+`elapsed = 100` ⇒ `raw = D · dpe · 100` vượt `E = 1400` ⇒ rút TRỌN 1400 ở giao dịch kế tiếp.
+
+**Vì sao không dời mốc theo bình quân gia quyền.** Phương án
+`start' = ⌈(E · start + granted · cửa_sổ_này) / E'⌉` KHÔNG đóng được lỗ: cùng ca trên cho
+`start' = 72`, `elapsed = 28`, và với `D · dpe` đủ lớn thì `28 · D · dpe` vẫn vượt 1400. Tuổi
+tài khoản vẫn đi theo sang lô mới, chỉ bị pha loãng. Đổi trọng số sang phần chưa rút
+(`E − redeemed`) cũng không đóng: vẫn còn tổ hợp tham số rút trọn.
+
+**Phương án chốt: rebase.** Phần chưa rút cộng phần cấp mới thành MỘT lô mới, bắt đầu từ cửa sổ
+hiện tại:
+
+    E' = (E − redeemed) + amount      redeemed' = 0      start' = get_epoch_strict(tx, ms_per_epoch)
 
 | ID | Phát biểu | Code |
 |---|---|---|
-| **C-ACC-3** | UPDATE: `ca_out.start_epoch == ⌈(E_cũ · start_cũ + granted · cửa_sổ_này) / E_mới⌉`, với `granted = E_mới − E_cũ` và `cửa_sổ_này = get_epoch_strict(tx, ms_per_epoch)`; kèm `ca_out.entitlement > 0` | `treasury.ak`, nhánh `GrantEntitlement` ▸ UPDATE |
-| **C-CLAIM-6** | `out_datum.start_epoch >= datum.start_epoch` — chặn chiều LÙI | `claim_account.ak` ▸ khối C-CLAIM-6 |
+| **C-ACC-3** | UPDATE: `ca_out.redeemed == 0` và `ca_out.start_epoch == get_epoch_strict(tx, ms_per_epoch)`; phần cộng vào sổ nợ tính từ `ca_in.entitlement − ca_in.redeemed` | `treasury.ak`, nhánh `GrantEntitlement` ▸ UPDATE |
+| **C-ACC-4** | CREATE: `1 ≤ ca_out.drops_per_epoch ≤ drops_per_epoch_max` | `treasury.ak`, nhánh `GrantEntitlement` ▸ CREATE; trần ở `lampdist/constants.ak` ▸ `drops_per_epoch_max` |
+| **C-REF-ACC** | `Refill`: không input nào và không output nào nằm ở `claim_account_hash` | `treasury.ak`, nhánh `Refill` |
+| **C-CLAIM-3/5/6** | cùng ba đẳng thức, ép từ phía tài khoản (bảng §Redeemer `Claim`) | `claim_account.ak` ▸ nhánh `Claim` |
 
-**Bình quân gia quyền, làm tròn LÊN.** Mốc mới nằm giữa mốc cũ và cửa sổ hiện tại, theo tỉ
-trọng entitlement — phần cũ giữ nguyên tiến độ đã tích, phần mới bắt đầu từ bây giờ. Chia làm
-tròn LÊN chứ không xuống, để sai số làm tròn rơi về phía kho chứ không về phía người rút.
+**Hệ quả người nhận thấy được.** Phần đã vest mà chưa rút tại lúc cấp thêm KHÔNG mất — nó nằm
+trong `E − redeemed` — nhưng nó vest lại từ đầu cùng lô mới. Muốn giữ tiến độ thì rút trước
+khi được cấp thêm. Bên dựng giao dịch cấp thêm phải chặn trường hợp này trừ khi người vận hành
+chấp nhận rõ ràng (`Genesis/scripts/28_beacon_grant_redeem.ts` ▸ bước topup, mã lỗi `TOPUP-006`).
 
-**Vì sao chốt nằm ở HAI validator, và vì sao đó không phải trùng lặp.** `claim_account` không
-nhìn thấy `granted` (nó chỉ có datum vào/ra của chính tài khoản), nên nó không tính được giá
-trị đúng; `treasury` có cả `ca_in` lẫn `ca_out` nên tính được. Ngược lại `treasury` chỉ chạy
-khi có ai đó tiêu kho. Tách vai: treasury ghim GIÁ TRỊ CHÍNH XÁC, `claim_account` chặn CHIỀU.
-An toàn vì `Claim` bắt buộc co-spend treasury với `GrantEntitlement` (C-SOLV-1 binding) ⇒
-không tồn tại đường chạy C-CLAIM-6 mà không chạy C-ACC-3.
+**Sổ nợ vẫn khớp.** `Σ(E − redeemed)` trước và sau rebase chênh đúng `amount`, nên
+`outstanding_entitlement` của kho cộng đúng `amount` như trước (C-SOLV-1).
 
-**Tài khoản rỗng (`E_cũ = 0`)**: công thức tự trả về `cửa_sổ_này`, tức top-up vào một tài khoản
-đã rút hết bắt đầu lại từ bây giờ — không cần nhánh riêng.
+**Vì sao chốt nằm ở CẢ HAI validator.** C-SOLV-1 chỉ ép `Claim` co-spend kho, KHÔNG ép kho
+chạy nhánh `GrantEntitlement` — kho chạy `Refill` thì không mệnh đề C-ACC-3 nào chạy. Hai lớp
+chặn cặp đó độc lập nhau: C-REF-ACC từ phía kho, C-CLAIM-3/5/6 từ phía tài khoản. Gỡ một lớp
+thì lớp kia vẫn đứng về mặt thiết kế; bộ kiểm hiện có ghim từng mệnh đề trên MỘT validator
+một lúc, chưa có bài dựng giao dịch chạy cả hai validator cùng lúc.
+
+**Vì sao cần C-ACC-4.** Biên của D (C-BCN-4) một mình không ghim tốc độ vesting: `vested` tỉ lệ
+với `D · dpe`, và `dpe` do committee đặt lúc CREATE. `drops_per_epoch_max` là giá trị tạm cho
+Preprod, chốt trước mainnet cùng biên D.
 
 **C-BCN-2 + C-BCN-3 đi CẶP** và cặp ấy mới là thứ có giá trị: mỗi cửa sổ post được tối đa MỘT lượt (lượt thứ hai cùng cửa sổ có `epoch` bằng lượt trước ⇒ đứt C-BCN-2; mang nhãn cửa sổ sau ⇒ đứt C-BCN-3). Đó là điều kiện để C-BCN-5 là một trần thật — không có nó thì post `n` lượt trong một cửa sổ đổi được `1,1ⁿ` lần.
 

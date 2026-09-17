@@ -93,19 +93,26 @@ validator claim_account(
         expect amount > 0
         // C-CLAIM-2
         expect util.committee_approved(committee, threshold, tx.extra_signatories)
-        // C-CLAIM-4 · C-CLAIM-3 · C-CLAIM-5: entitlement += amount; các field khác bất biến.
+        // C-CLAIM-4 (owner) · C-CLAIM-3 · C-CLAIM-5 · C-CLAIM-6 (2026-09-17): cấp thêm = REBASE.
+        //
+        //     E' = (E − redeemed) + amount      redeemed' = 0      start' = cửa sổ này
+        //
+        // Bản trước giữ `redeemed` và mốc cũ (rồi dời mốc theo bình quân gia quyền) — cả
+        // hai đều để tuổi tài khoản mang sang lô mới, và tài khoản đủ già rút trọn phần vừa
+        // cấp ngay giao dịch kế. Lý do đầy đủ + vì sao bình quân không đóng được lỗ: xem
+        // `treasury.ak` C-ACC-3.
+        //
+        // Ép ĐỦ ba đẳng thức ở đây, không dựa vào treasury: C-SOLV-1 dưới chỉ ép có
+        // co-spend kho, KHÔNG ép kho chạy nhánh `GrantEntitlement` — kho chạy `Refill` thì
+        // không mệnh đề C-ACC-3 nào chạy. `treasury.ak` C-REF-ACC chặn cặp đó từ phía kho;
+        // ba dòng dưới chặn nó từ phía tài khoản.
+        //
+        // `start' == get_epoch_strict` là cận HAI phía: không lùi (mang tuổi sang) và không
+        // tiến (bẫy một chiều — tài khoản không bao giờ vest mà nợ đã vào sổ).
         expect out_datum.owner == datum.owner
-        expect out_datum.entitlement == datum.entitlement + amount
-        expect out_datum.redeemed == datum.redeemed
-        // C-CLAIM-6 (2026-09-17, đi cặp với C-ACC-3 ở `treasury.ak`): mốc chỉ được dời
-        // VỀ PHÍA SAU. Bản trước ép `==`, tức top-up cộng phần cấp MỚI vào mốc CŨ — đo
-        // được: tài khoản già 100 cửa sổ nhận top-up rồi rút trọn ngay giao dịch kế.
-        // GIÁ TRỊ CHÍNH XÁC (bình quân gia quyền theo entitlement) do treasury ghim; ở
-        // đây chỉ chặn chiều LÙI, vì tách vai như thế mới đúng: validator này không nhìn
-        // thấy `granted`, còn treasury thì có cả `ca_in` lẫn `ca_out`.
-        // Tách an toàn vì `Claim` BẮT BUỘC co-spend treasury (C-SOLV-1 binding ngay dưới)
-        // ⇒ không tồn tại đường chạy mệnh đề này mà không chạy C-ACC-3.
-        expect out_datum.start_epoch >= datum.start_epoch
+        expect out_datum.entitlement == datum.entitlement - datum.redeemed + amount
+        expect out_datum.redeemed == 0
+        expect out_datum.start_epoch == util.get_epoch_strict(tx, ms_per_epoch)
         // C-CLAIM-7
         expect out_datum.drops_per_epoch == datum.drops_per_epoch
 
@@ -337,6 +344,7 @@ fn claim_tx(
     inputs: [acc_in, tre_in],
     outputs: [acc_out, tre_out],
     extra_signatories: sigs,
+    validity_range: t_claim_range(),
     mint: assets.zero,
   }
 }
@@ -352,29 +360,85 @@ test claim_happy_path() {
   )
 }
 
-/// C-CLAIM-5 chiều ĐƯỢC PHÉP: top-up dời mốc về SAU. Giá trị chính xác (bình quân gia
-/// quyền) do `treasury.ak` ▸ C-ACC-3 ghim — validator này không nhìn thấy `granted` nên
-/// không tính lại được, và không cần: `Claim` bắt buộc co-spend treasury.
-test claim_start_epoch_moves_forward_ok() {
-  let in_d = ca_datum(400, 0, 5, 1)
-  let out_d = ca_datum(1400, 0, 9, 1)
-  let tx = claim_tx(in_d, out_d, [#"c1", #"c2"], acc_value(), 0, 1000, 5000)
+/// Cửa sổ mà mọi tx `Claim` dựng sẵn chạy trong đó (C-CLAIM-6 ép `start' == cửa sổ này`).
+const t_claim_window: Int = 5
+
+fn t_claim_range() -> interval.Interval {
+  interval.between(t_claim_window * t_mspe, t_claim_window * t_mspe + 1000)
+}
+
+fn claim_run(in_d: ClaimAccountDatum, tx: Transaction) -> Bool {
   claim_account.spend(
     t_committee, t_threshold, t_mspe, t_lamp_policy, t_lamp_name, t_beacon_policy,
     t_treasury_nft_policy, t_acct_nft_policy, Some(in_d), Claim { amount: 1000 }, util.mk_ref(0), tx,
   )
 }
 
-/// C-CLAIM-5 chiều BỊ CHẶN. Bài này canh đúng chỗ vừa được NỚI (`==` xuống `>=`): không
-/// có nó thì một bản sửa sau hạ tiếp xuống "không kiểm gì" và không bài nào kêu — mốc lùi
-/// được nghĩa là `elapsed` thổi lên tuỳ ý, tức lỗ Issue #72 mở lại qua đường `Claim`.
-test claim_start_epoch_moving_backward_rejected() fail {
-  let in_d = ca_datum(400, 0, 5, 1)
-  let out_d = ca_datum(1400, 0, 4, 1)
-  let tx = claim_tx(in_d, out_d, [#"c1", #"c2"], acc_value(), 0, 1000, 5000)
+// ── Cấp thêm = REBASE (C-CLAIM-4/5/6, 2026-09-17) ─────────────────────────────
+// Tài khoản vào mang `redeemed = 150` và `start_epoch = 2` — CỐ Ý khác 0 và khác cửa sổ 5.
+// Fixture để mặc định `redeemed = 0`, `start = cửa sổ` thì số hạng `− redeemed` và mệnh đề
+// mốc bằng 0 ở cả hai cực đột biến, và không bài nào phân biệt được chúng có mặt hay không.
+
+/// Đối chứng: E' = 400 − 150 + 1000 = 1250, redeemed' = 0, start' = 5; sổ kho +1000.
+test claim_topup_rebases_account_ok() {
+  let in_d = ca_datum(400, 150, 2, 1)
+  let out_d = ca_datum(1250, 0, 5, 1)
+  claim_run(in_d, claim_tx(in_d, out_d, [#"c1", #"c2"], acc_value(), 250, 1250, 5000))
+}
+
+/// Công thức CŨ (E + amount, giữ redeemed) — chỉ sai đúng mệnh đề entitlement.
+test claim_topup_entitlement_ignoring_redeemed_rejected() fail {
+  let in_d = ca_datum(400, 150, 2, 1)
+  let out_d = ca_datum(1400, 0, 5, 1)
+  claim_run(in_d, claim_tx(in_d, out_d, [#"c1", #"c2"], acc_value(), 250, 1250, 5000))
+}
+
+/// Entitlement đúng, nhưng `redeemed` giữ nguyên — chỉ sai đúng mệnh đề `redeemed' = 0`.
+test claim_topup_keeping_redeemed_rejected() fail {
+  let in_d = ca_datum(400, 150, 2, 1)
+  let out_d = ca_datum(1250, 150, 5, 1)
+  claim_run(in_d, claim_tx(in_d, out_d, [#"c1", #"c2"], acc_value(), 250, 1250, 5000))
+}
+
+/// Mốc cũ giữ nguyên — đường mang tuổi tài khoản sang lô mới (lỗ Issue #72).
+test claim_topup_keeping_old_start_rejected() fail {
+  let in_d = ca_datum(400, 150, 2, 1)
+  let out_d = ca_datum(1250, 0, 2, 1)
+  claim_run(in_d, claim_tx(in_d, out_d, [#"c1", #"c2"], acc_value(), 250, 1250, 5000))
+}
+
+/// Mốc ở tương lai — bẫy một chiều (không bao giờ vest, nợ đã vào sổ).
+test claim_topup_future_start_rejected() fail {
+  let in_d = ca_datum(400, 150, 2, 1)
+  let out_d = ca_datum(1250, 0, 6, 1)
+  claim_run(in_d, claim_tx(in_d, out_d, [#"c1", #"c2"], acc_value(), 250, 1250, 5000))
+}
+
+/// Luật 2b, ĐẦU TRÊN: đầu dưới rơi cửa sổ 5 (khớp `start' = 5` nếu chỉ đọc `get_epoch`),
+/// đầu trên rơi cửa sổ 6. `get_epoch_strict` từ chối; hạ về `get_epoch` thì tx này QUA.
+test claim_topup_range_upper_bound_rejected() fail {
+  let in_d = ca_datum(400, 150, 2, 1)
+  let out_d = ca_datum(1250, 0, 5, 1)
+  let tx =
+    Transaction {
+      ..claim_tx(in_d, out_d, [#"c1", #"c2"], acc_value(), 250, 1250, 5000),
+      validity_range: interval.between(5 * t_mspe, 6 * t_mspe),
+    }
+  claim_run(in_d, tx)
+}
+
+/// Hồi quy ca `MUT-MATH1` (lỗ còn mở sau bản vá bình quân gia quyền): tài khoản E=400
+/// mở ở cửa sổ 0, nhận top-up 1000 ở cửa sổ 100. Sau rebase datum là (1400, 0, 100) ⇒
+/// rút ngay ở cửa sổ 100 được `min(1400, 100·1·0) − 0 = 0` ⇒ TỪ CHỐI. Dưới bản bình quân
+/// (start' = 72) cùng lượt rút này ra trọn 1400.
+test redeem_right_after_rebased_topup_rejected() fail {
+  let in_d = ca_datum(1400, 0, 100, 1)
+  let out_d = ca_datum(1400, 1400, 100, 1)
+  let tx = redeem_tx(in_d, out_d, 1400, 100, 100, [t_owner], [])
   claim_account.spend(
     t_committee, t_threshold, t_mspe, t_lamp_policy, t_lamp_name, t_beacon_policy,
-    t_treasury_nft_policy, t_acct_nft_policy, Some(in_d), Claim { amount: 1000 }, util.mk_ref(0), tx,
+    t_treasury_nft_policy, t_acct_nft_policy,
+    Some(in_d), Redeem, util.mk_ref(0), tx,
   )
 }
 
@@ -670,6 +734,7 @@ test claim_trsy_at_wallet_rejected() fail {
       inputs: [acc_in, fake_in],
       outputs: [acc_out, fake_out],
       extra_signatories: [#"c1", #"c2"],
+      validity_range: t_claim_range(),
       mint: assets.zero,
     }
   claim_account.spend(
@@ -707,6 +772,7 @@ test claim_trsy_moved_to_other_script_rejected() fail {
       inputs: [acc_in, tre_in],
       outputs: [acc_out, tre_out],
       extra_signatories: [#"c1", #"c2"],
+      validity_range: t_claim_range(),
       mint: assets.zero,
     }
   claim_account.spend(
@@ -843,6 +909,7 @@ test claim_fake_account_without_nft_rejected() fail {
       inputs: [acc_in, tre_in],
       outputs: [acc_out, tre_out],
       extra_signatories: [#"c1", #"c2"],
+      validity_range: t_claim_range(),
       mint: assets.zero,
     }
   claim_account.spend(

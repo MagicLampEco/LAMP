@@ -326,8 +326,10 @@ async function adoptExisting(
   }
   if (bad > 0) {
     throw new Error(
-      `${bad} marker KHÔNG đúng 1 bản đúng chỗ ⇒ genesis_ref này không phải lượt đang sống. ` +
-      `Không ghi state. Kiểm lại ADOPT_GENESIS_TX/IDX.`,
+      `${bad} marker KHÔNG đúng 1 bản đúng chỗ. Hai nguyên nhân: genesis_ref này không phải lượt ` +
+      `đang sống (kiểm lại ADOPT_GENESIS_TX/IDX), HOẶC mã validator đã đổi sau lượt đúc nên địa ` +
+      `chỉ script dựng lại khác chỗ marker đang nằm (chạy lại 'aiken build' ở cả hai onchain; còn ` +
+      `lệch thì cụm này thuộc một commit cũ). Không ghi state.`,
     );
   }
 
