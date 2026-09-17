@@ -1,8 +1,9 @@
 // Genesis scripts config — Preview deploy lazy-mint (self-contained).
 //
-// Đọc .env (BLOCKFROST_KEY, PRIVATE_KEY/WALLET_SEED, NETWORK=Preview). KHÔNG hard-code
-// secret. SUBMIT=false (mặc định) → build tx + in CBOR, KHÔNG gửi lên chain (an toàn,
-// kiểm tra logic trước khi tốn tADA). SUBMIT=true để gửi thật.
+// Nhận BLOCKFROST_KEY, PRIVATE_KEY/WALLET_SEED, NETWORK qua BIẾN MÔI TRƯỜNG (xem khối
+// BÍ MẬT bên dưới — tệp này KHÔNG mở tệp nào để lấy chúng). KHÔNG hard-code secret.
+// SUBMIT=false (mặc định) → build tx + in CBOR, KHÔNG gửi lên chain (an toàn, kiểm tra
+// logic trước khi tốn tADA). SUBMIT=true để gửi thật.
 
 import {
   Lucid, Blockfrost, getAddressDetails,
@@ -84,19 +85,38 @@ export function tokenNameFor(network: Network): string {
 /** asset name LAMP áp dụng cho deploy hiện tại (theo NETWORK). */
 export const TOKEN_NAME = tokenNameFor(NETWORK);
 
+/**
+ * Giá trị mang hình dạng CHỖ GIỮ CHỖ — tức người chạy đã dán nguyên dòng lệnh mẫu trong
+ * runbook mà chưa thay giá trị thật.
+ *
+ * Vì sao phải có: `SECRETS-001`/`002` bản trước chỉ kiểm "rỗng hay không". Dòng lệnh mẫu
+ * viết `BLOCKFROST_KEY=… WALLET_SEED="…"`, và chuỗi `…` thì KHÔNG rỗng — cổng đi qua, rồi
+ * hỏng ở tận lần gọi mạng với một câu 403 đọc như "khoá sai" chứ không như "bạn chưa thay
+ * chỗ giữ chỗ". Cổng đo đúng đại lượng ("biến có được đặt không") nhưng đại lượng cần đo là
+ * "biến có mang một giá trị THẬT không", và khoảng cách giữa hai câu đó là cả một buổi dò.
+ */
+export function isPlaceholder(v: string): boolean {
+  const s = v.trim();
+  if (s === "") return true;
+  // `…` (U+2026), `...`, và các biến thể chỉ gồm dấu chấm / dấu chấm lửng / `<...>` / `xxx`.
+  return /^(…+|\.{2,}|<[^>]*>|x{3,}|X{3,}|TODO|FIXME)$/.test(s);
+}
+
 export function assertEnv(): void {
   // Thông điệp nói THIẾU BIẾN NÀO và cách đặt nó, KHÔNG nói đi lấy giá trị ở đâu —
   // chỉ đường tới kho khoá cũng là một mẩu sơ đồ kho.
-  if (!BLOCKFROST_KEY) {
+  if (isPlaceholder(BLOCKFROST_KEY)) {
     throw new Error(
-      `SECRETS-001: thiếu BLOCKFROST_KEY cho ${NETWORK}. Đặt nó ngay trước lệnh ` +
-        `(\`BLOCKFROST_KEY=… tsx <script>.ts\`), đừng ghi vào tệp nào trong kho.`,
+      `SECRETS-001: BLOCKFROST_KEY cho ${NETWORK} chưa có giá trị thật (thiếu, rỗng, hoặc ` +
+        `còn nguyên chỗ giữ chỗ của dòng lệnh mẫu). Đặt nó ngay trước lệnh, đừng ghi vào ` +
+        `tệp nào trong kho.`,
     );
   }
-  if (!PRIVATE_KEY && !WALLET_SEED) {
+  if (isPlaceholder(PRIVATE_KEY) && isPlaceholder(WALLET_SEED)) {
     throw new Error(
-      `SECRETS-002: thiếu WALLET_SEED (hoặc PRIVATE_KEY) cho ${NETWORK}. Đặt nó ngay ` +
-        `trước lệnh, đừng ghi vào tệp nào trong kho.`,
+      `SECRETS-002: WALLET_SEED (hoặc PRIVATE_KEY) cho ${NETWORK} chưa có giá trị thật ` +
+        `(thiếu, rỗng, hoặc còn nguyên chỗ giữ chỗ của dòng lệnh mẫu). Đặt nó ngay trước ` +
+        `lệnh, đừng ghi vào tệp nào trong kho.`,
     );
   }
 }

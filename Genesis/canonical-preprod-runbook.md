@@ -30,8 +30,10 @@ một token khác. Câu hỏi chưa bao giờ là *có* đổi hay không, chỉ
 
 ## Chuẩn bị
 
-- `$AGENT_SECRETS` trỏ tới tệp biến môi trường có khoá Blockfrost Preprod và seed ví
-  (tên biến tra trong `scripts/config.ts`, mục `BF_KEY_BY_NETWORK` / `SEED_VAR_BY_NETWORK`).
+- Khoá Blockfrost Preprod và seed ví đặt NGAY TRƯỚC lệnh, dạng `BLOCKFROST_KEY=… WALLET_SEED="…" tsx <tệp>.ts`
+  (`scripts/config.ts` đọc đúng hai tên đó qua `process.env`, và ném `SECRETS-001`/`SECRETS-002`
+  khi thiếu). Đặt trước lệnh để giá trị sống trong đúng một tiến trình và không đi qua tệp nào —
+  runbook này cố ý KHÔNG nói kho khoá nằm ở đâu.
 - Ví Preprod ≥ **15 tADA** (5 output NFT + phí).
 - Blueprint đã dựng: `aiken build` trong `Genesis/onchain/` **và** `Distribution/onchain/`.
   Wiring đọc cả hai; thiếu một cái thì cổng APPLY-002 dừng ngay chứ không đoán.
@@ -43,8 +45,15 @@ cd Genesis/scripts && npm install
 ## Bước 0 — soi wiring khô (không chạm mạng, không cần ví)
 
 ```bash
-AGENT_SECRETS=<đường dẫn> NETWORK=Preprod npm run v2:dry
+NETWORK=Preprod npm run v2:dry
 ```
+
+**Bước này KHÔNG cần khoá, và dòng lệnh trên cố ý không nêu khoá nào.** Bản trước ghi
+`BLOCKFROST_KEY=… WALLET_SEED="…"` ở đây, mâu thuẫn với chính câu ngay dưới ("chạy được trên
+máy không có khoá"). Đo được: `v2_wiring_dry.ts` không nhắc tới hai biến ấy và không gọi
+`assertEnv()`; chạy với cả ba biến `unset` vẫn đi tới cổng `APPLY-001`. Cái giá của dòng thừa
+không phải sự dài dòng — nó dạy người đọc dán khoá thật vào một lệnh không dùng đến khoá, và
+thói quen ấy đi theo họ sang các lệnh có ghi log.
 
 Tính trọn bộ policy-id / script-hash / địa chỉ từ một hạt giống mẫu. Chạy được trên máy
 không có khoá, không có tADA. **Chạy lại sau mỗi lần `aiken build`**: cổng APPLY-001/002
@@ -53,9 +62,24 @@ số thì `applyParamsToScript` KHÔNG báo lỗi, nó ra một policy-id khác,
 
 ## Bước 1 — Tx A: đúc trọn bộ marker one-shot
 
+> ⛔ **ĐIỀU KIỆN TIÊN QUYẾT, đọc trước khi gõ:** hạt giống custody phải được chọn và
+> `RESERVE_KHO_NFT_POLICY` phải được đặt TRƯỚC bước này, nếu không `20_canonical_genesis.ts`
+> dừng với `RESERVE-KHO-001`. Thứ tự ấy đảo so với bản trước của runbook — lý do và ba bước
+> cụ thể ở mục *"2026-09-11 — THỨ TỰ BƯỚC ĐÃ ĐẢO"* cuối tệp. Dòng này tồn tại vì điều kiện đó
+> từng chỉ được ghi ở cuối tệp, cách chỗ cần nó gần 280 dòng: người đọc runbook theo thứ tự
+> gặp cái cổng trước khi gặp lời giải thích.
+
+Dựng + eval, KHÔNG gửi:
+
 ```bash
-AGENT_SECRETS=<đường dẫn> NETWORK=Preprod npm run v2:genesis                 # dựng + eval, KHÔNG gửi
-AGENT_SECRETS=<đường dẫn> NETWORK=Preprod SUBMIT=true npm run v2:genesis     # gửi thật
+BLOCKFROST_KEY=… WALLET_SEED="…" NETWORK=Preprod npm run v2:genesis
+```
+
+Gửi thật — **lệnh riêng, có chủ ý**. Hai lệnh này từng nằm chung một khối; một khối là một
+nút chạy, nên một cú bấm chạy cả bản thử LẪN lượt đúc không quay lui được.
+
+```bash
+BLOCKFROST_KEY=… WALLET_SEED="…" NETWORK=Preprod SUBMIT=true npm run v2:genesis
 ```
 
 **Bước này không làm lại được.** Cả năm marker nướng cùng một `genesis_ref`, và một UTxO
@@ -77,7 +101,7 @@ vẫn đúng, nhưng đường claim/redeem chết câm — và lúc phát hiệ
 ## Bước 2 — Tx B: `DistributionVest` → KHO
 
 ```bash
-AGENT_SECRETS=<đường dẫn> NETWORK=Preprod DELTA_LAMP=10000 npm run v2:vest
+BLOCKFROST_KEY=… WALLET_SEED="…" NETWORK=Preprod DELTA_LAMP=10000 npm run v2:vest
 ```
 
 Kiểm ba luật cùng lúc: **WHO** (authority đọc từ bảng registry, không phải pkh nướng sẵn),
@@ -87,7 +111,7 @@ rồi trả lại đúng số cũ" không lọt), **HOW MUCH** (`dist_minted += 
 ## Bước 3 — Tx C: `ReserveDraw` — nhánh đã CHẾT trên mainnet
 
 ```bash
-AGENT_SECRETS=<đường dẫn> NETWORK=Preprod RESERVE_LAMP=1000 npm run v2:reserve
+BLOCKFROST_KEY=… WALLET_SEED="…" NETWORK=Preprod RESERVE_LAMP=1000 npm run v2:reserve
 ```
 
 Đây là phép thử quan trọng nhất của cả màn diễn tập. Xanh = policy mới không mang khuyết
@@ -96,7 +120,7 @@ tật của bản mồi. **Đỏ = đừng phát hành.**
 ## Bước 4 — bằng chứng one-shot (phủ định)
 
 ```bash
-AGENT_SECRETS=<đường dẫn> NETWORK=Preprod npm run v2:oneshot
+BLOCKFROST_KEY=… WALLET_SEED="…" NETWORK=Preprod npm run v2:oneshot
 ```
 
 `mainnet-deploy-plan.md` mục C nói rõ: một lượt Preprod xanh chứng minh *đường ống thông*,
@@ -116,7 +140,7 @@ công**, tức là hỏng.
 ## Đối chiếu bất cứ lúc nào (đọc-không-ghi)
 
 ```bash
-AGENT_SECRETS=<đường dẫn> NETWORK=Preprod npm run v2:verify
+BLOCKFROST_KEY=… WALLET_SEED="…" NETWORK=Preprod npm run v2:verify
 ```
 
 Mọi số đọc từ chuỗi. `canonical-v2-state.json` chỉ dùng để biết `genesis_ref`; từ đó toàn
@@ -136,15 +160,24 @@ bộ policy-id được **dựng lại và so** với state — lệch một ch�
 
 1. Bước 1-4 xanh trên Preprod, có tx hash ghi trong `canonical-v2-state.json`.
 2. `v2:verify` xanh toàn bộ mục.
-3. ~~Lớp 2 xanh: MET dưới `reserve_draw`, và một lượt `ReserveDraw` vượt trần nhịp **bị chặn**.~~
-   **XONG 2026-09-03** — `npm run v2:l2` → `v2:l2draw` → `v2:l2brake`, cả ba xanh (bảng dưới).
+3. Lớp 2 xanh: MET dưới `reserve_draw`, và một lượt `ReserveDraw` vượt trần nhịp **bị chặn**.
+   **ĐANG MỞ LẠI.** Từng đóng "XONG 2026-09-03" (`v2:l2` → `v2:l2draw` → `v2:l2brake`, cả ba
+   xanh), nhưng lượt vá 2026-09-05 đổi script hash của `reserve_gate` và `custody_seed`, nên
+   ba lượt xanh ấy là số đo của bản CŨ — xem mục *"2026-09-05 — bản Lớp 2 trên Preprod ĐÃ LỖI
+   THỜI"*. Mục đó nằm cách đây hơn 160 dòng, và bản trước để dòng này gạch ngang kèm chữ
+   "XONG": người soát danh mục từ trên xuống tích xong mục 3 rồi không bao giờ đọc tới chỗ bác
+   nó. Chỉ đóng lại khi đã chạy lại đủ bốn lệnh trên wiring mới và thay bảng tx hash.
 4. Quyết định A1/A4 của `mainnet-deploy-plan.md` được chốt, cùng với việc phát biểu lại cổng
    A' theo `hash + commit nguồn` — hai việc đó ràng nhau, không làm lẻ (lý do ghi ở mục A').
 5. Công bố rõ: 1.000.000 LAMP đã đúc dưới policy mồi **không đốt được**
    (`lamp_mint.ak:157` ép `delta > 0`; `Treasury/CONTRACT.md §5`). Chúng ở lại như tài sản
    của một policy đã khai tử, nên phải nói thẳng policy-id nào là LAMP thật.
 
-## Trạng thái đo được — lượt chạy 2026-09-03 trên Preprod, XANH TOÀN BỘ
+## Trạng thái đo được — lượt chạy 2026-09-03 trên Preprod (XANH lúc chạy, nay ĐÃ BỊ THAY)
+
+> Tiêu đề này từng đọc là *"XANH TOÀN BỘ"*, đứng ngay trên một policy-id mà chính khối cảnh
+> báo bên dưới khai là **SUPERSEDED**. Màu của một lượt chạy và trạng thái của thứ nó chạy ra
+> là hai đại lượng khác nhau; ghép chúng vào một nhãn thì nhãn nói sai về cái đắt hơn.
 
 `genesis_ref` = `525b80f4…e301#1` · `lamp_policy` = `d9c09230079b810ab5ed92e8db4c190d42efc42db6aac028656f7e07`
 
@@ -221,10 +254,26 @@ bản chạy 2026-09-03 chỉ có bốn, vì `custody` lúc đó chưa bị tiê
 | `custody.spend` (`MigrateIn`) | `value += δ` (`C-MIG-7`) **VÀ** `sổ += δ` tại `reserve_inflow_bucket_id` (`C-MIG-8`) · `source == reserve_source_tag` · địa chỉ + params instance giữ nguyên |
 | `supply_state.spend` | `reserve_minted += δ` ≤ cap, đơn điệu |
 
+Ba lệnh, **ba khối riêng**: chúng phải chạy tuần tự và phải xem kết quả lệnh trước rồi mới
+chạy lệnh sau. Gộp một khối là gộp một nút chạy, và ba lượt ghi chuỗi đi liền nhau không có
+chỗ nào dừng lại được.
+
+Lắp phanh (3 tx):
+
 ```bash
-AGENT_SECRETS=<đường dẫn> NETWORK=Preprod npm run v2:l2       # lắp phanh (3 tx)
-AGENT_SECRETS=<đường dẫn> NETWORK=Preprod npm run v2:l2draw   # rút thật QUA cổng
-AGENT_SECRETS=<đường dẫn> NETWORK=Preprod npm run v2:l2brake  # 3 phép PHỦ ĐỊNH + 1 đối chứng
+BLOCKFROST_KEY=… WALLET_SEED="…" NETWORK=Preprod npm run v2:l2
+```
+
+Rút thật QUA cổng:
+
+```bash
+BLOCKFROST_KEY=… WALLET_SEED="…" NETWORK=Preprod npm run v2:l2draw
+```
+
+3 phép PHỦ ĐỊNH + 1 đối chứng:
+
+```bash
+BLOCKFROST_KEY=… WALLET_SEED="…" NETWORK=Preprod npm run v2:l2brake
 ```
 
 | bước | giao dịch | kết quả |
