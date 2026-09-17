@@ -9,9 +9,39 @@ use cardano/transaction.{InlineDatum, Input, NoDatum, Output, OutputReference, T
 use magiclamp/lampdist/types.{BeaconKind, DropParam}
 
 /// Epoch từ validity_range lower_bound (POSIX ms). ms_per_epoch network-specific.
+///
+/// ⚠ ĐẠI LƯỢNG NÀY CHỈ CHẶN ĐƯỢC MỘT CHIỀU. Sổ cái nhận tx khi `lower ≤ now ≤ upper`,
+/// nên `lower` đặt LÙI bao xa cũng hợp lệ — người dựng tx tự chọn được một epoch NHỎ
+/// hơn epoch thật. Dùng hàm này ở chỗ mà epoch nhỏ đi thì người dựng THIỆT (nhánh
+/// `Redeem`: epoch nhỏ ⇒ `elapsed` nhỏ ⇒ vested nhỏ). Ở chỗ mà epoch nhỏ đi thì người
+/// dựng LỢI — mọi chỗ GHI `start_epoch`, và mọi chỗ dán nhãn thời điểm — phải dùng
+/// `get_epoch_strict` bên dưới.
 pub fn get_epoch(tx: Transaction, ms_per_epoch: Int) -> Int {
   expect Some(s) = tx.validity_range.lower_bound.bound_type |> get_finite
   s / ms_per_epoch
+}
+
+/// Epoch CHỨNG MINH ĐƯỢC — "Luật 2b": ép CẢ HAI đầu validity range rơi cùng một epoch,
+/// rồi trả epoch đó. Đây là đại lượng duy nhất trong tx mà người dựng không nói dối được.
+///
+/// Vì sao phải có cả hai đầu, mỗi đầu chặn một chiều:
+///   `now ≥ lower` ⇒ `get_epoch(lower) ≤ epoch thật`  — chặn đặt nhãn ở TƯƠNG LAI
+///   `now ≤ upper` ⇒ `get_epoch(upper) ≥ epoch thật`  — chặn đặt nhãn ở QUÁ KHỨ
+/// Ép hai epoch đó BẰNG NHAU ⟹ giá trị trả về kẹp đúng epoch thật từ hai phía.
+///
+/// Đầu vô hạn (`PositiveInfinity`/`NegativeInfinity`) làm `get_finite` trả `None` và
+/// `expect` ném — đúng chiều fail-closed: một tx không tự khai nổi khoảng thời gian của
+/// nó thì không được phép đóng dấu thời gian lên bất cứ thứ gì.
+///
+/// Khuôn này KHÔNG mới trong kho: `reserve_draw` bên Genesis đã ép đúng nó (xem
+/// `Genesis/scripts/_reserve_layer2.ts`, hàm `drawWindow` — chú thích "Luật 2b"), và
+/// bên dựng tx ở đó kéo `hi` về sát cuối epoch khi cửa sổ mặc định vắt qua biên.
+pub fn get_epoch_strict(tx: Transaction, ms_per_epoch: Int) -> Int {
+  expect Some(lo) = tx.validity_range.lower_bound.bound_type |> get_finite
+  expect Some(hi) = tx.validity_range.upper_bound.bound_type |> get_finite
+  let e = lo / ms_per_epoch
+  expect hi / ms_per_epoch == e
+  e
 }
 
 pub fn get_finite(bt: IntervalBoundType) -> Option<Int> {

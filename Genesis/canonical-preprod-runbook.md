@@ -37,6 +37,24 @@ một token khác. Câu hỏi chưa bao giờ là *có* đổi hay không, chỉ
 - Ví Preprod ≥ **15 tADA** (5 output NFT + phí).
 - Blueprint đã dựng: `aiken build` trong `Genesis/onchain/` **và** `Distribution/onchain/`.
   Wiring đọc cả hai; thiếu một cái thì cổng APPLY-002 dừng ngay chứ không đoán.
+  **Chạy lại cả hai sau MỖI lần kéo mã** (`git pull`, đổi nhánh). `plutus.json` bị gitignore nên
+  `git status` không bao giờ báo nó cũ; blueprint cũ + mã mới là nguồn của `APPLY-001` và `DRIFT`.
+
+### Sau khi một bản vá validator vào nhánh chính, các script vận hành DỪNG
+
+Vá bất kỳ validator nào mà wiring nướng vào (`Genesis/onchain` hoặc `Distribution/onchain`:
+`treasury`, `claim_account`, `beacon`, …) là đổi script hash, tức đổi địa chỉ kho và policy-id.
+`rehydrate()` dựng lại từ `genesis_ref` ra giá trị KHÁC state đã ghi và dừng với `DRIFT` — đúng
+thiết kế, vì đi tiếp là dựng giao dịch cho một policy khác cái đang giữ token.
+
+Các script đi qua `rehydrate()` và do đó dừng cùng lúc (đếm bằng
+`grep -ln "rehydrate(" Genesis/scripts/*.ts`, trừ chính `_canonical_v2.ts`):
+`20b_place_registry` · `21_vest_to_kho` · `22_reserve_draw` · `23_prove_oneshot` ·
+`24_reserve_layer2_init` · `25_gated_draw` · `26_prove_brake` · `27_refill_treasury` ·
+`28_beacon_grant_redeem` · `verify_canonical_v2`.
+
+Hai đường đi tiếp: chạy cụm đang sống bằng mã ở commit đã đúc nó (`git switch --detach <commit>`
+rồi `aiken build` lại cả hai), hoặc đúc lại cụm mới từ Bước 1 với mã hiện tại.
 
 ```bash
 cd Genesis/scripts && npm install
@@ -150,7 +168,7 @@ bộ policy-id được **dựng lại và so** với state — lệch một ch�
 
 | chưa có | vì sao | ai làm |
 |---|---|---|
-| ~~**Trần nhịp Reserve δ ≤ E/1000**~~ | **ĐÃ XONG 2026-09-03** — Lớp 2 chạy xanh trên Preprod, xem mục Lớp 2 bên dưới. | — |
+| **Trần nhịp Reserve δ ≤ E/1000** | Lớp 2 từng chạy xanh 2026-09-03, nhưng bản vá 2026-09-05 đổi script hash của `reserve_gate` và `custody_seed` ⇒ lượt xanh đó là số đo của bản CŨ. Chưa chạy lại với wiring mới — xem mục *"2026-09-05 — bản Lớp 2 trên Preprod ĐÃ LỖI THỜI"*. | chạy lại `v2:l2` → `v2:l2draw` → `v2:l2brake` → `v2:verify` |
 | **Cổng cầu `parked < sàn` đóng lại được** | Lớp 2 chứng minh cổng MỞ khi két dưới sàn, và chứng minh không rút được nếu bỏ qua cổng. **Chưa chứng minh cổng ĐÓNG** trên mạng thử. Lý do KHÔNG còn là "chưa dựng": `Collect` **đã dựng** — nhánh `Collect { items }` trong `Treasury/onchain/validators/custody.ak` với dải luật `C-COL-1`…`C-COL-11` + `C-COL-ADDR`/`C-COL-REFSCRIPT`, bài kiểm riêng ở `Treasury/onchain/validators/collect_test.ak`. Và trên đường rút Reserve thì `Collect` **không còn là bước cần**: nhánh `MigrateIn` ép `value += Δ` (`C-MIG-7`) VÀ `sổ += Δ` (`C-MIG-8`) trong CÙNG tx rút, nên `parked` nâng ngay tại lượt rút. Thứ còn thiếu là **một bài chạy thật trên mạng thử** nối `MigrateIn` liền tx với lượt rút, rồi đo `parked` vượt sàn và cổng từ chối lượt kế. | Treasury — bài chạy thật `MigrateIn` liền tx trên mạng thử: `not_started` |
 | **Xoay khoá authority** | REG nằm dưới `oneshot_nft`, mà `oneshot_nft` có `else(_) { fail }` ⇒ UTxO đó **không tiêu được** ⇒ bảng registry BẤT BIẾN. Đúng ý cho diễn tập, nhưng nghĩa là chưa chạy thử được đường sửa bảng. Mainnet dùng `registry_write` — tiêu được, gác bằng TAAD/OrgDID | `mainnet-deploy-plan.md` mục D12 |
 | **Authority M-of-N** | committee của màn diễn tập là 1-of-1 (chính ví deploy) | mục A4, đang MỞ |
@@ -239,7 +257,7 @@ tx nên hỏng sớm với thông điệp đọc được thay vì "Mint[0] cras
   = 1.000 LAMP) nhưng script đọc ra 0 rồi ném. Vá bằng `waitFor` — đọc lại theo nhịp, và khi hết
   hạn thì nói rõ "có thể tx ĐÃ thành công, kiểm bằng `v2:verify` trước khi kết luận là hỏng".
 
-## Lớp 2 — đặt phanh lên nhánh Reserve (chạy 2026-09-03, XANH)
+## Lớp 2 — đặt phanh lên nhánh Reserve (chạy 2026-09-03, XANH lúc chạy, nay LỖI THỜI — xem mục 2026-09-05)
 
 Lớp 1 chứng minh nhánh `ReserveDraw` **mở được**. Nó không chứng minh nhánh đó **có phanh**:
 MET nằm ở ví, nên tiêu nó không kích validator nào. Lớp 2 đưa MET xuống `reserve_draw.ak`.

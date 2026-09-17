@@ -44,12 +44,38 @@
 // committee lùi được `start_epoch` bao xa tuỳ ý ⇒ **lịch vesting KHÔNG ràng buộc được chính
 // committee**. Với màn diễn tập Preprod, ví chủ tài khoản CŨNG là ví committee nên không ai
 // bị thiệt. Với mainnet thì đây là một lỗ phải bịt trước khi vesting được rao như một lời
-// hứa với người dùng. Đã ghi vào `_Agents/topics/claim-redeem-ban-do-khoang-trong.md`.
+// hứa với người dùng.
 //
-// Ở đây `start_epoch` được đặt = `epoch hiện tại − BACKDATE_EPOCHS`, và giao dịch CREATE
-// mang `validFrom` nằm TRONG chính epoch đó — nên `get_epoch` của chính giao dịch ấy khớp
-// `start_epoch` nó ghi, không có hai con số đá nhau. Đặt `BACKDATE_EPOCHS=0` để quay về lối
-// bảo thủ (chờ hết một ranh giới 5 ngày mới redeem được).
+// ╔══════════════════════════════════════════════════════════════════════════════════════╗
+// ║ ĐỌC TRƯỚC KHI DÙNG TỆP NÀY SAU 2026-09-16 — ba đoạn mô tả ở TRÊN nói về CỤM ĐANG     ║
+// ║ CHẠY, và cụm đó nay là cụm TRƯỚC BẢN VÁ.                                             ║
+// ║                                                                                      ║
+// ║ Ba lỗ mà đoạn trên mô tả ĐÃ ĐƯỢC VÁ trong mã (Issue #72) nhưng CHƯA ĐƯỢC TRIỂN KHAI: ║
+// ║   · `treasury.ak` C-ACC-2 — ghim `start_epoch` vào cửa sổ hiện tại lúc CREATE;        ║
+// ║   · `beacon.ak`   C-BCN-3 — nhãn `epoch` phải BẰNG cửa sổ tx chạy trong đó;           ║
+// ║   · `beacon.ak`   C-BCN-4/5 — D nằm trong biên cứng, mỗi lượt đổi ≤ ±10%.             ║
+// ║                                                                                      ║
+// ║ Bản vá đổi hash của `treasury`, `beacon` VÀ `claim_account` ⇒ nó CHỈ có hiệu lực từ   ║
+// ║ cụm đúc lại. Bản tệp này trên nhánh vá (2026-09-17) nhắm CỤM ĐÚC LẠI: không chạy nó    ║
+// ║ vào cụm cũ. Cụm cũ dùng bản trên nhánh chính TRƯỚC khi bản vá được gộp.               ║
+// ║                                                                                      ║
+// ║ ⚠ HIỆU LỰC NGAY KHI BẢN VÁ VÀO NHÁNH CHÍNH — KHÔNG đợi lượt đúc lại. Tệp này KHÔNG   ║
+// ║ đọc hash từ sổ; nó gọi `deriveWiring()`, và hàm đó TÍNH hash TỪ MÃ NGUỒN `.ak` đang   ║
+// ║ có trên đĩa. Đo bằng thực thi 2026-09-17: bản vá làm lệch 4 trường (`treHash`,        ║
+// ║ `treAddr`, `beaconHash`, `beaconAddr`), `rehydrate()` ném DRIFT, và 10 script dừng    ║
+// ║ ngay — trước khi ai kịp đúc lại thứ gì. Câu "cụm đang chạy ở nguyên đó" đúng với TỆP  ║
+// ║ này và sai với HÀM nó gọi.                                                            ║
+// ║                                                                                      ║
+// ║ Đã sửa theo bản vá (2026-09-17):                                                     ║
+// ║   (1) bỏ `BACKDATE_EPOCHS` — C-ACC-2 từ chối mọi giá trị ≠ 0;                         ║
+// ║   (2) nhãn beacon = cửa sổ hiện tại (C-BCN-3), builder tự đặt cửa sổ qua `msPerEpoch`; ║
+// ║   (3) mọi tx đóng dấu thời gian lấy cặp lo/hi từ `epochWindow` — `validFrom` giữa     ║
+// ║       cửa sổ cũ là mốc TƯƠNG LAI trong nửa đầu cửa sổ, sổ cái từ chối;                ║
+// ║   (4) `topup` theo rebase (C-ACC-3): mốc về cửa sổ hiện tại, redeemed về 0.           ║
+// ╚══════════════════════════════════════════════════════════════════════════════════════╝
+//
+// Hệ quả vận hành phải biết: tài khoản mở (hoặc cấp thêm) ở cửa sổ `e` chỉ rút được từ cửa
+// sổ `e + 1`. Không còn đường "rút ngay" — đường đó chính là lỗ đã vá.
 //
 // Chạy (mặc định CHỈ ĐỌC, không ký, không gửi):
 //   NETWORK=Preprod tsx 28_beacon_grant_redeem.ts                    # in trạng thái rồi dừng
@@ -74,7 +100,7 @@ import { buildPostBeaconTx } from "../../Distribution/offchain/src/beaconBuilder
 import { buildClaimTx } from "../../Distribution/offchain/src/claimBuilder.js";
 import { buildRedeemTx } from "../../Distribution/offchain/src/redeemBuilder.js";
 import { decodeTreasuryDatum, decodeClaimAccountDatum } from "../../Distribution/offchain/src/datum.js";
-import { D_GENESIS, OILDROP_PER_LAMP } from "../../Distribution/offchain/src/constants.js";
+import { D_GENESIS, OILDROP_PER_LAMP, epochWindow } from "../../Distribution/offchain/src/constants.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -85,8 +111,6 @@ const DROP_VALUE = BigInt(process.env.DROP_VALUE_OILDROP ?? D_GENESIS.toString()
 const ENTITLEMENT = BigInt(process.env.ENTITLEMENT_OILDROP ?? "2002000000");
 /** `drops_per_epoch` của tài khoản. D · dpe ≥ E ⇒ vào đủ trong đúng một ranh giới epoch. */
 const DROPS_PER_EPOCH = BigInt(process.env.DROPS_PER_EPOCH ?? "21");
-/** Số cửa sổ lùi `start_epoch`. 1 ⇒ redeem được ngay; 0 ⇒ chờ hết một cửa sổ 5 ngày. */
-const BACKDATE_EPOCHS = BigInt(process.env.BACKDATE_EPOCHS ?? "1");
 /** `STEP=topup` — oildrop cấp THÊM vào tài khoản đã có (đường UPDATE của `Claim`). */
 const TOPUP = BigInt(process.env.TOPUP_OILDROP ?? "0");
 /** `STEP=send` — địa chỉ nhận của lượt chuyển thường. Phải là ví payment-key. */
@@ -105,9 +129,14 @@ const lamp = (oildrop: bigint) => `${oildrop / OILDROP_PER_LAMP} LAMP (${oildrop
 function epochNow(): bigint {
   return BigInt(Date.now()) / MS_PER_EPOCH;
 }
-/** Một mốc ms nằm GIỮA epoch `e` — dùng làm `validFrom` để `get_epoch` trả đúng `e`. */
-function msInEpoch(e: bigint): bigint {
-  return e * MS_PER_EPOCH + MS_PER_EPOCH / 2n;
+/** Cặp lo/hi của cửa sổ hiện tại. Ném nếu cửa sổ đã sang trang so với `e` in ở đầu lượt —
+ *  nhãn in ra cho người vận hành và nhãn ghi vào datum phải là CÙNG một cửa sổ. */
+function windowNow(e: bigint): { loMs: bigint; hiMs: bigint; epoch: bigint } {
+  const w = epochWindow(MS_PER_EPOCH);
+  if (w.epoch !== e) {
+    throw new Error(`WINDOW-001: cửa sổ vừa sang trang (${e} → ${w.epoch}) giữa lượt chạy. Chạy lại.`);
+  }
+  return w;
 }
 
 // ── Hai script Distribution mà `rehydrate()` KHÔNG trả về ────────────────────
@@ -222,7 +251,7 @@ async function main(): Promise<void> {
     console.log(
       `\nDỪNG: chưa nêu STEP. Thứ tự bắt buộc — beacon → grant → redeem.\n` +
       `  STEP=beacon  đặt D = ${lamp(DROP_VALUE)}\n` +
-      `  STEP=grant   cấp E = ${lamp(ENTITLEMENT)}, drops/epoch ${DROPS_PER_EPOCH}, lùi ${BACKDATE_EPOCHS} cửa sổ\n` +
+      `  STEP=grant   cấp E = ${lamp(ENTITLEMENT)}, drops/epoch ${DROPS_PER_EPOCH}, mốc = cửa sổ ${e}\n` +
       `  STEP=topup   cấp THÊM E cho tài khoản đã có — đặt TOPUP_OILDROP\n` +
       `  STEP=redeem  kéo phần đã vested về ví thường\n` +
       `  STEP=send    chuyển thường sang ví khác — đặt SEND_TO + SEND_OILDROP`,
@@ -240,11 +269,15 @@ async function main(): Promise<void> {
     // `find_drop_value` (`:173-187`) đọc đúng `bd.drop_value`, bỏ qua `bd.epoch` — nên một D
     // dán nhãn cửa sổ 4143 có hiệu lực NGAY trong cửa sổ 4142. Nhãn đó là kế toán, không
     // phải cổng; ai đọc nó như một cam kết "D này chỉ áp từ cửa sổ sau" là đọc sai.
+    // C-BCN-3 (cụm đúc lại): nhãn PHẢI bằng cửa sổ hiện tại, và C-BCN-2 đòi nó lớn hơn nhãn
+    // trên chuỗi ⇒ mỗi cửa sổ post tối đa một lượt. Không còn nhãn "cửa sổ kế".
     const beaconEpochOnChain = beaconD ? (beaconD[0] as bigint) : 0n;
-    const nextLabel = beaconEpochOnChain + 1n;
-    const beaconEpoch = BigInt(process.env.BEACON_EPOCH ?? (e > nextLabel ? e : nextLabel).toString());
+    const beaconEpoch = windowNow(e).epoch;
     if (beaconEpoch <= beaconEpochOnChain) {
-      throw new Error(`BCN-002: nhãn epoch ${beaconEpoch} không lớn hơn nhãn đang trên chuỗi ${beaconEpochOnChain} (beacon.ak:45).`);
+      throw new Error(
+        `BCN-002: cửa sổ ${beaconEpoch} đã có lượt post (nhãn trên chuỗi ${beaconEpochOnChain}). ` +
+        `C-BCN-2/3 cho mỗi cửa sổ đúng một lượt — chờ cửa sổ kế.`,
+      );
     }
     console.log(`\nNhãn epoch beacon: ${beaconEpochOnChain} → ${beaconEpoch}   D: ${lamp((beaconD?.[2] as bigint) ?? 0n)} → ${lamp(DROP_VALUE)}`);
     const r = await buildPostBeaconTx({
@@ -253,6 +286,8 @@ async function main(): Promise<void> {
       newBeacon: { epoch: beaconEpoch, kind: "DropParam", drop_value: DROP_VALUE },
       committeeKeyHashes: canonicalCommittee(pkh),
       threshold: Number(CANONICAL_COMMITTEE_THRESHOLD),
+      msPerEpoch: MS_PER_EPOCH,                           // builder tự đặt lo/hi + kiểm nhãn
+      currentDropValue: (beaconD?.[2] as bigint | undefined), // kiểm trần ±10% trước khi gửi
     });
     console.log(`\n${r.summary}`);
     await finish(lucid, r.tx, "PostBeacon");
@@ -273,11 +308,11 @@ async function main(): Promise<void> {
         `chạy một lần cho mỗi ví (tên NFT = blake2b_256(owner)). Tăng E thì đi đường UPDATE.`,
       );
     }
-    const startEpoch = e - BACKDATE_EPOCHS;
+    const w = windowNow(e);
     const r = await buildClaimTx({
       lucid, claimScript: cs.claim, network: NETWORK,
       ownerPkh: pkh, amount: ENTITLEMENT,
-      currentEpoch: startEpoch,                 // CREATE ⇒ start_epoch := giá trị này
+      currentEpoch: w.epoch,                    // C-ACC-2: start_epoch == cửa sổ hiện tại
       dropsPerEpoch: DROPS_PER_EPOCH,
       accountNft: { script: cs.accountNft, policyId: cs.accountPid },
       treasury: {
@@ -287,7 +322,7 @@ async function main(): Promise<void> {
       committeeKeyHashes: canonicalCommittee(pkh),
       threshold: Number(CANONICAL_COMMITTEE_THRESHOLD),
       solvency: { treasuryLamp: pool, otherOutstanding: tDatum.outstanding_entitlement },
-      validFromMs: msInEpoch(startEpoch),       // get_epoch(tx) == start_epoch, không đá nhau
+      validFromMs: w.loMs, validToMs: w.hiMs,   // Luật 2b: hai đầu cùng cửa sổ
     });
     console.log(`\n${r.summary}`);
     console.log(
@@ -325,24 +360,38 @@ async function main(): Promise<void> {
       );
     }
 
-    const eAfter = accDatum.entitlement + TOPUP;
-    const capThisWindow = (beaconD![2] as bigint) * accDatum.drops_per_epoch
-      * (e > accDatum.start_epoch ? e - accDatum.start_epoch : 0n);
-    const vestedAfter = eAfter < capThisWindow ? eAfter : capThisWindow;
+    // REBASE (C-ACC-3): E' = (E − redeemed) + TOPUP, redeemed' = 0, mốc = cửa sổ này.
+    // Phần ĐÃ VEST MÀ CHƯA RÚT sẽ phải vest lại. Không mất tiền, nhưng mất thời gian — nên
+    // mặc định DỪNG và bảo rút trước; ai cố ý chấp nhận thì đặt ACCEPT_REVEST=true.
+    const d = beaconD![2] as bigint;
+    const rate = d * accDatum.drops_per_epoch;
+    const elapsedNow = e > accDatum.start_epoch ? e - accDatum.start_epoch : 0n;
+    const vestedNow = accDatum.entitlement < rate * elapsedNow ? accDatum.entitlement : rate * elapsedNow;
+    const pending = vestedNow > accDatum.redeemed ? vestedNow - accDatum.redeemed : 0n;
+    const eAfter = accDatum.entitlement - accDatum.redeemed + TOPUP;
+    const nextWindow = eAfter < rate ? eAfter : rate;
     console.log(
       `\nTài khoản ${refKey(accUtxo)}\n` +
       `  E hiện tại   : ${lamp(accDatum.entitlement)}\n` +
       `  đã rút       : ${lamp(accDatum.redeemed)}\n` +
       `  start_epoch  : ${accDatum.start_epoch}   drops/epoch: ${accDatum.drops_per_epoch}\n` +
-      `  E sau topup  : ${lamp(eAfter)}\n` +
-      `  trần cửa sổ  : D·dpe·elapsed = ${lamp(capThisWindow)}\n` +
-      `  rút được sau bước này: ${lamp(vestedAfter - accDatum.redeemed)}`,
+      `  đang rút được: ${lamp(pending)}  (sẽ phải vest lại nếu cấp thêm bây giờ)\n` +
+      `  sau topup    : E = ${lamp(eAfter)}, redeemed = 0, start_epoch = ${e}\n` +
+      `  rút được     : 0 trong cửa sổ ${e}; ${lamp(nextWindow)} từ cửa sổ ${e + 1n}`,
     );
+    if (pending > 0n && process.env.ACCEPT_REVEST !== "true") {
+      throw new Error(
+        `TOPUP-006: tài khoản đang có ${lamp(pending)} rút được. Cấp thêm bây giờ thì phần đó ` +
+        `phải vest lại từ đầu (rebase, treasury.ak C-ACC-3). Chạy STEP=redeem trước, hoặc đặt ` +
+        `ACCEPT_REVEST=true nếu cố ý.`,
+      );
+    }
 
+    const w = windowNow(e);
     const r = await buildClaimTx({
       lucid, claimScript: cs.claim, network: NETWORK,
       ownerPkh: pkh, amount: TOPUP,
-      currentEpoch: e,
+      currentEpoch: w.epoch,
       claimAccountUtxo: accUtxo,          // ⇒ đường UPDATE, builder KHÔNG đúc NFT
       treasury: {
         utxo: treasuryUtxo, script: scripts.treasury,
@@ -351,7 +400,7 @@ async function main(): Promise<void> {
       committeeKeyHashes: canonicalCommittee(pkh),
       threshold: Number(CANONICAL_COMMITTEE_THRESHOLD),
       solvency: { treasuryLamp: pool, otherOutstanding },
-      validFromMs: msInEpoch(e),
+      validFromMs: w.loMs, validToMs: w.hiMs,   // C-ACC-3 dùng get_epoch_strict
     });
     if (r.mode !== "update") throw new Error(`TOPUP-004: builder trả mode='${r.mode}', chờ 'update'.`);
     console.log(`\n${r.summary}`);
@@ -406,7 +455,7 @@ async function main(): Promise<void> {
       treasuryUtxo, treasuryScript: scripts.treasury,
       dropBeaconUtxo: beaconUtxo,
       currentEpoch: e,
-      validFromMs: msInEpoch(e),
+      validFromMs: windowNow(e).loMs,   // đầu dưới ≤ now: giữa cửa sổ là mốc tương lai
       treasuryNftPolicy: wiring.markers.khoPid, treasuryNftAssetName: "54525359",
       lampPolicyId: wiring.lampPid, lampAssetName: wiring.tokenName,
     });

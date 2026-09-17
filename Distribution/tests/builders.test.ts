@@ -17,7 +17,7 @@ import { accountNftName, mintAccountRedeemerToCbor } from "../offchain/src/accou
 import {
   committeeThreshold, assertCommitteeShape, assertCommitteeSigners,
 } from "../offchain/src/committee.js";
-import { TREASURY_NFT_ASSET_NAME } from "../offchain/src/constants.js";
+import { DROPS_PER_EPOCH_MAX, TREASURY_NFT_ASSET_NAME, epochWindow } from "../offchain/src/constants.js";
 import { applyValidator } from "../scripts/blueprint.js";
 import { lampOildrop } from "./helpers.js";
 
@@ -32,12 +32,13 @@ interface Recorded {
   payAddr:     { address: string; assets: Record<string, bigint> }[];
   signers:     string[];
   validFrom:   number[];
+  validTo:     number[];
 }
 
 function mockLucid(walletAddress: string): { lucid: any; rec: Recorded } {
   const rec: Recorded = {
     collectFrom: [], attach: [], attachMint: [], mint: [], readFrom: [],
-    payData: [], payAddr: [], signers: [], validFrom: [],
+    payData: [], payAddr: [], signers: [], validFrom: [], validTo: [],
   };
   const txb: any = {
     collectFrom(utxos: UTxO[], redeemer: string) { rec.collectFrom.push({ utxos, redeemer }); return txb; },
@@ -59,6 +60,7 @@ function mockLucid(walletAddress: string): { lucid: any; rec: Recorded } {
     },
     addSignerKey(k: string) { rec.signers.push(k); return txb; },
     validFrom(ms: number) { rec.validFrom.push(ms); return txb; },
+    validTo(ms: number) { rec.validTo.push(ms); return txb; },
     async complete() { return { __mockTx: true }; },
   };
   const lucid = {
@@ -205,6 +207,51 @@ describe("buildClaimTx — CREATE path", () => {
     })).rejects.toThrow(/CLAIM-004/);
   });
 
+  // CLAIM-006 — trần on-chain C-ACC-4. Đo cả hai phía biên: đúng trần qua, trần + 1 bị chặn.
+  it("CLAIM-006: dropsPerEpoch vượt DROPS_PER_EPOCH_MAX bị chặn, đúng trần thì qua", async () => {
+    const { lucid } = mockLucid("addr_wallet");
+    const base = {
+      lucid, claimScript: FAKE_CLAIM, network: NETWORK,
+      ownerPkh: OWNER, amount: lampOildrop(250n), currentEpoch: 5n,
+      committeeKeyHashes: COMMITTEE, treasury: trsyParam(0n), accountNft: accNft,
+    };
+    await expect(buildClaimTx({ ...base, dropsPerEpoch: DROPS_PER_EPOCH_MAX + 1n }))
+      .rejects.toThrow(/CLAIM-006/);
+    const ok = await buildClaimTx({ ...base, lucid: mockLucid("addr_wallet").lucid, dropsPerEpoch: DROPS_PER_EPOCH_MAX });
+    expect(ok.newDatum.drops_per_epoch).toBe(DROPS_PER_EPOCH_MAX);
+  });
+
+  // ── Issue #72 lỗ 1 (C-ACC-2) — đường CREATE phải khai CẢ HAI đầu validity range ──
+  // Trước bản vá, `validFromMs` một mình được ghi là "BẮT BUỘC live tx CREATE" ngay trong
+  // `ClaimParams` — tức bên dựng đã tả đúng ràng buộc mà bên kiểm chưa từng có. Nay
+  // `treasury.ak` C-ACC-2 ép cả hai đầu rơi cùng cửa sổ, vì đầu dưới đặt lùi bao xa cũng
+  // hợp lệ với sổ cái nên nó không ghim nổi `start_epoch`.
+  it("CREATE-002: từ chối CREATE có validFromMs mà THIẾU validToMs", async () => {
+    const { lucid } = mockLucid("addr_wallet");
+    await expect(buildClaimTx({
+      lucid, claimScript: FAKE_CLAIM, network: NETWORK,
+      ownerPkh: OWNER, amount: lampOildrop(250n), currentEpoch: 5n,
+      committeeKeyHashes: COMMITTEE, treasury: trsyParam(0n), accountNft: accNft,
+      validFromMs: 5n * 432_000_000n,
+    })).rejects.toThrow(/CREATE-002/);
+  });
+
+  it("CREATE-002: đủ cả hai đầu thì qua, và tx mang đúng cặp lo/hi", async () => {
+    const { lucid, rec } = mockLucid("addr_wallet");
+    const w = epochWindow(432_000_000n, 5n * 432_000_000n + 432_000_000n / 2n);
+    const res = await buildClaimTx({
+      lucid, claimScript: FAKE_CLAIM, network: NETWORK,
+      ownerPkh: OWNER, amount: lampOildrop(250n), currentEpoch: w.epoch,
+      committeeKeyHashes: COMMITTEE, treasury: trsyParam(0n), accountNft: accNft,
+      validFromMs: w.loMs, validToMs: w.hiMs,
+    });
+    expect(res.mode).toBe("create");
+    expect(rec.validFrom).toEqual([Number(w.loMs)]);
+    expect(rec.validTo).toEqual([Number(w.hiMs)]);
+    // start_epoch ghi vào datum PHẢI là cửa sổ mà cặp lo/hi rơi vào — đúng thứ C-ACC-2 so.
+    expect(res.newDatum.start_epoch).toBe(w.epoch);
+  });
+
   it("CLAIM-004: từ chối dropsPerEpoch âm", async () => {
     const { lucid } = mockLucid("addr_wallet");
     await expect(buildClaimTx({
@@ -252,7 +299,10 @@ describe("buildClaimTx — UPDATE path", () => {
     };
   }
 
-  it("increments entitlement, preserves owner+redeemed+start+dpe+assets", async () => {
+  // REBASE (C-CLAIM-4/5/6, 2026-09-17). `redeemed = 40` và `start_epoch = 3 ≠ currentEpoch 9`
+  // CỐ Ý: để mặc định 0 / bằng cửa sổ thì bài này xanh cả khi builder quên trừ `redeemed` hoặc
+  // quên dời mốc.
+  it("rebases account: E = (E − redeemed) + amount, redeemed = 0, start = current; giữ owner+dpe+assets", async () => {
     const { lucid, rec } = mockLucid("addr_wallet");
     const prev = { owner: OWNER, entitlement: lampOildrop(100n), redeemed: lampOildrop(40n), start_epoch: 3n, drops_per_epoch: 1n };
     const DUST = toUnit("ab".repeat(28), "cafe");
@@ -266,12 +316,24 @@ describe("buildClaimTx — UPDATE path", () => {
     expect(rec.collectFrom.filter(c => c.utxos[0]?.assets[TRSY_UNIT] !== 1n)).toHaveLength(1);
     expect(rec.attach).toContain(FAKE_CLAIM);
     expect(res.newDatum).toEqual({
-      owner: OWNER, entitlement: lampOildrop(160n),   // +60
-      redeemed: lampOildrop(40n),                     // unchanged
-      start_epoch: 3n,                            // unchanged
-      drops_per_epoch: 1n,                        // unchanged
+      owner: OWNER, entitlement: lampOildrop(120n),   // 100 − 40 + 60
+      redeemed: 0n,                                   // rebase
+      start_epoch: 9n,                                // = currentEpoch
+      drops_per_epoch: 1n,                            // unchanged
     });
     expect(rec.payData[0]!.assets).toEqual({ lovelace: 2_000_000n, [DUST]: 7n });
+  });
+
+  it("CREATE-002 áp cả UPDATE: có validFromMs mà thiếu validToMs thì từ chối", async () => {
+    const { lucid } = mockLucid("addr_wallet");
+    const prev = { owner: OWNER, entitlement: lampOildrop(100n), redeemed: 0n, start_epoch: 3n, drops_per_epoch: 1n };
+    await expect(buildClaimTx({
+      lucid, claimScript: FAKE_CLAIM, network: NETWORK,
+      ownerPkh: OWNER, amount: lampOildrop(60n), currentEpoch: 9n,
+      claimAccountUtxo: claimUtxo(prev),
+      committeeKeyHashes: COMMITTEE, treasury: trsyParam(0n),
+      validFromMs: 9n * 432_000_000n,
+    })).rejects.toThrow(/CREATE-002: đường UPDATE/);
   });
 
   it("rejects amount ≤ 0", async () => {
@@ -382,6 +444,156 @@ describe("buildPostBeaconTx — DropParam{D}", () => {
       newBeacon: { epoch: 10n, kind: "DropParam", drop_value: D },
       committeeKeyHashes: COMMITTEE,
     })).rejects.toThrow(/exactly 1 authenticity NFT/);
+  });
+
+  // ── Issue #72 lỗ 3: biên của D, ép ở beacon.ak C-BCN-4/5 ─────────────
+  // Chốt thật nằm ở validator; các ca dưới đây kiểm rằng builder KHÔNG dựng ra tx chắc
+  // chắn bị chuỗi từ chối, và từ chối bằng một câu nói ra con số + cái biên nó vượt.
+
+  it("BEACON-004: từ chối D vượt TRẦN cứng (ca nặng nhất — vested trọn E trong một cửa sổ)", async () => {
+    const { lucid } = mockLucid("addr_wallet");
+    await expect(buildPostBeaconTx({
+      lucid, beaconScript: FAKE_BEACON, network: NETWORK,
+      beaconNftPolicy: NFT_POLICY,
+      beaconUtxo: beaconUtxo(9n, D, { lovelace: 2_000_000n, [NFT_UNIT]: 1n }),
+      newBeacon: { epoch: 10n, kind: "DropParam", drop_value: 10_000_000_001n },
+      committeeKeyHashes: COMMITTEE,
+    })).rejects.toThrow(/BEACON-004/);
+  });
+
+  it("BEACON-004: từ chối D dưới SÀN cứng (ca đóng băng vesting)", async () => {
+    const { lucid } = mockLucid("addr_wallet");
+    await expect(buildPostBeaconTx({
+      lucid, beaconScript: FAKE_BEACON, network: NETWORK,
+      beaconNftPolicy: NFT_POLICY,
+      beaconUtxo: beaconUtxo(9n, D, { lovelace: 2_000_000n, [NFT_UNIT]: 1n }),
+      newBeacon: { epoch: 10n, kind: "DropParam", drop_value: 9_999_999n },
+      committeeKeyHashes: COMMITTEE,
+    })).rejects.toThrow(/BEACON-004/);
+  });
+
+  it("BEACON-005: từ chối một lượt đổi vượt ±10% khi biết D hiện tại", async () => {
+    const { lucid } = mockLucid("addr_wallet");
+    await expect(buildPostBeaconTx({
+      lucid, beaconScript: FAKE_BEACON, network: NETWORK,
+      beaconNftPolicy: NFT_POLICY,
+      beaconUtxo: beaconUtxo(9n, 100_000_000n, { lovelace: 2_000_000n, [NFT_UNIT]: 1n }),
+      newBeacon: { epoch: 10n, kind: "DropParam", drop_value: 110_000_001n },
+      committeeKeyHashes: COMMITTEE,
+      currentDropValue: 100_000_000n,
+    })).rejects.toThrow(/BEACON-005/);
+  });
+
+  it("BEACON-005: +10% CHẴN đi qua — mệnh đề là ≤, không phải <", async () => {
+    const { lucid } = mockLucid("addr_wallet");
+    const res = await buildPostBeaconTx({
+      lucid, beaconScript: FAKE_BEACON, network: NETWORK,
+      beaconNftPolicy: NFT_POLICY,
+      beaconUtxo: beaconUtxo(9n, 100_000_000n, { lovelace: 2_000_000n, [NFT_UNIT]: 1n }),
+      newBeacon: { epoch: 10n, kind: "DropParam", drop_value: 110_000_000n },
+      committeeKeyHashes: COMMITTEE,
+      currentDropValue: 100_000_000n,
+    });
+    expect(res.newBeacon.drop_value).toBe(110_000_000n);
+  });
+
+  it("BEACON-005: chiều GIẢM bị chặn riêng — hạ thẳng về sàn trong một lượt", async () => {
+    const { lucid } = mockLucid("addr_wallet");
+    await expect(buildPostBeaconTx({
+      lucid, beaconScript: FAKE_BEACON, network: NETWORK,
+      beaconNftPolicy: NFT_POLICY,
+      beaconUtxo: beaconUtxo(9n, 100_000_000n, { lovelace: 2_000_000n, [NFT_UNIT]: 1n }),
+      newBeacon: { epoch: 10n, kind: "DropParam", drop_value: 10_000_000n },
+      committeeKeyHashes: COMMITTEE,
+      currentDropValue: 100_000_000n,
+    })).rejects.toThrow(/BEACON-005/);
+  });
+
+  // ── Issue #72 lỗ 2: nhãn epoch phải là cửa sổ hiện tại (C-BCN-3) ─────
+
+  it("BEACON-006: từ chối nhãn epoch không khớp cửa sổ hiện tại", async () => {
+    const { lucid } = mockLucid("addr_wallet");
+    const msPerEpoch = 432_000_000n;
+    const wrongLabel = epochWindow(msPerEpoch).epoch + 2n;
+    await expect(buildPostBeaconTx({
+      lucid, beaconScript: FAKE_BEACON, network: NETWORK,
+      beaconNftPolicy: NFT_POLICY,
+      beaconUtxo: beaconUtxo(9n, D, { lovelace: 2_000_000n, [NFT_UNIT]: 1n }),
+      newBeacon: { epoch: wrongLabel, kind: "DropParam", drop_value: D },
+      committeeKeyHashes: COMMITTEE,
+      msPerEpoch,
+    })).rejects.toThrow(/BEACON-006/);
+  });
+
+  it("BEACON-006: nhãn == cửa sổ hiện tại đi qua, và tx mang CẢ HAI đầu validity range", async () => {
+    const { lucid, rec } = mockLucid("addr_wallet");
+    const msPerEpoch = 432_000_000n;
+    const w = epochWindow(msPerEpoch);
+    const res = await buildPostBeaconTx({
+      lucid, beaconScript: FAKE_BEACON, network: NETWORK,
+      beaconNftPolicy: NFT_POLICY,
+      beaconUtxo: beaconUtxo(w.epoch - 1n, D, { lovelace: 2_000_000n, [NFT_UNIT]: 1n }),
+      newBeacon: { epoch: w.epoch, kind: "DropParam", drop_value: D },
+      committeeKeyHashes: COMMITTEE,
+      msPerEpoch,
+    });
+    expect(res.newBeacon.epoch).toBe(w.epoch);
+    // Đầu TRÊN là phần mới, và là phần duy nhất chứng minh được nhãn không bị dán lùi.
+    expect(rec.validFrom).toEqual([Number(w.loMs)]);
+    expect(rec.validTo).toEqual([Number(w.hiMs)]);
+  });
+});
+
+// ── epochWindow — Luật 2b phía bên dựng tx ────────────────────────────
+// Hàm thuần, nhưng nhánh biên của nó là thứ hỏng vài lần mỗi chu kỳ mà không có gì báo:
+// cửa sổ mặc định vắt qua biên epoch ⇒ validator từ chối ⇒ lỗi chỉ nói "validator crashed".
+describe("epochWindow — cả hai đầu rơi cùng một cửa sổ", () => {
+  const MSPE = 432_000_000n;
+
+  // Ba mệnh đề, và mệnh đề thứ ba là mệnh đề bị thiếu trước đây:
+  //   (1) lo và hi cùng một cửa sổ          — điều validator ép (`get_epoch_strict`)
+  //   (2) hi > lo                           — khoảng không rỗng
+  //   (3) lo ≤ now ≤ hi                     — khoảng CHỨA thời điểm gửi
+  // (1)+(2) xanh trọn vẹn trên bản cũ trong khi (3) đỏ ở 60 giây đầu mỗi cửa sổ: khoảng
+  // hợp lệ, không rỗng, cùng epoch — và đã hết hạn.
+  function assertWindow(nowMs: bigint) {
+    const w = epochWindow(MSPE, nowMs);
+    expect(w.loMs / MSPE).toBe(w.epoch);
+    expect(w.hiMs / MSPE).toBe(w.epoch);
+    expect(w.hiMs).toBeGreaterThan(w.loMs);
+    expect(w.loMs).toBeLessThanOrEqual(nowMs);
+    expect(w.hiMs).toBeGreaterThanOrEqual(nowMs);
+    return w;
+  }
+
+  // Bốn mốc đầu là bốn mốc ĐỎ đo được trên bản cũ, giữ nguyên số. Chúng phân biệt được hai
+  // cực: mốc giữa cửa sổ xanh ở cả bản cũ lẫn bản mới nên một mình nó không kiểm gì.
+  it.each([
+    ["ngay lúc cửa sổ mở", 100n * MSPE],
+    ["+1 ms", 100n * MSPE + 1n],
+    ["+30 s — giữa dải hỏng cũ", 100n * MSPE + 30_000n],
+    ["+59.999 s — mốc từng cho khoảng ÂM", 100n * MSPE + 59_999n],
+    ["+60 s — mốc đầu tiên bản cũ đúng", 100n * MSPE + 60_000n],
+    ["giữa cửa sổ", 100n * MSPE + MSPE / 2n],
+    ["1 s trước biên — vùng chết cũ", 101n * MSPE - 1_000n],
+    ["ms cuối cùng của cửa sổ", 101n * MSPE - 1n],
+  ])("%s: lo ≤ now ≤ hi và hai đầu cùng cửa sổ", (_ten, nowMs) => {
+    const w = assertWindow(nowMs as bigint);
+    expect(w.epoch).toBe(100n);
+  });
+
+  it("nhãn epoch là cửa sổ đang chạy, không phải cửa sổ mà cái đệm 60 s rơi vào", () => {
+    expect(epochWindow(MSPE, 100n * MSPE).epoch).toBe(100n);
+    expect(epochWindow(MSPE, 100n * MSPE - 1n).epoch).toBe(99n);
+  });
+
+  it("hi sát cuối cửa sổ — không bỏ phí giây cuối", () => {
+    expect(epochWindow(MSPE, 100n * MSPE).hiMs).toBe(101n * MSPE - 1n);
+  });
+
+  it("msPerEpoch ≤ 0 thì NÉM, không trả về một cửa sổ vô nghĩa", () => {
+    expect(() => epochWindow(0n, 1n)).toThrow();
+    expect(() => epochWindow(-1n, 1n)).toThrow();
   });
 });
 
@@ -655,8 +867,8 @@ describe("buildClaimTx — solvency guard tích hợp", () => {
 
   it("UPDATE: dùng entitlement−redeemed sau khi tăng để tính outstanding", async () => {
     const { lucid } = mockLucid("addr_wallet");
-    // prev: E=300, redeemed=100 → outstanding cũ 200; +amount 250 → E=550, redeemed=100
-    // → thisOutstandingAfter = 450. other 600 → 1050 > 1000 → reject.
+    // prev: E=300, redeemed=100 → outstanding cũ 200; +amount 250 → rebase E=450, redeemed=0
+    // → thisOutstandingAfter = 450 (không đổi so với trước rebase). other 600 → 1050 > 1000 → reject.
     const prev = { owner: OWNER, entitlement: lampOildrop(300n), redeemed: lampOildrop(100n), start_epoch: 2n, drops_per_epoch: 1n };
     await expect(buildClaimTx({
       lucid, claimScript: FAKE_CLAIM, network: NETWORK,

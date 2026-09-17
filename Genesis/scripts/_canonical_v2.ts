@@ -336,11 +336,12 @@ export async function deriveWiring(
   ]));
   const treasury = { type: "PlutusV3" as const,
     script: (await applyDist("treasury.treasury.spend", [
-      claimHash, lampPid, o.tokenName, committee, threshold, accountPid,
+      claimHash, lampPid, o.tokenName, committee, threshold, accountPid, MS_PER_EPOCH,
     ])).script };
   const treHash = hashOf(treasury);
   const beacon = { type: "PlutusV3" as const,
-    script: (await applyDist("beacon.beacon.spend", [committee, threshold, beaconPid])).script };
+    script: (await applyDist("beacon.beacon.spend",
+      [committee, threshold, beaconPid, MS_PER_EPOCH])).script };
   const beaconHash = hashOf(beacon);
 
   return {
@@ -539,7 +540,10 @@ export async function rehydrate(): Promise<{
     throw new Error(
       `DRIFT: dựng lại từ genesis_ref ra KHÁC GIÁ TRỊ đã ghi ở ${drift.filter((k) => !thieu.includes(k)).join(", ")}. ` +
       `Mã hoặc blueprint đã đổi sau lượt genesis. Đi tiếp = dựng tx cho một policy KHÁC ` +
-      `cái đang giữ token. Kiểm 'git status' trong Genesis/onchain và Distribution/onchain.`,
+      `cái đang giữ token. 'plutus.json' bị gitignore nên 'git status' KHÔNG thấy nó cũ: chạy lại ` +
+      `'aiken build' trong CẢ Genesis/onchain lẫn Distribution/onchain rồi thử lại. Còn DRIFT sau ` +
+      `đó ⇒ mã validator đã đổi sau lượt genesis (vd đã trộn một bản vá validator): cụm đang sống ` +
+      `chỉ dùng được với mã ở commit đã đúc nó, hoặc phải đúc lại.`,
     );
   }
   return { state, wiring, scripts };

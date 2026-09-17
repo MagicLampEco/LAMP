@@ -226,27 +226,48 @@ pub type BeaconNftRedeemer {
 
 ### 3.2 V2: `beacon` — `spend/PostBeacon`
 
-**Tham số validator:** `committee: List<ByteArray>`, `threshold: Int`, `beacon_nft_policy: ByteArray`
+**Tham số validator:** `committee: List<ByteArray>`, `threshold: Int`, `beacon_nft_policy: ByteArray`, `ms_per_epoch: Int`
+
+> ⚠ **Ba mã định danh trong bảng này từng mang HAI nghĩa trong cùng tài liệu.** Bản trước
+> đặt `C-BCN-3/4/5` cho *kind bất biến* và *NFT bảo toàn*, trong khi §3.3 bên dưới đặt đúng
+> ba mã ấy cho *nhãn cửa sổ*, *biên cứng của D* và *trần ±10%*. Mã định danh là thứ người
+> khác trích dẫn, nên trùng mã là hỏng ở chiều im lặng nhất: cả hai chỗ đều tra ra một dòng
+> có thật. Nay lấy theo MÃ NGUỒN (`beacon.ak`), và hai chốt NFT đổi sang `C-BCN-NFT1/NFT2`.
 
 **Tiền điều kiện chung (áp dụng trước khi phân nhánh redeemer):**
 
 | ID | Phát biểu | Code |
 |---|---|---|
-| **C-MINT-0** | `tx.mint` là zero — beacon validator không liên quan mint | `beacon.ak:29` |
-| **C-BCN-DS1** | Đúng 1 input tại script hash (chống double-satisfaction C1) | `beacon.ak:33` |
-| **C-BCN-DS2** | Đúng 1 output tại script hash | `beacon.ak:34` |
+| **C-MINT-0** | `tx.mint` là zero — beacon validator không liên quan mint | `beacon.ak` ▸ `assets.is_zero(tx.mint)` |
+| **C-BCN-DS1** | Đúng 1 input tại script hash (chống double-satisfaction C1) | `beacon.ak` ▸ `count_inputs_at_script` |
+| **C-BCN-DS2** | Đúng 1 output tại script hash | `beacon.ak` ▸ `count_outputs_at_script` |
 
-**Bất biến `PostBeacon`:**
+**Bất biến `PostBeacon`** — thứ tự trong bảng là thứ tự THẬT trong thân hàm, và thứ tự đó
+quyết định mệnh đề nào từ chối trước:
 
 | ID | Phát biểu | Code |
 |---|---|---|
-| **C-BCN-1** | `committee_approved(committee, threshold, sigs)` (≥ threshold NGƯỜI trong committee ký) | `beacon.ak:37` |
-| **C-BCN-2** | `out_datum.epoch > datum.epoch` (epoch đơn điệu tăng, không update cùng epoch) | `beacon.ak:45` |
-| **C-BCN-3** | `out_datum.kind == datum.kind` (kind beacon không đổi) | `beacon.ak:46` |
-| **C-BCN-4** | `nft_in == 1` (NFT có trong input) | `beacon.ak:51` |
-| **C-BCN-5** | `nft_out == 1` (NFT bảo toàn sang output, không bị rút) | `beacon.ak:52` |
+| **C-BCN-1** | `committee_approved(committee, threshold, sigs)` (≥ threshold NGƯỜI trong committee ký) | `beacon.ak` ▸ `committee_approved` |
+| **C-BCN-2** | `out_datum.epoch > datum.epoch` (epoch đơn điệu tăng) **và** `out_datum.kind == datum.kind` | `beacon.ak` ▸ khối C-BCN-2 |
+| **C-BCN-3** | `out_datum.epoch == get_epoch_strict(tx, ms_per_epoch)` — nhãn PHẢI là cửa sổ tx chạy trong đó | `beacon.ak` ▸ khối C-BCN-3 |
+| **C-BCN-4** | `drop_value_min ≤ out_datum.drop_value ≤ drop_value_max` | `beacon.ak` ▸ khối C-BCN-4 |
+| **C-BCN-5** | `abs_diff(D_out, D_in) × q ≤ D_in × max_drop_delta_q` (±10% một lượt) | `beacon.ak` ▸ khối C-BCN-5 |
+| **C-BCN-NFT1** | `nft_in == 1` (NFT có trong input) | `beacon.ak` ▸ khối authenticity NFT |
+| **C-BCN-NFT2** | `nft_out == 1` (NFT bảo toàn sang output, không bị rút) | `beacon.ak` ▸ khối authenticity NFT |
 
-**Tại sao cần W-BNT / C-BCN-4/5:** Kẻ tấn công có thể tạo UTxO giả tại cùng beacon address với datum bịa. Cả `claim_account` và `beacon` chỉ tin UTxO mang authenticity NFT. Validator giả không thể mint NFT (one-shot đã dùng).
+**Tại sao cần W-BNT / C-BCN-NFT1/NFT2:** Kẻ tấn công có thể tạo UTxO giả tại cùng beacon address với datum bịa. Cả `claim_account` và `beacon` chỉ tin UTxO mang authenticity NFT. Validator giả không thể mint NFT (one-shot đã dùng).
+
+**C-BCN-4 đứng TRƯỚC C-BCN-5**, và điều đó có hệ quả cho cách đọc bộ kiểm: một ca đặt D ra
+ngoài biên cứng thường cũng vượt ±10%, nên nó đỏ mà không chứng minh cái biên được ghim. Hai
+ca phân biệt được hai chốt là `beacon_floor_is_the_binding_clause` và
+`beacon_ceiling_is_the_binding_clause` — đo 2026-09-17: gỡ hẳn C-BCN-4 thì đúng hai ca đó đỏ,
+mọi ca khác vẫn xanh.
+
+**Phạm vi đúc lại khi thêm tham số cho `beacon`:** bốn script, không phải một —
+{`beacon_nft`, `beacon`, `claim_account`, `treasury`}. Đổi tham số đổi địa chỉ beacon; DROP NFT
+đang ghim beacon không rời được địa chỉ cũ (không nhánh nào cho NFT ra khỏi script) và
+`beacon_nft` là one-shot nên không đốt được ⇒ phải đúc DROP NFT mới ⇒ `beacon_nft_policy` đổi
+⇒ hai validator nhận policy đó đổi hash theo.
 
 ---
 
@@ -269,10 +290,10 @@ pub type BeaconNftRedeemer {
 |---|---|---|
 | **C-CLAIM-1** | `amount > 0` | `claim_account.ak:58` |
 | **C-CLAIM-2** | `committee_approved(committee, threshold, sigs)` | `claim_account.ak:89` |
-| **C-CLAIM-3** | `out_datum.entitlement == datum.entitlement + amount` | `claim_account.ak:62` |
-| **C-CLAIM-4** | `out_datum.owner == datum.owner` (owner bất biến) | `claim_account.ak:61` |
-| **C-CLAIM-5** | `out_datum.redeemed == datum.redeemed` (redeemed không đổi khi Claim) | `claim_account.ak:63` |
-| **C-CLAIM-6** | `out_datum.start_epoch == datum.start_epoch` | `claim_account.ak:64` |
+| **C-CLAIM-3** | `out_datum.entitlement == datum.entitlement − datum.redeemed + amount` (cấp thêm = REBASE, xem §Bất biến thêm 2026-09-17) | `claim_account.ak` ▸ nhánh `Claim` |
+| **C-CLAIM-4** | `out_datum.owner == datum.owner` (owner bất biến) | `claim_account.ak` ▸ nhánh `Claim` |
+| **C-CLAIM-5** | `out_datum.redeemed == 0` | `claim_account.ak` ▸ nhánh `Claim` |
+| **C-CLAIM-6** | `out_datum.start_epoch == get_epoch_strict(tx, ms_per_epoch)` (cận HAI phía) | `claim_account.ak` ▸ nhánh `Claim` |
 | **C-CLAIM-7** | `out_datum.drops_per_epoch == datum.drops_per_epoch` | `claim_account.ak:65` |
 
 #### Redeemer `Redeem`
@@ -291,7 +312,74 @@ pub type BeaconNftRedeemer {
 | **C-RDM-4a** | `out_datum.owner / entitlement / start_epoch / drops_per_epoch` bất biến | `claim_account.ak:98-101` |
 | **C-RDM-3** | `lamp_to_owner(tx.outputs, owner, lamp_policy, lamp_name) ≥ amount` | `claim_account.ak:107` |
 
-**Ghi chú `find_drop_value`** (`claim_account.ak:119-135`): tìm reference input mang `quantity_of(value, beacon_nft_policy, #"44524f50") == 1`, giải datum `BeaconDatum`, kiểm `kind == DropParam`, trả `drop_value`. Từ chối nếu không tìm thấy hoặc datum sai.
+**Ghi chú `find_drop_value`** (hàm `find_drop_value` trong `claim_account.ak`): tìm reference input mang `quantity_of(value, beacon_nft_policy, #"44524f50") == 1`, giải datum `BeaconDatum`, kiểm `kind == DropParam`, trả `drop_value`. Từ chối nếu không tìm thấy hoặc datum sai.
+
+Hàm này **cố ý bỏ qua** `BeaconDatum.epoch`: D có hiệu lực ngay khi được post, không có độ trễ một cửa sổ. Trước 2026-09-16 điều đó khiến trường `epoch` không nói về epoch nào cả — nó chỉ là bộ đếm lượt post, vì `beacon.ak` chỉ ép nó tăng. Nay `beacon.ak` C-BCN-3 ép nó BẰNG cửa sổ mà lượt post chạy trong đó, nên nhãn là một sự thật đo được (*"D này được đặt ở cửa sổ N"*) chứ không phải một cam kết về thời điểm áp dụng.
+
+#### Đồng hồ epoch — hai đại lượng, KHÔNG thay nhau được
+
+| hàm | đọc | chặn được chiều nào | dùng ở |
+|---|---|---|---|
+| `get_epoch` | chỉ `lower_bound` | chỉ chiều TIẾN (nhãn tương lai) | `claim_account` nhánh `Redeem` |
+| `get_epoch_strict` | CẢ HAI đầu, ép cùng một cửa sổ | cả hai chiều | `treasury` C-ACC-2 · `beacon` C-BCN-3 |
+
+Sổ cái nhận tx khi `lower ≤ now ≤ upper`, nên `lower` đặt lùi bao xa cũng hợp lệ ⇒ `get_epoch` một mình **không** ghim được một nhãn thời gian. Nó đủ ở `Redeem` vì ở đó epoch nhỏ đi thì người dựng tx THIỆT (`elapsed` nhỏ ⇒ vested nhỏ). Ở mọi chỗ GHI một mốc thời gian thì phải dùng `get_epoch_strict` ("Luật 2b", cùng khuôn với `reserve_draw` bên Genesis).
+
+#### Bất biến thêm 2026-09-16 (Issue #72)
+
+| ID | Phát biểu | Code |
+|---|---|---|
+| **C-ACC-2** | CREATE: `ca_out.start_epoch == get_epoch_strict(tx, ms_per_epoch)` | `treasury.ak`, nhánh `GrantEntitlement` ▸ CREATE |
+| **C-BCN-3** | `out_datum.epoch == get_epoch_strict(tx, ms_per_epoch)` | `beacon.ak` |
+| **C-BCN-4** | `drop_value_min ≤ out_datum.drop_value ≤ drop_value_max` | `beacon.ak` |
+| **C-BCN-5** | `abs_diff(D_out, D_in) × q ≤ D_in × max_drop_delta_q` (±10% một lượt) | `beacon.ak` |
+
+#### Bất biến thêm 2026-09-17 — cấp thêm = REBASE tài khoản
+
+C-ACC-2 chỉ ghim CREATE. Trước ngày này nhánh UPDATE (cấp thêm cho một tài khoản đã có) giữ
+nguyên `start_epoch` và `redeemed`, nên trên một tài khoản đã già phần cấp MỚI được tính như
+thể nó đã vesting từ mốc cũ. Đo được: `E = 400` mở ở cửa sổ 0, cấp thêm 1000 ở cửa sổ 100 ⇒
+`elapsed = 100` ⇒ `raw = D · dpe · 100` vượt `E = 1400` ⇒ rút TRỌN 1400 ở giao dịch kế tiếp.
+
+**Vì sao không dời mốc theo bình quân gia quyền.** Phương án
+`start' = ⌈(E · start + granted · cửa_sổ_này) / E'⌉` KHÔNG đóng được lỗ: cùng ca trên cho
+`start' = 72`, `elapsed = 28`, và với `D · dpe` đủ lớn thì `28 · D · dpe` vẫn vượt 1400. Tuổi
+tài khoản vẫn đi theo sang lô mới, chỉ bị pha loãng. Đổi trọng số sang phần chưa rút
+(`E − redeemed`) cũng không đóng: vẫn còn tổ hợp tham số rút trọn.
+
+**Phương án chốt: rebase.** Phần chưa rút cộng phần cấp mới thành MỘT lô mới, bắt đầu từ cửa sổ
+hiện tại:
+
+    E' = (E − redeemed) + amount      redeemed' = 0      start' = get_epoch_strict(tx, ms_per_epoch)
+
+| ID | Phát biểu | Code |
+|---|---|---|
+| **C-ACC-3** | UPDATE: `ca_out.redeemed == 0` và `ca_out.start_epoch == get_epoch_strict(tx, ms_per_epoch)`; phần cộng vào sổ nợ tính từ `ca_in.entitlement − ca_in.redeemed` | `treasury.ak`, nhánh `GrantEntitlement` ▸ UPDATE |
+| **C-ACC-4** | CREATE: `1 ≤ ca_out.drops_per_epoch ≤ drops_per_epoch_max` | `treasury.ak`, nhánh `GrantEntitlement` ▸ CREATE; trần ở `lampdist/constants.ak` ▸ `drops_per_epoch_max` |
+| **C-REF-ACC** | `Refill`: không input nào và không output nào nằm ở `claim_account_hash` | `treasury.ak`, nhánh `Refill` |
+| **C-CLAIM-3/5/6** | cùng ba đẳng thức, ép từ phía tài khoản (bảng §Redeemer `Claim`) | `claim_account.ak` ▸ nhánh `Claim` |
+
+**Hệ quả người nhận thấy được.** Phần đã vest mà chưa rút tại lúc cấp thêm KHÔNG mất — nó nằm
+trong `E − redeemed` — nhưng nó vest lại từ đầu cùng lô mới. Muốn giữ tiến độ thì rút trước
+khi được cấp thêm. Bên dựng giao dịch cấp thêm phải chặn trường hợp này trừ khi người vận hành
+chấp nhận rõ ràng (`Genesis/scripts/28_beacon_grant_redeem.ts` ▸ bước topup, mã lỗi `TOPUP-006`).
+
+**Sổ nợ vẫn khớp.** `Σ(E − redeemed)` trước và sau rebase chênh đúng `amount`, nên
+`outstanding_entitlement` của kho cộng đúng `amount` như trước (C-SOLV-1).
+
+**Vì sao chốt nằm ở CẢ HAI validator.** C-SOLV-1 chỉ ép `Claim` co-spend kho, KHÔNG ép kho
+chạy nhánh `GrantEntitlement` — kho chạy `Refill` thì không mệnh đề C-ACC-3 nào chạy. Hai lớp
+chặn cặp đó độc lập nhau: C-REF-ACC từ phía kho, C-CLAIM-3/5/6 từ phía tài khoản. Gỡ một lớp
+thì lớp kia vẫn đứng về mặt thiết kế; bộ kiểm hiện có ghim từng mệnh đề trên MỘT validator
+một lúc, chưa có bài dựng giao dịch chạy cả hai validator cùng lúc.
+
+**Vì sao cần C-ACC-4.** Biên của D (C-BCN-4) một mình không ghim tốc độ vesting: `vested` tỉ lệ
+với `D · dpe`, và `dpe` do committee đặt lúc CREATE. `drops_per_epoch_max` là giá trị tạm cho
+Preprod, chốt trước mainnet cùng biên D.
+
+**C-BCN-2 + C-BCN-3 đi CẶP** và cặp ấy mới là thứ có giá trị: mỗi cửa sổ post được tối đa MỘT lượt (lượt thứ hai cùng cửa sổ có `epoch` bằng lượt trước ⇒ đứt C-BCN-2; mang nhãn cửa sổ sau ⇒ đứt C-BCN-3). Đó là điều kiện để C-BCN-5 là một trần thật — không có nó thì post `n` lượt trong một cửa sổ đổi được `1,1ⁿ` lần.
+
+**Phần C-BCN-4/5 KHÔNG bịt**: committee vẫn dời được D trong toàn dải `[min, max]`, chỉ là mất nhiều cửa sổ. Một tài khoản đang vesting dở do đó không gặp vách, nhưng cũng không được bảo đảm một tốc độ vesting cố định. Con số `min`/`max`/`±10%` thừa kế từ thiết kế P-beacon cũ và **chưa qua một vòng chốt nào cho D** — xem `onchain/lib/magiclamp/lampdist/constants.ak`.
 
 ---
 
@@ -548,6 +636,21 @@ GENESIS_UTXO_REF
 **Mainnet (khi deploy):** `ms_per_epoch = 432_000_000` (1 epoch = 5 ngày = 432,000 giây = 432,000,000 ms).
 
 Tham số này là một phần của validator hash → thay đổi `ms_per_epoch` tạo ra script hash khác. Deploy Preview và Mainnet là 2 script khác nhau.
+
+**`get_finite` bỏ qua `is_inclusive` — biết và CỐ Ý không sửa.** Nó chỉ đọc `bound_type` và
+trả giá trị, nên một `upper_bound` với `is_inclusive = False` được đọc như thể bao gồm chính
+mốc đó. Sai lệch tối đa là 1 ms, và nó lệch theo chiều NGHIÊM hơn: cửa sổ được coi là dài hơn
+1 ms so với cửa sổ sổ cái thật chấp nhận, nên mọi giao dịch qua được `get_epoch_strict` cũng
+qua được sổ cái. Sửa nó sẽ đổi hash của ba validator để đổi lấy 1 ms ở chiều an toàn — ghi ra
+đây thay vì sửa, để lần sau ai thấy cũng biết là đã cân nhắc.
+
+**Bên dựng tx phải tự kéo `hi` về trong cửa sổ.** `get_epoch_strict` ép `hi / mspe == lo / mspe`,
+mà TTL mặc định của ví (`now + vài giờ`) vắt qua biên epoch nhiều lần mỗi chu kỳ; lúc đó tx bị
+từ chối và lỗi chỉ nói *"validator crashed"*. Hàm làm việc đó là `epochWindow`
+(`offchain/src/constants.ts`), bản song sinh bên Genesis là `windowAt` (`scripts/_epochWindow.ts`).
+Cả hai trả về khoảng thoả BA mệnh đề: hai đầu cùng cửa sổ · `hi > lo` · **`lo ≤ now ≤ hi`**.
+Mệnh đề thứ ba là mệnh đề từng thiếu ở cả hai bản — chúng suy cửa sổ từ `lo = now − 60 s` thay
+vì từ `now`, nên 60 giây đầu mỗi cửa sổ trả về một khoảng ĐÃ HẾT HẠN mang nhãn cửa sổ trước.
 
 ### 7.2 Beacon reference input không bị spend
 

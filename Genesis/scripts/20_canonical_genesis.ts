@@ -47,6 +47,7 @@ import {
   reserveKhoParamsFromEnv, type OutputRef,
 } from "./_custodySeedRef.js";
 import { INSTANCE_ID, custodySeedPolicyId } from "./_reserve_layer2.js";
+import { D_GENESIS } from "../../Distribution/offchain/src/constants.js";
 
 /** min-ADA mỗi UTxO mang đúng 1 NFT + datum nhỏ. Dư một chút cho an toàn. */
 const NFT_ADA = 2_000_000n;
@@ -193,7 +194,19 @@ async function main(): Promise<void> {
     // MET ở ví: bước 22 sẽ TIÊU nó để mở nhánh ReserveDraw. Đây là mức Lớp 1 — nó chứng
     // minh nhánh MỞ ĐƯỢC, KHÔNG chứng minh trần nhịp δ ≤ E/1000 (việc của `reserve_draw`).
     .pay.ToAddress(walletAddr, { lovelace: NFT_ADA, [wiring.metUnit]: 1n })
-    .pay.ToContract(wiring.beaconAddr, { kind: "inline", value: beaconDatum(0n, 0n) },
+    // D genesis = `D_GENESIS`, KHÔNG phải 0. Bản trước ghi 0 và nó khoá beacon ngay khi
+    // sinh: C-BCN-5 (`beacon.ak`) ép `|D' − D| ≤ MAX_DROP_DELTA_Q · D / Q`, nên `D = 0`
+    // cho ra trần delta = 0 ⟹ `D'` buộc phải bằng 0; mà C-BCN-4 lại đòi
+    // `D' ≥ DROP_VALUE_MIN` (10 LAMP). Hai chốt loại nhau — không lượt post beacon nào
+    // đi qua được, và DROP NFT thì không đổi được địa chỉ và không đốt được, nên cách
+    // duy nhất ra khỏi đó là đúc lại cả cụm.
+    //
+    // Cụm Preprod đang chạy KHÔNG dính, vì nó nhảy 0 → 100 LAMP từ trước khi C-BCN-4/5 có
+    // (đọc beacon 2026-09-17: `drop_value = 100000000`). Nghĩa là lỗ này chỉ nổ ở cụm
+    // SINH MỚI — đúng chỗ không ai chạy thử lại.
+    //
+    // Anh em đúng: `Distribution/scripts/03_genesis.ts` ▸ `D_GENESIS`.
+    .pay.ToContract(wiring.beaconAddr, { kind: "inline", value: beaconDatum(0n, D_GENESIS) },
       { lovelace: NFT_ADA, [toDropUnit(wiring)]: 1n })
     .complete();
 
@@ -313,8 +326,10 @@ async function adoptExisting(
   }
   if (bad > 0) {
     throw new Error(
-      `${bad} marker KHÔNG đúng 1 bản đúng chỗ ⇒ genesis_ref này không phải lượt đang sống. ` +
-      `Không ghi state. Kiểm lại ADOPT_GENESIS_TX/IDX.`,
+      `${bad} marker KHÔNG đúng 1 bản đúng chỗ. Hai nguyên nhân: genesis_ref này không phải lượt ` +
+      `đang sống (kiểm lại ADOPT_GENESIS_TX/IDX), HOẶC mã validator đã đổi sau lượt đúc nên địa ` +
+      `chỉ script dựng lại khác chỗ marker đang nằm (chạy lại 'aiken build' ở cả hai onchain; còn ` +
+      `lệch thì cụm này thuộc một commit cũ). Không ghi state.`,
     );
   }
 

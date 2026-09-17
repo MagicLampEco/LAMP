@@ -1,4 +1,7 @@
-// LampDistribution/scripts/config.ts — Cấu hình riêng cho module LampDistribution.
+// Distribution/scripts/config.ts — Cấu hình riêng cho module LampDistribution.
+// (Đường dẫn ở dòng trên từng ghi `LampDistribution/scripts/…` — thư mục đó không tồn
+//  tại. Tên MODULE là LampDistribution, tên THƯ MỤC là `Distribution/`; hai thứ khác
+//  nhau và chỉ thứ thứ hai tra được bằng một lệnh.)
 //
 // Đọc .env (BLOCKFROST_KEY, PRIVATE_KEY/WALLET_SEED, NETWORK=Preview) + committee
 // keys. KHÔNG hard-code secret. Cung cấp: Lucid provider, wallet select, committee
@@ -530,11 +533,12 @@ export async function reapplyValidators(state: DeployedState): Promise<{
   ]);
   const rawBeacon = await rawValidator("beacon.beacon.spend");
   const beaconScript = applyValidator(rawBeacon.compiledCode, [
-    committee, threshold, p.beaconNftPolicy,
+    committee, threshold, p.beaconNftPolicy, msPerEpochBaked,
   ]);
   const rawTreasury = await rawValidator("treasury.treasury.spend");
   const treasuryScript = applyValidator(rawTreasury.compiledCode, [
     p.claimAccountHash, p.lampPolicy, p.lampName, committee, threshold, p.accountNftPolicy,
+    msPerEpochBaked,
   ]);
 
   // verify hash khớp

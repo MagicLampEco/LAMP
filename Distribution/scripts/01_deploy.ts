@@ -3,12 +3,13 @@
 // Chạy: npm run deploy
 //
 // Validator params (theo onchain/plutus.json — số tham số được cổng APPLY-001 ép khớp):
-//   beacon.beacon.spend      (3): [committee:List<ByteArray>, threshold:Int, beacon_nft_policy]
+//   beacon.beacon.spend      (4): [committee:List<ByteArray>, threshold:Int, beacon_nft_policy,
+//                                  ms_per_epoch]
 //   claim_account_nft.mint   (3): [committee, threshold, treasury_nft_policy]
 //   claim_account.spend      (8): [committee, threshold, ms_per_epoch, lamp_policy, lamp_name,
 //                                  beacon_nft_policy, treasury_nft_policy, account_nft_policy]
-//   treasury.spend           (6): [claim_account_hash, lamp_policy, lamp_name,
-//                                  committee, threshold, account_nft_policy]
+//   treasury.spend           (7): [claim_account_hash, lamp_policy, lamp_name,
+//                                  committee, threshold, account_nft_policy, ms_per_epoch]
 //
 // Phụ thuộc compile-time (thứ tự apply KHÔNG đổi được):
 //   - claim_account + treasury cần account_nft_policy → apply claim_account_nft TRƯỚC NHẤT.
@@ -224,6 +225,7 @@ async function main(): Promise<void> {
     committeeData,
     thresholdData,
     beaconNftPolicy,
+    MS_PER_EPOCH,
   ]);
   const beaconHash = scriptHash(beaconScript);
   const beaconAddr = scriptAddress(beaconScript);
@@ -237,6 +239,7 @@ async function main(): Promise<void> {
     committeeData,
     thresholdData,
     accountNftPolicy,
+    MS_PER_EPOCH,
   ]);
   const treasuryHash = scriptHash(treasuryScript);
   const treasuryAddr = scriptAddress(treasuryScript);

@@ -3,7 +3,9 @@
 //
 //   CREATE: account chưa có → datum {owner, entitlement=amount, redeemed=0,
 //           start_epoch=current, drops_per_epoch}.
-//   UPDATE: account đã có → entitlement += amount; redeemed/start_epoch/dpe bất biến.
+//   UPDATE: account đã có → REBASE: entitlement = (E − redeemed) + amount, redeemed = 0,
+//           start_epoch = current; dpe bất biến. Giữ mốc cũ thì tuổi tài khoản mang sang
+//           phần vừa cấp và nó rút được ngay — `treasury.ak` C-ACC-3 có đủ lý do.
 //
 // SOLVENCY ON-CHAIN (C-SOLV-*): MỌI Claim PHẢI co-spend treasury UTxO (GrantEntitlement):
 //   treasury.outstanding_entitlement += amount, ép outstanding_entitlement ≤ pool LAMP.
@@ -12,8 +14,12 @@
 //
 // Invariants:
 //   C-CLAIM-1  ≥ ⌈2N/3⌉ committee signatures.
-//   C-CLAIM-2  out.entitlement = in.entitlement + amount; amount > 0.
-//   C-CLAIM-3  out.owner == in.owner; redeemed/start_epoch/drops_per_epoch unchanged.
+//   C-CLAIM-1  amount > 0.
+//   C-CLAIM-4  out.entitlement = in.entitlement − in.redeemed + amount.
+//   C-CLAIM-5  out.redeemed = 0.
+//   C-CLAIM-6  out.start_epoch = cửa sổ của validity range (cả hai đầu cùng cửa sổ).
+//   C-CLAIM-3/7 out.owner == in.owner; drops_per_epoch unchanged.
+//   C-ACC-4    CREATE: 1 ≤ drops_per_epoch ≤ DROPS_PER_EPOCH_MAX.
 //   C-SOLV-1   treasury.outstanding_entitlement_out = cum_in + amount (co-spend bắt buộc).
 //   C-SOLV-2   outstanding_entitlement_out ≤ treasury pool LAMP (ép on-chain ở treasury).
 //   C-MINT-1   tập policy trong tx.mint ⊆ {account_nft_policy}
@@ -35,7 +41,7 @@ import {
 } from "./datum.js";
 import { accountNftName, mintAccountRedeemerToCbor } from "./accountNft.js";
 import { assertCommitteeSigners } from "./committee.js";
-import { DEFAULT_DROPS_PER_EPOCH, TREASURY_NFT_ASSET_NAME } from "./constants.js";
+import { DEFAULT_DROPS_PER_EPOCH, DROPS_PER_EPOCH_MAX, TREASURY_NFT_ASSET_NAME } from "./constants.js";
 
 export interface ClaimParams {
   lucid:        LucidEvolution;
@@ -137,6 +143,19 @@ export interface ClaimParams {
    * get_epoch đọc lower_bound → start_epoch). Bỏ trống → KHÔNG set (unit test off-chain).
    */
   validFromMs?: bigint;
+
+  /**
+   * POSIX ms cho upper_bound validity_range — BẮT BUỘC live tx CREATE kể từ C-ACC-2.
+   *
+   * Trước bản vá Issue #72 chỉ có đầu dưới, và đầu dưới MỘT MÌNH không chứng minh được
+   * `start_epoch` là cửa sổ thật: sổ cái nhận tx khi `lower ≤ now`, nên `lower` đặt lùi
+   * bao xa cũng hợp lệ. Validator nay ép CẢ HAI đầu rơi cùng cửa sổ ("Luật 2b").
+   *
+   * Lấy cặp lo/hi bằng `epochWindow(msPerEpoch)` trong `constants.ts` — nó kéo `hi` về sát
+   * cuối cửa sổ khi khoảng mặc định vắt qua biên epoch. Tự đặt tay thì mấy lần mỗi chu kỳ
+   * sẽ có một tx bị từ chối mà không có gì nói vì sao.
+   */
+  validToMs?: bigint;
 }
 
 export interface ClaimResult {
@@ -236,12 +255,15 @@ export async function buildClaimTx(params: ClaimParams): Promise<ClaimResult> {
       );
     }
 
+    // REBASE (C-CLAIM-4/5/6 ở `claim_account.ak`, C-ACC-3 ở `treasury.ak`). Phần chưa rút
+    // `E − redeemed` nằm nguyên trong E' — người nhận không mất gì; phần đã vest-mà-chưa-rút
+    // phải vest lại, nên caller muốn giữ nó thì Redeem TRƯỚC rồi mới cấp thêm.
     newDatum = {
-      owner:           prev.owner,                       // C-CLAIM-3
-      entitlement:     prev.entitlement + amount,        // C-CLAIM-2
-      redeemed:        prev.redeemed,                    // C-CLAIM-3 (unchanged)
-      start_epoch:     prev.start_epoch,                 // C-CLAIM-3 (unchanged)
-      drops_per_epoch: prev.drops_per_epoch,             // C-CLAIM-3 (unchanged)
+      owner:           prev.owner,                                    // C-CLAIM-3
+      entitlement:     prev.entitlement - prev.redeemed + amount,     // C-CLAIM-4
+      redeemed:        0n,                                            // C-CLAIM-5
+      start_epoch:     currentEpoch,                                  // C-CLAIM-6
+      drops_per_epoch: prev.drops_per_epoch,                          // C-CLAIM-7 (unchanged)
     };
 
     // Bảo toàn TẤT CẢ assets (lovelace + bất kỳ dust) — chỉ datum đổi (C-VAL-0).
@@ -270,6 +292,14 @@ export async function buildClaimTx(params: ClaimParams): Promise<ClaimResult> {
       throw new Error(
         `CLAIM-004: dropsPerEpoch must be a bigint > 0 (got ${String(dropsPerEpoch)}) — tài ` +
         `khoản tạo với drops_per_epoch = 0 không bao giờ redeem được, mà khoản nợ thì đã vào sổ kho`,
+      );
+    }
+    // CLAIM-006: trần on-chain C-ACC-4 (`treasury.ak`). Chặn ở đây để lỗi nói đúng thứ sai
+    // thay vì "validator crashed" từ chuỗi.
+    if (dropsPerEpoch > DROPS_PER_EPOCH_MAX) {
+      throw new Error(
+        `CLAIM-006: dropsPerEpoch ${dropsPerEpoch} vượt trần ${DROPS_PER_EPOCH_MAX} ` +
+        `(treasury.ak C-ACC-4) — tốc độ mở khoá là D · drops_per_epoch, trần D một mình không đủ`,
       );
     }
 
@@ -373,9 +403,26 @@ export async function buildClaimTx(params: ClaimParams): Promise<ClaimResult> {
 
   for (const k of signers) txb = txb.addSignerKey(k);
 
-  // validity_range lower_bound → validator get_epoch (CREATE start_epoch). Live tx bắt buộc.
+  // validity_range → validator get_epoch_strict (CREATE start_epoch). Live tx bắt buộc CẢ HAI
+  // đầu: C-ACC-2 ép chúng rơi cùng một cửa sổ, vì đầu dưới một mình đặt lùi được tuỳ ý.
   if (params.validFromMs !== undefined) {
     txb = txb.validFrom(Number(params.validFromMs));
+  }
+  if (params.validToMs !== undefined) {
+    txb = txb.validTo(Number(params.validToMs));
+  }
+
+  // CREATE-002 — chặn ở đây thay vì để chuỗi từ chối. Thiếu đầu trên thì validator ném, mà
+  // lỗi từ chuỗi chỉ nói "validator crashed"; câu dưới nói ĐÚNG thứ thiếu. Áp cho CẢ UPDATE
+  // từ 2026-09-17: rebase ghim `start_epoch` bằng cùng `get_epoch_strict` (C-ACC-3, C-CLAIM-6).
+  // Mã lỗi giữ tên cũ để không gãy chỗ nào đang bắt nó.
+  if (params.validFromMs !== undefined && params.validToMs === undefined) {
+    throw new Error(
+      `CREATE-002: đường ${mode.toUpperCase()} thiếu \`validToMs\`. C-ACC-2/C-ACC-3 (treasury.ak) ép cả hai đầu ` +
+        "validity_range rơi cùng một cửa sổ epoch — đầu dưới một mình đặt lùi bao xa cũng " +
+        "hợp lệ với sổ cái, nên nó không ghim được `start_epoch`. Lấy cặp lo/hi bằng " +
+        "`epochWindow(msPerEpoch)` trong `constants.ts`.",
+    );
   }
 
   const tx = await txb.complete();
