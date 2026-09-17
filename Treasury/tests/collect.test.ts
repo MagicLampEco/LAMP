@@ -5,7 +5,7 @@ import {
   compareHexBytes, keyLt, strictSorted, allPositive, isCanonical,
   sortLedger, pruneZeroLines, canonicalizeLedger,
 } from "../offchain/src/collect.js";
-import { planCollect, sameEpochValidToMs } from "../offchain/src/collectBuilder.js";
+import { planCollect, sameEpochValidToMs, VALID_TTL_MS } from "../offchain/src/collectBuilder.js";
 import type { CollectItem, CustodyDatum, LedgerEntry } from "../offchain/src/types.js";
 
 // ── Fixtures ───────────────────────────────────────────────────────────
@@ -473,18 +473,27 @@ describe("F4: sameEpochValidToMs — validTo cùng epoch với validFrom", () =>
     expect(validTo).toBeGreaterThan(validFrom);
   });
 
-  it("validTo = ms cuối CÙNG epoch ((epoch+1)×ms − 1)", () => {
+  // Đầu epoch 5 ngày: bản cũ trả cuối epoch, tức gần 5 ngày sau ⇒ PastHorizon. Mốc đỏ trên bản cũ.
+  it("cuối epoch còn xa: validTo = validFrom + TTL, không phải cuối epoch", () => {
     const validFrom = 7n * MS;               // đầu epoch 7
     const validTo = sameEpochValidToMs(validFrom, MS);
-    expect(validTo).toBe(8n * MS - 1n);      // ms cuối epoch 7
-    expect(validTo / MS).toBe(7n);           // VẪN epoch 7 (không trải biên)
+    expect(validTo).toBe(validFrom + VALID_TTL_MS);
+    expect(validTo / MS).toBe(7n);
   });
 
-  it("biên epoch: validFrom = đầu epoch → validTo vẫn cùng epoch (không tràn sang sau)", () => {
-    const validFrom = 0n;                    // epoch 0
+  it("epoch hết trước TTL: validTo = ms cuối CÙNG epoch (không tràn sang sau)", () => {
+    const validFrom = 8n * MS - 1_000n;      // 1 s trước cuối epoch 7
     const validTo = sameEpochValidToMs(validFrom, MS);
-    expect(validTo).toBe(MS - 1n);           // ms cuối epoch 0
-    expect(validTo / MS).toBe(0n);
+    expect(validTo).toBe(8n * MS - 1n);
+    expect(validTo / MS).toBe(7n);
+  });
+
+  it("mọi mốc: validTo − validFrom ≤ TTL", () => {
+    for (const validFrom of [0n, 1n, MS / 2n, MS - VALID_TTL_MS, MS - 1n]) {
+      const validTo = sameEpochValidToMs(validFrom, MS);
+      expect(validTo - validFrom).toBeLessThanOrEqual(VALID_TTL_MS);
+      expect(validTo / MS).toBe(validFrom / MS);
+    }
   });
 
   it("reject msPerEpoch ≤ 0", () => {

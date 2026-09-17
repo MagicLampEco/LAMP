@@ -52,9 +52,9 @@ export function assetsToMap(a: Assets): AssetMap {
 // epoch, nếu chỉ set validFrom → upper = +∞ → get_epoch_bounded expect Some(hi) FAIL.
 
 /**
- * validTo (POSIX ms) lớn nhất CÙNG epoch với validFromMs: ms cuối của epoch đó
- * = (⌊validFromMs/msPerEpoch⌋ + 1) × msPerEpoch − 1. Bảo đảm ⌊validTo/ms⌋ == ⌊validFrom/ms⌋
- * (mirror get_epoch_bounded) đồng thời cho cửa sổ hợp lệ tối đa trong epoch.
+ * validTo (POSIX ms) CÙNG epoch với validFromMs: min(ms cuối epoch đó, validFromMs + 1 giờ).
+ * Bảo đảm ⌊validTo/ms⌋ == ⌊validFrom/ms⌋ (mirror get_epoch_bounded) mà không vượt chân trời
+ * dự báo của node — xem `sameEpochValidToMs`.
  */
 // ── Địa chỉ kho: MANG THEO, không dựng lại ───────────────────────────────────
 //
@@ -117,8 +117,17 @@ export function custodySeedAddress(
 export function sameEpochValidToMs(validFromMs: bigint, msPerEpoch: bigint): bigint {
   if (msPerEpoch <= 0n) throw new Error("EPOCH-000: msPerEpoch phải > 0");
   const epoch = validFromMs / msPerEpoch;
-  return (epoch + 1n) * msPerEpoch - 1n;
+  // KẸP bởi `validFrom + VALID_TTL_MS`: epoch Preprod/Mainnet dài 5 ngày, đầu trên ở cuối epoch
+  // có thể vượt chân trời dự báo của node (~1,5 ngày) ⇒ giao dịch có script bị từ chối với
+  // PastHorizon (đã gặp thật: `Faucet/scripts/demo_reserve_draw_resume.ts`, dòng đầu tệp).
+  // Trên Preview epoch 1 ngày nên bản trước không lộ lỗi.
+  const epochEnd = (epoch + 1n) * msPerEpoch - 1n;
+  const ttlEnd = validFromMs + VALID_TTL_MS;
+  return epochEnd < ttlEnd ? epochEnd : ttlEnd;
 }
+
+/** Trần TTL: 1 giờ. PHẢI khớp `Genesis/scripts/_epochWindow.ts` ▸ `WINDOW_TTL_MS` (chép 2026-09-17). */
+export const VALID_TTL_MS = 3_600_000n;
 
 /** AssetMap → lucid Assets. Khóa "|" → "lovelace". Bỏ amount == 0. */
 export function mapToAssets(m: AssetMap): Assets {
