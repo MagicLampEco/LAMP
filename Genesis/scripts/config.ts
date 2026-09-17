@@ -154,8 +154,10 @@ export function assertWalletMatches(derived: string): void {
 export async function makeLucid(): Promise<LucidEvolution> {
   assertEnv();
   const lucid = await Lucid(new Blockfrost(BLOCKFROST_URL, BLOCKFROST_KEY), NETWORK);
-  if (PRIVATE_KEY) lucid.selectWallet.fromPrivateKey(PRIVATE_KEY);
-  else if (WALLET_SEED) lucid.selectWallet.fromSeed(WALLET_SEED);
+  // Cùng vị từ với `assertEnv`: `"…"` là chuỗi truthy, nên `if (PRIVATE_KEY)` chọn đúng chỗ giữ
+  // chỗ mà cổng trên vừa loại, và bỏ qua một WALLET_SEED thật đặt cạnh nó.
+  if (!isPlaceholder(PRIVATE_KEY)) lucid.selectWallet.fromPrivateKey(PRIVATE_KEY);
+  else lucid.selectWallet.fromSeed(WALLET_SEED);
   return lucid;
 }
 
