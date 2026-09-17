@@ -28,6 +28,7 @@ import { reserveStateToCbor, drawRedeemerToCbor } from "../../Reserve/offchain/s
 import { buildReserveAuthMintTx } from "../../Treasury/offchain/src/reserveAuthBuilder.js";
 import { attachGateSpend } from "../../Treasury/offchain/src/reserveGateBuilder.js";
 import { msPerEpoch, assertMsPerEpochMatchesNetwork } from "../offchain/src/constants.js";
+import { epochAt, windowAt } from "../offchain/src/epochWindow.js";
 import { assertParamCount } from "../../Genesis/offchain/src/applyGate.js";
 
 // BÍ MẬT: tệp này nhận GIÁ TRỊ qua biến môi trường, KHÔNG mở kho khoá và KHÔNG biết
@@ -216,7 +217,10 @@ console.log(`authPid=${authPid} gateAddr=${gateAddr}`);
 console.log(`reserveDrawAddr=${reserveDrawAddr}`);
 Object.assign(out, { tlampPid, reserveThreadPid, custodySeedPid, custodyAddr, authPid, gateAddr, reserveDrawAddr, lampUnit });
 
-const epochNow = () => BigInt(Math.floor((Date.now() - 90_000) / Number(MS_PER_EPOCH)));
+// Nhãn epoch = `epochAt(now, mspe)` — KHÔNG lùi trước khi chia (Issue #76: bản cũ lùi 90s rồi
+// chia, 90 giây đầu mỗi epoch trả nhãn epoch TRƯỚC; ghi sai vào `start_epoch` — Luật 7
+// `reserve_draw.ak` ép BẤT BIẾN, không sửa lại được). Nguồn: `Faucet/offchain/src/epochWindow.ts`.
+const epochNow = () => epochAt(Date.now(), Number(MS_PER_EPOCH));
 
 // ── G1: fresh genesis Tx A (thread NFT + SupplyState) ───────────────────
 {
@@ -303,17 +307,13 @@ const epochNow = () => BigInt(Math.floor((Date.now() - 90_000) / Number(MS_PER_E
   const start = rIn.fields[0] as bigint;
   const total = rIn.fields[1] as bigint;
   const drawn = rIn.fields[2] as bigint;
-  // validity range: lo & hi CÙNG epoch synthetic t; t > last_epoch.
-  // CỬA SỔ HẸP quanh now (≤ horizon node ~1.5 ngày). Cả lo & hi phải floor-chia
-  // ra cùng t. Đặt lo = now − 60s, hi = lo + 90s; bảo đảm cùng epoch (chừa biên).
+  // validity range: lo & hi CÙNG epoch t (Luật 2b); t > last_epoch. Nhãn t suy từ NOW, không
+  // lùi trước khi chia (Issue #76) — `windowAt` tự kẹp lo trong cửa sổ epoch hiện tại và đặt
+  // hi = min(cuối epoch t − 1ms, now + 1 giờ), nên cả ba mệnh đề (cùng epoch · hi>lo · lo≤now≤hi)
+  // đều đúng ở MỌI mốc trong epoch, kể cả giây đầu, và đầu trên không vượt chân trời dự báo của
+  // node (PastHorizon). Nguồn: `Faucet/offchain/src/epochWindow.ts`.
   const lastEpoch = rIn.fields[3] as bigint;
-  const loMs = Date.now() - 60_000;
-  let hiMs = loMs + 90_000;
-  const t = BigInt(Math.floor(loMs / Number(MS_PER_EPOCH)));
-  // nếu hi rơi sang epoch sau (gần biên) → kéo hi về sát cuối epoch t.
-  if (BigInt(Math.floor(hiMs / Number(MS_PER_EPOCH))) !== t) {
-    hiMs = Number((t + 1n) * MS_PER_EPOCH) - 1000;
-  }
+  const { loMs, hiMs, t } = windowAt(Date.now(), Number(MS_PER_EPOCH));
   if (!(t > lastEpoch)) throw new Error(`[DRAW] t=${t} ≤ last_epoch=${lastEpoch}`);
   const rOut = { start_epoch: start, total_oildrop: total, drawn_oildrop: drawn + DRAW_OILDROP, last_epoch: t };
 
