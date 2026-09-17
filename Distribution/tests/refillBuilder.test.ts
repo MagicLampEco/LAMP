@@ -1,9 +1,10 @@
 // refillBuilder — gộp N UTxO kho về singleton. KHÔNG submit thật (mock tx-builder).
 //
-// Ca số 1 dựng ĐÚNG hình dạng đang kẹt trên Preprod (đo 2026-09-15 qua Koios,
-// `addr_test1wqcnq8kkza7kw8409pt8ytywgeat4strz5sxt0g5wdl9a8q0r2v2g`): hai UTxO, một mang
-// TRSY và 0 oildrop, một mang 10.000.000.000 oildrop và không TRSY. Nếu ca đó đỏ thì giao
-// dịch cứu kho không dựng được.
+// Ca số 1 dựng ĐÚNG hình dạng đang kẹt trên Preprod (đo 2026-09-15 qua Koios): hai UTxO, một
+// mang TRSY và 0 oildrop, một mang 10.000.000.000 oildrop và không TRSY. Nếu ca đó đỏ thì giao
+// dịch cứu kho không dựng được. (Địa chỉ/policy id dùng trong bài này đều là FAKE_* dựng riêng
+// cho bài kiểm — Issue #78: PR #75 đổi script hash `treasury`, địa chỉ kho thật gõ cứng trước
+// đây từng làm bài xanh giả qua lần đổi đó dù không đối chiếu gì với chuỗi thật.)
 
 import { describe, it, expect } from "vitest";
 import {
@@ -61,15 +62,21 @@ const TRE_ADDR = credentialToAddress(
   NETWORK, scriptHashToCredential(validatorToScriptHash(FAKE_TREASURY)),
 );
 
-const LAMP_POLICY = "8169b76cdaba83cf7c9ae32ebd2bb3a58aa215c7dc0b62c8f5e268dd";
-const LAMP_UNIT   = toUnit(LAMP_POLICY, "744c414d50");
-const TRSY_POLICY = "09adb8c1f9b40befea28bddfd944625c7771a0a1f2e178d03953ff95";
-const TRSY_UNIT   = toUnit(TRSY_POLICY, TREASURY_NFT_ASSET_NAME);
+// FAKE_LAMP_POLICY / FAKE_TRSY_POLICY / FAKE_CH — `buildRefillTx` nhận cả ba qua tham số
+// (`lampPolicyId`, `treasuryNftPolicy`, `committeeSigners`) và chỉ so khớp NỘI BỘ giữa các
+// fixture trong chính bài kiểm này; không đối chiếu với blueprint hay committee thật nào. Chỉ
+// cần đúng HÌNH DẠNG (56 hex = 28 byte, như policy id / pkh thật). Trước đây ba hằng này gõ
+// cứng giá trị THẬT của cụm Preprod cũ — trôi im lặng khi cụm đổi (Issue #78), dù không hằng
+// nào ảnh hưởng tới việc bài kiểm đúng hay sai.
+const FAKE_LAMP_POLICY = "aa".repeat(28);
+const LAMP_UNIT         = toUnit(FAKE_LAMP_POLICY, "744c414d50");
+const FAKE_TRSY_POLICY = "bb".repeat(28);
+const TRSY_UNIT         = toUnit(FAKE_TRSY_POLICY, TREASURY_NFT_ASSET_NAME);
 
-/** pkh ví vận hành Preprod — committee 1-of-1 (`_canonical_v2.ts:315-316`). */
-const CH = "603249abe9bc29ea474777fc4cfc2f220a784a53e201b9b9afac5ff5";
+/** pkh giả cho committee 1-of-1 trong bài kiểm — chỉ cần đúng hình dạng 56 hex. */
+const FAKE_CH = "cc".repeat(28);
 
-function treDatum(outstanding: bigint, ch = CH): string {
+function treDatum(outstanding: bigint, ch = FAKE_CH): string {
   return treasuryDatumToCbor({ committee_hash: ch, outstanding_entitlement: outstanding });
 }
 
@@ -96,10 +103,10 @@ function baseParams(lucid: any, utxos: UTxO[], over: Record<string, unknown> = {
     lucid,
     treasuryUtxos: utxos,
     treasuryScript: FAKE_TREASURY,
-    committeeSigners: [CH],
+    committeeSigners: [FAKE_CH],
     committeeThreshold: 1,
-    lampPolicyId: LAMP_POLICY,
-    treasuryNftPolicy: TRSY_POLICY,
+    lampPolicyId: FAKE_LAMP_POLICY,
+    treasuryNftPolicy: FAKE_TRSY_POLICY,
     ...over,
   } as any;
 }
@@ -134,11 +141,11 @@ describe("buildRefillTx — gộp hai UTxO đúng hình dạng Preprod", () => {
 
     // `:221` + `:224` — committee_hash bảo toàn, sổ cái = Σ vào = 0.
     const d = decodeTreasuryDatum(Data.from(rec.payData[0]!.datum));
-    expect(d.committee_hash).toBe(CH);
+    expect(d.committee_hash).toBe(FAKE_CH);
     expect(d.outstanding_entitlement).toBe(0n);
 
     // `:192` — có chữ ký committee.
-    expect(rec.signers).toEqual([CH]);
+    expect(rec.signers).toEqual([FAKE_CH]);
     expect(r.merged).toBe(2);
     expect(r.lampBefore).toBe(10_000_000_000n);
     expect(r.lampAfter).toBe(10_000_000_000n);
@@ -255,7 +262,7 @@ describe("buildRefillTx — cổng chặn trước khi mất collateral", () => 
   it("RFL-013: một số hạng ÂM lọt qua vì Σ sổ cái sau cộng vẫn dương và vẫn dưới pool", async () => {
     const { lucid } = mockLucid("addr_op");
     const c = utxo({ ix: 2, trsy: 1n, lamp: 10n, datum: treDatum(1_000_000n) });
-    const decoy = utxo({ ix: 9, datum: treDatum(-999_999n) }); // cùng CH mặc định, Σ = 1 ≤ 10
+    const decoy = utxo({ ix: 9, datum: treDatum(-999_999n) }); // cùng FAKE_CH mặc định, Σ = 1 ≤ 10
     await expect(buildRefillTx(baseParams(lucid, [c, decoy])))
       .rejects.toThrow(/RFL-013/);
   });
@@ -282,7 +289,7 @@ describe("buildRefillTx — cổng chặn trước khi mất collateral", () => 
   it("RFL-008: thiếu người ký so với ngưỡng", async () => {
     const { lucid } = mockLucid("addr_op");
     await expect(buildRefillTx(
-      baseParams(lucid, [carrier()], { committeeSigners: [CH], committeeThreshold: 2 }),
+      baseParams(lucid, [carrier()], { committeeSigners: [FAKE_CH], committeeThreshold: 2 }),
     )).rejects.toThrow(/RFL-008/);
   });
 
@@ -292,7 +299,7 @@ describe("buildRefillTx — cổng chặn trước khi mất collateral", () => 
   it("RFL-008: đếm NGƯỜI phân biệt, không đếm phần tử — khoá lặp lại không được tính hai lần", async () => {
     const { lucid } = mockLucid("addr_op");
     await expect(buildRefillTx(
-      baseParams(lucid, [carrier()], { committeeSigners: [CH, CH], committeeThreshold: 2 }),
+      baseParams(lucid, [carrier()], { committeeSigners: [FAKE_CH, FAKE_CH], committeeThreshold: 2 }),
     )).rejects.toThrow(/RFL-008/);
   });
 
