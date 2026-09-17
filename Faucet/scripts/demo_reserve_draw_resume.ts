@@ -19,6 +19,7 @@ import { RESERVE_SOURCE_TAG } from "../../Treasury/offchain/src/constants.js";
 import { planMigrateDatum } from "../../Treasury/offchain/src/migrate.js";
 import { attachGateSpend } from "../../Treasury/offchain/src/reserveGateBuilder.js";
 import { msPerEpoch, assertMsPerEpochMatchesNetwork } from "../offchain/src/constants.js";
+import { windowAt } from "../offchain/src/epochWindow.js";
 import { assertParamCount } from "../../Genesis/offchain/src/applyGate.js";
 
 // BÍ MẬT: tệp này nhận GIÁ TRỊ qua biến môi trường, KHÔNG mở kho khoá và KHÔNG biết
@@ -149,10 +150,9 @@ if (!reserveUtxo || !supplyUtxo || !authUtxo || !custodyUtxo) throw new Error("t
 
 const rIn = Data.from(reserveUtxo.datum!) as Constr<Data>;
 const start = rIn.fields[0] as bigint, total = rIn.fields[1] as bigint, drawn = rIn.fields[2] as bigint, lastEpoch = rIn.fields[3] as bigint;
-const loMs = Date.now() - 60_000;
-let hiMs = loMs + 90_000;
-const t = BigInt(Math.floor(loMs / Number(MS_PER_EPOCH)));
-if (BigInt(Math.floor(hiMs / Number(MS_PER_EPOCH))) !== t) hiMs = Number((t + 1n) * MS_PER_EPOCH) - 1000;
+// Nhãn t suy từ NOW, không lùi trước khi chia (Issue #76) — xem chú thích cùng khối ở
+// `demo_reserve_e2e.ts`. Nguồn: `Faucet/offchain/src/epochWindow.ts`.
+const { loMs, hiMs, t } = windowAt(Date.now(), Number(MS_PER_EPOCH));
 if (!(t > lastEpoch)) throw new Error(`t=${t} ≤ last_epoch=${lastEpoch}`);
 console.log(`draw epoch t=${t} (last=${lastEpoch}) lo=${loMs} hi=${hiMs}`);
 const rOut = { start_epoch: start, total_oildrop: total, drawn_oildrop: drawn + DRAW_OILDROP, last_epoch: t };

@@ -29,6 +29,7 @@ import {
   DRIP_OILDROP, COOLDOWN, RECLAIM, POOL_NFT_NAME, ACCT_NFT_NAME,
   msPerEpoch, assertMsPerEpochMatchesNetwork,
 } from "../offchain/src/constants.js";
+import { windowAt } from "../offchain/src/epochWindow.js";
 
 // BÍ MẬT: tệp này nhận GIÁ TRỊ qua biến môi trường, KHÔNG mở kho khoá và KHÔNG biết
 // kho ở đâu. Đường cũ tự đọc biến trỏ tới kho rồi `dotenv.config()` lên tệp đó — thứ
@@ -168,8 +169,6 @@ const cfg = { drip_oildrop: DRIP_OILDROP, cooldown_epochs: COOLDOWN, reclaim_epo
 // ─────────────────────────────────────────────────────────────────────────
 // T2 — claim: spend pool (Claim) + mint ACCT NFT + drip → account; mang DID NFT.
 // ─────────────────────────────────────────────────────────────────────────
-function epochOf(ms: number): bigint { return BigInt(Math.floor(ms / Number(MS_PER_EPOCH))); }
-
 let accountRef: { txHash: string; outputIndex: number };
 {
   const poolUtxos = await lucid.utxosAt(poolAddr);
@@ -177,8 +176,9 @@ let accountRef: { txHash: string; outputIndex: number };
   const didUtxos = (await lucid.wallet().getUtxos()).filter((u) => (u.assets[didUnit] ?? 0n) >= 1n);
   const didUtxo = didUtxos[0];
 
-  const validFromMs = Date.now() - 60_000;                  // lùi 60s cho an toàn slot
-  const now = epochOf(validFromMs);
+  // Nhãn epoch suy từ NOW, không lùi trước khi chia (Issue #76) — `windowAt` tự kẹp `loMs`
+  // trong cửa sổ epoch hiện tại. Nguồn: `Faucet/offchain/src/epochWindow.ts`.
+  const { loMs: validFromMs, t: now } = windowAt(Date.now(), Number(MS_PER_EPOCH));
   const poolAfter = (poolUtxo.assets[lampUnit] ?? 0n) - DRIP_OILDROP;
 
   const poolOutAssets: Record<string, bigint> = { ...poolUtxo.assets };
@@ -219,8 +219,9 @@ let accountRef: { txHash: string; outputIndex: number };
   const acctUtxo = accs.find((u) => u.txHash === accountRef.txHash && u.outputIndex === accountRef.outputIndex)!;
   const didUtxo = (await lucid.wallet().getUtxos()).filter((u) => (u.assets[didUnit] ?? 0n) >= 1n)[0];
 
-  const validFromMs = Date.now() - 60_000;
-  const now = epochOf(validFromMs);
+  // Nhãn epoch suy từ NOW, không lùi trước khi chia (Issue #76) — xem chú thích cùng khối ở
+  // khối T2 phía trên.
+  const { loMs: validFromMs, t: now } = windowAt(Date.now(), Number(MS_PER_EPOCH));
   const acctLamp = acctUtxo.assets[lampUnit] ?? 0n;
   const newDatum = { did_name: DID_NAME, last_epoch: now };
   const acctOut: Record<string, bigint> = { lovelace: acctUtxo.assets.lovelace, [acctNftUnit]: 1n };
