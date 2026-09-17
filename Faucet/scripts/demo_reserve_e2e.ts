@@ -309,8 +309,9 @@ const epochNow = () => epochAt(Date.now(), Number(MS_PER_EPOCH));
   const drawn = rIn.fields[2] as bigint;
   // validity range: lo & hi CÙNG epoch t (Luật 2b); t > last_epoch. Nhãn t suy từ NOW, không
   // lùi trước khi chia (Issue #76) — `windowAt` tự kẹp lo trong cửa sổ epoch hiện tại và đặt
-  // hi = cuối epoch t − 1ms, nên cả ba mệnh đề (cùng epoch · hi>lo · lo≤now≤hi) đều đúng ở MỌI
-  // mốc trong epoch, kể cả giây đầu. Nguồn: `Faucet/offchain/src/epochWindow.ts`.
+  // hi = min(cuối epoch t − 1ms, now + 1 giờ), nên cả ba mệnh đề (cùng epoch · hi>lo · lo≤now≤hi)
+  // đều đúng ở MỌI mốc trong epoch, kể cả giây đầu, và đầu trên không vượt chân trời dự báo của
+  // node (PastHorizon). Nguồn: `Faucet/offchain/src/epochWindow.ts`.
   const lastEpoch = rIn.fields[3] as bigint;
   const { loMs, hiMs, t } = windowAt(Date.now(), Number(MS_PER_EPOCH));
   if (!(t > lastEpoch)) throw new Error(`[DRAW] t=${t} ≤ last_epoch=${lastEpoch}`);
