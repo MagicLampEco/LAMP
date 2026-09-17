@@ -39,7 +39,12 @@ export function windowAt(
   const windowStart = Number(t) * msPerEpoch;
   // Lùi 60 s cho lệch đồng hồ node/máy dựng, nhưng KẸP trong epoch.
   const loMs = Math.max(nowMs - 60_000, windowStart);
-  // Hết epoch trừ 1 ms: `(t+1)·mspe` chia ra `t+1`, nên đầu trên phải nhỏ hơn nó ít nhất 1.
-  const hiMs = Number(t + 1n) * msPerEpoch - 1;
+  // Đầu trên = cái SỚM hơn của hết-epoch-trừ-1-ms và `now + WINDOW_TTL_MS`. Không kẹp thì với
+  // epoch 5 ngày đầu trên tới gần 5 ngày sau `now`, vượt chân trời dự báo của node (~1,5 ngày)
+  // ⇒ PastHorizon — lỗi `demo_reserve_draw_resume.ts` từng gặp (dòng đầu tệp đó).
+  const hiMs = Math.min(Number(t + 1n) * msPerEpoch - 1, nowMs + WINDOW_TTL_MS);
   return { loMs, hiMs, t };
 }
+
+/** Trần TTL — PHẢI khớp `Genesis/scripts/_epochWindow.ts` ▸ `WINDOW_TTL_MS` (chép 2026-09-17). */
+export const WINDOW_TTL_MS = 3_600_000;

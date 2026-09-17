@@ -10,7 +10,7 @@
 // `Genesis/scripts/_epochWindow.ts` (lý do chép: `rootDir` của `Faucet/offchain/tsconfig.json`
 // chặn import xuyên gói `Genesis/`; xem chú thích đầu tệp nguồn).
 import { describe, it, expect } from "vitest";
-import { epochAt, windowAt } from "../offchain/src/epochWindow.js";
+import { epochAt, windowAt, WINDOW_TTL_MS } from "../offchain/src/epochWindow.js";
 
 const MSPE = 432_000_000; // 5 ngày, neo mốc Unix (cùng hằng số với bài kiểm gốc ở Genesis)
 const BIEN = 100 * MSPE;  // đầu cửa sổ epoch 100
@@ -49,5 +49,12 @@ describe("windowAt — cửa sổ chứa chính thời điểm gửi, tại các
     expect(w.hiMs).toBeGreaterThan(w.loMs);
     expect(w.loMs).toBeLessThanOrEqual(now);
     expect(w.hiMs).toBeGreaterThanOrEqual(now);
+    // Không vượt chân trời dự báo của node (PastHorizon).
+    expect(w.hiMs - now).toBeLessThanOrEqual(WINDOW_TTL_MS);
+  });
+
+  it("hi = now + TTL khi cuối cửa sổ còn xa; = cuối cửa sổ − 1 ms khi cửa sổ hết trước", () => {
+    expect(windowAt(BIEN, MSPE).hiMs).toBe(BIEN + WINDOW_TTL_MS);
+    expect(windowAt(BIEN + MSPE - 1_000, MSPE).hiMs).toBe(BIEN + MSPE - 1);
   });
 });
