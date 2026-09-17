@@ -2,7 +2,7 @@
 // Mock tx-builder chain ghi lại các call → assert datum/redeemer/asset preservation
 // + validation errors. CONTRACT v2 "Capped Drop".
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, onTestFinished } from "vitest";
 import { validatorToScriptHash, credentialToAddress, scriptHashToCredential, keyHashToCredential, mintingPolicyToId, toUnit, Data } from "@lucid-evolution/lucid";
 import type { UTxO, Validator } from "@lucid-evolution/lucid";
 
@@ -17,7 +17,7 @@ import { accountNftName, mintAccountRedeemerToCbor } from "../offchain/src/accou
 import {
   committeeThreshold, assertCommitteeShape, assertCommitteeSigners,
 } from "../offchain/src/committee.js";
-import { DROPS_PER_EPOCH_MAX, TREASURY_NFT_ASSET_NAME, epochWindow } from "../offchain/src/constants.js";
+import { DROPS_PER_EPOCH_MAX, TREASURY_NFT_ASSET_NAME, WINDOW_TTL_MS, epochWindow } from "../offchain/src/constants.js";
 import { applyValidator } from "../scripts/blueprint.js";
 import { lampOildrop } from "./helpers.js";
 
@@ -526,6 +526,11 @@ describe("buildPostBeaconTx — DropParam{D}", () => {
   });
 
   it("BEACON-006: nhãn == cửa sổ hiện tại đi qua, và tx mang CẢ HAI đầu validity range", async () => {
+    // Đóng băng đồng hồ: builder gọi `epochWindow` theo giờ thật lần nữa, và cả `loMs = now − 60s`
+    // lẫn `hiMs = now + TTL` lệch vài ms giữa hai lần gọi ⇒ bài đỏ chập chờn. Chỉ giả `Date`.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(Date.UTC(2026, 8, 17, 12, 0, 0));
+    onTestFinished(() => { vi.useRealTimers(); });
     const { lucid, rec } = mockLucid("addr_wallet");
     const msPerEpoch = 432_000_000n;
     const w = epochWindow(msPerEpoch);
@@ -563,6 +568,8 @@ describe("epochWindow — cả hai đầu rơi cùng một cửa sổ", () => {
     expect(w.hiMs).toBeGreaterThan(w.loMs);
     expect(w.loMs).toBeLessThanOrEqual(nowMs);
     expect(w.hiMs).toBeGreaterThanOrEqual(nowMs);
+    // Mệnh đề thứ tư: không vượt chân trời dự báo của node (PastHorizon).
+    expect(w.hiMs - nowMs).toBeLessThanOrEqual(WINDOW_TTL_MS);
     return w;
   }
 
@@ -587,8 +594,13 @@ describe("epochWindow — cả hai đầu rơi cùng một cửa sổ", () => {
     expect(epochWindow(MSPE, 100n * MSPE - 1n).epoch).toBe(99n);
   });
 
-  it("hi sát cuối cửa sổ — không bỏ phí giây cuối", () => {
-    expect(epochWindow(MSPE, 100n * MSPE).hiMs).toBe(101n * MSPE - 1n);
+  it("hi = now + TTL khi cuối cửa sổ còn xa — mốc đỏ trên bản đặt hi ở cuối cửa sổ", () => {
+    expect(epochWindow(MSPE, 100n * MSPE).hiMs).toBe(100n * MSPE + WINDOW_TTL_MS);
+  });
+
+  it("hi sát cuối cửa sổ khi cửa sổ hết trước TTL — không vắt sang cửa sổ sau", () => {
+    expect(epochWindow(MSPE, 101n * MSPE - 1_000n).hiMs).toBe(101n * MSPE - 1n);
+    expect(epochWindow(MSPE, 101n * MSPE - WINDOW_TTL_MS).hiMs).toBe(101n * MSPE - 1n);
   });
 
   it("msPerEpoch ≤ 0 thì NÉM, không trả về một cửa sổ vô nghĩa", () => {

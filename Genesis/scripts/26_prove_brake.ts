@@ -35,6 +35,8 @@ import { reserveStateFromCbor, drawRedeemerToCbor } from "../../Reserve/offchain
 import { attachGateSpend } from "../../Treasury/offchain/src/reserveGateBuilder.js";
 
 const NFT_ADA = 2_000_000n;
+/** Epoch kế mở xa hơn mốc này thì không dựng tx ở đó được (chân trời dự báo ~1,5 ngày). */
+const NEXT_EPOCH_MAX_AHEAD_MS = 24 * 3_600_000;
 
 function theOneHolding(utxos: UTxO[], unit: string, what: string): UTxO {
   const hits = utxos.filter((u) => (u.assets[unit] ?? 0n) === 1n);
@@ -177,14 +179,24 @@ async function main(): Promise<void> {
    * Luật 4 hay Luật 5. Lượt chạy đầu (2026-09-03) mắc đúng lỗi này: cả ba phép đều xanh, nhưng
    * P1 dựng ở epoch đã rút nên nó thật ra đang đo lại Luật 3.
    *
-   * Epoch kế cách hiện tại ≤ 5 ngày trên Preprod, nằm trong tầm ttl của node (~36 giờ) khi
-   * lượt rút vừa xảy ra trong epoch này — đủ để `.complete()` dựng được.
+   * Epoch kế có thể cách hiện tại tới 5 ngày trên Preprod — xa hơn chân trời dự báo của node
+   * (~1,5 ngày), và khi đó `.complete()` không quy đổi được slot (PastHorizon): P0 không dựng
+   * được, ba phép phủ định mất đối chứng. Bản trước ghi "≤ 5 ngày, nằm trong tầm ~36 giờ" —
+   * hai vế tự mâu thuẫn. Nay NÉM rõ khi epoch kế còn xa hơn `NEXT_EPOCH_MAX_AHEAD_MS`.
    */
   function windowAfterLastDraw(): { loMs: number; hiMs: number; t: bigint } {
     const w = drawWindow();
     if (w.t > r0.last_epoch) return w;
     const t = r0.last_epoch + 1n;
     const loMs = Number(t * 432_000_000n) + 60_000;
+    const aheadMs = loMs - Date.now();
+    if (aheadMs > NEXT_EPOCH_MAX_AHEAD_MS) {
+      throw new Error(
+        `BRAKE-HORIZON-001: epoch kế (${t}) còn ${(aheadMs / 3_600_000).toFixed(1)} giờ nữa mới mở — ` +
+          `xa hơn ${NEXT_EPOCH_MAX_AHEAD_MS / 3_600_000} giờ nên node sẽ từ chối dựng tx (PastHorizon). ` +
+          `Chạy lại khi epoch kế còn dưới ngưỡng đó, hoặc chạy ở epoch kế.`,
+      );
+    }
     return { loMs, hiMs: loMs + 90_000, t };
   }
 

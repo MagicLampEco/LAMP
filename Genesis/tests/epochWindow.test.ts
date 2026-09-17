@@ -14,7 +14,7 @@
 // Nên một bài chỉ đo hai mệnh đề đầu xanh trọn vẹn trên cả bản hỏng lẫn bản đúng — nó không
 // phân biệt được hai cực, tức nó không kiểm gì.
 import { describe, it, expect } from "vitest";
-import { epochAt, windowAt } from "../scripts/_epochWindow.js";
+import { epochAt, windowAt, WINDOW_TTL_MS } from "../scripts/_epochWindow.js";
 
 const MSPE = 432_000_000; // 5 ngày, neo mốc Unix
 const BIEN = 100 * MSPE;  // đầu epoch 100
@@ -39,10 +39,18 @@ describe("windowAt — cửa sổ chứa chính thời điểm gửi", () => {
     expect(w.hiMs).toBeGreaterThan(w.loMs);
     expect(w.loMs).toBeLessThanOrEqual(now);
     expect(w.hiMs).toBeGreaterThanOrEqual(now);
+    // Mệnh đề thứ tư: không vượt chân trời dự báo của node (PastHorizon).
+    expect(w.hiMs - now).toBeLessThanOrEqual(WINDOW_TTL_MS);
   });
 
-  it("hi sát cuối epoch — không bỏ phí giây cuối", () => {
-    expect(windowAt(BIEN, MSPE).hiMs).toBe(101 * MSPE - 1);
+  it("hi = now + TTL khi cuối epoch còn xa — mốc đỏ trên bản đặt hi ở cuối epoch", () => {
+    expect(windowAt(BIEN, MSPE).hiMs).toBe(BIEN + WINDOW_TTL_MS);
+    expect(windowAt(BIEN + MSPE / 2, MSPE).hiMs).toBe(BIEN + MSPE / 2 + WINDOW_TTL_MS);
+  });
+
+  it("hi sát cuối epoch khi epoch hết trước TTL — không vắt sang epoch sau", () => {
+    expect(windowAt(101 * MSPE - 1_000, MSPE).hiMs).toBe(101 * MSPE - 1);
+    expect(windowAt(101 * MSPE - WINDOW_TTL_MS, MSPE).hiMs).toBe(101 * MSPE - 1);
   });
 
   it("lo không bị cái đệm 60 s đẩy sang epoch trước", () => {

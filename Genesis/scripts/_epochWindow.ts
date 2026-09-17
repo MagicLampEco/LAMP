@@ -45,8 +45,15 @@ export function windowAt(
   const windowStart = Number(t) * msPerEpoch;
   // Lùi 60 s cho lệch đồng hồ node/máy dựng, nhưng KẸP trong epoch.
   const loMs = Math.max(nowMs - 60_000, windowStart);
-  // Hết epoch trừ 1 ms: `(t+1)·mspe` chia ra `t+1`, nên đầu trên phải nhỏ hơn nó ít nhất 1.
-  // Trừ 1000 ms như bản cũ thì mất giây cuối của mỗi epoch mà không mua thêm gì.
-  const hiMs = Number(t + 1n) * msPerEpoch - 1;
+  // Đầu trên = cái SỚM hơn trong hai mốc:
+  //   · hết epoch trừ 1 ms — `(t+1)·mspe` chia ra `t+1`, nên đầu trên phải nhỏ hơn nó ít nhất 1;
+  //   · `now + WINDOW_TTL_MS` — node không quy đổi được slot vượt chân trời dự báo (~1,5 ngày
+  //     trên Preprod) và từ chối giao dịch có script với lỗi PastHorizon. Lỗi này đã xảy ra
+  //     thật một lần (`Faucet/scripts/demo_reserve_draw_resume.ts`, dòng đầu tệp). Bản trước
+  //     đặt đầu trên ở cuối epoch — với epoch 5 ngày là tới gần 5 ngày sau `now`.
+  const hiMs = Math.min(Number(t + 1n) * msPerEpoch - 1, nowMs + WINDOW_TTL_MS);
   return { loMs, hiMs, t };
 }
+
+/** Trần TTL của một giao dịch: 1 giờ — đủ gom chữ ký, cách xa chân trời dự báo ~1,5 ngày. */
+export const WINDOW_TTL_MS = 3_600_000;
