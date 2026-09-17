@@ -1,9 +1,9 @@
-// Trần TTL của validity range có BA bản chép ở ba gói — gói nào cũng không import được gói kia
+// Trần TTL của validity range có BỐN bản chép ở bốn gói — gói nào cũng không import được gói kia
 // (ranh giới `rootDir` / không phụ thuộc chéo), nên chúng là bản chép có nhãn "PHẢI khớp".
 // Chú thích không tự kêu khi lệch; bài này kêu. Nguồn: `Genesis/scripts/_epochWindow.ts`.
 //
 // Vì sao đáng một bài riêng: một bản TTL lệch lên quá chân trời dự báo của node (~1,5 ngày)
-// là đúng lỗi PastHorizon mà cả ba bản sinh ra để chặn, và nó chỉ lộ khi gửi tx thật.
+// là đúng lỗi PastHorizon mà cả bốn bản sinh ra để chặn, và nó chỉ lộ khi gửi tx thật.
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
@@ -24,6 +24,7 @@ describe("WINDOW_TTL_MS — các bản chép khớp nguồn", () => {
   it.each([
     ["Distribution/offchain/src/constants.ts", "WINDOW_TTL_MS"],
     ["Treasury/offchain/src/collectBuilder.ts", "VALID_TTL_MS"],
+    ["Faucet/offchain/src/epochWindow.ts", "WINDOW_TTL_MS"],
   ])("%s ▸ %s", (relPath, name) => {
     expect(readConst(relPath, name)).toBe(WINDOW_TTL_MS);
   });
