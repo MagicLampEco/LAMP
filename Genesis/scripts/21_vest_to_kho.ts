@@ -17,6 +17,7 @@ import { NETWORK, SUBMIT, makeLucid, walletPkh, explorerTx } from "./config.js";
 import { supplyStateToCbor, supplyStateFromCbor, supplyStateRedeemerToCbor, mintRouteToCbor } from "../offchain/src/datum.js";
 import { rehydrate, treasuryDatum, writeState, waitFor, isWaitTimeout } from "./_canonical_v2.js";
 import { assertSeedNotSpent, custodySeedRefFromState, refKey } from "./_custodySeedRef.js";
+import { assertTreasuryHasExit } from "./_treasuryExitProof.js";
 
 const NFT_ADA = 2_000_000n;
 /** Lượng đúc thử, tính bằng LAMP (1 LAMP = 1e6 oildrop). */
@@ -76,6 +77,12 @@ async function main(): Promise<void> {
     throw new Error(`vượt cap Distribution: ${s0.dist_minted} + ${delta} > ${s0.dist_cap}.`);
   }
   const s1 = { ...s0, dist_minted: s0.dist_minted + delta };
+
+  // Cổng "kho phải có LỐI RA" — đứng TRƯỚC khi dựng tx, không đứng sau. Dựng rồi mới chặn thì
+  // người vận hành đã đọc xong một bản tóm tắt trông như sắp thành công, và cái chặn đến sau
+  // đọc như một trục trặc kỹ thuật chứ không như điều nó là. Lý do đầy đủ + phạm vi cổng đo
+  // được tới đâu: `_treasuryExitProof.ts` đầu tệp.
+  assertTreasuryHasExit(NETWORK, wiring.treAddr, delta);
 
   const treasuryBefore = (await lucid.utxosAt(wiring.treAddr))
     .reduce((s, u) => s + (u.assets[wiring.lampUnit] ?? 0n), 0n);
