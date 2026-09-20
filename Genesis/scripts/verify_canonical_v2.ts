@@ -122,8 +122,12 @@ async function main(): Promise<void> {
   check(reserveReachable,
     reserveReachable
       ? `nhánh ReserveDraw ĐÃ chạy thật (${vn(s.reserve_minted / OIL)} LAMP) — trần thật = 36 tỷ`
-      : `nhánh ReserveDraw CHƯA chạy (chạy 22_reserve_draw.ts). Chưa chạy thì chưa có bằng chứng ` +
-        `nó khác policy mồi mainnet, nơi trần thật chỉ là 26,37 tỷ (deployed.ts:118-119)`);
+      : `nhánh ReserveDraw CHƯA chạy. Chưa chạy thì chưa có bằng chứng nó khác policy mồi ` +
+        `mainnet, nơi trần thật chỉ là 26,37 tỷ (deployed.ts:118-119).\n` +
+        `     ĐƯỜNG CHẠY: 24_reserve_layer2_init.ts → 25_gated_draw.ts. KHÔNG phải ` +
+        `22_reserve_draw.ts — bước đó dựng một hình dạng mà validator từ chối kể từ commit ` +
+        `cc1af74 (lamp_mint.ak:325-342 đòi một input kho-reserve mà 22 không bao giờ dựng). ` +
+        `Dòng này từng trỏ vào 22, tức cổng phát hành chỉ đường tới một bước không thể xanh.`);
   const proof = state.oneshotProof;
   check(proof?.blocked === true,
     proof

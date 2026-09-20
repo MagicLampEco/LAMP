@@ -171,7 +171,10 @@ async function main(): Promise<void> {
     }
   }
   if (process.exitCode === undefined) {
-    console.log(`\n✅ Xong. Bước kế: tsx 22_reserve_draw.ts (nhánh đã CHẾT trên mainnet).`);
+    // KHÔNG trỏ sang `22_reserve_draw.ts`: từ commit `cc1af74` nhánh ReserveDraw đòi thêm một
+    // input mang NFT kho-reserve mà bước 22 không bao giờ dựng ⇒ nó đỏ vĩnh viễn, và đỏ vì
+    // thiếu input chứ không vì policy có khuyết tật. Đường đo đúng là Lớp 2.
+    console.log(`\n✅ Xong. Bước kế: tsx 24_reserve_layer2_init.ts → tsx 25_gated_draw.ts.`);
   } else {
     console.log(`\nKHÔNG in "Xong": xem dòng ⚠/❌ ở trên. Mã thoát ${process.exitCode}.`);
   }
