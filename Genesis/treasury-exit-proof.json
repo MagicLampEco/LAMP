@@ -1,0 +1,6 @@
+{
+  "_doc": "Bằng chứng 'tài sản RA ĐƯỢC khỏi kho' theo từng mạng. Cổng đọc: Genesis/scripts/_treasuryExitProof.ts. null = đã đo, lối ra CHƯA chạy lần nào. THIẾU HẲN KHOÁ = không đo được (nặng hơn null) — đừng xoá khoá để 'dọn'. Ghi một mục chỉ khi ĐÃ có một giao dịch chi ra thật: txHash (lượt CHI RA, không phải lượt nạp) · date YYYY-MM-DD · branch (Redeem | Refill+Redeem | ...) · treasuryAddress (địa chỉ kho lúc đó; đổi apply-param là đổi địa chỉ và bằng chứng cũ hết giá trị).",
+  "Preprod": null,
+  "Preview": null,
+  "Mainnet": null
+}
