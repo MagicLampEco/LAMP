@@ -1,5 +1,22 @@
 // 22_reserve_draw.ts — Tx C: đúc LAMP qua nhánh `ReserveDraw`.
 //
+// ⛔ BƯỚC NÀY KHÔNG CÒN XANH ĐƯỢC, VÀ MÀU ĐỎ CỦA NÓ KHÔNG CÒN LÀ TÍN HIỆU TẢ Ở DƯỚI.
+//
+// Từ commit `cc1af74`, nhánh `ReserveDraw` đòi thêm ĐÚNG MỘT input mang NFT kho-reserve
+// (`lamp_mint.ak`, khối `count_inputs_holding_nft(tx.inputs, reserve_kho_nft_policy,
+// reserve_kho_nft_name) == 1` kèm `qty_delta_at_script(...) >= delta`). Bước này tiêu meter
+// NFT từ VÍ và KHÔNG BAO GIỜ dựng input đó — `grep -c "reserveKho\|reserve_kho"
+// 22_reserve_draw.ts` → 0. Nên nó đỏ vì THIẾU MỘT INPUT, không phải vì policy mang khuyết
+// tật mainnet.
+//
+// Đọc màu đỏ ở đây thành "ĐỪNG phát hành" là đọc sai — và đó là chiều sai đắt nhất: nó dừng
+// một đợt phát hành lành mạnh bằng một lý do không có thật. Đường đo ĐÚNG cho cùng câu hỏi
+// là LỚP 2: `24_reserve_layer2_init.ts` → `25_gated_draw.ts`. Bước 25 dựng input kho-reserve
+// dưới tên `custody NFT` (`25_gated_draw.ts:80`, `:160`), nên nó thoả vế mới.
+//
+// Giữ tệp lại chứ không xoá: phần mô tả khuyết tật mainnet bên dưới vẫn đúng và vẫn là tài
+// liệu duy nhất giải thích vì sao trần thật của policy mồi là 26,37 tỷ.
+//
 // ĐÂY LÀ PHÉP THỬ QUAN TRỌNG NHẤT CỦA CẢ MÀN DIỄN TẬP, vì đây đúng là nhánh ĐÃ CHẾT trên
 // mainnet. Policy mồi `55d3e01b…180f0` nướng `meter_nft_policy` = 28 byte 0
 // (`Genesis/offchain/src/deployed.ts:92`). Chuỗi 28 byte 0 không có tiền ảnh blake2b-224
