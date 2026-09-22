@@ -410,6 +410,21 @@ Hệ quả phải thiết kế quanh, không phải hệ quả để ghi chú:
 Đây cũng là lý do thứ hai — độc lập với lý do hồi tố ở §5 — khiến móc này **để trống ở lượt đúc
 này**: hình dạng bão hoà đòi số liệu tiêu thụ thật, mà số liệu đó chưa tồn tại.
 
+**Nguồn thứ hai, độc lập, cùng kết luận.** Suy luận trên đi từ phía này; cùng ràng buộc ấy được
+ghi từ phía kia, trong chú thích của chính module đó: `consume.ak` ▸ khối chú thích tại mệnh đề
+pin `did_commit` — *"thread engage KHÔNG có ràng buộc duy-nhất-theo-owner … không mệnh đề nào ép
+một owner một thread"*. Hai nguồn độc lập, không nguồn nào suy từ nguồn kia.
+
+**Và một biên PHẢI biết trước khi ai đó định mở rộng móc này: chỉ có MỘT đường đếm được.**
+Tiêu thụ MAGIC đi qua hai đường tách rời — `consumed_nanogic` (ConsumeMAGIC/Eligibility/
+ScheduleGen) và `magic_settled` (PrepaidGen) — **không mệnh đề nào của bên này đọc trường của bên
+kia**; hai module chỉ nhắc tên nhau trong chú thích. Móc này đọc đường thứ nhất. Đường thứ hai
+**vĩnh viễn không dùng được cho một hệ số per-person**, vì `prepaid_vault` **pin `did_commit = #""`
+ở cổng đúc** — tiêu thụ qua đó không mang danh tính để mà quy về ai, và đó là thiết kế chứ không
+phải thiếu sót. ⟹ Mọi phát biểu về "tiêu thụ MAGIC" trong hợp đồng này phải đọc là **tiêu thụ qua
+đường Engage**, không phải toàn bộ tiêu thụ; đừng gắn một khoản thưởng-phạt nào vào đường prepaid
+và chờ nó quy được về người.
+
 **Vì sao danh sách chứ không phải một policy.** `consume` nhận `vault_script_hash` làm apply-param
 ⟹ mỗi loại vault sinh một script hash khác ⟹ policy thread NFT **chính là** script hash đó ⟹ một
 người có thread nằm ở nhiều policy. Trên mạng thử đã có HAI. Kho này đã giải đúng bài toán ấy một
