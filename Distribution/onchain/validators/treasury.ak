@@ -351,7 +351,7 @@ validator treasury(
           list.foldl(ins, assets.zero, fn(i, acc) { assets.merge(acc, i.output.value) })
 
         // Σ sổ cái + committee_hash — chỉ trên input CÓ TreasuryDatum.
-        let (ledger_in, ch_opt) = fold_ledger(ins)
+        let (ledger_in, redeemed_in, ch_opt) = fold_ledger(ins)
 
         // Phải có ÍT NHẤT một input mang datum, nếu không `committee_hash` của output
         // không được ràng vào bất cứ đâu (committee tự đặt giá trị mới). Không bao giờ
@@ -362,6 +362,26 @@ validator treasury(
 
         // Gộp KHÔNG tạo và KHÔNG xoá nợ: sổ ra = tổng sổ vào.
         expect out_datum.outstanding_entitlement == ledger_in
+
+        // ── C-REF-TOTAL (v3): gộp KHÔNG viết lại LỊCH SỬ RÚT ───────────────────────
+        // `total_redeemed` là MẪU SỐ của trần một lượt ở `claim_account` — mọi tài khoản
+        // trong hệ đọc nó. Không có dòng này thì `Refill` đặt nó tuỳ ý, và cả hai chiều
+        // đều hại theo kiểu không kêu:
+        //   • ĐẶT LỚN  ⇒ trần một lượt phồng cho TOÀN hệ ngay lập tức. Không tài khoản
+        //     nào vượt `vested` của nó, nên không bất biến nào gãy — thứ mất là NHỊP,
+        //     đúng cái mà phép cắt ngọn sinh ra để giữ.
+        //   • ĐẶT NHỎ (hay 0) ⇒ trần rơi về `trim_floor`, tức dựng lại chính điểm hấp
+        //     thụ mà sàn ấy có mặt để phá.
+        // Lượt gộp cần đủ chữ ký committee, nên đây KHÔNG phải cửa cho người lạ. Nó là
+        // một trường tự do trong datum: trường tự do thì trôi, và không ai đứng tên.
+        //
+        // Vì sao là TỔNG chứ không phải "giữ nguyên của carrier": Refill gộp N input, và
+        // mỗi input mang sổ của nó. Cùng luật với dòng trên cho `outstanding_entitlement`
+        // — hai trường sổ, một phép gộp. Một UTxO lạ đỗ ở địa chỉ kho khai `total_redeemed`
+        // khống sẽ nâng trần; đó là cùng lối vào mà C-SOLV-2 mở rộng ngay dưới đã chặn cho
+        // vế nợ, và ở vế này nó cũng chỉ mở được đúng một lần vì sau khi gộp thì số đã vào
+        // sổ thật. Chặn chặt hơn (đòi input lạ khai 0) sẽ giết cả lượt gộp hai kho hợp lệ.
+        expect out_datum.total_redeemed == redeemed_in
 
         // Giá trị: mọi asset khác bảo toàn TUYỆT ĐỐI (chống rút ADA và chống đánh cắp
         // NFT "TRSY" ra ngoài), CHỈ LAMP được phép TĂNG một lượng `deposited >= 0`.
@@ -430,27 +450,39 @@ fn singleton_io(
   (tre_in, tre_out, out_datum)
 }
 
-/// (Σ outstanding_entitlement, committee_hash chung) trên các input ở script treasury.
+/// (Σ outstanding_entitlement, Σ total_redeemed, committee_hash chung) trên các input ở
+/// script treasury.
 /// Input KHÔNG datum bị BỎ QUA phần sổ cái (đó là hình dạng của LAMP rót về kho qua
 /// A-DEST) — value của nó vẫn được cộng ở chỗ khác. Input mang datum-hash bị TỪ CHỐI:
 /// datum thật nằm ngoài `Output`, không đọc được ở đây, nên fail-closed thay vì âm thầm
 /// coi như nợ 0. Mọi input có datum phải khai CÙNG một `committee_hash`.
-fn fold_ledger(ins: List<Input>) -> (Int, Option<ByteArray>) {
+///
+/// v3 cộng THÊM `total_redeemed`, đối xứng với `outstanding_entitlement`. Trước dòng này
+/// nhánh `Refill` KHÔNG ràng `total_redeemed` của datum ra vào bất cứ đâu — một trường
+/// mới thêm vào datum, được ghim ở nhánh `ReleaseForRedeem` (C-RDM-TOTAL) và BỎ QUÊN ở
+/// nhánh gộp. Đó là phạm vi của TRIỆU CHỨNG chứ không phải của nguyên nhân: đợt vá v3 đi
+/// theo đường rút, mà trường này có hai đường ghi.
+fn fold_ledger(ins: List<Input>) -> (Int, Int, Option<ByteArray>) {
   list.foldl(
     ins,
-    (0, None),
+    (0, 0, None),
     fn(i, acc) {
-      let (sum, ch) = acc
+      let (sum, red, ch) = acc
       when i.output.datum is {
         NoDatum -> acc
         DatumHash(_) -> fail @"treasury input dùng datum-hash: không xác thực được sổ cái"
         InlineDatum(d) -> {
           expect td: TreasuryDatum = d
           when ch is {
-            None -> (sum + td.outstanding_entitlement, Some(td.committee_hash))
+            None ->
+              (
+                sum + td.outstanding_entitlement,
+                red + td.total_redeemed,
+                Some(td.committee_hash),
+              )
             Some(h) -> {
               expect h == td.committee_hash
-              (sum + td.outstanding_entitlement, ch)
+              (sum + td.outstanding_entitlement, red + td.total_redeemed, ch)
             }
           }
         }
@@ -1254,6 +1286,28 @@ fn tre_out_d(lovelace: Int, lamp: Int, cum: Int, trsy: Bool) -> Output {
   util.mk_output(util.script_address(tt_tre_sh), tt_val(lovelace, lamp, trsy), tt_tre_d(cum))
 }
 
+/// Hai bản dưới chọn được `total_redeemed`, để các ca C-REF-TOTAL đặt hai vế KHÁC 0.
+/// Mọi ca Refill cũ dùng `tt_tre_d(cum)`, tức `total_redeemed = 0` ở CẢ HAI phía — và một
+/// ca mà hai cực của phép đột biến trả cùng kết quả thì nó không kiểm gì ở chốt ấy.
+fn tre_in_d_tr(ix: Int, lovelace: Int, lamp: Int, cum: Int, red: Int, trsy: Bool) -> Input {
+  util.mk_input(
+    util.mk_ref(ix),
+    util.mk_output(
+      util.script_address(tt_tre_sh),
+      tt_val(lovelace, lamp, trsy),
+      tt_tre_d_tr(cum, red),
+    ),
+  )
+}
+
+fn tre_out_d_tr(lovelace: Int, lamp: Int, cum: Int, red: Int, trsy: Bool) -> Output {
+  util.mk_output(
+    util.script_address(tt_tre_sh),
+    tt_val(lovelace, lamp, trsy),
+    tt_tre_d_tr(cum, red),
+  )
+}
+
 fn refill_tx(ins: List<Input>, outs: List<Output>, sigs: List<ByteArray>) -> Transaction {
   Transaction {
     ..placeholder,
@@ -1343,6 +1397,48 @@ test refill_ledger_mismatch_rejected() fail {
   let b = tre_in_d(1, 2_000_000, 500, 200, False)
   let o = tre_out_d(7_000_000, 1500, 400, True)
   refill(0, Some(tt_tre_d(300)), refill_tx([a, b], [o], [#"c1", #"c2"]))
+}
+
+// ── C-REF-TOTAL (v3): `total_redeemed` gộp ĐÚNG TỔNG, không trôi ──────────────
+// Bốn ca dưới dùng `tre_in_d_tr`/`tre_out_d_tr` để hai vế KHÁC 0 — các ca Refill phía
+// trên đều mang `total_redeemed = 0` cả hai phía, nên chúng xanh dù có chốt hay không.
+// Cả HAI chiều lệch đều được cho một ca: chiều NÂNG phồng trần một lượt cho toàn hệ,
+// chiều HẠ dựng lại điểm hấp thụ mà sàn cắt ngọn có mặt để phá. Chiều hạ là chiều dễ
+// bị bỏ quên vì nó trông như "thận trọng".
+
+test refill_total_redeemed_sum_ok() {
+  // Gộp 2 UTxO kho: nợ 300+200, đã-rút 7000+3000 ⇒ ra phải mang đúng 500 và 10000.
+  let a = tre_in_d_tr(0, 5_000_000, 1000, 300, 7000, True)
+  let b = tre_in_d_tr(1, 2_000_000, 500, 200, 3000, False)
+  let o = tre_out_d_tr(7_000_000, 1900, 500, 10000, True)
+  refill(0, Some(tt_tre_d_tr(300, 7000)), refill_tx([a, b], [o], [#"c1", #"c2"]))
+}
+
+test refill_total_redeemed_inflated_rejected() fail {
+  // Đặt 99000 thay vì 10000 — không bất biến nào của kho gãy (nợ vẫn đúng, value vẫn
+  // đúng), nhưng trần một lượt của MỌI tài khoản phồng lên gần mười lần.
+  let a = tre_in_d_tr(0, 5_000_000, 1000, 300, 7000, True)
+  let b = tre_in_d_tr(1, 2_000_000, 500, 200, 3000, False)
+  let o = tre_out_d_tr(7_000_000, 1900, 500, 99000, True)
+  refill(0, Some(tt_tre_d_tr(300, 7000)), refill_tx([a, b], [o], [#"c1", #"c2"]))
+}
+
+test refill_total_redeemed_reset_to_zero_rejected() fail {
+  // Xoá lịch sử rút về 0 ⇒ trần rơi về `trim_floor` cho toàn hệ.
+  let a = tre_in_d_tr(0, 5_000_000, 1000, 300, 7000, True)
+  let b = tre_in_d_tr(1, 2_000_000, 500, 200, 3000, False)
+  let o = tre_out_d_tr(7_000_000, 1900, 500, 0, True)
+  refill(0, Some(tt_tre_d_tr(300, 7000)), refill_tx([a, b], [o], [#"c1", #"c2"]))
+}
+
+test refill_total_redeemed_drops_absorbed_utxo_rejected() fail {
+  // Chỉ mang sang phần của carrier (7000), bỏ phần của input thứ hai (3000). Đây là
+  // dạng lệch TRÔNG HỢP LÝ NHẤT — "giữ nguyên sổ của kho chính" — và là lý do mệnh đề
+  // phải là TỔNG chứ không phải "bằng sổ của input đang chạy".
+  let a = tre_in_d_tr(0, 5_000_000, 1000, 300, 7000, True)
+  let b = tre_in_d_tr(1, 2_000_000, 500, 200, 3000, False)
+  let o = tre_out_d_tr(7_000_000, 1900, 500, 7000, True)
+  refill(0, Some(tt_tre_d_tr(300, 7000)), refill_tx([a, b], [o], [#"c1", #"c2"]))
 }
 
 test refill_insufficient_committee_rejected() fail {
