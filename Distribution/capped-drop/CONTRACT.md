@@ -51,13 +51,14 @@ redeemable = vested − redeemed
   `p = ln 50 / ln 2521,08 = 0,4995` — lệch luật căn **0,42%** — và
   `W ≈ E_max / release_epochs² = 6×10⁹ / 10⁶ ≈ 6.000 LAMP`.
 - **`rate_root` là NGUYÊN THUỶ, `W` là SUY RA — không được làm ngược.** Cái nằm trong datum là
-  `w`, và `W := w²`. Nếu chốt `W = 6.000 LAMP` rồi lấy `w = ⌊√W⌋ = 77.459`, phép cắt nguyên làm
-  `w` nhỏ hơn `√W` một chút và sai số ấy **cộng dồn mỗi cửa sổ**: vế phải của phép kẹp đứng mãi ở
-  **99,998%** của `E²`, nên tài khoản tiệm cận `E` mà **không bao giờ chạm**, và `expect amount > 0`
-  khoá lại phần đuôi — khoá vốn vĩnh viễn, có hệ thống, không bài kiểm ngắn nào thấy.
-  **Chốt `w = 77.460`** ⟹ `W = w² = 6.000.051.600 oildrop = 6.000,0516 LAMP`, và cả hai mốc rơi
-  đúng: pot 6 tỷ chạm `E` ở cửa sổ **1000**, ETD-max ở cửa sổ **20**. Chứng minh + bảng hai giá
-  trị `w`: [`Math-Spec.md`](./Math-Spec.md) §7 (M-ROOT-CEIL).
+  `w`, và `W := w²`. Chốt `W = 6.000 LAMP` rồi lấy `w = ⌊√W⌋ = 77.459` làm `n* = ⌈√E/w⌉` **trượt
+  lên một cửa sổ**: pot 6 tỷ xong ở cửa sổ **1001** thay vì 1000. **Chốt `w = 77.460`** ⟹
+  `W = w² = 6.000.051.600 oildrop = 6.000,0516 LAMP`, và cả hai mốc rơi đúng: pot 6 tỷ ở cửa sổ
+  **1000**, ETD-max ở cửa sổ **20**. Chiều đúng không tốn gì, nên không có lý do chọn chiều kia.
+  [`Math-Spec.md`](./Math-Spec.md) §7 (M-ROOT-CEIL).
+  > ⚠ **Không được đọc chỗ này thành "tài khoản không bao giờ rút hết được".** `A_span` tăng
+  > tuyến tính không chặn nên vế phải phép kẹp cũng tăng không chặn — không có tiệm cận và không
+  > có đuôi bụi vĩnh viễn. Giá của chiều sai là **một cửa sổ**, không phải một khoản khoá vốn.
 - **Hiện thực bằng SỐ NGUYÊN, không `sqrt`.** Validator không tính `vested`; nó **kẹp** con số
   người dùng xin:
 
@@ -253,8 +254,25 @@ Validator ÉP:
    - `trim_num/trim_den` mặc định `1/1000`: lưu hành 1 tỷ ⟹ một lượt rút tối đa 1 triệu.
    - **`trim_floor` là BẮT BUỘC, không phải tuỳ chọn.** Không có nó, `total_redeemed = 0` là một
      **điểm hấp thụ**: trần bằng 0 ⟹ không ai rút được ⟹ `total_redeemed` mãi bằng 0. Hệ không
-     bao giờ khởi động được. Giá trị: `trim_floor = 1.000 LAMP`, suy từ yêu cầu "ví 1.000 LAMP
-     xong trong một cửa sổ".
+     bao giờ khởi động được. Giá trị: `trim_floor = 1.000 LAMP = 1.000.000.000 oildrop`, suy từ
+     yêu cầu "ví 1.000 LAMP xong trong một cửa sổ".
+   - **`trim_floor` là HẰNG trong `constants.ak`, KHÔNG phải trường datum** — khác `trim_num` và
+     `trim_den` ngay bên cạnh nó, nên chỗ này phải nói rõ thay vì để người đọc suy.
+
+     ```
+     C-RDM-TRIM-FLOOR:  trim_floor := constants.trim_floor   (hằng, không đọc từ datum nào)
+     ```
+
+     Lý do là **hướng hỏng**, không phải sự gọn gàng. Ba tham số cắt ngọn trông cùng một họ nhưng
+     `trim_floor` **không** thuộc kênh "siết thoải mái": siết `trim_num` chỉ hoãn một lượt rút,
+     còn hạ `trim_floor` về 0 **dựng lại đúng điểm hấp thụ** mà chính nó sinh ra để phá — và hệ
+     chết theo kiểu không ai kêu, vì mọi bất biến vẫn đúng và mọi giao dịch chỉ đơn giản bị từ
+     chối. Một tham số mà **một đầu của miền giá trị là một cái bẫy** thì đừng đưa vào datum rồi
+     canh bằng một biên dưới; để nó nằm trong script hash là cách duy nhất khiến việc đổi nó phải
+     đi qua một lượt đúc lại, tức phải qua đúng mức soát mà nó đáng.
+   - Giá phải trả, ghi ra để không ai phát hiện muộn: đổi `trim_floor` **đòi script hash mới**.
+     Chấp nhận được vì nó là **sàn an toàn**, không phải **núm điều tiết** — điều tiết đã có
+     `trim_num/trim_den` trong datum, và hai thứ đó đủ để siết theo mọi mức thị trường đòi.
    - **Phạm vi: PER-ACCOUNT, per-lượt-redeem.** KHÔNG chọn "ngân sách toàn cục mỗi cửa sổ":
      ngân sách chung biến mỗi cửa sổ thành **cuộc đua đến trước**, và cá voi viết bot thì thắng
      mọi cửa sổ trong khi ví nhỏ quên rút bị bỏ đói — tức cơ chế dựng ra để bảo vệ ví nhỏ lại
@@ -287,8 +305,31 @@ Validator ÉP:
 
 ## 4b. Grant entitlement + bất biến SOLVENCY (`treasury.spend`, redeemer `GrantEntitlement`)
 
-Mọi **Claim** (committee cấp/tăng `entitlement`) BẮT BUỘC co-spend treasury (GrantEntitlement):
-1. `granted = entitlement_out − entitlement_in`, yêu cầu `granted > 0`.
+**Claim là REBASE, không phải cộng thêm** — và v3 phải nói rõ vì nó có thêm một trường phải theo.
+Nhánh `Claim` hiện ép `redeemed_out == 0`, `start_epoch_out ==` cửa sổ hiện tại, và
+`entitlement_out == entitlement_in − redeemed_in + amount` (`claim_account.ak` ▸ nhánh `Claim`).
+
+```
+C-CLAIM-8:  out_datum.index_at_start == A(cửa_sổ_hiện_tại)      ← BẮT BUỘC ở v3
+```
+
+**Không có mệnh đề này thì v3 dựng lại đúng lỗ mà bản vá `start_epoch` đã bịt, qua một cửa khác.**
+Một tài khoản già có `index_at_start` nhỏ, nên `A_span` của nó đã rất lớn; cấp thêm một lô mới mà
+giữ nguyên mốc ấy thì lô mới **vest gần như tức thì** — `vested = √E' · A_span` với `A_span` mang
+tuổi của lô cũ. Rebase `start_epoch` không cứu được, vì ở v3 `start_epoch` **không còn đi vào phép
+tính vested**; thứ đi vào phép tính là `index_at_start`.
+
+Đây là ca mẫu của một lớp lỗi phải canh mỗi lần thêm trường: **một bản vá cũ chỉ bịt đúng cái cửa
+nó nhìn thấy.** Thêm một trường mang ngữ nghĩa thời gian thì phải soát lại MỌI nhánh từng rebase
+thời gian, không chỉ nhánh vừa sửa.
+
+Các ràng buộc solvency:
+1. `granted = amount` (tham số của redeemer `Claim`), yêu cầu `granted > 0`.
+   **SỬA so với bản v2 của mục này**, vốn định nghĩa `granted = entitlement_out − entitlement_in`.
+   Định nghĩa đó **sai kể từ khi `Claim` thành rebase**: nó cho `amount − redeemed`, lệch đúng
+   `redeemed` mỗi lần cấp thêm cho một tài khoản đã rút. Đại số sổ cái quyết định bên nào đúng —
+   `outstanding = Σ(E − redeemed)`, sau rebase là `(E − redeemed + amount) − 0`, nên hiệu đúng
+   bằng `amount`. Mã đã cộng `amount`; chỗ sai là câu chữ, không phải mã.
 2. **C-SOLV-1:** `outstanding_entitlement_out = outstanding_entitlement_in + granted` (sổ cái dồn đúng).
 3. **C-SOLV-2 (SOLVENCY):** `outstanding_entitlement_out ≤ treasury pool LAMP` → committee KHÔNG cấp
    E vượt số dư quỹ → redeem không bao giờ kẹt vì cạn pool.
@@ -503,13 +544,16 @@ Mỗi ca dưới đây canh một mệnh đề mà nếu gỡ đi thì **không 
 | hạ `rate_root` **không** hạ `vested` của tài khoản đã rút 9 cửa sổ | bất biến trung tâm §7 | đúng ca lỗ đang sống — `t = 9` là biên, kiểm cả `t = 8` và `t = 10` |
 | committee im lặng 20 cửa sổ: vesting vẫn tiến | §3a fail-open | nếu mã đòi post mỗi cửa sổ thì ca này treo |
 | `total_redeemed = 0`: ví 1.000 LAMP vẫn rút được | `trim_floor` §4 mục 4 | bỏ `trim_floor` ⟹ đỏ. Không có ca này thì điểm hấp thụ lọt |
+| **cấp thêm cho tài khoản ĐÃ CHẠY: `index_at_start` rebase về `A(bây giờ)`** | `C-CLAIM-8` §4b | mở tài khoản ở cửa sổ 0, chạy tới cửa sổ 500, cấp thêm ⟹ lô mới phải vest theo lịch của CHÍNH NÓ, không vest tức thì. Không có ca này thì lỗ `start_epoch` 2026-09-17 sống lại qua cửa khác |
+| `granted == amount`, KHÔNG phải `entitlement_out − entitlement_in` | §4b mục 1 | ca phân biệt: cấp thêm cho tài khoản có `redeemed > 0`. Hai công thức chỉ khác nhau ở đúng ca đó |
+| `trim_floor` KHÔNG đọc từ datum nào | `C-RDM-TRIM-FLOOR` | dựng beacon datum mang một trường trông như `trim_floor` với giá trị khác hằng ⟹ kết quả rút phải **không đổi**. Ca này bắt đúng lỗi hiện thực dễ xảy ra nhất: đọc nó từ datum "cho tiện" |
 | xin 3 triệu khi trần 1 triệu: **nhận 1 triệu, không lỗi**, phần thừa còn quyền | ngữ nghĩa cắt ngọn | ca dễ viết sai thành "reject" |
 | `index_at_start` bị đổi trong out datum ⟹ TỪ CHỐI | §7 | không ép thì ca này xanh |
 | `total_redeemed_out ≠ in + amount` ⟹ TỪ CHỐI | C-RDM-TOTAL | kiểm cả chiều thiếu lẫn chiều thừa |
 | `speed_policies = []` ⟹ không đòi reference input nào | §5 | đo số reference input, không đo kết quả |
 | mở tài khoản với `dpe = 2` ⟹ TỪ CHỐI | `C-ACC-DPE` §1b | v2 cho qua mọi giá trị tới 100; kiểm cả `dpe = 0` và `dpe = 100` |
 | tài khoản `consumed = 0`, cỡ ETD-max: vest hết ĐÚNG 20 cửa sổ khi móc BẬT | §5a | đầu vào phân biệt: chạy lại với `g_min = 0,10` (dưới ngưỡng 0,1194977) thì phải LÂU HƠN 20 — nếu hai bên ra cùng số thì ca này không kiểm gì |
-| **pot 6 tỷ chạm ĐÚNG `E` ở cửa sổ 1000** (`rate_root = 77.460`) | §1 · M-ROOT-CEIL | **ca đắt nhất nếu bỏ.** Phải chạy tới `n = 1000` thật: ở vài cửa sổ đầu `w = 77.459` và `w = 77.460` cho kết quả **giống hệt nhau**, nên bài ngắn xanh ở cả hai cực và không kiểm gì. Ca đối xứng bắt buộc: với `w = 77.459` thì cửa sổ 1000 **KHÔNG** rút hết, còn dư đuôi |
+| **pot 6 tỷ chạm ĐÚNG `E` ở cửa sổ 1000** (`rate_root = 77.460`) | §1 · M-ROOT-CEIL | Phải chạy tới `n = 1000` thật, cấm ngoại suy: ở `n` nhỏ hai giá trị `w` cho kết quả **giống hệt nhau** (chênh <`1,3×10⁻⁵` ở `n=1`), nên bài ngắn xanh ở cả hai cực và không kiểm gì. Ca đối xứng: `w = 77.459` thì cửa sổ 1000 **chưa** chạm, và **chạm ở 1001** — kiểm cả hai mốc, đừng kiểm "không bao giờ chạm" vì điều đó SAI |
 
 > **Đừng phát biểu "chốt X đã được ghim" chỉ vì có một bài đỏ ở chốt X.** Bài có thể trượt xuống
 > chốt kế tiếp và chết ở đó, đúng tên, đúng màu. Phép đo đúng là **gỡ hẳn chốt X rồi chạy trọn bộ
@@ -528,6 +572,7 @@ bằng hình phạt — chỉ xử được bằng **phân tán quyền**.
 | post beacon (`rate_root`, `trim_*`, `speed_policies`) | committee | M-of-N | — | `rate_root` chỉ nới ⟹ không đóng băng được ai. `trim_num` siết được nhưng chỉ chạm lượt rút tương lai |
 | `GrantEntitlement` (mở tài khoản, tăng `E`) | committee | M-of-N | — | cấp `E` khống bị C-SOLV-2 chặn ở `≤ pool` |
 | đặt `drops_per_epoch` lúc mở | — | — | — | **ĐÃ ĐÓNG ở v3**: `C-ACC-DPE` ép `dpe == 1` cho mọi tài khoản (§1b). Committee không còn núm per-account nào chạm được kênh tốc độ |
+| đặt `trim_floor` | — | — | — | **KHÔNG phải quyền của committee**: hằng trong `constants.ak`, đổi thì phải đúc lại script (`C-RDM-TRIM-FLOOR` §4 mục 4). Trong datum thì hạ về 0 dựng lại đúng điểm hấp thụ nó sinh ra để phá |
 | `DistributionVest` (đúc LAMP vào kho) | entry Registry `lamp_tag` | **PHẢI `MultiSig`, CẤM `SinglePkh`** | có (`Revoked`) | `SinglePkh` = một chữ ký đúc được tới `dist_cap`; nếu đúc từng đợt thì nhánh này còn sống suốt vòng đời |
 
 **Dòng `DistributionVest` là điểm treo thật, không phải thủ tục** — nó là điều kiện đi kèm của
@@ -535,7 +580,8 @@ quyết định "đúc từng đợt": giữ nhánh mint sống thì entry Regis
 
 Sau khi §1b ghim `dpe ≡ 1`, **committee không còn núm per-account nào chạm được kênh tốc độ**.
 Mọi quyền còn lại của họ hoặc chỉ-nới (`rate_root`), hoặc chỉ-chạm-lượt-rút-tương-lai
-(`trim_num`), hoặc bị chặn bởi một bất biến độc lập (`GrantEntitlement` ↔ C-SOLV-2).
+(`trim_num`), hoặc bị chặn bởi một bất biến độc lập (`GrantEntitlement` ↔ C-SOLV-2), hoặc nằm
+ngoài tầm với vì đã đóng băng vào script hash (`trim_floor`).
 
 ## 10. Phạm vi lượt này — cái gì vá, cái gì cố ý để lại
 

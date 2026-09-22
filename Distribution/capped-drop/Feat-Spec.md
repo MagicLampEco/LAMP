@@ -1,34 +1,27 @@
 # Capped Drop — SPEC FEAT (hành vi)
 
 **Doctype:** MagicLamp Protocol — Onchain Spec (Feature/Behavior)
-**Version:** v2 "Capped Drop" (thay Drop Lottery v0.1)
-**Updated:** 2026-06-06
+**Version:** v3 "Capped Drop" — chỉ số cộng dồn + trần lõm + cắt ngọn
+**Updated:** 2026-09-22
 **Nguồn chuẩn (interface contract):** [`capped-drop/CONTRACT.md`](./CONTRACT.md) — **v3**
 **Chứng minh toán:** [`capped-drop/Math-Spec.md`](./Math-Spec.md) — **v3**
 
-> ⚠ **TỆP NÀY LÀ v2 VÀ ĐÃ LỆCH CONTRACT v3 — đừng hiện thực theo nó.** v3 đổi bốn thứ mà bản này
-> chưa tả: `vested` tính bằng **chỉ số cộng dồn** chứ không phải `rate(now) × elapsed`; tốc độ
-> **lõm theo cỡ pot**; thêm **cắt ngọn theo lưu hành**; `drops_per_epoch` **ghim = 1**.
-> Chỗ nào bản này mâu thuẫn CONTRACT v3 thì **CONTRACT thắng**. Lên v3 là việc riêng, chưa làm.
-
-Tài liệu này đặc tả **hành vi** cơ chế Capped Drop: entitlement → drip (nhỏ giọt) →
-redeem (tự rút). Bỏ random/lottery/merkle/committee-chọn-winner. Mọi phát biểu bám
-`capped-drop/CONTRACT.md`; mâu thuẫn thì CONTRACT thắng.
-
 ---
 
-## 0. Vì sao Capped Drop thay Drop Lottery
+## 0. Vì sao v2 → v3
 
-Drop Lottery cũ (xem mô tả gốc đã gỡ trong [`SPEC.md`](../SPEC.md)) mang 2 lỗ hổng:
+v2 tính `vested = tốc_độ(bây_giờ) × số_cửa_sổ_đã_trôi`. Dạng đó có một tính chất không ai muốn:
+**mọi thừa số giảm được đều hạ `vested` HỒI TỐ**, xuống dưới phần đã rút, và khoá tài khoản lại.
+Tham số tốc độ là tham số đổi được hai chiều, nên đó không phải rủi ro lý thuyết — một lượt hạ
+10% khoá mọi tài khoản đã chạy từ 9 cửa sổ trở lên, trong khi không bất biến nào vỡ.
 
-1. **Proof hết hạn → mất quyền redeem.** Redeem phải submit Merkle proof của
-   `won_cumulative` ứng với `MerkleRootBeacon` epoch nào đó. Nếu user bỏ lỡ, root xoay,
-   proof cũ không còn khớp root mới → user kẹt, mất phần đã thắng.
-2. **Committee nonce grinding.** Người thắng phụ thuộc `nonce_N` do committee post. Committee
-   có thể thử nhiều nonce để lái kết quả lottery (grinding) trước khi công bố.
+v3 đổi ba thứ ở tầng hành vi:
 
-Capped Drop **tất định, O(1), permissionless**: account tự tính phần đã mở khoá ngay
-on-chain, không cần proof, không cần committee chọn ai thắng, không bỏ lỡ epoch nào.
+| v2 | v3 |
+|---|---|
+| tốc độ tuyệt đối `D` cho mọi cỡ pot | tốc độ **lõm theo cỡ**: pot to mở khoá chậm hơn theo tỉ lệ |
+| `vested` tính lại từ tốc độ HIỆN TẠI | `vested` đọc từ một **chỉ số cộng dồn**, quá khứ định giá bằng tốc độ CŨ |
+| rút bao nhiêu cũng được, miễn đã vested | thêm **cắt ngọn**: một lượt rút không vượt một tỉ lệ của lượng LAMP đang lưu hành |
 
 ---
 
@@ -36,160 +29,253 @@ on-chain, không cần proof, không cần committee chọn ai thắng, không b
 
 | Tên | Ký hiệu | Ý nghĩa |
 |---|---|---|
-| Entitlement | `E` | Tổng LAMP account được phân bổ (cố định khi genesis/claim). |
-| Drop value | `D` | Trần LAMP mở khoá mỗi drop. Đọc từ `DropParam` beacon (reference input). |
-| Drops/epoch | `drops_per_epoch` | Số drop mở mỗi epoch. **MVP = 1**, nằm ở datum account. |
-| Start epoch | `t0` | `start_epoch` — epoch bắt đầu nhỏ giọt. |
-| Vested | `vested(t)` | Tổng đã mở khoá tới epoch `t` (đơn điệu, cap `E`). |
-| Redeemed | `redeemed` | Tổng đã rút ra ví (tích lũy). |
-| Redeemable | `vested − redeemed` | Phần rút được ngay lúc này. |
+| Entitlement | `E` | Tổng LAMP một tài khoản được phân bổ. Chỉ tăng, không giảm. |
+| Cửa sổ | `t` | Đơn vị thời gian mở khoá. **Không phải "ngày"** — xem §1.1. |
+| Chỉ số cộng dồn | `A(t)` | Một con số toàn cục chỉ tăng, beacon giữ. Thay cho "tốc độ hiện tại". |
+| Gốc tốc độ | `w` | `rate_root` — nhịp tăng của `A` mỗi cửa sổ. **Chỉ được NỚI, không được siết.** |
+| Mốc mở tài khoản | `a₀` | `index_at_start` — giá trị `A` chụp lúc tài khoản được mở. |
+| Quãng | `A_span` | `A(t) − a₀`. Thứ thay cho "số cửa sổ đã trôi" của v2. |
+| Vested | `vested(t)` | Tổng đã mở khoá. Đơn điệu không giảm, trần `E`. |
+| Redeemed | `redeemed` | Tổng đã rút ra ví, tích luỹ. |
+| Lưu hành | `C` | `total_redeemed` — tổng LAMP đã phát ra toàn hệ, mọi đợt cộng lại. |
+| Cắt ngọn | `κ` | `trim_num/trim_den`, mặc định `1/1000`. Trần cho **một lượt rút**. |
+| Sàn cắt ngọn | `trim_floor` | 1.000 LAMP. Hằng, không đổi được bằng tham số. |
 
-Mọi giá trị LAMP là số nguyên oildrop (1 LAMP = 10^6 oildrop, theo `ProtocolUtils.S_LAMP_TOTAL`).
+Mọi giá trị LAMP là số nguyên **oildrop**: 1 LAMP = 1.000.000 oildrop.
+
+### 1.1 "Cửa sổ" dài bao nhiêu — đọc kỹ, nó không phải ngày
+
+`Utils/src/index.ts` ▸ `MS_PER_EPOCH_BY_NETWORK`:
+
+| mạng | một cửa sổ |
+|---|---|
+| Preview | 86.400.000 ms = **1 ngày** |
+| Preprod | 432.000.000 ms = **5 ngày** |
+| Mainnet | 432.000.000 ms = **5 ngày** |
+
+Nên **cùng một con số cửa sổ cho hai lịch khác nhau gấp 5 lần** tuỳ mạng. Mọi ví dụ dưới đây
+quy ra thời gian theo Mainnet (5 ngày/cửa sổ, ≈73 cửa sổ một năm). Giá trị này đi vào **script
+hash** qua apply-param, nên một lần đặt sai ở genesis không sửa được bằng cập nhật tham số.
 
 ---
 
 ## 2. Công thức trung tâm
 
+**Mở khoá** (tích luỹ, không ai phải làm gì):
+
 ```
-vested(t)   = min( E , D · drops_per_epoch · max(0, t − t0) )
-redeemable  = vested(t) − redeemed
+A(t)       = index + rate_root · (t − epoch)        ← đọc từ beacon, dạng đóng
+A_span     = A(t) − index_at_start
+vested(t)  = min( E , √E · A_span )
 ```
 
-`t` = `current_epoch` đọc từ validity range của tx; `D` đọc từ `DropParam` beacon;
-`E, redeemed, t0, drops_per_epoch` đọc từ datum `ClaimAccount`. Tất cả **tham số**, không
-hardcode (CONTRACT §7).
+**Rút** (mỗi lượt, trần riêng):
+
+```
+amount ≤ vested(t) − redeemed
+amount ≤ max( trim_floor , C · κ )
+```
+
+Hai dòng cuối là **hai trần khác nhau, chặn hai thứ khác nhau**: dòng trên chặn *đã mở khoá
+được bao nhiêu*, dòng dưới chặn *một lượt được mang đi bao nhiêu*. Vượt trần dưới **không mất
+phần thừa** — nó ở lại và rút được ở lượt sau.
+
+> **Vì sao có `√`.** Nếu tốc độ không phụ thuộc cỡ pot thì tách một pot thành `n` phần làm tổng
+> tốc độ nhân `n` — trần tự huỷ. Luật căn làm nó chỉ nhân `√n`. Chứng minh:
+> [`Math-Spec.md`](./Math-Spec.md) §8.
+
+> **Validator không tính `vested`.** Người dựng giao dịch **XIN** một con số, validator **KẸP**
+> bằng phép so sánh số nguyên `(redeemed + amount)² ≤ E · A_span²`, không có phép khai căn nào
+> chạy on-chain. Xem [`Math-Spec.md`](./Math-Spec.md) §6.
 
 ---
 
-## 3. Hành vi cốt lõi: entitlement → drip → redeem
+## 3. Hành vi cốt lõi: entitlement → tích luỹ → rút
 
-### 3.1 Genesis / Claim (gán entitlement)
-Committee M-of-N (giữ flow cũ, CONTRACT §6) xác nhận một ví đáng nhận `E` LAMP, tạo
-`ClaimAccount` UTxO với datum:
+### 3.1 Mở tài khoản (cấp entitlement)
+
+Committee M-of-N xác nhận một ví đáng nhận `E` LAMP, tạo `ClaimAccount` UTxO:
 
 ```
 ClaimAccount {
   owner            = PKH ví,
   entitlement      = E,
   redeemed         = 0,
-  start_epoch      = t0 (epoch hiện tại khi gán),
-  drops_per_epoch  = 1,   // MVP
+  start_epoch      = cửa sổ hiện tại,
+  drops_per_epoch  = 1,          // GHIM == 1, không còn là núm điều chỉnh (§5.1)
+  index_at_start   = A(bây giờ), // MỐC. Bất biến suốt đời tài khoản
 }
 ```
 
-### 3.2 Drip (mở khoá theo thời gian — KHÔNG cần giao dịch)
-Vested **tự tăng theo epoch**, không ai phải làm gì. Mỗi epoch trôi qua, `vested` tăng thêm
-`D · drops_per_epoch`, dừng khi chạm `E`. Đây là tính chất thuần toán, on-chain chỉ đọc khi
-redeem. **Bỏ lỡ epoch không mất quyền** — vested cộng dồn từ `t0` (CONTRACT §1).
+`index_at_start` là trường **mới ở v3** và là thứ dễ hiện thực sai nhất: nó phải nằm trong danh
+sách trường bị ép bất biến khi rút, không phải được suy ra là bất biến. Ghi đè được nó nghĩa là
+người rút **tự đặt lại gốc thời gian của chính mình**.
 
-### 3.3 Redeem (tự rút — permissionless)
-Owner ký tx spend `ClaimAccount` với redeemer `Redeem`. Validator ÉP (CONTRACT §4):
+### 3.2 Mở khoá (KHÔNG cần giao dịch, KHÔNG cần ai còn sống)
 
-1. `vested = min(E, D · drops_per_epoch · (current_epoch − t0))` — `D` từ `DropParam`
-   reference input, `current_epoch` từ validity range.
-2. `amount = vested − redeemed`, yêu cầu `amount > 0` (không có gì để rút thì tx vô nghĩa).
-3. Out datum: `redeemed' = redeemed + amount`; `owner / entitlement / start_epoch /
-   drops_per_epoch` **bất biến**.
-4. Treasury nhả đúng `amount` LAMP cho `owner`; `treasury_out.value = treasury_in.value −
-   amount` (bảo toàn value, tái dùng `treasury.ak`, **không burn** — CONTRACT §4, §7).
-5. Chống double-satisfaction: đếm theo **payment script hash** (fix C1/C2/M1, CONTRACT §4).
+`vested` tự tăng theo `A`, và `A` đọc được ở **dạng đóng** từ beacon gần nhất. Hệ quả hành vi:
 
-Không cần proof, không cần committee, không cần nonce. Owner tự rút bất cứ lúc nào sau khi
-có phần vested chưa rút.
+- **Bỏ lỡ cửa sổ không mất gì.** Tích luỹ từ `index_at_start`, không có nhánh nào làm `A` giảm.
+- **Committee ngừng post cũng không làm ai đứng lại.** Giữa hai lượt post, `A` vẫn chạy tiếp với
+  `rate_root` đã post lần cuối. Đây là khác biệt hành vi lớn so với mọi thiết kế cần một giao
+  dịch mỗi cửa sổ: **không có phụ thuộc liveness**.
+- **Tốc độ chỉ được nới.** Committee tăng `rate_root` thì mọi người nhanh hơn kể từ cửa sổ đó;
+  họ **không** hạ được. Quyền siết nằm ở kênh cắt ngọn, nơi nó chỉ hoãn chứ không xoá.
 
----
+### 3.3 Rút (permissionless)
 
-## 4. Hai hồ sơ ví (ví nhỏ vs ví lớn)
+Owner ký giao dịch tiêu `ClaimAccount`, **kèm số tiền muốn rút**. Validator ép:
 
-### 4.1 Ví nhỏ — `E ≤ D`: nhận hết ngay epoch đầu
-Tại `t = t0 + 1`: `vested = min(E, D·1·1) = E` (vì `E ≤ D`). Một lần redeem rút trọn `E`.
-Không nhỏ giọt. Hợp lý: phần thưởng bé thì trả luôn, khỏi bắt user chờ.
+1. Phần xin không vượt phần đã mở khoá — kẹp bằng bình phương, không khai căn.
+2. Phần xin không vượt trần cắt ngọn của lượt này.
+3. Out datum: `redeemed' = redeemed + amount`; `owner`, `entitlement`, `start_epoch`,
+   `drops_per_epoch`, **`index_at_start`** bất biến.
+4. Kho nhả đúng `amount` cho owner; `tre_out.value = tre_in.value − amount`. **Không burn.**
+5. Sổ lưu hành tăng đúng `amount`: `total_redeemed' = total_redeemed + amount`.
+6. Chống double-satisfaction: đếm theo payment script hash.
 
-> Ví dụ: `E = 40 LAMP`, `D = 100 LAMP`. Epoch `t0+1`: vested = 40 = E → redeem 40, xong.
-
-### 4.2 Ví lớn — `E > D`: nhỏ giọt `D`/epoch
-Mỗi epoch mở thêm `D` cho tới hết, kéo dài `⌈E/D⌉` epoch (chứng minh MATH §3). User có thể
-redeem từng epoch (mỗi lần `D`) hoặc dồn nhiều epoch rồi rút một lần (mỗi lần `k·D`) — kết
-quả tổng nhận như nhau (đa-claim cộng dồn, MATH §4).
-
-> Ví dụ: `E = 350 LAMP`, `D = 100 LAMP` → nhỏ giọt 100/100/100/50 trong 4 epoch
-> (`⌈350/100⌉ = 4`). Epoch cuối chỉ mở 50 vì cap `E` (vested không vượt 350).
-
-| Epoch sau `t0` | `D·1·(t−t0)` thô | `vested = min(E, …)` | Mở thêm |
-|---|---|---|---|
-| 1 | 100 | 100 | 100 |
-| 2 | 200 | 200 | 100 |
-| 3 | 300 | 300 | 100 |
-| 4 | 400 | **350** (cap) | 50 |
-| 5 | 500 | 350 | 0 |
-
-### 4.3 Đa-claim tự do
-Vì vested đơn điệu và cap `E`, user redeem bao nhiêu lần tùy ý: mỗi lần rút đúng phần
-`vested − redeemed` tại thời điểm đó, tổng nhận luôn `= vested(t_cuối) ≤ E`. Rút sớm/muộn,
-nhiều lần/một lần đều cho cùng tổng (MATH §4). Không phạt, không mất phần.
+Không cần proof, không cần committee, không cần chờ ai.
 
 ---
 
-## 5. Hooks DAO (post-MVP — CHỪA CHỖ, KHÔNG build ở MVP)
+## 4. Ba hồ sơ ví
 
-CONTRACT §5: MVP chỉ cần `drops_per_epoch` là field datum đọc được; cơ chế DAO chỉnh nó là
-phiên sau. Hai hook đã chừa chỗ:
+Tốc độ mỗi cửa sổ là `w · ⌊√E⌋`; số cửa sổ để hết là `⌈√E / w⌉`. Với `w = 77.460`:
 
-### 5.1 Multi-drop per-DID
-DAO tăng `drops_per_epoch` cho DID uy tín / nhu cầu cao (vd Org hoạt động liên tục → nhiều
-drop/epoch, nhỏ giọt nhanh hơn). Gắn Governance VP (C3 uy tín) — chống sybil-chia-nhiều-DID-để-né-cap
-phụ thuộc điểm treo `Governance/VotingPower/CONTRACT.md §3 [IDENT-ONE-PERSON]` (chưa đóng hôm nay).
-Vested-cap `E` vẫn giữ → multi-drop chỉ **rút nhanh
-hơn tới `E`**, không tăng tổng nhận. Nguồn VP:
-`LAMP/Governance/VotingPower/CONTRACT.md`.
+| pot | mỗi cửa sổ | số cửa sổ | thời gian (Mainnet) | cắt ngọn có ráo không? |
+|---|---|---|---|---|
+| 1.000 LAMP | 2.449 LAMP | **1** | 5 ngày | không |
+| 1 triệu LAMP | 77.460 LAMP | **13** | ~2 tháng | không |
+| 2.379.930 LAMP (ETD-max) | 119.497,70 LAMP | **20** | ~100 ngày | không |
+| 6 tỷ LAMP | 6.000.025,73 LAMP | **1.000** | ~13,7 năm | **có** |
 
-### 5.2 Pause / penalty
-DAO đặt `drops_per_epoch = 0` trong `N` epoch nếu account có hành vi gây hại. Khi `drops_per_epoch
-= 0`: `vested` đứng yên (không mở thêm), nhưng phần đã vested trước đó **không mất** (redeemed
-giữ nguyên quyền). Pause là tạm dừng nhỏ giọt, không tịch thu.
+### 4.1 Ví nhỏ — xong trong một cửa sổ
 
-> Cả 2 hook đều **không** đổi bất biến: vested vẫn đơn điệu (pause = đạo hàm 0, không âm),
-> vẫn cap `E`. Xem MATH §5 cho chứng minh hook không phá đơn điệu.
+Tốc độ lõm nên ví nhỏ **nhanh tương đối**: 1.000 LAMP mở khoá 2.449 LAMP ngay cửa sổ đầu, tức
+trọn `E`. Đây cũng là chỗ `trim_floor = 1.000 LAMP` được suy ra — nó phải đủ để một ví cỡ này
+mang hết đi trong một lượt, kể cả khi lưu hành còn bằng 0.
 
----
+### 4.2 Ví lớn — cắt ngọn bắt đầu ráo từ đâu
 
-## 6. Giữ nguyên từ Lottery (tái dùng)
+Cắt ngọn chỉ ráo khi tốc độ mỗi cửa sổ vượt trần một lượt rút, tức `w·√E > κ·C`. Ở lưu hành
+1 tỷ LAMP (`κ = 1/1000` ⟹ trần 1 triệu LAMP/lượt), ngưỡng là **`E > ≈167 triệu LAMP`**.
 
-CONTRACT §6: ClaimAccount per-wallet UTxO (QĐ5 cũ), `treasury.ak` + 3 fix audit C1/C2/M1,
-e2e harness `04_e2e.ts`, datum codec base, claim flow committee M-of-N.
+Nghĩa là: **mọi pot dưới 167 triệu LAMP không bao giờ chạm cắt ngọn ở mức lưu hành đó** — kể cả
+ETD-max. Cắt ngọn là cơ chế chỉ nói chuyện với pot rất lớn.
 
----
+> Ví dụ đúng bản chất: pot 6 tỷ mở khoá ~6 triệu LAMP một cửa sổ, nhưng một lượt rút chỉ mang
+> được 1 triệu. Xin 3 triệu thì **nhận 1 triệu, không phải bị từ chối** — 2 triệu còn lại vẫn là
+> quyền, rút ở lượt sau. Muốn lấy hết phần của một cửa sổ thì rút nhiều lượt.
 
-## 7. Bất biến hành vi (normative — đặt tên để test truy vết)
+### 4.3 Đa-claim — v3 KHÔNG còn độc lập lộ trình
 
-| ID | Phát biểu |
-|---|---|
-| **F-VEST-1** | `vested(t) = min(E, D·drops_per_epoch·max(0, t−t0))` — tất định từ datum + beacon + validity range. |
-| **F-VEST-2** | `vested` đơn điệu không giảm theo `t` (drip không lùi). MATH §2. |
-| **F-VEST-3** | `vested ≤ E` mọi `t` (cap entitlement). MATH §2. |
-| **F-RDM-1** | `amount = vested − redeemed`; yêu cầu `amount > 0`. |
-| **F-RDM-2** | Out datum: `redeemed' = redeemed + amount`; `owner/entitlement/start_epoch/drops_per_epoch` bất biến. |
-| **F-RDM-3** | Treasury nhả đúng `amount` cho owner; `tre_out.value = tre_in.value − amount`; không burn. |
-| **F-RDM-4** | Owner ký (`tx.extra_signatories`). Permissionless với owner — không cần committee. |
-| **F-RDM-5** | Đúng 1 ClaimAccount input + 1 output cùng payment script hash (chống double-satisfaction). |
-| **F-SUM-1** | Tổng nhận qua mọi lần redeem `= redeemed_cuối = vested(t_cuối) ≤ E` (MATH §4). |
-| **F-SMALL-1** | `E ≤ D` ⇒ redeem epoch `t0+1` rút trọn `E`. |
-| **F-LARGE-1** | `E > D` ⇒ nhỏ giọt, hết sau đúng `⌈E/D⌉` epoch (drops_per_epoch=1). MATH §3. |
-| **F-DAO-1** | (post-MVP) `drops_per_epoch` là field datum, đọc được; cơ chế DAO chỉnh defer. |
+Ở v2, rút nhiều lần hay một lần cho **cùng một tổng**. Ở v3 **không còn đúng**: cắt ngọn chặn
+từng lượt, nên dồn tất cả vào một lần rút cuối có thể nhận ít hơn rút đều mỗi cửa sổ.
+
+Đây là hệ quả cố ý, nhưng nó là một **cái bẫy giao diện**: người dùng không tự đoán ra. Giao
+diện **bắt buộc** tách hai con số và đừng gộp:
+
+- *"rút được lượt này"* = `min(vested − redeemed, trần_cắt_ngọn)`
+- *"còn lại tổng"* = `E − redeemed`
+
+Không tách thì mỗi lần cắt ngọn bị đọc như một lần tịch thu, trong khi không đồng nào mất.
 
 ---
 
-## 8. Flow test hành vi (cho onchain/offchain bám)
+## 5. Hooks — cái gì đóng hẳn, cái gì chừa chỗ
+
+### 5.1 Multi-drop per-account — ĐÃ ĐÓNG, không còn là hook
+
+v2 chừa `drops_per_epoch` cho DAO chỉnh. v3 **ghim `= 1`**. Lý do: nó nhân thẳng vào tốc độ và
+nằm **ngoài** tổng tích luỹ, nên hạ nó viết lại toàn bộ lịch sử (`= 0` khoá tài khoản vĩnh viễn);
+và phép hiệu chỉnh tốc độ đã giả định `= 1` từ đầu, nên để nó tự do là cấp hai núm cho cùng một
+đại lượng, núm thứ hai thì per-account và tuỳ nghi.
+
+Trường vẫn giữ trong datum — một cửa sau bị khoá bằng một mệnh đề ép thì rõ hơn một cửa sau bị
+xoá. Mở lại ở v4 thì phải kèm một **cơ sở đo được trên chuỗi** để phân biệt tài khoản; hôm nay
+không có cơ sở nào như thế.
+
+### 5.2 Hệ số tiêu thụ MAGIC — CHỪA CHỖ, để RỖNG ở lượt đúc này
+
+Beacon mang một danh sách policy (`speed_policies`) hiện **rỗng**. Khi bật, mức tiêu thụ MAGIC
+của một người nâng trần **cắt ngọn** của họ — tức ở kênh chỉ-hoãn, không phải kênh tốc độ.
+
+Ba ràng buộc đã chốt trước khi bật, ghi ở đây vì chúng đổi cả hành vi:
+
+1. **Là HỆ SỐ, không phải CỔNG.** Tài khoản tiêu 0 MAGIC vẫn phải vest đúng lịch của nó. Nhóm
+   ETD được chọn bằng snapshot uỷ thác ADA nên tiêu 0 MAGIC **theo cấu tạo** — một cổng ở đây
+   biến pot được thiết kế để phát trước thành pot chậm nhất hệ.
+2. **Phải BÃO HOÀ.** Một người mở được nhiều thread và tự chọn thread nào để trỏ vào, nên hệ số
+   không được là hàm tăng không chặn — nếu không thì dồn hoạt động vào một thread là một trục để
+   chơi, và nó miễn phí.
+3. **Chỉ đếm được MỘT đường.** Tiêu thụ qua đường prepaid không mang danh tính (vault ghim DID
+   rỗng ở cổng đúc), nên "tiêu thụ MAGIC" trong tài liệu này luôn có nghĩa **tiêu thụ qua đường
+   Engage**, không phải toàn bộ.
+
+### 5.3 Pause / penalty — BỎ, không chuyển sang v3
+
+v2 định cho DAO đặt tốc độ `= 0` trong `N` cửa sổ như hình phạt. Ở v3 điều đó **không hiện thực
+được mà không phá bất biến trung tâm**: mọi đường hạ tốc độ đều nằm ở kênh chỉ-nới. Cần cơ chế
+phạt thì phải thiết kế ở kênh cắt ngọn và phải chứng minh nó không đẩy ai về điểm hấp thụ.
+
+---
+
+## 6. Giữ nguyên từ v2
+
+ClaimAccount per-wallet UTxO · `treasury.ak` + ba bản vá audit · bộ e2e · codec datum nền · luồng
+cấp entitlement bằng committee M-of-N.
+
+---
+
+## 7. Bất biến hành vi (đặt tên để test truy vết)
+
+| ID | Phát biểu | Neo |
+|---|---|---|
+| **F-VEST-1** | `vested(t) = min(E, √E · A_span)`, tất định từ datum + beacon + validity range | Math §1 |
+| **F-VEST-2** | `vested` đơn điệu không giảm theo `t`, **không cần giả thiết tham số cố định** | Math §3 |
+| **F-VEST-3** | `vested ≤ E` mọi `t` | Math §3 |
+| **F-VEST-4** | Committee ngừng post ⟹ `vested` vẫn tăng đúng nhịp `rate_root` cuối | Math §2 HQ 1.1 |
+| **F-VEST-5** | Một lượt post mới KHÔNG đổi `vested` của bất kỳ ai tại thời điểm quá khứ | Math §2 HQ 1.2 |
+| **F-RDM-1** | Người rút XIN `amount`; validator KẸP. `amount > 0` | CONTRACT §4 |
+| **F-RDM-2** | Out datum: `redeemed' = redeemed + amount`; `owner`/`entitlement`/`start_epoch`/`drops_per_epoch`/**`index_at_start`** bất biến | CONTRACT §4 |
+| **F-RDM-3** | Kho nhả đúng `amount`; `tre_out.value = tre_in.value − amount`; không burn | CONTRACT §4 |
+| **F-RDM-4** | Owner ký. Permissionless với owner | CONTRACT §4 |
+| **F-RDM-5** | Đúng 1 ClaimAccount input + 1 output cùng payment script hash | CONTRACT §4 |
+| **F-TRIM-1** | `amount ≤ max(trim_floor, C·κ)`; vượt trần ⟹ **cắt xuống, KHÔNG từ chối** | CONTRACT §4 |
+| **F-TRIM-2** | Phần bị cắt KHÔNG mất — vẫn rút được ở lượt sau; hoàn tất sau hữu hạn lượt | Math §5 |
+| **F-TRIM-3** | `C = 0` vẫn rút được nhờ `trim_floor > 0` | Math §5 HQ 4.1 |
+| **F-SUM-1** | Tổng nhận `= redeemed_cuối ≤ min(E, vested(t_cuối))` | Math §10 |
+| **F-SUM-2** | ⚠ Tổng nhận **PHỤ THUỘC LỘ TRÌNH** — rút đều có thể nhiều hơn dồn một lần | Math §10 |
+| **F-SMALL-1** | `E = 1.000 LAMP` ⟹ rút trọn trong **1** cửa sổ | §4.1 |
+| **F-LARGE-1** | Hết sau đúng `⌈√E / w⌉` cửa sổ | Math §7 |
+| **F-LARGE-2** | Tách `E` thành `n` phần chỉ nhanh gấp `√n`, không phải `n` | Math §8 |
+| **F-DPE-1** | `drops_per_epoch == 1` với **mọi** tài khoản; mở với giá trị khác ⟹ từ chối | CONTRACT §1b |
+
+---
+
+## 8. Luồng kiểm hành vi
 
 ```
-1. Genesis: committee(M/N) gán A: E=40 LAMP; B: E=350 LAMP. D=100 (DropParam beacon). t0=epoch0.
-2. Ví nhỏ (A): epoch1 → vested=40=E → A redeem 40, redeemed=40. Hết.
-3. Ví nhỏ double: A redeem lại cùng epoch → amount=40−40=0 → reject (F-RDM-1).
-4. Ví lớn drip (B): epoch1 vested=100 → redeem 100; epoch2 vested=200 → redeem 100 (dồn được).
-5. Ví lớn cap (B): epoch5 vested=min(350,500)=350 → redeem (350−đã rút). Tổng B nhận = 350 = E.
-6. Bảo toàn: Σ amount mọi redeem ≤ Σ E; treasury_out = treasury_in − Σ amount; mint==0.
-7. Double-satisfaction: 2 ClaimAccount input share stake cred trong 1 tx → reject (F-RDM-5).
+1.  Mở: A nhận E=1.000 LAMP; B nhận E=6.000.000.000 LAMP. Cả hai dpe=1, index_at_start=A(bây giờ).
+2.  Ví nhỏ A: cửa sổ 1 → vested = E → rút trọn 1.000. Xong. (F-SMALL-1)
+3.  A rút lại cùng cửa sổ → amount = 0 → từ chối. (F-RDM-1)
+4.  Ví lớn B, lưu hành C = 1 tỷ: cửa sổ 1 mở ~6.000.025 LAMP, nhưng XIN 3.000.000
+    → NHẬN 1.000.000, không phải bị từ chối. (F-TRIM-1)
+5.  B rút tiếp trong cùng cửa sổ → lại 1.000.000. Phần bị cắt không mất. (F-TRIM-2)
+6.  Committee KHÔNG post gì suốt 10 cửa sổ → B vẫn vest đúng nhịp. (F-VEST-4)
+7.  Committee post rate_root THẤP HƠN → PHẢI bị từ chối. (CONTRACT §3b)
+8.  Committee post rate_root cao hơn → vested của B tại một cửa sổ QUÁ KHỨ không đổi. (F-VEST-5)
+9.  Sửa index_at_start trong out datum → từ chối. (F-RDM-2)
+10. B chạy tới cửa sổ 1000 → redeemed chạm ĐÚNG E. Với rate_root = 77.459 thì
+    cửa sổ 1000 CHƯA chạm, và chạm ở cửa sổ 1001 — trễ đúng một cửa sổ, KHÔNG
+    phải "không bao giờ". Kiểm cả hai mốc. Phải chạy tới 1000 thật: ở n nhỏ hai
+    giá trị cho kết quả GIỐNG HỆT NHAU. (F-LARGE-1, Math M-ROOT-CEIL)
+11. Mở tài khoản với dpe = 2 → từ chối. (F-DPE-1)
+12. Lưu hành C = 0, ví 1.000 LAMP vẫn rút được. (F-TRIM-3)
+13. Bảo toàn: Σ amount ≤ Σ E; tre_out = tre_in − Σ amount; mint == 0;
+    total_redeemed tăng đúng Σ amount.
+14. Double-satisfaction: 2 ClaimAccount input chung stake credential trong 1 tx → từ chối.
 ```
 
-Mỗi bước có unit test (Aiken mock-tx + vitest builder). Chi tiết chứng minh số học:
-[`capped-drop/Math-Spec.md`](./Math-Spec.md).
+Bước 10 là bước dễ bỏ nhất — một bài kiểm ngắn xanh ở **cả hai** giá trị `rate_root`, nên nó
+không kiểm gì. Chứng minh số học: [`Math-Spec.md`](./Math-Spec.md) §7.

@@ -1,16 +1,21 @@
 # Capped Drop — SPEC TECH (kỹ thuật on-chain)
 
 **Doctype:** MagicLamp Protocol — Onchain Spec (Technical / Implementation)
-**Version:** v2 "Capped Drop"
-**Updated:** 2026-06-10
+**Version:** v3 "Capped Drop" — chỉ số cộng dồn + trần lõm + cắt ngọn
+**Updated:** 2026-09-22
 **Nguồn chuẩn (interface contract):** [`CONTRACT.md`](./CONTRACT.md) — **v3**
-**Hành vi:** [`Feat-Spec.md`](./Feat-Spec.md)
+**Hành vi:** [`Feat-Spec.md`](./Feat-Spec.md) — **v3**
 **Chứng minh toán:** [`Math-Spec.md`](./Math-Spec.md) — **v3**
 
-> ⚠ **TỆP NÀY LÀ v2 VÀ ĐÃ LỆCH CONTRACT v3 — đừng hiện thực theo nó.** v3 đổi hình dạng datum
-> (`ClaimAccount` thêm `index_at_start`, `TreasuryDatum` thêm `total_redeemed`, `BeaconDatum`
-> thay `drop_value` bằng `index`+`rate_root`+`trim_*`+`speed_policies`) và đổi luật kẹp sang
-> `(redeemed+amount)² ≤ dpe²·E·A_span²`. Chỗ nào mâu thuẫn thì **CONTRACT thắng**.
+> ⚠ **TỆP NÀY MÔ TẢ TRẠNG THÁI ĐÍCH, KHÔNG MÔ TẢ MÃ ĐANG CHẠY.** Đo 2026-09-22: mã trong
+> `Distribution/onchain/` vẫn là **v2** — `types.ak` ▸ `BeaconDatum` còn trường `drop_value`,
+> `ClaimAccountDatum` chưa có `index_at_start`, `TreasuryDatum` chưa có `total_redeemed`.
+> Mục nào đã lệch mã đều mang nhãn **`CHƯA CÓ TRONG MÃ`** kèm con trỏ. Đừng đọc một dòng ở đây
+> thành một dòng đã hiện thực.
+>
+> ⚠ **v3 ĐÒI GENESIS MỚI.** Aiken giải mã nghiêm ngặt theo **số trường**, nên thêm trường vào
+> `ClaimAccountDatum` và `TreasuryDatum` làm mọi UTxO đang sống không đọc được bằng validator
+> v3, và cụm này **không có redeemer nâng cấp**. Không có đường di trú tại chỗ.
 
 Tài liệu này đặc tả **cấu trúc kỹ thuật**: Aiken types → Plutus Data encoding, danh sách bất biến mỗi redeemer, luồng eUTXO, và thứ tự deploy + tham số. Mọi phát biểu dẫn file:line cụ thể.
 
@@ -55,14 +60,15 @@ Nguồn: `onchain/lib/magiclamp/lampdist/types.ak`
 
 ### 2.2 `ClaimAccountDatum`
 
-**Aiken** (`types.ak:8-14`):
+**Aiken — v3** (`CHƯA CÓ TRONG MÃ`; bản đang chạy là `types.ak` ▸ `ClaimAccountDatum`, 5 trường):
 ```
 pub type ClaimAccountDatum {
   owner           : ByteArray,   // PKH chủ ví
   entitlement     : Int,         // E — tổng LAMP (oildrop)
   redeemed        : Int,         // đã nhận tích lũy (oildrop)
   start_epoch     : Int,         // t0
-  drops_per_epoch : Int,         // MVP = 1
+  drops_per_epoch : Int,         // GHIM == 1 (C-ACC-DPE) — giữ trường, khoá giá trị
+  index_at_start  : Int,         // a₀ — chỉ số beacon chụp lúc MỞ (TRƯỜNG MỚI, Ở CUỐI)
 }
 ```
 
@@ -73,21 +79,33 @@ Constr(0, [
   Integer(entitlement),      -- field 1: E (oildrop, non-negative)
   Integer(redeemed),         -- field 2: đã rút tích lũy (oildrop)
   Integer(start_epoch),      -- field 3: t0
-  Integer(drops_per_epoch),  -- field 4: r (MVP=1)
+  Integer(drops_per_epoch),  -- field 4: BẮT BUỘC == 1
+  Integer(index_at_start),   -- field 5: a₀ (TRƯỜNG MỚI)
 ])
 ```
 
-**Bất biến datum:** `0 ≤ redeemed ≤ entitlement`, `drops_per_epoch ≥ 0`, `entitlement ≥ 0`.
+**Trường mới đặt ở CUỐI** để chỉ số Constr của năm trường đầu không đổi. Điều đó **không** làm
+datum cũ đọc được bằng validator v3 — Aiken ép đúng số trường — nó chỉ giữ cho codec offchain và
+mọi công cụ đọc datum khỏi phải đánh số lại.
+
+**Bất biến datum:** `0 ≤ redeemed ≤ entitlement` · `drops_per_epoch == 1` · `entitlement ≥ 0` ·
+`index_at_start ≥ 0`.
+
+> ⚠ `index_at_start` là trường dễ hiện thực sai nhất của v3. Nó phải nằm trong **danh sách ép
+> bất biến** ở nhánh `Redeem`, không phải được suy ra là bất biến vì "không ai đụng tới nó".
+> Ghi đè được nó nghĩa là người rút tự đặt lại gốc thời gian của chính mình, và bất biến trung
+> tâm (`vested` không giảm) mất một trong ba chân — xem [`Math-Spec.md`](./Math-Spec.md) §3.
 
 ---
 
 ### 2.3 `ClaimAccountRedeemer`
 
-**Aiken** (`types.ak:16-21`):
+**Aiken — v3** (`Redeem` nay MANG tham số; bản đang chạy là `Redeem` không tham số —
+`types.ak` ▸ `ClaimAccountRedeemer`):
 ```
 pub type ClaimAccountRedeemer {
-  Claim { amount: Int }   -- constructor index 0
-  Redeem                  -- constructor index 1
+  Claim  { amount: Int }   -- constructor index 0
+  Redeem { amount: Int }   -- constructor index 1 — THAM SỐ MỚI
 }
 ```
 
@@ -96,7 +114,15 @@ pub type ClaimAccountRedeemer {
 | Redeemer | Encoding |
 |---|---|
 | `Claim { amount }` | `Constr(0, [Integer(amount)])` |
-| `Redeem` | `Constr(1, [])` |
+| `Redeem { amount }` | `Constr(1, [Integer(amount)])` — **đổi từ `Constr(1, [])`** |
+
+**Vì sao `Redeem` phải mang số tiền.** v2 để validator tự tính `vested − redeemed` rồi trả trọn.
+Với cắt ngọn, "trọn" không còn là một số xác định trước khi biết trần của lượt này, và quan trọng
+hơn: người dùng phải **chọn được** rút ít hơn (gộp phí, chia nhiều lượt). Nên hình dạng đúng là
+người dựng XIN — validator KẸP, đúng khuôn `Claim`.
+
+> ⚠ Đây là **thay đổi phá vỡ tương thích ở tầng redeemer**, không chỉ ở tầng datum. Mọi builder
+> offchain dựng `Constr(1, [])` sẽ bị từ chối. Đổi cùng lượt với codec datum.
 
 ---
 
@@ -121,23 +147,53 @@ pub type BeaconKind {
 
 ### 2.5 `BeaconDatum`
 
-**Aiken** (`types.ak:28-34`):
+**Aiken — v3** (`CHƯA CÓ TRONG MÃ`; bản đang chạy là `types.ak` ▸ `BeaconDatum`, 3 trường với
+`drop_value`):
 ```
 pub type BeaconDatum {
-  epoch      : Int,
-  kind       : BeaconKind,
-  drop_value : Int,
+  epoch          : Int,               // cửa sổ lượt post này (C-BCN-3)
+  kind           : BeaconKind,
+  index          : Int,               // A tại mốc `epoch` — CỘNG DỒN, CHỈ TĂNG
+  rate_root      : Int,               // w — NGUYÊN THUỶ, W := w²
+  trim_num       : Int,               // κ tử
+  trim_den       : Int,               // κ mẫu
+  speed_policies : List<ByteArray>,   // MÓC — RỖNG ở lượt đúc này
 }
 ```
 
 **Plutus Data encoding:**
 ```
 Constr(0, [
-  Integer(epoch),            -- field 0: epoch khi post
+  Integer(epoch),            -- field 0
   Constr(0, []),             -- field 1: kind = DropParam
-  Integer(drop_value),       -- field 2: D (oildrop/drop)
+  Integer(index),            -- field 2
+  Integer(rate_root),        -- field 3
+  Integer(trim_num),         -- field 4
+  Integer(trim_den),         -- field 5
+  List([]),                  -- field 6: speed_policies, RỖNG
 ])
 ```
+
+**Giá trị đóng băng ở genesis v3:**
+
+| trường | giá trị | ghi chú |
+|---|---|---|
+| `index` | `0` | mốc gốc của chỉ số cộng dồn |
+| `rate_root` | **`77460`** | NGUYÊN THUỶ. `W := w² = 6.000.051.600` oildrop |
+| `trim_num` / `trim_den` | `1` / `1000` | lưu hành 1 tỷ ⟹ một lượt rút tối đa 1 triệu LAMP |
+| `speed_policies` | `[]` | danh sách rỗng ⟹ không đòi reference input nào |
+
+> ⛔ **`rate_root` KHÔNG được suy từ một `W` chốt trước.** Lấy `⌊√W⌋` cho `77459`, và với giá trị
+> đó pot 6 tỷ chạm `entitlement` ở cửa sổ **1001** thay vì 1000 — trượt mốc hiệu chỉnh đúng một
+> cửa sổ. Chiều đúng là ngược lại: chốt `w`, rồi `W := w²`.
+> [`Math-Spec.md`](./Math-Spec.md) §7 (M-ROOT-CEIL).
+>
+> Không đọc chỗ này thành *"tài khoản không bao giờ rút hết"* — `A_span` tăng không chặn nên
+> không có đuôi bụi vĩnh viễn. Cái mất là **một cửa sổ**, không phải một khoản khoá vốn.
+
+> **`trim_floor` KHÔNG nằm trong datum này.** Nó là hằng trong `constants.ak`
+> (`C-RDM-TRIM-FLOOR`). Đưa nó vào datum thì hạ về 0 dựng lại đúng điểm hấp thụ mà nó sinh ra để
+> phá. CONTRACT v3 §4 mục 4.
 
 ---
 
@@ -160,19 +216,32 @@ pub type BeaconRedeemer {
 
 ### 2.7 `TreasuryDatum`
 
-**Aiken** (`types.ak:41-43`):
+**Aiken — v3** (bản đang chạy có **2** trường, không phải 1 như bản v2 của tệp này viết — xem
+`types.ak` ▸ `TreasuryDatum`; `total_redeemed` là trường thứ ba, `CHƯA CÓ TRONG MÃ`):
 ```
 pub type TreasuryDatum {
-  committee_hash : ByteArray,
+  committee_hash         : ByteArray,
+  outstanding_entitlement: Int,   // sổ cái CÒN NỢ = Σ(entitlement − redeemed)
+  total_redeemed         : Int,   // ĐÃ PHÁT RA tích luỹ, CHỈ TĂNG (TRƯỜNG MỚI, Ở CUỐI)
 }
 ```
 
 **Plutus Data encoding:**
 ```
 Constr(0, [
-  Bytes(committee_hash),     -- field 0: hash nhận dạng committee
+  Bytes(committee_hash),           -- field 0
+  Integer(outstanding_entitlement),-- field 1
+  Integer(total_redeemed),         -- field 2: TRƯỜNG MỚI
 ])
 ```
+
+**Hai sổ, hai nghĩa ngược nhau — đừng gộp:** `outstanding_entitlement` là **còn nợ** (tăng khi
+cấp, GIẢM khi rút); `total_redeemed` là **đã phát ra** (chỉ tăng, không bao giờ giảm).
+`total_redeemed` là mẫu số của cắt ngọn, nên một hiện thực nhầm nó thành "đang lưu hành trừ đi
+thứ gì đó" sẽ làm trần rút **co lại theo thời gian** thay vì nở ra.
+
+> `total_redeemed` **không tốn thêm carrier**: mọi `Redeem` đã bắt buộc co-spend UTxO kho rồi,
+> nên đọc và ghi nó là miễn phí về mặt cấu trúc giao dịch.
 
 ---
 
@@ -255,7 +324,7 @@ quyết định mệnh đề nào từ chối trước:
 | **C-BCN-1** | `committee_approved(committee, threshold, sigs)` (≥ threshold NGƯỜI trong committee ký) | `beacon.ak` ▸ `committee_approved` |
 | **C-BCN-2** | `out_datum.epoch > datum.epoch` (epoch đơn điệu tăng) **và** `out_datum.kind == datum.kind` | `beacon.ak` ▸ khối C-BCN-2 |
 | **C-BCN-3** | `out_datum.epoch == get_epoch_strict(tx, ms_per_epoch)` — nhãn PHẢI là cửa sổ tx chạy trong đó | `beacon.ak` ▸ khối C-BCN-3 |
-| **C-BCN-4** | `drop_value_min ≤ out_datum.drop_value ≤ drop_value_max` | `beacon.ak` ▸ khối C-BCN-4 |
+| **C-BCN-4** | `drop_value_min ≤ out_datum.drop_value ≤ drop_value_max` | `beacon.ak` ▸ khối C-BCN-4 — **v2; v3 thay bằng C-BCN-5b trên `rate_root`** |
 | **C-BCN-5** | `abs_diff(D_out, D_in) × q ≤ D_in × max_drop_delta_q` (±10% một lượt) | `beacon.ak` ▸ khối C-BCN-5 |
 | **C-BCN-NFT1** | `nft_in == 1` (NFT có trong input) | `beacon.ak` ▸ khối authenticity NFT |
 | **C-BCN-NFT2** | `nft_out == 1` (NFT bảo toàn sang output, không bị rút) | `beacon.ak` ▸ khối authenticity NFT |
@@ -303,21 +372,53 @@ mọi ca khác vẫn xanh.
 
 #### Redeemer `Redeem`
 
-| ID | Phát biểu | Code |
-|---|---|---|
-| **C-RDM-6** | `datum.owner ∈ tx.extra_signatories` (owner ký — permissionless với owner) | `claim_account.ak:73` |
-| **C-RDM-1** | `drop_value = find_drop_value(tx.reference_inputs, beacon_nft_policy)` — D đọc từ reference input mang NFT `#"44524f50"` | `claim_account.ak:76-77` |
-| **C-RDM-1a** | `drop_value > 0` | `claim_account.ak:78` |
-| **C-RDM-1b** | `datum.drops_per_epoch > 0` (chặn pause-redeem tính vested sai) | `claim_account.ak:79` |
-| **C-RDM-EPOCH** | `current_epoch = get_epoch(tx, ms_per_epoch)` từ validity_range lower_bound (Finite) | `claim_account.ak:81`, `util.ak:12-15` |
-| **C-RDM-ELAPSED** | `elapsed = max(0, current_epoch − datum.start_epoch)` | `claim_account.ak:83-88` |
-| **C-RDM-VESTED** | `raw = drop_value × drops_per_epoch × elapsed`; `vested = clamp(raw, 0, datum.entitlement)` | `claim_account.ak:89-91` |
-| **C-RDM-2** | `amount = vested − datum.redeemed > 0` | `claim_account.ak:93-95` |
-| **C-RDM-4** | `out_datum.redeemed == datum.redeemed + amount` | `claim_account.ak:100` |
-| **C-RDM-4a** | `out_datum.owner / entitlement / start_epoch / drops_per_epoch` bất biến | `claim_account.ak:98-101` |
-| **C-RDM-3** | `lamp_to_owner(tx.outputs, owner, lamp_policy, lamp_name) ≥ amount` | `claim_account.ak:107` |
+**Đổi hình dạng redeemer:** ở v3 `Redeem` **mang một tham số** — người dựng giao dịch XIN một số
+tiền, validator KẸP. v2 để validator tự tính rồi trả trọn phần chênh; v3 không làm thế được nữa
+vì cắt ngọn phải chặn được từng lượt.
 
-**Ghi chú `find_drop_value`** (hàm `find_drop_value` trong `claim_account.ak`): tìm reference input mang `quantity_of(value, beacon_nft_policy, #"44524f50") == 1`, giải datum `BeaconDatum`, kiểm `kind == DropParam`, trả `drop_value`. Từ chối nếu không tìm thấy hoặc datum sai.
+```
+Redeem { amount: Int }        -- constructor index 1, CHƯA CÓ TRONG MÃ
+                              -- bản đang chạy: `Redeem` không tham số (types.ak ▸ ClaimAccountRedeemer)
+```
+
+| ID | Phát biểu | Trạng thái |
+|---|---|---|
+| **C-RDM-6** | `datum.owner ∈ tx.extra_signatories` | có — `claim_account.ak:73` |
+| **C-RDM-BCN** | Đọc `BeaconDatum` từ reference input mang NFT `#"44524f50"`; ép `kind == DropParam` | có (đổi tên từ `find_drop_value`) |
+| **C-RDM-EPOCH** | `current_epoch = get_epoch(tx, ms_per_epoch)` từ `lower_bound` | có — `claim_account.ak:81` |
+| **C-RDM-A** | `A_now = bcn.index + bcn.rate_root × (current_epoch − bcn.epoch)` | **CHƯA CÓ TRONG MÃ** |
+| **C-RDM-SPAN** | `A_span = A_now − datum.index_at_start`; ép `A_span ≥ 0` | **CHƯA CÓ TRONG MÃ** |
+| **C-RDM-VEST** | `(datum.redeemed + amount)² ≤ dpe² × entitlement × A_span²` | **CHƯA CÓ TRONG MÃ** |
+| **C-RDM-CAP** | `datum.redeemed + amount ≤ datum.entitlement` | **CHƯA CÓ TRONG MÃ** |
+| **C-RDM-TRIM** | `amount ≤ max(constants.trim_floor, tre_in.total_redeemed × trim_num / trim_den)` | **CHƯA CÓ TRONG MÃ** |
+| **C-RDM-2** | `amount > 0` | có |
+| **C-RDM-4** | `out_datum.redeemed == datum.redeemed + amount` | có — `claim_account.ak:100` |
+| **C-RDM-4a** | `out_datum.owner`/`entitlement`/`start_epoch`/`drops_per_epoch`/**`index_at_start`** bất biến | một phần — `index_at_start` **CHƯA CÓ** |
+| **C-RDM-TOTAL** | `tre_out.total_redeemed == tre_in.total_redeemed + amount` | **CHƯA CÓ TRONG MÃ** |
+| **C-RDM-3** | `lamp_to_owner(...) ≥ amount` | có — `claim_account.ak:107` |
+
+**Hai điểm dễ hiện thực sai, nêu vì chúng không tự lộ ra:**
+
+1. **Không khai căn, và cũng không nhân chéo tuỳ tiện.** `C-RDM-VEST` là phép so sánh số nguyên
+   đúng như viết. Biên đo được là **105 bit** ở `dpe = 1` với pot 6 tỷ — Plutus dùng số nguyên độ
+   chính xác tuỳ ý nên không tràn, nhưng con số này là thứ để định cỡ ExUnits.
+   [`Math-Spec.md`](./Math-Spec.md) §6.
+2. **Vượt trần cắt ngọn phải CẮT, không được TỪ CHỐI.** Ngữ nghĩa là *"xin 3 triệu, nhận 1
+   triệu"*. Hiện thực thành `expect amount <= trần` rồi để giao dịch hỏng là đúng chữ nhưng sai
+   hành vi: người dùng không có cách nào biết nên xin bao nhiêu, và mỗi lần đoán sai mất phí.
+   Dạng đúng là kẹp giá trị xin xuống trần rồi tiếp tục.
+
+**`speed_policies = []` ⟹ không đòi reference input nào.** Ca kiểm phải đo **số reference input**,
+không đo kết quả rút — một hiện thực vẫn đi tìm thread khi danh sách rỗng sẽ qua được ca đo kết
+quả nhưng làm mọi giao dịch đắt hơn và phụ thuộc một UTxO không cần thiết.
+
+**Ghi chú hàm đọc beacon** (`claim_account.ak` ▸ `find_drop_value`, **đổi tên + đổi kiểu trả về ở v3**):
+tìm reference input mang `quantity_of(value, beacon_nft_policy, #"44524f50") == 1`, giải datum
+`BeaconDatum`, kiểm `kind == DropParam`. v2 trả `drop_value`; **v3 phải trả cả bộ**
+`(epoch, index, rate_root, trim_num, trim_den, speed_policies)` — `epoch` nay ĐI VÀO phép tính
+(`A_now = index + rate_root × (current_epoch − bcn.epoch)`), khác hẳn v2 nơi hàm **cố ý bỏ qua**
+`epoch`. Một hiện thực v3 quên trả `epoch` sẽ tính `A_now` bằng `index` trần và **đứng yên mãi**.
+Từ chối nếu không tìm thấy hoặc datum sai.
 
 Hàm này **cố ý bỏ qua** `BeaconDatum.epoch`: D có hiệu lực ngay khi được post, không có độ trễ một cửa sổ. Trước 2026-09-16 điều đó khiến trường `epoch` không nói về epoch nào cả — nó chỉ là bộ đếm lượt post, vì `beacon.ak` chỉ ép nó tăng. Nay `beacon.ak` C-BCN-3 ép nó BẰNG cửa sổ mà lượt post chạy trong đó, nên nhãn là một sự thật đo được (*"D này được đặt ở cửa sổ N"*) chứ không phải một cam kết về thời điểm áp dụng.
 
@@ -336,8 +437,28 @@ Sổ cái nhận tx khi `lower ≤ now ≤ upper`, nên `lower` đặt lùi bao 
 |---|---|---|
 | **C-ACC-2** | CREATE: `ca_out.start_epoch == get_epoch_strict(tx, ms_per_epoch)` | `treasury.ak`, nhánh `GrantEntitlement` ▸ CREATE |
 | **C-BCN-3** | `out_datum.epoch == get_epoch_strict(tx, ms_per_epoch)` | `beacon.ak` |
-| **C-BCN-4** | `drop_value_min ≤ out_datum.drop_value ≤ drop_value_max` | `beacon.ak` |
-| **C-BCN-5** | `abs_diff(D_out, D_in) × q ≤ D_in × max_drop_delta_q` (±10% một lượt) | `beacon.ak` |
+| **C-BCN-4** | `drop_value_min ≤ out_datum.drop_value ≤ drop_value_max` | `beacon.ak` — **v2, thay ở v3** |
+| **C-BCN-5** | `abs_diff(D_out, D_in) × q ≤ D_in × max_drop_delta_q` (±10% một lượt) | `beacon.ak:108-109` — **v2, LỖ ĐANG SỐNG** |
+
+#### Bất biến beacon v3 — thay C-BCN-4/5 ở trên
+
+| ID | Phát biểu | Trạng thái |
+|---|---|---|
+| **C-BCN-6** | `index_out == index_in + rate_root_in × (epoch_out − epoch_in)` | **CHƯA CÓ TRONG MÃ** |
+| **C-BCN-5'** | `rate_root_out ≥ rate_root_in` — **MỘT CHIỀU**, thay `abs_diff` đối xứng | **CHƯA CÓ TRONG MÃ** |
+| **C-BCN-5a** | `rate_root_out ≤ rate_root_in × (1 + max_delta)` — trần tốc độ NỚI, giữ | **CHƯA CÓ TRONG MÃ** |
+| **C-BCN-5b** | `rate_root_min ≤ rate_root_out ≤ rate_root_max` — biên cứng, giữ | **CHƯA CÓ TRONG MÃ** |
+
+> 🔴 **`C-BCN-5` hiện tại là lỗ đang sống, không phải nợ kỹ thuật.** `math.abs_diff` là hàm **đối
+> xứng**, nên trần ±10% cho phép **hạ** `drop_value` 10% mỗi lượt post. Với công thức v2
+> (`vested = D × dpe × elapsed`), một lượt `−10%` đưa `vested` xuống dưới `redeemed` của mọi tài
+> khoản đã chạy từ 9 cửa sổ trở lên ⟹ `expect amount > 0` khoá vĩnh viễn. Không bất biến nào vỡ
+> và không bài kiểm nào đỏ. Chú thích tại `beacon.ak:102-104` khẳng định điều **ngược lại**
+> (*"không gặp vách"*) — đó là chú thích sai, không phải mã sai theo một nghĩa khác.
+>
+> `C-BCN-6` + `C-BCN-5'` của v3 diệt lỗ này **ở hình dạng**: quá khứ đã được định giá và ghi vào
+> `index` bằng `rate_root` CŨ, nên một giá trị mới không với ngược lại được.
+> [`Math-Spec.md`](./Math-Spec.md) §2 HQ 1.2 và §4.
 
 #### Bất biến thêm 2026-09-17 — cấp thêm = REBASE tài khoản
 
@@ -441,7 +562,7 @@ TX( )         = giao dịch
 TX-DEPLOY-NFT:
   inputs:  [genesis_utxo]          (bất kỳ UTxO của deployer)
   mint:    beacon_nft_policy:"DROP" qty=1
-  outputs: [beacon_addr ← ADA + NFT "DROP" + BeaconDatum{epoch=0, kind=DropParam, drop_value=D₀}]
+  outputs: [beacon_addr ← ADA + NFT "DROP" + BeaconDatum{epoch=0, kind=DropParam, index=0, rate_root=77460, trim=1/1000, speed_policies=[]}]
   signers: [deployer]
 
   Bất biến: W-BNT-1 (consume genesis_utxo), W-BNT-2/3 (mint đúng 1 qty 1)
@@ -468,8 +589,8 @@ TX-DEPLOY-CLAIM-ACCOUNT (optional prefund — có thể bỏ qua, tạo lazily):
 
 ```
 TX-UPDATE-BEACON:
-  inputs:  [beacon_in: V2 ← ADA + NFT + BeaconDatum{epoch=N, kind=DropParam, drop_value=D_old}]
-  outputs: [beacon_out: V2 ← ADA + NFT + BeaconDatum{epoch=N+1, kind=DropParam, drop_value=D_new}]
+  inputs:  [beacon_in: V2 ← ADA + NFT + BeaconDatum{epoch=N, kind=DropParam, index=A_N, rate_root=w_old, …}]
+  outputs: [beacon_out: V2 ← ADA + NFT + BeaconDatum{epoch=N+1, kind=DropParam, index=A_N + w_old·(N+1−N), rate_root=w_new ≥ w_old, …}]
   signers: [committee_key_1, committee_key_2]  (≥ threshold)
 
   Bất biến V2: C-MINT-0, C-BCN-DS1/DS2, C-BCN-1/2/3/4/5
@@ -495,7 +616,7 @@ TX-CLAIM:
 TX-REDEEM:
   inputs:  [account_in: V3 ← ADA + ClaimAccountDatum{owner, E, redeemed_old, t0, r}]
            [treasury_in: V4 ← ADA + LAMP_pool + TreasuryDatum{committee_hash}]
-  ref:     {beacon: V2 ← ADA + NFT "DROP" + BeaconDatum{epoch=K, kind=DropParam, drop_value=D}}
+  ref:     {beacon: V2 ← ADA + NFT "DROP" + BeaconDatum{epoch=K, kind=DropParam, index, rate_root, trim_*, speed_policies}}
   outputs: [account_out: V3 ← ADA + ClaimAccountDatum{owner, E, redeemed_old+amount, t0, r}]
            [treasury_out: V4 ← ADA + (LAMP_pool - amount) + TreasuryDatum{committee_hash}]
            [owner_wallet ← ADA + amount LAMP]
@@ -522,7 +643,7 @@ TX-REDEEM:
                     ┌─────────────────────────────────┐
   {beacon: V2}      │  TX-REDEEM                      │
   (reference only)  │                                 │
-  NFT + D ──────────┤→ V3.find_drop_value()            │
+  NFT + beacon ─────┤→ V3 đọc index + rate_root        │
                     │                                 │
   [account: V3] ────┤→ check vested, amount           │
   redeemer: Redeem  │   update redeemed               ├──→ [account_out: V3]
@@ -572,7 +693,8 @@ Bước 3: Tạo Beacon UTxO ban đầu
   Giao dịch pay-to-address (KHÔNG spend validator — genesis beacon):
     Output tại: beacon validator address (BEACON_SCRIPT_HASH, stake=None)
     Value: min-ADA + 1 NFT "DROP" (BEACON_NFT_POLICY)
-    Datum (inline): BeaconDatum { epoch: 0, kind: DropParam, drop_value: D₀ }
+    Datum (inline): BeaconDatum { epoch: 0, kind: DropParam, index: 0, rate_root: 77460,
+                                  trim_num: 1, trim_den: 1000, speed_policies: [] }
   Ghi: BEACON_UTXO (TxHash#0) — reference input cho mọi Redeem
 
 Bước 4: Tạo Treasury UTxO ban đầu
@@ -626,17 +748,30 @@ GENESIS_UTXO_REF
 
 ## 6. Bảng bất biến tổng hợp (tham chiếu chéo FEAT ↔ TECH)
 
-| FEAT ID | TECH ID | Phát biểu | Validator | Code |
+| FEAT ID | TECH ID | MATH ID | Phát biểu | Trạng thái |
 |---|---|---|---|---|
-| F-VEST-1 | C-RDM-VESTED | `vested = clamp(D·r·elapsed, 0, E)` | V3 | `claim_account.ak:89-91` |
-| F-VEST-2 | — | vested đơn điệu (toán, không kiểm on-chain) | — | MATH §2 |
-| F-VEST-3 | C-RDM-VESTED | `clamp(…, 0, E)` đảm bảo `vested ≤ E` | V3 | `math.ak:13-18` |
-| F-RDM-1 | C-RDM-2 | `amount > 0` | V3 | `claim_account.ak:95` |
-| F-RDM-2 | C-RDM-4/4a | out datum cập nhật đúng | V3 | `claim_account.ak:98-101` |
-| F-RDM-3 | C-TRE-1 + C-RDM-3 | treasury nhả đúng, owner nhận đúng | V3 + V4 | `claim_account.ak:107`, `treasury.ak:61` |
-| F-RDM-4 | C-RDM-6 | owner ký | V3 | `claim_account.ak:73` |
-| F-RDM-5 | C-RDM-DS1/DS2, C-TRE-DS1/DS2 | đúng 1 account + 1 treasury per tx | V3 + V4 | `claim_account.ak:43-44`, `treasury.ak:36-37` |
-| F-SUM-1 | C-RDM-4 + C-TRE-REL1 | tổng nhận = vested cuối ≤ E (toán + datum chain) | V3 + V4 | MATH §4 |
+| F-VEST-1 | C-RDM-VEST + C-RDM-CAP | M-SQUARE | kẹp bình phương ⟺ `vested = min(E, √E·A_span)` | CHƯA CÓ |
+| F-VEST-2 | — | M-MONO | `vested` đơn điệu, KHÔNG cần giả thiết tham số cố định | toán |
+| F-VEST-3 | C-RDM-CAP | M-CAP | `redeemed + amount ≤ E` | CHƯA CÓ |
+| F-VEST-4 | C-RDM-A | M-INDEX-LIVE | committee im lặng ⟹ `A` vẫn chạy (dạng đóng) | CHƯA CÓ |
+| F-VEST-5 | C-BCN-6 | M-INDEX-PAST | lượt post mới không đổi `A` ở quá khứ | CHƯA CÓ |
+| F-RDM-1 | C-RDM-2 | — | `amount > 0` | có |
+| F-RDM-2 | C-RDM-4/4a | — | out datum đúng, **`index_at_start` bất biến** | một phần |
+| F-RDM-3 | C-TRE-1 + C-RDM-3 | — | kho nhả đúng, owner nhận đúng | có |
+| F-RDM-4 | C-RDM-6 | — | owner ký | có |
+| F-RDM-5 | C-RDM-DS1/DS2 | — | đúng 1 account + 1 kho mỗi tx | có |
+| F-TRIM-1 | C-RDM-TRIM | — | trần một lượt; vượt thì **cắt**, không từ chối | CHƯA CÓ |
+| F-TRIM-2 | C-RDM-TOTAL | M-TRIM-FINITE | phần bị cắt không mất; xong sau ≤ `⌈E/F⌉` lượt | CHƯA CÓ |
+| F-TRIM-3 | C-RDM-TRIM-FLOOR | M-TRIM-FLOOR | `C = 0` vẫn rút được | CHƯA CÓ |
+| F-SUM-1 | C-RDM-4 | M-SUM | tổng nhận `≤ min(E, vested(t_cuối))` | có |
+| F-SUM-2 | — | M-SUM | ⚠ tổng nhận **phụ thuộc lộ trình** ở v3 | toán |
+| F-LARGE-1 | — | M-ROOT-CEIL | hết sau đúng `⌈√E / w⌉` cửa sổ | CHƯA CÓ |
+| F-LARGE-2 | §4d | M-SPLIT | tách `n` phần chỉ nhanh gấp `√n` | CHƯA CÓ |
+| F-DPE-1 | C-ACC-DPE | — | `drops_per_epoch == 1` mọi tài khoản | CHƯA CÓ |
+
+**Cột "Trạng thái" đo 2026-09-22 bằng `grep` trên `Distribution/onchain/`** — "CHƯA CÓ" nghĩa là
+không tệp mã nào chứa mệnh đề đó, không phải là nó khó. Bảng này là danh sách việc của lượt đúc
+v3, không phải bản kê thứ đã chạy.
 
 ---
 
@@ -668,7 +803,7 @@ vì từ `now`, nên 60 giây đầu mỗi cửa sổ trả về một khoảng 
 
 ### 7.2 Beacon reference input không bị spend
 
-Beacon UTxO là **reference input** trong TX-REDEEM, không bị spend. Validator V3 chỉ đọc `drop_value` từ datum. Beacon UTxO có thể được cập nhật song song bởi committee mà không block redeem. Tuy nhiên nếu beacon bị update trong cùng tx với redeem → update là spend, redeem là reference input → xung đột (eUTXO: 1 UTxO không thể vừa spend vừa reference trong cùng tx). Offchain phải chọn beacon UTxO chưa bị spend.
+Beacon UTxO là **reference input** trong TX-REDEEM, không bị spend. Validator V3 chỉ đọc `index` + `rate_root` + `trim_*` từ datum. Beacon UTxO có thể được cập nhật song song bởi committee mà không block redeem. Tuy nhiên nếu beacon bị update trong cùng tx với redeem → update là spend, redeem là reference input → xung đột (eUTXO: 1 UTxO không thể vừa spend vừa reference trong cùng tx). Offchain phải chọn beacon UTxO chưa bị spend.
 
 ### 7.3 LAMP token canonical name
 
@@ -680,11 +815,30 @@ Beacon UTxO là **reference input** trong TX-REDEEM, không bị spend. Validato
 
 Tất cả 4 validator chỉ implement `spend` (và `mint` cho V1). `else(_) { fail }` ở tất cả chặn `withdraw`, `publish`, `vote`, `propose` — không ai có thể dùng stake credential của script để rút ADA reward.
 
-### 7.5 `ClaimAccountDatum.drops_per_epoch` MVP = 1
+### 7.5 `ClaimAccountDatum.drops_per_epoch` — GHIM `== 1` ở v3
 
-Hiện tại không có redeemer nào thay đổi `drops_per_epoch`. Hook DAO (FEAT §5) dự kiến thêm redeemer mới trong v.sau, có thể là:
-- `UpdateDropsPerEpoch { new_r: Int }` với guard committee + governance VP
-Chừa chỗ: field đã có trong datum, offchain có thể đọc; onchain không ép `r == 1` — kiểm `r > 0` khi Redeem.
+v2 để trường này tự do trong `[1, drops_per_epoch_max = 100]`, committee đặt lúc mở tài khoản.
+v3 ép `== 1` ở nhánh CREATE của `treasury.ak` (`C-ACC-DPE`). Mã hiện tại **chỉ kiểm `r > 0`** —
+đó là chỗ phải đổi.
+
+```
+C-ACC-DPE:  ca_out.drops_per_epoch == 1      (treasury.ak ▸ GrantEntitlement ▸ CREATE)
+```
+
+**Vì sao ghim thay vì để DAO chỉnh:** trường này nhân thẳng vào tốc độ và nằm **ngoài** tổng tích
+luỹ, nên hạ nó viết lại toàn bộ lịch sử — `= 0` khoá tài khoản vĩnh viễn, đúng lớp lỗi mà cả v3
+được dựng ra để diệt. Ngược lại `rate_root` nằm **trong** tổng nên hạ nó chỉ chạm cửa sổ tương
+lai. Cùng một phép nhân, hai vị trí, hai hệ quả trái ngược:
+[`Math-Spec.md`](./Math-Spec.md) §4.
+
+Thêm một lý do không thuộc về an toàn mà thuộc về công bằng: `dpe = 100` cho committee cạnh giá
+trị vận hành `21` của cộng đồng là tỉ lệ **4,76×**, và tỉ lệ ấy **không đổi dù siết `trim_num`
+bao nhiêu**, vì nó nằm ở kênh tốc độ chứ không ở kênh cắt ngọn.
+
+**Trường vẫn GIỮ trong datum**, không xoá: một cửa sau bị khoá bằng một mệnh đề ép thì đọc được
+và kiểm được, một cửa sau bị xoá thì lần sau có người mở lại mà không biết vì sao nó từng bị
+đóng. Mở lại ở v4 đòi một **cơ sở đo được trên chuỗi** để phân biệt tài khoản — hôm nay không có
+cơ sở nào như thế.
 
 ---
 

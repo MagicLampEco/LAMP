@@ -199,16 +199,24 @@ Nếu `r` được để tự do tới 100 thì vế phải lên **119 bit**. Pl
 ```
 
 **Vì sao KHÔNG được định nghĩa ngược lại** (chọn `W` trước rồi lấy `w = ⌊√W⌋`): phép cắt làm `w`
-nhỏ hơn `√W` một chút, và sai số ấy **cộng dồn mỗi cửa sổ**, nên vế phải của (5) đứng mãi dưới
-`E²`. Tài khoản tiệm cận `E` mà **không bao giờ chạm**; `expect amount > 0` khiến phần đuôi không
-rút nổi — một khoản khoá vốn vĩnh viễn, có hệ thống, và **không bài kiểm ngắn nào thấy**.
+nhỏ hơn `√W`, nên `n*` theo (7) **trượt lên một cửa sổ** và mốc hiệu chỉnh không còn đúng.
+
+> ⚠ **Đừng đọc chỗ này thành "tài khoản không bao giờ xong".** Nó KHÔNG đúng, và đây là chỗ dễ
+> kết luận sai nhất của cả mục: `A_span = w·n` tăng **tuyến tính không chặn**, nên vế phải của (5)
+> cũng tăng không chặn và **cuối cùng luôn vượt `E²`**. Không có tiệm cận, không có đuôi bụi vĩnh
+> viễn. Một phép đo tại **một** giá trị `n` trả về "chưa chạm" chỉ nói về `n` đó — biến nó thành
+> "không bao giờ" là thay một phép đếm bằng một lượng từ toàn xưng.
 
 Đo tại mốc hiệu chỉnh thứ nhất, `E = 6×10⁹ LAMP`, mục tiêu `n* = 1000`:
 
-| `w` | `x²_max / E²` sau 1000 cửa sổ | chạm `E`? |
-|---|---|---|
-| `⌊√(6000·10⁶)⌋ = 77.459` | 0,9999828 | **KHÔNG BAO GIỜ** |
-| `⌈√(6000·10⁶)⌉ = 77.460` | 1,0000086 | **có, đúng cửa sổ 1000** |
+| `w` | tỉ số `r²·E·S² / E²` tại `n=1000` | tại `n=1001` | `n*` thật |
+|---|---|---|---|
+| `⌊√(6000·10⁶)⌋ = 77.459` | 0,9999828 — **chưa chạm** | 1,0019837 — chạm | **1001** ✗ trượt mốc |
+| `⌈√(6000·10⁶)⌉ = 77.460` | 1,0000086 — **chạm** | 1,0020096 | **1000** ✓ đúng mốc |
+
+Giá của việc chọn sai chiều vì thế là **một cửa sổ** (5 ngày trên Mainnet) cho pot 6 tỷ, và **0**
+cho ETD-max (`⌈19,916⌉ = 20` ở cả hai giá trị `w`). Nhỏ — nhưng chiều đúng không tốn gì, và nó là
+chiều duy nhất khiến hai mốc hiệu chỉnh rơi đúng chỗ chúng được đặt ra để rơi.
 
 **Chọn `w = 77.460`**, suy ra `W = w² = 6.000.051.600 oildrop = 6.000,0516 LAMP`.
 
@@ -327,17 +335,20 @@ nếu không họ sẽ đọc mỗi lần cắt ngọn như một lần tịch t
 | **M-TRIM-FINITE** | cắt ngọn ⇒ xong sau ≤ `⌈E/F⌉` lượt | §5 | MỚI |
 | **M-TRIM-FLOOR** | `F = 0` ⇒ `C = 0` là điểm hấp thụ | §5 HQ 4.1 | MỚI |
 | **M-SQUARE** | `(5) ⟺ (4)` trên `ℤ₊` | §6 | MỚI |
-| **M-ROOT-CEIL** | `w = ⌊√W⌋` ⇒ không bao giờ chạm `E`; `⌈·⌉` thì chạm | §7 | MỚI — **ca kiểm bắt buộc** |
+| **M-ROOT-CEIL** | `n* = ⌈√E/w⌉`; `w = ⌊√W⌋` ⇒ `n*` trượt lên 1 cửa sổ, `⌈·⌉` ⇒ đúng mốc | §7 | MỚI — **ca kiểm bắt buộc** |
 | **M-SPLIT** | `S(n) = n^{1−p}`; `p = ½ ⇒ √n` | §8 | MỚI |
 | **M-GATE** | (9) thoả ⇒ `g` không đổi lịch của nhóm `consumed = 0` | §9 | MỚI |
 | **M-SUM** | `Σ aᵢ = redeemed_cuối ≤ min(E, vested(τ_m))` | §10 | v2 có độc lập lộ trình; v3 **KHÔNG** |
 | **M-INV** | `0 ≤ redeemed ≤ vested(t) ≤ E` mọi state | §3 + §10 | giữ |
 
-**M-ROOT-CEIL là ca dễ bỏ sót nhất trong bảng** và đắt nhất nếu bỏ: hai giá trị `w` cách nhau
-**đúng một đơn vị** cho hai hệ quả là *"tài khoản xong sau 1000 cửa sổ"* và *"tài khoản không bao
-giờ xong"*. Bài kiểm phải chạy tới `n = n*` thật, không được dừng ở vài cửa sổ đầu — ở vài cửa sổ
-đầu hai giá trị `w` cho kết quả **giống hệt nhau**, nên một bài ngắn xanh ở cả hai cực và do đó
-không kiểm gì.
+**M-ROOT-CEIL là ca dễ bỏ sót nhất trong bảng**, vì hai giá trị `w` cách nhau **đúng một đơn vị**
+và chúng chỉ khác nhau **ở đúng một cửa sổ**: `n = 1000`. Bài kiểm phải chạy **tới đúng mốc đó**,
+không được dừng sớm và không được ngoại suy — ở `n` nhỏ hai cực cho kết quả giống hệt nhau (chênh
+dưới `1,3×10⁻⁵` ở `n = 1`), nên một bài ngắn **xanh ở cả hai cực** và do đó không kiểm gì.
+
+Phép đột biến cho ca này phải **giữ nguyên tên hằng và chỉ đổi GIÁ TRỊ** `77460 → 77459`, rồi đọc
+**số cửa sổ để chạm `E`** — không đọc "bài có đỏ không". Đột biến xoá tên hằng làm hỏng chính
+phép đo: bài sẽ đỏ vì một định danh biến mất, không vì hành vi đổi.
 
 Bảo toàn value treasury (`tre_out = tre_in − Σ aᵢ`, không burn) và sổ `total_redeemed` tăng đúng
 `amount` là bất biến on-chain riêng — chứng minh ở CONTRACT §4/§7, không thuộc phạm vi math thuần.
