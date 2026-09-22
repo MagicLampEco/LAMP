@@ -7,7 +7,7 @@
 //   A-ACC-3  NFT phải nằm ở output là Script, mang ClaimAccountDatum
 //   A-ACC-4  nft_name == blake2b_256(cad.owner)
 //   A-ACC-5  cad.redeemed == 0 (chỉ account mới)
-//   A-ACC-6  đúng 1 input mang TRSY NFT (ép treasury.GrantEntitlement cùng chạy)
+//   A-ACC-6  đúng 1 input mang TREASURY NFT (ép treasury.GrantEntitlement cùng chạy)
 //
 // Và `claim_account` (C-ACC-0) đòi NFT ĐÚNG TÊN ĐÓ có mặt ở cả input lẫn output mỗi lần
 // spend. Tên sai một bit ⇒ account đúc ra KHÔNG BAO GIỜ spend được: LAMP là hệ KHÔNG BURN,

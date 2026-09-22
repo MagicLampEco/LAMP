@@ -18,12 +18,13 @@ import type { BeaconDatum, BeaconKind } from "./types.js";
 import { beaconDatumToCbor, beaconDatumFromCbor, beaconRedeemerToCbor } from "./datum.js";
 import { assertCommitteeSigners } from "./committee.js";
 import {
+  DROP_ASSET_NAME,
   RATE_ROOT_MIN, RATE_ROOT_MAX, MAX_RATE_ROOT_DELTA_Q, Q, epochWindow,
 } from "./constants.js";
 
-/** Asset-name hex NFT từng kind — PHẢI khớp onchain util.beacon_name. */
+/** Asset-name hex NFT từng kind — PHẢI khớp onchain util.beacon_name. Giá trị ở `constants.ts`. */
 export const DEFAULT_BEACON_ASSET_NAMES: Record<BeaconKind, string> = {
-  DropParam: "44524f50", // "DROP"
+  DropParam: DROP_ASSET_NAME,
 };
 
 export interface PostBeaconParams {

@@ -36,7 +36,7 @@ const OTHER_HASH = "88".repeat(28);
 const GATE_SCRIPT = { type: "PlutusV3" as const, script: "4e4d01000033222220051200120011" };
 const GATE_HASH = validatorToScriptHash(GATE_SCRIPT);
 const AUTH_POLICY = "a1".repeat(28);
-const AUTH_NAME = "5450554c4c";               // "TPULL"
+const AUTH_NAME = "545245415355525950554c4c"; // "TREASURYPULL"
 const FLOOR = 1_000n;
 
 const lampUnit = toUnit(LAMP_POLICY, TOKEN_NAME);

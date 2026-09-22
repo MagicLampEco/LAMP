@@ -166,24 +166,24 @@ function bcnParam(d: BeaconDatum = bcnDatum()) {
 // committee 3 keys, threshold 2
 const COMMITTEE = ["11".repeat(28), "22".repeat(28), "33".repeat(28)];
 
-// Treasury authenticity NFT (TRSY) — treasury co-spend là BẮT BUỘC với mọi Claim
-// (on-chain `find_treasury_in` đòi đúng 1 input mang TRSY), nên mọi ca buildClaimTx
+// Treasury authenticity NFT (TREASURY) — treasury co-spend là BẮT BUỘC với mọi Claim
+// (on-chain `find_treasury_in` đòi đúng 1 input mang TREASURY), nên mọi ca buildClaimTx
 // dưới đây đều phải cấp `treasury`.
-const TRSY_POLICY = "ab".repeat(28);
-const TRSY_UNIT   = toUnit(TRSY_POLICY, TREASURY_NFT_ASSET_NAME);
+const TREASURY_POLICY = "ab".repeat(28);
+const TREASURY_UNIT   = toUnit(TREASURY_POLICY, TREASURY_NFT_ASSET_NAME);
 
 // `total_redeemed` mặc định KHÁC 0: nó là trường mới v3 và là mẫu số của phép cắt ngọn ở
 // MỌI tài khoản khác, nên một đường Grant vô tình đặt lại nó về 0 sẽ siết trần rút của cả
 // hệ xuống sàn. Để mặc định 0 thì "giữ nguyên" và "xoá trắng" cho cùng một con số.
-const TRSY_TOTAL_REDEEMED = lampOildrop(2_000_000n);
+const TREASURY_TOTAL_REDEEMED = lampOildrop(2_000_000n);
 
 function trsyUtxo(
-  outstanding: bigint, lamp = lampOildrop(100_000n), totalRedeemed = TRSY_TOTAL_REDEEMED,
+  outstanding: bigint, lamp = lampOildrop(100_000n), totalRedeemed = TREASURY_TOTAL_REDEEMED,
 ): UTxO {
   return {
     txHash: "33".repeat(32), outputIndex: 0,
     address: credentialToAddress(NETWORK, scriptHashToCredential(validatorToScriptHash(FAKE_TREASURY))),
-    assets: { lovelace: 5_000_000n, [TRSY_UNIT]: 1n, [LAMP_UNIT]: lamp },
+    assets: { lovelace: 5_000_000n, [TREASURY_UNIT]: 1n, [LAMP_UNIT]: lamp },
     datum: treasuryDatumToCbor({
       committee_hash: "ee".repeat(28),
       outstanding_entitlement: outstanding,
@@ -193,11 +193,11 @@ function trsyUtxo(
 }
 
 function trsyParam(
-  outstanding: bigint, lamp = lampOildrop(100_000n), totalRedeemed = TRSY_TOTAL_REDEEMED,
+  outstanding: bigint, lamp = lampOildrop(100_000n), totalRedeemed = TREASURY_TOTAL_REDEEMED,
 ) {
   return {
     utxo: trsyUtxo(outstanding, lamp, totalRedeemed),
-    script: FAKE_TREASURY, nftPolicy: TRSY_POLICY,
+    script: FAKE_TREASURY, nftPolicy: TREASURY_POLICY,
   };
 }
 
@@ -279,8 +279,8 @@ describe("buildClaimTx — CREATE path", () => {
     });
     expect(res.mode).toBe("create");
     // CREATE: không spend ClaimAccount nào; treasury co-spend là input DUY NHẤT.
-    expect(rec.collectFrom.filter(c => c.utxos[0]?.assets[TRSY_UNIT] !== 1n)).toHaveLength(0);
-    expect(rec.payData.filter(x => x.assets[TRSY_UNIT] !== 1n)).toHaveLength(1);
+    expect(rec.collectFrom.filter(c => c.utxos[0]?.assets[TREASURY_UNIT] !== 1n)).toHaveLength(0);
+    expect(rec.payData.filter(x => x.assets[TREASURY_UNIT] !== 1n)).toHaveLength(1);
     expect(rec.payData[0]!.address).toBe(scriptAddr(FAKE_CLAIM));
     expect(rec.signers.length).toBeGreaterThanOrEqual(2);
     // v3: beacon là INPUT THAM CHIẾU bắt buộc — chỉ ĐỌC, không tiêu. Thiếu nó thì validator
@@ -518,7 +518,7 @@ describe("buildClaimTx — UPDATE path", () => {
       beacon: bcnParam(),
     });
     expect(res.mode).toBe("update");
-    expect(rec.collectFrom.filter(c => c.utxos[0]?.assets[TRSY_UNIT] !== 1n)).toHaveLength(1);
+    expect(rec.collectFrom.filter(c => c.utxos[0]?.assets[TREASURY_UNIT] !== 1n)).toHaveLength(1);
     expect(rec.attach).toContain(FAKE_CLAIM);
     expect(res.newDatum).toEqual({
       owner: OWNER, entitlement: lampOildrop(120n),   // 100 − 40 + 60
@@ -684,8 +684,8 @@ describe("buildPostBeaconTx — DropParam (chỉ số cộng dồn)", () => {
       newBeacon: want,
       committeeKeyHashes: COMMITTEE,
     });
-    expect(rec.collectFrom.filter(c => c.utxos[0]?.assets[TRSY_UNIT] !== 1n)).toHaveLength(1);
-    expect(rec.payData.filter(x => x.assets[TRSY_UNIT] !== 1n)).toHaveLength(1);
+    expect(rec.collectFrom.filter(c => c.utxos[0]?.assets[TREASURY_UNIT] !== 1n)).toHaveLength(1);
+    expect(rec.payData.filter(x => x.assets[TREASURY_UNIT] !== 1n)).toHaveLength(1);
     expect(rec.payData[0]!.assets).toEqual({ lovelace: 2_000_000n, [NFT_UNIT]: 1n });
     // So TRỌN datum qua CBOR: v3 có 7 trường, và `trim_num`/`trim_den`/`speed_policies`
     // không có phép kiểm nào ở builder — mất một trong ba lúc mã hoá thì chỉ dòng này bắt.
@@ -1122,7 +1122,7 @@ describe("buildRedeemTx — vested = min(E, isqrt(dpe²·E·A_span²))", () => {
       }),
     };
   }
-  // Fixture PHẢI mang TRSY: claim_account.ak:138-148 (C-SOLV-3/4/5) đòi đúng 1 input mang TRSY ở
+  // Fixture PHẢI mang TREASURY: claim_account.ak:138-148 (C-SOLV-3/4/5) đòi đúng 1 input mang TREASURY ở
   // MỌI lần redeem. Bản cũ không mang NFT nào ⇒ 8 ca redeem chạy trên hình dạng chuỗi TỪ CHỐI, và
   // chính vì thế đường redeem chưa từng bị ép kiểm — bài test xanh đang GIỮ lỗ, không phải gác nó.
   function treasuryUtxo(
@@ -1132,7 +1132,7 @@ describe("buildRedeemTx — vested = min(E, isqrt(dpe²·E·A_span²))", () => {
     return {
       txHash: "22".repeat(32), outputIndex: 0,
       address: scriptAddr(FAKE_TREASURY),
-      assets: { lovelace: 5_000_000n, [TRSY_UNIT]: 1n, [LAMP_UNIT]: lamp, ...extra },
+      assets: { lovelace: 5_000_000n, [TREASURY_UNIT]: 1n, [LAMP_UNIT]: lamp, ...extra },
       datum: treasuryDatumToCbor({
         committee_hash: "ee".repeat(28),
         outstanding_entitlement: cum,
@@ -1151,7 +1151,7 @@ describe("buildRedeemTx — vested = min(E, isqrt(dpe²·E·A_span²))", () => {
 
   const base = {
     network: NETWORK, claimScript: FAKE_CLAIM, treasuryScript: FAKE_TREASURY,
-    lampPolicyId: LAMP_POLICY, treasuryNftPolicy: TRSY_POLICY,
+    lampPolicyId: LAMP_POLICY, treasuryNftPolicy: TREASURY_POLICY,
   };
 
   it("releases vested−redeemed, preserves treasury dust + committee_hash, sets redeemed+=amount", async () => {
@@ -1405,7 +1405,7 @@ describe("buildRedeemTx — vested = min(E, isqrt(dpe²·E·A_span²))", () => {
     expect(res.trimmed).toBe(3n * PER_WINDOW - TRIM_FLOOR);
     expect(res.newClaimDatum.redeemed).toBe(TRIM_FLOOR);
     // Và `total_redeemed` ra khỏi 0 — vòng sau trần đã rộng hơn.
-    const treOut = rec.payData.find(p => p.assets[TRSY_UNIT] === 1n)!;
+    const treOut = rec.payData.find(p => p.assets[TREASURY_UNIT] === 1n)!;
     expect(decodeTreasuryDatum(Data.from(treOut.datum)).total_redeemed).toBe(TRIM_FLOOR);
   });
 
@@ -1428,13 +1428,13 @@ describe("buildRedeemTx — vested = min(E, isqrt(dpe²·E·A_span²))", () => {
 
   // REDEEM-013 — đối xứng với CLAIM-021 ở đường claim. Địa chỉ kho KHÔNG phải một UTxO: A-DEST hạ
   // cánh không datum và `Refill` (treasury.ak:177) tồn tại chính vì kho sẽ có nhiều UTxO. Chọn theo
-  // SỐ DƯ LAMP thì có ngày vớ trúng cái không mang TRSY ⇒ validator từ chối ⇒ mất collateral.
-  it("REDEEM-013: từ chối treasury UTxO KHÔNG mang NFT TRSY (dù thừa LAMP)", async () => {
+  // SỐ DƯ LAMP thì có ngày vớ trúng cái không mang TREASURY ⇒ validator từ chối ⇒ mất collateral.
+  it("REDEEM-013: từ chối treasury UTxO KHÔNG mang NFT TREASURY (dù thừa LAMP)", async () => {
     const { lucid } = mockLucid(OWNER_ADDR);
     const noTrsy: UTxO = {
       txHash: "22".repeat(32), outputIndex: 1,
       address: scriptAddr(FAKE_TREASURY),
-      assets: { lovelace: 5_000_000n, [LAMP_UNIT]: lampOildrop(999_999n) }, // thừa LAMP, thiếu TRSY
+      assets: { lovelace: 5_000_000n, [LAMP_UNIT]: lampOildrop(999_999n) }, // thừa LAMP, thiếu TREASURY
       datum: treasuryDatumToCbor({
         committee_hash: "ee".repeat(28), outstanding_entitlement: E, total_redeemed: RICH,
       }),
@@ -1447,12 +1447,12 @@ describe("buildRedeemTx — vested = min(E, isqrt(dpe²·E·A_span²))", () => {
     })).rejects.toThrow(/REDEEM-013/);
   });
 
-  it("REDEEM-013: từ chối cả khi kho mang 2 TRSY (không mơ hồ carrier)", async () => {
+  it("REDEEM-013: từ chối cả khi kho mang 2 TREASURY (không mơ hồ carrier)", async () => {
     const { lucid } = mockLucid(OWNER_ADDR);
     await expect(buildRedeemTx({
       ...base, lucid, ...redeemAt(103n),
       claimAccountUtxo: claimUtxo(PER_WINDOW, E, MARK, 1n, {}, WIDE),
-      treasuryUtxo: treasuryUtxo(lampOildrop(1_000_000n), { [TRSY_UNIT]: 2n }),
+      treasuryUtxo: treasuryUtxo(lampOildrop(1_000_000n), { [TREASURY_UNIT]: 2n }),
       dropBeaconUtxo: dropBeaconUtxo(WIDE),
     })).rejects.toThrow(/REDEEM-013/);
   });
@@ -1585,7 +1585,7 @@ describe("buildClaimTx — solvency guard tích hợp", () => {
       solvency: { treasuryLamp: lampOildrop(1000n), otherOutstanding: lampOildrop(500n) },
     });
     expect(res.mode).toBe("create");         // 500 + 400 = 900 ≤ 1000
-    expect(rec.payData.filter(x => x.assets[TRSY_UNIT] !== 1n)).toHaveLength(1);
+    expect(rec.payData.filter(x => x.assets[TREASURY_UNIT] !== 1n)).toHaveLength(1);
   });
 
   it("UPDATE: dùng entitlement−redeemed sau khi tăng để tính outstanding", async () => {
@@ -1614,7 +1614,7 @@ describe("buildClaimTx — solvency guard tích hợp", () => {
       beacon: bcnParam(),
     });
     expect(res.mode).toBe("create");
-    expect(rec.payData.filter(x => x.assets[TRSY_UNIT] !== 1n)).toHaveLength(1);
+    expect(rec.payData.filter(x => x.assets[TREASURY_UNIT] !== 1n)).toHaveLength(1);
   });
 });
 
@@ -1628,7 +1628,7 @@ describe("buildClaimTx — treasury co-spend", () => {
       committeeKeyHashes: COMMITTEE, treasury: trsyParam(lampOildrop(100n)), accountNft: accNft,
       beacon: bcnParam(),
     });
-    const tre = rec.collectFrom.find(c => c.utxos[0]?.assets[TRSY_UNIT] === 1n);
+    const tre = rec.collectFrom.find(c => c.utxos[0]?.assets[TREASURY_UNIT] === 1n);
     expect(tre).toBeDefined();
     expect(tre!.redeemer).toBe(grantEntitlementRedeemerToCbor());
     expect(TREASURY_REDEEMER.GrantEntitlement).toBe(1);
@@ -1643,7 +1643,7 @@ describe("buildClaimTx — treasury co-spend", () => {
       beacon: bcnParam(),
     });
     expect(res.newTreasuryDatum.outstanding_entitlement).toBe(lampOildrop(500n));
-    const treOut = rec.payData.find(p => p.assets[TRSY_UNIT] === 1n)!;
+    const treOut = rec.payData.find(p => p.assets[TREASURY_UNIT] === 1n)!;
     const treOutDatum = decodeTreasuryDatum(Data.from(treOut.datum));
     expect(treOutDatum.outstanding_entitlement).toBe(lampOildrop(500n));
     expect(treOut.assets[LAMP_UNIT]).toBe(lampOildrop(100_000n));
@@ -1651,20 +1651,20 @@ describe("buildClaimTx — treasury co-spend", () => {
     // phải đường đó ⇒ giữ NGUYÊN. Trường này là mẫu số của phép cắt ngọn ở MỌI tài khoản
     // khác: chạm vào nó ở đây là nới (hoặc siết) trần rút của TOÀN hệ bằng một lượt cấp
     // quyền. Đầu vào KHÁC 0 là cố ý — ở 0 thì "giữ nguyên" và "xoá trắng" ra cùng một số.
-    expect(TRSY_TOTAL_REDEEMED).not.toBe(0n);
-    expect(res.newTreasuryDatum.total_redeemed).toBe(TRSY_TOTAL_REDEEMED);
-    expect(treOutDatum.total_redeemed).toBe(TRSY_TOTAL_REDEEMED);
+    expect(TREASURY_TOTAL_REDEEMED).not.toBe(0n);
+    expect(res.newTreasuryDatum.total_redeemed).toBe(TREASURY_TOTAL_REDEEMED);
+    expect(treOutDatum.total_redeemed).toBe(TREASURY_TOTAL_REDEEMED);
   });
 
-  it("CLAIM-021: từ chối treasury UTxO KHÔNG mang TRSY", async () => {
+  it("CLAIM-021: từ chối treasury UTxO KHÔNG mang TREASURY", async () => {
     const { lucid } = mockLucid("addr_wallet");
     const noNft = { ...trsyUtxo(0n) };
-    delete (noNft.assets as Record<string, bigint>)[TRSY_UNIT];
+    delete (noNft.assets as Record<string, bigint>)[TREASURY_UNIT];
     await expect(buildClaimTx({
       lucid, claimScript: FAKE_CLAIM, network: NETWORK,
       ownerPkh: OWNER, amount: lampOildrop(400n), ...claimAt(5n),
       committeeKeyHashes: COMMITTEE, accountNft: accNft,
-      treasury: { utxo: noNft, script: FAKE_TREASURY, nftPolicy: TRSY_POLICY },
+      treasury: { utxo: noNft, script: FAKE_TREASURY, nftPolicy: TREASURY_POLICY },
       beacon: bcnParam(),
     })).rejects.toThrow(/CLAIM-021/);
   });
@@ -1701,7 +1701,7 @@ describe("buildClaimTx — CREATE đúc account NFT (C-ACC-1)", () => {
     expect(rec.attachMint).toContain(FAKE_ACC_NFT);
 
     // NFT hạ cánh trên chính ClaimAccount output (A-ACC-4), không đi chỗ khác.
-    const accOut = rec.payData.find(p => p.assets[TRSY_UNIT] !== 1n)!;
+    const accOut = rec.payData.find(p => p.assets[TREASURY_UNIT] !== 1n)!;
     expect(accOut.address).toBe(scriptAddr(FAKE_CLAIM));
     expect(accOut.assets[unit]).toBe(1n);
     expect(res.accountNftUnit).toBe(unit);
@@ -1811,7 +1811,7 @@ describe("C-SOLV-5 — địa chỉ kho theo input, hai cực enterprise/base", 
   const SOLV_BCN = bcnDatum({ epoch: 0n, index: 1_000_000n, trim_num: 1n, trim_den: 1n });
   const SOLV_MARK = 1n;
 
-  /** Kho mang TRSY, đặt ở địa chỉ chỉ định (enterprise hoặc base). */
+  /** Kho mang TREASURY, đặt ở địa chỉ chỉ định (enterprise hoặc base). */
   function treAt(
     address: string, lamp = lampOildrop(1000n), cum = lampOildrop(1000n),
     totalRedeemed = lampOildrop(1_000_000n),
@@ -1819,7 +1819,7 @@ describe("C-SOLV-5 — địa chỉ kho theo input, hai cực enterprise/base", 
     return {
       txHash: "22".repeat(32), outputIndex: 0,
       address,
-      assets: { lovelace: 5_000_000n, [TRSY_UNIT]: 1n, [LAMP_UNIT]: lamp },
+      assets: { lovelace: 5_000_000n, [TREASURY_UNIT]: 1n, [LAMP_UNIT]: lamp },
       datum: treasuryDatumToCbor({
         committee_hash: "ee".repeat(28),
         outstanding_entitlement: cum,
@@ -1844,12 +1844,12 @@ describe("C-SOLV-5 — địa chỉ kho theo input, hai cực enterprise/base", 
   }
   const rbase = {
     network: NETWORK, claimScript: FAKE_CLAIM, treasuryScript: FAKE_TREASURY,
-    lampPolicyId: LAMP_POLICY, treasuryNftPolicy: TRSY_POLICY,
+    lampPolicyId: LAMP_POLICY, treasuryNftPolicy: TREASURY_POLICY,
   };
 
-  /** Địa chỉ của output mang TRSY trong tx đã dựng. */
+  /** Địa chỉ của output mang TREASURY trong tx đã dựng. */
   function treOutAddr(rec: Recorded): string {
-    return rec.payData.find(p => p.assets[TRSY_UNIT] === 1n)!.address;
+    return rec.payData.find(p => p.assets[TREASURY_UNIT] === 1n)!.address;
   }
 
   it("fixture phân biệt được hai cực (cùng script hash, khác Address)", () => {
@@ -1883,7 +1883,7 @@ describe("C-SOLV-5 — địa chỉ kho theo input, hai cực enterprise/base", 
       lucid, claimScript: FAKE_CLAIM, network: NETWORK, ownerPkh: OWNER,
       amount: lampOildrop(10n), ...claimAt(5n), committeeKeyHashes: COMMITTEE,
       claimAccountUtxo: accUtxo(),
-      treasury: { utxo: treAt(entAddr), script: FAKE_TREASURY, nftPolicy: TRSY_POLICY },
+      treasury: { utxo: treAt(entAddr), script: FAKE_TREASURY, nftPolicy: TREASURY_POLICY },
       beacon: bcnParam(),
     });
     expect(treOutAddr(rec)).toBe(entAddr);
@@ -1895,7 +1895,7 @@ describe("C-SOLV-5 — địa chỉ kho theo input, hai cực enterprise/base", 
       lucid, claimScript: FAKE_CLAIM, network: NETWORK, ownerPkh: OWNER,
       amount: lampOildrop(10n), ...claimAt(5n), committeeKeyHashes: COMMITTEE,
       claimAccountUtxo: accUtxo(),
-      treasury: { utxo: treAt(baseAddr), script: FAKE_TREASURY, nftPolicy: TRSY_POLICY },
+      treasury: { utxo: treAt(baseAddr), script: FAKE_TREASURY, nftPolicy: TREASURY_POLICY },
       beacon: bcnParam(),
     });
     expect(treOutAddr(rec)).toBe(baseAddr);
@@ -1903,14 +1903,14 @@ describe("C-SOLV-5 — địa chỉ kho theo input, hai cực enterprise/base", 
   });
 
   // Đường CREATE: `claim_account` spend KHÔNG chạy (không có account input) nên chuỗi
-  // KHÔNG từ chối — nhưng NFT "TRSY" bị âm thầm hạ từ base xuống enterprise, mất uỷ quyền
+  // KHÔNG từ chối — nhưng NFT "TREASURY" bị âm thầm hạ từ base xuống enterprise, mất uỷ quyền
   // stake mà không ai đỏ. Đây là cực "rò êm" của cùng một dòng mã.
   it("buildClaimTx CREATE — kho base KHÔNG bị âm thầm hạ về enterprise", async () => {
     const { lucid, rec } = mockLucid("addr_wallet");
     await buildClaimTx({
       lucid, claimScript: FAKE_CLAIM, network: NETWORK, ownerPkh: OWNER,
       amount: lampOildrop(10n), ...claimAt(5n), committeeKeyHashes: COMMITTEE,
-      treasury: { utxo: treAt(baseAddr), script: FAKE_TREASURY, nftPolicy: TRSY_POLICY },
+      treasury: { utxo: treAt(baseAddr), script: FAKE_TREASURY, nftPolicy: TREASURY_POLICY },
       beacon: bcnParam(),
       accountNft: accNft,
     });

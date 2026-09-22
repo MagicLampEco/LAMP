@@ -48,7 +48,7 @@ const LAMP_PID = "22".repeat(28);
 const AUTH_PID = "33".repeat(28);
 const INSTANCE_ID = "6c616d702d72657365727665"; // "lamp-reserve"
 const TOKEN_NAME = "744c414d50";                // "tLAMP"
-const AUTH_NAME = "5450554c4c";                 // "TPULL"
+const AUTH_NAME = "545245415355525950554c4c";   // "TREASURYPULL"
 const GENESIS_REF = new Constr(0, ["ab".repeat(32), 0n]);
 
 const SAN = 1_000_000_000n;        // sàn "đúng"

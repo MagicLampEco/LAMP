@@ -94,8 +94,8 @@ validator reserve_auth(
 
 const pol: PolicyId = #"a1a1"
 
-// auth_name = "TPULL" (Treasury-pull) hex.
-const auth_nm: ByteArray = #"5450554c4c"
+// auth_name = "TREASURYPULL" (Treasury-pull) hex.
+const auth_nm: ByteArray = #"545245415355525950554c4c"
 
 fn g_ref() -> OutputReference {
   OutputReference { transaction_id: #"bb", output_index: 3 }

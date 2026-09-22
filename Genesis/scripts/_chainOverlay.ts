@@ -1,7 +1,7 @@
 // _chainOverlay.ts — phần THUẦN của chế độ nối chuỗi giao dịch (`CHAIN_DEPTH` > 1) trong
 // `30_feeder_accounts.ts`: không mạng, không khoá, có bài kiểm (`Genesis/tests/chainOverlay.test.ts`).
 //
-// VÌ SAO CẦN. Kho Distribution có ĐÚNG MỘT UTxO carrier (TRSY); mọi Grant/Redeem tiêu nó và tạo
+// VÌ SAO CẦN. Kho Distribution có ĐÚNG MỘT UTxO carrier (TREASURY); mọi Grant/Redeem tiêu nó và tạo
 // carrier mới. Chờ từng giao dịch vào block rồi đọc lại chỉ mục nhà cung cấp thì một lượt tốn
 // ~143 s (đo trên vòng grant, `_Agents/council-2026-10-01/onchain-redeem.md` mục 3d), và chỉ mục
 // trễ làm lượt kế chết vì "All inputs are spent". Mempool của node nhận giao dịch tiêu output của
@@ -155,7 +155,7 @@ export function viewUtxosAtWithUnit(view: ChainView, addr: string, unit: string)
 /**
  * Carrier (UTxO mang đúng 1 NFT `unit`) ở `addr` theo lớp phủ. Khác 1 ⇒ ném FEED-CHAIN-005: ở
  * giữa chuỗi, 0 hay 2 carrier nghĩa là lớp phủ đã lệch khỏi luật singleton của kho — gửi tiếp là
- * gửi một giao dịch chắc chắn hỏng. Không thay `pickTreasury` (TRSY-001/002 vẫn chạy ở runner);
+ * gửi một giao dịch chắc chắn hỏng. Không thay `pickTreasury` (TREASURY-001/002 vẫn chạy ở runner);
  * hàm này cho ref carrier mà bước đọc lại phải thấy trên nhà cung cấp.
  */
 export function viewCarrier(view: ChainView, addr: string, unit: string): UTxO {

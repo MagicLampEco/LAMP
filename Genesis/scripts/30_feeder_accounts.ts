@@ -29,7 +29,7 @@
 //            Không đủ LAMP ⇒ dừng, in có/thiếu; rót một phần chỉ khi ALLOW_PARTIAL=true.
 //
 // TÍNH LẶP LẠI ĐƯỢC. Mặc định (CHAIN_DEPTH=1) mọi bước đọc lại chuỗi trước MỖI giao dịch và chờ
-// giao dịch vào block rồi mới dựng giao dịch kế: kho TRSY là singleton, mọi grant/redeem đều tiêu
+// giao dịch vào block rồi mới dựng giao dịch kế: kho TREASURY là singleton, mọi grant/redeem đều tiêu
 // nó, nên hai giao dịch dựng trên cùng một bản đọc thì giao dịch sau chắc chắn hỏng. `grant` bỏ
 // qua feeder đã có tài khoản; chạy lại sau khi đứt giữa chừng là chạy tiếp, không cấp trùng.
 //
@@ -69,7 +69,7 @@ import {
 import { NETWORK, SUBMIT, WALLET_SEED, makeLucid, walletPkh, explorerTx } from "./config.js";
 import {
   rehydrate, canonicalWindowOrigin, canonicalCommittee, CANONICAL_COMMITTEE_THRESHOLD, MS_PER_EPOCH,
-  DROP_NAME, waitFor, isWaitTimeout,
+  DROP_NAME, TREASURY_NAME, waitFor, isWaitTimeout,
 } from "./_canonical_v2.js";
 import {
   claimScripts, assertClaimScriptsMatch, pickTreasury, refKey,
@@ -192,7 +192,7 @@ interface ChainState {
 /**
  * Nguồn đọc UTxO: nhà cung cấp (`lucid`, CHAIN_DEPTH=1 và mọi bước khác) hoặc lớp phủ của chuỗi
  * đang mở (`Chain.source`). Hai hàm đọc dưới đây không biết mình đang đọc cái nào — cố ý, để
- * đường chuỗi và đường cũ đi qua CÙNG phép giải mã + cùng cổng (BCN-001, TRSY-001, FEED-ACC-*).
+ * đường chuỗi và đường cũ đi qua CÙNG phép giải mã + cùng cổng (BCN-001, TREASURY-001, FEED-ACC-*).
  */
 interface UtxoSource {
   utxosAt(addr: string): Promise<UTxO[]>;
@@ -476,7 +476,7 @@ async function main(): Promise<void> {
   const feeders = deriveFeeders(pkh);
   const byPkh = new Map(feeders.map((f) => [f.pkh, f]));
   const treasuryCommon = {
-    script: scripts.treasury, nftPolicy: wiring.markers.khoPid, nftAssetName: "54525359",
+    script: scripts.treasury, nftPolicy: wiring.markers.khoPid, nftAssetName: TREASURY_NAME,
   };
   const chain = new Chain(
     lucid,
@@ -586,7 +586,7 @@ async function main(): Promise<void> {
         msPerEpoch: MS_PER_EPOCH, windowOriginMs: originMs,
         validFromMs: w.loMs,
         validToMs: w.hiMs,
-        treasuryNftPolicy: wiring.markers.khoPid, treasuryNftAssetName: "54525359",
+        treasuryNftPolicy: wiring.markers.khoPid, treasuryNftAssetName: TREASURY_NAME,
         lampPolicyId: wiring.lampPid, lampAssetName: wiring.tokenName,
         destinationAddress: f.address,           // util.lamp_to_owner: payment = VK(owner)
       });

@@ -180,7 +180,7 @@ fn grant_runs() -> List<ScriptRun> {
     TreasuryRun(fx.treasury_ix, GrantEntitlement)]
 }
 
-/// Refill chạy cho CẢ HAI input ở địa chỉ kho (carrier TRSY và UTxO tự đỗ).
+/// Refill chạy cho CẢ HAI input ở địa chỉ kho (carrier TREASURY và UTxO tự đỗ).
 fn refill_runs() -> List<ScriptRun> {
   [
     AccountRun(fx.account_ix, Claim { amount: topup }),
@@ -202,7 +202,7 @@ test cross_claim_grant_passes_both_validators() {
 }
 
 // ── Ca 2: Claim + Refill → bị từ chối ─────────────────────────────────────────
-// Hình dạng tấn công: kho thật + UTxO tự đỗ khai nợ khống 1000 ⇒ carrier TRSY tăng 1000
+// Hình dạng tấn công: kho thật + UTxO tự đỗ khai nợ khống 1000 ⇒ carrier TREASURY tăng 1000
 // ⇒ C-SOLV-1 phía tài khoản thoả, phép gộp phía kho thoả. Hai lớp chặn độc lập:
 // `treasury` ▸ C-REF-ACC và `claim_account` ▸ C-CLAIM-3/5/6.
 

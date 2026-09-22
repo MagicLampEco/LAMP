@@ -45,7 +45,7 @@
 // giao dịch đặt: KHÔNG validator nào ghim nó về epoch hiện tại lúc CREATE — đã soát cả ba
 // chỗ có thẩm quyền (`claim_account_nft.ak` nhánh `MintAccount` A-ACC-1…6 chỉ ép committee ·
 // đúng-1-NFT · carrier là Script · tên NFT = blake2b_256(owner) · `redeemed == 0` · đúng-1
-// input TRSY; `treasury.ak:105-163` nhánh `GrantEntitlement` không đụng `start_epoch`;
+// input TREASURY; `treasury.ak:105-163` nhánh `GrantEntitlement` không đụng `start_epoch`;
 // `claim_account.ak` KHÔNG CHẠY ở CREATE vì không có input tài khoản).
 //
 // ⚠ HỆ QUẢ PHẢI ĐỌC THÀNH LỜI, vì nó là một tính chất an ninh chứ không phải một tiện ích:
@@ -100,6 +100,7 @@ import { NETWORK, SUBMIT, makeLucid, walletPkh, explorerTx } from "./config.js";
 import { windowIndex, windowStartMs } from "../../Utils/src/index.js";
 import {
   rehydrate, canonicalWindowOrigin, canonicalCommittee, CANONICAL_COMMITTEE_THRESHOLD, MS_PER_EPOCH, DROP_NAME,
+  TREASURY_NAME,
 } from "./_canonical_v2.js";
 // `claim_account` + `claim_account_nft` dựng lại từ blueprint, và chọn UTxO kho — dùng chung
 // với `30_feeder_accounts.ts`, không chép lại.
@@ -344,7 +345,7 @@ async function main(): Promise<void> {
       accountNft: { script: cs.accountNft, policyId: cs.accountPid },
       treasury: {
         utxo: treasuryUtxo, script: scripts.treasury,
-        nftPolicy: wiring.markers.khoPid, nftAssetName: "54525359",
+        nftPolicy: wiring.markers.khoPid, nftAssetName: TREASURY_NAME,
       },
       // v3: beacon là reference input BẮT BUỘC — treasury ghim `index_at_start = A(cửa sổ này)`.
       beacon: { utxo: beaconUtxo, datum: beaconLive },
@@ -424,7 +425,7 @@ async function main(): Promise<void> {
       claimAccountUtxo: accUtxo,          // ⇒ đường UPDATE, builder KHÔNG đúc NFT
       treasury: {
         utxo: treasuryUtxo, script: scripts.treasury,
-        nftPolicy: wiring.markers.khoPid, nftAssetName: "54525359",
+        nftPolicy: wiring.markers.khoPid, nftAssetName: TREASURY_NAME,
       },
       beacon: { utxo: beaconUtxo, datum: beaconLive },   // v3: C-CLAIM-8 áp cả UPDATE
       committeeKeyHashes: canonicalCommittee(pkh),
@@ -489,7 +490,7 @@ async function main(): Promise<void> {
       msPerEpoch: MS_PER_EPOCH, windowOriginMs: originMs,
       validFromMs: w.loMs,   // đầu dưới ≤ now: giữa cửa sổ là mốc tương lai
       validToMs: w.hiMs,
-      treasuryNftPolicy: wiring.markers.khoPid, treasuryNftAssetName: "54525359",
+      treasuryNftPolicy: wiring.markers.khoPid, treasuryNftAssetName: TREASURY_NAME,
       lampPolicyId: wiring.lampPid, lampAssetName: wiring.tokenName,
     });
     console.log(`\n${r.summary}`);

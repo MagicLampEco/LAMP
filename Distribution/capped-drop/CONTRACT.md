@@ -143,13 +143,13 @@ Treasury {
   `total_redeemed` là số **ĐÃ PHÁT**: nó **tăng** mỗi lần ai đó rút. Hai đại lượng đi ngược chiều
   nhau, không cái nào suy ra cái kia — vì `E` được cấp dần chứ không cố định từ đầu.
 - Nó đo được **chính xác tuyệt đối**, không cần quét chuỗi, vì cả 18 pot dùng CHUNG một kho: mọi
-  `Redeem` đều co-spend đúng cái UTxO mang NFT "TRSY" (`claim_account.ak` ▸ `find_treasury_in` ép
+  `Redeem` đều co-spend đúng cái UTxO mang NFT "TREASURY" (`claim_account.ak` ▸ `find_treasury_in` ép
   `expect [i]`). Đây là thứ làm §4 ▸ phép cắt ngọn rẻ bằng một phép nhân.
 - **Đơn điệu tăng là một BẤT BIẾN PHẢI VIẾT RA**, không phải một hệ quả tình cờ. Ngày nào ai đó
   đổi mẫu số sang "lưu hành trừ tồn kho Treasury" thì nó thành **giảm được**, và toàn bộ lớp lỗi
   hồi tố ở §0 sống lại ở một chỗ mới. `Refill` cộng `total_redeemed` của các input y như cộng sổ
   nợ; `GrantEntitlement` giữ nguyên.
-- Treasury UTxO mang **NFT authenticity "TRSY"** (policy `treasury_nft`, one-shot, supply = 1
+- Treasury UTxO mang **NFT authenticity "TREASURY"** (policy `treasury_nft`, one-shot, supply = 1
   TUYỆT ĐỐI) → singleton toàn cục, chống treasury giả cùng script-hash.
 - `outstanding_entitlement` = **số còn nợ người dùng**: `+granted` khi GrantEntitlement,
   `−released` khi ReleaseForRedeem — hai vế đi cặp với pool.
@@ -252,7 +252,7 @@ C-BCN-HOME:   output mang DROP NFT về ĐÚNG địa chỉ input      (beacon.a
 `index` · `rate_root` · `trim_*` ở mỗi lần tiêu, `beacon.ak` **không bao giờ chạy**, và cả hai
 đường đọc (`Redeem` tính `A_now`, `GrantEntitlement` ghim `index_at_start`) lấy số từ chính kẻ
 dựng giao dịch. Toàn bộ trần tốc độ của v3 bị gỡ mà **không bất biến nào vỡ và không giao dịch
-nào bị từ chối** — cùng lớp lỗ mà C-SOLV-5 đã bịt cho TRSY, chỉ khác tên tài sản.
+nào bị từ chối** — cùng lớp lỗ mà C-SOLV-5 đã bịt cho TREASURY, chỉ khác tên tài sản.
 
 `C-BCN-HOME` là vế vòng đời: `count_outputs_at_script` chỉ ép **payment** credential, nên một
 lượt post dời được beacon sang stake credential của người dựng tx (hai địa chỉ cùng script hash
@@ -260,7 +260,7 @@ là hai địa chỉ — đúng dữ kiện audit C1 dựng ra).
 
 **Và genesis phải thoả MỌI bất biến mà một lượt post thoả**, nếu không chuỗi mất lượt post kế
 tiếp hợp lệ. Cardano không chạy validator lúc TẠO output, nên chỗ ép duy nhất là **minting
-policy** — `beacon_nft.ak` (đối xứng với `treasury_nft.ak` cho TRSY):
+policy** — `beacon_nft.ak` (đối xứng với `treasury_nft.ak` cho TREASURY):
 
 ```
 C-BCN-GEN-1:  kind == DropParam
@@ -352,8 +352,8 @@ Validator ÉP:
    một `amount`, hai chiều ngược nhau — thiếu một vế là mẫu số của phép cắt ngọn trôi khỏi sự thật
    mà không dòng nào kêu.
 7. Chống double-satisfaction: đếm theo **payment script hash** (bài học C1/C2/M1).
-8. **TRSY binding (C-SOLV-4/5):** treasury co-spend PHẢI là treasury canonical mang đúng 1 NFT
-   "TRSY", **ngụ tại một script** (không phải ví) và **ra đúng địa chỉ đã vào** (C-SOLV-5);
+8. **TREASURY binding (C-SOLV-4/5):** treasury co-spend PHẢI là treasury canonical mang đúng 1 NFT
+   "TREASURY", **ngụ tại một script** (không phải ví) và **ra đúng địa chỉ đã vào** (C-SOLV-5);
    sổ cái `outstanding_entitlement` **giảm đúng `amount`** khi redeem (C-SOLV-3). Đối xứng với
    Claim path — chống redeem rút từ treasury giả.
 9. (Tùy chọn anti-spam) ép `current_epoch > last_redeem_epoch` — chỉ thêm nếu cần; trần tích luỹ
@@ -427,26 +427,26 @@ Các ràng buộc solvency:
    vốn cần một tài khoản tiêu được) ⇒ C-SOLV-2 siết dần trần cấp phát cho mọi pot về sau.
    Ép được ở `treasury` vì nó đã nhận `claim_account_hash` làm tham số — đây là chỗ DUY NHẤT
    trong hệ biết cả tên NFT phải đúc lẫn địa chỉ tài khoản.
-5. Treasury là singleton per-tx theo script hash + NFT "TRSY" toàn cục → sổ cái serial-hoá MỌI
+5. Treasury là singleton per-tx theo script hash + NFT "TREASURY" toàn cục → sổ cái serial-hoá MỌI
    Claim/Redeem → sổ cái **BẰNG** `Σ(E − redeemed)`, nên `Σ(E − redeemed) ≤ pool` ép được PER-TX.
 6. `claim_account.spend` (Claim) ràng buộc `nợ_out = nợ_in + amount` để khoá amount nhất quán giữa
    account và sổ cái; treasury validator độc lập ép C-SOLV-2 + C-VAL-0.
-7. **C-SOLV-5 (nơi trú của TRSY):** ràng ĐÚNG hash treasury trong `claim_account` là bất khả thi vì
+7. **C-SOLV-5 (nơi trú của TREASURY):** ràng ĐÚNG hash treasury trong `claim_account` là bất khả thi vì
    vòng tham số (`treasury`→`claim_account_hash`→`treasury_nft_policy`→`treasury_hash`). Thay bằng
    hai tầng không cần vòng: (a) `treasury_nft` ép NFT genesis hạ cánh ở **một Script** mang
    `TreasuryDatum` với nợ mở `= 0`; (b) `claim_account` ép carrier ngụ tại Script và **không đổi
-   nhà** trong tx. Trước bản vá hai hàm tra cứu lọc THUẦN theo NFT — TRSY nằm ở ví thì sổ cái do
+   nhà** trong tx. Trước bản vá hai hàm tra cứu lọc THUẦN theo NFT — TREASURY nằm ở ví thì sổ cái do
    người dựng tx tự viết và `treasury.ak` không bao giờ chạy.
 
 ## 4c. Refill (gộp kho, `treasury.spend` redeemer `Refill`) — danh mục trạng thái
 
 Refill gộp N UTxO ở địa chỉ kho về một singleton. **Sổ cái đi ra lấy từ ĐÚNG MỘT input: carrier**,
-tức UTxO mang NFT kho "TRSY" (`treasury.ak` ▸ `fn carrier_ledger`). Datum của mọi input khác bị
+tức UTxO mang NFT kho "TREASURY" (`treasury.ak` ▸ `fn carrier_ledger`). Datum của mọi input khác bị
 BỎ QUA hoàn toàn — value của chúng vẫn được hút vào pool (đó là việc Refill sinh ra để làm), sổ
 của chúng thì không đi vào một mệnh đề nào.
 
 ```
-C-REF-PROV:  đúng MỘT input ở địa chỉ kho mang tài sản tên "TRSY" (= carrier);
+C-REF-PROV:  đúng MỘT input ở địa chỉ kho mang tài sản tên "TREASURY" (= carrier);
              out_datum.{committee_hash, outstanding_entitlement, total_redeemed}
                == của carrier;
              input khác → datum BỎ QUA, KHÔNG fail.
@@ -477,7 +477,7 @@ C-REF-SIGN:  carrier.outstanding_entitlement ≥ 0 và carrier.total_redeemed �
 | mã định danh | treo cái gì | ràng buộc TẠM đang có hiệu lực (fail-closed) | khai ở file nào |
 |---|---|---|---|
 | ~~RFL-KILL-ONCHAIN-01~~ | **ĐÓNG 2026-09-26.** Đã vá on-chain: `carrier_ledger` ép `≥ 0` trên carrier, và C-REF-PROV làm số hạng của input lạ không còn đi vào sổ ở BẤT KỲ dấu nào | — | `Distribution/onchain/validators/treasury.ak` ▸ `fn carrier_ledger` |
-| ~~RFL-BUILDER-SUM-01~~ | **ĐÓNG 2026-09-26.** `buildRefillTx` nay lấy sổ ra từ ĐÚNG MỘT carrier (UTxO mang TRSY của policy thật, mirror `carrier_ledger`), bỏ qua datum mọi input khác; loại khỏi tập gộp UTxO mang tài sản tên TRSY dưới policy khác (`bearsForeignTreasuryName`, báo trong `RefillResult.excluded`) vì chuỗi nhận carrier theo TÊN. UTxO lạ mang datum khống không còn chặn được Refill | — | `Distribution/offchain/src/refillBuilder.ts` ▸ `buildRefillTx`, `bearsForeignTreasuryName`; bộ ca ở `Distribution/tests/refillBuilder.test.ts` ▸ `UTxO lạ ở địa chỉ kho (griefing)` |
+| ~~RFL-BUILDER-SUM-01~~ | **ĐÓNG 2026-09-26.** `buildRefillTx` nay lấy sổ ra từ ĐÚNG MỘT carrier (UTxO mang TREASURY của policy thật, mirror `carrier_ledger`), bỏ qua datum mọi input khác; loại khỏi tập gộp UTxO mang tài sản tên TREASURY dưới policy khác (`bearsForeignTreasuryName`, báo trong `RefillResult.excluded`) vì chuỗi nhận carrier theo TÊN. UTxO lạ mang datum khống không còn chặn được Refill | — | `Distribution/offchain/src/refillBuilder.ts` ▸ `buildRefillTx`, `bearsForeignTreasuryName`; bộ ca ở `Distribution/tests/refillBuilder.test.ts` ▸ `UTxO lạ ở địa chỉ kho (griefing)` |
 
 ## 4d. Sổ tên NFT đã đúc — phạm vi của MỌI trần per-account
 
@@ -701,7 +701,7 @@ trong van không đổi. Tham số đi vào `BeaconDatum` để thừa hưởng 
   suy ra.
 - **SOLVENCY (C-SOLV-*):** `outstanding_entitlement` ≤ treasury pool LAMP ép on-chain ở MỌI Claim;
   sổ cái BẰNG `Σ(E − redeemed)` (tăng khi grant, giảm khi redeem) → `Σ(E − redeemed) ≤ pool`. Treasury
-  authenticity = NFT "TRSY" one-shot (supply 1). `05_verify_solvency.ts` = kiểm tra vận hành
+  authenticity = NFT "TREASURY" one-shot (supply 1). `05_verify_solvency.ts` = kiểm tra vận hành
   độc lập (defense-in-depth), KHÔNG còn là chốt duy nhất.
 
 ## 8. Spec + build (song song bám CONTRACT)
@@ -789,7 +789,7 @@ sau vì cụm không có redeemer nâng cấp): §1 trần lõm · **§1b `C-ACC
 §2 `index_at_start` · §2b `total_redeemed` ·
 §3 chỉ số cộng dồn + `rate_root` một chiều · §4 cắt ngọn + `trim_floor` · §4d sổ tên NFT ·
 §5 móc `speed_policies` rỗng · RFL-KILL-ONCHAIN-01 (§4c, nay vá bằng `C-REF-PROV`: sổ ra lấy từ
-carrier mang NFT "TRSY", không còn cộng sổ của input lạ ở BẤT KỲ dấu nào) ·
+carrier mang NFT "TREASURY", không còn cộng sổ của input lạ ở BẤT KỲ dấu nào) ·
 §4b mục 4-bis `C-ACC-1b` (NFT tài khoản phải nằm TRONG output tài khoản, không chỉ trong `tx.mint`).
 
 **Cố ý để lại, và vì sao để lại được:**

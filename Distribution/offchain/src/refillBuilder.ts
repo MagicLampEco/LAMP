@@ -1,19 +1,19 @@
 // LampDistribution refillBuilder — gộp N UTxO ở địa chỉ kho về MỘT singleton.
 //
 // Vì sao nhánh này tồn tại: LAMP rót về kho qua A-DEST hạ cánh thành UTxO RIÊNG, thường
-// KHÔNG datum và KHÔNG mang NFT "TRSY". Lúc đó tài sản nằm TRONG SÂN kho mà NGOÀI SỔ kho —
-// `claim_account.ak` ▸ `find_treasury_in` đòi đúng một input kho MANG TRSY, nên nhánh Redeem
+// KHÔNG datum và KHÔNG mang NFT "TREASURY". Lúc đó tài sản nằm TRONG SÂN kho mà NGOÀI SỔ kho —
+// `claim_account.ak` ▸ `find_treasury_in` đòi đúng một input kho MANG TREASURY, nên nhánh Redeem
 // buộc tiêu cái vỏ rỗng và giải ngân bằng 0. `Refill` là nhánh DUY NHẤT gộp được hai thứ đó.
 //
 // CHỈ có chế độ CHỈ-ĐỊNH-TƯỜNG-MINH: caller tự nêu từng UTxO. Cố ý KHÔNG tự quét địa chỉ kho —
 // ai cũng đỗ được một UTxO ở địa chỉ script (Cardano không chạy validator lúc TẠO), và hai loại
-// UTxO người lạ đỗ được vẫn làm hỏng một tx gộp: tài sản trùng TÊN "TRSY" dưới policy khác (chuỗi
+// UTxO người lạ đỗ được vẫn làm hỏng một tx gộp: tài sản trùng TÊN "TREASURY" dưới policy khác (chuỗi
 // thấy 2 carrier ⇒ từ chối, xem `excluded` bên dưới) và UTxO datum-hash mà provider không có
 // preimage (Lucid không lập được witness ⇒ `complete()` ném).
 //
 // ── Luật sổ cái: SỔ RA = SỔ CỦA CARRIER (C-REF-PROV) ────────────────────────────────────────
 // `treasury.ak` nhánh `Refill` đọc sổ qua `fn carrier_ledger`: đúng MỘT input ở địa chỉ kho mang
-// tài sản tên "TRSY" (`fn bears_treasury_nft`, nhận theo TÊN, policy bất kỳ, qty == 1); sổ ra
+// tài sản tên "TREASURY" (`fn bears_treasury_nft`, nhận theo TÊN, policy bất kỳ, qty == 1); sổ ra
 // (`committee_hash`, `outstanding_entitlement`, `total_redeemed`) phải BẰNG sổ của input đó;
 // datum mọi input khác bị BỎ QUA (kể cả datum-hash); value mọi input vẫn gộp. Builder này mirror
 // đúng luật đó. Trước 2026-09-26 builder cộng TỔNG sổ mọi input có datum (mirror bản validator cũ
@@ -31,7 +31,7 @@
 //   tre_out.value == value_in + deposited LAMP (mọi asset khác bảo toàn)      → gộp value
 //   out_datum.outstanding_entitlement ≤ lamp_out                              → RFL-009
 //
-// RFL-005 CHẶT HƠN `treasury.ak`: chuỗi nhận carrier theo TÊN, còn builder đòi carrier mang TRSY
+// RFL-005 CHẶT HƠN `treasury.ak`: chuỗi nhận carrier theo TÊN, còn builder đòi carrier mang TREASURY
 // của ĐÚNG policy thật (`treasuryNftPolicy`), vì `claim_account.ak` tìm kho THUẦN THEO policy đó.
 
 import {
@@ -56,7 +56,7 @@ function normHex(hex: string): string {
 }
 
 /**
- * UTxO có mang một tài sản tên `nftAssetName` ("TRSY") dưới một policy KHÁC `nftPolicy` không.
+ * UTxO có mang một tài sản tên `nftAssetName` ("TREASURY") dưới một policy KHÁC `nftPolicy` không.
  *
  * `treasury.ak` ▸ `fn bears_treasury_nft` nhận carrier theo TÊN tài sản, không theo policy. Nên
  * một UTxO như vậy, nếu bị gộp cùng carrier thật, làm tập carrier trên chuỗi có 2 phần tử ⇒
@@ -85,8 +85,8 @@ export interface RefillParams {
    * CÁC UTxO kho phải gộp — caller CHỈ ĐỊNH TỪNG CÁI, không quét.
    * Mọi phần tử phải ở CÙNG một địa chỉ (xem RFL-002): `treasury.ak` nhánh `Refill` ép value ra
    * bằng TỔNG value vào, và địa chỉ ra được mang theo từ input chứ không dựng lại từ script hash.
-   * Phần tử mang tài sản tên "TRSY" dưới policy KHÁC, hoặc (trừ carrier) mang asset ngoài
-   * {lovelace, LAMP, TRSY thật}, bị loại khỏi tập gộp (xem `excluded`).
+   * Phần tử mang tài sản tên "TREASURY" dưới policy KHÁC, hoặc (trừ carrier) mang asset ngoài
+   * {lovelace, LAMP, TREASURY thật}, bị loại khỏi tập gộp (xem `excluded`).
    */
   treasuryUtxos:  UTxO[];
   treasuryScript: Validator;
@@ -104,8 +104,8 @@ export interface RefillParams {
   lampAssetName?: string;
 
   /**
-   * Policy NFT "TRSY" THẬT (`treasury_nft`, one-shot). BẮT BUỘC, không mặc định — dùng để
-   * (a) nhận carrier đúng policy, (b) loại UTxO mang TRSY giả, (c) RFL-005.
+   * Policy NFT "TREASURY" THẬT (`treasury_nft`, one-shot). BẮT BUỘC, không mặc định — dùng để
+   * (a) nhận carrier đúng policy, (b) loại UTxO mang TREASURY giả, (c) RFL-005.
    */
   treasuryNftPolicy:     string;
   treasuryNftAssetName?: string;
@@ -202,10 +202,10 @@ export async function buildRefillTx(params: RefillParams): Promise<RefillResult>
   }
 
   // ── Phân loại input: carrier · loại bỏ · gộp thường ─────────────────────
-  // carrier  = mang ĐÚNG 1 NFT TRSY của policy THẬT (mirror `bears_treasury_nft` qty == 1).
-  // loại bỏ  = không phải carrier và mang tài sản tên TRSY dưới policy KHÁC — gộp vào thì chuỗi
+  // carrier  = mang ĐÚNG 1 NFT TREASURY của policy THẬT (mirror `bears_treasury_nft` qty == 1).
+  // loại bỏ  = không phải carrier và mang tài sản tên TREASURY dưới policy KHÁC — gộp vào thì chuỗi
   //            thấy 2 carrier ⇒ `carrier_ledger` từ chối ⇒ người lạ chặn được Refill;
-  //            HOẶC không phải carrier và mang asset ngoài {lovelace, LAMP, TRSY thật} — gộp vào
+  //            HOẶC không phải carrier và mang asset ngoài {lovelace, LAMP, TREASURY thật} — gộp vào
   //            thì kho sống mang rác vĩnh viễn (lý do ngay tại vòng lặp).
   // còn lại  = gộp value, BỎ QUA datum (inline, datum-hash, rác, khống — không số nào đi vào sổ).
   //
@@ -227,12 +227,12 @@ export async function buildRefillTx(params: RefillParams): Promise<RefillResult>
     if (!isCarrier && bearsForeignTreasuryName(u, params.treasuryNftPolicy, nftAssetName)) {
       excluded.push({
         ref: refOf(u),
-        reason: `mang tài sản tên TRSY dưới policy KHÁC '${normHex(params.treasuryNftPolicy)}' — ` +
+        reason: `mang tài sản tên TREASURY dưới policy KHÁC '${normHex(params.treasuryNftPolicy)}' — ` +
           `chuỗi nhận carrier theo TÊN nên gộp vào là 2 carrier ⇒ từ chối`,
       });
       continue;
     }
-    // Asset lạ (ngoài lovelace · LAMP đúng policy+tên · TRSY đúng policy+tên) ⇒ KHÔNG gộp.
+    // Asset lạ (ngoài lovelace · LAMP đúng policy+tên · TREASURY đúng policy+tên) ⇒ KHÔNG gộp.
     // `treasury.ak` bảo toàn MỌI asset ở cả ba nhánh (Refill `value_in + deposited`, Release
     // `tre_in.value − released`, Grant `tre_out.value == tre_in.value`) và không nhánh nào thải
     // được tài sản ngoài LAMP ⇒ gộp một UTxO mang token rác là để kho sống mang nó VĨNH VIỄN:
@@ -246,7 +246,7 @@ export async function buildRefillTx(params: RefillParams): Promise<RefillResult>
       if (foreign.length > 0) {
         excluded.push({
           ref: refOf(u),
-          reason: `mang ${foreign.length} asset ngoài {lovelace, LAMP, TRSY} (${foreign.slice(0, 3).join(", ")}` +
+          reason: `mang ${foreign.length} asset ngoài {lovelace, LAMP, TREASURY} (${foreign.slice(0, 3).join(", ")}` +
             `${foreign.length > 3 ? ", …" : ""}) — gộp vào là kho mang rác vĩnh viễn`,
         });
         continue;
@@ -262,7 +262,7 @@ export async function buildRefillTx(params: RefillParams): Promise<RefillResult>
   if (carriers.length === 0) {
     throw new Error(
       `RFL-003: không input nào mang NFT kho '${nftUnit}' (policy thật). \`treasury.ak\` ▸ ` +
-      `\`carrier_ledger\` đòi ĐÚNG MỘT carrier — sổ cái ra chỉ lấy từ nó. Thêm UTxO mang TRSY ` +
+      `\`carrier_ledger\` đòi ĐÚNG MỘT carrier — sổ cái ra chỉ lấy từ nó. Thêm UTxO mang TREASURY ` +
       `vào tập gộp.`,
     );
   }
@@ -333,16 +333,16 @@ export async function buildRefillTx(params: RefillParams): Promise<RefillResult>
   }
   const lampBefore = mergedAssets[lampUnit] ?? 0n;
 
-  // ── RFL-005: output PHẢI mang đúng 1 TRSY của policy thật ──────────────
+  // ── RFL-005: output PHẢI mang đúng 1 TREASURY của policy thật ──────────────
   // `treasury.ak` không đòi điều này (nó chỉ bảo toàn mọi asset), nhưng `claim_account.ak`
   // (`find_treasury_in`/`find_treasury_out`) đòi. Lớp phòng thủ sau RFL-003/004: bắt ca một
-  // input mang TRSY thật với số lượng ≠ 1 (không phải carrier, nhưng làm output lệch).
+  // input mang TREASURY thật với số lượng ≠ 1 (không phải carrier, nhưng làm output lệch).
   const nftQty = mergedAssets[nftUnit] ?? 0n;
   if (nftQty !== 1n) {
     throw new Error(
       `RFL-005: tập gộp mang ${nftQty} NFT '${nftUnit}', phải đúng 1. ` +
-      `Kho gộp xong phải redeem được (claim_account.ak ▸ find_treasury_in đòi input kho mang TRSY). ` +
-      `Đưa ĐÚNG carrier TRSY vào tập input.`,
+      `Kho gộp xong phải redeem được (claim_account.ak ▸ find_treasury_in đòi input kho mang TREASURY). ` +
+      `Đưa ĐÚNG carrier TREASURY vào tập input.`,
     );
   }
 
@@ -414,7 +414,7 @@ export async function buildRefillTx(params: RefillParams): Promise<RefillResult>
       const l = u.assets[lampUnit] ?? 0n;
       const n = u.assets[nftUnit] ?? 0n;
       return `  · ${refOf(u)}  ${u.assets["lovelace"] ?? 0n} lovelace` +
-             `  ${l} oildrop  TRSY×${n}  datum=${shape(u)}${u === carrier ? "  ← carrier (nguồn sổ)" : ""}`;
+             `  ${l} oildrop  TREASURY×${n}  datum=${shape(u)}${u === carrier ? "  ← carrier (nguồn sổ)" : ""}`;
     }),
     ...(excluded.length
       ? [`KHÔNG gộp:      ${excluded.length} UTxO (value nằm lại ở địa chỉ kho)`,

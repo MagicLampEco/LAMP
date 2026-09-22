@@ -85,7 +85,7 @@ validator claim_account(
     // chỉ giới hạn mức trộm bằng ĐÚNG SỐ ĐANG NỢ NGƯỜI DÙNG THẬT. Tức là: cướp trọn
     // phần đã cam kết cho người dùng thật.
     // Nay tài khoản chỉ tiêu được khi mang NFT do `claim_account_nft` đúc — mà lối vào
-    // duy nhất của NFT đó là một tx có committee ký VÀ có input TRSY, tức có
+    // duy nhất của NFT đó là một tx có committee ký VÀ có input TREASURY, tức có
     // `treasury.GrantEntitlement` chạy, tức khoản nợ ĐÃ VÀO SỔ.
     // Tên NFT dính vào `owner` (blake2b_256) nên không mượn NFT của ví khác được.
     // `acc_out.value == acc_in.value` ở trên đã giữ NFT ở lại; mệnh đề trên `acc_out`
@@ -135,11 +135,11 @@ validator claim_account(
         // C-SOLV-1 (binding): MỌI Claim PHẢI co-spend treasury (GrantEntitlement) và
         // dồn outstanding_entitlement đúng `amount`. Ngăn committee tăng E mà KHÔNG
         // cập nhật sổ cái solvency (bypass bất biến cum ≤ pool). Treasury authenticity
-        // qua NFT "TRSY" → chống treasury giả. treasury validator độc lập ép cum ≤ pool
+        // qua NFT "TREASURY" → chống treasury giả. treasury validator độc lập ép cum ≤ pool
         // + value bảo toàn (C-SOLV-2/C-VAL-0); ở đây chỉ ràng buộc amount nhất quán.
         let (tre_in_addr, tre_in_d) = find_treasury_in(tx.inputs, treasury_nft_policy)
         let (tre_out_addr, tre_out_d) = find_treasury_out(tx.outputs, treasury_nft_policy)
-        // C-SOLV-5: TRSY KHÔNG đổi nhà trong tx (và cả hai đầu đều ở script — helper ép).
+        // C-SOLV-5: TREASURY KHÔNG đổi nhà trong tx (và cả hai đầu đều ở script — helper ép).
         expect tre_in_addr == tre_out_addr
         expect
           tre_out_d.outstanding_entitlement == tre_in_d.outstanding_entitlement + amount
@@ -179,11 +179,11 @@ validator claim_account(
         let a_span = a_now - datum.index_at_start
         expect a_span >= 0
 
-        // C-SOLV-3/4 (TRSY binding redeem): treasury co-spend PHẢI là treasury canonical
-        // mang đúng 1 NFT "TRSY" — chống redeem rút từ treasury giả.
+        // C-SOLV-3/4 (TREASURY binding redeem): treasury co-spend PHẢI là treasury canonical
+        // mang đúng 1 NFT "TREASURY" — chống redeem rút từ treasury giả.
         let (trsy_in_addr, trsy_in_d) = find_treasury_in(tx.inputs, treasury_nft_policy)
         let (trsy_out_addr, trsy_out_d) = find_treasury_out(tx.outputs, treasury_nft_policy)
-        // C-SOLV-5: TRSY KHÔNG đổi nhà trong tx.
+        // C-SOLV-5: TREASURY KHÔNG đổi nhà trong tx.
         expect trsy_in_addr == trsy_out_addr
 
         // ── C-RDM-TRIM: CẮT NGỌN THEO LƯU HÀNH ────────────────────────────────────
@@ -269,24 +269,24 @@ validator claim_account(
 // chung với `treasury.ak` ▸ GrantEntitlement, vì hai đường đọc cùng một sự thật phải đi
 // qua cùng một mệnh đề xác thực.
 
-// ─── TRSY carrier (sổ cái solvency) ────────────────────────────────────────
+// ─── TREASURY carrier (sổ cái solvency) ────────────────────────────────────────
 //
 // C-SOLV-5 — VÌ SAO CHỈ ÉP "ở MỘT script" CHỨ KHÔNG ÉP "ĐÚNG script treasury":
 // ràng đúng hash treasury ở ĐÂY là BẤT KHẢ THI vì vòng tham số —
 //   treasury(claim_account_hash, …)  ⇒ hash treasury cần hash claim_account
-//   claim_account(…, treasury_nft_policy) ⇒ hash claim_account cần policy TRSY
-//   treasury_nft(genesis_ref, treasury_hash) ⇒ policy TRSY cần hash treasury
+//   claim_account(…, treasury_nft_policy) ⇒ hash claim_account cần policy TREASURY
+//   treasury_nft(genesis_ref, treasury_hash) ⇒ policy TREASURY cần hash treasury
 // khép kín, không bake được. Nên phòng thủ chia hai tầng, cả hai đều KHÔNG cần vòng:
 //   (a) GENESIS — `treasury_nft.ak` ép NFT mint ra phải nằm ở một Script mang
-//       TreasuryDatum hợp lệ với outstanding = 0. Giết ca "đúc TRSY thẳng vào ví".
+//       TreasuryDatum hợp lệ với outstanding = 0. Giết ca "đúc TREASURY thẳng vào ví".
 //   (b) VÒNG ĐỜI — ở đây: carrier phải ngụ tại Script (không phải ví) VÀ đầu ra phải
-//       về ĐÚNG địa chỉ đầu vào. TRSY không đổi nhà được nữa.
-// Trước bản vá, hai hàm này lọc THUẦN THEO NFT, không một chữ nào về địa chỉ. Nếu TRSY
+//       về ĐÚNG địa chỉ đầu vào. TREASURY không đổi nhà được nữa.
+// Trước bản vá, hai hàm này lọc THUẦN THEO NFT, không một chữ nào về địa chỉ. Nếu TREASURY
 // từng ngụ ở ví (chỉ cần 03_genesis dựng sai một lần), Claim sẽ đọc sổ cái do CHÍNH kẻ
 // dựng tx viết, treasury.ak KHÔNG chạy, và C-SOLV-2 không bao giờ được kiểm — cấp E vô
 // hạn trên một quỹ rỗng. Cùng loại phụ thuộc mà `registry.ak:118-131` đã cảnh báo.
 
-/// (địa chỉ, TreasuryDatum) của treasury INPUT mang NFT "TRSY".
+/// (địa chỉ, TreasuryDatum) của treasury INPUT mang NFT "TREASURY".
 /// Đúng 1 carrier theo NFT (chống treasury giả + chống 2 sổ cái nhập nhằng), và carrier
 /// PHẢI ngụ tại một script — ví thường bị loại ngay (C-SOLV-5).
 ///
@@ -308,7 +308,7 @@ fn find_treasury_in(
   (i.output.address, td)
 }
 
-/// (địa chỉ, TreasuryDatum) của treasury OUTPUT mang NFT "TRSY". Đúng 1.
+/// (địa chỉ, TreasuryDatum) của treasury OUTPUT mang NFT "TREASURY". Đúng 1.
 fn find_treasury_out(
   outputs: List<Output>,
   treasury_nft_policy: ByteArray,
@@ -384,7 +384,7 @@ fn tre_datum(outstanding: Int, total_redeemed: Int) -> TreasuryDatum {
   }
 }
 
-/// treasury UTxO mang NFT "TRSY" + hai sổ cái (CÒN NỢ · ĐÃ PHÁT RA).
+/// treasury UTxO mang NFT "TREASURY" + hai sổ cái (CÒN NỢ · ĐÃ PHÁT RA).
 fn treasury_io(
   outst_in  : Int,
   outst_out : Int,
@@ -1128,7 +1128,7 @@ test claim_fake_account_without_nft_rejected() fail {
 // ── HỒI QUY C-SOLV-4/5 (review PR #22, điểm 2) ────────────────────
 
 test redeem_fake_treasury_no_trsy_rejected() fail {
-  // C-SOLV-4: tx KHÔNG có UTxO kho mang NFT "TRSY" ⇒ `find_treasury_in` không tìm thấy
+  // C-SOLV-4: tx KHÔNG có UTxO kho mang NFT "TREASURY" ⇒ `find_treasury_in` không tìm thấy
   // carrier nào ⇒ từ chối. Chống rút từ treasury giả (đối xứng Claim path).
   let in_d = ca_datum(10_000, 0, 0, 1, 0)
   let out_d = ca_datum(10_000, 200, 0, 1, 0)
@@ -1157,7 +1157,7 @@ test redeem_fake_treasury_no_trsy_rejected() fail {
 }
 
 test claim_trsy_at_wallet_rejected() fail {
-  // Ca sinh ra bản vá. Trước đây test này PASS: carrier TRSY là UTxO VÍ THƯỜNG, KHÔNG một
+  // Ca sinh ra bản vá. Trước đây test này PASS: carrier TREASURY là UTxO VÍ THƯỜNG, KHÔNG một
   // LAMP nào, sổ cái 0→1000 do chính kẻ dựng tx viết. Vì ví không phải script, spend nó
   // KHÔNG chạy treasury.ak ⇒ C-SOLV-2 không bao giờ được kiểm ⇒ cấp E vô hạn trên quỹ rỗng.
   let in_d = ca_datum(0, 0, 5, 1, 0)
@@ -1188,7 +1188,7 @@ test claim_trsy_at_wallet_rejected() fail {
 }
 
 test claim_trsy_moved_to_other_script_rejected() fail {
-  // C-SOLV-5: TRSY vào từ script treasury nhưng ra ở script KHÁC → đổi nhà → reject.
+  // C-SOLV-5: TREASURY vào từ script treasury nhưng ra ở script KHÁC → đổi nhà → reject.
   let in_d = ca_datum(0, 0, 5, 1, 0)
   let out_d = ca_datum(1000, 0, 5, 1, 0)
   let acc_addr = util.script_address(t_sh)

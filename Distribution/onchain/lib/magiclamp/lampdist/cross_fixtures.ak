@@ -56,7 +56,7 @@ pub const committee_hash: ByteArray = #"cccc"
 /// trùng cửa sổ thì mệnh đề `start' = cửa sổ` đúng ở cả hai cực đột biến.
 pub const window: Int = 5
 
-/// Ba OutputReference cố định: tài khoản · kho mang TRSY · UTxO tự đỗ ở địa chỉ kho.
+/// Ba OutputReference cố định: tài khoản · kho mang TREASURY · UTxO tự đỗ ở địa chỉ kho.
 pub const account_ix: Int = 0
 
 pub const treasury_ix: Int = 1
@@ -134,7 +134,7 @@ pub fn account_value() -> assets.Value {
     |> assets.add(account_nft_policy, blake2b_256(owner), 1)
 }
 
-/// UTxO kho: ADA + LAMP (+ NFT "TRSY" nếu là carrier canonical).
+/// UTxO kho: ADA + LAMP (+ NFT "TREASURY" nếu là carrier canonical).
 pub fn treasury_value(lovelace: Int, lamp: Int, trsy: Bool) -> assets.Value {
   let v =
     assets.from_lovelace(lovelace) |> assets.add(lamp_policy, lamp_name, lamp)
@@ -232,8 +232,8 @@ pub fn claim_grant_tx(
 }
 
 /// `Claim` (tài khoản) + `Refill` (kho) — cặp #75 chặn. Hình dạng tấn công đầy đủ:
-/// kho thật (TRSY, nợ `outstanding_in`) gộp với một UTxO TỰ ĐỖ ở địa chỉ kho (không TRSY)
-/// khai nợ khống `parked_debt`. Sổ ra = tổng sổ vào ⇒ Refill thoả phép gộp; carrier TRSY
+/// kho thật (TREASURY, nợ `outstanding_in`) gộp với một UTxO TỰ ĐỖ ở địa chỉ kho (không TREASURY)
+/// khai nợ khống `parked_debt`. Sổ ra = tổng sổ vào ⇒ Refill thoả phép gộp; carrier TREASURY
 /// tăng đúng `parked_debt` ⇒ C-SOLV-1 phía tài khoản thoả với `amount = parked_debt`.
 /// Không đi qua `GrantEntitlement` ⇒ không mệnh đề C-ACC-3 nào chạy.
 pub fn claim_refill_tx(
@@ -261,7 +261,7 @@ pub fn claim_refill_tx(
 ///
 /// ⚠ ĐỔI KỲ VỌNG 2026-09-26 (C-REF-PROV). Sổ ra trước đây là `outstanding_in + parked_debt`
 /// — phép TỔNG của luật cũ. Nay `treasury.ak` chỉ lấy sổ CỦA CARRIER (UTxO mang NFT
-/// "TRSY"), nên hình dạng QUA được là `outstanding_in`; `parked_debt` vẫn giữ nguyên ở
+/// "TREASURY"), nên hình dạng QUA được là `outstanding_in`; `parked_debt` vẫn giữ nguyên ở
 /// input để value của nó bị hút vào pool, đúng việc mà Refill sinh ra để làm. Nói cách
 /// khác, chính con số đổi ở dòng này là con số mà bản vá lấy đi khỏi tay người lạ.
 pub fn refill_only_tx(outstanding_in: Int, parked_debt: Int) -> Transaction {
