@@ -451,20 +451,46 @@ Hệ quả phải thiết kế quanh, không phải hệ quả để ghi chú:
 Đây cũng là lý do thứ hai — độc lập với lý do hồi tố ở §5 — khiến móc này **để trống ở lượt đúc
 này**: hình dạng bão hoà đòi số liệu tiêu thụ thật, mà số liệu đó chưa tồn tại.
 
-**Nguồn thứ hai, độc lập, cùng kết luận.** Suy luận trên đi từ phía này; cùng ràng buộc ấy được
-ghi từ phía kia, trong chú thích của chính module đó: `consume.ak` ▸ khối chú thích tại mệnh đề
-pin `did_commit` — *"thread engage KHÔNG có ràng buộc duy-nhất-theo-owner … không mệnh đề nào ép
-một owner một thread"*. Hai nguồn độc lập, không nguồn nào suy từ nguồn kia.
+**Nguồn thứ hai, độc lập, neo vào một phép chạy lại được** (không neo vào chú thích, vì chú thích
+già đi mà không ai báo): quét `consume.ak` tìm một mệnh đề ép duy-nhất-theo-owner cho thread
+engage trả về **rỗng**. Phạm vi của phép đo, nói trước: nó quét **một tệp** và khớp theo **chuỗi
+ký tự**, nên nó không loại được một ràng buộc viết dưới tên khác ở tệp khác. Mức phát biểu đúng là
+*"không tìm thấy trong `consume.ak`"*, chưa phải *"không tồn tại trong hệ"*.
 
-**Và một biên PHẢI biết trước khi ai đó định mở rộng móc này: chỉ có MỘT đường đếm được.**
-Tiêu thụ MAGIC đi qua hai đường tách rời — `consumed_nanogic` (ConsumeMAGIC/Eligibility/
-ScheduleGen) và `magic_settled` (PrepaidGen) — **không mệnh đề nào của bên này đọc trường của bên
-kia**; hai module chỉ nhắc tên nhau trong chú thích. Móc này đọc đường thứ nhất. Đường thứ hai
-**vĩnh viễn không dùng được cho một hệ số per-person**, vì `prepaid_vault` **pin `did_commit = #""`
-ở cổng đúc** — tiêu thụ qua đó không mang danh tính để mà quy về ai, và đó là thiết kế chứ không
-phải thiếu sót. ⟹ Mọi phát biểu về "tiêu thụ MAGIC" trong hợp đồng này phải đọc là **tiêu thụ qua
-đường Engage**, không phải toàn bộ tiêu thụ; đừng gắn một khoản thưởng-phạt nào vào đường prepaid
-và chờ nó quy được về người.
+### 5d. 🔴 Điều kiện CHẶN trước khi bật móc: cam kết DID KHÔNG được xác thực
+
+Đây là ràng buộc nặng nhất của §5 và nó không nằm ở phía này, nên phải chép vào đây thay vì trỏ.
+
+`did_commit` là một hash 32 byte **nằm công khai trên chuỗi**. Không mệnh đề nào ở hai module
+nguồn chứng minh cam kết đó **thuộc về** người ký — ai đọc chuỗi cũng **chép được** cam kết của
+người khác vào vault hoặc thread của mình, không cần biết tiền ảnh. Cả hai chiều đều mở: bán mức
+tiêu của mình, và thổi mức tiêu cho một người không hề yêu cầu. Hai module nguồn ghi cùng một câu,
+cố ý cùng câu chữ, và nó kết luận thẳng:
+
+> `did_commit` dùng được cho **QUY KẾT** (ai tự nhận việc tiêu này), **KHÔNG** dùng được cho bất
+> cứ thứ gì mà nói dối có lợi — quyền biểu quyết, **phân bổ phần thưởng**, hạn mức theo người,
+> chống-Sybil.
+
+**Một hệ số nâng trần rút LÀ phân bổ phần thưởng.** ⟹ Móc §5 không được bật chừng nào chưa có một
+**liên kết ĐƯỢC XÁC THỰC** giữa tài khoản phân phối và bản ghi tiêu thụ. Hình dạng rẻ nhất đã được
+nêu ở phía nguồn: đọc anchor Service-DID qua `reference_input` rồi đòi chữ ký controller — đổi
+validator, tức **đổi script hash**.
+
+**Và không có đường vòng.** Cả hai đường tiêu thụ đều mang cùng giới hạn này: đường prepaid
+(`magic_settled`) và đường engage (`consumed_nanogic`) — hai module cố ý viết cùng một câu, vì
+*"nếu không bên đọc sẽ tin bên lỏng hơn"*. Chuyển đường không cứu.
+
+> ⚠ **Đừng ghi lý do đóng hướng này thành "đường prepaid không mang DID nên không có gì để nối".**
+> Câu đó **SAI** — `SetDidCommit` (`prepaid.ak` ▸ `validate_set_did_commit`) đặt `did_commit` một
+> lần, một chiều, từ rỗng sang 32 byte; mệnh đề pin rỗng chỉ gác **cổng đúc**. Nguy hiểm của câu
+> sai ấy là nó **già đi ngược chiều với sự thật**: người sau `grep` ra nhánh ghi sẽ tưởng mình vừa
+> sửa một chỗ lỗi thời và **mở lại hướng đã đóng**, chỉ bằng một lượt đọc mã. Lý do thật là một
+> phát biểu về **tính chất** của trường — nó có, nó điền được, và **giá trị điền vào không ai
+> kiểm** — nên không lượt đọc mã nào lật được nó.
+
+**Biên còn lại, vẫn đúng:** hai bộ đếm nằm ở hai module rời nhau, không mệnh đề nào của bên này
+đọc trường của bên kia. Nên mọi câu "tiêu thụ MAGIC" trong hợp đồng này, nếu có ngày được dùng,
+phải nói rõ **đường nào** — không có đại lượng "tổng tiêu thụ" nào tồn tại on-chain.
 
 **Vì sao danh sách chứ không phải một policy.** `consume` nhận `vault_script_hash` làm apply-param
 ⟹ mỗi loại vault sinh một script hash khác ⟹ policy thread NFT **chính là** script hash đó ⟹ một

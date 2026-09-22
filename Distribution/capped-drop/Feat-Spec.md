@@ -200,7 +200,14 @@ không có cơ sở nào như thế.
 Beacon mang một danh sách policy (`speed_policies`) hiện **rỗng**. Khi bật, mức tiêu thụ MAGIC
 của một người nâng trần **cắt ngọn** của họ — tức ở kênh chỉ-hoãn, không phải kênh tốc độ.
 
-Ba ràng buộc đã chốt trước khi bật, ghi ở đây vì chúng đổi cả hành vi:
+🔴 **Điều kiện CHẶN, không phải một mục cần cân nhắc:** cam kết DID mà mọi bản ghi tiêu thụ dựa
+vào **không được xác thực**. Nó là một hash nằm công khai trên chuỗi, ai đọc cũng chép được vào
+vault hoặc thread của mình, nên nó dùng được để **quy kết** nhưng không dùng được cho thứ mà nói
+dối có lợi — và một hệ số nâng trần rút **chính là** phân bổ phần thưởng. Giới hạn này giống nhau
+ở **cả hai** đường tiêu thụ, nên đổi đường không cứu. Móc chỉ bật được sau khi có một **liên kết
+được xác thực** giữa tài khoản phân phối và bản ghi tiêu thụ, và việc đó đổi validator.
+
+Ba ràng buộc còn lại, chốt trước khi bật vì chúng đổi cả hành vi:
 
 1. **Là HỆ SỐ, không phải CỔNG.** Tài khoản tiêu 0 MAGIC vẫn phải vest đúng lịch của nó. Nhóm
    ETD được chọn bằng snapshot uỷ thác ADA nên tiêu 0 MAGIC **theo cấu tạo** — một cổng ở đây
@@ -208,9 +215,8 @@ Ba ràng buộc đã chốt trước khi bật, ghi ở đây vì chúng đổi 
 2. **Phải BÃO HOÀ.** Một người mở được nhiều thread và tự chọn thread nào để trỏ vào, nên hệ số
    không được là hàm tăng không chặn — nếu không thì dồn hoạt động vào một thread là một trục để
    chơi, và nó miễn phí.
-3. **Chỉ đếm được MỘT đường.** Tiêu thụ qua đường prepaid không mang danh tính (vault ghim DID
-   rỗng ở cổng đúc), nên "tiêu thụ MAGIC" trong tài liệu này luôn có nghĩa **tiêu thụ qua đường
-   Engage**, không phải toàn bộ.
+3. **Không có đại lượng "tổng tiêu thụ".** Hai bộ đếm nằm ở hai module rời nhau, không mệnh đề nào
+   đọc trường của bên kia. Mọi câu về tiêu thụ phải nói rõ **đường nào**.
 
 ### 5.3 Pause / penalty — BỎ, không chuyển sang v3
 
