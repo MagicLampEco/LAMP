@@ -324,8 +324,56 @@ amount ≤ max( trim_floor , total_redeemed · trim_num · g / trim_den )
   `speed_policies` trong `BeaconDatum`.
 - `speed_policies = []` ⟹ `g = 1` ⟹ **không reference input nào bị đòi, chi phí bằng 0**, hành vi
   y hệt như không có móc. Đó là trạng thái của lượt đúc này.
-- Khi bật: thiếu reference input hoặc thread không tìm thấy ⟹ `g = g_min` (**một sàn > 0**),
-  **KHÔNG** phải `g = 0`. Fail-closed ở đây nghĩa là ai bị tiêu mất UTxO thread thì bị khoá rút.
+- Khi bật: `g ∈ [g_min, 1]` với **`g_min > 0`**. Thiếu reference input, thread không tìm thấy,
+  hoặc `consumed = 0` ⟹ `g = g_min`, **KHÔNG** phải `g = 0`.
+
+### 5a. Ràng buộc bắt buộc lên `g_min` — nếu không thì `g` là một CỔNG, không phải HỆ SỐ
+
+Nhóm nhận ETD được chọn bằng **snapshot hồi tố stake tích luỹ**, tức tiêu chí là uỷ thác ADA,
+**không** phải tiêu MAGIC. Họ không cần vault MAGIC, không cần PersonDID, và theo mặc định
+**chưa từng tiêu một nanogic nào** — tiêu MAGIC đòi mở vault, sinh MAGIC, rồi đốt qua `BurnBatch`,
+không việc nào nằm trong điều kiện nhận ETD. Nếu `g` hạ trần cắt ngọn của họ thì **pot được thiết
+kế để redeem TRƯỚC, làm phép thử toàn cầu, lại thành pot vest CHẬM NHẤT hệ**.
+
+> **Phép thử phải chạy trên mọi ứng viên công thức, trước khi nó được bật:**
+> *"Một tài khoản có `consumed = 0` và sẽ mãi bằng 0 thì vest hết suất trong bao lâu? Nếu câu trả
+> lời là 'không bao giờ' hoặc 'lâu hơn đời dự án', số hạng này đang là một CỔNG chứ không phải
+> một HỆ SỐ."*
+
+Ràng buộc suy ra, viết dưới dạng bất đẳng thức để đo được chứ không để đọc cho xuôi:
+
+```
+g_min · trim_num/trim_den · C_launch  ≥  dpe · √(W · E_test)
+```
+
+tức **trần cắt ngọn của một tài khoản tiêu 0 phải vẫn NẰM TRÊN tốc độ lõm của nó** — lúc đó `g`
+không đổi gì cả với nhóm ấy, và nó chỉ còn là hệ số với đúng nhóm nó nhắm tới: pot đủ to để trần
+cắt ngọn mới ráo. Với `E_test` = ETD-max (2.379.930 LAMP ⟹ tốc độ lõm ≈ 119.497/cửa sổ) và
+`C_launch` = 1 tỷ LAMP ⟹ `g_min ≥ 0,12`. **Chọn `g_min = 1/8`.** Dưới ngưỡng đó, `g` bắt đầu ăn
+vào nhóm ETD, và nó sẽ ăn một cách **im lặng** — không lỗi, không cảnh báo, chỉ là người dùng thật
+kêu rằng mở khoá chậm mà không ai truy được vì sao.
+
+### 5c. Đọc MỘT thread là đọc THIẾU, và thiếu theo hướng người dùng điều khiển được
+
+Đúc thread Engage là **permissionless** và tên thread suy từ một seed do chính người đúc chọn
+(`ConsumeMAGIC/onchain/validators/consume.ak` ▸ `validate_mint_engage_id`), còn `BindDID` chỉ
+nhìn đúng MỘT thread nên không giao dịch nào ở vị trí so được hai thread. ⟹ **một người mở được
+N thread cùng một `did_commit`, không giới hạn, và đó là ý định của thiết kế bên đó.**
+`consumed_nanogic` do đó là số của **một thread**, không phải của **một người**, và **không có
+đường on-chain nào cộng N thread lại** mà không biết trước danh sách N.
+
+Hệ quả phải thiết kế quanh, không phải hệ quả để ghi chú:
+
+- Reference input trỏ vào thread nào là do **người dựng giao dịch chọn** ⟹ họ chọn thread có số
+  cao nhất, và họ dồn được mọi hoạt động vào đúng một thread để trỏ vào.
+- Vì `g` ở đây là **thưởng** (tiêu nhiều ⟹ trần cao hơn) chứ không phải **cổng**, chiều sai
+  **không** nghiêng về phía an toàn. Ai rải thật ra N thread thì thiệt; ai dồn vào một thread thì
+  lợi. Đó là một trục để chơi, và nó miễn phí.
+- ⟹ **`g` không được là một hàm tăng không chặn của `consumed`.** Nó phải bão hoà: đạt trần `g = 1`
+  ở một mức tiêu thụ đặt được, để việc dồn thread chỉ giúp tới đúng mức ấy rồi thôi.
+
+Đây cũng là lý do thứ hai — độc lập với lý do hồi tố ở §5 — khiến móc này **để trống ở lượt đúc
+này**: hình dạng bão hoà đòi số liệu tiêu thụ thật, mà số liệu đó chưa tồn tại.
 
 **Vì sao danh sách chứ không phải một policy.** `consume` nhận `vault_script_hash` làm apply-param
 ⟹ mỗi loại vault sinh một script hash khác ⟹ policy thread NFT **chính là** script hash đó ⟹ một
