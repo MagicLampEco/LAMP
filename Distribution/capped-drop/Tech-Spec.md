@@ -3,9 +3,14 @@
 **Doctype:** MagicLamp Protocol — Onchain Spec (Technical / Implementation)
 **Version:** v2 "Capped Drop"
 **Updated:** 2026-06-10
-**Nguồn chuẩn (interface contract):** [`CONTRACT.md`](./CONTRACT.md)
+**Nguồn chuẩn (interface contract):** [`CONTRACT.md`](./CONTRACT.md) — **v3**
 **Hành vi:** [`Feat-Spec.md`](./Feat-Spec.md)
-**Chứng minh toán:** [`Math-Spec.md`](./Math-Spec.md)
+**Chứng minh toán:** [`Math-Spec.md`](./Math-Spec.md) — **v3**
+
+> ⚠ **TỆP NÀY LÀ v2 VÀ ĐÃ LỆCH CONTRACT v3 — đừng hiện thực theo nó.** v3 đổi hình dạng datum
+> (`ClaimAccount` thêm `index_at_start`, `TreasuryDatum` thêm `total_redeemed`, `BeaconDatum`
+> thay `drop_value` bằng `index`+`rate_root`+`trim_*`+`speed_policies`) và đổi luật kẹp sang
+> `(redeemed+amount)² ≤ dpe²·E·A_span²`. Chỗ nào mâu thuẫn thì **CONTRACT thắng**.
 
 Tài liệu này đặc tả **cấu trúc kỹ thuật**: Aiken types → Plutus Data encoding, danh sách bất biến mỗi redeemer, luồng eUTXO, và thứ tự deploy + tham số. Mọi phát biểu dẫn file:line cụ thể.
 

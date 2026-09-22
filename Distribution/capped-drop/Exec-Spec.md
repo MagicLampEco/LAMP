@@ -3,8 +3,13 @@
 **Doctype:** MagicLamp Protocol — Execution / Operations Spec
 **Version:** v2 "Capped Drop"
 **Updated:** 2026-06-10
-**Nguồn chuẩn:** [`CONTRACT.md`](./CONTRACT.md)
-**Phụ thuộc đặc tả:** [`Feat-Spec.md`](./Feat-Spec.md) · [`Math-Spec.md`](./Math-Spec.md)
+**Nguồn chuẩn:** [`CONTRACT.md`](./CONTRACT.md) — **v3**
+**Phụ thuộc đặc tả:** [`Feat-Spec.md`](./Feat-Spec.md) · [`Math-Spec.md`](./Math-Spec.md) — **v3**
+
+> ⚠ **TỆP NÀY LÀ v2 VÀ ĐÃ LỆCH CONTRACT v3 — đừng deploy theo nó.** Tham số đóng băng đổi:
+> beacon không còn `drop_value` mà có `index`/`rate_root`/`trim_num`/`trim_den`/`speed_policies`,
+> với `rate_root = 77.460` và `speed_policies = []` ở lượt đúc này. Chỗ nào mâu thuẫn thì
+> **CONTRACT thắng**.
 
 ---
 

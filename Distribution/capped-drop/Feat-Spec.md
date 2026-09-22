@@ -3,8 +3,13 @@
 **Doctype:** MagicLamp Protocol — Onchain Spec (Feature/Behavior)
 **Version:** v2 "Capped Drop" (thay Drop Lottery v0.1)
 **Updated:** 2026-06-06
-**Nguồn chuẩn (interface contract):** [`capped-drop/CONTRACT.md`](./CONTRACT.md)
-**Chứng minh toán:** [`capped-drop/Math-Spec.md`](./Math-Spec.md)
+**Nguồn chuẩn (interface contract):** [`capped-drop/CONTRACT.md`](./CONTRACT.md) — **v3**
+**Chứng minh toán:** [`capped-drop/Math-Spec.md`](./Math-Spec.md) — **v3**
+
+> ⚠ **TỆP NÀY LÀ v2 VÀ ĐÃ LỆCH CONTRACT v3 — đừng hiện thực theo nó.** v3 đổi bốn thứ mà bản này
+> chưa tả: `vested` tính bằng **chỉ số cộng dồn** chứ không phải `rate(now) × elapsed`; tốc độ
+> **lõm theo cỡ pot**; thêm **cắt ngọn theo lưu hành**; `drops_per_epoch` **ghim = 1**.
+> Chỗ nào bản này mâu thuẫn CONTRACT v3 thì **CONTRACT thắng**. Lên v3 là việc riêng, chưa làm.
 
 Tài liệu này đặc tả **hành vi** cơ chế Capped Drop: entitlement → drip (nhỏ giọt) →
 redeem (tự rút). Bỏ random/lottery/merkle/committee-chọn-winner. Mọi phát biểu bám

@@ -46,10 +46,18 @@ redeemable = vested − redeemed
 - **Vì sao lõm.** Trần tuyệt đối cho `S(n) = n`: tách một pot thành `n` phần thì tổng tốc độ nhân
   `n` — trần tự huỷ. Luật căn cho `S(n) = √n`. Luật tuyến tính cho `S ≡ 1` nhưng nó xoá luôn mọi
   khác biệt theo cỡ. Luật căn là chỗ duy nhất vừa kháng tách vừa còn phân biệt cỡ.
-- **`W` và `p` không phải lựa chọn tự do — chúng bị chính hai mốc đã chốt ép ra.** ETD-max
+- **`W` và `p` không phải lựa chọn tự do — chúng bị chính hai mốc hiệu chỉnh ép ra.** ETD-max
   (2.379.930 LAMP) xong trong 20 cửa sổ và pot 6 tỷ xong trong 1000 cửa sổ cho
   `p = ln 50 / ln 2521,08 = 0,4995` — lệch luật căn **0,42%** — và
-  `W = E_max / release_epochs² = 6×10⁹ / 10⁶ = **6.000 LAMP**`.
+  `W ≈ E_max / release_epochs² = 6×10⁹ / 10⁶ ≈ 6.000 LAMP`.
+- **`rate_root` là NGUYÊN THUỶ, `W` là SUY RA — không được làm ngược.** Cái nằm trong datum là
+  `w`, và `W := w²`. Nếu chốt `W = 6.000 LAMP` rồi lấy `w = ⌊√W⌋ = 77.459`, phép cắt nguyên làm
+  `w` nhỏ hơn `√W` một chút và sai số ấy **cộng dồn mỗi cửa sổ**: vế phải của phép kẹp đứng mãi ở
+  **99,998%** của `E²`, nên tài khoản tiệm cận `E` mà **không bao giờ chạm**, và `expect amount > 0`
+  khoá lại phần đuôi — khoá vốn vĩnh viễn, có hệ thống, không bài kiểm ngắn nào thấy.
+  **Chốt `w = 77.460`** ⟹ `W = w² = 6.000.051.600 oildrop = 6.000,0516 LAMP`, và cả hai mốc rơi
+  đúng: pot 6 tỷ chạm `E` ở cửa sổ **1000**, ETD-max ở cửa sổ **20**. Chứng minh + bảng hai giá
+  trị `w`: [`Math-Spec.md`](./Math-Spec.md) §7 (M-ROOT-CEIL).
 - **Hiện thực bằng SỐ NGUYÊN, không `sqrt`.** Validator không tính `vested`; nó **kẹp** con số
   người dùng xin:
 
@@ -62,6 +70,33 @@ redeemable = vested − redeemed
 - **Entitlement bảo toàn:** bỏ lỡ cửa sổ KHÔNG mất quyền — `A` cộng dồn, và không có nhánh nào
   làm `A` giảm.
 
+### 1b. `drops_per_epoch ≡ 1` — GHIM CỨNG, và vì sao nó không mất gì
+
+v2 để `dpe` tự do trong `[1, drops_per_epoch_max = 100]`, committee đặt lúc mở tài khoản, bất
+biến sau đó. Với luật tốc độ mới, tự do đó là một **cửa sau xuyên thủng chính trần lõm**:
+`dpe` nhân thẳng vào tốc độ, nên committee cấp cho mình `dpe = 100` trong khi cộng đồng ở giá
+trị vận hành `21` cho tỉ lệ **4,76×** — và tỉ lệ ấy **không đổi dù siết `trim_num` bao nhiêu**,
+vì nó nằm ở kênh tốc độ chứ không ở kênh cắt ngọn.
+
+```
+C-ACC-DPE:  drops_per_epoch == 1     (ép ở treasury.ak nhánh CREATE)
+```
+
+**Ghim nó KHÔNG phải một phép đánh đổi, vì phép hiệu chỉnh đã giả định `dpe = 1` từ đầu.** Kiểm
+lại bằng chính hai mốc hiệu chỉnh, với `w = 77.460`:
+
+| pot | `w · ⌊√E⌋` mỗi cửa sổ | số cửa sổ để chạm `E` | mốc hiệu chỉnh |
+|---|---|---|---|
+| ETD-max 2.379.930 LAMP | 119.497,70 | `⌈19,916⌉` | **20** ✓ |
+| pot sáng lập 6×10⁹ LAMP | 6.000.025,73 | `⌈999,996⌉` | **1.000** ✓ |
+
+Cả hai khớp **tại `dpe = 1`**. Nghĩa là `W` đã hấp thụ trọn vai trò của `dpe`; để `dpe` tự do
+bên cạnh `W` là cấp hai núm cho cùng một đại lượng, và núm thứ hai thì per-account và tuỳ nghi.
+
+**Trường `drops_per_epoch` GIỮ trong datum** (bỏ nó là đổi số trường lần nữa, và một cửa sau bị
+khoá bằng `expect` thì rõ hơn một cửa sau bị xoá). Muốn mở lại ở v4 thì phải kèm một **cơ sở đo
+được trên chuỗi** để phân biệt tài khoản — hôm nay không có cơ sở nào như thế.
+
 ## 2. Datum `ClaimAccount` (thay field lottery)
 
 ```
@@ -70,7 +105,7 @@ ClaimAccount {
   entitlement      : Int,         // E — tổng LAMP được phân bổ
   redeemed         : Int,         // đã nhận tích lũy
   start_epoch      : Int,         // t0 — GIỮ, chỉ còn dùng cho nhãn/kiểm toán
-  drops_per_epoch  : Int,         // dpe, trong [1, drops_per_epoch_max]
+  drops_per_epoch  : Int,         // GHIM == 1 ở v3 (C-ACC-DPE, §1b). Giữ trường, khoá giá trị
   index_at_start   : Int,         // a0 — chỉ số beacon A CHỤP LÚC MỞ (trường MỚI, ĐẶT Ở CUỐI)
 }
 ```
@@ -132,7 +167,7 @@ BeaconDatum {
   epoch            : Int,        // cửa sổ lượt post này (C-BCN-3: == cửa sổ tx chạy trong đó)
   kind             : DropParam,
   index            : Int,        // A tại mốc `epoch` — CỘNG DỒN, CHỈ TĂNG
-  rate_root        : Int,        // w = √W, gốc tốc độ ĐANG hiệu lực kể từ `epoch`
+  rate_root        : Int,        // w — NGUYÊN THUỶ (W := w², không phải ngược lại — §1)
   trim_num         : Int,        // κ tử  ┐ tham số CẮT NGỌN, xem §4 mục 4
   trim_den         : Int,        // κ mẫu ┘ mặc định 1 / 1000
   speed_policies   : List<ByteArray>,  // MÓC MỞ RỘNG — RỖNG ở lượt đúc này, xem §5
@@ -343,7 +378,7 @@ kế để redeem TRƯỚC, làm phép thử toàn cầu, lại thành pot vest 
 Ràng buộc suy ra, viết dưới dạng bất đẳng thức để đo được chứ không để đọc cho xuôi:
 
 ```
-g_min · trim_num/trim_den · C_launch  ≥  dpe · √(W · E_test)
+g_min · trim_num/trim_den · C_launch  ≥  dpe · rate_root · ⌊√E_test⌋
 ```
 
 tức **trần cắt ngọn của một tài khoản tiêu 0 phải vẫn NẰM TRÊN tốc độ lõm của nó** — lúc đó `g`
@@ -395,12 +430,17 @@ trong van không đổi. Tham số đi vào `BeaconDatum` để thừa hưởng 
 
 ### 5b. Hooks DAO khác (post-MVP — CHỪA CHỖ, KHÔNG build lượt này)
 
-- **Multi-drop per-DID:** DAO tăng `drops_per_epoch` cho DID uy tín/nhu cầu cao. `dpe` nằm trong
-  `[1, drops_per_epoch_max]` và **bất biến sau khi mở** — tăng nó cho một tài khoản đang chạy là
-  một thay đổi tốc độ tích luỹ, phải đi qua đường NỚI, không được đi qua đường sửa datum.
-- **Pause/penalty:** ĐẶT `drops_per_epoch = 0` là một **hành vi bị CẤM** ở v3 — nó hạ `vested`
-  hồi tố xuống 0 và khoá vĩnh viễn một tài khoản đã rút dở. Phạt, nếu cần, phải đi qua
-  `trim_num`, tức chỉ chạm các lượt rút TƯƠNG LAI.
+- **Multi-drop per-DID: HOÃN VÔ THỜI HẠN, không phải "chưa làm".** v3 ghim `dpe ≡ 1` (§1b). Mở
+  lại nó đòi một **cơ sở đo được trên chuỗi** để phân biệt tài khoản nào xứng đáng nhanh hơn —
+  và cơ sở duy nhất từng được đề xuất là uy tín/DID, thứ mà `did_commit` **không** cung cấp
+  (kho MAGIC đã viết thẳng rằng nó dùng cho QUY KẾT, không cho hạn mức theo người). Không có cơ
+  sở thì "DAO chỉnh per-DID" chỉ là committee chỉnh theo ý mình, có thêm một lá phiếu.
+- **Pause/penalty:** ĐẶT `drops_per_epoch = 0` là một **hành vi bị CẤM**, và lý do đáng đọc kỹ
+  vì nó tinh tế: `dpe` nằm **NGOÀI** tổng tích luỹ (`vested = dpe · √E · A_span`), nên hạ nó
+  xuống 0 hạ `vested` **hồi tố** xuống 0 và khoá vĩnh viễn một tài khoản đã rút dở. So sánh với
+  `rate_root`, nằm **TRONG** tổng: hạ nó chỉ làm các cửa sổ TƯƠNG LAI đóng góp ít đi.
+  **Cùng một phép nhân, hai vị trí, hai hệ quả trái ngược** — đây là phép thử phải chạy trước
+  khi thêm bất kỳ thừa số nào (§7). Phạt, nếu cần, đi qua `trim_num`.
 
 ## 6. Giữ nguyên (tái dùng, KHÔNG vứt)
 
@@ -429,8 +469,9 @@ trong van không đổi. Tham số đi vào `BeaconDatum` để thừa hưởng 
 
 ## 8. Spec + build (song song bám CONTRACT)
 
-- **SPEC**: viết FEAT (hành vi: entitlement → drip → redeem, ví nhỏ/lớn, hooks DAO) + MATH (chứng minh
-  vested đơn điệu/bounded/cap, ⌈E/D⌉ epoch, đa-claim cộng dồn) + cập nhật `SPEC.md`/`README` (bỏ lottery).
+- **SPEC**: MATH **đã lên v3** — [`Math-Spec.md`](./Math-Spec.md), 9 định lý + bảng 14 bất biến
+  (`M-*`) để bộ kiểm bám. FEAT · TECH · EXEC **còn ở v2 và đã tự khai là lệch** bằng một biển ở
+  đầu tệp; nâng chúng lên v3 là việc riêng, **chưa làm**.
 - **ONCHAIN**: rework `claim_account.ak` (Redeem vested), `DropParam` beacon, **gỡ** `merkle.ak`/randomness;
   Aiken test (vested đơn điệu, cap E, đa-claim, E<D nhận hết, double-satisfaction reject).
 - **OFFCHAIN**: gỡ `lottery.ts`/`merkle.ts`, `redeemBuilder` tính vested, datum codec mới; vitest.
@@ -451,6 +492,9 @@ Mỗi ca dưới đây canh một mệnh đề mà nếu gỡ đi thì **không 
 | `index_at_start` bị đổi trong out datum ⟹ TỪ CHỐI | §7 | không ép thì ca này xanh |
 | `total_redeemed_out ≠ in + amount` ⟹ TỪ CHỐI | C-RDM-TOTAL | kiểm cả chiều thiếu lẫn chiều thừa |
 | `speed_policies = []` ⟹ không đòi reference input nào | §5 | đo số reference input, không đo kết quả |
+| mở tài khoản với `dpe = 2` ⟹ TỪ CHỐI | `C-ACC-DPE` §1b | v2 cho qua mọi giá trị tới 100; kiểm cả `dpe = 0` và `dpe = 100` |
+| tài khoản `consumed = 0`, cỡ ETD-max: vest hết ĐÚNG 20 cửa sổ khi móc BẬT | §5a | đầu vào phân biệt: chạy lại với `g_min = 0,10` (dưới ngưỡng 0,1194977) thì phải LÂU HƠN 20 — nếu hai bên ra cùng số thì ca này không kiểm gì |
+| **pot 6 tỷ chạm ĐÚNG `E` ở cửa sổ 1000** (`rate_root = 77.460`) | §1 · M-ROOT-CEIL | **ca đắt nhất nếu bỏ.** Phải chạy tới `n = 1000` thật: ở vài cửa sổ đầu `w = 77.459` và `w = 77.460` cho kết quả **giống hệt nhau**, nên bài ngắn xanh ở cả hai cực và không kiểm gì. Ca đối xứng bắt buộc: với `w = 77.459` thì cửa sổ 1000 **KHÔNG** rút hết, còn dư đuôi |
 
 > **Đừng phát biểu "chốt X đã được ghim" chỉ vì có một bài đỏ ở chốt X.** Bài có thể trượt xuống
 > chốt kế tiếp và chết ở đó, đúng tên, đúng màu. Phép đo đúng là **gỡ hẳn chốt X rồi chạy trọn bộ
@@ -468,17 +512,21 @@ bằng hình phạt — chỉ xử được bằng **phân tán quyền**.
 |---|---|---|---|---|
 | post beacon (`rate_root`, `trim_*`, `speed_policies`) | committee | M-of-N | — | `rate_root` chỉ nới ⟹ không đóng băng được ai. `trim_num` siết được nhưng chỉ chạm lượt rút tương lai |
 | `GrantEntitlement` (mở tài khoản, tăng `E`) | committee | M-of-N | — | cấp `E` khống bị C-SOLV-2 chặn ở `≤ pool` |
-| đặt `drops_per_epoch` lúc mở | committee | M-of-N | không (bất biến sau khi mở) | **CHƯA CÓ mệnh đề nào ép `dpe` công bằng giữa các tài khoản.** Committee tự cấp `dpe = 100` trong khi cộng đồng ở `dpe = 21` là hợp lệ, và tỉ lệ 4,76× đó **không đổi** dù siết `trim_num` bao nhiêu |
+| đặt `drops_per_epoch` lúc mở | — | — | — | **ĐÃ ĐÓNG ở v3**: `C-ACC-DPE` ép `dpe == 1` cho mọi tài khoản (§1b). Committee không còn núm per-account nào chạm được kênh tốc độ |
 | `DistributionVest` (đúc LAMP vào kho) | entry Registry `lamp_tag` | **PHẢI `MultiSig`, CẤM `SinglePkh`** | có (`Revoked`) | `SinglePkh` = một chữ ký đúc được tới `dist_cap`; nếu đúc từng đợt thì nhánh này còn sống suốt vòng đời |
 
-**Hai dòng cuối là điểm treo thật, không phải thủ tục.** Dòng `dpe`: cần một mệnh đề ép `dpe` suy
-tất định từ `E`, hoặc một trần trên tỉ số `dpe` giữa các tài khoản — **chưa có, chưa thiết kế**.
-Dòng `DistributionVest`: là điều kiện đi kèm của quyết định "đúc từng đợt".
+**Dòng `DistributionVest` là điểm treo thật, không phải thủ tục** — nó là điều kiện đi kèm của
+quyết định "đúc từng đợt": giữ nhánh mint sống thì entry Registry phải là `MultiSig`.
+
+Sau khi §1b ghim `dpe ≡ 1`, **committee không còn núm per-account nào chạm được kênh tốc độ**.
+Mọi quyền còn lại của họ hoặc chỉ-nới (`rate_root`), hoặc chỉ-chạm-lượt-rút-tương-lai
+(`trim_num`), hoặc bị chặn bởi một bất biến độc lập (`GrantEntitlement` ↔ C-SOLV-2).
 
 ## 10. Phạm vi lượt này — cái gì vá, cái gì cố ý để lại
 
 **Vá trong lượt đúc này** (tất cả đều là mã validator hoặc hình dạng datum, tức không sửa được về
-sau vì cụm không có redeemer nâng cấp): §1 trần lõm · §2 `index_at_start` · §2b `total_redeemed` ·
+sau vì cụm không có redeemer nâng cấp): §1 trần lõm · **§1b `C-ACC-DPE` ghim `dpe ≡ 1`** ·
+§2 `index_at_start` · §2b `total_redeemed` ·
 §3 chỉ số cộng dồn + `rate_root` một chiều · §4 cắt ngọn + `trim_floor` · §4d sổ tên NFT ·
 §5 móc `speed_policies` rỗng · RFL-KILL-ONCHAIN-01 (`fold_ledger` ép từng số hạng ≥ 0).
 
@@ -488,7 +536,7 @@ sau vì cụm không có redeemer nâng cấp): §1 trần lõm · §2 `index_at
 |---|---|
 | Giá trị thật của `trim_num`, `g`, `speed_policies` | tham số trong datum beacon, đổi bất cứ lúc nào |
 | Nối `consumed MAGIC` đầy đủ | móc đã cắm ở §5; bật là một lượt post |
-| Trần công bằng cho `dpe` | chưa thiết kế xong — ghi ở §9 như điểm treo, KHÔNG im lặng |
+| *(gỡ khỏi danh sách hoãn)* trần công bằng cho `dpe` | **ĐÃ VÁ trong lượt này** — `C-ACC-DPE` ghim `dpe ≡ 1`, §1b |
 | Tách-theo-NGƯỜI | không có đường on-chain nào hôm nay; §4d đã khai giới hạn |
 | Nút cổ chai một-`Redeem`-mỗi-block | chưa đo; nó là trần thông lượng, không phải lỗ an toàn |
 | UI tách "rút được cửa sổ này" khỏi "còn lại tổng" | off-chain. Nhưng **bắt buộc trước khi có người dùng thật**: nếu không, mỗi lần cắt ngọn sẽ đọc như một lần tịch thu |
