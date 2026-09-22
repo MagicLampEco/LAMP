@@ -1,57 +1,64 @@
-// LampDistribution constants — Capped Drop v2.
+// LampDistribution constants — Capped Drop v3.
 // Đơn vị: oildrop (1 LAMP = 10^6 oildrop). Q-format: Q = 10^9.
 //
-// ⚠ ĐỔI TÊN 2026-09-16 (vá Issue #72, lỗ 3). Bốn hằng dưới đây trước mang tiền tố `p_`
-// và thuộc thiết kế **P-beacon** — thiết kế đã bị Capped Drop v2 thay (`CONTRACT.md:58`
-// nay chỉ còn nhắc nó như quá khứ: "như P-beacon cũ"). Từ lúc bị thay tới nay chúng
-// KHÔNG được validator nào đọc: đo bằng `grep -rn "p_min\|p_max\|max_p_delta_q"` trên
-// `validators/` + `lib/` cho ra đúng ba dòng khai báo, không dòng dùng nào.
-//
-// Một bộ hằng mang tên của thiết kế đã chết, không ai đọc, nằm cạnh thiết kế đang sống
-// là thứ đọc-là-tin: người sau mở `constants.ak` thấy có sàn/trần thì tin rằng D bị
-// chặn. Nay chúng mang tên của đại lượng thật (`drop_value`) VÀ được `beacon.ak` đọc,
-// nên cái tên và cái thực khớp nhau.
-//
-// CON SỐ thì thừa kế nguyên từ P, chưa qua một vòng chốt nào cho D — ghi ra để người
-// đọc sau không tưởng đây là số đã cân. Đổi chúng là đổi biên độ điều hành, không phải
-// đổi cơ chế: cơ chế nằm ở `beacon.ak`, ba dòng `expect` mang mã C-BCN-2/3/4.
+// ⚠ ĐÃ BỎ 2026-09-22 (v3): `drop_value_genesis` · `drop_value_min` · `drop_value_max` ·
+// `max_drop_delta_q` · `drops_per_epoch_max`. Bốn cái đầu là biên của `drop_value`, trường
+// mà v3 đã gỡ khỏi `BeaconDatum`; cái cuối là trần của `drops_per_epoch`, tham số mà v3
+// ghim cứng `== 1` (C-ACC-DPE). Giữ một hằng không có cơ chế tương ứng là giữ một lời hứa
+// về hành vi mà không mã nào thực hiện — đúng lý do `p_ema_window` đã bị bỏ ngày 2026-09-16.
 
 pub const q: Int = 1_000_000_000
 
-// ── Biên của D (drop_value, oildrop/drop·epoch) ──────────────────────────────
-// `beacon.ak` ép mọi giá trị post lên beacon nằm trong [min, max].
+// ── Biên của `rate_root` (w, gốc tốc độ — W := w²) ───────────────────────────
+// `beacon.ak` C-BCN-5b ép mọi giá trị post lên beacon nằm trong [min, max].
+//
+// 🔴 HAI CON SỐ DƯỚI ĐÂY CHƯA ĐƯỢC CHỐT — đặc tả v3 nói "biên cứng giữ nguyên" nhưng
+// KHÔNG nêu giá trị ở bất cứ đâu (đo 2026-09-22 bằng
+// `grep -rn "rate_root_min\|rate_root_max" Distribution/` → chỉ 4 dòng, đều là dòng NHẮC
+// TÊN, không dòng nào cho số). Và "giữ nguyên" KHÔNG đọc được thành "dùng lại số của
+// `drop_value`": `drop_value_min` cũ là 10^7 trong khi giá trị hiệu chỉnh của `w` là
+// 77.460 — bê nguyên số cũ thì genesis nằm DƯỚI sàn.
+//
+// Giá trị dưới đây giữ ĐÚNG HÌNH DẠNG dải cũ quanh mốc hiệu chỉnh `w = 77.460`
+// (`Math-Spec.md` v3 §7): sàn = w/10, trần = w×100 — y hệt tỉ lệ mà dải `drop_value` cũ
+// dùng quanh mốc 100 LAMP. Đổi chúng ĐÒI ĐÚC LẠI SCRIPT, nên chúng phải qua một vòng chốt
+// trước mainnet, cùng vòng với `trim_floor`.
+pub const rate_root_min: Int = 7_746
+//                             w/10 — SÀN CỨNG. Bị C-BCN-5' (chỉ-nới) bao trùm trên một
+//                             chuỗi hợp lệ: genesis ≥ sàn và mọi lượt post chỉ tăng ⇒
+//                             không giao dịch nào trên chuỗi chạm được nó. Giữ vì nó là
+//                             chân của Định lý 1 (`w_k > 0` ⇒ A không giảm) và vì nó chặn
+//                             một beacon khởi tạo sai.
 
-pub const drop_value_genesis: Int = 100_000_000
-//                                  100 LAMP — giá trị beacon mở sổ
+pub const rate_root_max: Int = 7_746_000
+//                             w×100 — TRẦN CỨNG. Đây là biên chịu lực thật: nó nói "không
+//                             ai làm pot mở khoá nhanh hơn 1/100 lịch hiệu chỉnh", trong
+//                             khi C-BCN-5a chỉ chặn TỐC ĐỘ đi tới đó (~49 cửa sổ post liên
+//                             tiếp ở +10%).
 
-pub const drop_value_min: Int = 10_000_000
-//                              10 LAMP — SÀN CỨNG. Committee không đóng băng được
-//                              vesting của tài khoản đang mở dở bằng cách hạ D về ~0.
-
-pub const drop_value_max: Int = 10_000_000_000
-//                              10_000 LAMP — TRẦN CỨNG của D. Một mình nó KHÔNG ghim
-//                              được lịch vesting: tốc độ mở khoá là `D · drops_per_epoch`,
-//                              và thừa số thứ hai do cùng committee đặt lúc mở tài khoản.
-//                              Câu "lịch vesting ràng buộc cả bên phát hành" chỉ đứng
-//                              được khi có ĐỦ trần D, trần dpe (dưới), và C-ACC-2/3 ở
-//                              `treasury.ak` ghim mốc bắt đầu.
-
-// ── Trần `drops_per_epoch` của một tài khoản ─────────────────────────────────
-// `treasury.ak` C-ACC-4 ép `1 ≤ dpe ≤ trần` ở nhánh CREATE; `claim_account` giữ dpe bất
-// biến ở `Claim`. Tốc độ mở khoá tối đa = `drop_value_max · drops_per_epoch_max`.
-// GIÁ TRỊ TẠM cho Preprod — chốt trước mainnet cùng bộ biên D ở trên. 100 chứa được
-// giá trị vận hành đang dùng (`Genesis/scripts/28_beacon_grant_redeem.ts`, hằng
-// `DROPS_PER_EPOCH`, mặc định 21).
-pub const drops_per_epoch_max: Int = 100
-
-// ── Biên của MỘT LẦN đổi D ───────────────────────────────────────────────────
-// `beacon.ak` ép |D_mới − D_cũ| · q ≤ D_cũ · max_drop_delta_q, tức ±10% mỗi lượt post.
+// ── Biên của MỘT LƯỢT NỚI `rate_root` ────────────────────────────────────────
+// `beacon.ak` C-BCN-5a ép (w_mới − w_cũ) · q ≤ w_cũ · max_rate_root_delta_q, tức +10% mỗi
+// lượt post. KHÁC v2 ở CHIỀU: v2 dùng `abs_diff` — một hàm ĐỐI XỨNG — nên trần ±10% chặn
+// tốc độ mà KHÔNG chặn chiều, và committee hạ được 10% mỗi lượt. Với công thức v2 một lượt
+// −10% khoá vĩnh viễn mọi tài khoản đã chạy ≥ 9 cửa sổ (CONTRACT v3 §0). v3 bỏ hẳn chiều
+// giảm bằng C-BCN-5'; hằng này chỉ còn gác chiều NỚI.
 // Chỉ có nghĩa khi mỗi cửa sổ post được tối đa một lượt — `beacon.ak` ép điều đó bằng
 // C-BCN-2 (`epoch` đơn điệu TĂNG) đi cặp với C-BCN-3 (`epoch` == cửa sổ hiện tại).
-// Bỏ một trong hai thì trần này vô hiệu: post n lượt trong một cửa sổ ⇒ đổi 1,1^n lần.
-pub const max_drop_delta_q: Int = 100_000_000
-//                                0,10 × q
+pub const max_rate_root_delta_q: Int = 100_000_000
+//                                     0,10 × q
 
-// ĐÃ BỎ 2026-09-16: `p_ema_window` (α = 0.5). Nó là tham số của vòng làm trơn EMA trong
-// P-beacon; Capped Drop không có vòng đó. Giữ lại một hằng không có cơ chế tương ứng là
-// giữ một lời hứa về hành vi mà không mã nào thực hiện.
+// ── Sàn cắt ngọn (C-RDM-TRIM-FLOOR) ──────────────────────────────────────────
+// `amount ≤ max(trim_floor, total_redeemed · trim_num / trim_den)`.
+//
+// BẮT BUỘC, không phải tuỳ chọn: không có nó, `total_redeemed = 0` là một ĐIỂM HẤP THỤ —
+// trần bằng 0 ⇒ không ai rút được ⇒ `total_redeemed` mãi bằng 0 ⇒ hệ không bao giờ khởi
+// động (`Math-Spec.md` v3 §5 HQ 4.1).
+//
+// VÌ SAO LÀ HẰNG Ở ĐÂY CHỨ KHÔNG PHẢI TRƯỜNG DATUM — khác hẳn `trim_num`/`trim_den` ngay
+// bên cạnh nó về HƯỚNG HỎNG: siết `trim_num` chỉ hoãn một lượt rút, còn hạ `trim_floor` về
+// 0 dựng lại đúng điểm hấp thụ mà chính nó sinh ra để phá, và hệ chết theo kiểu không ai
+// kêu (mọi bất biến vẫn đúng, giao dịch chỉ đơn giản bị từ chối). Một tham số mà MỘT ĐẦU
+// của miền giá trị là một cái bẫy thì không đưa vào datum. Giá phải trả: đổi nó đòi script
+// hash mới — chấp nhận được vì nó là SÀN AN TOÀN, không phải NÚM ĐIỀU TIẾT.
+pub const trim_floor: Int = 1_000_000_000
+//                          1.000 LAMP — suy từ yêu cầu "ví 1.000 LAMP xong trong một cửa sổ"

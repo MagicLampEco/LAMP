@@ -84,6 +84,8 @@ fn run_one(tx: Transaction, run: ScriptRun) -> Bool {
         fx.threshold,
         fx.account_nft_policy,
         fx.ms_per_epoch,
+        // v3 C-CLAIM-8: beacon policy — tham số thứ 8 của `treasury`.
+        fx.beacon_policy,
         datum_opt,
         r,
         fx.ref(ix),
@@ -150,25 +152,25 @@ const topup: Int = 1000
 const outstanding_in: Int = 250
 
 fn account_in() -> ClaimAccountDatum {
-  fx.account_datum(400, 150, 2)
+  fx.account_datum(400, 150, 2, fx.index_at(2))
 }
 
 /// Rebase đúng: E' = 400 − 150 + 1000 = 1250, redeemed' = 0, mốc' = cửa sổ 5.
 fn account_rebased() -> ClaimAccountDatum {
-  fx.account_datum(1250, 0, fx.window)
+  fx.account_datum(1250, 0, fx.window, fx.index_at(fx.window))
 }
 
 /// Công thức TRƯỚC #75: E' = E + amount, giữ `redeemed`, giữ mốc. Sai cả ba mệnh đề
 /// C-CLAIM-3/5/6 — đúng hình dạng mà cặp Claim+Refill nhắm tới (né C-ACC-3 của kho).
 fn account_pre_75() -> ClaimAccountDatum {
-  fx.account_datum(1400, 150, 2)
+  fx.account_datum(1400, 150, 2, fx.index_at(2))
 }
 
 /// Không rebase nhưng GIỮ khớp sổ kho: E' = 1250 (granted = 1250 − 250 = 1000 = amount),
 /// chỉ `redeemed'` và mốc sai. Để mọi lý do từ chối ở ca 3 đều là mệnh đề rebase, không
 /// phải lệch sổ.
 fn account_not_rebased() -> ClaimAccountDatum {
-  fx.account_datum(1250, 150, 2)
+  fx.account_datum(1250, 150, 2, fx.index_at(fx.window))
 }
 
 fn grant_runs() -> List<ScriptRun> {
