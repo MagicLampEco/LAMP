@@ -14,22 +14,34 @@ echo "════════════════════════�
 echo "  ONCHAIN — aiken check (lib + validators)"
 echo "════════════════════════════════════════════"
 cd "$ROOT/onchain"
-# Chạy TRƯỚC, giữ nguyên exit code; lọc để in sau. Không nhét test vào giữa pipeline.
-if aiken check >"$LOG/aiken.txt" 2>&1; then
-  grep -E '"total"|"passed"|"failed"' "$LOG/aiken.txt" | head -3 || true
-else
-  echo "🔴 aiken check THẤT BẠI (exit $?) — toàn văn:"
-  cat "$LOG/aiken.txt"
-  exit 1
-fi
+# ⚠️ `aiken` CHỈ in chẩn đoán khi stdout là một terminal THẬT. Chuyển hướng ra tệp hay đẩy
+# qua đường ống đều làm nó câm: 0 byte stdout, mã thoát 1, không một dòng nào nói vì sao.
+# Bản trước của tệp này chạy `aiken check >"$LOG/aiken.txt" 2>&1`, nên nhánh 🔴 của nó
+# `cat` ra đúng hai dòng "Compiling" — tức cái cổng tự khai là có nhật ký mà thật ra KHÔNG.
+# Bộ bọc `run_with_tty.py` cấp một pty nên chẩn đoán đi ra bình thường, và `tee` giữ lại
+# bản để lọc. Đo 2026-09-22 trên aiken v1.1.21 + v1.1.23.
+#
+# Vế `grep '"total"'` của bản trước đọc đầu ra dạng JSON mà `aiken check` KHÔNG in, và nó
+# được che bằng `|| true` nên tìm không thấy gì cũng im. Nay lọc theo dòng `Summary` thật.
+TTY_RUN="$ROOT/run_with_tty.py"
+run_aiken() {  # $1 = nhãn, $2 = tệp log, còn lại = lệnh
+  local nhan="$1" log="$2"; shift 2
+  if python3 "$TTY_RUN" "$@" 2>&1 | tee "$log" >/dev/null; then
+    grep -E 'Summary' "$log" || {
+      echo "🔴 $nhan: KHÔNG ĐO ĐƯỢC — mã thoát 0 nhưng không có dòng Summary nào."
+      echo "   Đây KHÔNG phải màu xanh: cổng đang nói 'tôi không biết' bằng giọng của 'ổn'."
+      cat "$log"; exit 1
+    }
+  else
+    echo "🔴 $nhan THẤT BẠI — toàn văn:"
+    cat "$log"
+    exit 1
+  fi
+}
 
-if aiken build >"$LOG/build.txt" 2>&1; then
-  echo "blueprint: plutus.json OK"
-else
-  echo "🔴 aiken build THẤT BẠI — toàn văn:"
-  cat "$LOG/build.txt"
-  exit 1
-fi
+run_aiken "aiken check" "$LOG/aiken.txt" aiken check
+run_aiken "aiken build" "$LOG/build.txt" aiken build
+echo "blueprint: plutus.json OK"
 
 echo
 echo "════════════════════════════════════════════"
