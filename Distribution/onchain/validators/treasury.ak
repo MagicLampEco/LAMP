@@ -462,6 +462,23 @@ fn singleton_io(
 /// mới thêm vào datum, được ghim ở nhánh `ReleaseForRedeem` (C-RDM-TOTAL) và BỎ QUÊN ở
 /// nhánh gộp. Đó là phạm vi của TRIỆU CHỨNG chứ không phải của nguyên nhân: đợt vá v3 đi
 /// theo đường rút, mà trường này có hai đường ghi.
+///
+/// C-REF-SIGN: mỗi số sổ cái đi VÀO phép gộp phải KHÔNG ÂM.
+///
+/// Ai cũng đỗ được một UTxO ở địa chỉ kho mang `TreasuryDatum` tuỳ ý — Cardano KHÔNG chạy
+/// validator lúc TẠO output, chỉ lúc TIÊU. Không có mệnh đề này thì một datum khai
+/// `outstanding_entitlement` ÂM làm Σ sổ GIẢM, nợ bị khai thấp hơn thật, và trần
+/// `nợ ≤ pool` ở `GrantEntitlement` nới ra VĨNH VIỄN. Vế `<= lamp_out` ở nhánh `Refill`
+/// KHÔNG bắt được, vì một số âm luôn ≤ pool: nó là cận TRÊN, và chốt này cần cận DƯỚI.
+/// `total_redeemed` âm thì đối xứng ở vế trần cắt ngọn — mẫu số tụt, trần rơi về
+/// `trim_floor`, dựng lại đúng điểm hấp thụ mà sàn ấy có mặt để phá.
+///
+/// Vì sao chặn ở ĐÂY chứ không ở nhánh `Refill`: `fold_ledger` là cửa DUY NHẤT mà một số
+/// sổ cái từ input đi vào mệnh đề, nên một dòng ở đây bịt mọi lối, còn một dòng ở nhánh
+/// chỉ bịt lối đang nhìn thấy. Và nó chặn CẢ HAI trường trong cùng một chỗ — đúng bài học
+/// mà `C-REF-TOTAL` vừa phải trả giá hai lần: lượt quét trước hỏi *"trường mới có bị bỏ
+/// quên ở đường ghi nào không"*, KHÔNG hỏi *"mỗi trường có bị chặn HAI ĐẦU không"*, nên nó
+/// vá được đường ghi và để nguyên cận dưới.
 fn fold_ledger(ins: List<Input>) -> (Int, Int, Option<ByteArray>) {
   list.foldl(
     ins,
@@ -473,6 +490,9 @@ fn fold_ledger(ins: List<Input>) -> (Int, Int, Option<ByteArray>) {
         DatumHash(_) -> fail @"treasury input dùng datum-hash: không xác thực được sổ cái"
         InlineDatum(d) -> {
           expect td: TreasuryDatum = d
+          // C-REF-SIGN — cận DƯỚI, đối xứng với `<= lamp_out` là cận TRÊN.
+          expect td.outstanding_entitlement >= 0
+          expect td.total_redeemed >= 0
           when ch is {
             None ->
               (
@@ -1439,6 +1459,55 @@ test refill_total_redeemed_drops_absorbed_utxo_rejected() fail {
   let b = tre_in_d_tr(1, 2_000_000, 500, 200, 3000, False)
   let o = tre_out_d_tr(7_000_000, 1900, 500, 7000, True)
   refill(0, Some(tt_tre_d_tr(300, 7000)), refill_tx([a, b], [o], [#"c1", #"c2"]))
+}
+
+// ── C-REF-SIGN: cận DƯỚI cho sổ cái đi vào phép gộp ──────────────────────────
+// Bốn ca dưới đặt số ÂM ở INPUT THỨ HAI, không phải ở carrier — đó là hình dạng thật của
+// đường hại: kẻ tấn công không chiếm được carrier (nó mang NFT "TRSY"), nhưng đỗ một UTxO
+// ở địa chỉ kho thì ai cũng làm được, vì Cardano KHÔNG chạy validator lúc TẠO output.
+//
+// Vì sao bốn ca chứ không hai: mỗi trường cần CẢ ca âm bị từ chối LẪN ca 0 được qua. Không
+// có ca 0 thì một bản vá gõ nhầm thành `> 0` cũng xanh hệt như bản đúng — mà `> 0` giết
+// luôn kho rỗng hợp lệ (genesis mở sổ ở 0) và chỉ lộ ra trên mạng thật.
+//
+// Hai ca âm KHÔNG thay thế được nhau: `outstanding_entitlement` âm đánh vào trần
+// `nợ ≤ pool` ở `GrantEntitlement`; `total_redeemed` âm đánh vào mẫu số của trần cắt ngọn.
+// Gỡ một trong hai dòng `expect` thì đúng một ca đỏ — đó là cách đọc được ca nào canh dòng nào.
+
+test refill_outstanding_negative_rejected() fail {
+  // Input thứ hai khai nợ −500. Σ sổ tụt từ 300 xuống −200 ⇒ nợ bị khai THẤP HƠN thật ⇒
+  // trần `nợ ≤ pool` nới ra vĩnh viễn. Vế `<= lamp_out` KHÔNG bắt: −200 ≤ 1900.
+  let a = tre_in_d_tr(0, 5_000_000, 1000, 300, 7000, True)
+  let b = tre_in_d_tr(1, 2_000_000, 500, -500, 3000, False)
+  let o = tre_out_d_tr(7_000_000, 1900, -200, 10000, True)
+  refill(0, Some(tt_tre_d_tr(300, 7000)), refill_tx([a, b], [o], [#"c1", #"c2"]))
+}
+
+test refill_total_redeemed_negative_rejected() fail {
+  // Đối xứng ở vế trần cắt ngọn: đã-rút gộp tụt 10000 → 4000, mẫu số nhỏ đi ⇒ trần một
+  // lượt co lại về phía `trim_floor` cho MỌI tài khoản.
+  let a = tre_in_d_tr(0, 5_000_000, 1000, 300, 7000, True)
+  let b = tre_in_d_tr(1, 2_000_000, 500, 200, -3000, False)
+  let o = tre_out_d_tr(7_000_000, 1900, 500, 4000, True)
+  refill(0, Some(tt_tre_d_tr(300, 7000)), refill_tx([a, b], [o], [#"c1", #"c2"]))
+}
+
+test refill_outstanding_zero_ok() {
+  // Cực còn lại: 0 phải ĐI QUA. Kho rỗng là trạng thái hợp lệ (genesis mở sổ ở 0), nên
+  // một bản vá gõ `> 0` thay vì `>= 0` sẽ giết vận hành thật — ca này là thứ duy nhất
+  // phân biệt được hai bản vá đó.
+  let a = tre_in_d_tr(0, 5_000_000, 1000, 0, 7000, True)
+  let b = tre_in_d_tr(1, 2_000_000, 500, 0, 3000, False)
+  let o = tre_out_d_tr(7_000_000, 1900, 0, 10000, True)
+  refill(0, Some(tt_tre_d_tr(0, 7000)), refill_tx([a, b], [o], [#"c1", #"c2"]))
+}
+
+test refill_total_redeemed_zero_ok() {
+  // Đối xứng cho trường thứ hai: kho chưa ai rút đồng nào cũng phải gộp được.
+  let a = tre_in_d_tr(0, 5_000_000, 1000, 300, 0, True)
+  let b = tre_in_d_tr(1, 2_000_000, 500, 200, 0, False)
+  let o = tre_out_d_tr(7_000_000, 1900, 500, 0, True)
+  refill(0, Some(tt_tre_d_tr(300, 0)), refill_tx([a, b], [o], [#"c1", #"c2"]))
 }
 
 test refill_insufficient_committee_rejected() fail {
