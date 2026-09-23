@@ -34,10 +34,8 @@ import {
   rawValidator, applyValidator, scriptAddress, scriptHash,
   nativeSigPolicyId, beaconNftPolicyIdFromRef, treasuryNftPolicyIdFromRef,
   accountNftPolicyId,
-  pickGenesisRef, saveDeployed, currentPot, siblingClusters,
-  type DeployedState, type GenesisRef,
+  pickGenesisRef, saveDeployed, type DeployedState, type GenesisRef,
 } from "./config.js";
-import { potBudgetOildrop } from "../offchain/src/pots.js";
 
 /**
  * Kiểm DẠNG một apply-param đọc từ env (hex, độ dài, giá trị chết).
@@ -76,15 +74,6 @@ function hexParam(name: string, raw: string, bytes?: number): string {
 
 async function main(): Promise<void> {
   console.log("=== LampDistribution Step 1: Deploy (apply params) ===\n");
-
-  // Soát POT TRƯỚC mọi thứ khác, kể cả trước khi mở kết nối mạng. Phép soát này từng nằm ở
-  // cuối hàm, ngay trên `saveDeployed` — chỗ đó ném ĐÚNG lý do nhưng ném SAU khi đã hỏi mạng,
-  // đã dựng xong ba script và đã in ba hash ra màn hình. Người vận hành đọc ba hash rồi mới
-  // thấy lỗi sẽ tin rằng cụm đã dựng xong và chỉ hụt bước ghi tệp.
-  const pot = currentPot();
-  console.log(`Pot:               ${pot.id} — ${pot.label}`);
-  console.log(`Ngân sách pot:     ${pot.thousandLamp.toLocaleString("vi-VN")} nghìn LAMP`);
-  console.log(`Tệp trạng thái:    deployed.${NETWORK}.${pot.id}.json\n`);
 
   const lucid = await makeLucid();
   const pkh   = await walletPkh(lucid);
@@ -158,35 +147,19 @@ async function main(): Promise<void> {
   let beaconNftPolicy: string;
   let beaconNftMode: "oneshot" | "native-sig";
   let beaconNftGenesisRef: import("./config.js").GenesisRef | undefined;
-  // One-shot là MẶC ĐỊNH trên MỌI mạng, không chỉ Mainnet.
-  //
-  // Bản trước để native-sig làm mặc định ngoài Mainnet, và `deployed.Preprod.json:32` chứng minh
-  // cụm diễn tập đang chạy như vậy. Hệ quả nặng hơn "kém an toàn một chút": `nativeSigPolicyId`
-  // suy ra TẤT ĐỊNH từ PKH ví deploy, nên MỌI cụm dựng từ cùng một ví chia chung một beacon
-  // policy — tách cụm mất nghĩa ngay ở tham số. Và validator `beacon_nft` mà Mainnet sẽ chạy thì
-  // CHƯA chạy lần nào trên chuỗi, nên lượt diễn tập chứng minh một đường mã khác đường thật.
-  //
-  // Native-sig nay phải xin tường minh, và chỉ trên Preview.
+  // One-shot là MẶC ĐỊNH trên MỌI mạng, không chỉ Mainnet — để lượt diễn tập chạy đúng đường mã
+  // mà Mainnet sẽ chạy. Bản trước để native-sig làm mặc định ngoài Mainnet, và cụm diễn tập
+  // Preprod đang chạy như vậy (`deployed.Preprod.json` → `beaconNftMode`): validator `beacon_nft`
+  // mà Mainnet dùng CHƯA chạy lần nào trên chuỗi. Native-sig nay phải xin tường minh, chỉ Preview.
   const askNativeSig = process.env.BEACON_NFT_NATIVE_SIG === "1";
   if (askNativeSig && NETWORK !== "Preview") {
     throw new Error(
       `BEACON-NFT-001: BEACON_NFT_NATIVE_SIG=1 chỉ dùng được trên Preview, đang chạy ` +
-        `NETWORK='${NETWORK}'. Beacon native-sig ĐÚC LẠI ĐƯỢC, và nó dùng chung policy cho mọi ` +
-        `cụm của cùng một ví — cả hai điều đó đều không phải hình dạng mà Mainnet sẽ chạy.`,
+        `NETWORK='${NETWORK}'. Beacon native-sig ĐÚC LẠI ĐƯỢC — không phải hình dạng Mainnet chạy.`,
     );
   }
   const wantOneshot = !askNativeSig;
   const envBeacon = (process.env.BEACON_NFT_POLICY ?? "").trim();
-
-  // Ref mà các cụm ANH EM trên cùng mạng đã nhận — không được dùng lại, xem CLUSTER-REF-001.
-  const siblings = await siblingClusters(pot.id);
-  const takenRefs = new Set(siblings.flatMap((s) => s.genesisRefs));
-  if (siblings.length > 0) {
-    console.log(
-      `Cụm anh em cùng mạng: ${siblings.length} (${siblings.map((s) => s.pot).join(", ")}) — ` +
-        `${takenRefs.size} genesis ref đã bị nhận, sẽ bỏ qua khi chọn.\n`,
-    );
-  }
 
   if (envBeacon) {
     // Cùng lớp lỗi với LAMP_POLICY_ID: đây cũng là apply-param của claim_account + beacon.
@@ -194,7 +167,7 @@ async function main(): Promise<void> {
     beaconNftMode = "oneshot"; // policy ngoài coi như đã one-shot/đã kiểm soát supply
     console.log(`beacon_nft_policy: ${beaconNftPolicy}  (env override — supply do anh kiểm soát)`);
   } else if (wantOneshot) {
-    beaconNftGenesisRef = await pickGenesisRef(lucid, takenRefs);
+    beaconNftGenesisRef = await pickGenesisRef(lucid);
     beaconNftPolicy = await beaconNftPolicyIdFromRef(beaconNftGenesisRef);
     beaconNftMode = "oneshot";
     console.log(`beacon_nft_policy: ${beaconNftPolicy}  (ONE-SHOT Aiken beacon_nft)`);
@@ -218,7 +191,7 @@ async function main(): Promise<void> {
   if (beaconNftGenesisRef) {
     treasuryNftGenesisRef = beaconNftGenesisRef;
   } else {
-    treasuryNftGenesisRef = await pickGenesisRef(lucid, takenRefs);
+    treasuryNftGenesisRef = await pickGenesisRef(lucid);
   }
   const treasuryNftPolicy = await treasuryNftPolicyIdFromRef(treasuryNftGenesisRef);
   console.log(`treasury_nft_policy: ${treasuryNftPolicy}  (ONE-SHOT Aiken treasury_nft — TRSY)`);
@@ -335,8 +308,6 @@ async function main(): Promise<void> {
 
   const state: DeployedState = {
     network: NETWORK,
-    pot: pot.id,
-    potBudgetOildrop: potBudgetOildrop(pot.id).toString(),
     msPerEpoch: MS_PER_EPOCH.toString(),
     committee: {
       keyHashes: committee.keyHashes,

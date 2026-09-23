@@ -11,15 +11,15 @@
 
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
-import { dirname, resolve } from "node:path";
 import {
   POTS, POT_IDS, POT_IDS_CAPPED_DROP, TOTAL_THOUSAND_LAMP,
   assertPotCatalog, potById, potBudgetOildrop,
 } from "../offchain/src/pots.js";
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const CATALOG = resolve(__dirname, "../../Papers/pot-catalog.md");
+// Đường tương đối theo cwd của vitest = `Distribution/offchain`. Cố ý KHÔNG dùng
+// `import.meta.url` — cùng lý do ghi ở `datum.test.ts` (TS1470). Sai đường thì `readFileSync`
+// ném ENOENT: đỏ ồn ào, không im lặng xanh.
+const CATALOG = "../../Papers/pot-catalog.md";
 
 interface SourceRow { index: number; label: string; thousandLamp: number }
 
@@ -33,12 +33,14 @@ function parseCatalog(): SourceRow[] {
   for (const line of text.split("\n")) {
     const m = /^\|\s*(\d{1,2})\s*\|\s*\*\*(.+?)\*\*\s*\|\s*([\d.]+)\s*\|/.exec(line);
     if (!m) continue;
-    const index = Number(m[1]);
+    const [, idx, label, amount] = m;
+    if (idx === undefined || label === undefined || amount === undefined) continue;
+    const index = Number(idx);
     if (index < 1 || index > 18) continue;
     rows.push({
       index,
-      label: m[2].trim(),
-      thousandLamp: Number(m[3].replace(/\./g, "")),
+      label: label.trim(),
+      thousandLamp: Number(amount.replace(/\./g, "")),
     });
   }
   return rows;

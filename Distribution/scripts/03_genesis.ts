@@ -41,7 +41,6 @@ import {
 import {
   beaconDatumToCbor, treasuryDatumToCbor,
 } from "../offchain/src/datum.js";
-import { potBudgetOildrop, type PotId } from "../offchain/src/pots.js";
 import {
   RATE_ROOT_GENESIS, RATE_ROOT_MIN, RATE_ROOT_MAX,
   TRIM_NUM_GENESIS, TRIM_DEN_GENESIS,
@@ -51,33 +50,26 @@ const BEACON_MIN_ADA   = 2_000_000n;
 const TREASURY_MIN_ADA = 2_000_000n;
 
 /**
- * LAMP nạp vào kho của cụm này (oildrop). MẶC ĐỊNH = ngân sách của pot, lấy từ sổ 18 pot.
+ * LAMP nạp vào kho lúc genesis của bộ khung kiểm này (oildrop). KHÔNG có giá trị mặc định.
  *
- * Bản trước mặc định 500.000 LAMP và không ràng vào đâu cả. Đó là chỗ câu "trần cứng vật lý"
- * hụt một nửa: tách kho theo pot khiến pot này KHÔNG tiêu được vào kho pot kia — đúng — nhưng
- * nó không tự chặn việc nạp vào kho pot này NHIỀU HƠN ngân sách của chính nó.
- *
- * Nạp THIẾU thì cho phép: trên mạng thử số tLAMP có hạn, và một kho đầy một phần vẫn chạy đúng
- * mọi mệnh đề. Nạp THỪA thì chặn — một kho vượt ngân sách là một cái trần đã bị phá, và nó
- * không tự kêu ở bất cứ bước nào sau đó.
- *
- * Nói rõ mức của phép chặn này để không ai đọc quá: nó nằm ở CÔNG CỤ TRIỂN KHAI, không nằm ở
- * validator. Không mệnh đề on-chain nào biết pot này có ngân sách bao nhiêu.
+ * Kho là SINGLETON toàn cục cho cả 18 pot (`capped-drop/Exec-Spec.md` KL-2), và trên Mainnet
+ * LAMP vào kho bằng lượt đúc `DistributionVest` (A-DEST, `Genesis/onchain/validators/lamp_mint.ak`),
+ * không bằng ví nạp lúc genesis. Nạp từ ví ở đây là việc của bộ khung kiểm trên mạng thử, nên số
+ * nạp phải do người chạy nói ra — một mặc định (500.000 LAMP của bản đầu, hay "đủ ngân sách pot"
+ * của một bản sau) là một con số không ai chọn mà vẫn đi thẳng lên chuỗi.
  */
-function resolveTreasuryFund(pot: PotId): bigint {
-  const budget = potBudgetOildrop(pot);
+function resolveTreasuryFund(): bigint {
   const raw = (process.env.TREASURY_FUND_OILDROP ?? "").trim();
-  if (!raw) return budget;
-
-  const want = BigInt(raw);
-  if (want > budget) {
+  if (!raw) {
     throw new Error(
-      `GENESIS-POT-001: TREASURY_FUND_OILDROP=${want} vượt ngân sách của pot '${pot}' ` +
-        `(${budget} oildrop). Trần mỗi pot là lý do tách cụm; nạp vượt là phá đúng cái trần đó. ` +
-        `Nguồn ngân sách: Papers/pot-catalog.md §1.`,
+      "GENESIS-FUND-001: thiếu TREASURY_FUND_OILDROP (oildrop, 1 LAMP = 1.000.000). Số LAMP " +
+        "nạp vào kho lúc genesis không có mặc định: đặt nó ngay trước lệnh.",
     );
   }
-  return want;
+  if (!/^[0-9]+$/.test(raw) || BigInt(raw) <= 0n) {
+    throw new Error(`GENESIS-FUND-002: TREASURY_FUND_OILDROP='${raw}' không phải số nguyên dương.`);
+  }
+  return BigInt(raw);
 }
 
 // `rate_root` (w) — tốc độ tích luỹ CHỈ SỐ mỗi cửa sổ. THAM SỐ, đọc từ beacon lúc redeem.
@@ -121,11 +113,7 @@ async function main(): Promise<void> {
   console.log("=== LampDistribution Step 3: Genesis (Capped Drop v3) ===\n");
 
   const state = await loadDeployed();
-  const TREASURY_FUND = resolveTreasuryFund(state.pot);
-  console.log(
-    `Pot: ${state.pot} — ngân sách ${potBudgetOildrop(state.pot) / 1_000_000n} LAMP, ` +
-      `nạp lượt này ${TREASURY_FUND / 1_000_000n} LAMP\n`,
-  );
+  const TREASURY_FUND = resolveTreasuryFund();
   if (!state.testLamp) {
     console.log("⚠ chưa có testLamp trong deployed.json — chạy 'npm run mint-lamp' trước,");
     console.log("  hoặc tự fund treasury bằng token ngoài (sửa state.testLamp thủ công).");
