@@ -55,6 +55,15 @@ validator treasury_nft(genesis_ref: OutputReference) {
     // Quỹ mở sổ với nợ 0 — không ai "khai sẵn" một khoản nợ để lách C-SOLV-2 về sau.
     expect td.outstanding_entitlement == 0
 
+    // ── ⚠ MỆNH ĐỀ NÀY KHÔNG CÓ TRONG ĐẶC TẢ ĐƯỢC GIAO — thêm vì đối xứng, và vì nếu
+    // thiếu thì `total_redeemed` là trường DUY NHẤT của v3 không có ai ghi giá trị mở.
+    // Mọi nhánh của `treasury.ak` ghim nó (`Release` +released · `Grant` đứng yên ·
+    // `Refill` cộng tổng), nên nó KHÔNG đổi được sau genesis — mà đúng vì thế, giá trị
+    // genesis sống mãi. Nó là MẪU SỐ của phép cắt ngọn: mở sổ ở 10¹⁸ thì trần một lượt
+    // rút lớn hơn mọi pot, và cắt ngọn bị vô hiệu vĩnh viễn ngay từ giao dịch đầu tiên,
+    // trong khi không bất biến nào vỡ và không ai kêu.
+    expect td.total_redeemed == 0
+
     True
   }
 
@@ -90,13 +99,21 @@ fn nt_other_input() -> Input {
 
 const nt_treasury_sh: ByteArray = #"77777777"
 
-/// Output kho hợp lệ: ở SCRIPT, mang TRSY, TreasuryDatum nợ mở = 0.
+/// Output kho hợp lệ: ở SCRIPT, mang TRSY, TreasuryDatum nợ mở = 0, đã-phát-ra mở = 0.
 fn nt_carrier(outstanding: Int) -> Output {
+  nt_carrier_full(outstanding, 0)
+}
+
+fn nt_carrier_full(outstanding: Int, total_redeemed: Int) -> Output {
   let v = assets.from_lovelace(2_000_000) |> assets.add(nt_policy, util.treasury_nft_name(), 1)
   util.mk_output(
     util.script_address(nt_treasury_sh),
     v,
-    TreasuryDatum { committee_hash: #"cccc", outstanding_entitlement: outstanding },
+    TreasuryDatum {
+      committee_hash: #"cccc",
+      outstanding_entitlement: outstanding,
+      total_redeemed: total_redeemed,
+    },
   )
 }
 
@@ -119,7 +136,11 @@ test trnft_mint_to_wallet_fails() fail {
     util.mk_output(
       util.vk_address(#"badbad"),
       v,
-      TreasuryDatum { committee_hash: #"cccc", outstanding_entitlement: 0 },
+      TreasuryDatum {
+        committee_hash: #"cccc",
+        outstanding_entitlement: 0,
+        total_redeemed: 0,
+      },
     )
   let tx =
     Transaction {
@@ -151,6 +172,21 @@ test trnft_mint_prefilled_debt_fails() fail {
       ..placeholder,
       inputs: [nt_genesis_input()],
       outputs: [nt_carrier(5000)],
+      mint: nt_mint(1),
+    }
+  treasury_nft.mint(nt_genesis_ref(), MintGenesis, nt_policy, tx)
+}
+
+/// Đối xứng với bài trên cho trường MỚI của v3: mở sổ với `total_redeemed` khai sẵn ⇒ trần
+/// cắt ngọn (`total_redeemed · κ`) lớn hơn mọi pot ngay giao dịch đầu ⇒ cắt ngọn vô hiệu
+/// vĩnh viễn. Không mệnh đề nào khác chặn được, vì mọi nhánh `treasury.ak` chỉ ép trường này
+/// ĐỨNG YÊN hoặc CỘNG THÊM — không nhánh nào hạ nó xuống.
+test trnft_mint_prefilled_total_redeemed_fails() fail {
+  let tx =
+    Transaction {
+      ..placeholder,
+      inputs: [nt_genesis_input()],
+      outputs: [nt_carrier_full(0, 1_000_000_000_000_000_000)],
       mint: nt_mint(1),
     }
   treasury_nft.mint(nt_genesis_ref(), MintGenesis, nt_policy, tx)

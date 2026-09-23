@@ -17,7 +17,9 @@ use aiken/crypto.{blake2b_256}
 use aiken/interval
 use cardano/assets
 use cardano/transaction.{Input, Output, OutputReference, Transaction, placeholder}
-use magiclamp/lampdist/types.{ClaimAccountDatum, TreasuryDatum}
+use magiclamp/lampdist/types.{
+  BeaconDatum, ClaimAccountDatum, DropParam, TreasuryDatum,
+}
 use magiclamp/lampdist/util
 
 // ── Tham số áp cho CẢ HAI validator (cùng giá trị ⇒ cùng một "cụm") ──────────
@@ -66,10 +68,17 @@ pub const pool: Int = 5000
 
 // ── Datum + value ──────────────────────────────────────────────────────────────
 
+/// Gốc tốc độ của beacon dùng chung. `A(window) = 0 + rate_root · (window − 0)`, nên
+/// `index_at_start` mà C-CLAIM-8 đòi ở cửa sổ 5 là `rate_root · 5`.
+pub const rate_root: Int = 100
+
+pub const beacon_ix: Int = 3
+
 pub fn account_datum(
   entitlement: Int,
   redeemed: Int,
   start_epoch: Int,
+  index_at_start: Int,
 ) -> ClaimAccountDatum {
   ClaimAccountDatum {
     owner,
@@ -77,11 +86,46 @@ pub fn account_datum(
     redeemed,
     start_epoch,
     drops_per_epoch: 1,
+    index_at_start,
   }
 }
 
-pub fn treasury_datum(outstanding: Int) -> TreasuryDatum {
-  TreasuryDatum { committee_hash, outstanding_entitlement: outstanding }
+/// `A` tại cửa sổ `w` theo beacon dùng chung (epoch 0, index 0).
+pub fn index_at(w: Int) -> Int {
+  rate_root * w
+}
+
+pub fn treasury_datum(outstanding: Int, total_redeemed: Int) -> TreasuryDatum {
+  TreasuryDatum {
+    committee_hash,
+    outstanding_entitlement: outstanding,
+    total_redeemed,
+  }
+}
+
+/// Reference input mang beacon NFT "DROP". v3 BẮT BUỘC có nó ở mọi `GrantEntitlement`:
+/// `index_at_start` được ghim bằng `A(cửa sổ hiện tại)` (C-CLAIM-8), và `A` chỉ đọc được
+/// từ beacon đã xác thực.
+pub fn beacon_ref() -> Input {
+  let v =
+    assets.from_lovelace(2_000_000)
+      |> assets.add(beacon_policy, util.beacon_name(DropParam), 1)
+  util.mk_input(
+    util.mk_ref(beacon_ix),
+    util.mk_output(
+      util.script_address(#"bbbbbbbb"),
+      v,
+      BeaconDatum {
+        epoch: 0,
+        kind: DropParam,
+        index: 0,
+        rate_root,
+        trim_num: 1,
+        trim_den: 1000,
+        speed_policies: [],
+      },
+    ),
+  )
 }
 
 /// Tài khoản HỢP LỆ: min-ADA + NFT tài khoản tên blake2b_256(owner) (C-ACC-0).
@@ -134,7 +178,7 @@ pub fn treasury_input(
     util.mk_output(
       util.script_address(treasury_hash),
       treasury_value(lovelace, lamp, trsy),
-      treasury_datum(outstanding),
+      treasury_datum(outstanding, 0),
     ),
   )
 }
@@ -148,16 +192,17 @@ pub fn treasury_output(
   util.mk_output(
     util.script_address(treasury_hash),
     treasury_value(lovelace, lamp, trsy),
-    treasury_datum(outstanding),
+    treasury_datum(outstanding, 0),
   )
 }
 
-/// Khung chung: chữ ký committee, cửa sổ `window`, không mint.
+/// Khung chung: chữ ký committee, cửa sổ `window`, beacon ở reference input, không mint.
 pub fn base_tx(ins: List<Input>, outs: List<Output>) -> Transaction {
   Transaction {
     ..placeholder,
     inputs: ins,
     outputs: outs,
+    reference_inputs: [beacon_ref()],
     extra_signatories: committee_sigs,
     validity_range: window_range(),
     mint: assets.zero,

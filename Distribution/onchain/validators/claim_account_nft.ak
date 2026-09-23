@@ -139,6 +139,7 @@ fn an_ca_datum(entitlement: Int, redeemed: Int) -> ClaimAccountDatum {
     redeemed: redeemed,
     start_epoch: 0,
     drops_per_epoch: 1,
+    index_at_start: 0,
   }
 }
 
@@ -158,7 +159,11 @@ fn an_trsy_input() -> Input {
     util.mk_output(
       util.script_address(an_tre_sh),
       v,
-      TreasuryDatum { committee_hash: #"cccc", outstanding_entitlement: 0 },
+      TreasuryDatum {
+          committee_hash: #"cccc",
+          outstanding_entitlement: 0,
+          total_redeemed: 0,
+        },
     ),
   )
 }
@@ -277,7 +282,11 @@ test acct_nft_two_trsy_inputs_fails() fail {
       util.mk_output(
         util.script_address_staked(an_tre_sh, #"5742"),
         v,
-        TreasuryDatum { committee_hash: #"cccc", outstanding_entitlement: 0 },
+        TreasuryDatum {
+          committee_hash: #"cccc",
+          outstanding_entitlement: 0,
+          total_redeemed: 0,
+        },
       ),
     )
   an_run(

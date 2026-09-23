@@ -6,7 +6,7 @@ use cardano/address.{Address, Inline, Script, VerificationKey}
 use cardano/assets
 use cardano/assets.{AssetName, PolicyId, Value}
 use cardano/transaction.{InlineDatum, Input, NoDatum, Output, OutputReference, Transaction}
-use magiclamp/lampdist/types.{BeaconKind, DropParam}
+use magiclamp/lampdist/types.{BeaconDatum, BeaconKind, DropParam}
 
 /// Epoch từ validity_range lower_bound (POSIX ms). ms_per_epoch network-specific.
 ///
@@ -174,9 +174,51 @@ pub fn lamp_to_owner(
 
 /// Asset name của beacon NFT theo kind (authenticity token).
 pub fn beacon_name(kind: BeaconKind) -> AssetName {
-  when kind is {
-    DropParam -> #"44524f50"  // "DROP"
-  }
+  // `BeaconKind` hiện chỉ có MỘT hằng tử, nên `when` một nhánh là thừa (aiken cảnh báo).
+  // `let` giữ nguyên tính vét cạn: thêm một hằng tử mới vào `BeaconKind` thì dòng này đỏ
+  // ngay, đúng chỗ phải quyết tên tài sản cho hằng tử đó.
+  let DropParam = kind
+  #"44524f50"  // "DROP"
+}
+
+/// Đọc trọn `BeaconDatum` từ reference input mang beacon NFT (kind = DropParam).
+/// Authenticity qua NFT → chống datum hijacking (beacon giả ở cùng address).
+///
+/// ⚠ v3 TRẢ TRỌN BỘ, không trả một trường. v2 có `find_drop_value` trả đúng `drop_value` và
+/// **cố ý bỏ qua** `epoch`. Ở v3 `epoch` ĐI VÀO phép tính — `A(t) = index + rate_root·(t −
+/// epoch)` — nên một hiện thực quên nó sẽ tính `A_now` bằng `index` trần và chỉ số ĐỨNG YÊN
+/// MÃI: mọi tài khoản mở sau lượt post gần nhất có `A_span = 0` và không bao giờ rút được.
+///
+/// Hai bên gọi (`claim_account` ▸ Redeem để tính `A_now`, `treasury` ▸ GrantEntitlement để
+/// ghim `index_at_start`) dùng CHUNG hàm này: hai đường đọc cùng một sự thật thì phải đi qua
+/// cùng một mệnh đề xác thực, nếu không chúng trôi độc lập.
+pub fn find_beacon(
+  ref_inputs        : List<Input>,
+  beacon_nft_policy : ByteArray,
+) -> BeaconDatum {
+  let drop_name = beacon_name(DropParam)
+  expect Some(ri) =
+    list.find(
+      ref_inputs,
+      fn(i) { assets.quantity_of(i.output.value, beacon_nft_policy, drop_name) == 1 },
+    )
+  expect InlineDatum(d) = ri.output.datum
+  expect bd: BeaconDatum = d
+  expect bd.kind == DropParam
+  bd
+}
+
+/// `A(window) = index + rate_root · (window − epoch)` — dạng ĐÓNG của chỉ số cộng dồn.
+///
+/// Không đòi ai post gì: giữa hai lượt post chỉ số tự chạy tiếp ở `rate_root` đã post lần
+/// cuối. Đó là lý do committee im lặng KHÔNG đóng băng vesting (`Math-Spec.md` v3 §2 HQ 1.1).
+///
+/// `window < bd.epoch` nằm NGOÀI miền của công thức (beacon gần nhất phải có `epoch ≤ t`).
+/// Nó chỉ xảy ra khi người dựng tx tự dán một nhãn cửa sổ lùi về trước lượt post gần nhất —
+/// và khi đó giá trị trả về NHỎ đi, tức chính họ thiệt. Không chặn riêng ở đây vì chốt
+/// `A_span ≥ 0` bên gọi đã fail-closed cho mọi ca đi quá xa.
+pub fn beacon_index_at(bd: BeaconDatum, window: Int) -> Int {
+  bd.index + bd.rate_root * ( window - bd.epoch )
 }
 
 /// Asset name treasury authenticity NFT — singleton sổ cái solvency.

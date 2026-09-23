@@ -311,7 +311,23 @@ Nhánh `Claim` hiện ép `redeemed_out == 0`, `start_epoch_out ==` cửa sổ h
 
 ```
 C-CLAIM-8:  out_datum.index_at_start == A(cửa_sổ_hiện_tại)      ← BẮT BUỘC ở v3
+            ép ở `treasury.ak` ▸ GrantEntitlement, CẢ HAI nhánh CREATE và UPDATE
 ```
+
+**Chỗ ép là `treasury`, không phải `claim_account` — và vị trí đó là một ràng buộc, không phải một
+lựa chọn.** Đường CREATE (mở tài khoản mới) **không có input tài khoản**, nên `claim_account.spend`
+KHÔNG chạy; nhánh `GrantEntitlement` là nơi duy nhất có thẩm quyền đặt mốc chỉ số lúc mở. Đặt mệnh
+đề này ở `claim_account` thì nó bỏ trống đúng nhánh nguy hiểm nhất. Cùng lý lẽ đã dùng cho `C-ACC-2`
+(`start_epoch`) ngày 2026-09-16.
+
+Hai đường không tách rời nhau được: `Claim` bắt buộc co-spend kho (C-SOLV-1), và kho chỉ còn đúng
+nhánh `GrantEntitlement` chạy được trong một tx như vậy — `Refill` bị `C-REF-ACC` chặn khi tx chạm
+tài khoản, `ReleaseForRedeem` đòi `redeemed` TĂNG trong khi `Claim` ép nó về 0.
+
+> **Bản trước của mục này viết sai chỗ ép** (ghi là `claim_account` ▸ `Claim`), và cái sai đó không
+> vô hại: một hiện thực đọc theo nó sẽ để nhánh CREATE hoàn toàn không gác. Đo được 2026-09-22 —
+> ba ca kiểm âm tính ở CREATE (`index_at_start` lệch ±1, và bằng `index` trần tức quên số hạng
+> `rate_root·(cửa_sổ − epoch)`) **xanh cả ba** trước khi vá.
 
 **Không có mệnh đề này thì v3 dựng lại đúng lỗ mà bản vá `start_epoch` đã bịt, qua một cửa khác.**
 Một tài khoản già có `index_at_start` nhỏ, nên `A_span` của nó đã rất lớn; cấp thêm một lô mới mà
@@ -541,7 +557,10 @@ trong van không đổi. Tham số đi vào `BeaconDatum` để thừa hưởng 
 - Đa-claim: `redeemed` cộng dồn, luôn `vested − redeemed ≥ 0`, tổng nhận ≤ `E`.
 - `total_redeemed` **chỉ tăng**, và mẫu số của phép cắt ngọn **không được** đổi sang một đại lượng
   giảm được (vd "lưu hành trừ tồn kho Treasury").
-- `rate_root`, `trim_num/trim_den`, `drops_per_epoch` là **tham số** (committee/DAO), KHÔNG hardcode.
+- `rate_root`, `trim_num/trim_den` là **tham số** (committee/DAO), KHÔNG hardcode. `drops_per_epoch`
+  thì KHÔNG — v3 ghim nó `== 1` (§1b, `C-ACC-DPE`), và nó giữ trường chỉ để khỏi đổi số trường lần
+  nữa. Đừng đọc dòng này thành "cả ba đều chỉnh được": một thừa số đứng NGOÀI tổng `A_span` mà chỉnh
+  được là đúng thứ §0 cấm.
 - `index_at_start` **bất biến trọn đời tài khoản** — phải nằm trong danh sách ép, không được để
   suy ra.
 - **SOLVENCY (C-SOLV-*):** `outstanding_entitlement` ≤ treasury pool LAMP ép on-chain ở MỌI Claim;
