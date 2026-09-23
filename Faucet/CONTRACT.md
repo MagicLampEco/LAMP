@@ -28,6 +28,17 @@ của MagicLamp — chốt 1 policy, deprecate các tLAMP cũ phân mảnh (xem 
 
 ## 2. tLAMP — minting policy (one-shot, fixed-supply)
 
+> ⚠ **PHẠM VI — mục này tả policy RIÊNG của Faucet, KHÔNG tả thứ đang chạy trên Preprod.**
+> Policy tLAMP đang hoạt động trên Preprod là `lamp_mint` (14 tham số, khoá bằng trần
+> `dist_cap` + cổng registry + A-DEST, **đúc được nhiều lần**), không phải `tlamp_policy`
+> hai tham số ở dưới. Mã: `Genesis/onchain/validators/lamp_mint.ak`; policy id đọc bằng
+> `activeLampPolicyId(network)` ở `Genesis/offchain/src/lampPolicies.ts`.
+> Mọi ràng buộc one-shot mô tả dưới đây đúng với `tlamp_policy` và **không** có hiệu lực
+> trên token Preprod hiện hành. Đo trên chuỗi 2026-09-23 (Koios `asset_info`,
+> `8169b76c…`/`744c414d50`): `mint_cnt = 4`, `burn_cnt = 0`.
+> Không có dòng này thì người đọc tra "tLAMP" ra mục này rồi lập kế hoạch trên một ràng
+> buộc không tồn tại — đã xảy ra một lần với một kho khác dùng token này.
+
 `tlamp_policy.tlamp_policy.mint(genesis_ref: OutputReference, total_supply: Int)`
 
 | Tham số | Ý nghĩa |
@@ -134,8 +145,9 @@ Trước đây test-LAMP được mint ad-hoc bằng **native sig policy của v
 lần ra **policy id khác nhau** → token test phân mảnh, không chia sẻ được giữa dev, và
 KHÔNG trung thực fixed-supply (sig policy mint vô hạn).
 
-**Chốt**: tLAMP canonical = policy one-shot ở §2 (cố định supply, 1 policy id chia sẻ
-toàn mạng test). Các module test (Distribution/Treasury/Governance) khi cần LAMP test
+**Chốt**: tLAMP canonical = **một** policy id chia sẻ toàn mạng test, thay cho sig policy
+mỗi-ví-một-id. Vai đó hiện do `lamp_mint` giữ, không do policy one-shot ở §2 — xem khối
+phạm vi ở đầu §2. Các module test (Distribution/Treasury/Governance) khi cần LAMP test
 nên trỏ tới `deployed-faucet.json.tlamp.policyId` thay vì tự mint sig policy. Token sig
 policy cũ **deprecated** — giữ lại chỉ cho test self-contained cũ, không dùng cho e2e
 chia sẻ mới.

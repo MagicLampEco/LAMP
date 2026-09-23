@@ -1,30 +1,40 @@
-// LampDistribution redeemBuilder — user redeem LAMP đã vested (CONTRACT v2 §4).
+// LampDistribution redeemBuilder — user redeem LAMP đã vested (CONTRACT v3 §4).
 //
 // Tất định, permissionless: account tự tính vested on-chain, không proof/committee.
 //
 // Input:
-//   - ClaimAccount UTxO (của owner) — spend với Redeem redeemer (Constr 1, no fields).
+//   - ClaimAccount UTxO (của owner) — spend với Redeem redeemer (Constr 1, [amount]).
 //   - Treasury UTxO (giữ LAMP pool) — spend với ReleaseForRedeem redeemer.
 // Reference input:
-//   - DropParam beacon UTxO (read-only) — cung cấp D (drop_value).
+//   - DropParam beacon UTxO (read-only) — cung cấp `index`, `rate_root`, `epoch`, κ.
 // Output:
 //   - ClaimAccount': redeemed' = redeemed + amount; field khác bất biến.
-//   - Treasury': LAMP giảm đúng `amount`; committee_hash + dust bảo toàn.
+//   - Treasury': LAMP giảm đúng `amount`; `total_redeemed` TĂNG đúng `amount`.
 //   - User: nhận đúng `amount` LAMP.
 //
-//   vested  = min(E, D · drops_per_epoch · max(0, current_epoch − start_epoch))
-//   amount  = vested − redeemed   (yêu cầu > 0)
+//   A_span  = A(bây giờ) − index_at_start,  A(t) = index + rate_root · (t − epoch)
+//   vested  = min(E, isqrt(dpe² · E · A_span²))
+//   trần    = max(trim_floor, total_redeemed · trim_num / trim_den)
+//   amount  = min(vested − redeemed, trần)   (yêu cầu > 0)
+//
+// ⚠ v3 ĐỔI HÌNH DẠNG GIAO DỊCH: redeemer `Redeem` nay MANG `amount`, và `total_redeemed`
+//   là trường thứ ba của TreasuryDatum. Một bản dựng theo v2 gửi lên validator v3 sẽ bị
+//   từ chối ở tầng giải mã datum, tức mất collateral chứ không phải hiện một lỗi đọc được.
 //
 // Invariants (CONTRACT §4/§7):
-//   C-RDM-1  amount = vested − redeemed > 0.
-//   C-RDM-2  vested ≤ entitlement (cap E — đã bảo đảm bởi vested()).
-//   C-RDM-3  user nhận đúng `amount` LAMP.
-//   C-RDM-4  out.redeemed == redeemed + amount; field khác unchanged.
-//   C-RDM-6  owner signs.
-//   C-TRE-1  treasury_out.value = treasury_in.value − amount (bảo toàn, không burn).
-//   C-TRE-2  treasury datum (committee_hash) bảo toàn.
-//   C-MINT-0 tx.mint == 0.
-//   C-VAL-0  mọi assets khác bảo toàn (audit dust lesson — không drop token nào).
+//   C-RDM-1     amount > 0.
+//   C-RDM-VEST  (redeemed + amount)² ≤ dpe² · E · A_span²  (dạng bình phương, không căn).
+//   C-RDM-2     vested ≤ entitlement (cap E — đã bảo đảm bởi vested()).
+//   C-RDM-3     user nhận đúng `amount` LAMP.
+//   C-RDM-4     out.redeemed == redeemed + amount; field khác unchanged (kể cả index_at_start).
+//   C-RDM-6     owner signs.
+//   C-RDM-TRIM  trần một lượt = max(trim_floor, total_redeemed · κ) — chia NGUYÊN.
+//   C-RDM-CAP   amount ≤ trần một lượt.
+//   C-RDM-TOTAL out.total_redeemed == in.total_redeemed + amount.
+//   C-TRE-1     treasury_out.value = treasury_in.value − amount (bảo toàn, không burn).
+//   C-TRE-2     treasury datum (committee_hash) bảo toàn.
+//   C-MINT-0    tx.mint == 0.
+//   C-VAL-0     mọi assets khác bảo toàn (audit dust lesson — không drop token nào).
 
 import {
   Data, toUnit,
@@ -39,8 +49,8 @@ import {
   claimAccountDatumToCbor, redeemRedeemerToCbor,
   decodeTreasuryDatum, treasuryDatumToCbor, treasuryRedeemerToCbor,
 } from "./datum.js";
-import { vested } from "./vested.js";
-import { TREASURY_NFT_ASSET_NAME } from "./constants.js";
+import { vested, aSpan, trimCap } from "./vested.js";
+import { TREASURY_NFT_ASSET_NAME, TRIM_FLOOR } from "./constants.js";
 
 const DEFAULT_LAMP_ASSET_NAME = "744c414d50"; // "tLAMP" — canonical (khớp Genesis/Faucet)
 
@@ -63,7 +73,8 @@ export interface RedeemParams {
 
   /**
    * DropParam beacon UTxO — dùng làm REFERENCE input (read-only).
-   * Datum phải là BeaconDatum{kind: DropParam}; cung cấp D = drop_value.
+   * Datum phải là BeaconDatum{kind: DropParam}; cung cấp `index`, `rate_root`, `epoch`
+   * (để dựng A(t)) và `trim_num`/`trim_den` (để dựng trần một lượt).
    */
   dropBeaconUtxo:   UTxO;
 
@@ -101,8 +112,14 @@ export interface RedeemParams {
 
 export interface RedeemResult {
   tx:            TxSignBuilder;
-  amount:        bigint;     // released = vested − redeemed
+  amount:        bigint;     // released = min(vested − redeemed, trần một lượt)
   vested:        bigint;     // vested(t) đã tính
+  /** Phần bị CẮT NGỌN lượt này (`vested − redeemed − amount`). 0 nghĩa là không bị cắt.
+   *  Trả ra riêng vì nó KHÔNG mất — gộp nó vào `amount` là nói dối theo chiều ngược lại,
+   *  còn im lặng là để người dùng đọc phép cắt thành tịch thu. */
+  trimmed:       bigint;
+  /** Trần một lượt đang áp (`max(trim_floor, total_redeemed · κ)`). */
+  trimCap:       bigint;
   newClaimDatum: ClaimAccountDatum;
   treasuryAfter: bigint;     // LAMP còn lại trên treasury output
   summary:       string;
@@ -128,21 +145,9 @@ export async function buildRedeemTx(params: RedeemParams): Promise<RedeemResult>
   if (beacon.kind !== "DropParam") {
     throw new Error(`REDEEM-005: beacon kind must be DropParam, got ${beacon.kind}`);
   }
-  const D = beacon.drop_value;
-
-  // ── vested(t) = min(E, D · dpe · max(0, t − t0)); amount = vested − redeemed ──
-  const vestedNow = vested(
-    claim.entitlement, D, claim.drops_per_epoch, claim.start_epoch, currentEpoch,
-  );                                                                // C-RDM-2
-  const amount = vestedNow - claim.redeemed;                        // C-RDM-1
-  if (amount <= 0n) {
-    throw new Error(
-      `REDEEM-002: redeemable ≤ 0 (vested=${vestedNow}, redeemed=${claim.redeemed}). ` +
-      `Chưa tới epoch mở khoá thêm, hoặc đã redeem hết phần vested.`,
-    );
-  }
-
-  // ── Decode Treasury datum + đảm bảo đủ LAMP (C-TRE-1) ──────────────
+  // ── Decode Treasury datum ──────────────────────────────────────────
+  // v3 ĐẨY khối này LÊN TRƯỚC phép tính `amount`: trần một lượt rút đọc
+  // `treasury.total_redeemed`, nên số tiền không còn tính được chỉ từ tài khoản và beacon.
   if (!treasuryUtxo.datum) throw new Error("REDEEM-011: treasuryUtxo has no inline datum");
 
   // Authenticity: treasury UTxO PHẢI mang đúng 1 NFT "TRSY" (C-SOLV-3/4/5, claim_account.ak:138-148).
@@ -162,6 +167,28 @@ export async function buildRedeemTx(params: RedeemParams): Promise<RedeemResult>
   }
 
   const treasury: TreasuryDatum = decodeTreasuryDatum(Data.from(treasuryUtxo.datum));
+
+  // ── v3: A_span → vested → trần một lượt → amount ───────────────────
+  //   A_span  = A(bây giờ) − index_at_start                         (ném khi âm)
+  //   vested  = min(E, isqrt(dpe² · E · A_span²))                    C-RDM-VEST
+  //   trần    = max(trim_floor, total_redeemed · trim_num / trim_den) C-RDM-TRIM
+  //   amount  = min(vested − redeemed, trần)                         C-RDM-CAP
+  const span = aSpan(claim, beacon, currentEpoch);
+  const vestedNow = vested(claim.entitlement, claim.drops_per_epoch, span);  // C-RDM-VEST
+  const uncapped = vestedNow - claim.redeemed;                       // C-RDM-1
+  if (uncapped <= 0n) {
+    throw new Error(
+      `REDEEM-002: redeemable ≤ 0 (vested=${vestedNow}, redeemed=${claim.redeemed}). ` +
+      `Chưa tới cửa sổ mở khoá thêm, hoặc đã redeem hết phần vested.`,
+    );
+  }
+  const cap = trimCap(treasury, beacon, TRIM_FLOOR);                 // C-RDM-TRIM
+  const amount = uncapped < cap ? uncapped : cap;                    // C-RDM-CAP
+  // `amount < uncapped` KHÔNG phải lỗi và KHÔNG được ném: phần bị cắt còn nguyên quyền,
+  // chờ lượt sau. Builder chỉ nói ra để giao diện gọi nó phân biệt được "rút được lượt này"
+  // với "còn lại tất cả" — gộp hai số đó lại thì mỗi lần cắt ngọn đọc như tịch thu.
+  const trimmed = uncapped - amount;
+
   const treasuryLamp = treasuryUtxo.assets[lampUnit] ?? 0n;
   if (treasuryLamp < amount) {
     throw new Error(
@@ -193,6 +220,7 @@ export async function buildRedeemTx(params: RedeemParams): Promise<RedeemResult>
     redeemed:        claim.redeemed + amount,        // C-RDM-4
     start_epoch:     claim.start_epoch,
     drops_per_epoch: claim.drops_per_epoch,
+    index_at_start:  claim.index_at_start,           // C-RDM-4: mốc chỉ số BẤT BIẾN khi rút
   };
   // Treasury': committee_hash bảo toàn (C-TRE-2); sổ cái nợ GIẢM ĐÚNG `amount` cùng nhịp
   // với pool (C-SOLV-3). Redeem = TRẢ NỢ, nên cả hai vế đi cặp — nếu chỉ pool giảm mà sổ
@@ -212,6 +240,10 @@ export async function buildRedeemTx(params: RedeemParams): Promise<RedeemResult>
   const newTreasuryDatum: TreasuryDatum = {
     committee_hash:         treasury.committee_hash,
     outstanding_entitlement: treasury.outstanding_entitlement - amount,
+    // C-RDM-TOTAL: đây là đường DUY NHẤT `total_redeemed` được tăng, và nó phải tăng ĐÚNG
+    // `amount`. Trường này là mẫu số của phép cắt ngọn ở mọi tài khoản khác, nên đứng yên
+    // ở đây là giữ trần hệ thấp mãi; tăng quá là nới trần cho cả hệ bằng một lượt rút.
+    total_redeemed:         treasury.total_redeemed + amount,
   };
 
   // ── Output assets: bảo toàn TẤT CẢ (audit dust lesson, C-VAL-0) ────
@@ -225,7 +257,10 @@ export async function buildRedeemTx(params: RedeemParams): Promise<RedeemResult>
   else delete treasuryOutAssets[lampUnit];          // hết LAMP → bỏ unit, giữ lovelace+dust
 
   // ── Redeemers ──────────────────────────────────────────────────────
-  const claimRedeemer    = redeemRedeemerToCbor();   // Constr(1, [])
+  // v3: `Redeem` MANG `amount`. Validator không còn tự suy số tiền từ hiệu datum — nó ép
+  // `amount` trong redeemer khớp cả ba: phần chuyển cho user, mức tăng của `redeemed`, và
+  // trần. Truyền nhầm số ở đây thì giao dịch bị từ chối, không phải rút nhầm.
+  const claimRedeemer    = redeemRedeemerToCbor(amount);   // Constr(1, [amount])
   const treasuryRedeemer = treasuryRedeemerToCbor();
 
   // ── Build tx ───────────────────────────────────────────────────────
@@ -257,17 +292,28 @@ export async function buildRedeemTx(params: RedeemParams): Promise<RedeemResult>
   const tx = await txb.complete();
 
   const summary = [
-    `═══ Redeem (Capped Drop) ═══`,
+    `═══ Redeem (Capped Drop v3) ═══`,
     `Owner:          ${owner}`,
     `Entitlement E:  ${claim.entitlement} oildrop`,
     `Redeemed before:${claim.redeemed} oildrop`,
-    `Drop value D:   ${D} oildrop  · drops/epoch ${claim.drops_per_epoch}`,
-    `Epoch:          t0=${claim.start_epoch} → t=${currentEpoch}`,
+    `Beacon:         index=${beacon.index} rate_root=${beacon.rate_root} epoch=${beacon.epoch}`,
+    `A(t):           ${beacon.index + beacon.rate_root * (currentEpoch - beacon.epoch)}` +
+      `  −  a₀=${claim.index_at_start}  ⟹  A_span=${span}`,
+    `Cửa sổ:         t=${currentEpoch} (start_epoch=${claim.start_epoch}, KHÔNG vào phép tính)`,
     `Vested(t):      ${vestedNow} oildrop`,
+    `Trần một lượt:  ${cap} oildrop (κ=${beacon.trim_num}/${beacon.trim_den}, ` +
+      `total_redeemed=${treasury.total_redeemed}, sàn=${TRIM_FLOOR})`,
     `Amount:         ${amount / 1_000_000n} LAMP (${amount} oildrop)`,
+    trimmed > 0n
+      ? `Bị cắt lượt này:${trimmed} oildrop — CÒN NGUYÊN QUYỀN, rút được ở lượt sau`
+      : `Bị cắt lượt này:0 (trần không chạm)`,
     `Treasury LAMP:  ${treasuryLamp} → ${treasuryAfter} oildrop`,
+    `total_redeemed: ${treasury.total_redeemed} → ${newTreasuryDatum.total_redeemed}`,
     `Destination:    ${destination}`,
   ].join("\n");
 
-  return { tx, amount, vested: vestedNow, newClaimDatum, treasuryAfter, summary };
+  return {
+    tx, amount, vested: vestedNow, trimmed, trimCap: cap,
+    newClaimDatum, treasuryAfter, summary,
+  };
 }

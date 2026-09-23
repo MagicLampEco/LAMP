@@ -1,10 +1,15 @@
 // applyGate.test.ts — cổng APPLY-001 mang từ Genesis sang LampDistribution.
 //
 // Ca ĐỎ bắt buộc (báo cáo vá "apply thiếu tham số claim_account/treasury"): chứng minh
-// cổng ĐỎ khi apply THIẾU đúng tham số đã gây lỗi thật — `account_nft_policy` (tham số
-// CUỐI, thêm 2026-08-12, PR #22 điểm 1) — 7/8 cho claim_account, 6/7 cho treasury; và
-// XANH khi apply đủ. `applyParamsToScript` không tự báo lỗi khi thiếu tham số — nó trả
-// về một script hash KHÁC, im lặng — đây là lý do cổng này tồn tại.
+// cổng ĐỎ khi apply THIẾU đúng tham số đã gây lỗi thật — `account_nft_policy` (thêm
+// 2026-08-12, PR #22 điểm 1) — 7/8 cho claim_account, 6/8 cho treasury; và XANH khi apply
+// đủ. `applyParamsToScript` không tự báo lỗi khi thiếu tham số — nó trả về một script hash
+// KHÁC, im lặng — đây là lý do cổng này tồn tại.
+//
+// v3 (2026-09-22) nâng treasury 7 → 8 khe: `beacon_nft_policy` ở CUỐI. Con số ở đây là bản
+// CHÉP của blueprint, nên nó phải đổi cùng lượt với `scripts/config.ts` và
+// `scripts/01_deploy.ts` — ba chỗ, một sự thật. Cái giữ chúng khỏi trôi không phải bài kiểm
+// này mà là chính cổng `assertParamCount` lúc chạy thật: nó đọc số khe từ `plutus.json`.
 import { describe, it, expect } from "vitest";
 import { assertParamCount } from "../offchain/src/applyGate.js";
 
@@ -14,14 +19,19 @@ describe("cổng APPLY-001 — apply thiếu tham số KHÔNG báo lỗi, nó đ
     expect(() => assertParamCount("claim_account.claim_account.spend", 8, 7)).toThrow(/APPLY-001/);
   });
 
-  it("ĐỎ: treasury.treasury.spend khai 7 tham số, chỗ gọi (lỗi cũ) chỉ truyền 6 " +
+  it("ĐỎ: treasury.treasury.spend khai 8 tham số, chỗ gọi (lỗi cũ) chỉ truyền 6 " +
      "(thiếu account_nft_policy)", () => {
-    expect(() => assertParamCount("treasury.treasury.spend", 7, 6)).toThrow(/APPLY-001/);
+    expect(() => assertParamCount("treasury.treasury.spend", 8, 6)).toThrow(/APPLY-001/);
   });
 
-  it("XANH: claim_account đủ 8/8, treasury đủ 7/7 — sau vá", () => {
+  it("ĐỎ: treasury truyền 7/8 — bỏ quên `beacon_nft_policy` thêm ở v3 (tham số CUỐI). " +
+     "Đây là dạng dễ lọt nhất ở một lượt thêm tham số: chỗ gọi cũ vẫn chạy, chỉ khác hash", () => {
+    expect(() => assertParamCount("treasury.treasury.spend", 8, 7)).toThrow(/APPLY-001/);
+  });
+
+  it("XANH: claim_account đủ 8/8, treasury đủ 8/8 — sau vá", () => {
     expect(() => assertParamCount("claim_account.claim_account.spend", 8, 8)).not.toThrow();
-    expect(() => assertParamCount("treasury.treasury.spend", 7, 7)).not.toThrow();
+    expect(() => assertParamCount("treasury.treasury.spend", 8, 8)).not.toThrow();
   });
 
   it("ném khi TRUYỀN THỪA tham số (đối xứng với thiếu — cùng một lớp lỗi)", () => {
@@ -29,8 +39,8 @@ describe("cổng APPLY-001 — apply thiếu tham số KHÔNG báo lỗi, nó đ
   });
 
   it("thông điệp nêu tên validator + cả hai con số để đối chiếu", () => {
-    expect(() => assertParamCount("treasury.treasury.spend", 7, 6)).toThrow(
-      /treasury\.treasury\.spend khai 7 tham số, chỗ gọi truyền 6/,
+    expect(() => assertParamCount("treasury.treasury.spend", 8, 6)).toThrow(
+      /treasury\.treasury\.spend khai 8 tham số, chỗ gọi truyền 6/,
     );
   });
 });

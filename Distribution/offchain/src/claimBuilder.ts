@@ -34,14 +34,15 @@ import {
 } from "@lucid-evolution/lucid";
 import type { Network } from "@magiclamp/utils";
 
-import type { ClaimAccountDatum, TreasuryDatum } from "./types.js";
+import type { BeaconDatum, ClaimAccountDatum, TreasuryDatum } from "./types.js";
 import {
   claimAccountDatumToCbor, claimRedeemerToCbor, decodeClaimAccountDatum,
   decodeTreasuryDatum, treasuryDatumToCbor, grantEntitlementRedeemerToCbor,
 } from "./datum.js";
 import { accountNftName, mintAccountRedeemerToCbor } from "./accountNft.js";
 import { assertCommitteeSigners } from "./committee.js";
-import { DEFAULT_DROPS_PER_EPOCH, DROPS_PER_EPOCH_MAX, TREASURY_NFT_ASSET_NAME } from "./constants.js";
+import { DEFAULT_DROPS_PER_EPOCH, DROPS_PER_EPOCH_PINNED, TREASURY_NFT_ASSET_NAME } from "./constants.js";
+import { beaconIndexAt } from "./vested.js";
 
 export interface ClaimParams {
   lucid:        LucidEvolution;
@@ -114,6 +115,24 @@ export interface ClaimParams {
     nftPolicy:   string;
     /** NFT asset-name hex; mặc định "TRSY". */
     nftAssetName?: string;
+  };
+
+  /**
+   * BEACON REFERENCE INPUT — **BẮT BUỘC ở v3**, cả CREATE lẫn UPDATE.
+   *
+   * `treasury.GrantEntitlement` đọc `A(cửa sổ này)` qua reference input mang NFT "DROP"
+   * rồi ép `C-CLAIM-8: ca_out.index_at_start == A(cửa sổ này)`. Đây là một đổi **hình
+   * dạng giao dịch**, không chỉ đổi tham số: một tx cấp phát không mang beacon sẽ bị từ
+   * chối ở bước đọc, trước khi tới bất kỳ mệnh đề nghiệp vụ nào.
+   *
+   * Vì sao mốc CHỈ SỐ chứ không phải mốc CỬA SỔ: ở v3 `start_epoch` không còn đi vào
+   * phép tính vested. Ghim nó mà bỏ `index_at_start` là vá đúng cái cửa mình nhìn thấy.
+   */
+  beacon: {
+    /** Beacon UTxO hiện tại (mang NFT "DROP", inline BeaconDatum). */
+    utxo:  UTxO;
+    /** Datum đã giải mã của chính UTxO đó — dùng để tính `A(cửa sổ này)`. */
+    datum: BeaconDatum;
   };
 
   /** Danh sách committee key-hash (hex). */
@@ -202,8 +221,13 @@ export function assertClaimSolvency(
 export async function buildClaimTx(params: ClaimParams): Promise<ClaimResult> {
   const {
     lucid, claimScript, network, ownerPkh, amount, currentEpoch,
-    claimAccountUtxo, committeeKeyHashes,
+    claimAccountUtxo, committeeKeyHashes, beacon,
   } = params;
+
+  // C-CLAIM-8: mốc CHỈ SỐ mà CẢ HAI đường (CREATE và UPDATE) phải ghi vào datum ra.
+  // Tính MỘT lần ở đây để hai nhánh dưới không thể lệch nhau — hai chỗ tính riêng là hai
+  // chỗ trôi riêng, và cái trôi đó không có gì báo.
+  const aNow = beaconIndexAt(beacon.datum, currentEpoch);
 
   if (amount <= 0n) throw new Error(`CLAIM-001: amount must be > 0 (got ${amount})`); // C-CLAIM-2
 
@@ -264,6 +288,7 @@ export async function buildClaimTx(params: ClaimParams): Promise<ClaimResult> {
       redeemed:        0n,                                            // C-CLAIM-5
       start_epoch:     currentEpoch,                                  // C-CLAIM-6
       drops_per_epoch: prev.drops_per_epoch,                          // C-CLAIM-7 (unchanged)
+      index_at_start:  aNow,                                          // C-CLAIM-8
     };
 
     // Bảo toàn TẤT CẢ assets (lovelace + bất kỳ dust) — chỉ datum đổi (C-VAL-0).
@@ -294,12 +319,18 @@ export async function buildClaimTx(params: ClaimParams): Promise<ClaimResult> {
         `khoản tạo với drops_per_epoch = 0 không bao giờ redeem được, mà khoản nợ thì đã vào sổ kho`,
       );
     }
-    // CLAIM-006: trần on-chain C-ACC-4 (`treasury.ak`). Chặn ở đây để lỗi nói đúng thứ sai
-    // thay vì "validator crashed" từ chuỗi.
-    if (dropsPerEpoch > DROPS_PER_EPOCH_MAX) {
+    // CLAIM-006: v3 GHIM `drops_per_epoch == 1` (`treasury.ak` C-ACC-DPE). Chặn ở đây để
+    // lỗi nói đúng thứ sai thay vì "validator crashed" từ chuỗi.
+    //
+    // v2 có một TRẦN ở chỗ này; v3 thay bằng một ĐẲNG THỨC, và khác biệt đó đáng nói ra:
+    // trần cũ chặn giá trị LỚN, trong khi đường hại của v3 là giá trị NHỎ ĐI —
+    // `drops_per_epoch` đứng NGOÀI tổng `A_span`, nên hạ nó viết lại toàn bộ quá khứ chứ
+    // không chỉ chặn một lần rút.
+    if (dropsPerEpoch !== DROPS_PER_EPOCH_PINNED) {
       throw new Error(
-        `CLAIM-006: dropsPerEpoch ${dropsPerEpoch} vượt trần ${DROPS_PER_EPOCH_MAX} ` +
-        `(treasury.ak C-ACC-4) — tốc độ mở khoá là D · drops_per_epoch, trần D một mình không đủ`,
+        `CLAIM-006: dropsPerEpoch ${dropsPerEpoch} khác ${DROPS_PER_EPOCH_PINNED} — v3 ghim ` +
+        `cứng giá trị này (treasury.ak C-ACC-DPE). Trường vẫn nằm trong datum để khỏi đổi ` +
+        `số trường lần nữa, nhưng nó không còn là một núm điều chỉnh.`,
       );
     }
 
@@ -309,6 +340,7 @@ export async function buildClaimTx(params: ClaimParams): Promise<ClaimResult> {
       redeemed:        0n,
       start_epoch:     currentEpoch,
       drops_per_epoch: dropsPerEpoch,
+      index_at_start:  aNow,                                          // C-CLAIM-8
     };
 
     // C-ACC-1 / A-ACC-2..A-ACC-4: đúc ĐÚNG 1 NFT tên blake2b_256(owner), hạ cánh ngay
@@ -385,6 +417,10 @@ export async function buildClaimTx(params: ClaimParams): Promise<ClaimResult> {
     newTreasuryDatum = {
       committee_hash:         prevTreasury.committee_hash,                       // C-TRE-2
       outstanding_entitlement: prevTreasury.outstanding_entitlement + amount,      // C-SOLV-1
+      // C-RDM-TOTAL chỉ cho `total_redeemed` tăng ở đường `Release`, và GrantEntitlement
+      // KHÔNG phải đường đó ⟹ giữ nguyên. Đây là trường mới của v3, mang mẫu số của phép
+      // cắt ngọn: chạm vào nó ở đây là nới trần rút của TOÀN hệ bằng một lượt cấp quyền.
+      total_redeemed:         prevTreasury.total_redeemed,                       // bất biến ở Grant
     };
 
     // C-SOLV-2: on-chain treasury validator ép cum_out ≤ pool LAMP (over-grant → fail).
@@ -400,6 +436,12 @@ export async function buildClaimTx(params: ClaimParams): Promise<ClaimResult> {
         treasuryOutAssets,
       );
   }
+
+  // Beacon làm INPUT THAM CHIẾU — bắt buộc ở CẢ HAI đường (CREATE và REBASE), vì `aNow` đã
+  // đi vào datum ra ở cả hai. Validator tự đi tìm beacon trong `reference_inputs` và ném khi
+  // không thấy; thiếu dòng này thì giao dịch dựng xong vẫn hỏng, và hỏng ở chỗ khó đọc.
+  // Chỉ ĐỌC, không tiêu: beacon giữ nguyên UTxO của nó.
+  txb = txb.readFrom([beacon.utxo]);
 
   for (const k of signers) txb = txb.addSignerKey(k);
 

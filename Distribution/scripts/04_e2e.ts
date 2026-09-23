@@ -25,11 +25,14 @@ import {
   makeLucid, walletPkh, loadDeployed, reapplyValidators,
   toUnit, explorerTx, awaitTx,
 } from "./config.js";
-import { decodeClaimAccountDatum, decodeBeaconDatum } from "../offchain/src/datum.js";
+import {
+  decodeClaimAccountDatum, decodeBeaconDatum, decodeTreasuryDatum,
+} from "../offchain/src/datum.js";
+import type { BeaconDatum } from "../offchain/src/types.js";
 import { buildClaimTx }      from "../offchain/src/claimBuilder.js";
 import { buildPostBeaconTx } from "../offchain/src/beaconBuilder.js";
 import { buildRedeemTx }     from "../offchain/src/redeemBuilder.js";
-import { D_GENESIS, epochWindow } from "../offchain/src/constants.js";
+import { RATE_ROOT_GENESIS, epochWindow } from "../offchain/src/constants.js";
 import type { LucidEvolution, UTxO, TxSignBuilder, Validator } from "@lucid-evolution/lucid";
 import {
   windowNow, grantTimeParams, redeemTimeParams,
@@ -39,8 +42,17 @@ import {
 const LAMP_A = 250_000_000n;   // 250 LAMP entitlement (oildrop)
 const LAMP_B = 1_000_000_000n; // 1000 LAMP entitlement (oildrop)
 
-// DropParam D (oildrop/drop·epoch). Khớp 03 genesis (DROP_VALUE_OILDROP) nếu set; else D_GENESIS.
-const DROP_VALUE = BigInt(process.env.DROP_VALUE_OILDROP ?? D_GENESIS.toString());
+// `rate_root` đích cho lượt post beacon. Khớp `03_genesis` (biến `RATE_ROOT`) nếu set.
+//
+// ⚠ `DROP_VALUE_OILDROP` là khái niệm CHẾT ở v3 — từ chối thẳng thay vì bỏ qua, cùng lý do
+// đã ghi ở `03_genesis.ts`: bỏ qua im lặng làm người vận hành tin mình đã chỉnh được tốc độ.
+if ((process.env.DROP_VALUE_OILDROP ?? "").trim() !== "") {
+  throw new Error(
+    "E2E-V3-001: `DROP_VALUE_OILDROP` không còn nghĩa ở v3 — beacon mang `rate_root` (w). " +
+    "Đặt `RATE_ROOT` nếu muốn chỉnh, rồi bỏ biến cũ đi.",
+  );
+}
+const RATE_ROOT = BigInt(process.env.RATE_ROOT ?? RATE_ROOT_GENESIS.toString());
 
 function norm(h: string): string {
   return (h.startsWith("0x") ? h.slice(2) : h).toLowerCase();
@@ -136,7 +148,7 @@ async function ensureCollateral(lucid: LucidEvolution): Promise<void> {
 /** Cấp E cho một owner theo `planGrant`, rồi đọc lại datum trên chuỗi và đối chiếu kỳ vọng. */
 async function grantFor(args: {
   lucid: LucidEvolution; label: string; ownerPkh: string; amount: bigint;
-  dropValue: bigint; e: bigint;
+  beacon: BeaconDatum; beaconAddress: string; dropNft: string; e: bigint;
   claimAddress: string; treasuryAddress: string; trsyUnit: string; treasuryNftPolicy: string;
   claimScript: Validator; treasuryScript: Validator; accountNftScript: Validator;
   committee: string[]; threshold: number;
@@ -144,7 +156,15 @@ async function grantFor(args: {
   const { lucid, label, ownerPkh, amount, e } = args;
   const accUtxo = await findClaimAccountOpt(lucid, args.claimAddress, ownerPkh);
   const before = accUtxo ? decodeClaimAccountDatum(Data.from(accUtxo.datum!)) : null;
-  const plan = planGrant({ account: before, ownerPkh, amount, dropValue: args.dropValue, windowEpoch: e });
+  // v3: kế hoạch cấp cần CẢ kho — trần một lượt đọc `total_redeemed`, nên số "đang rút được"
+  // in ra ở nhánh BỎ QUA không tính được nếu chỉ nhìn tài khoản.
+  const treasuryForPlan = decodeTreasuryDatum(
+    Data.from((await findTreasury(lucid, args.treasuryAddress, args.trsyUnit)).datum!),
+  );
+  const plan = planGrant({
+    account: before, ownerPkh, amount,
+    beacon: args.beacon, treasury: treasuryForPlan, windowEpoch: e,
+  });
 
   if (plan.action === "skip") {
     console.log(
@@ -165,6 +185,12 @@ async function grantFor(args: {
     treasury: {
       utxo: treasuryUtxo, script: args.treasuryScript,
       nftPolicy: args.treasuryNftPolicy, nftAssetName: TREASURY_NFT_ASSET_NAME,
+    },
+    // v3: beacon làm INPUT THAM CHIẾU ở CẢ hai đường. Đọc lại UTxO ngay đây thay vì mang
+    // theo từ đầu lượt — nó có thể đã bị tiêu bởi bước post beacon xen giữa.
+    beacon: {
+      utxo: await findBeacon(lucid, args.beaconAddress, args.dropNft),
+      datum: args.beacon,
     },
     committeeKeyHashes: args.committee, threshold: args.threshold,
     ...grantTimeParams(w),   // Luật 2b: hai đầu cùng cửa sổ (CREATE-002 áp cả UPDATE)
@@ -232,7 +258,7 @@ async function main(): Promise<void> {
   // trên một trạng thái mà không ai biết là sai.
   console.log("── a. Grant (committee cấp entitlement E) ──");
   const grantCommon = {
-    lucid, dropValue: beaconBefore.drop_value, e,
+    lucid, beacon: beaconBefore, beaconAddress: state.beacon.address, dropNft, e,
     claimAddress: state.claimAccount.address, treasuryAddress: state.treasury.address,
     trsyUnit, treasuryNftPolicy, claimScript, treasuryScript, accountNftScript,
     committee, threshold,
@@ -243,10 +269,10 @@ async function main(): Promise<void> {
   // ════════════════════════════════════════════════════════════
   // b. POST DropParam beacon — nhãn = cửa sổ hiện tại (C-BCN-3), |ΔD| ≤ 10% (C-BCN-5)
   // ════════════════════════════════════════════════════════════
-  console.log("\n── b. Post DropParam beacon (D) ──");
+  console.log("\n── b. Post DropParam beacon (chỉ số cộng dồn) ──");
   const beaconPlan = planBeacon({
     onChain: beaconBefore, window: windowNow(MS_PER_EPOCH, e),
-    dropValue: DROP_VALUE, msPerEpoch: MS_PER_EPOCH,
+    rateRoot: RATE_ROOT, msPerEpoch: MS_PER_EPOCH,
   });
   if (beaconPlan.action === "skip") {
     console.log(`   BỎ QUA — cửa sổ ${e} đã có lượt post (C-BCN-2/3: một lượt mỗi cửa sổ).`);
@@ -256,7 +282,7 @@ async function main(): Promise<void> {
       beaconScript, network: NETWORK,
       beaconNftPolicy: state.beaconNftPolicy,
       committeeKeyHashes: committee, threshold,
-      ...beaconPlan.params,   // newBeacon + msPerEpoch + currentDropValue
+      ...beaconPlan.params,   // newBeacon + msPerEpoch + currentBeacon
     });
     console.log(postD.summary);
     await submit(lucid, postD.tx, "post DropParam");
@@ -270,12 +296,16 @@ async function main(): Promise<void> {
   const accA1 = await findClaimAccount(lucid, state.claimAccount.address, aPkh);
   const dA1   = decodeClaimAccountDatum(Data.from(accA1.datum!));
   const dropBeacon = await findBeacon(lucid, state.beacon.address, dropNft);
-  const dNow = decodeBeaconDatum(Data.from(dropBeacon.datum!)).drop_value;
-  const redeemPlan = planRedeem(dA1, dNow, e);
+  const bNow = decodeBeaconDatum(Data.from(dropBeacon.datum!));
+  const treasuryNow = decodeTreasuryDatum(
+    Data.from((await findTreasury(lucid, state.treasury.address, trsyUnit)).datum!),
+  );
+  const redeemPlan = planRedeem(dA1, bNow, treasuryNow, e);
 
   if (redeemPlan.action === "wait") {
     console.log(
-      `   ⏸ Chưa có gì để rút: start_epoch=${dA1.start_epoch}, redeemed=${dA1.redeemed}, cửa sổ ${e}. ` +
+      `   ⏸ Chưa có gì để rút: index_at_start=${dA1.index_at_start}, ` +
+      `A(${e})=${bNow.index + bNow.rate_root * (e - bNow.epoch)}, redeemed=${dA1.redeemed}. ` +
       `Chạy lại từ cửa sổ ${redeemPlan.fromEpoch} — lượt sau sẽ BỎ QUA grant A vì lô chưa rút trọn.`,
     );
     console.log("\n⏸ E2E CHƯA hoàn tất — grant + beacon xong, redeem chờ cửa sổ sau.");
@@ -283,14 +313,22 @@ async function main(): Promise<void> {
   }
   if (redeemPlan.action === "stalled") {
     throw new Error(
-      `E2E-REDEEM-003: D·drops_per_epoch = ${dNow}·${dA1.drops_per_epoch} ≤ 0 — tài khoản A không bao giờ ` +
-      `rút được. Kiểm beacon DropParam và datum tài khoản.`,
+      `E2E-REDEEM-003: rate_root·drops_per_epoch = ${bNow.rate_root}·${dA1.drops_per_epoch} ≤ 0 — ` +
+      `chỉ số đứng yên nên tài khoản A KHÔNG BAO GIỜ rút được. Kiểm beacon DropParam và datum ` +
+      `tài khoản. (Không in một cửa sổ chờ ở đây: một mốc trông có lý là câu trả lời sai cho ` +
+      `một câu hỏi không có câu trả lời.)`,
     );
   }
   if (redeemPlan.action === "exhausted") {
     throw new Error(
       `E2E-REDEEM-001: tài khoản A đã rút trọn (${dA1.redeemed}/${dA1.entitlement}) mà grant A không ` +
       `chạy ở bước a — trạng thái này không phải kết quả của lượt chạy này.`,
+    );
+  }
+  if (redeemPlan.trimmed > 0n) {
+    console.log(
+      `   ✂ Trần một lượt cắt ${redeemPlan.trimmed} oildrop khỏi lượt này. ` +
+      `Phần đó CÒN NGUYÊN QUYỀN — rút được ở lượt sau, không mất.`,
     );
   }
 

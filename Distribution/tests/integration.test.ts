@@ -1,127 +1,232 @@
-// Integration test — full flow CONTRACT v2 "Capped Drop" off-chain (pure logic).
-// Kiểm chứng: vested cộng dồn, cap E, đa-claim redeemed cộng dồn, chống double-redeem,
-// entitlement bảo toàn (bỏ lỡ epoch không mất quyền), ví nhỏ E<D nhận hết ngay.
-// Mirror CHÍNH XÁC logic claim_account Redeem validator.
+// Integration test — full flow CONTRACT v3 "Capped Drop" off-chain (logic thuần).
+// Mirror CHÍNH XÁC logic `claim_account` nhánh Redeem, không chạm mạng hay ví.
+//
+// v3 đổi đại lượng chứ không chỉ đổi công thức, nên bài kiểm phải đổi theo cả ba vế:
+//   (1) `vested = min(E, isqrt(dpe² · E · A_span²))` — CĂN của E, không còn tuyến tính
+//       theo E. Đây là tính chất cốt lõi của v3 và nó có bài riêng bên dưới.
+//   (2) `A_span` là hiệu của CHỈ SỐ CỘNG DỒN từ beacon, không phải `t − start_epoch`.
+//       `start_epoch` KHÔNG còn đi vào phép tính.
+//   (3) trần một lượt `max(trim_floor, total_redeemed · κ)` — trạng thái TOÀN HỆ, nên một
+//       tài khoản không tính được số rút của mình nếu chỉ nhìn chính nó.
 
 import { describe, it, expect } from "vitest";
-import { vested } from "../offchain/src/vested.js";
-import { lampOildrop } from "./helpers.js";
+import { vested, isqrt, beaconIndexAt, aSpan, trimCap, redeemable } from "../offchain/src/vested.js";
+import type { BeaconDatum, ClaimAccountDatum, TreasuryDatum } from "../offchain/src/types.js";
+import { lampOildrop, TRIM_FLOOR } from "./helpers.js";
 
-// ── Mô hình ClaimAccount (mirror onchain datum v2) ──
-interface Account {
-  owner: string;
-  entitlement: bigint;
-  redeemed: bigint;
-  startEpoch: bigint;
-  dropsPerEpoch: bigint;
+// ── Số hiệu chỉnh cho bài kiểm ────────────────────────────────────────────────
+// E = 1.000.000 LAMP = 10^12 oildrop ⇒ √E = 10^6 CHẴN. `rate_root = 100.000` ⇒ mỗi cửa sổ
+// mở thêm đúng `10^6 · 10^5 = 10^11` oildrop = 100.000 LAMP, chạm trần E sau ĐÚNG 10 cửa sổ.
+// Chọn số chính phương là cố ý: nó làm mọi kỳ vọng dưới đây kiểm được bằng tay, thay vì
+// phải tin vào chính hàm đang được kiểm.
+const E_BIG      = lampOildrop(1_000_000n);   // 10^12
+const RATE       = 100_000n;
+const PER_WINDOW = lampOildrop(100_000n);     // 10^11
+
+function beacon(overrides: Partial<BeaconDatum> = {}): BeaconDatum {
+  return {
+    epoch: 0n, kind: "DropParam", index: 0n, rate_root: RATE,
+    trim_num: 1n, trim_den: 1_000n, speed_policies: [],
+    ...overrides,
+  };
 }
 
-// Mirror claim_account.ak Redeem: trả amount + redeemed mới (hoặc throw như validator).
-//   vested = min(E, D·dpe·max(0, t−t0)); amount = vested − redeemed > 0.
-function simulateRedeem(
-  acc: Account, D: bigint, currentEpoch: bigint,
-): { amount: bigint; newRedeemed: bigint } {
-  const v = vested(acc.entitlement, D, acc.dropsPerEpoch, acc.startEpoch, currentEpoch);
-  const amount = v - acc.redeemed;            // C-RDM-1
-  if (amount <= 0n) throw new Error("C-RDM-1: redeemable <= 0");
-  return { amount, newRedeemed: acc.redeemed + amount };   // C-RDM-4
+function account(o: Partial<ClaimAccountDatum> = {}): ClaimAccountDatum {
+  return {
+    owner: "a1", entitlement: E_BIG, redeemed: 0n, start_epoch: 0n,
+    drops_per_epoch: 1n, index_at_start: 0n,
+    ...o,
+  };
 }
 
-describe("Full distribution flow (Capped Drop)", () => {
-  it("claim → drip nhiều epoch → redeem cộng dồn → double-redeem reject", () => {
-    const D = lampOildrop(100n);   // committee post DropParam D = 100 LAMP
+function treasury(totalRedeemed = 0n): TreasuryDatum {
+  return {
+    committee_hash: "cc".repeat(28),
+    outstanding_entitlement: E_BIG,
+    total_redeemed: totalRedeemed,
+  };
+}
 
-    // CLAIM: committee confirm A có entitlement 250 LAMP, start t0=0, dpe=1.
-    const accA: Account = {
-      owner: "a1", entitlement: lampOildrop(250n), redeemed: 0n, startEpoch: 0n, dropsPerEpoch: 1n,
-    };
+/** `vested` tại cửa sổ `w` — cùng đường mà builder đi, không phải một bản chép. */
+function vestedAt(a: ClaimAccountDatum, b: BeaconDatum, w: bigint): bigint {
+  return vested(a.entitlement, a.drops_per_epoch, aSpan(a, b, w));
+}
 
-    // epoch 1: vested=100 → redeem 100
-    const r1 = simulateRedeem(accA, D, 1n);
-    expect(r1.amount).toBe(lampOildrop(100n));
-    accA.redeemed = r1.newRedeemed;
-
-    // double-redeem cùng epoch → vested=100, redeemed=100 → amount 0 → reject
-    expect(() => simulateRedeem(accA, D, 1n)).toThrow("C-RDM-1");
-
-    // epoch 2: vested=200 → redeem thêm 100
-    const r2 = simulateRedeem(accA, D, 2n);
-    expect(r2.amount).toBe(lampOildrop(100n));
-    accA.redeemed = r2.newRedeemed;
-
-    // epoch 3: vested=min(250, 300)=250 (cap E) → redeem 50 cuối
-    const r3 = simulateRedeem(accA, D, 3n);
-    expect(r3.amount).toBe(lampOildrop(50n));
-    accA.redeemed = r3.newRedeemed;
-    expect(accA.redeemed).toBe(accA.entitlement);   // tổng nhận = E
-
-    // epoch 4: đã cap, redeemed=E → reject
-    expect(() => simulateRedeem(accA, D, 4n)).toThrow("C-RDM-1");
+describe("v3: vested theo CHỈ SỐ CỘNG DỒN", () => {
+  it("mỗi cửa sổ mở thêm đúng √E · rate_root, chạm trần E sau 10 cửa sổ", () => {
+    const a = account();
+    const b = beacon();
+    for (let w = 1n; w <= 9n; w++) {
+      expect(vestedAt(a, b, w)).toBe(PER_WINDOW * w);
+    }
+    expect(vestedAt(a, b, 10n)).toBe(E_BIG);      // chạm trần đúng cửa sổ 10
+    expect(vestedAt(a, b, 50n)).toBe(E_BIG);      // và ở lì đó — cap E (C-RDM-2)
   });
 
-  it("entitlement bảo toàn: bỏ lỡ epoch 1-4, redeem ở epoch 5 nhận gộp đủ", () => {
-    const D = lampOildrop(100n);
-    const acc: Account = {
-      owner: "b2", entitlement: lampOildrop(1000n), redeemed: 0n, startEpoch: 0n, dropsPerEpoch: 1n,
-    };
-    // không redeem ở epoch 1-4; epoch 5 redeem lần đầu → vested(5)=500, nhận đủ 500.
-    const r = simulateRedeem(acc, D, 5n);
-    expect(r.amount).toBe(lampOildrop(500n));   // không mất 4 epoch trước (khác lottery)
-    acc.redeemed = r.newRedeemed;
-    // tiếp tục tới cap
-    expect(acc.redeemed).toBe(lampOildrop(500n));
+  it("bỏ lỡ cửa sổ KHÔNG mất quyền: rút lần đầu ở cửa sổ 5 nhận gộp đủ 5 cửa sổ", () => {
+    const a = account();
+    // Khác xổ số: quyền tích luỹ theo chỉ số, không theo số lần bấm nút.
+    expect(vestedAt(a, beacon(), 5n)).toBe(PER_WINDOW * 5n);
   });
 
-  it("ví nhỏ E < D → nhận hết ngay epoch đầu", () => {
-    const D = lampOildrop(100n);
-    const acc: Account = {
-      owner: "c3", entitlement: lampOildrop(30n), redeemed: 0n, startEpoch: 0n, dropsPerEpoch: 1n,
-    };
-    const r = simulateRedeem(acc, D, 1n);
-    expect(r.amount).toBe(lampOildrop(30n));    // min(30, 100) = 30 = full
-    acc.redeemed = r.newRedeemed;
-    expect(() => simulateRedeem(acc, D, 2n)).toThrow("C-RDM-1"); // hết
+  it("`start_epoch` KHÔNG còn đi vào phép tính — chỉ `index_at_start` đi vào", () => {
+    // Hai tài khoản CHỈ khác `start_epoch`; ở v2 chúng vest khác nhau, ở v3 thì không.
+    const older = account({ start_epoch: 0n });
+    const newer = account({ start_epoch: 900n });
+    expect(vestedAt(newer, beacon(), 3n)).toBe(vestedAt(older, beacon(), 3n));
+
+    // Và ngược lại: CHỈ khác `index_at_start` ⇒ PHẢI khác. Không có ca này thì bài trên
+    // cũng xanh với một bản hiện thực bỏ qua cả hai trường.
+    const late = account({ index_at_start: RATE * 2n });
+    expect(vestedAt(late, beacon(), 3n)).toBe(PER_WINDOW * 1n);
   });
 
-  it("invariants xuyên suốt: redeemed đơn điệu, ≤ E, vested đơn điệu", () => {
-    const D = lampOildrop(100n);
-    const acc: Account = {
-      owner: "d4", entitlement: lampOildrop(1000n), redeemed: 0n, startEpoch: 0n, dropsPerEpoch: 1n,
-    };
+  it("beacon mang `epoch ≠ 0` vẫn tính đúng — `A(t)` phải dùng tới `epoch`", () => {
+    // Bản hiện thực quên số hạng `epoch` sẽ cho `A(t) = index` phẳng, và mọi ca ở trên
+    // (beacon epoch 0) vẫn xanh. Ca này là chỗ duy nhất phân biệt được hai bên.
+    const b = beacon({ epoch: 100n, index: 5_000_000n });
+    const a = account({ index_at_start: beaconIndexAt(b, 100n) });
+    expect(aSpan(a, b, 103n)).toBe(RATE * 3n);
+    expect(vestedAt(a, b, 103n)).toBe(PER_WINDOW * 3n);
+  });
+
+  it("A_span ÂM bị NÉM, không kẹp về 0 — validator từ chối ca này", () => {
+    const b = beacon();
+    const a = account({ index_at_start: RATE * 10n });   // mốc ở tương lai
+    expect(() => aSpan(a, b, 3n)).toThrow(/VESTED-005/);
+  });
+});
+
+describe("v3: tốc độ mở khoá theo CĂN của entitlement (chống cá voi)", () => {
+  it("ví lớn gấp 4 chỉ vest nhanh gấp 2 tại cùng một A_span", () => {
+    const b = beacon();
+    const small = account({ entitlement: lampOildrop(250_000n) });   // E/4
+    const big   = account({ entitlement: E_BIG });                   // E
+    const vs = vestedAt(small, b, 1n);
+    const vb = vestedAt(big, b, 1n);
+    expect(vb).toBe(vs * 2n);          // √4 = 2, KHÔNG phải 4
+  });
+
+  it("và vì vậy ví lớn mất NHIỀU cửa sổ HƠN để nhận trọn phần của mình", () => {
+    const b = beacon();
+    const small = account({ entitlement: lampOildrop(250_000n) });
+    const big   = account({ entitlement: E_BIG });
+    // nhỏ: √E' = 500.000 ⇒ mỗi cửa sổ 50.000 LAMP ⇒ trọn sau 5 cửa sổ.
+    expect(vestedAt(small, b, 5n)).toBe(small.entitlement);
+    expect(vestedAt(small, b, 4n)).toBeLessThan(small.entitlement);
+    // lớn: 10 cửa sổ.
+    expect(vestedAt(big, b, 9n)).toBeLessThan(big.entitlement);
+    expect(vestedAt(big, b, 10n)).toBe(big.entitlement);
+  });
+
+  it("ví NHỎ hơn một bước mở khoá nhận trọn ngay cửa sổ đầu", () => {
+    const tiny = account({ entitlement: lampOildrop(1n) });
+    expect(vestedAt(tiny, beacon(), 1n)).toBe(tiny.entitlement);
+  });
+
+  it("`isqrt(k²·E) ≠ k·isqrt(E)` — vì sao phải căn TRỌN tích, không căn rồi nhân", () => {
+    // Bẫy này không lộ ra ở số chính phương, nên nó cần một ca mang số KHÔNG chính phương.
+    // Tính theo `k · isqrt(E)` cho số NHỎ HƠN validator cho phép, và ví sẽ xin thiếu mà
+    // giao dịch VẪN QUA — không có gì báo.
+    expect(isqrt(9n * 2n)).toBe(4n);
+    expect(3n * isqrt(2n)).toBe(3n);
+    expect(vested(2n, 1n, 3n)).toBe(2n);   // min(E=2, isqrt(18)=4) = 2
+  });
+});
+
+describe("v3: trần một lượt (cắt ngọn) là trạng thái TOÀN HỆ", () => {
+  it("ở genesis `total_redeemed = 0` nên SÀN là thứ đang chặn, không phải κ", () => {
+    const t = treasury(0n);
+    expect(trimCap(t, beacon(), TRIM_FLOOR)).toBe(TRIM_FLOOR);
+  });
+
+  it("κ chỉ vượt được sàn khi `total_redeemed` đã lớn hơn `trim_floor · trim_den`", () => {
+    const b = beacon();                              // κ = 1/1000
+    const under = treasury(TRIM_FLOOR * 1_000n - 1_000n);
+    const over  = treasury(TRIM_FLOOR * 2_000n);
+    expect(trimCap(under, b, TRIM_FLOOR)).toBe(TRIM_FLOOR);
+    expect(trimCap(over,  b, TRIM_FLOOR)).toBe(TRIM_FLOOR * 2n);
+  });
+
+  it("`trim_floor` là thứ PHÁ điểm hấp thụ: bỏ nó đi thì 0 · κ = 0 và không ai rút được", () => {
+    // Cùng đầu vào, chỉ khác sàn — hai kết quả phải KHÁC nhau, nếu không bài này không
+    // kiểm gì về sàn cả.
+    expect(trimCap(treasury(0n), beacon(), 0n)).toBe(0n);
+    expect(trimCap(treasury(0n), beacon(), TRIM_FLOOR)).toBe(TRIM_FLOOR);
+  });
+
+  it("`trim_den = 0` bị NÉM — phép chia cho 0 trong Plutus là lỗi, tức giết MỌI Redeem", () => {
+    expect(() => trimCap(treasury(0n), beacon({ trim_den: 0n }), TRIM_FLOOR)).toThrow(/VESTED-006/);
+  });
+
+  it("phần bị cắt KHÔNG mất: rút nhiều lượt vẫn đi tới trọn entitlement", () => {
+    // Một tài khoản nhỏ, trần rộng (κ=1/1) để vòng lặp kết thúc trong vài lượt — điều đang
+    // kiểm là TÍNH CỘNG DỒN của `redeemed`, không phải tốc độ.
+    const b = beacon({ trim_num: 1n, trim_den: 1n });
+    const a = account({ entitlement: lampOildrop(250_000n) });
+    let t = treasury(0n);
+    let guard = 0;
+    while (a.redeemed < a.entitlement && guard++ < 100) {
+      const amount = redeemable(a, b, t, 5n, TRIM_FLOOR);
+      if (amount === 0n) break;
+      a.redeemed += amount;                                       // C-RDM-4
+      t = { ...t, total_redeemed: t.total_redeemed + amount };    // C-RDM-TOTAL
+      expect(a.redeemed).toBeLessThanOrEqual(a.entitlement);      // không bao giờ vượt E
+    }
+    expect(a.redeemed).toBe(a.entitlement);
+    expect(t.total_redeemed).toBe(a.entitlement);
+  });
+
+  it("đã rút trọn ⇒ `redeemable` trả 0, không trả số âm", () => {
+    const a = account({ redeemed: E_BIG });
+    expect(redeemable(a, beacon(), treasury(0n), 50n, TRIM_FLOOR)).toBe(0n);
+  });
+});
+
+describe("v3: bất biến xuyên suốt", () => {
+  it("vested đơn điệu tăng theo cửa sổ, redeemed đơn điệu, cả hai ≤ E", () => {
+    const b = beacon({ trim_num: 1n, trim_den: 1n });
+    const a = account();
+    let t = treasury(0n);
     let prevVested = -1n;
     let prevRedeemed = -1n;
-    for (let t = 1n; t <= 15n; t++) {
-      const v = vested(acc.entitlement, D, acc.dropsPerEpoch, acc.startEpoch, t);
-      expect(v >= prevVested).toBe(true);            // vested đơn điệu
-      expect(v <= acc.entitlement).toBe(true);       // cap E
+    for (let w = 1n; w <= 15n; w++) {
+      const v = vestedAt(a, b, w);
+      expect(v).toBeGreaterThanOrEqual(prevVested);
+      expect(v).toBeLessThanOrEqual(a.entitlement);
       prevVested = v;
-      if (v > acc.redeemed) {
-        const r = simulateRedeem(acc, D, t);
-        acc.redeemed = r.newRedeemed;
-      }
-      expect(acc.redeemed >= prevRedeemed).toBe(true); // redeemed đơn điệu
-      expect(acc.redeemed <= acc.entitlement).toBe(true);
-      prevRedeemed = acc.redeemed;
+
+      const amount = redeemable(a, b, t, w, TRIM_FLOOR);
+      a.redeemed += amount;
+      t = { ...t, total_redeemed: t.total_redeemed + amount };
+
+      expect(a.redeemed).toBeGreaterThanOrEqual(prevRedeemed);
+      expect(a.redeemed).toBeLessThanOrEqual(a.entitlement);
+      expect(a.redeemed).toBeLessThanOrEqual(v);   // không rút quá phần đã vest
+      prevRedeemed = a.redeemed;
     }
-    expect(acc.redeemed).toBe(acc.entitlement);        // tổng cuối = E
+    expect(a.redeemed).toBe(a.entitlement);
   });
 
-  it("committee tăng entitlement (Claim) giữa chừng → drip tiếp phần mới", () => {
-    const D = lampOildrop(100n);
-    const acc: Account = {
-      owner: "e5", entitlement: lampOildrop(200n), redeemed: 0n, startEpoch: 0n, dropsPerEpoch: 1n,
+  it("REBASE (cấp thêm) đặt lại CẢ HAI mốc — `redeemed` về 0 VÀ `index_at_start` về A(nay)", () => {
+    const b = beacon();
+    const a = account({ entitlement: lampOildrop(200_000n) });
+    // rút trọn ở cửa sổ đủ xa (√E' = 447.213 ⇒ mỗi cửa sổ ~44.721 LAMP ⇒ trọn sau 5).
+    a.redeemed = vestedAt(a, b, 10n);
+    expect(a.redeemed).toBe(a.entitlement);
+
+    // Cấp thêm 300.000 LAMP tại cửa sổ 10: E' = E − redeemed + granted = 300.000 LAMP.
+    const w = 10n;
+    const after: ClaimAccountDatum = {
+      ...a,
+      entitlement: a.entitlement - a.redeemed + lampOildrop(300_000n),
+      redeemed: 0n,
+      start_epoch: w,
+      index_at_start: beaconIndexAt(b, w),        // C-CLAIM-8
     };
-    // epoch 1,2 redeem hết 200 (cap)
-    acc.redeemed = simulateRedeem(acc, D, 2n).newRedeemed;
-    expect(acc.redeemed).toBe(lampOildrop(200n));
-
-    // committee Claim thêm 300 → entitlement 500 (start_epoch giữ nguyên 0).
-    acc.entitlement += lampOildrop(300n);
-
-    // epoch 5: vested=min(500, 500)=500 → redeem thêm 300.
-    const r = simulateRedeem(acc, D, 5n);
-    expect(r.amount).toBe(lampOildrop(300n));
-    acc.redeemed = r.newRedeemed;
-    expect(acc.redeemed).toBe(lampOildrop(500n));
+    // Ngay tại cửa sổ rebase: A_span = 0 ⇒ chưa vest gì. Đây là cái giá đã khai của rebase,
+    // và nó là thứ chặn đường rửa tuổi tài khoản.
+    expect(vestedAt(after, b, w)).toBe(0n);
+    expect(vestedAt(after, b, w + 1n)).toBeGreaterThan(0n);
   });
 });

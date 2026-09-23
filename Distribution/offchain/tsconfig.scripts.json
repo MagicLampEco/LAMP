@@ -1,0 +1,34 @@
+// Kiểm kiểu CẢ `../scripts/**` — thư mục nằm NGOÀI `tsconfig.json` chính.
+//
+// Vì sao tách ra một tệp riêng thay vì nới `include` của bản chính: gói này KHÔNG có
+// `@types/node`, nên mọi tệp runner nổ hàng trăm lỗi môi trường (`console`, `process`,
+// `node:fs`, `setTimeout`, `fetch`). Nhét chúng vào cổng chính là dạy người đọc lướt qua
+// màu đỏ — và đến lượt có một dòng đỏ THẬT thì nó nằm giữa hàng trăm dòng đã được học cách
+// bỏ qua.
+//
+// Cái nó bắt được, đo 2026-09-22: `04_e2e.ts` và `03_genesis.ts` gọi những hàm vừa đổi chữ
+// ký ở v3, và KHÔNG cổng nào kêu — chúng chỉ hỏng lúc chạy thật, trên mạng thật, sau khi đã
+// mất phí. Lượt quét này bắt 5 chỗ.
+//
+// Cách chạy (lọc tiếng ồn môi trường, giữ lỗi kiểu thật):
+//
+//   npx tsc --noEmit -p tsconfig.scripts.json 2>&1 | grep '^\.\./scripts/' \
+//     | grep -vE "TS2584|TS2580|TS2307|TS2583|ImportMeta|'setTimeout'|'fetch'"
+//
+// ⚠ Bộ lọc trên là một cơ chế LOẠI TRỪ, nên kết quả của nó là *"đúng trên phần CÒN LẠI"*:
+// nó che luôn mọi lỗi kiểu thật mang cùng mã. Bỏ hẳn bộ lọc được bằng cách thêm `@types/node`
+// vào devDependencies rồi đặt `"types": ["node"]` — chưa làm ở đây vì đó là một lượt thêm
+// phụ thuộc, tách khỏi đợt vá này.
+//
+// HAI dòng còn sót lại sau bộ lọc (2026-09-22) là lỗi GIẢ, cùng một nguyên nhân gốc — ghi
+// ra đây để không ai đi vá một thứ không hỏng:
+//   • `05_verify_solvency.ts:81` `'ledgerOutstanding' is possibly 'undefined'` — mã CÓ chốt
+//     `if (… === undefined) { process.exit(1) }` ngay trên. Thiếu `@types/node` thì tsc
+//     không biết `process.exit` không bao giờ trả về, nên không thu hẹp được kiểu.
+//   • `config.ts:101` `Parameter 's' implicitly has an 'any' type` — `process.env` là `any`
+//     khi không có `@types/node`, và cái `any` đó lan xuống tham số của `.map`.
+// Thêm `@types/node` làm cả hai biến mất mà không phải sửa một dòng mã nào.
+{
+  "extends": "./tsconfig.json",
+  "include": ["src/**/*", "../tests/**/*", "../scripts/**/*"]
+}
