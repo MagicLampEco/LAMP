@@ -44,6 +44,24 @@ function parseCatalog(): SourceRow[] {
   return rows;
 }
 
+/**
+ * Số thứ tự các pot mà cột "Cách ra" của bảng nguồn ghi "Nhỏ-giọt" — tức đi qua engine
+ * Capped Drop của module này. Đọc cột 7; các cột khác của bảng không liên quan.
+ */
+function parseFlowColumn(): number[] {
+  const text = readFileSync(CATALOG, "utf8");
+  const out: number[] = [];
+  for (const line of text.split("\n")) {
+    if (!/^\|\s*\d{1,2}\s*\|/.test(line)) continue;
+    const cols = line.split("|");
+    if (cols.length < 8) continue;
+    const index = Number(cols[1]!.trim());
+    if (index < 1 || index > 18) continue;
+    if (cols[6]!.includes("Nhỏ-giọt")) out.push(index);
+  }
+  return out;
+}
+
 describe("sổ 18 pot đối chiếu Papers/pot-catalog.md", () => {
   const rows = parseCatalog();
 
@@ -81,9 +99,22 @@ describe("tính toàn vẹn nội bộ của sổ", () => {
     for (const id of POT_IDS) expect(id).toMatch(/^[a-z][a-z-]*[a-z]$/);
   });
 
-  it("Reserve bị loại khỏi danh sách Capped Drop, 17 pot còn lại giữ nguyên", () => {
-    expect(POT_IDS_CAPPED_DROP).not.toContain("reserve");
-    expect(POT_IDS_CAPPED_DROP.length).toBe(17);
+  it("danh sách Capped Drop khớp ĐÚNG các dòng ghi 'Nhỏ-giọt' ở cột Cách ra của bảng nguồn", () => {
+    // Bản đầu của ca này ghim con số 17 — con số của một phép lọc SAI — và nó XANH. Một bài
+    // kiểm ghim một hằng do chính mã sinh ra thì nó không đo gì ngoài việc mã bằng chính nó.
+    // Đại lượng đúng nằm ở cột "Cách ra" của bảng nguồn, nên ca này đọc cột đó.
+    const dripFedRows = parseFlowColumn();
+    expect(dripFedRows.length, "phân tách cột Cách ra không ra dòng nào").toBeGreaterThan(0);
+
+    const fromSource = POTS.filter((p) => dripFedRows.includes(p.index)).map((p) => p.id);
+    expect([...POT_IDS_CAPPED_DROP].sort()).toEqual([...fromSource].sort());
+  });
+
+  it("pot đang bị cổng pháp lý chặn KHÔNG nằm trong danh sách triển khai", () => {
+    // `Papers/pot-catalog.md` §"Cổng pháp lý theo pot": pot 9 không được giữ tài sản trọng yếu
+    // trước khi có pháp nhân; pot 18 chưa kích hoạt. Rót LAMP vào kho của chúng là "giữ tài sản".
+    expect(POT_IDS_CAPPED_DROP).not.toContain("foundation");
+    expect(POT_IDS_CAPPED_DROP).not.toContain("liquidity");
   });
 });
 

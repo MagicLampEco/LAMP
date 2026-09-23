@@ -84,10 +84,36 @@ export const POT_IDS: readonly PotId[] = POTS.map((p) => p.id);
 export const TOTAL_THOUSAND_LAMP = 36_000_000;
 
 /**
- * Pot 1 (Reserve) KHÔNG đi qua engine Capped Drop — nó ở rổ Reserve, nhả bởi module `Reserve/`
- * (`Allocation/README.md:52`). Nên khi triển khai hàng loạt thì bỏ nó ra, chứ không phải quên nó.
+ * Chín pot đi qua engine Capped Drop của `Distribution/` — **liệt kê tường minh**, không lọc.
+ *
+ * Bản đầu viết `POT_IDS.filter((id) => id !== "reserve")` và ra 17. Sai, và sai theo kiểu không
+ * tự kêu: nó lọc theo thứ người viết NHỚ (Reserve có engine riêng) thay vì theo thứ bảng nguồn
+ * KHAI. Cột "Cách ra" của `Papers/pot-catalog.md` §1 chỉ ghi "Nhỏ-giọt" cho đúng chín dòng dưới
+ * đây; chín dòng còn lại đi engine khác hẳn — Reserve (engine hai vế), Treasury (kế toán 2
+ * chiều), Wakeme (vault-vesting của PhoenixKey, mã không nằm ở kho này), Foundation
+ * (chưa-mint → khoá vĩnh viễn), ETD · Airdrop · SRCL (snapshot), RedBack (engine phòng thủ peg),
+ * Liquidity (engine LP theo TVL).
+ *
+ * Giá của lỗi cũ, nói ra để đừng ai "đơn giản hoá" nó về lại một phép lọc: lặp danh sách 17 để
+ * triển khai hàng loạt là dựng 8 cụm không có lý do tồn tại, và **hai trong số đó vi phạm thẳng
+ * ràng buộc fail-closed đã chốt** ở `Papers/pot-catalog.md` §"Cổng pháp lý theo pot" — pot 9
+ * (*"không giữ tài sản trọng yếu trước khi có pháp nhân"*) và pot 18 (*"chưa kích hoạt"*). Rót
+ * LAMP vào kho của chúng ĐÚNG LÀ "giữ tài sản".
+ *
+ * Liệt kê tường minh chứ không lọc, vì một phép lọc phải mang cả lý do loại trừ vào trong biểu
+ * thức, và ở đây lý do loại trừ nằm ở một CỘT KHÁC của bảng nguồn — không suy ra được từ mã pot.
  */
-export const POT_IDS_CAPPED_DROP: readonly PotId[] = POT_IDS.filter((id) => id !== "reserve");
+export const POT_IDS_CAPPED_DROP: readonly PotId[] = [
+  "development",
+  "platform",
+  "app",
+  "referrer",
+  "phoenix-treasury",
+  "aladin-contract",
+  "greensun-tech",
+  "partnership",
+  "join-lampnet",
+];
 
 /** 1 LAMP = 10^6 oildrop. Nguồn: cung mainnet đo được 1_000_000_000_000 oildrop = 1.000.000 LAMP. */
 const OILDROP_PER_LAMP = 1_000_000n;
