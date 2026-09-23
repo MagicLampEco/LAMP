@@ -31,7 +31,7 @@ import {
   potById, potBudgetOildrop, POT_IDS, type Pot, type PotId,
 } from "../offchain/src/pots.js";
 import { assertParamCount as assertParamCountGate } from "../offchain/src/applyGate.js";
-import { readFile } from "node:fs/promises";
+import { readFile, readdir } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
@@ -271,14 +271,125 @@ export async function accountNftPolicyId(
  * tiêu nó ở bước trung gian → 03 phải re-pick (nhưng policy đã bake ở 01 sẽ desync →
  * fail-closed, an toàn hơn mint sai).
  */
-export async function pickGenesisRef(lucid: LucidEvolution): Promise<GenesisRef> {
+export async function pickGenesisRef(
+  lucid: LucidEvolution,
+  exclude: ReadonlySet<string> = new Set(),
+): Promise<GenesisRef> {
   const utxos = await lucid.wallet().getUtxos();
   if (utxos.length === 0) throw new Error("ví deploy không có UTxO nào để làm genesis_ref one-shot");
   const sorted = [...utxos].sort((a, b) =>
     a.txHash === b.txHash ? a.outputIndex - b.outputIndex : a.txHash.localeCompare(b.txHash),
   );
-  const u = sorted[0]!;
+
+  // Bỏ qua các ref mà một cụm KHÁC đã nhận làm của mình.
+  //
+  // Vì sao phép loại này là sống còn chứ không phải tối ưu: `01_deploy` KHÔNG gửi giao dịch nào,
+  // nên nó không tự làm cho `sorted[0]` đổi. Chạy `01_deploy` hai lần cho hai pot khác nhau mà
+  // không xen một giao dịch tiêu UTxO đó vào giữa ⟹ cùng genesis ref ⟹ cùng beacon_nft_policy
+  // và treasury_nft_policy ⟹ **cùng cả ba script hash**. Mã pot KHÔNG đi vào apply-param nào,
+  // nên không có thứ gì khác trong hệ phân biệt hai cụm.
+  //
+  // Lúc đó 17 tệp trạng thái vẫn ghi ra sạch sẽ, mỗi tệp tự khai đúng pot của nó, và cả bốn cổng
+  // DEPLOYED-POT-* đều xanh — chúng gác TỆP, không gác ĐỊA CHỈ. Hai pot trùng địa chỉ là một cái
+  // kho chung mang hai cái nhãn, và đó đúng là thứ mà việc tách cụm sinh ra để tránh.
+  const free = sorted.filter((u) => !exclude.has(`${u.txHash}#${u.outputIndex}`));
+  if (free.length === 0) {
+    throw new Error(
+      `CLUSTER-REF-001: ví deploy có ${sorted.length} UTxO nhưng cụm khác đã nhận hết ` +
+        `${exclude.size} ref. Mỗi cụm phải có genesis ref RIÊNG, nếu không hai cụm ra cùng địa ` +
+        `chỉ. Tách thêm UTxO trong ví (gửi cho chính mình vài lượt) rồi chạy lại.`,
+    );
+  }
+  const u = free[0]!;
   return { txHash: u.txHash, outputIndex: u.outputIndex };
+}
+
+/** Một cụm anh em đã dựng trên CÙNG mạng: đọc từ các tệp `deployed.<mạng>.<pot>.json`. */
+export interface SiblingCluster {
+  pot: string;
+  path: string;
+  genesisRefs: string[];
+  hashes: { claimAccount: string; beacon: string; treasury: string };
+}
+
+/**
+ * Liệt kê mọi cụm anh em trên cùng mạng, TRỪ pot đang chạy.
+ *
+ * Đọc thư mục thay vì giữ một sổ riêng: một sổ riêng là nguồn thứ hai, và nó lệch với thực tế
+ * đúng vào lúc ai đó xoá tay một tệp trạng thái.
+ */
+export async function siblingClusters(selfPot: string): Promise<SiblingCluster[]> {
+  const prefix = `deployed.${NETWORK}.`;
+  let names: string[];
+  try {
+    names = await readdir(__dirname);
+  } catch {
+    return [];
+  }
+
+  const out: SiblingCluster[] = [];
+  for (const name of names) {
+    if (!name.startsWith(prefix) || !name.endsWith(".json")) continue;
+    const pot = name.slice(prefix.length, -".json".length);
+    if (!pot || pot === selfPot) continue;
+
+    const path = resolve(__dirname, name);
+    let s: DeployedState;
+    try {
+      s = JSON.parse(await readFile(path, "utf8")) as DeployedState;
+    } catch {
+      // Tệp anh em hỏng KHÔNG được đọc thành "không có cụm nào". Ném, vì phép so sắp tới chỉ
+      // có nghĩa khi tập anh em là tập ĐẦY ĐỦ — thiếu một cụm là phép đo mù đúng chỗ nó phải soi.
+      throw new Error(
+        `CLUSTER-REF-002: '${path}' không giải mã được, nên không đối chiếu được cụm mới với nó. ` +
+          `Một phép so trên tập anh em THIẾU sẽ trả "không trùng" cho đúng ca đang trùng.`,
+      );
+    }
+
+    const refs: string[] = [];
+    for (const r of [s.beaconNftGenesisRef, s.treasuryNftGenesisRef]) {
+      if (r) refs.push(`${r.txHash}#${r.outputIndex}`);
+    }
+    out.push({
+      pot: s.pot ?? pot,
+      path,
+      genesisRefs: refs,
+      hashes: {
+        claimAccount: s.claimAccount?.hash ?? "",
+        beacon: s.beacon?.hash ?? "",
+        treasury: s.treasury?.hash ?? "",
+      },
+    });
+  }
+  return out;
+}
+
+/**
+ * Chặn hai cụm ra CÙNG địa chỉ.
+ *
+ * Đây là phép đo đúng đại lượng: "trần cứng mỗi pot" là một phát biểu về ĐỊA CHỈ on-chain, nên
+ * nó phải được soát bằng script hash, không bằng trường `pot` trong một tệp JSON cục bộ. Bốn
+ * cổng DEPLOYED-POT-* gác tệp; cổng này gác thứ mà tệp không nói được.
+ */
+export async function assertClusterDistinct(state: DeployedState): Promise<void> {
+  const siblings = await siblingClusters(state.pot);
+  for (const sib of siblings) {
+    for (const [what, mine] of [
+      ["claim_account", state.claimAccount.hash],
+      ["beacon", state.beacon.hash],
+      ["treasury", state.treasury.hash],
+    ] as const) {
+      if (mine && mine === sib.hashes[what === "claim_account" ? "claimAccount" : what]) {
+        throw new Error(
+          `CLUSTER-DISTINCT-001: cụm '${state.pot}' và cụm '${sib.pot}' có CÙNG ${what} hash ` +
+            `(${mine}). Hai cụm cùng hash là cùng ĐỊA CHỈ, tức cùng một cái kho mang hai nhãn — ` +
+            `đúng thứ mà việc tách cụm theo pot sinh ra để tránh. Nguyên nhân gần như luôn là ` +
+            `genesis ref dùng lại: '01_deploy' không gửi giao dịch nào nên nó không tự làm ref ` +
+            `đổi. Đối chiếu: ${sib.path}`,
+        );
+      }
+    }
+  }
 }
 
 // ── plutus.json loader + apply params ──────────────────────────
@@ -555,6 +666,10 @@ export async function saveDeployed(state: DeployedState): Promise<void> {
         `hoặc sổ đã đổi kể từ lúc cụm này dựng — cả hai đều phải người xem, không tự đi tiếp.`,
     );
   }
+
+  // Soát trùng địa chỉ ở CHIỀU GHI: đây là chỗ duy nhất mọi bước đều đi qua (01 · 02 · 03),
+  // nên gác ở đây là gác một lần cho cả chuỗi thay vì nhớ gọi ở từng script.
+  await assertClusterDistinct(state);
 
   await writeFile(deployedPath(pot.id), JSON.stringify(state, null, 2) + "\n", "utf8");
 }
