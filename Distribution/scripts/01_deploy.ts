@@ -34,8 +34,9 @@ import {
   rawValidator, applyValidator, scriptAddress, scriptHash,
   nativeSigPolicyId, beaconNftPolicyIdFromRef, treasuryNftPolicyIdFromRef,
   accountNftPolicyId,
-  pickGenesisRef, saveDeployed, type DeployedState, type GenesisRef,
+  pickGenesisRef, saveDeployed, currentPot, type DeployedState, type GenesisRef,
 } from "./config.js";
+import { potBudgetOildrop } from "../offchain/src/pots.js";
 
 /**
  * Kiểm DẠNG một apply-param đọc từ env (hex, độ dài, giá trị chết).
@@ -74,6 +75,15 @@ function hexParam(name: string, raw: string, bytes?: number): string {
 
 async function main(): Promise<void> {
   console.log("=== LampDistribution Step 1: Deploy (apply params) ===\n");
+
+  // Soát POT TRƯỚC mọi thứ khác, kể cả trước khi mở kết nối mạng. Phép soát này từng nằm ở
+  // cuối hàm, ngay trên `saveDeployed` — chỗ đó ném ĐÚNG lý do nhưng ném SAU khi đã hỏi mạng,
+  // đã dựng xong ba script và đã in ba hash ra màn hình. Người vận hành đọc ba hash rồi mới
+  // thấy lỗi sẽ tin rằng cụm đã dựng xong và chỉ hụt bước ghi tệp.
+  const pot = currentPot();
+  console.log(`Pot:               ${pot.id} — ${pot.label}`);
+  console.log(`Ngân sách pot:     ${pot.thousandLamp.toLocaleString("vi-VN")} nghìn LAMP`);
+  console.log(`Tệp trạng thái:    deployed.${NETWORK}.${pot.id}.json\n`);
 
   const lucid = await makeLucid();
   const pkh   = await walletPkh(lucid);
@@ -240,6 +250,9 @@ async function main(): Promise<void> {
     thresholdData,
     accountNftPolicy,
     MS_PER_EPOCH,
+    // v3, tham số thứ 8: `GrantEntitlement` đọc beacon làm reference input để ghim
+    // `index_at_start` (C-CLAIM-8), nên treasury phải biết NFT nào xác thực beacon.
+    beaconNftPolicy,
   ]);
   const treasuryHash = scriptHash(treasuryScript);
   const treasuryAddr = scriptAddress(treasuryScript);
@@ -294,6 +307,8 @@ async function main(): Promise<void> {
 
   const state: DeployedState = {
     network: NETWORK,
+    pot: pot.id,
+    potBudgetOildrop: potBudgetOildrop(pot.id).toString(),
     msPerEpoch: MS_PER_EPOCH.toString(),
     committee: {
       keyHashes: committee.keyHashes,

@@ -27,6 +27,9 @@ import {
 } from "@lucid-evolution/lucid";
 import { msPerEpoch, type Network } from "@magiclamp/utils";
 import { assertCommitteeShape } from "../offchain/src/committee.js";
+import {
+  potById, potBudgetOildrop, POT_IDS, type Pot, type PotId,
+} from "../offchain/src/pots.js";
 import { assertParamCount as assertParamCountGate } from "../offchain/src/applyGate.js";
 import { readFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
@@ -327,21 +330,53 @@ export async function currentEpoch(): Promise<bigint> {
 // ── deployed.json (state file giữa các bước) ───────────────────
 
 /**
- * Tệp trạng thái triển khai, TÁCH THEO MẠNG.
+ * Pot của cụm đang thao tác, lấy từ biến môi trường `POT`.
  *
- * Bản trước là MỘT tệp `deployed.json` dùng chung cho mọi mạng. Cái đắt không phải mất tệp —
+ * KHÔNG có giá trị mặc định, và đó là chủ ý. Mỗi pot là một CỤM `Distribution` v3 riêng —
+ * beacon riêng, kho riêng, tài khoản riêng — nên một giá trị mặc định ở đây là đường để một
+ * lượt `deploy` chạy nhầm vào cụm của pot khác mà mọi bước đều hợp lệ về hình dạng. Đúng ca
+ * mà trường `network` đã phải trả giá một lần.
+ */
+export function currentPot(): Pot {
+  const raw = (process.env.POT ?? "").trim();
+  if (!raw) {
+    throw new Error(
+      `DEPLOYED-POT-000: thiếu biến môi trường POT. Mỗi pot là một cụm riêng, nên không có ` +
+        `giá trị mặc định nào đúng. Đặt POT=<mã> ngay trước lệnh. Danh sách ĐÓNG, 18 mã: ` +
+        `${POT_IDS.join(" · ")}. Nguồn: Papers/pot-catalog.md §1.`,
+    );
+  }
+  return potById(raw); // ném POT-001 nếu mã không có trong danh sách đóng
+}
+
+/**
+ * Tệp trạng thái triển khai, TÁCH THEO MẠNG **và theo POT**.
+ *
+ * Bản đầu là MỘT tệp `deployed.json` dùng chung cho mọi mạng. Cái đắt không phải mất tệp —
  * triển khai Preprod đè lên trạng thái Preview rồi `loadDeployed()` vẫn trả về một đối tượng
  * **hợp lệ về hình dạng**, chỉ là của mạng khác. Script chạy tiếp, dựng địa chỉ theo tham số mạng
  * NÀY rồi đi tìm UTxO trên mạng KIA, và câu báo lỗi sẽ nói về UTxO chứ không nói về tệp. Không
  * nhánh nào kêu đúng chỗ.
  *
- * Tách tệp chữa được triệu chứng. Phép so `state.network` ở `loadDeployed()` mới là thứ chữa gốc:
- * trường `network` VỐN ĐÃ nằm trong tệp từ đầu, chỉ là không dòng nào đọc nó.
+ * Bản thứ hai tách theo mạng. Nay mỗi pot có một cụm riêng, nên đúng cái bẫy ấy quay lại ở một
+ * trục khác: hai cụm CÙNG MẠNG, khác pot, hình dạng trạng thái giống hệt nhau. Nên tách thêm
+ * theo pot.
+ *
+ * Tách tệp chữa được triệu chứng. Phép so ở `loadDeployed()` mới là thứ chữa gốc — và nó phải
+ * soát CẢ HAI trường: `state.network` và `state.pot`. Một tệp trạng thái không tự khai được nó
+ * thuộc cụm nào thì không có cách nào phát hiện lượt đọc nhầm.
  */
-export const DEPLOYED_PATH = resolve(__dirname, `deployed.${NETWORK}.json`);
+export function deployedPath(pot: PotId = currentPot().id): string {
+  return resolve(__dirname, `deployed.${NETWORK}.${pot}.json`);
+}
 
-/** Đường tệp dùng chung của bản cũ — chỉ để nhận diện và CHẶN, không bao giờ đọc nội dung. */
-const DEPLOYED_PATH_LEGACY = resolve(__dirname, "deployed.json");
+/**
+ * Hai đường tệp của các bản cũ — chỉ để NHẬN DIỆN và CHẶN, không bao giờ đọc nội dung.
+ * `deployed.json` là bản dùng chung mọi mạng; `deployed.<mạng>.json` là bản dùng chung mọi pot.
+ * Cả hai đều đọc được êm ru và cả hai đều không khai nổi chúng thuộc về cụm nào.
+ */
+const DEPLOYED_PATH_LEGACY_ALL = resolve(__dirname, "deployed.json");
+const DEPLOYED_PATH_LEGACY_NET = resolve(__dirname, `deployed.${NETWORK}.json`);
 
 export interface BeaconRef {
   txHash: string;
@@ -350,6 +385,17 @@ export interface BeaconRef {
 
 export interface DeployedState {
   network: Network;
+  /**
+   * Pot mà cụm này phục vụ. Trường này KHÔNG phải nhãn trang trí — nó là thứ duy nhất trong
+   * tệp tự khai được cụm này thuộc về đâu, và `loadDeployed()`/`saveDeployed()` so nó.
+   */
+  pot: PotId;
+  /**
+   * Ngân sách của pot, theo oildrop, chép từ sổ lúc triển khai.
+   * Giữ trong trạng thái để mọi bước sau soát được số LAMP nạp vào kho mà không phải tra lại sổ —
+   * và để một lượt đọc sau phát hiện được nếu sổ đã đổi kể từ lúc cụm này dựng.
+   */
+  potBudgetOildrop: string;       // bigint as string
   msPerEpoch: string;             // bigint as string
   committee: { keyHashes: string[]; threshold: number; source: string };
   // applied script hashes + addresses
@@ -413,20 +459,29 @@ export interface DeployedState {
  *   • tệp thuộc mạng khác → chặn thẳng, in ra CẢ HAI giá trị.
  */
 export async function loadDeployed(): Promise<DeployedState> {
+  const pot = currentPot();
+  const path = deployedPath(pot.id);
+
   let raw: string;
   try {
-    raw = await readFile(DEPLOYED_PATH, "utf8");
+    raw = await readFile(path, "utf8");
   } catch {
-    if (existsSync(DEPLOYED_PATH_LEGACY)) {
-      throw new Error(
-        `DEPLOYED-NET-002: không có '${DEPLOYED_PATH}', nhưng tệp dùng chung của bản cũ ` +
-          `'${DEPLOYED_PATH_LEGACY}' vẫn còn. KHÔNG tự đọc nó: một tệp dùng chung không tự khai ` +
-          `nó thuộc mạng nào, và đoán sai ở đây là dựng địa chỉ của mạng này rồi đi tìm UTxO ở ` +
-          `mạng khác. Mở tệp đó ra, đọc trường "network", rồi đổi tên thành 'deployed.<mạng>.json'.`,
-      );
+    for (const legacy of [DEPLOYED_PATH_LEGACY_ALL, DEPLOYED_PATH_LEGACY_NET]) {
+      if (existsSync(legacy)) {
+        throw new Error(
+          `DEPLOYED-NET-002: không có '${path}', nhưng tệp dùng chung của bản cũ '${legacy}' ` +
+            `vẫn còn. KHÔNG tự đọc nó: một tệp dùng chung không tự khai nó thuộc mạng nào và ` +
+            `thuộc pot nào, và đoán sai ở đây là dựng địa chỉ của cụm này rồi đi tìm UTxO của ` +
+            `cụm khác. Mở tệp đó ra, đọc hai trường "network" và "pot", rồi đổi tên thành ` +
+            `'deployed.<mạng>.<pot>.json'. Tệp cũ KHÔNG có trường "pot" ⟹ nó thuộc cụm diễn tập ` +
+            `dựng trước khi tách theo pot; quyết nó thuộc pot nào là việc của người vận hành, ` +
+            `không phải việc mã đoán.`,
+        );
+      }
     }
     throw new Error(
-      `DEPLOYED-NET-000: chưa có '${DEPLOYED_PATH}' — chạy 'npm run deploy' rồi 'npm run genesis' trước.`,
+      `DEPLOYED-NET-000: chưa có '${path}' — chạy 'npm run deploy' rồi 'npm run genesis' trước, ` +
+        `với POT='${pot.id}'.`,
     );
   }
 
@@ -435,7 +490,7 @@ export async function loadDeployed(): Promise<DeployedState> {
     state = JSON.parse(raw) as DeployedState;
   } catch (e) {
     throw new Error(
-      `DEPLOYED-NET-001: '${DEPLOYED_PATH}' TỒN TẠI nhưng không giải mã được (${String(e)}). ` +
+      `DEPLOYED-NET-001: '${path}' TỒN TẠI nhưng không giải mã được (${String(e)}). ` +
         `Đây là tệp HỎNG, không phải "chưa triển khai" — đừng chạy lại deploy đè lên nó trước ` +
         `khi biết nó đang giữ gì.`,
     );
@@ -443,10 +498,29 @@ export async function loadDeployed(): Promise<DeployedState> {
 
   if (state.network !== NETWORK) {
     throw new Error(
-      `DEPLOYED-NET-003: '${DEPLOYED_PATH}' ghi network='${state.network}' nhưng đang chạy ` +
+      `DEPLOYED-NET-003: '${path}' ghi network='${state.network}' nhưng đang chạy ` +
         `NETWORK='${NETWORK}'. Trạng thái này HỢP LỆ VỀ HÌNH DẠNG nhưng thuộc mạng khác — dùng nó ` +
         `sẽ dựng địa chỉ đúng cú pháp trỏ vào những UTxO không tồn tại ở đây, và lỗi sẽ hiện ra ` +
         `dưới dạng "không tìm thấy UTxO" chứ không chỉ về tệp này.`,
+    );
+  }
+
+  // Thiếu hẳn trường `pot` KHÁC với `pot` sai: tệp không có trường này là tệp dựng trước lúc
+  // tách cụm, và nó không mang đủ dữ kiện để ai đó — kể cả mã — quyết được nó thuộc pot nào.
+  if (state.pot === undefined) {
+    throw new Error(
+      `DEPLOYED-POT-002: '${path}' KHÔNG có trường "pot". Đây là trạng thái dựng trước khi tách ` +
+        `cụm theo pot, nên nó không khai được nó thuộc cụm nào. Không suy ra từ tên tệp: tên tệp ` +
+        `là thứ người đổi được, còn trường trong tệp là thứ lượt ghi đã chứng kiến.`,
+    );
+  }
+
+  if (state.pot !== pot.id) {
+    throw new Error(
+      `DEPLOYED-POT-003: '${path}' ghi pot='${state.pot}' nhưng đang chạy POT='${pot.id}'. ` +
+        `Hai cụm khác pot có hình dạng trạng thái GIỐNG HỆT nhau, nên nhầm ở đây không hiện ra ` +
+        `dưới dạng lỗi hình dạng — nó hiện ra dưới dạng một giao dịch hợp lệ tiêu vào kho của pot ` +
+        `khác.`,
     );
   }
 
@@ -455,15 +529,34 @@ export async function loadDeployed(): Promise<DeployedState> {
 
 import { writeFile } from "node:fs/promises";
 export async function saveDeployed(state: DeployedState): Promise<void> {
-  // Gác CẢ CHIỀU GHI, không chỉ chiều đọc: một tệp ghi sai mạng sẽ đọc lại êm ru ở lượt sau và
-  // lúc đó không còn dữ kiện nào để phát hiện. Chặn ở đây là chặn lúc còn biết mình đang làm gì.
+  // Gác CẢ CHIỀU GHI, không chỉ chiều đọc: một tệp ghi sai mạng hoặc sai pot sẽ đọc lại êm ru ở
+  // lượt sau và lúc đó không còn dữ kiện nào để phát hiện. Chặn ở đây là chặn lúc còn biết mình
+  // đang làm gì.
   if (state.network !== NETWORK) {
     throw new Error(
       `DEPLOYED-NET-004: sắp ghi trạng thái có network='${state.network}' trong khi đang chạy ` +
         `NETWORK='${NETWORK}'. Hai giá trị này lệch nhau là lỗi dựng trạng thái, không phải lỗi tệp.`,
     );
   }
-  await writeFile(DEPLOYED_PATH, JSON.stringify(state, null, 2) + "\n", "utf8");
+
+  const pot = currentPot();
+  if (state.pot !== pot.id) {
+    throw new Error(
+      `DEPLOYED-POT-004: sắp ghi trạng thái có pot='${state.pot}' trong khi đang chạy ` +
+        `POT='${pot.id}'. Lệch ở đây là lỗi dựng trạng thái, không phải lỗi tệp.`,
+    );
+  }
+
+  const expected = potBudgetOildrop(pot.id).toString();
+  if (state.potBudgetOildrop !== expected) {
+    throw new Error(
+      `DEPLOYED-POT-005: trạng thái ghi potBudgetOildrop='${state.potBudgetOildrop}' nhưng sổ ` +
+        `hôm nay nói pot '${pot.id}' có ngân sách ${expected} oildrop. Hoặc trạng thái dựng sai, ` +
+        `hoặc sổ đã đổi kể từ lúc cụm này dựng — cả hai đều phải người xem, không tự đi tiếp.`,
+    );
+  }
+
+  await writeFile(deployedPath(pot.id), JSON.stringify(state, null, 2) + "\n", "utf8");
 }
 
 // ── misc helpers ───────────────────────────────────────────────
@@ -539,6 +632,10 @@ export async function reapplyValidators(state: DeployedState): Promise<{
   const treasuryScript = applyValidator(rawTreasury.compiledCode, [
     p.claimAccountHash, p.lampPolicy, p.lampName, committee, threshold, p.accountNftPolicy,
     msPerEpochBaked,
+    // v3 thêm tham số thứ 8: `beacon_nft_policy`. `GrantEntitlement` nay phải đọc beacon
+    // (làm reference input) để ghim `index_at_start` — nó cần biết NFT nào xác thực beacon,
+    // nếu không ai cũng dựng được một "beacon" mang chỉ số tuỳ ý.
+    p.beaconNftPolicy,
   ]);
 
   // verify hash khớp
