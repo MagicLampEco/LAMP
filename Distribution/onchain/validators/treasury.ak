@@ -298,6 +298,14 @@ validator treasury(
         // Quỹ KHÔNG cấp E vượt số dư → redeem không bao giờ kẹt vì cạn pool.
         expect out_datum.outstanding_entitlement <= pool_in
 
+        // C-GRANT-TOTAL (v3): `total_redeemed` ĐỨNG YÊN khi cấp quyền. Cấp quyền không phát
+        // LAMP nào (C-VAL-0 ngay dưới), nên số ĐÃ PHÁT không có lý do đổi. Thiếu dòng này thì
+        // chỉ riêng nhánh này cho viết lại trường "CHỈ TĂNG" tuỳ ý: thổi lên thì trần cắt ngọn
+        // ở `claim_account` nới ra; kéo về 0 thì trần rơi về `trim_floor`; ghi âm thì mọi
+        // `Refill` về sau chết ở `fold_ledger` (`total_redeemed >= 0`). Ghim bởi
+        // `grant_inflating_total_redeemed_rejected` và hai ca anh em.
+        expect out_datum.total_redeemed == datum.total_redeemed
+
         // C-VAL-0: pool LAMP + mọi asset BẤT BIẾN khi grant (chỉ datum đổi).
         expect tre_out.value == tre_in.value
 
@@ -1175,6 +1183,50 @@ test grant_at_fund_boundary_ok() {
 test grant_cum_mismatch_rejected() fail {
   // C-SOLV-1: granted (ent 0→1000=1000) ≠ cum delta (0→900=900) → reject.
   grant(0, grant_tx(5000, 0, 900, None, 1000, 0, [#"c1", #"c2"]))
+}
+
+// ── C-GRANT-TOTAL: `GrantEntitlement` KHÔNG chạm `total_redeemed` ─────────────
+// Mọi ca Grant ở trên mang `total_redeemed = 0` ở CẢ HAI phía (qua `tt_tre_d`), nên chúng
+// xanh dù có chốt hay không. Ba ca dưới đặt vế vào KHÁC 0 và chỉ khác nhau ở vế ra.
+// Cấp quyền không phát ra LAMP nào (C-VAL-0: value bất biến) ⟹ số đã phát phải đứng yên.
+
+/// Grant CREATE trên một kho đã phát `tr_in`, ghi `tr_out` vào datum kho ra.
+fn grant_tr(tr_in: Int, tr_out: Int) -> Bool {
+  let base = grant_tx(5000, 0, 1000, None, 1000, 0, [#"c1", #"c2"])
+  let tre_addr = util.script_address(tt_tre_sh)
+  let val = tt_lamp_val(5_000_000, 5000)
+  let tre_in =
+    util.mk_input(util.mk_ref(0), util.mk_output(tre_addr, val, tt_tre_d_tr(0, tr_in)))
+  let tre_out = util.mk_output(tre_addr, val, tt_tre_d_tr(1000, tr_out))
+  expect [_, ca_out] = base.outputs
+  treasury.spend(
+    tt_ca_sh, tt_lamp_policy, tt_lamp_name, tt_committee, tt_threshold,
+    tt_acct_nft_policy,
+    tt_mspe,
+    tt_bcn_policy,
+    Some(tt_tre_d_tr(0, tr_in)), GrantEntitlement, util.mk_ref(0),
+    Transaction { ..base, inputs: [tre_in], outputs: [tre_out, ca_out] },
+  )
+}
+
+test grant_keeps_total_redeemed_ok() {
+  grant_tr(700, 700)
+}
+
+/// Thổi phồng mẫu số ⟹ trần cắt ngọn một lượt ở `claim_account` nới ra.
+test grant_inflating_total_redeemed_rejected() fail {
+  grant_tr(700, 701)
+}
+
+/// Kéo về 0 ⟹ trần rơi về `trim_floor`, siết mọi lượt rút về sau.
+test grant_resetting_total_redeemed_rejected() fail {
+  grant_tr(700, 0)
+}
+
+/// Ghi âm ⟹ mọi `Refill` về sau chết ở `fold_ledger` (`total_redeemed >= 0`), kho không còn
+/// đường gộp phần LAMP A-DEST hạ cánh.
+test grant_negative_total_redeemed_rejected() fail {
+  grant_tr(700, -1)
 }
 
 test grant_pool_drained_rejected() fail {
