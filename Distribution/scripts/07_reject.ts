@@ -12,7 +12,7 @@
 // Chạy: FAMILY=grant|refill|beacon|redeem|all tsx 07_reject.ts
 //   grant, refill: chạy được ở mọi cửa sổ.
 //   beacon: bản đúng chỉ qua khi cửa sổ hiện tại LỚN HƠN nhãn beacon trên chuỗi.
-//   redeem: bản đúng chỉ qua khi tài khoản A đã có phần rút được.
+//   redeem: bản đúng chỉ qua khi có một tài khoản còn phần rút được (ưu tiên A, rồi tới tài khoản khác).
 
 import { Data, toUnit, credentialToAddress, keyHashToCredential } from "@lucid-evolution/lucid";
 import type { LucidEvolution, UTxO, TxBuilder } from "@lucid-evolution/lucid";
@@ -202,12 +202,23 @@ async function main(): Promise<void> {
       try { return decodeClaimAccountDatum(Data.from(u.datum!)).owner.toLowerCase() === pkh.toLowerCase(); }
       catch { return false; }
     });
-    const accA = pick(aPkh);
-    if (!accA) {
-      console.log("⚠ redeem: không thấy tài khoản A ⇒ KHÔNG ĐO ĐƯỢC.");
+    // Ưu tiên A; A đã rút hết thì lấy tài khoản khác còn phần rút được. Bước này chỉ đánh giá,
+    // không ký, nên chủ tài khoản không cần là ví đang chạy — chữ ký chỉ được KHAI (required signer).
+    const withAmt = (u: UTxO | undefined) => {
+      if (!u) return undefined;
+      const d = decodeClaimAccountDatum(Data.from(u.datum!));
+      return { u, d, amt: redeemable(d, bcn, tre, e, TRIM_FLOOR) };
+    };
+    const cands = [withAmt(pick(aPkh)), ...accs.map(withAmt)].filter((c) => !!c && c.amt > 0n);
+    const chosen = cands[0];
+    if (!chosen) {
+      console.log("⚠ redeem: không tài khoản nào còn phần rút được ở cửa sổ này ⇒ KHÔNG ĐO ĐƯỢC.");
+      rows.push({ family: "redeem", name: "BẢN-ĐÚNG", expect: "QUA", got: "LỖI-KHÁC", note: "không tài khoản nào còn phần rút được" });
     } else {
-      const da = decodeClaimAccountDatum(Data.from(accA.datum!));
-      const amt0 = redeemable(da, bcn, tre, e, TRIM_FLOOR);
+      const accA = chosen.u;
+      const da = chosen.d;
+      const amt0 = chosen.amt;
+      console.log(`redeem: dùng tài khoản chủ ${da.owner.slice(0, 10)}… · rút được ${amt0} oildrop`);
       const muts = [
         "amount+1", "trả-LAMP-cho-ví-khác", "total_redeemed-không-tăng", "sổ-nợ-không-giảm",
         "index_at_start-đổi", "thiếu-chữ-ký-chủ", "thiếu-beacon-tham-chiếu",
@@ -224,7 +235,7 @@ async function main(): Promise<void> {
           total_redeemed: tre.total_redeemed + (m === "total_redeemed-không-tăng" ? 0n : amt),
         };
         const lampIn = treU.assets[lampUnit] ?? 0n;
-        const dest = m === "trả-LAMP-cho-ví-khác" ? keyAddr("d0".repeat(28)) : keyAddr(aPkh);
+        const dest = m === "trả-LAMP-cho-ví-khác" ? keyAddr("d0".repeat(28)) : keyAddr(da.owner);
         let t = lucid.newTx()
           .collectFrom([accA], redeemRedeemerToCbor(amt))
           .attach.SpendingValidator(claimScript)
