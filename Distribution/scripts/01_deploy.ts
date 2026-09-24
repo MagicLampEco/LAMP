@@ -147,7 +147,18 @@ async function main(): Promise<void> {
   let beaconNftPolicy: string;
   let beaconNftMode: "oneshot" | "native-sig";
   let beaconNftGenesisRef: import("./config.js").GenesisRef | undefined;
-  const wantOneshot = NETWORK === "Mainnet" || process.env.BEACON_NFT_ONESHOT === "1";
+  // One-shot là MẶC ĐỊNH trên MỌI mạng, không chỉ Mainnet — để lượt diễn tập chạy đúng đường mã
+  // mà Mainnet sẽ chạy. Bản trước để native-sig làm mặc định ngoài Mainnet, và cụm diễn tập
+  // Preprod đang chạy như vậy (`deployed.Preprod.json` → `beaconNftMode`): validator `beacon_nft`
+  // mà Mainnet dùng CHƯA chạy lần nào trên chuỗi. Native-sig nay phải xin tường minh, chỉ Preview.
+  const askNativeSig = process.env.BEACON_NFT_NATIVE_SIG === "1";
+  if (askNativeSig && NETWORK !== "Preview") {
+    throw new Error(
+      `BEACON-NFT-001: BEACON_NFT_NATIVE_SIG=1 chỉ dùng được trên Preview, đang chạy ` +
+        `NETWORK='${NETWORK}'. Beacon native-sig ĐÚC LẠI ĐƯỢC — không phải hình dạng Mainnet chạy.`,
+    );
+  }
+  const wantOneshot = !askNativeSig;
   const envBeacon = (process.env.BEACON_NFT_POLICY ?? "").trim();
 
   if (envBeacon) {
@@ -240,6 +251,9 @@ async function main(): Promise<void> {
     thresholdData,
     accountNftPolicy,
     MS_PER_EPOCH,
+    // v3, tham số thứ 8: `GrantEntitlement` đọc beacon làm reference input để ghim
+    // `index_at_start` (C-CLAIM-8), nên treasury phải biết NFT nào xác thực beacon.
+    beaconNftPolicy,
   ]);
   const treasuryHash = scriptHash(treasuryScript);
   const treasuryAddr = scriptAddress(treasuryScript);

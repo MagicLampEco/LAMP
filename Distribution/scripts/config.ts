@@ -539,6 +539,10 @@ export async function reapplyValidators(state: DeployedState): Promise<{
   const treasuryScript = applyValidator(rawTreasury.compiledCode, [
     p.claimAccountHash, p.lampPolicy, p.lampName, committee, threshold, p.accountNftPolicy,
     msPerEpochBaked,
+    // v3 thêm tham số thứ 8: `beacon_nft_policy`. `GrantEntitlement` nay phải đọc beacon
+    // (làm reference input) để ghim `index_at_start` — nó cần biết NFT nào xác thực beacon,
+    // nếu không ai cũng dựng được một "beacon" mang chỉ số tuỳ ý.
+    p.beaconNftPolicy,
   ]);
 
   // verify hash khớp

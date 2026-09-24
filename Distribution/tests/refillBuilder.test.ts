@@ -76,8 +76,12 @@ const TRSY_UNIT         = toUnit(FAKE_TRSY_POLICY, TREASURY_NFT_ASSET_NAME);
 /** pkh giả cho committee 1-of-1 trong bài kiểm — chỉ cần đúng hình dạng 56 hex. */
 const FAKE_CH = "cc".repeat(28);
 
-function treDatum(outstanding: bigint, ch = FAKE_CH): string {
-  return treasuryDatumToCbor({ committee_hash: ch, outstanding_entitlement: outstanding });
+function treDatum(outstanding: bigint, ch = FAKE_CH, totalRedeemed = 0n): string {
+  return treasuryDatumToCbor({
+    committee_hash: ch,
+    outstanding_entitlement: outstanding,
+    total_redeemed: totalRedeemed,
+  });
 }
 
 /** UTxO ở địa chỉ kho. `datum: null` = hình dạng A-DEST hạ cánh. */

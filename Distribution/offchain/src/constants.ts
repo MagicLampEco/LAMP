@@ -8,25 +8,34 @@ export const OILDROP_PER_LAMP = 1_000_000n;
 export const DEFAULT_DROPS_PER_EPOCH = 1n;
 
 /**
- * Giá trị genesis gợi ý cho DropParam D (oildrop/drop) khi committee post beacon đầu.
- * D là THAM SỐ đọc từ beacon, KHÔNG hardcode trong validator — đây chỉ là default tiện dụng.
+ * Mốc hiệu chỉnh của `rate_root` (w) — NGUYÊN THUỶ, `W := w²` là dẫn xuất chứ không ngược
+ * lại (`Math-Spec.md` v3 §7). w = 77.460 cho tốc độ 6.000,0516 LAMP mỗi cửa sổ ở `√E = 1`.
  */
-export const D_GENESIS = 100_000_000n; // 100 LAMP/drop·epoch
+export const RATE_ROOT_GENESIS = 77_460n;
 
 /** Asset-name hex treasury authenticity NFT — PHẢI khớp onchain util.treasury_nft_name. */
 export const TREASURY_NFT_ASSET_NAME = "54525359"; // "TRSY"
 
-/** Biên của D — PHẢI khớp `onchain/lib/magiclamp/lampdist/constants.ak`, nơi `beacon.ak`
- *  đọc chúng ở C-BCN-4/5. Chép có nhãn: nguồn là tệp `.ak` đó, bản chép này ngày 2026-09-16. */
-export const DROP_VALUE_MIN = 10_000_000n;      // 10 LAMP
-export const DROP_VALUE_MAX = 10_000_000_000n;  // 10.000 LAMP
-export const MAX_DROP_DELTA_Q = 100_000_000n;   // ±10% × Q
+/** Biên của `rate_root` — PHẢI khớp `onchain/lib/magiclamp/lampdist/constants.ak`, nơi
+ *  `beacon.ak` đọc chúng ở C-BCN-5a/5b. Chép có nhãn: nguồn là tệp `.ak` đó, bản chép
+ *  này ngày 2026-09-22 (v3). */
+export const RATE_ROOT_MIN = 7_746n;            // w/10
+export const RATE_ROOT_MAX = 7_746_000n;        // w×100
+export const MAX_RATE_ROOT_DELTA_Q = 100_000_000n; // +10% × Q — CHỈ chiều nới
 export const Q = 1_000_000_000n;
 
-/** Trần `drops_per_epoch` của một tài khoản — PHẢI khớp `constants.ak` ▸ `drops_per_epoch_max`,
- *  nơi `treasury.ak` C-ACC-4 đọc nó. Chép có nhãn: nguồn là tệp `.ak`, bản chép 2026-09-17.
- *  Giá trị tạm cho Preprod, chốt trước mainnet cùng biên D. */
-export const DROPS_PER_EPOCH_MAX = 100n;
+/** Sàn cắt ngọn (C-RDM-TRIM-FLOOR) — HẰNG của validator, KHÔNG đọc từ datum nào.
+ *  Chép có nhãn: nguồn `constants.ak` ▸ `trim_floor`, bản chép 2026-09-22. */
+export const TRIM_FLOOR = 1_000_000_000n;       // 1.000 LAMP
+
+/** Giá trị vận hành của κ = trim_num / trim_den = 1/1000. Đây là TRƯỜNG DATUM, không phải
+ *  hằng validator — để ở đây chỉ làm mặc định tiện dụng khi dựng beacon genesis. */
+export const TRIM_NUM_GENESIS = 1n;
+export const TRIM_DEN_GENESIS = 1_000n;
+
+/** v3 ghim `drops_per_epoch == 1` (C-ACC-DPE). Không còn trần nào để khai: một thừa số
+ *  đứng NGOÀI tổng `A_span` mà chỉnh được là đúng thứ CONTRACT §0 cấm. */
+export const DROPS_PER_EPOCH_PINNED = 1n;
 
 /**
  * Cửa sổ hiệu lực cho một tx PHẢI đóng dấu thời gian — CREATE tài khoản, post beacon.

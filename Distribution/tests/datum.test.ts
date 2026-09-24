@@ -38,6 +38,7 @@ describe("ClaimAccountDatum (Capped Drop)", () => {
     redeemed:        100_000_000n,
     start_epoch:     42n,
     drops_per_epoch: 1n,
+    index_at_start:  7_777n,            // TRƯỜNG MỚI v3, ở CUỐI
   };
 
   it("round-trips encode→decode", () => {
@@ -52,12 +53,13 @@ describe("ClaimAccountDatum (Capped Drop)", () => {
   it("Constr index 0 with [bytes, int, int, int, int] in declared order", () => {
     const c = asConstr(claimAccountDatumToCbor(sample));
     expect(c.index).toBe(0);
-    expect(c.fields).toHaveLength(5);
+    expect(c.fields).toHaveLength(6);
     expect(c.fields[0]).toBe(sample.owner);            // owner (bytes)
     expect(c.fields[1]).toBe(sample.entitlement);      // int
     expect(c.fields[2]).toBe(sample.redeemed);         // int
     expect(c.fields[3]).toBe(sample.start_epoch);      // int
     expect(c.fields[4]).toBe(sample.drops_per_epoch);  // int
+    expect(c.fields[5]).toBe(sample.index_at_start);   // int — v3, ở CUỐI
   });
 
   it("normalizes 0x-prefixed + uppercase owner hex", () => {
@@ -83,14 +85,16 @@ describe("ClaimAccountRedeemer (Capped Drop)", () => {
     expect(e.fields).toEqual([123_000_000n]);
   });
 
-  it("Redeem = Constr(1, []) — tất định, không field", () => {
+  it("Redeem = Constr(1, [amount]) — v3 MANG số tiền", () => {
+    // v2 để `Redeem` rỗng và validator tự suy số tiền từ hiệu datum. v3 đưa nó vào redeemer
+    // vì trần một lượt cần một số để so; suy từ hiệu datum thì không có chỗ nào để so trần.
     expect(CLAIM_ACCOUNT_REDEEMER.Redeem).toBe(1);
-    const c = asConstr(redeemRedeemerToCbor());
+    const c = asConstr(redeemRedeemerToCbor(77_000_000n));
     expect(c.index).toBe(1);
-    expect(c.fields).toEqual([]);
-    const e = encodeRedeemRedeemer();
+    expect(c.fields).toEqual([77_000_000n]);
+    const e = encodeRedeemRedeemer(77_000_000n);
     expect(e.index).toBe(1);
-    expect(e.fields).toEqual([]);
+    expect(e.fields).toEqual([77_000_000n]);
   });
 });
 
@@ -114,8 +118,16 @@ describe("BeaconKind (DropParam only)", () => {
 
 describe("BeaconDatum (DropParam{D})", () => {
   const samples: BeaconDatum[] = [
-    { epoch: 10n, kind: "DropParam", drop_value: 100_000_000n },
-    { epoch: 11n, kind: "DropParam", drop_value: 1n },
+    {
+      epoch: 10n, kind: "DropParam", index: 500_000n, rate_root: 77_460n,
+      trim_num: 1n, trim_den: 1_000n, speed_policies: [],
+    },
+    {
+      // `speed_policies` KHÔNG rỗng ở một mẫu: một mảng rỗng mã hoá giống nhau dù codec có
+      // đọc đúng phần tử hay không, nên hai mẫu rỗng thì không mẫu nào kiểm được nó.
+      epoch: 11n, kind: "DropParam", index: 0n, rate_root: 1n,
+      trim_num: 3n, trim_den: 7n, speed_policies: ["aa".repeat(28), "bb".repeat(28)],
+    },
   ];
 
   it("round-trips via CBOR", () => {
@@ -124,15 +136,22 @@ describe("BeaconDatum (DropParam{D})", () => {
     }
   });
 
-  it("Constr(0, [int, BeaconKind, int]) declared order", () => {
+  it("Constr(0, [int, BeaconKind, int, int, int, int, list]) — thứ tự khai của v3", () => {
+    // Thứ tự trường là một phần của HỢP ĐỒNG với validator: hoán hai `int` cạnh nhau thì
+    // CBOR vẫn hợp lệ, decode vẫn chạy, và mọi con số đi sai chỗ mà không gì báo. Đây là
+    // chỗ duy nhất trong bộ kiểm ghim thứ tự đó.
     const s = samples[0]!;
     const c = asConstr(beaconDatumToCbor(s));
     expect(c.index).toBe(0);
-    expect(c.fields).toHaveLength(3);
-    expect(c.fields[0]).toBe(10n);                          // epoch
+    expect(c.fields).toHaveLength(7);
+    expect(c.fields[0]).toBe(10n);                         // epoch
     expect(c.fields[1]).toBeInstanceOf(Constr);
     expect((c.fields[1] as Constr<Data>).index).toBe(0);   // kind = DropParam
-    expect(c.fields[2]).toBe(100_000_000n);                // drop_value (int)
+    expect(c.fields[2]).toBe(500_000n);                    // index (chỉ số cộng dồn)
+    expect(c.fields[3]).toBe(77_460n);                     // rate_root
+    expect(c.fields[4]).toBe(1n);                          // trim_num
+    expect(c.fields[5]).toBe(1_000n);                      // trim_den
+    expect(c.fields[6]).toEqual([]);                       // speed_policies
   });
 
   it("decode object form matches", () => {
@@ -145,16 +164,19 @@ describe("TreasuryDatum", () => {
   const sample: TreasuryDatum = {
     committee_hash: "deadbeef".repeat(4),
     outstanding_entitlement: 123_456_789n,
+    total_redeemed: 987_654_321n,        // TRƯỜNG MỚI v3, ở CUỐI
   };
 
   it("round-trips via CBOR", () => {
     expect(treasuryDatumFromCbor(treasuryDatumToCbor(sample))).toEqual(sample);
   });
 
-  it("Constr(0, [bytes, int]) — outstanding_entitlement ở CUỐI", () => {
+  it("Constr(0, [bytes, int, int]) — `total_redeemed` ở CUỐI", () => {
     const c = asConstr(treasuryDatumToCbor(sample));
     expect(c.index).toBe(0);
-    expect(c.fields).toEqual([sample.committee_hash, sample.outstanding_entitlement]);
+    expect(c.fields).toEqual([
+      sample.committee_hash, sample.outstanding_entitlement, sample.total_redeemed,
+    ]);
   });
 
   it("decode object form matches", () => {

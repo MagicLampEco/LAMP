@@ -168,6 +168,8 @@ export async function buildRefillTx(params: RefillParams): Promise<RefillResult>
 
   // ── RFL-003 / RFL-004 / RFL-006: sổ cái + committee_hash chung (mirror fold_ledger) ──
   let ledgerIn = 0n;
+  /** Σ `total_redeemed` trên các input CÓ datum — C-REF-TOTAL, cùng luật với `ledgerIn`. */
+  let redeemedIn = 0n;
   let committeeHash: string | undefined;
   for (const u of treasuryUtxos) {
     if (u.datumHash && !u.datum) {
@@ -221,7 +223,20 @@ export async function buildRefillTx(params: RefillParams): Promise<RefillResult>
         `trong nó (nếu có) nằm lại vĩnh viễn ở địa chỉ kho cho tới khi \`fold_ledger\` được vá.`,
       );
     }
+    // ── RFL-014: cùng họ RFL-013, cho trường sổ THỨ HAI ─────────────────
+    // `fold_ledger` cộng `total_redeemed` cũng không ép từng số hạng không-âm. Một UTxO
+    // lạ đỗ ở địa chỉ kho khai số ÂM sẽ kéo sổ đã-rút TỔNG xuống, và sổ đó là MẪU SỐ của
+    // trần một lượt ở mọi tài khoản ⇒ trần rơi về `trim_floor` cho toàn hệ. Không mất
+    // tiền, nhưng nó dựng lại đúng điểm hấp thụ mà sàn ấy có mặt để phá, và nó không kêu.
+    if (td.total_redeemed < 0n) {
+      throw new Error(
+        `RFL-014: UTxO ${u.txHash}#${u.outputIndex} khai total_redeemed = ` +
+        `${td.total_redeemed} < 0. Bỏ UTxO này khỏi tập gộp — không input nào của kho THẬT ` +
+        `mang số âm ở trường này (chỉ đường \`ReleaseForRedeem\` ghi nó, và chỉ ghi tăng).`,
+      );
+    }
     ledgerIn += td.outstanding_entitlement;
+    redeemedIn += td.total_redeemed;
   }
   if (committeeHash === undefined) {
     throw new Error(
@@ -285,10 +300,14 @@ export async function buildRefillTx(params: RefillParams): Promise<RefillResult>
     );
   }
 
-  // ── Datum ra: committee_hash bảo toàn, sổ cái = Σ vào (treasury.ak:221,224) ──
+  // ── Datum ra: committee_hash bảo toàn, HAI sổ = Σ vào (treasury.ak, nhánh Refill) ──
   const newTreasuryDatum: TreasuryDatum = {
     committee_hash:          committeeHash,
     outstanding_entitlement: ledgerIn,
+    // C-REF-TOTAL: `total_redeemed` gộp theo CÙNG luật với sổ nợ — tổng trên các input có
+    // datum. Không phải "giữ nguyên của carrier": gộp hai kho mà chỉ mang sang sổ của một
+    // bên là xoá lịch sử rút của bên kia, và lịch sử ấy là mẫu số của trần một lượt.
+    total_redeemed:          redeemedIn,
   };
 
   // ── Build tx ──────────────────────────────────────────────────────────

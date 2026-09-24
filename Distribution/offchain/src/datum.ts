@@ -95,19 +95,24 @@ export function encodeClaimAccountDatum(d: ClaimAccountDatum): Constr<Data> {
     d.redeemed,
     d.start_epoch,
     d.drops_per_epoch,
+    d.index_at_start,
   ]);
 }
 
 export function decodeClaimAccountDatum(d: Data): ClaimAccountDatum {
   const c = asConstr(d, "ClaimAccountDatum");
   if (c.index !== 0) throw new Error(`DATUM-020: ClaimAccountDatum expects Constr 0, got ${c.index}`);
-  if (c.fields.length !== 5) throw new Error(`DATUM-021: ClaimAccountDatum expects 5 fields, got ${c.fields.length}`);
+  // v3: 6 trường. Một datum v2 (5 trường) PHẢI ném ở đây, không được đọc thành v3 với
+  // `index_at_start` mặc định — đệm một trường thiếu là dựng một mốc thời gian giả rồi
+  // trình bày nó như thật.
+  if (c.fields.length !== 6) throw new Error(`DATUM-021: ClaimAccountDatum expects 6 fields, got ${c.fields.length}`);
   return {
     owner:           asBytes(c.fields[0]!, "owner"),
     entitlement:     asInt(c.fields[1]!, "entitlement"),
     redeemed:        asInt(c.fields[2]!, "redeemed"),
     start_epoch:     asInt(c.fields[3]!, "start_epoch"),
     drops_per_epoch: asInt(c.fields[4]!, "drops_per_epoch"),
+    index_at_start:  asInt(c.fields[5]!, "index_at_start"),
   };
 }
 
@@ -127,34 +132,57 @@ export function encodeClaimRedeemer(amount: bigint): Constr<Data> {
   return new Constr(CLAIM_ACCOUNT_REDEEMER.Claim, [amount]);
 }
 
-/** Redeem = Constr(1, []) — tất định, không field (user tự tính vested on-chain). */
-export function encodeRedeemRedeemer(): Constr<Data> {
-  return new Constr(CLAIM_ACCOUNT_REDEEMER.Redeem, []);
+/**
+ * Redeem { amount } = Constr(1, [int]) — v3.
+ *
+ * v2 là `Constr(1, [])`: validator tự tính số rút. v3 để người dựng tx XIN một số, rồi
+ * validator KẸP nó bằng phép cắt ngọn — nên số phải đi vào redeemer. Đây là một thay đổi
+ * BẺ GÃY ở tầng redeemer, không chỉ tầng datum: một ví v2 gửi `Constr(1, [])` sẽ bị từ
+ * chối ở bước giải mã, không phải ở một mệnh đề nghiệp vụ.
+ */
+export function encodeRedeemRedeemer(amount: bigint): Constr<Data> {
+  return new Constr(CLAIM_ACCOUNT_REDEEMER.Redeem, [amount]);
 }
 
 export function claimRedeemerToCbor(amount: bigint): string {
   return Data.to(encodeClaimRedeemer(amount));
 }
 
-export function redeemRedeemerToCbor(): string {
-  return Data.to(encodeRedeemRedeemer());
+export function redeemRedeemerToCbor(amount: bigint): string {
+  return Data.to(encodeRedeemRedeemer(amount));
 }
 
 // ── BeaconDatum ────────────────────────────────────────────────────────
 // Constr(0, [epoch:int, kind:BeaconKind, drop_value:int])
 
 export function encodeBeaconDatum(d: BeaconDatum): Constr<Data> {
-  return new Constr(0, [d.epoch, encodeBeaconKind(d.kind), d.drop_value]);
+  return new Constr(0, [
+    d.epoch,
+    encodeBeaconKind(d.kind),
+    d.index,
+    d.rate_root,
+    d.trim_num,
+    d.trim_den,
+    d.speed_policies.map(normHex),
+  ]);
 }
 
 export function decodeBeaconDatum(d: Data): BeaconDatum {
   const c = asConstr(d, "BeaconDatum");
   if (c.index !== 0) throw new Error(`DATUM-030: BeaconDatum expects Constr 0, got ${c.index}`);
-  if (c.fields.length !== 3) throw new Error(`DATUM-031: BeaconDatum expects 3 fields, got ${c.fields.length}`);
+  if (c.fields.length !== 7) throw new Error(`DATUM-031: BeaconDatum expects 7 fields, got ${c.fields.length}`);
+  const policies = c.fields[6]!;
+  if (!Array.isArray(policies)) {
+    throw new Error("DATUM-032: speed_policies must be a list");
+  }
   return {
-    epoch:      asInt(c.fields[0]!, "epoch"),
-    kind:       decodeBeaconKind(c.fields[1]!),
-    drop_value: asInt(c.fields[2]!, "drop_value"),
+    epoch:          asInt(c.fields[0]!, "epoch"),
+    kind:           decodeBeaconKind(c.fields[1]!),
+    index:          asInt(c.fields[2]!, "index"),
+    rate_root:      asInt(c.fields[3]!, "rate_root"),
+    trim_num:       asInt(c.fields[4]!, "trim_num"),
+    trim_den:       asInt(c.fields[5]!, "trim_den"),
+    speed_policies: policies.map((p, i) => asBytes(p as Data, `speed_policies[${i}]`)),
   };
 }
 
@@ -179,16 +207,21 @@ export function beaconRedeemerToCbor(): string {
 // Constr(0, [committee_hash:bytes, outstanding_entitlement:int])
 
 export function encodeTreasuryDatum(d: TreasuryDatum): Constr<Data> {
-  return new Constr(0, [normHex(d.committee_hash), d.outstanding_entitlement]);
+  return new Constr(0, [
+    normHex(d.committee_hash),
+    d.outstanding_entitlement,
+    d.total_redeemed,
+  ]);
 }
 
 export function decodeTreasuryDatum(d: Data): TreasuryDatum {
   const c = asConstr(d, "TreasuryDatum");
   if (c.index !== 0) throw new Error(`DATUM-040: TreasuryDatum expects Constr 0, got ${c.index}`);
-  if (c.fields.length !== 2) throw new Error(`DATUM-041: TreasuryDatum expects 2 fields, got ${c.fields.length}`);
+  if (c.fields.length !== 3) throw new Error(`DATUM-041: TreasuryDatum expects 3 fields, got ${c.fields.length}`);
   return {
     committee_hash:         asBytes(c.fields[0]!, "committee_hash"),
     outstanding_entitlement: asInt(c.fields[1]!, "outstanding_entitlement"),
+    total_redeemed:         asInt(c.fields[2]!, "total_redeemed"),
   };
 }
 
