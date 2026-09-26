@@ -109,7 +109,7 @@
 | 11 | **GreenSun Tech** | 6.000.000 | 16,67% | Pháp nhân sáng lập (1/6 cung) | Nhỏ-giọt **ngang cộng đồng** | 🏛️ gen → **OrgDID GreenSun** |
 | 12 | **Partnership** | 284.000 | 0,79% | Đối tác chiến lược | Nhỏ-giọt | 👤 khi partner claim về DID |
 | 13 | **Early TIGER Deleg (ETD)** | 12.000 | 0,03% | Delegate sớm TIGER (redeem TRƯỚC = test) | Snapshot hồi tố | ❌ hết sớm |
-| 14 | **Airdrop** | 120.000 | 0,33% | Ghi nhận đóng góp vào cơ chế bền vững của mạng Cardano — 3 pot: Delegator 100M · SPO 5M · CS 15M | Snapshot, cả 3 pot ∝ trọng số stake (v2, chốt 10/7) | ❌ hết sớm |
+| 14 | **Airdrop** | 120.000 | 0,33% | Ghi nhận đóng góp vào cơ chế bền vững của mạng Cardano — 2 phần: Delegator 100M · SPO 20M | Snapshot theo `accStake`, sàn 1.000 ADA (chốt 25/9) | ❌ hết sớm |
 | 15 | **SRCL** | 360.000 | 1,00% | Redirect staking-reward ADA ↔ LAMP | Snapshot/epoch theo ADA góp; SPO bonus tự đặt | ❌ hết sớm |
 | 16 | **Join LampNet** | 1.461.000 | 4,06% | Thưởng người góp tài nguyên thiết bị vào hạ tầng phân tán LampNet | Nhỏ-giọt | 🏛️ uỷ thác Platform **LampNet** DID |
 | 17 | **RedBack** | 21.143 | 0,06% | Quỹ phòng-thủ neo giá đồng ổn định (peg CARP↔MAGIC): hy sinh khi peg đỏ, lớn lên khi thế chấp vượt trần | Engine phòng thủ peg (vốn vô chủ) | ❌ quỹ peg |
@@ -227,10 +227,12 @@ khâu claim**, không chỉ trong quy chế.
   chính là lý do nó đứng đầu. Trạng thái của chính pháp nhân: dòng `PHAP-NHAN-001`, bảng cổng pháp
   lý §3.
 
-  Chia **3 pot**: Delegator **100M** · SPO **5M** ·
-  CS (Community Supporter) **15M**, cả ba đều **∝ trọng số stake** (làn CS cho phép tự bỏ phiếu nên điểm cân bằng
-  cũng là chia theo stake — `Airdrop/spo-cs.md` §3.5; KHÔNG mô tả làn CS như phần thưởng cho đóng góp).
-  Đặc tả hiệu lực: `Airdrop/CONTRACT.md`. Module `Airdrop/` đã **bàn giao ra ngoài repo này 2026-09-01** và không
+  Chia **2 phần** (chốt 2026-09-25): **Delegator 100M**, chia theo `accStake` của chính người nhận ·
+  **SPO 20M**, chia theo tổng `accStake` của các delegator đủ điều kiện đang uỷ thác vào pool đó.
+  Người nhận phải vượt **sàn 1.000 ADA**. Không có phần Community Supporter, không có phần tương tác
+  (engage). Nguồn: `AffiSo/Launch` ▸ `Launch-Compliance-Vi.md` §7.4 (AffiSo/Launch#38). Cách chia
+  cũ **3 pot** (Delegator 100M · SPO 5M · CS 15M, chốt 2026-07-10) đã bị thay.
+  Đặc tả claim: `Airdrop/CONTRACT.md` — bản đó còn ghi cách chia 3 pot, phần chia lấy theo nguồn trên. Module `Airdrop/` đã **bàn giao ra ngoài repo này 2026-09-01** và không
   còn trong cây làm việc này; bản cuối ở kho này tra bằng `git show adf2a0e:Airdrop/CONTRACT.md` (và
   `git show adf2a0e:Airdrop/spo-cs.md`). (Mô hình cũ 5 epoch ×24.000 tỉ lệ
   20:100 đã bị thay ngày 2026-07-10.)
@@ -276,7 +278,7 @@ governance đầy đủ chưa lên → giao DAO sau.
 ## 5. Ba pot phân phối cộng đồng sớm (chi tiết claim — ETD/SRCL chốt sau, Airdrop đã chốt)
 
 - **ETD (12.000 nghìn)** — delegator sớm pool TIGER redeem TRƯỚC làm test toàn cầu. Rút theo claim_account vesting permissionless.
-- **Airdrop (120.000 nghìn)** — **3 pot**: Delegator 100M · SPO 5M · CS 15M, cả ba ∝ trọng số stake (v2, chốt 10/7). Đăng ký bắt buộc; claim Merkle sau snapshot. **Quy tắc claim đã chốt**, đặc tả hiệu lực `Airdrop/CONTRACT.md` §1.7 (schema C, 2026-07-31) + §6 (tham số vận hành, 2026-08-18) — module đã bàn giao ra ngoài repo này, tra bằng `git show adf2a0e:Airdrop/CONTRACT.md`; chỉ còn nghĩa `owner` của vai **SPO** là chưa chốt.
+- **Airdrop (120.000 nghìn)** — **2 phần** (chốt 2026-09-25): Delegator 100M theo `accStake` của người nhận · SPO 20M theo tổng `accStake` uỷ thác vào pool; sàn 1.000 ADA; không phần CS, không phần tương tác. Đăng ký bắt buộc; claim Merkle sau snapshot. **Quy tắc claim đã chốt**, đặc tả hiệu lực `Airdrop/CONTRACT.md` §1.7 (schema C, 2026-07-31) + §6 (tham số vận hành, 2026-08-18) — module đã bàn giao ra ngoài repo này, tra bằng `git show adf2a0e:Airdrop/CONTRACT.md`; chỉ còn nghĩa `owner` của vai **SPO** là chưa chốt.
 - **SRCL (360.000 nghìn)** — 36 epoch ×10.000 nghìn. Delegator tự nguyện định tuyến phần thưởng staking về pot; LAMP được **ghi nhận** ∝ phần thưởng đã đóng góp (việc đã xảy ra), theo công thức tất định công khai; **SPO tự đặt bonus rate**. SPO chỉ đăng-ký + đặt-rate 1 lần (decouple, không ký mỗi epoch). Phần thưởng ADA thuộc doanh thu vận hành pool của bên vận hành đợt, tách bạch với phân bổ LAMP.
 
 ---

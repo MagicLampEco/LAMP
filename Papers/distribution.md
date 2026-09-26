@@ -173,11 +173,14 @@ Chi tiết ở spec Governance riêng. Điểm giao với phân phối: **gen-MA
   (hoặc Merkle 1-lần). Rút **permissionless** giống claim_account. Dư hoàn Treasury.
 - Đây là **bài test sống** cho toàn hệ claim trước khi mở Airdrop/SRCL.
 
-### 6.2 Airdrop (120.000 nghìn) — 3 pot, stake-weighted
+### 6.2 Airdrop (120.000 nghìn) — Delegator + SPO, theo accStake
 
-> ⚠️ **Mục này đã bị thay.** Chủ dự án chốt model v2 ngày 2026-07-10:
-> **Delegator 100M + SPO 5M + CS 15M**, cả ba pot đều chia **∝ trọng số stake**.
-> Đặc tả hiệu lực: `Airdrop/CONTRACT.md` + `Airdrop/spo-cs.md`. Module `Airdrop/` đã **bàn giao ra ngoài repo
+> ⚠️ **Mục này đã bị thay hai lần.** Bản hiện hành, chốt 2026-09-25: **2 phần** — **Delegator 100M**
+> theo `accStake` của người nhận · **SPO 20M** theo tổng `accStake` uỷ thác vào pool; sàn 1.000 ADA;
+> không phần Community Supporter, không phần tương tác. Nguồn: `AffiSo/Launch` ▸
+> `Launch-Compliance-Vi.md` §7.4 (AffiSo/Launch#38). Bản thay trước đó (v2, 2026-07-10) chia
+> 3 pot Delegator 100M + SPO 5M + CS 15M.
+> Đặc tả claim: `Airdrop/CONTRACT.md` (`Airdrop/spo-cs.md` tả làn CS, nay đã bỏ). Module `Airdrop/` đã **bàn giao ra ngoài repo
 > này 2026-09-01** và không còn trong cây làm việc này — bản cuối ở kho này tra bằng
 > `git show adf2a0e:Airdrop/CONTRACT.md`.
 > Phần dưới là mô hình v1 (tỉ lệ 20:100, SPO 20M, chưa có pot CS) — **giữ để truy vết, đừng lấy số**.
@@ -306,7 +309,7 @@ Mọi tham số dưới đọc từ **config-UTxO** do **Aladin Contract đặt 
 | `μ_pot` User/Development/Partnership | **1.0** | gen ở vault user khi claim |
 | Reserve trần nhịp | **E/1000 = 9.630.000 LAMP/epoch** | hằng thiết kế, KHÔNG phải tham số điều chỉnh |
 | Reserve sàn cổng cầu | **1% × C** (lưu hành) | tỷ lệ, không phải hằng tuyệt đối → tự co giãn. Chi tiết: `Specs/Emission/CONTRACT.md` §3.2 |
-| Airdrop chia | **Delegator 100M · SPO 5M · CS 15M**, cả ba ∝ trọng số stake (v2, chốt 10/7) | per snapshot |
+| Airdrop chia | **Delegator 100M · SPO 20M**, theo `accStake`, sàn 1.000 ADA (chốt 25/9) | per snapshot |
 | Airdrop epoch ×budget | **5 × 24.000 nghìn** | tổng 120.000 |
 | Airdrop hạn đăng ký | **epoch 4** | mở từ 1/7 |
 | Airdrop sàn đủ-điều-kiện SPO | **pledge thật + ≥1 block/epoch** | chống Sybil tách pool |
