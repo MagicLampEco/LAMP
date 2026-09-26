@@ -19,9 +19,10 @@
 //   nhưng `reserve_gate` đọc `parked` từ UTxO MANG CUSTODY NFT. Hai thứ đó không phải một —
 //   xem phần "cổng cầu không tự đóng lại" ở cuối tệp.
 //
-// Chạy: NETWORK=Preprod tsx 25_gated_draw.ts     (DRAW_LAMP=1000 mặc định)
+// Chạy: NETWORK=Preprod [SUBMIT=true] tsx 25_gated_draw.ts     (DRAW_LAMP=1000 mặc định)
+// Không đặt SUBMIT=true ⇒ chạy khô: dựng giao dịch rồi dừng, không ký, không gửi.
 import { type UTxO } from "@lucid-evolution/lucid";
-import { NETWORK, makeLucid, walletPkh, explorerTx } from "./config.js";
+import { NETWORK, makeLucid, walletPkh, explorerTx, haltUnlessSubmit } from "./config.js";
 import {
   supplyStateToCbor, supplyStateFromCbor, supplyStateRedeemerToCbor, mintRouteToCbor,
 } from "../offchain/src/datum.js";
@@ -180,6 +181,7 @@ async function main(): Promise<void> {
   });
 
   const tx = await txb.complete();
+  haltUnlessSubmit("lượt rút qua cổng");
   const hash = await (await tx.sign.withWallet().complete()).submit();
   console.log(`📤 Lượt rút qua cổng: ${hash}\n   ${explorerTx(hash)}`);
   await lucid.awaitTx(hash);

@@ -494,6 +494,26 @@ describe("buildClaimTx — UPDATE path", () => {
     })).rejects.toThrow(/ownerPkh mismatch/);
   });
 
+  it("rejects owner that is not a 28-byte key hash (CLAIM-007)", async () => {
+    // Validator không kiểm độ dài owner: grant cho owner 2 byte vẫn hợp lệ trên chuỗi, và E
+    // của tài khoản đó chiếm chỗ trong kho mãi mãi. Chặn ở builder.
+    const { lucid } = mockLucid("addr_wallet");
+    for (const bad of ["aabb", OWNER + "00", OWNER.slice(0, 54), "zz".repeat(28)]) {
+      await expect(buildClaimTx({
+        lucid, claimScript: FAKE_CLAIM, network: NETWORK,
+        ownerPkh: bad, amount: 1n, currentEpoch: 1n,
+        committeeKeyHashes: COMMITTEE, treasury: trsyParam(0n),
+        beacon: bcnParam(),
+      })).rejects.toThrow(/CLAIM-007/);
+    }
+    await expect(buildClaimTx({
+      lucid, claimScript: FAKE_CLAIM, network: NETWORK,
+      ownerPkh: "0x" + OWNER.toUpperCase(), amount: 1n, currentEpoch: 1n,
+      committeeKeyHashes: COMMITTEE, treasury: trsyParam(0n),
+      beacon: bcnParam(),
+    })).rejects.not.toThrow(/CLAIM-007/);
+  });
+
   it("rejects below-threshold signers", async () => {
     const { lucid } = mockLucid("addr_wallet");
     await expect(buildClaimTx({

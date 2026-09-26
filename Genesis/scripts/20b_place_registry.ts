@@ -25,9 +25,10 @@
 // diễn tập là điều muốn có (không ai sửa lén bảng quyền); mainnet dùng `registry_write` — tiêu
 // được, gác bằng TAAD/OrgDID — nên xoay khoá được mà không phát hành lại policy.
 //
-// Chạy: NETWORK=Preprod tsx 20b_place_registry.ts
+// Chạy: NETWORK=Preprod [SUBMIT=true] tsx 20b_place_registry.ts
+// Không đặt SUBMIT=true ⇒ chạy khô: dựng giao dịch rồi dừng, không ký, không gửi.
 import { type UTxO } from "@lucid-evolution/lucid";
-import { NETWORK, makeLucid, walletPkh, explorerTx } from "./config.js";
+import { NETWORK, makeLucid, walletPkh, explorerTx, haltUnlessSubmit } from "./config.js";
 import { rehydrate, registryDatum } from "./_canonical_v2.js";
 import { assertSeedNotSpent, custodySeedRefFromState, refKey } from "./_custodySeedRef.js";
 
@@ -69,6 +70,7 @@ async function main(): Promise<void> {
   // `.collectFrom(inWallet)` chỉ ghim UTxO mang REG NFT; `.complete()` vừa chạy chọn-đồng mặc
   // định trên toàn bộ ví để trả phí, không loại trừ gì.
   assertSeedNotSpent(tx, seed.ref, "20b (dời REG NFT)");
+  haltUnlessSubmit("20b (dời REG NFT → địa chỉ registry)");
 
   const hash = await (await tx.sign.withWallet().complete()).submit();
   console.log(`📤 Tx: ${hash}\n   ${explorerTx(hash)}`);

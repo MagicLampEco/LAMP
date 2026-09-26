@@ -82,12 +82,18 @@
 //   GMB-009 — nhánh 8 tham số thiếu `distDestAddress`. Không có ref-input để đọc A-DEST
 //     động, nên không có nó thì GMB-004 mất chỗ đối chiếu và A-DEST không còn ai canh.
 //
+// ⚠ VÁ TIẾP 2026-09-26. Hai chú thích trên (GMB-006 "treasury.ak:27 expect Some(datum)") tả
+// một bản kho đã thay: `treasury.ak` nay khai `Option<TreasuryDatum>`, và `Refill` tiêu được
+// input không datum. Chỗ hở thật là ở HÌNH DẠNG datum, và docstring cũ còn bảo `"d87980"` là
+// đủ cho cả hai nhánh. Guard mới:
+//   GMB-010 — nhánh 14 tham số: `recipientDatum` phải giải mã được thành TreasuryDatum.
+//
 // LƯU Ý KIẾN TRÚC: builder KHÔNG tự gắn signature — nó addSigner(authority) để Lucid
 // yêu cầu ví ký. Caller (script/ví) cấp khóa thật. tx.mint thread NFT == 0 (không đụng
 // thread) tự nhiên đúng vì builder chỉ mint tLAMP, không mint thread.
 
 import {
-  Data, toUnit,
+  Constr, Data, toUnit,
   type Assets, type LucidEvolution, type MintingPolicy, type TxSignBuilder,
   type UTxO, type Validator,
 } from "@lucid-evolution/lucid";
@@ -135,15 +141,18 @@ export interface MintParamsCommon {
 
   /** Inline datum đặt kèm output kho (hex CBOR). **BẮT BUỘC ở CẢ HAI NHÁNH.**
    *
-   *  Nhánh 14 tham số — đây là ca MẤT TIỀN: kho là `treasury.ak`, mà rót vào script KHÔNG
-   *  datum thì `treasury.ak:27 expect Some(datum)` fail ⇒ UTxO không spend được, LAMP
-   *  no-burn ⇒ MẤT VĨNH VIỄN. Tx vẫn HỢP LỆ khi thiếu datum (validator đếm theo payment
-   *  credential, không nhìn datum) nên chuỗi KHÔNG cứu được — phải chặn ở đây.
+   *  Nhánh 14 tham số — kho là `Distribution/onchain/validators/treasury.ak`, datum khai kiểu
+   *  `Option<TreasuryDatum>`. Datum phải giải mã được thành `TreasuryDatum` (Constr 0, ba
+   *  trường: bytes, int, int) — GMB-010. Một datum hình dạng khác (vd đơn vị `"d87980"`)
+   *  không ép kiểu được thành `TreasuryDatum`, và `lamp_mint` không nhìn datum (A-DEST chỉ đo
+   *  payment credential) nên tx vẫn HỢP LỆ: LAMP nằm trong sân kho mà ngoài sổ kho, và LAMP
+   *  không burn được. Hai trường số của datum này không đi vào sổ — `Refill` gộp value và bỏ
+   *  qua datum của input không mang NFT kho — nên `outstanding = total_redeemed = 0` là đủ.
    *
    *  Nhánh 8 tham số — kho mainnet là `dist_treasury`, nhận `_datum: Option<Data>`
    *  (`Genesis/onchain/validators/dist_treasury.ak:16`) nên KHÔNG đòi datum và cũng KHÔNG
    *  từ chối datum. Vẫn giữ BẮT BUỘC: một luật cho cả hai nhánh, và đường mặc định không
-   *  bao giờ là đường mất tiền. Datum đơn vị `"d87980"` là đủ. */
+   *  bao giờ là đường mất tiền. Ở nhánh này datum đơn vị `"d87980"` được nhận. */
   recipientDatum: string;
 
   /** Keyhash authority phải ký (đúng đường mint) — addSigner để Lucid đòi chữ ký.
@@ -243,6 +252,33 @@ function assertHoldsNft(u: UTxO, policyId: string, label: string): void {
       `GMB-005: ${label} tại ${u.address} không mang đúng 1 NFT policy ${policyId} ` +
       `(thấy ${qty}). Validator đọc gate qua reference input này — sai UTxO thì tx chắc ` +
       `chắn fail on-chain.`,
+    );
+  }
+}
+
+/**
+ * GMB-010: `cbor` phải là `TreasuryDatum` của `Distribution/onchain/validators/treasury.ak` —
+ * Constr 0, đúng ba trường (committee_hash: bytes, outstanding_entitlement: int ≥ 0,
+ * total_redeemed: int ≥ 0). Kiểm HÌNH DẠNG, không kiểm giá trị: giá trị của datum trên
+ * UTxO rót (không mang NFT kho) không đi vào sổ.
+ */
+export function assertTreasuryDatumShape(cbor: string): void {
+  let d: Data;
+  try {
+    d = Data.from(cbor);
+  } catch (e) {
+    throw new Error(`GMB-010: recipientDatum không phải CBOR Plutus Data hợp lệ (${(e as Error).message}).`);
+  }
+  const ok = d instanceof Constr && d.index === 0 && d.fields.length === 3
+    && typeof d.fields[0] === "string"
+    && typeof d.fields[1] === "bigint" && d.fields[1] >= 0n
+    && typeof d.fields[2] === "bigint" && d.fields[2] >= 0n;
+  if (!ok) {
+    throw new Error(
+      `GMB-010: recipientDatum (${cbor}) không có hình dạng TreasuryDatum ` +
+      `(Constr 0 [committee_hash, outstanding_entitlement, total_redeemed]). Kho khai ` +
+      `Option<TreasuryDatum>: datum không ép kiểu được thì LAMP nằm trong sân kho mà ngoài sổ ` +
+      `kho, và LAMP không burn được. Dựng datum bằng encoder TreasuryDatum của SDK Distribution.`,
     );
   }
 }
@@ -351,10 +387,10 @@ export async function buildMintTx(p: MintParams): Promise<{
     );
   }
 
-  // GMB-006 (no-datum = mất tiền): kho là địa chỉ script. Rót vào script KHÔNG datum thì
-  // tx VẪN HỢP LỆ (lamp_mint đếm theo payment credential, không nhìn datum) nhưng UTxO
-  // sinh ra không ai spend được — `treasury.ak:27 expect Some(datum)` fail — và LAMP không
-  // burn được. Đây là ca DUY NHẤT trong builder mà lỗi làm MẤT tiền chứ không phải hỏng tx.
+  // GMB-006 (datum bắt buộc): kho là địa chỉ script, và `lamp_mint` đếm theo payment
+  // credential, không nhìn datum — nên tx rót sai hình dạng vẫn HỢP LỆ. Đây là ca DUY NHẤT
+  // trong builder mà lỗi làm MẤT tiền chứ không phải hỏng tx, nên luật giữ một hình dạng
+  // cho cả hai nhánh: luôn có datum. Hình dạng đúng của datum ở nhánh 14 là GMB-010.
   if (!p.recipientDatum) {
     throw new Error(
       `GMB-006: thiếu recipientDatum. Kho (${p.recipient}) là địa chỉ script — rót LAMP ` +
@@ -362,6 +398,12 @@ export async function buildMintTx(p: MintParams): Promise<{
       `VĨNH VIỄN. Cấp inline datum hợp lệ của kho (TreasuryDatum) trước khi mint.`,
     );
   }
+
+  // GMB-010 (datum đúng HÌNH DẠNG, nhánh 14): có datum chưa đủ. Kho khai `Option<TreasuryDatum>`,
+  // nên một datum không ép kiểu được thành TreasuryDatum làm LAMP nằm trong sân kho mà ngoài
+  // sổ kho — và tx vẫn hợp lệ vì `lamp_mint` không nhìn datum. Rót đúng địa chỉ chưa phải rót
+  // vào sổ. Nhánh 8 không kiểm: `dist_treasury` nhận `Option<Data>`.
+  if (p.mintParamCount === 14) assertTreasuryDatumShape(p.recipientDatum);
 
   const supplyOutValue = threadNftAssets(p.threadPolicyId, minAda);
   const recipientValue: Assets = { [tlampUnit]: p.amount, lovelace: minAda };

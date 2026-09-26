@@ -26,9 +26,10 @@
 // `20_canonical_genesis.ts`. Cổng CUSTODY-REF-001 đối chiếu hai vế đó TRƯỚC khi dựng giao dịch
 // nào — xem `_custodySeedRef.ts`.
 //
-// Chạy: NETWORK=Preprod CUSTODY_SEED_TX=<64 hex> CUSTODY_SEED_IDX=<n> tsx 24_reserve_layer2_init.ts
+// Chạy: NETWORK=Preprod CUSTODY_SEED_TX=<64 hex> CUSTODY_SEED_IDX=<n> [SUBMIT=true] tsx 24_reserve_layer2_init.ts
+// Không đặt SUBMIT=true ⇒ chạy khô: dựng bước chưa có trên chuỗi đầu tiên rồi dừng, không ký, không gửi.
 import { type UTxO } from "@lucid-evolution/lucid";
-import { NETWORK, makeLucid, walletPkh, explorerTx } from "./config.js";
+import { NETWORK, makeLucid, walletPkh, explorerTx, haltUnlessSubmit } from "./config.js";
 import { rehydrate, writeState, waitFor, MET_NAME } from "./_canonical_v2.js";
 import { supplyStateFromCbor } from "../offchain/src/datum.js";
 import {
@@ -219,6 +220,7 @@ async function main(): Promise<void> {
         { lovelace: RESERVED_MIN_ADA, [cust.custodyNftUnit]: 1n })
       .addSigner(walletAddr)
       .complete();
+    haltUnlessSubmit("L2a (đúc custody NFT → két)");
     const h = await (await tx.sign.withWallet().complete()).submit();
     console.log(`📤 L2a custody seed: ${h}\n   ${explorerTx(h)}`);
     await lucid.awaitTx(h);
@@ -287,6 +289,7 @@ async function main(): Promise<void> {
         { lovelace: NFT_ADA, [rw.reserve.authUnit]: 1n })
       .addSigner(walletAddr)
       .complete();
+    haltUnlessSubmit("L2b (đúc auth NFT → reserve_gate)");
     const h = await (await tx.sign.withWallet().complete()).submit();
     console.log(`📤 L2b auth mint: ${h}\n   ${explorerTx(h)}`);
     await lucid.awaitTx(h);
@@ -356,6 +359,7 @@ async function main(): Promise<void> {
         { lovelace: NFT_ADA, [wiring.metUnit]: 1n })
       .addSigner(walletAddr)
       .complete();
+    haltUnlessSubmit("L2c (dời meter NFT → reserve_draw)");
     const h = await (await tx.sign.withWallet().complete()).submit();
     console.log(`📤 L2c meter → reserve_draw: ${h}\n   ${explorerTx(h)}`);
     await lucid.awaitTx(h);

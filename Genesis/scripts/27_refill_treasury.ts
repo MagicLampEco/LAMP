@@ -31,6 +31,7 @@ import {
   buildRefillTx, bearsForeignTreasuryName,
 } from "../../Distribution/offchain/src/refillBuilder.js";
 import { decodeTreasuryDatum } from "../../Distribution/offchain/src/datum.js";
+import { assertTreasuryHasExit } from "./_treasuryExitProof.js";
 
 /** LAMP nạp THÊM từ ví, đơn vị oildrop. Mặc định 0 — thuần gộp. */
 const DEPOSIT_OILDROP = BigInt(process.env.REFILL_DEPOSIT_OILDROP ?? "0");
@@ -126,6 +127,10 @@ async function main(): Promise<void> {
     }
     picked.push(u);
   }
+
+  // Nạp THÊM LAMP từ ví là một đường rót LAMP vào kho như `21_vest_to_kho.ts`, nên nó qua cùng
+  // cổng lối ra. Thuần gộp (DEPOSIT = 0) không thêm LAMP nào, nên không cần cổng.
+  if (DEPOSIT_OILDROP > 0n) assertTreasuryHasExit(NETWORK, wiring.treAddr, DEPOSIT_OILDROP);
 
   const result = await buildRefillTx({
     lucid,

@@ -3,9 +3,10 @@
 Chạy full flow THẬT trên Preview: claim → beacon → lottery → redeem.
 Không giả lập — mỗi bước in tx hash + link cardanoscan để kiểm chứng.
 
-## Chuẩn bị `.env`
+## Chuẩn bị biến môi trường
 
-Tạo file `.env` trong thư mục này (hoặc ở repo root — `dotenv` tự tìm). Tối thiểu:
+`config.ts` không đọc tệp `.env` nào. Đặt các biến dưới đây ngay trước lệnh `tsx <tệp>.ts`, để
+bí mật chỉ sống trong một tiến trình. `NETWORK` chỉ nhận `Preview | Preprod | Mainnet`. Tối thiểu:
 
 ```bash
 NETWORK=Preview

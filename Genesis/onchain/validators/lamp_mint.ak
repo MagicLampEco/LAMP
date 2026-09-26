@@ -232,8 +232,8 @@ validator lamp_mint(
 
     // ── Luật 8: gate theo đường mint ──────────────────────────────────────
     // Hai đường mint khóa khác nhau (A10):
-    //   • DistributionVest → pubkey-sig M-of-N (dist_authority + threshold). Đường DAO/
-    //     vesting, MVP stub. Giữ nguyên.
+    //   • DistributionVest → WHO-gate qua Registry NFT (`registry.validate_mint`): authority
+    //     mà RegistryDatum gán cho token_tag phải ký, và toàn bộ Δ rót vào kho (A-DEST).
     //   • ReserveDraw → KHÔNG chữ ký. Ép tx PHẢI spend đúng 1 UTxO mang meter NFT
     //     (= reserve_thread NFT) → reserve_draw.spend (Reserve) BẮT BUỘC chạy → δ ép
     //     ≤ E/1000 + pot + Treasury-pull (gate nhịp tất định). Permissionless thật:

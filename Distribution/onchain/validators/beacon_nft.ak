@@ -355,7 +355,8 @@ test mint_zero_trim_numerator_fails() fail {
   nt_run(nt_tx(nt_carrier_d(nt_datum(constants.rate_root_min * 10, 0, 1000, 0))))
 }
 
-/// Đối chứng: `trim_num = 1`, `trim_den = 1` (siết chặt nhất còn hợp lệ) vẫn QUA — hai
+/// Đối chứng: `trim_num = 1`, `trim_den = 1` (κ = 1, một mức NỚI chứ không phải siết:
+/// trần mỗi lượt = max(sàn, total_redeemed · κ), κ lớn thì trần cao) vẫn QUA — hai
 /// bài trên đỏ vì số 0, không vì một chốt tưởng tượng nào về độ lớn của κ.
 test mint_trim_one_over_one_ok() {
   nt_run(nt_tx(nt_carrier_d(nt_datum(constants.rate_root_min * 10, 1, 1, 0))))

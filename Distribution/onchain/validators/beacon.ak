@@ -553,7 +553,8 @@ test beacon_zero_trim_denominator_rejected() fail {
   )
 }
 
-/// Đối chứng: `trim_den = 1` (siết cắt ngọn tới mức chặt nhất còn hợp lệ) vẫn QUA.
+/// Đối chứng: `trim_den = 1` (mẫu số nhỏ nhất còn hợp lệ — κ lớn nhất theo tử số đang có,
+/// tức cắt ngọn LỎNG nhất, không phải chặt nhất) vẫn QUA.
 /// Cặp này phân biệt "mẫu số bằng 0" với "mẫu số nhỏ" — không có nó, ca trên có thể đỏ
 /// vì một chốt tưởng tượng nào đó về độ lớn của `trim_den`.
 test beacon_trim_denominator_one_ok() {

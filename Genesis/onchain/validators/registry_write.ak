@@ -27,8 +27,11 @@
 //
 // THU HỒI (Burn/Retire — thêm 2026-08-12, vá review PR #20 §1): Deploy KHÔNG chứng minh được
 // "chưa có registry nào cho DID này" (không proof-of-absence on-chain), nên registry THỨ HAI cùng
-// governing_did là DỰNG ĐƯỢC — và read-side `registry.ak.find_registry_datum` đòi ĐÚNG 1 carrier
-// ⇒ mint LAMP của DID đó KHOÁ. Bản đầu KHÔNG có đường đốt (`expect qty == 1` chặn mọi burn, spend
+// governing_did là DỰNG ĐƯỢC. Read-side `registry.ak.find_registry_datum` đòi ĐÚNG 1 carrier
+// TRONG `reference_inputs` — mà tập đó do người dựng tx chọn, nên bản trùng KHÔNG khoá mint:
+// nó TÁCH thẩm quyền. Revoke một token ở bản R1 không thu hồi được nó ở bản R2, vì tx đúc chỉ
+// cần tham chiếu R2. (Đính chính 2026-09-26; câu cũ nói bản trùng làm mint KHOÁ là sai.)
+// Bản đầu KHÔNG có đường đốt (`expect qty == 1` chặn mọi burn, spend
 // luôn ép continuing output) ⇒ khoá VĨNH VIỄN, không cứu được. Tệ hơn: redeemer rỗng + không nonce
 // nghĩa là chỉ cần controller KÝ NHẦM một tx do builder lỗi/độc dựng là brick — không cần cố ý.
 // Nay thêm `Burn` (mint, constr 1) + `Retire` (spend, constr 1): controller hiện tại đốt 1

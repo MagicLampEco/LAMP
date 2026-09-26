@@ -49,6 +49,21 @@ export const EXPECTED_WALLET_ADDR = (process.env.EXPECTED_WALLET_ADDR ?? "").tri
 /** SUBMIT=false (mặc định) → chỉ build tx + in CBOR, KHÔNG gửi chain. */
 export const SUBMIT = (process.env.SUBMIT ?? "false").toLowerCase() === "true";
 
+/**
+ * Cổng gửi cho runner một chiều. SUBMIT khác "true" ⇒ DỪNG tiến trình (mã thoát 0) ngay trước
+ * lời gọi ký + gửi. Đặt SAU `.complete()`: lượt chạy khô vẫn dựng đủ giao dịch và chạy hết mọi
+ * cổng đứng trước, chỉ không ký, không gửi. Runner nhiều bước nối nhau thì lượt chạy khô dừng ở
+ * bước CHƯA có trên chuỗi đầu tiên — các bước sau cần kết quả của nó, nên không dựng trước được.
+ */
+export function haltUnlessSubmit(label: string): void {
+  if (SUBMIT) return;
+  console.log(
+    `\n(SUBMIT=false ⇒ KHÔNG ký, KHÔNG gửi.) Đã dựng xong: ${label}. Dừng tại đây.\n` +
+    `  Gửi thật: đặt SUBMIT=true rồi chạy lại.`,
+  );
+  process.exit(0);
+}
+
 // ── Asset name LAMP theo network (param token_name của lamp_mint) ──────────
 // Mainnet → "LAMP" (#"4c414d50"); mọi testnet (Preview/Preprod) → "tLAMP"
 // (#"744c414d50"). Token = PolicyID + AssetName → token_name là param ⇒ policyId KHÁC
