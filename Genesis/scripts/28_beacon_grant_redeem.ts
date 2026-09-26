@@ -113,6 +113,7 @@ import {
   OILDROP_PER_LAMP, RATE_ROOT_GENESIS, TRIM_FLOOR, epochWindow,
 } from "../../Distribution/offchain/src/constants.js";
 import { redeemable, beaconIndexAt } from "../../Distribution/offchain/src/vested.js";
+import { accountNftName } from "../../Distribution/offchain/src/accountNft.js";
 import type { BeaconDatum, ClaimAccountDatum, TreasuryDatum } from "../../Distribution/offchain/src/types.js";
 // Kế hoạch beacon/redeem THUẦN của runner v3 đã chạy thật (`Distribution/scripts/04_e2e.ts`),
 // có bài kiểm riêng (`Distribution/tests/e2ePlan.test.ts`). Dùng lại thay vì tính C-BCN-6 lần
@@ -230,11 +231,19 @@ async function main(): Promise<void> {
   const tDatum = decodeTreasuryDatum(Data.from(treasuryUtxo.datum!));
   const pool = treasuryUtxo.assets[wiring.lampUnit] ?? 0n;
 
-  const accountName = /* blake2b_256(owner) — builder tự tính, ở đây chỉ để LỌC */ undefined;
-  const claimUtxos = await lucid.utxosAt(claimAddr);
-  const myAccounts = claimUtxos.filter((u) =>
-    Object.keys(u.assets).some((k) => k.startsWith(wiring.accountPid)));
-  void accountName;
+  // Tài khoản CỦA VÍ NÀY: NFT đúng tên blake2b_256(pkh) (A-ACC-4) và datum mang đúng owner.
+  // Lọc theo policy suông thì đếm luôn tài khoản của feeder (`30_feeder_accounts.ts`) cùng policy
+  // ⇒ GRANT-001/TOPUP-000/REDEEM-000 chặn ví vận hành ngay sau đợt grant feeder đầu tiên.
+  const myUnit = toUnit(wiring.accountPid, accountNftName(pkh));
+  const myAccounts = (await lucid.utxosAtWithUnit(claimAddr, myUnit)).filter((u) => {
+    if ((u.assets[myUnit] ?? 0n) !== 1n) return false;
+    if (!u.datum) throw new Error(`ACC-001: tài khoản ${refKey(u)} không có inline datum.`);
+    const owner = decodeClaimAccountDatum(Data.from(u.datum)).owner;
+    if (owner.toLowerCase() !== pkh.toLowerCase()) {
+      throw new Error(`ACC-002: ${refKey(u)} mang NFT tài khoản của ví này nhưng datum owner ${owner}.`);
+    }
+    return true;
+  });
 
   const e = epochNow();
   console.log(`═══ Beacon · Grant · Redeem (${NETWORK}) ═══`);
@@ -249,7 +258,7 @@ async function main(): Promise<void> {
   console.log(`  sổ nợ : ${lamp(tDatum.outstanding_entitlement)}`);
   console.log(`  đã phát ra (total_redeemed): ${lamp(tDatum.total_redeemed)}`);
   console.log(`\nTài khoản @ ${claimAddr}`);
-  console.log(`  UTxO mang NFT tài khoản: ${myAccounts.length}`);
+  console.log(`  tài khoản của ví này: ${myAccounts.length}`);
   for (const u of myAccounts) console.log(`    · ${refKey(u)}  ${lamp(u.assets[wiring.lampUnit] ?? 0n)}`);
 
   if (!STEP) {
@@ -308,8 +317,9 @@ async function main(): Promise<void> {
     const beaconLive = requireLiveBeacon(beaconD, "GRANT-000");
     if (myAccounts.length > 0) {
       throw new Error(
-        `GRANT-001: ví này ĐÃ có ${myAccounts.length} tài khoản ở ${claimAddr}. Đường CREATE chỉ ` +
-        `chạy một lần cho mỗi ví (tên NFT = blake2b_256(owner)). Tăng E thì đi đường UPDATE.`,
+        `GRANT-001: ví này ĐÃ có ${myAccounts.length} tài khoản ở ${claimAddr}. Runner chỉ CREATE ` +
+        `một lần cho mỗi ví — quy ước của runner: chuỗi KHÔNG chặn đúc lại cùng tên ở giao dịch ` +
+        `sau (A-ACC-2 chỉ đếm trong một giao dịch). Tăng E thì đi đường UPDATE.`,
       );
     }
     const w = windowNow(e);
