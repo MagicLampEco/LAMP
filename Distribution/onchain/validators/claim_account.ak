@@ -601,6 +601,9 @@ type RedeemFx {
   acc_val    : assets.Value,
   extra_outs : List<Output>,
   extra_refs : List<Input>,
+  /// Địa chỉ ngụ của beacon tham chiếu. Để lộ ra vì C-BCN-GEN-6 (`util.find_beacon`) ép nó
+  /// phải là một Script — và một khuôn cố định nó thì không bẻ được mệnh đề ấy.
+  bcn_addr   : Address,
 }
 
 /// Sổ nợ + pool mở đủ rộng để C-SOLV-3 và LAMP trả về không bao giờ là lý do từ chối ở
@@ -634,6 +637,7 @@ fn fx(
     acc_val: acc_value(),
     extra_outs: [],
     extra_refs: [],
+    bcn_addr: util.script_address(#"bbbbbbbb"),
   }
 }
 
@@ -659,7 +663,7 @@ fn redeem_tx(f: RedeemFx) -> Transaction {
   let beacon_ref =
     util.mk_input(
       util.mk_ref(5),
-      util.mk_output(util.script_address(#"bbbbbbbb"), beacon_val, beacon_datum),
+      util.mk_output(f.bcn_addr, beacon_val, beacon_datum),
     )
   let (tre_in, tre_out) =
     treasury_io(f.outst_in, f.outst_out, f.total_in, f.total_out, f.pool)
@@ -693,6 +697,18 @@ test redeem_happy() {
   let in_d = ca_datum(10_000, 0, 0, 1, 0)
   let out_d = ca_datum(10_000, 200, 0, 1, 0)
   redeem_run(fx(in_d, out_d, 200, 3), 200)
+}
+
+/// C-BCN-GEN-6 trên ĐƯỜNG REDEEM: beacon tham chiếu ngụ ở một VÍ. Mọi thứ khác giống
+/// `redeem_happy` từng byte — cùng `rate_root`, cùng `index`, cùng κ, cùng sổ — nên lý do đỏ
+/// duy nhất là nơi beacon ngụ. Trước 2026-09-26 tx này ĐƯỢC CHẤP NHẬN, và khi đó người giữ
+/// ví đặt `rate_root`/`index` tuỳ ý cho chính lượt rút của mình: trần tích luỹ C-RDM-VEST
+/// vẫn được kiểm, nhưng nó được kiểm bằng con số do kẻ rút cung cấp.
+test redeem_beacon_at_wallet_rejected() fail {
+  let in_d = ca_datum(10_000, 0, 0, 1, 0)
+  let out_d = ca_datum(10_000, 200, 0, 1, 0)
+  let base = fx(in_d, out_d, 200, 3)
+  redeem_run(RedeemFx { ..base, bcn_addr: util.vk_address(#"badbad") }, 200)
 }
 
 /// Biên CHẴN của phép kẹp: 300² = 90.000 = 1·10.000·3². Mệnh đề là `≤` nên nó PHẢI qua.

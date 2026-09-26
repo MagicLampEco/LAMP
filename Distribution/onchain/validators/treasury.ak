@@ -25,6 +25,7 @@
 use aiken/collection/list
 use aiken/crypto.{blake2b_256}
 use aiken/interval
+use cardano/address.{Address}
 use cardano/assets
 use cardano/transaction.{
   InlineDatum, Input, Output, OutputReference, Transaction,
@@ -642,10 +643,15 @@ fn tt_a_at(window: Int) -> Int {
 /// Reference input mang beacon NFT — `GrantEntitlement` đòi nó ở MỌI giao dịch (đây là
 /// một đổi HÌNH DẠNG TX của v3, không chỉ đổi tham số).
 fn tt_bcn_ref() -> Input {
+  tt_bcn_ref_at(util.script_address(#"bcbc"))
+}
+
+/// Cùng beacon, ĐỊA CHỈ ngụ để lộ ra — C-BCN-GEN-6 (`util.find_beacon`) ép nó là một Script.
+fn tt_bcn_ref_at(addr: Address) -> Input {
   util.mk_input(
     util.mk_ref(9),
     util.mk_output(
-      util.script_address(#"bcbc"),
+      addr,
       assets.add(
         assets.from_lovelace(2_000_000),
         tt_bcn_policy,
@@ -1201,6 +1207,20 @@ test grant_create_without_beacon_reference_rejected() fail {
     Transaction {
       ..grant_tx_at(5000, 0, 1000, None, 1000, 0, [#"c1", #"c2"], 7, tt_range(7)),
       reference_inputs: [],
+    }
+  grant(0, tx)
+}
+
+/// C-BCN-GEN-6 trên ĐƯỜNG GRANT: beacon CÓ MẶT, đúng NFT, đúng datum, nhưng ngụ ở một VÍ.
+/// Cặp với `grant_create_index_at_now_ok` — khác đúng một thứ là payment credential, nên lý
+/// do đỏ duy nhất là nơi beacon ngụ. Trước 2026-09-26 tx này ĐƯỢC CHẤP NHẬN, và `index_at_start`
+/// của mọi tài khoản mới được ghim theo một chỉ số do người dựng tx tự viết: đặt nó thật
+/// THẤP thì tài khoản vest gần như tức thì ngay lượt rút kế tiếp.
+test grant_create_beacon_at_wallet_rejected() fail {
+  let tx =
+    Transaction {
+      ..grant_create_idx_tx(tt_a_now),
+      reference_inputs: [tt_bcn_ref_at(util.vk_address(#"badbad"))],
     }
   grant(0, tx)
 }

@@ -42,7 +42,7 @@ import {
   beaconDatumToCbor, treasuryDatumToCbor,
 } from "../offchain/src/datum.js";
 import {
-  RATE_ROOT_GENESIS, RATE_ROOT_MIN, RATE_ROOT_MAX,
+  RATE_ROOT_GENESIS, assertGenesisRateRoot,
   TRIM_NUM_GENESIS, TRIM_DEN_GENESIS,
 } from "../offchain/src/constants.js";
 
@@ -84,13 +84,11 @@ if ((process.env.DROP_VALUE_OILDROP ?? "").trim() !== "") {
   );
 }
 const RATE_ROOT = BigInt(process.env.RATE_ROOT ?? RATE_ROOT_GENESIS.toString());
-if (RATE_ROOT < RATE_ROOT_MIN || RATE_ROOT > RATE_ROOT_MAX) {
-  throw new Error(
-    `GEN-V3-002: RATE_ROOT ${RATE_ROOT} ngoài biên [${RATE_ROOT_MIN}, ${RATE_ROOT_MAX}] mà ` +
-    `\`beacon.ak\` ép ở C-BCN-5b. Genesis đặt ngoài biên thì KHÔNG lượt post nào sau đó hợp ` +
-    `lệ — và genesis không undo được.`,
-  );
-}
+// Cổng fail-closed: biên cứng (GEN-V3-002) + ĐÚNG mốc hiệu chỉnh trên Mainnet (GEN-V3-003).
+// Thân cổng nằm ở `offchain/src/constants.ts` ▸ `assertGenesisRateRoot` cạnh chính các hằng
+// nó so, và ở đó nó CÓ BÀI KIỂM (`tests/genesisGate.test.ts`) — một cổng chặn thứ bất khả hồi
+// mà chỉ tồn tại dưới dạng `if` trong một script chạy tay thì không ai đo được nó còn sống.
+assertGenesisRateRoot(RATE_ROOT, NETWORK);
 
 /** Ví B test: PRIVATE_KEY_B/WALLET_SEED_B nếu có; else PKH cố định (chỉ demo 2 account). */
 async function resolveWalletBPkh(): Promise<{ pkh: string; real: boolean }> {

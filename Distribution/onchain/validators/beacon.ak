@@ -9,6 +9,7 @@
 // (không qua validator). Mọi update sau spend + re-create với epoch tăng.
 
 use aiken/interval
+use cardano/address.{Address}
 use cardano/assets
 use cardano/transaction.{InlineDatum, OutputReference, Transaction, placeholder}
 use magiclamp/lampdist/constants
@@ -146,8 +147,35 @@ validator beacon(
     // toàn hệ đổ vỡ, vĩnh viễn và không ai kêu (beacon vẫn hợp lệ, sổ vẫn đúng, chỉ là
     // không tx rút nào dựng được nữa). Đó là đúng cái quyền đóng băng mà CONTRACT §9 nói
     // committee KHÔNG còn: "trim_num siết được nhưng chỉ chạm lượt rút tương lai".
-    // `trim_num` thì không cần gác — số âm làm tích âm, và `max(trim_floor, ·)` nuốt nó.
     expect out_datum.trim_den > 0
+
+    // ── C-BCN-TRIM-NUM (2026-09-26): TỬ SỐ CẮT NGỌN PHẢI DƯƠNG ───────────────────────
+    // ⚠ Bản trước của chú thích trên viết: "`trim_num` thì không cần gác — số âm làm tích
+    // âm, và `max(trim_floor, ·)` nuốt nó." Câu đó ĐÚNG về số ÂM và MÙ với số 0, mà số 0 là
+    // giá trị duy nhất trong miền có người muốn đặt.
+    //
+    // `trim_num = 0` ⇒ `total_redeemed · 0 / trim_den == 0` ⇒ trần một lượt rút bằng
+    // `max(trim_floor, 0) == trim_floor` MÃI MÃI, bất kể lưu hành lớn tới đâu. Một pot 6 tỷ
+    // LAMP khi ấy phải rút 6 triệu lượt ở 1.000 LAMP/lượt, và `find_treasury_in` giới hạn
+    // toàn hệ MỘT `Redeem` mỗi block (CONTRACT §4 nút cổ chai) ⇒ nhiều thập kỷ. Đó đúng là
+    // quyền làm chậm tài sản người khác mà CONTRACT §9 nói committee KHÔNG còn: bảng quyền
+    // ghi "`trim_num` siết được nhưng chỉ chạm lượt rút tương lai", và chữ "siết" không bao
+    // hàm "tắt hẳn". Không bất biến nào vỡ — nó không phá tính ĐÚNG, nó phá THÔNG LƯỢNG.
+    //
+    // Số ÂM thì vẫn đúng như câu cũ nói, nhưng chốt này bao luôn nó, và bao là đúng: một
+    // tham số mà miền hợp lệ là `> 0` thì nên nói ra `> 0`, đừng để ba bước suy luận
+    // (`max`, dấu, làm tròn về 0 của phép chia số nguyên) gánh hộ.
+    expect out_datum.trim_num > 0
+
+    // ── C-BCN-HOME (2026-09-26): BEACON KHÔNG ĐỔI NHÀ ───────────────────────────────
+    // `count_outputs_at_script` + `output_at_script` ở trên chỉ ép PAYMENT credential; hai
+    // địa chỉ cùng script hash mà khác stake credential là HAI địa chỉ (đúng dữ kiện mà
+    // audit C1 dựng ra: xem `util.ak` ▸ `script_count_catches_stake_cred_double`). Nên
+    // trước dòng này một lượt post dời được beacon sang stake credential của người dựng tx,
+    // và toàn bộ phần thưởng uỷ quyền của min-ADA beacon đi theo — vĩnh viễn, vì C-BCN-1
+    // không bao giờ đòi ai trả lại. Đối xứng với C-SOLV-5 của TRSY ("ra đúng địa chỉ đã
+    // vào"); ở đây rẻ hơn hẳn vì cả hai đầu đã nằm trong tay.
+    expect beacon_out.address == beacon_in.address
 
     // authenticity NFT bảo toàn (đúng 1 token, không bị rút)
     let nft_name = util.beacon_name(datum.kind)
@@ -250,6 +278,27 @@ fn beacon_tx_full(
   out_trim_den : Int,
   vr        : interval.Interval,
 ) -> Transaction {
+  beacon_tx_raw(
+    in_epoch, out_epoch, sigs, in_w, out_w, out_index, bt_trim_num, out_trim_den,
+    util.script_address(bt_sh), vr,
+  )
+}
+
+/// Khuôn TRỌN VẸN — để lộ thêm `out_trim_num` (C-BCN-TRIM-NUM) và ĐỊA CHỈ ra của beacon
+/// (C-BCN-HOME). Hai trường này phải lộ ra chứ không gói lại: cả hai đều là thứ người dựng
+/// tx đặt được, nên một khuôn cố định chúng là một khuôn không bẻ được mệnh đề nào.
+fn beacon_tx_raw(
+  in_epoch     : Int,
+  out_epoch    : Int,
+  sigs         : List<ByteArray>,
+  in_w         : Int,
+  out_w        : Int,
+  out_index    : Int,
+  out_trim_num : Int,
+  out_trim_den : Int,
+  out_addr     : Address,
+  vr           : interval.Interval,
+) -> Transaction {
   let addr = util.script_address(bt_sh)
   let nft_val =
     assets.add(assets.from_lovelace(2_000_000), bt_nft_policy, util.beacon_name(DropParam), 1)
@@ -264,11 +313,11 @@ fn beacon_tx_full(
       kind: DropParam,
       index: out_index,
       rate_root: out_w,
-      trim_num: bt_trim_num,
+      trim_num: out_trim_num,
       trim_den: out_trim_den,
       speed_policies: [],
     }
-  let b_out = util.mk_output(addr, nft_val, out_d)
+  let b_out = util.mk_output(out_addr, nft_val, out_d)
   Transaction {
     ..placeholder,
     inputs: [b_in],
@@ -513,6 +562,66 @@ test beacon_trim_denominator_one_ok() {
     beacon_tx_full(
       5, 6, [#"c1", #"c2"], bt_w_in, 105_000, bt_index_ok(5, 6, bt_index_in, bt_w_in),
       1, interval.between(6 * bt_mspe, 6 * bt_mspe + 1000),
+    ),
+  )
+}
+
+// ── C-BCN-TRIM-NUM: TỬ SỐ cắt ngọn phải dương (mệnh đề THÊM 2026-09-26) ──────
+
+/// `trim_num = 0`: beacon vẫn hợp lệ theo MỌI chốt cũ (epoch tăng, nhãn đúng cửa sổ, w nới
+/// trong biên, index cộng đúng, mẫu số > 0, NFT bảo toàn) — và trần một lượt rút bị ghim
+/// VĨNH VIỄN ở `trim_floor` cho mọi pot. Đây là ca phân biệt được bản có và bản không có
+/// mệnh đề mới: trước nó tx này ĐƯỢC CHẤP NHẬN.
+test beacon_zero_trim_numerator_rejected() fail {
+  bt_run(
+    5,
+    beacon_tx_raw(
+      5, 6, [#"c1", #"c2"], bt_w_in, 105_000, bt_index_ok(5, 6, bt_index_in, bt_w_in),
+      0, bt_trim_den, util.script_address(bt_sh),
+      interval.between(6 * bt_mspe, 6 * bt_mspe + 1000),
+    ),
+  )
+}
+
+/// Tử số ÂM — chiều mà chú thích cũ nói "không cần gác". Nó đúng ở chỗ `max(trim_floor, ·)`
+/// nuốt tích âm, nhưng bài này vẫn phải ĐỎ: mệnh đề mới là `> 0`, và một giá trị không có
+/// nghĩa vận hành nào thì không nên hợp lệ chỉ vì có thứ khác dọn hộ.
+test beacon_negative_trim_numerator_rejected() fail {
+  bt_run(
+    5,
+    beacon_tx_raw(
+      5, 6, [#"c1", #"c2"], bt_w_in, 105_000, bt_index_ok(5, 6, bt_index_in, bt_w_in),
+      -1, bt_trim_den, util.script_address(bt_sh),
+      interval.between(6 * bt_mspe, 6 * bt_mspe + 1000),
+    ),
+  )
+}
+
+/// Đối chứng: `trim_num = 2` (nới cắt ngọn) vẫn QUA — hai bài trên đỏ vì cận dưới của miền,
+/// không vì một chốt tưởng tượng nào ghim `trim_num == 1`.
+test beacon_trim_numerator_two_ok() {
+  bt_run(
+    5,
+    beacon_tx_raw(
+      5, 6, [#"c1", #"c2"], bt_w_in, 105_000, bt_index_ok(5, 6, bt_index_in, bt_w_in),
+      2, bt_trim_den, util.script_address(bt_sh),
+      interval.between(6 * bt_mspe, 6 * bt_mspe + 1000),
+    ),
+  )
+}
+
+// ── C-BCN-HOME: beacon không đổi nhà (mệnh đề THÊM 2026-09-26) ───────────────
+
+/// Beacon ra ĐÚNG script hash nhưng gắn thêm một stake credential. Đếm-theo-script-hash cũ
+/// KHÔNG phân biệt được ca này (đó là cùng dữ kiện mà audit C1 dựng ra, chỉ dùng theo chiều
+/// ngược), nên trước 2026-09-26 tx này ĐƯỢC CHẤP NHẬN và min-ADA beacon đổi chủ uỷ quyền.
+test beacon_output_restaked_rejected() fail {
+  bt_run(
+    5,
+    beacon_tx_raw(
+      5, 6, [#"c1", #"c2"], bt_w_in, 105_000, bt_index_ok(5, 6, bt_index_in, bt_w_in),
+      bt_trim_num, bt_trim_den, util.script_address_staked(bt_sh, #"5a5e"),
+      interval.between(6 * bt_mspe, 6 * bt_mspe + 1000),
     ),
   )
 }
