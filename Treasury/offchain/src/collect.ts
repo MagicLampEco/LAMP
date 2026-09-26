@@ -11,7 +11,9 @@
 //   value_out == value_in ⊕ cut_value(items)
 // Residual (amount − cut) do CALLER trả thẳng provider ngoài custody.
 
-import { RESERVE_INFLOW_BUCKET_ID, STAKE_REWARD_BUCKET_ID } from "./constants.js";
+import {
+  MAX_LEDGER_LINES, RESERVE_INFLOW_BUCKET_ID, STAKE_REWARD_BUCKET_ID,
+} from "./constants.js";
 import type { CollectItem, CustodyDatum, LedgerEntry } from "./types.js";
 
 /** Đơn vị value đa-asset offchain: key "policy|name" → amount. "" cho lovelace. */
@@ -185,9 +187,16 @@ export function allPositive(ledger: LedgerEntry[]): boolean {
   return ledger.every((e) => e.amount > 0n);
 }
 
-/** is_canonical on-chain: strict_sorted ∧ all_positive. */
+/** within_line_cap on-chain (C-LINES): sổ không vượt trần số dòng.
+ *  Trần là bản sao có nhãn của `ledger.max_ledger_lines` — xem `constants.ts`. */
+export function withinLineCap(ledger: LedgerEntry[]): boolean {
+  return ledger.length <= MAX_LEDGER_LINES;
+}
+
+/** is_canonical on-chain: within_line_cap ∧ strict_sorted ∧ all_positive.
+ *  Thứ tự giống on-chain: trần đứng trước vì nó chặn đúng cái làm hai vế sau đắt. */
 export function isCanonical(ledger: LedgerEntry[]): boolean {
-  return strictSorted(ledger) && allPositive(ledger);
+  return withinLineCap(ledger) && strictSorted(ledger) && allPositive(ledger);
 }
 
 /** Sắp xếp sổ theo khóa canonical (bucket_id, policy, name) — khớp key_lt. KHÔNG đổi amount. */

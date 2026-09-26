@@ -29,6 +29,10 @@
 //   S-SEED-0  seed_value_ok: value == ledger.value_of(ledger) ⊕ reserved_min_ada (NỀN).
 //   S-LEDGER-0 sổ CANONICAL: strict-sorted ∧ mọi dòng > 0 (no-dup O(n) + chống dòng
 //             0/âm lọt qua seed — đặc biệt dòng ADA âm bù reserved).
+//   S-LEDGER-LINES sổ genesis ≤ `ledger.max_ledger_lines` dòng (cùng một cổng
+//             `ledger.is_canonical`). Seed là cửa DUY NHẤT đặt số dòng khởi điểm, nên
+//             không chặn ở đây thì trần ở các nhánh nạp vô nghĩa: một instance gieo
+//             thẳng 500 dòng đã khoá ngay từ giao dịch thứ hai.
 //   S-ACC-0   mọi dòng sổ thuộc accepted_assets (đa thuê bao nhất quán).
 //   S-LEDGER-RESERVED sổ genesis KHÔNG chứa dòng ở bucket dành riêng nào: nguồn Reserve
 //             (`migrate.reserve_inflow_bucket_id`, chỉ MigrateIn được ghi) và thưởng uỷ

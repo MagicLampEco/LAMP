@@ -13,6 +13,7 @@
 //   C-COL-1   ĐÚNG 1 custody input + 1 custody output theo PAYMENT SCRIPT HASH.
 //   C-COL-2   params instance (id, accepted, governance_ref, cut_bps) bảo toàn.
 //   C-COL-3   Sổ: ledger_out == ledger_in + Σcut tại đúng (category, asset), CANONICAL.
+//   C-COL-LINES  Sổ ra ≤ `ledger.max_ledger_lines` dòng (ép trong `ledger.is_canonical`).
 //   C-COL-4   Value: custody_out.value == custody_in.value ⊕ cut_value(items) — Σout=Σin.
 //   C-COL-5   Mọi item: amount ≥ 0 + asset ∈ accepted_assets.
 //   C-COL-ADDR      cust_out.address == cust_in.address (GHIM CẢ stake credential).
@@ -29,6 +30,7 @@
 //   C-REL-8   current_epoch ≥ proposal.execute_after_epoch (time-lock).
 //   C-REL-5   Value: custody_out.value == custody_in.value ⊖ Σdraw — Σout=Σin per-asset.
 //   C-REL-6   Sổ: ledger_out[(b,a)] == ledger_in[(b,a)] − Σdraw(b,a) ∧ draw ≤ số dư, CANONICAL.
+//   C-REL-LINES  Sổ ra ≤ `ledger.max_ledger_lines` dòng (ép trong `ledger.is_canonical`).
 //   C-REL-7   Người nhận: Σ output tới `to` ≥ Σ draw(to,asset) ∧ to ≠ custody.
 //   C-REL-9   SINGLE-USE proposal (chống replay / chi vượt ngưỡng duyệt).
 //   C-REL-ADDR      cust_out.address == cust_in.address (GHIM CẢ stake credential).
@@ -45,6 +47,7 @@
 //   C-MIG-7   Value: cust_out.value == cust_in.value ⊕ Δ; mọi asset khác NGUYÊN.
 //   C-MIG-8   Sổ: ledger_out == ledger_in + Δ tại ĐÚNG 1 (bucket, asset), CANONICAL;
 //             bucket là HẰNG dành riêng cho nguồn Reserve, `source` phải khớp nhãn.
+//   C-MIG-LINES  Sổ ra ≤ `ledger.max_ledger_lines` dòng (ép trong `ledger.is_canonical`).
 //   C-MIG-9   (lamp_policy, token_name) ∈ accepted_assets.
 //   C-MIG-ADDR      cust_out.address == cust_in.address (GHIM CẢ stake credential).
 //   C-MIG-REFSCRIPT cust_out.reference_script == None.
@@ -61,6 +64,7 @@
 //   C-STK-7   Value: lovelace_out == lovelace_in + Δ (ĐẲNG THỨC); mọi asset khác NGUYÊN.
 //   C-STK-8   Sổ: ledger_out == ledger_in + Δ tại HẰNG `stake_reward_bucket_id` × ADA,
 //             CANONICAL; bucket là HẰNG, không tham số nào do người gọi điều khiển.
+//   C-STK-LINES  Sổ ra ≤ `ledger.max_ledger_lines` dòng (ép trong `ledger.is_canonical`).
 //   C-STK-9   ADA ∈ accepted_assets (giữ bất biến S-ACC-0 "mọi dòng sổ ∈ accepted").
 //   C-STK-10  tx.withdrawals[stake credential của kho] == Δ — Δ là thưởng THẬT, không phải
 //             ADA tự bỏ; ghép với `treasury_stake` ▸ S-STK-BOOK thành ràng buộc HAI CHIỀU.
