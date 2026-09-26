@@ -290,7 +290,8 @@ describe("buildMintTx — datum kho đúng HÌNH DẠNG TreasuryDatum (GMB-010)"
     const pkh = "ee".repeat(28);
     expect(() => assertTreasuryDatumShape("d8799f581c" + pkh + "00ff")).toThrow(/GMB-010/);     // 2 trường
     expect(() => assertTreasuryDatumShape("d8799f00" + "0000ff")).toThrow(/GMB-010/);           // bytes → int
-    expect(() => assertTreasuryDatumShape("d8799f581c" + pkh + "2000ff")).toThrow(/GMB-010/);   // -1
+    expect(() => assertTreasuryDatumShape("d8799f581c" + pkh + "2000ff")).toThrow(/GMB-010/);   // outstanding -1
+    expect(() => assertTreasuryDatumShape("d8799f581c" + pkh + "0020ff")).toThrow(/GMB-010/);   // total_redeemed -1
     expect(() => assertTreasuryDatumShape("d87a9f581c" + pkh + "0000ff")).toThrow(/GMB-010/);   // Constr 1
     expect(() => assertTreasuryDatumShape("zz")).toThrow(/GMB-010/);
   });

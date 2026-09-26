@@ -17,6 +17,7 @@ import {
   CONSEQUENCE_METER, CONSEQUENCE_DIST_DEST, CONSEQUENCE_GENESIS_REF,
 } from "./_guards.js";
 import { assertParamCount } from "../offchain/src/applyGate.js";
+import { haltUnlessSubmit } from "./config.js";
 
 // BÍ MẬT: tệp này nhận GIÁ TRỊ qua biến môi trường, KHÔNG mở kho khoá và KHÔNG biết
 // kho ở đâu. Đường cũ tự đọc biến trỏ tới kho rồi `dotenv.config()` lên tệp đó — thứ
@@ -56,8 +57,8 @@ const getV = (t: string) => bp.validators.find((v: { title: string }) => v.title
 // CỔNG APPLY-001 — script này TỰ đọc plutus.json thay vì đi qua `config.ts::applyPolicy`,
 // nên trước bản vá này nó là đường DUY NHẤT trong Genesis đi vòng cổng gác.
 // `applyParamsToScript` KHÔNG báo lỗi khi thiếu tham số: nó apply một phần rồi trả về một
-// policy-id / script-hash KHÁC, im lặng. Mà 03 luôn submit thật (`signed.submit()` cuối tệp)
-// ⇒ "im lặng" ở đây nghĩa là ĐÚC TOKEN DƯỚI SAI POLICY, không một dòng cảnh báo.
+// policy-id / script-hash KHÁC, im lặng. Với SUBMIT=true, "im lặng" ở đây nghĩa là ĐÚC TOKEN
+// DƯỚI SAI POLICY, không một dòng cảnh báo.
 // Dùng chung `assertParamCount` với `config.ts` để hai đường không thể lệch luật.
 function applyChecked(title: string, params: unknown[]): string {
   const v = getV(title);
@@ -68,8 +69,8 @@ function applyChecked(title: string, params: unknown[]): string {
 const genesisRef = new Constr(0, [genesisRefHash, GENESIS_REF_IDX]);
 const threadPolicy: MintingPolicy = { type: "PlutusV3", script: applyChecked("thread_nft.thread_nft.mint", [genesisRef]) };
 const threadPid = mintingPolicyToId(threadPolicy);
-// CỔNG GÁC apply-param — 03 luôn submit thật (`signed.submit()` cuối tệp), nên gác
-// submit=true cho MỌI tham số hash/policy-id đọc từ env, không riêng DIST_DEST — kể cả
+// CỔNG GÁC apply-param — lượt chạy khô (SUBMIT≠true, dừng ở `haltUnlessSubmit`) vẫn dựng ĐÚNG
+// giao dịch sẽ gửi, nên gác submit=true cho MỌI tham số hash/policy-id đọc từ env, không riêng DIST_DEST — kể cả
 // `genesis_ref` ở trên (câu này từng SAI với chính tệp nó nằm trong: genesis_ref là literal
 // Preview, ungated). Còn lại cố ý là literal và KHÔNG phải hash/policy-id: `SUPPLY_NAME`/
 // `TOKEN_NAME` là asset-name hằng, `[pkh]`/`1n` là authority 1-of-1 self-test lấy từ ví.
@@ -132,6 +133,7 @@ const tx = await lucid.newTx()
   .complete({ coinSelection: true });
 
 console.log(`Tx built (eval OK). CBOR len: ${tx.toCBOR().length}`);
+haltUnlessSubmit("mint thêm tLAMP");
 const signed = await tx.sign.withWallet().complete();
 const h = await signed.submit();
 console.log(`SUBMITTED https://preview.cexplorer.io/tx/${h}`);
