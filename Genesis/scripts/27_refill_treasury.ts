@@ -11,9 +11,11 @@
 //
 // KHÔNG TỰ CHỌN INPUT. Script này LIỆT KÊ những gì đang ở địa chỉ kho rồi DỪNG, trừ khi người
 // vận hành nêu đích danh từng UTxO qua `REFILL_INPUTS`. Cố ý: ai cũng đỗ được một UTxO ở địa
-// chỉ script (Cardano không chạy validator lúc TẠO), nên một UTxO mang datum-hash do người lạ
-// đặt vào sẽ làm `fold_ledger` (`treasury.ak:306`) `fail` cho mọi tx gộp quét-tất-cả. Quét =
-// mời người lạ khoá vĩnh viễn nhánh cứu kho.
+// chỉ script (Cardano không chạy validator lúc TẠO). Từ 2026-09-26 `treasury.ak` ▸ `carrier_ledger`
+// lấy sổ CHỈ từ carrier và bỏ qua datum mọi input khác, nên datum lạ không còn chặn được Refill;
+// nhưng hai hình dạng người lạ đỗ được vẫn làm hỏng một tx quét-tất-cả: tài sản trùng TÊN "TRSY"
+// dưới policy khác (chuỗi thấy 2 carrier ⇒ từ chối; builder loại nó) và UTxO datum-hash mà
+// provider không có preimage (Lucid không lập được witness). Soát tay vẫn rẻ hơn.
 //
 // Chạy:
 //   NETWORK=Preprod tsx 27_refill_treasury.ts                       # liệt kê rồi dừng
@@ -25,7 +27,9 @@ import {
   rehydrate, canonicalCommittee, CANONICAL_COMMITTEE_THRESHOLD,
 } from "./_canonical_v2.js";
 import { assertRefillOutputMatches } from "./_refillReadback.js";
-import { buildRefillTx } from "../../Distribution/offchain/src/refillBuilder.js";
+import {
+  buildRefillTx, bearsForeignTreasuryName,
+} from "../../Distribution/offchain/src/refillBuilder.js";
 import { decodeTreasuryDatum } from "../../Distribution/offchain/src/datum.js";
 
 /** LAMP nạp THÊM từ ví, đơn vị oildrop. Mặc định 0 — thuần gộp. */
@@ -36,7 +40,8 @@ const refKey = (u: UTxO) => `${u.txHash}#${u.outputIndex}`;
 /**
  * Giải mã `outstanding_entitlement` của một UTxO kho, nếu có datum. `undefined` khi UTxO
  * không mang datum (A-DEST hạ cánh — hợp lệ, không phải lỗi), `null` khi mang datum nhưng
- * KHÔNG giải mã được thành TreasuryDatum (RFL-012 xử ở builder, tại đây chỉ cần biết "lạ").
+ * KHÔNG giải mã được thành TreasuryDatum. Chỉ để HIỂN THỊ: builder chỉ đọc datum của carrier
+ * (RFL-012), datum mọi UTxO khác bị bỏ qua cả trên chuỗi lẫn ở builder.
  */
 function ledgerOf(u: UTxO): bigint | null | undefined {
   if (!u.datum) return undefined;
@@ -53,7 +58,7 @@ function describe(u: UTxO, lampUnit: string, khoUnit: string): string {
   const trsy = u.assets[khoUnit] ?? 0n;
   let shape: string;
   if (u.datumHash && !u.datum) {
-    shape = "DATUM-HASH (không gộp được)";
+    shape = "DATUM-HASH (gộp cần preimage datum để lập witness; carrier thì KHÔNG gộp được)";
   } else {
     const led = ledgerOf(u);
     shape = led === undefined ? "không datum"
@@ -83,24 +88,20 @@ async function main(): Promise<void> {
     // đã loại: ai cũng đỗ được một UTxO ở địa chỉ script công khai này (Cardano không chạy
     // validator lúc TẠO). Người vận hành đang cứu kho là người có lý do NHẤT để dán nguyên cái
     // script đưa cho họ — không phải chỗ để đặt cược vào sự cẩn thận của con người.
-    // RFL-013 (`refillBuilder.ts`): `outstanding_entitlement` ÂM cũng phải loại khỏi gợi ý — nó
-    // GỘP ĐƯỢC bằng chuỗi (`fold_ledger` không ép số hạng không-âm) nhưng builder này từ chối,
-    // vì cộng nó vào sổ cái kéo tổng nợ xuống thấp hơn thật. Loại theo hình dạng, không theo địa
-    // chỉ ai đặt — script này không biết ai đặt một UTxO ở địa chỉ kho công khai.
-    const boAm = all.filter((u) => {
-      const led = ledgerOf(u);
-      return led !== undefined && led !== null && led < 0n;
-    });
-    const boAmKeys = new Set(boAm.map(refKey));
-    const goiY = all.filter((u) => (!u.datumHash || u.datum) && !boAmKeys.has(refKey(u)));
-    const bo = all.filter((u) => u.datumHash && !u.datum);
+    // Datum của UTxO không-carrier (kể cả số ÂM hay KHỐNG) KHÔNG còn là lý do loại: chuỗi bỏ qua
+    // nó (`carrier_ledger`), builder cũng vậy. Loại theo hình dạng, không theo địa chỉ ai đặt.
+    const isCarrier = (u: UTxO) => (u.assets[wiring.khoUnit] ?? 0n) === 1n;
+    const boGia = all.filter((u) => !isCarrier(u) && bearsForeignTreasuryName(u, wiring.markers.khoPid));
+    const bo = all.filter((u) => !isCarrier(u) && u.datumHash && !u.datum);
+    const boKeys = new Set([...boGia, ...bo].map(refKey));
+    const goiY = all.filter((u) => !boKeys.has(refKey(u)));
     if (bo.length) {
-      console.log(`\n⚠️  ${bo.length} UTxO mang DATUM-HASH — không tx nào gộp được (fold_ledger fail), đã loại khỏi gợi ý:`);
+      console.log(`\n⚠️  ${bo.length} UTxO mang DATUM-HASH — gộp cần preimage datum để lập witness, provider thường không có; đã loại khỏi gợi ý:`);
       for (const u of bo) console.log(`  · ${refKey(u)}`);
     }
-    if (boAm.length) {
-      console.log(`\n⚠️  ${boAm.length} UTxO khai outstanding_entitlement ÂM — RFL-013 từ chối, đã loại khỏi gợi ý:`);
-      for (const u of boAm) console.log(`  · ${describe(u, wiring.lampUnit, wiring.khoUnit)}`);
+    if (boGia.length) {
+      console.log(`\n⚠️  ${boGia.length} UTxO mang tài sản tên TRSY dưới policy KHÁC — chuỗi nhận carrier theo TÊN, gộp vào là 2 carrier ⇒ từ chối; đã loại khỏi gợi ý (builder cũng loại):`);
+      for (const u of boGia) console.log(`  · ${describe(u, wiring.lampUnit, wiring.khoUnit)}`);
     }
     console.log(
       `\nDỪNG: chưa nêu input. Script này KHÔNG tự chọn — xem lý do ở đầu tệp.\n` +

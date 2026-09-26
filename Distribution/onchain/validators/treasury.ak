@@ -27,7 +27,7 @@ use aiken/crypto.{blake2b_256}
 use aiken/interval
 use cardano/assets
 use cardano/transaction.{
-  DatumHash, InlineDatum, Input, NoDatum, Output, OutputReference, Transaction,
+  InlineDatum, Input, Output, OutputReference, Transaction,
   placeholder,
 }
 use magiclamp/lampdist/types.{
@@ -175,7 +175,16 @@ validator treasury(
         expect ca_in_count <= 1
 
         // granted = entitlement(out) − entitlement(in_or_0).
-        let ca_out = find_claim_account_output(tx.outputs, claim_account_hash)
+        //
+        // ⚠ 2026-09-26 — LẤY TRỌN `Output`, không chỉ datum. `find_claim_account_output`
+        // trả về `ClaimAccountDatum`, tức mọi mệnh đề CREATE viết từ trước tới nay CHỈ
+        // NHÌN THẤY phần datum của tài khoản; VALUE của nó không đi vào một mệnh đề nào.
+        // Đó là lý do C-ACC-1 nói được "tx phải ĐÚC NFT" mà không nói được "NFT phải NẰM
+        // TRONG tài khoản" — một chữ ký hàm đã quyết hộ phạm vi của cái cổng.
+        // `ca_out_count == 1` ngay trên ⇒ `output_at_script` trả về đúng cái output ấy.
+        let ca_out_utxo = util.output_at_script(tx.outputs, claim_account_hash)
+        expect InlineDatum(ca_out_raw) = ca_out_utxo.datum
+        expect ca_out: ClaimAccountDatum = ca_out_raw
         let ent_in =
           if ca_in_count == 1 {
             let ca_in = find_claim_account_input(tx.inputs, claim_account_hash)
@@ -286,6 +295,30 @@ validator treasury(
                 account_nft_policy,
                 blake2b_256(ca_out.owner),
               ) == 1
+
+            // ── C-ACC-1b (2026-09-26): NFT vừa đúc phải NẰM TRONG tài khoản vừa mở ──
+            // C-ACC-1 ngay trên đo `tx.mint` — tức nó chỉ biết NFT được SINH RA, không
+            // biết nó HẠ CÁNH Ở ĐÂU. Cổng duy nhất nói về đích là `claim_account_nft.ak`
+            // ▸ A-ACC-3, và cổng ấy cố ý chỉ ép "phải là MỘT Script bất kỳ" (vòng tham
+            // số: policy cần hash `claim_account`, hash `claim_account` cần policy). Lời
+            // biện hộ ghi ở đó — *"đúc vào script KHÁC thì tự khoá tiền của kẻ dựng tx,
+            // không phải bề mặt tấn công"* — ĐÚNG với ví kẻ dựng tx và SAI với kho: giao
+            // dịch này vẫn ghi `granted` vào `outstanding_entitlement` ở C-SOLV-1 dưới
+            // đây. Tài khoản ra đời KHÔNG NFT thì `claim_account.spend` từ chối nó vĩnh
+            // viễn ⇒ nợ đã vào sổ mà không có đường lùi (sổ chỉ giảm qua
+            // `ReleaseForRedeem`, vốn cần một tài khoản tiêu được) ⇒ C-SOLV-2 siết dần
+            // trần cấp phát cho MỌI pot về sau. Đúng cái bẫy một chiều mà C-ACC-1 sinh ra
+            // để chặn, chỉ khác ở chỗ NFT có tồn tại — nên C-ACC-1 nhìn không thấy.
+            //
+            // Vì sao ép được ở ĐÂY mà không ép được ở mint policy: `treasury` đã nhận
+            // `claim_account_hash` làm tham số từ đầu, không có vòng nào cả. Đây là chỗ
+            // DUY NHẤT trong hệ biết CẢ HAI: tên NFT phải đúc, và địa chỉ tài khoản.
+            expect
+              assets.quantity_of(
+                ca_out_utxo.value,
+                account_nft_policy,
+                blake2b_256(ca_out.owner),
+              ) == 1
             0
           }
         let granted = ca_out.entitlement - ent_in
@@ -302,7 +335,7 @@ validator treasury(
         // LAMP nào (C-VAL-0 ngay dưới), nên số ĐÃ PHÁT không có lý do đổi. Thiếu dòng này thì
         // chỉ riêng nhánh này cho viết lại trường "CHỈ TĂNG" tuỳ ý: thổi lên thì trần cắt ngọn
         // ở `claim_account` nới ra; kéo về 0 thì trần rơi về `trim_floor`; ghi âm thì mọi
-        // `Refill` về sau chết ở `fold_ledger` (`total_redeemed >= 0`). Ghim bởi
+        // `Refill` về sau chết ở `carrier_ledger` (`total_redeemed >= 0`). Ghim bởi
         // `grant_inflating_total_redeemed_rejected` và hai ca anh em.
         expect out_datum.total_redeemed == datum.total_redeemed
 
@@ -321,7 +354,8 @@ validator treasury(
       // script, không đường nào đưa vào pool đang được C-SOLV-2 đo.
       Refill -> {
         // KHÔNG dùng `datum_opt`: nhánh này PHẢI chạy được cho input KHÔNG datum.
-        // (Sổ cái của riêng input đó bị bỏ qua — xem `fold_ledger` — nhưng MỌI mệnh đề
+        // (Sổ cái của riêng input đó bị bỏ qua khi nó không phải carrier — xem
+        // `carrier_ledger` — nhưng MỌI mệnh đề
         // toàn-tx bên dưới vẫn chạy đủ.)
 
         // Không permissionless: singleton kho là UTxO đơn, ai cũng gộp được thì kẻ phá
@@ -358,20 +392,19 @@ validator treasury(
         let value_in =
           list.foldl(ins, assets.zero, fn(i, acc) { assets.merge(acc, i.output.value) })
 
-        // Σ sổ cái + committee_hash — chỉ trên input CÓ TreasuryDatum.
-        let (ledger_in, redeemed_in, ch_opt) = fold_ledger(ins)
+        // ── C-REF-PROV (2026-09-26): SỐ SỔ CHỈ ĐI RA TỪ CARRIER ────────────────────
+        // GỐC TÍCH, không phải DẤU. Xem docstring `carrier_ledger` cho lập luận đầy đủ.
+        let carrier = carrier_ledger(ins)
 
-        // Phải có ÍT NHẤT một input mang datum, nếu không `committee_hash` của output
-        // không được ràng vào bất cứ đâu (committee tự đặt giá trị mới). Không bao giờ
-        // gây kẹt: carrier TRSY luôn có datum (ép từ genesis `treasury_nft.ak`), nên mọi
-        // Refill thật — gộp tiền rót VÀO kho — đều có nó trong tập input.
-        expect Some(ch) = ch_opt
-        expect out_datum.committee_hash == ch
+        // `committee_hash` neo vào carrier — vật duy nhất trong tập input có quá khứ
+        // chứng minh được (`treasury_nft.ak` one-shot ⇒ nó ra đời đúng một lần, ở genesis,
+        // với sổ mở 0/0; từ đó mọi lần nó đổi tay đều đi qua một nhánh của chính tệp này).
+        expect out_datum.committee_hash == carrier.committee_hash
 
-        // Gộp KHÔNG tạo và KHÔNG xoá nợ: sổ ra = tổng sổ vào.
-        expect out_datum.outstanding_entitlement == ledger_in
+        // Gộp KHÔNG tạo và KHÔNG xoá nợ: sổ ra = sổ CỦA CARRIER.
+        expect out_datum.outstanding_entitlement == carrier.outstanding_entitlement
 
-        // ── C-REF-TOTAL (v3): gộp KHÔNG viết lại LỊCH SỬ RÚT ───────────────────────
+        // ── C-REF-TOTAL (v3, ngữ nghĩa sửa 2026-09-26): gộp KHÔNG viết lại LỊCH SỬ RÚT ──
         // `total_redeemed` là MẪU SỐ của trần một lượt ở `claim_account` — mọi tài khoản
         // trong hệ đọc nó. Không có dòng này thì `Refill` đặt nó tuỳ ý, và cả hai chiều
         // đều hại theo kiểu không kêu:
@@ -380,16 +413,21 @@ validator treasury(
         //     đúng cái mà phép cắt ngọn sinh ra để giữ.
         //   • ĐẶT NHỎ (hay 0) ⇒ trần rơi về `trim_floor`, tức dựng lại chính điểm hấp
         //     thụ mà sàn ấy có mặt để phá.
-        // Lượt gộp cần đủ chữ ký committee, nên đây KHÔNG phải cửa cho người lạ. Nó là
-        // một trường tự do trong datum: trường tự do thì trôi, và không ai đứng tên.
         //
-        // Vì sao là TỔNG chứ không phải "giữ nguyên của carrier": Refill gộp N input, và
-        // mỗi input mang sổ của nó. Cùng luật với dòng trên cho `outstanding_entitlement`
-        // — hai trường sổ, một phép gộp. Một UTxO lạ đỗ ở địa chỉ kho khai `total_redeemed`
-        // khống sẽ nâng trần; đó là cùng lối vào mà C-SOLV-2 mở rộng ngay dưới đã chặn cho
-        // vế nợ, và ở vế này nó cũng chỉ mở được đúng một lần vì sau khi gộp thì số đã vào
-        // sổ thật. Chặn chặt hơn (đòi input lạ khai 0) sẽ giết cả lượt gộp hai kho hợp lệ.
-        expect out_datum.total_redeemed == redeemed_in
+        // ⚠ BẢN TRƯỚC ÉP `== Σ total_redeemed CỦA MỌI INPUT CÓ DATUM`, và chú thích của
+        // nó tự biện hộ nguyên văn: *"Chặn chặt hơn (đòi input lạ khai 0) sẽ giết cả lượt
+        // gộp hai kho hợp lệ."* Câu đó SAI, và nó sai vì một dữ kiện nằm ở tệp khác:
+        // `treasury_nft` là policy ONE-SHOT ⇒ **không bao giờ tồn tại hai kho hợp lệ** để
+        // mà gộp. Mọi input ở địa chỉ kho ngoài carrier hoặc là LAMP rót về qua A-DEST
+        // (không datum), hoặc là một UTxO người lạ tự đỗ — Cardano không chạy validator
+        // lúc TẠO output, nên datum của nó là thứ kẻ dựng tx tự viết. Phép TỔNG vì thế
+        // không gộp hai sự thật, nó cộng một sự thật với một lời khai.
+        //
+        // Cái giá của phép tổng, đo theo đúng hai chiều ở trên: một UTxO tự đỗ khai
+        // `total_redeemed = 10^24` được gộp vào ⇒ mẫu số của TOÀN hệ nhảy lên 10^24 ⇒
+        // phép cắt ngọn chết VĨNH VIỄN, vì trường này CHỈ TĂNG nên không nhánh nào kéo
+        // nó về. `C-REF-SIGN` (`>= 0`) không bắt được: số khống là số DƯƠNG.
+        expect out_datum.total_redeemed == carrier.total_redeemed
 
         // Giá trị: mọi asset khác bảo toàn TUYỆT ĐỐI (chống rút ADA và chống đánh cắp
         // NFT "TRSY" ra ngoài), CHỈ LAMP được phép TĂNG một lượng `deposited >= 0`.
@@ -411,6 +449,12 @@ validator treasury(
         // Không làm kẹt vận hành hợp lệ: bất biến `nợ ≤ pool` đã đúng trước khi gộp
         // (genesis 0, Grant ép ≤, Release trừ đều hai vế), gộp chỉ cộng hai vế lại và
         // `deposited >= 0` chỉ làm vế phải to thêm.
+        //
+        // ⚠ 2026-09-26 — C-REF-PROV ở trên đã giết đường phá mô tả trong đoạn này (sổ ra
+        // nay bằng sổ carrier, nên Refill KHÔNG làm sổ tăng được lấy một đơn vị). Dòng
+        // này GIỮ LẠI làm lớp thứ hai, đúng vì nó đo một đại lượng KHÁC: C-REF-PROV đo
+        // GỐC TÍCH của con số, dòng này đo QUAN HỆ giữa nó và pool. Một lượt nới C-REF-PROV
+        // về sau mà quên dòng này thì mở lại trọn vẹn lối cũ.
         expect out_datum.outstanding_entitlement <= lamp_out
 
         // ── DOUBLE-SATISFACTION: vì sao chạy N lần vẫn kết luận như nhau ───────────
@@ -458,63 +502,75 @@ fn singleton_io(
   (tre_in, tre_out, out_datum)
 }
 
-/// (Σ outstanding_entitlement, Σ total_redeemed, committee_hash chung) trên các input ở
-/// script treasury.
-/// Input KHÔNG datum bị BỎ QUA phần sổ cái (đó là hình dạng của LAMP rót về kho qua
-/// A-DEST) — value của nó vẫn được cộng ở chỗ khác. Input mang datum-hash bị TỪ CHỐI:
-/// datum thật nằm ngoài `Output`, không đọc được ở đây, nên fail-closed thay vì âm thầm
-/// coi như nợ 0. Mọi input có datum phải khai CÙNG một `committee_hash`.
+/// C-REF-PROV (2026-09-26) — `TreasuryDatum` của **carrier**, tức UTxO ở địa chỉ kho mang
+/// NFT kho "TRSY". Đây là vật DUY NHẤT trong tập input mà sổ cái của nó có gốc tích:
+/// `treasury_nft` là policy ONE-SHOT, nó ra đời đúng một lần ở genesis với sổ mở `0/0`
+/// (`treasury_nft.ak` ▸ `td.outstanding_entitlement == 0`, `td.total_redeemed == 0`), và
+/// từ đó mọi lần nó đổi tay đều đi qua một nhánh của chính tệp này.
 ///
-/// v3 cộng THÊM `total_redeemed`, đối xứng với `outstanding_entitlement`. Trước dòng này
-/// nhánh `Refill` KHÔNG ràng `total_redeemed` của datum ra vào bất cứ đâu — một trường
-/// mới thêm vào datum, được ghim ở nhánh `ReleaseForRedeem` (C-RDM-TOTAL) và BỎ QUÊN ở
-/// nhánh gộp. Đó là phạm vi của TRIỆU CHỨNG chứ không phải của nguyên nhân: đợt vá v3 đi
-/// theo đường rút, mà trường này có hai đường ghi.
+/// ⚠ HÀM NÀY THAY `fold_ledger`, bản CỘNG sổ của MỌI input có inline datum. Bản cũ hỏng
+/// theo kiểu không kêu: địa chỉ kho chỉ là một hash công khai, ai cũng trả min-ADA vào đó
+/// kèm `TreasuryDatum` TỰ VIẾT — Cardano KHÔNG chạy validator lúc TẠO output, chỉ lúc
+/// TIÊU. Hai trường sổ, hai đường hại, cùng một lối vào:
+///   • `total_redeemed` khống (ví dụ 10^24) ⇒ MẪU SỐ của phép cắt ngọn ở `claim_account`
+///     nhảy lên cho TOÀN hệ, và vì trường này CHỈ TĂNG nên không nhánh nào kéo nó về:
+///     phép cắt ngọn chết VĨNH VIỄN sau đúng một giao dịch;
+///   • `outstanding_entitlement` khống ⇒ sổ NỢ phình, C-SOLV-2 từ chối mọi
+///     `GrantEntitlement` về sau, và sổ nợ chỉ giảm qua `ReleaseForRedeem` — vốn cần một
+///     tài khoản thật rút tiền — nên phần phình đó cũng không có đường lùi.
+/// Bản cũ chỉ ép hai số đó `>= 0` (C-REF-SIGN) và ép `committee_hash` khớp nhau; cả hai
+/// mệnh đề đều thoả được bằng cách khai một số DƯƠNG kèm `committee_hash` công khai.
+/// Nói gọn: bản cũ kiểm **DẤU** của con số mà không kiểm **NGUỒN** của nó.
 ///
-/// C-REF-SIGN: mỗi số sổ cái đi VÀO phép gộp phải KHÔNG ÂM.
+/// NGỮ NGHĨA CHỌN cho input KHÔNG phải carrier: **BỎ QUA datum, KHÔNG fail**. Lý do là
+/// vận hành — `Refill` sinh ra để gom LAMP rót về kho qua A-DEST, và committee không
+/// kiểm soát được ai đỗ cái gì ở một địa chỉ công khai. Fail-closed ở đây biến một hành
+/// vi mà người lạ tuỳ ý gây ra thành một cổng chặn chính chủ kho gom tiền của mình. Bỏ
+/// qua thì an toàn, vì sau dòng này KHÔNG con số nào của input đó đi vào một mệnh đề:
+/// value của nó vẫn được cộng (đó là điểm của Refill), datum của nó thì không.
 ///
-/// Ai cũng đỗ được một UTxO ở địa chỉ kho mang `TreasuryDatum` tuỳ ý — Cardano KHÔNG chạy
-/// validator lúc TẠO output, chỉ lúc TIÊU. Không có mệnh đề này thì một datum khai
-/// `outstanding_entitlement` ÂM làm Σ sổ GIẢM, nợ bị khai thấp hơn thật, và trần
-/// `nợ ≤ pool` ở `GrantEntitlement` nới ra VĨNH VIỄN. Vế `<= lamp_out` ở nhánh `Refill`
-/// KHÔNG bắt được, vì một số âm luôn ≤ pool: nó là cận TRÊN, và chốt này cần cận DƯỚI.
-/// `total_redeemed` âm thì đối xứng ở vế trần cắt ngọn — mẫu số tụt, trần rơi về
-/// `trim_floor`, dựng lại đúng điểm hấp thụ mà sàn ấy có mặt để phá.
+/// `expect [carrier]` — ĐÚNG MỘT, không phải "ít nhất một":
+///   • 0 carrier ⇒ từ chối. Nếu không, một `Refill` gom hai UTxO lạ sẽ SINH RA một UTxO
+///     ở địa chỉ kho mang sổ tuỳ ý — một cái kho giả trông y hệt kho thật với mọi công cụ
+///     đọc theo địa chỉ.
+///   • ≥2 ⇒ từ chối. Fail-closed cho một trạng thái mà one-shot policy nói là không thể.
 ///
-/// Vì sao chặn ở ĐÂY chứ không ở nhánh `Refill`: `fold_ledger` là cửa DUY NHẤT mà một số
-/// sổ cái từ input đi vào mệnh đề, nên một dòng ở đây bịt mọi lối, còn một dòng ở nhánh
-/// chỉ bịt lối đang nhìn thấy. Và nó chặn CẢ HAI trường trong cùng một chỗ — đúng bài học
-/// mà `C-REF-TOTAL` vừa phải trả giá hai lần: lượt quét trước hỏi *"trường mới có bị bỏ
-/// quên ở đường ghi nào không"*, KHÔNG hỏi *"mỗi trường có bị chặn HAI ĐẦU không"*, nên nó
-/// vá được đường ghi và để nguyên cận dưới.
-fn fold_ledger(ins: List<Input>) -> (Int, Int, Option<ByteArray>) {
-  list.foldl(
-    ins,
-    (0, 0, None),
-    fn(i, acc) {
-      let (sum, red, ch) = acc
-      when i.output.datum is {
-        NoDatum -> acc
-        DatumHash(_) -> fail @"treasury input dùng datum-hash: không xác thực được sổ cái"
-        InlineDatum(d) -> {
-          expect td: TreasuryDatum = d
-          // C-REF-SIGN — cận DƯỚI, đối xứng với `<= lamp_out` là cận TRÊN.
-          expect td.outstanding_entitlement >= 0
-          expect td.total_redeemed >= 0
-          when ch is {
-            None ->
-              (
-                sum + td.outstanding_entitlement,
-                red + td.total_redeemed,
-                Some(td.committee_hash),
-              )
-            Some(h) -> {
-              expect h == td.committee_hash
-              (sum + td.outstanding_entitlement, red + td.total_redeemed, ch)
-            }
-          }
-        }
-      }
+/// GIỚI HẠN CÒN LẠI, nói thẳng: `treasury` KHÔNG nhận `treasury_nft_policy` làm tham số
+/// (8 khe hiện có đã bake vào đường apply-param của off-chain), nên phép nhận diện ở đây
+/// đi theo TÊN tài sản `"TRSY"`, không theo policy id. Hệ quả: đúc một tài sản trùng tên
+/// dưới policy khác rồi đỗ ở địa chỉ kho thì tập carrier có 2 phần tử ⇒ giao dịch gộp đó
+/// bị từ chối. Đó là quấy rối (committee chỉ cần không chọn UTxO ấy vào input), KHÔNG
+/// phải đường chiếm sổ: một `Refill` không có carrier THẬT tạo ra UTxO không mang NFT
+/// "TRSY" của policy thật, mà `claim_account` tìm kho THUẦN THEO policy đó
+/// (`find_treasury_in`/`find_treasury_out`) ⇒ vật ấy trơ, và không bao giờ gộp ngược lại
+/// được vào kho thật (2 carrier). Muốn khoá nốt khe quấy rối thì phải thêm tham số
+/// `treasury_nft_policy` — một đổi ARITY, tức một lượt deploy có phối hợp với off-chain.
+fn carrier_ledger(ins: List<Input>) -> TreasuryDatum {
+  let trsy = util.treasury_nft_name()
+  expect [carrier] = list.filter(ins, fn(i) { bears_treasury_nft(i.output.value, trsy) })
+
+  // Carrier phải đọc được sổ NGAY TRONG `Output`. Datum-hash thì datum thật nằm ngoài
+  // giao dịch ⇒ fail-closed, thay vì âm thầm coi như sổ 0.
+  expect InlineDatum(d) = carrier.output.datum
+  expect td: TreasuryDatum = d
+
+  // C-REF-SIGN — cận DƯỚI, đối xứng với `<= lamp_out` là cận TRÊN. Sau C-REF-PROV đây là
+  // lớp phòng thủ theo chiều sâu chứ không còn là lớp duy nhất: mọi nhánh ghi vào carrier
+  // đã ép hai trường này không âm. Giữ vì nó rẻ và vì nó là thứ duy nhất canh một carrier
+  // sinh ra từ một bản `treasury` cũ hơn bản đang chạy.
+  expect td.outstanding_entitlement >= 0
+  expect td.total_redeemed >= 0
+  td
+}
+
+/// Value có mang đúng MỘT đơn vị tài sản tên `"TRSY"` (policy bất kỳ) không.
+/// Xem docstring `carrier_ledger` cho lý do phép so đi theo TÊN chứ không theo policy id.
+fn bears_treasury_nft(v: assets.Value, trsy: ByteArray) -> Bool {
+  list.any(
+    assets.flatten(v),
+    fn(tok) {
+      let (_policy, name, qty) = tok
+      name == trsy && qty == 1
     },
   )
 }
@@ -826,11 +882,12 @@ fn grant_tx_at(
   let val = tt_lamp_val(5_000_000, pool)
   let tre_in = util.mk_input(util.mk_ref(0), util.mk_output(tre_addr, val, tt_tre_d(cum_in)))
   let tre_out = util.mk_output(tre_addr, val, tt_tre_d(cum_out))
+  // ⚠ 2026-09-26 — output tài khoản MANG NFT tài khoản. Bản trước chỉ có 2 ADA, tức mọi
+  // ca CREATE dựng sẵn mô tả một hình dạng KHÔNG BAO GIỜ hợp lệ trên chuỗi (tài khoản
+  // không NFT thì `claim_account.spend` từ chối nó vĩnh viễn) — và chính vì fixture không
+  // mang NFT nên C-ACC-1b không thể ra đời: viết nó ra là 7 ca dương đỏ ngay.
   let ca_out =
-    util.mk_output(
-      ca_addr, assets.from_lovelace(2_000_000),
-      tt_ca_d_at(ent_out, redeemed_out, start_epoch),
-    )
+    util.mk_output(ca_addr, tt_ca_out_value(), tt_ca_d_at(ent_out, redeemed_out, start_epoch))
   let base_inputs =
     when ent_in_opt is {
       Some(ent_in) -> {
@@ -882,6 +939,39 @@ test grant_create_happy() {
 test grant_create_without_minting_account_nft_rejected() fail {
   let tx = Transaction { ..grant_tx(5000, 0, 1000, None, 1000, 0, [#"c1", #"c2"]), mint: assets.zero }
   grant(0, tx)
+}
+
+// ── C-ACC-1b (2026-09-26): NFT phải NẰM TRONG tài khoản, không chỉ được ĐÚC ────
+// Hai ca dưới chia đôi đúng chỗ mà C-ACC-1 một mình không với tới: nó đo `tx.mint`, tức
+// đo sự TỒN TẠI của NFT. Ca `..._minted_elsewhere_...` giữ nguyên `tx.mint` hợp lệ và chỉ
+// dời NFT sang một output khác — gỡ C-ACC-1b ra thì nó ĐƯỢC CHẤP NHẬN, còn C-ACC-1 vẫn
+// xanh, vì không một chữ nào của C-ACC-1 nói về nơi hạ cánh.
+
+/// NFT đúc đúng tên, đúng policy, nhưng hạ cánh ở một script KHÁC (điều mà
+/// `claim_account_nft.ak` ▸ A-ACC-3 CHO PHÉP: nó chỉ ép "một Script bất kỳ"). Tài khoản
+/// sinh ra không NFT ⇒ `claim_account.spend` từ chối nó vĩnh viễn ⇒ `granted` vào sổ nợ
+/// mà không có đường lùi. Khác `grant_create_happy` ĐÚNG MỘT điều: NFT nằm ở output nào.
+test grant_create_account_nft_minted_elsewhere_rejected() fail {
+  let base = grant_tx(5000, 0, 1000, None, 1000, 0, [#"c1", #"c2"])
+  expect [tre_out, ca_out] = base.outputs
+  let stripped = Output { ..ca_out, value: assets.from_lovelace(2_000_000) }
+  let elsewhere = Output { ..ca_out, address: util.script_address(#"beefbeef") }
+  grant(0, Transaction { ..base, outputs: [tre_out, stripped, elsewhere] })
+}
+
+/// Cùng khuôn nhưng NFT bị giữ lại trong VÍ người dựng tx — biến thể rẻ nhất của ca trên
+/// và là hình dạng mà một builder viết ẩu sinh ra (quên `.pay.ToContract` phần NFT).
+test grant_create_account_nft_kept_in_wallet_rejected() fail {
+  let base = grant_tx(5000, 0, 1000, None, 1000, 0, [#"c1", #"c2"])
+  expect [tre_out, ca_out] = base.outputs
+  let stripped = Output { ..ca_out, value: assets.from_lovelace(2_000_000) }
+  let to_wallet =
+    util.mk_output_no_datum(
+      util.vk_address(#"badbad"),
+      assets.from_lovelace(2_000_000)
+        |> assets.add(tt_acct_nft_policy, tt_acct_nft_name(), 1),
+    )
+  grant(0, Transaction { ..base, outputs: [tre_out, stripped, to_wallet] })
 }
 
 // ── C-ACC-2 (Issue #72, lỗ 1): `start_epoch` phải là cửa sổ HIỆN TẠI ──────────
@@ -1078,11 +1168,7 @@ fn grant_create_idx_tx(index_at_start: Int) -> Transaction {
     ..grant_tx_at(5000, 0, 1000, None, 1000, 0, [#"c1", #"c2"], 7, tt_range(7)),
     outputs: [
       util.mk_output(tre_addr, tt_lamp_val(5_000_000, 5000), tt_tre_d(1000)),
-      util.mk_output(
-        ca_addr,
-        assets.from_lovelace(2_000_000),
-        tt_ca_d_idx(1000, 0, 7, index_at_start),
-      ),
+      util.mk_output(ca_addr, tt_ca_out_value(), tt_ca_d_idx(1000, 0, 7, index_at_start)),
     ],
   }
 }
@@ -1128,7 +1214,7 @@ fn grant_create_dpe_tx(dpe: Int) -> Transaction {
     ..grant_tx_at(5000, 0, 1000, None, 1000, 0, [#"c1", #"c2"], 7, tt_range(7)),
     outputs: [
       util.mk_output(tre_addr, tt_lamp_val(5_000_000, 5000), tt_tre_d(1000)),
-      util.mk_output(ca_addr, assets.from_lovelace(2_000_000), tt_ca(1000, 0, 7, dpe)),
+      util.mk_output(ca_addr, tt_ca_out_value(), tt_ca(1000, 0, 7, dpe)),
     ],
   }
 }
@@ -1223,7 +1309,7 @@ test grant_resetting_total_redeemed_rejected() fail {
   grant_tr(700, 0)
 }
 
-/// Ghi âm ⟹ mọi `Refill` về sau chết ở `fold_ledger` (`total_redeemed >= 0`), kho không còn
+/// Ghi âm ⟹ mọi `Refill` về sau chết ở `carrier_ledger` (`total_redeemed >= 0`), kho không còn
 /// đường gộp phần LAMP A-DEST hạ cánh.
 test grant_negative_total_redeemed_rejected() fail {
   grant_tr(700, -1)
@@ -1272,6 +1358,14 @@ const tt_trsy_policy: ByteArray = #"7235"
 
 fn tt_acct_nft_name() -> ByteArray {
   blake2b_256(tt_owner)
+}
+
+/// Value của output tài khoản MỚI MỞ: min-ADA + NFT tài khoản. C-ACC-1b đòi NFT có mặt ở
+/// đúng output này, nên mọi fixture CREATE phải dựng đúng hình dạng thật — bản trước chỉ
+/// có min-ADA, tức mô tả một tài khoản không bao giờ tiêu được.
+fn tt_ca_out_value() -> assets.Value {
+  assets.from_lovelace(2_000_000)
+    |> assets.add(tt_acct_nft_policy, tt_acct_nft_name(), 1)
 }
 
 /// grant_tx nhưng gắn thêm một `tx.mint` tuỳ ý (đường CREATE thật luôn có mint NFT).
@@ -1401,23 +1495,104 @@ fn refill(own_ix: Int, datum_opt: Option<TreasuryDatum>, tx: Transaction) -> Boo
   )
 }
 
+// ⚠ NGỮ NGHĨA ĐỔI 2026-09-26 (C-REF-PROV). Trước lượt này, Refill ép sổ ra = Σ sổ của MỌI
+// input có datum, nên các ca dưới đây khai nợ ra 500 = 300 + 200. Nay sổ ra = sổ CỦA
+// CARRIER (UTxO mang NFT "TRSY") và datum của mọi input khác bị BỎ QUA — nên con số đúng
+// là 300, còn "200" của input thứ hai là một lời khai mà ai cũng viết được.
+
 test refill_merge_two_and_deposit_ok() {
   // (j) Gộp 2 UTxO kho + nạp thêm 400 LAMP từ ví.
-  //   vào: A(TRSY, 5 ADA, 1000 LAMP, nợ 300) + B(2 ADA, 500 LAMP, nợ 200)
-  //   ra : 1 UTxO (TRSY, 7 ADA, 1900 LAMP, nợ 500 = 300+200)
+  //   vào: A(TRSY, 5 ADA, 1000 LAMP, nợ 300) + B(2 ADA, 500 LAMP, nợ khai 200 — BỎ QUA)
+  //   ra : 1 UTxO (TRSY, 7 ADA, 1900 LAMP, nợ 300 = sổ của carrier)
+  // Đây đồng thời là bài dương của C-REF-PROV: value của B vẫn được hút vào pool (đó là
+  // lý do Refill tồn tại), chỉ SỔ của B là không đi vào mệnh đề nào.
   let a = tre_in_d(0, 5_000_000, 1000, 300, True)
   let b = tre_in_d(1, 2_000_000, 500, 200, False)
-  let o = tre_out_d(7_000_000, 1900, 500, True)
+  let o = tre_out_d(7_000_000, 1900, 300, True)
   refill(0, Some(tt_tre_d(300)), refill_tx([a, b], [o], [#"c1", #"c2"]))
 }
 
 test refill_merge_two_second_input_same_verdict() {
   // Đối chứng double-satisfaction: CÙNG tx trên, chạy cho input THỨ HAI → cùng kết luận.
-  // (Mọi mệnh đề của Refill là mệnh đề toàn-tx nên hai lần chạy không thể lệch nhau.)
+  // (Mọi mệnh đề của Refill là mệnh đề toàn-tx nên hai lần chạy không thể lệch nhau.
+  // C-REF-PROV giữ tính chất đó: nó lọc theo VALUE của input, không theo `own_ref`.)
   let a = tre_in_d(0, 5_000_000, 1000, 300, True)
   let b = tre_in_d(1, 2_000_000, 500, 200, False)
-  let o = tre_out_d(7_000_000, 1900, 500, True)
+  let o = tre_out_d(7_000_000, 1900, 300, True)
   refill(1, Some(tt_tre_d(200)), refill_tx([a, b], [o], [#"c1", #"c2"]))
+}
+
+// ── C-REF-PROV: hai ca TRUNG TÂM, đúng hình dạng khai thác đã dựng PoC ────────
+// Cả hai dùng CHUNG một tx với ca dương ngay trên, khác đúng một con số: sổ mà UTxO tự đỗ
+// KHAI, và con số tương ứng ở datum ra. Dưới luật CŨ cả hai ĐƯỢC CHẤP NHẬN.
+
+/// A2 — `total_redeemed` KHỐNG qua Refill. UTxO tự đỗ khai đã-phát-ra 10^24; luật cũ cộng
+/// nó vào sổ thật ⇒ MẪU SỐ của phép cắt ngọn (`claim_account` ▸ C-RDM-TRIM) nhảy lên 10^24
+/// cho TOÀN hệ. Trường này CHỈ TĂNG nên không nhánh nào kéo về được: cắt ngọn chết vĩnh
+/// viễn sau đúng một giao dịch. C-REF-SIGN không bắt — 10^24 là số dương.
+test refill_parked_utxo_inflating_total_redeemed_rejected() fail {
+  let a = tre_in_d_tr(0, 5_000_000, 1000, 300, 7000, True)
+  let parked = tre_in_d_tr(1, 2_000_000, 500, 0, 1_000_000_000_000_000_000_000_000, False)
+  let o = tre_out_d_tr(7_000_000, 1900, 300, 1_000_000_000_000_000_007_000, True)
+  refill(0, Some(tt_tre_d_tr(300, 7000)), refill_tx([a, parked], [o], [#"c1", #"c2"]))
+}
+
+/// A3 — `outstanding_entitlement` DƯƠNG KHỐNG qua Refill. Số chọn ở mức 1000 CỐ Ý: sổ ra
+/// 1300 vẫn ≤ pool ra 1900, nên vế `<= lamp_out` (C-SOLV-2 mở rộng) KHÔNG bắt được — nó là
+/// cận TRÊN. Hậu quả: mọi `GrantEntitlement` về sau đo trên một sổ nợ phồng, và sổ nợ chỉ
+/// giảm qua `ReleaseForRedeem` — vốn cần một tài khoản THẬT rút tiền — nên phần phồng
+/// không có đường lùi.
+test refill_parked_utxo_inflating_outstanding_rejected() fail {
+  let a = tre_in_d_tr(0, 5_000_000, 1000, 300, 7000, True)
+  let parked = tre_in_d_tr(1, 2_000_000, 500, 1000, 0, False)
+  let o = tre_out_d_tr(7_000_000, 1900, 1300, 7000, True)
+  refill(0, Some(tt_tre_d_tr(300, 7000)), refill_tx([a, parked], [o], [#"c1", #"c2"]))
+}
+
+/// Đối chứng DƯƠNG của đúng hai ca trên: cùng tập input (UTxO tự đỗ khai cả hai trường
+/// khác 0), datum ra mang ĐÚNG sổ của carrier ⇒ QUA. Không có ca này thì hai ca đỏ ở trên
+/// xanh được bằng cách làm hỏng bất cứ thứ gì khác trong fixture.
+test refill_parked_utxo_ledger_ignored_ok() {
+  let a = tre_in_d_tr(0, 5_000_000, 1000, 300, 7000, True)
+  let parked = tre_in_d_tr(1, 2_000_000, 500, 1000, 3000, False)
+  let o = tre_out_d_tr(7_000_000, 1900, 300, 7000, True)
+  refill(0, Some(tt_tre_d_tr(300, 7000)), refill_tx([a, parked], [o], [#"c1", #"c2"]))
+}
+
+/// Luật CŨ viết thành một bài âm: sổ ra = TỔNG (300+1000, 7000+3000). Đây là ca phân biệt
+/// giữa hai ngữ nghĩa — nó XANH trước bản vá và ĐỎ sau.
+test refill_summing_parked_ledger_rejected() fail {
+  let a = tre_in_d_tr(0, 5_000_000, 1000, 300, 7000, True)
+  let parked = tre_in_d_tr(1, 2_000_000, 500, 1000, 3000, False)
+  let o = tre_out_d_tr(7_000_000, 1900, 1300, 10000, True)
+  refill(0, Some(tt_tre_d_tr(300, 7000)), refill_tx([a, parked], [o], [#"c1", #"c2"]))
+}
+
+/// Không có carrier trong tập input mà vẫn dựng được một UTxO ở địa chỉ kho mang sổ tuỳ ý
+/// — tức SINH RA một cái kho giả trông y hệt kho thật với mọi công cụ đọc theo địa chỉ.
+/// `expect [carrier]` ở nhánh 0 phần tử chặn. (Ca 2 carrier ở ngay dưới, mục riêng.)
+test refill_without_carrier_rejected() fail {
+  let p1 = tre_in_d_tr(0, 5_000_000, 1000, 300, 7000, False)
+  let p2 = tre_in_d_tr(1, 2_000_000, 500, 200, 3000, False)
+  let o = tre_out_d_tr(7_000_000, 1500, 300, 7000, False)
+  refill(0, Some(tt_tre_d_tr(300, 7000)), refill_tx([p1, p2], [o], [#"c1", #"c2"]))
+}
+
+/// Hai UTxO cùng mang một tài sản tên "TRSY" ⇒ nhập nhằng ⇒ từ chối. One-shot policy nói
+/// trạng thái này không tồn tại với policy THẬT; nó dựng được bằng một policy khác trùng
+/// tên, và khi đó fail-closed là câu trả lời đúng (xem giới hạn ghi ở `carrier_ledger`).
+test refill_two_carriers_rejected() fail {
+  let a = tre_in_d_tr(0, 5_000_000, 1000, 300, 7000, True)
+  let b = tre_in_d_tr(1, 2_000_000, 500, 200, 3000, True)
+  // Output mang CẢ HAI đơn vị "TRSY" ⇒ bảo toàn value vẫn đúng ⇒ ca này đỏ ở
+  // `expect [carrier]` chứ không đỏ ké ở mệnh đề value.
+  let o =
+    util.mk_output(
+      util.script_address(tt_tre_sh),
+      assets.add(tt_val(7_000_000, 1500, True), tt_trsy_policy, util.treasury_nft_name(), 1),
+      tt_tre_d_tr(300, 7000),
+    )
+  refill(0, Some(tt_tre_d_tr(300, 7000)), refill_tx([a, b], [o], [#"c1", #"c2"]))
 }
 
 test refill_absorb_no_datum_utxo_ok() {
@@ -1439,11 +1614,15 @@ test refill_run_on_no_datum_input_ok() {
   refill(1, None, refill_tx([a, bare], [o], [#"c1", #"c2"]))
 }
 
+// ⚠ Ba ca value dưới đây mang sổ ra = 300 (sổ của carrier), KHÔNG phải 500. Để 500 thì
+// chúng đỏ ở C-REF-PROV trước khi chạm tới mệnh đề value — tức chúng sẽ đúng màu, đúng
+// tên, và không canh cái chúng mang tên.
+
 test refill_ada_skim_rejected() fail {
   // (l) Rút bớt ADA (7 → 6) trong lúc gộp → reject. Mọi asset ≠ LAMP bảo toàn tuyệt đối.
   let a = tre_in_d(0, 5_000_000, 1000, 300, True)
   let b = tre_in_d(1, 2_000_000, 500, 200, False)
-  let o = tre_out_d(6_000_000, 1500, 500, True)
+  let o = tre_out_d(6_000_000, 1500, 300, True)
   refill(0, Some(tt_tre_d(300)), refill_tx([a, b], [o], [#"c1", #"c2"]))
 }
 
@@ -1451,7 +1630,7 @@ test refill_lamp_decrease_rejected() fail {
   // (m) LAMP ra 1400 < tổng vào 1500 → `deposited < 0` → reject. Refill KHÔNG phải cửa rút.
   let a = tre_in_d(0, 5_000_000, 1000, 300, True)
   let b = tre_in_d(1, 2_000_000, 500, 200, False)
-  let o = tre_out_d(7_000_000, 1400, 500, True)
+  let o = tre_out_d(7_000_000, 1400, 300, True)
   refill(0, Some(tt_tre_d(300)), refill_tx([a, b], [o], [#"c1", #"c2"]))
 }
 
@@ -1459,16 +1638,36 @@ test refill_trsy_stolen_rejected() fail {
   // Cùng họ với (l): bỏ NFT "TRSY" khỏi output (đem ra ví) → value ra ≠ Σ vào → reject.
   let a = tre_in_d(0, 5_000_000, 1000, 300, True)
   let b = tre_in_d(1, 2_000_000, 500, 200, False)
-  let o = tre_out_d(7_000_000, 1500, 500, False)
+  let o = tre_out_d(7_000_000, 1500, 300, False)
   refill(0, Some(tt_tre_d(300)), refill_tx([a, b], [o], [#"c1", #"c2"]))
 }
 
 test refill_ledger_mismatch_rejected() fail {
-  // (n) Sổ cái ra 400 ≠ tổng vào 500 → reject. Gộp không được xoá nợ (ở đây xoá 100).
+  // (n) Sổ cái ra 400 ≠ sổ carrier 300 → reject. Gộp không được BỊA thêm nợ.
   let a = tre_in_d(0, 5_000_000, 1000, 300, True)
   let b = tre_in_d(1, 2_000_000, 500, 200, False)
   let o = tre_out_d(7_000_000, 1500, 400, True)
   refill(0, Some(tt_tre_d(300)), refill_tx([a, b], [o], [#"c1", #"c2"]))
+}
+
+/// Chiều ngược của ca trên: gộp XOÁ bớt nợ (300 → 200). Hai chiều cần hai ca — một mệnh
+/// đề đẳng thức chỉ được ghim khi cả hai cực đều có bài.
+test refill_ledger_shrunk_rejected() fail {
+  let a = tre_in_d(0, 5_000_000, 1000, 300, True)
+  let b = tre_in_d(1, 2_000_000, 500, 200, False)
+  let o = tre_out_d(7_000_000, 1500, 200, True)
+  refill(0, Some(tt_tre_d(300)), refill_tx([a, b], [o], [#"c1", #"c2"]))
+}
+
+/// C-SOLV-2 MỞ RỘNG (`nợ ra ≤ pool ra`) — bài ghim RIÊNG. Sau C-REF-PROV, mệnh đề này
+/// không còn ca nào chạm tới qua đường "UTxO tự đỗ khai nợ khống" (sổ ra nay bằng sổ
+/// carrier), nên nó cần một carrier mà chính sổ của nó đã vượt pool. Trạng thái ấy không
+/// dựng được trên chuỗi — đó chính là lý do phải dựng nó ở đây, nếu không dòng `expect`
+/// ấy gỡ ra mà không bài nào kêu.
+test refill_carrier_debt_above_pool_rejected() fail {
+  let a = tre_in_d(0, 5_000_000, 1000, 2000, True)
+  let o = tre_out_d(5_000_000, 1000, 2000, True)
+  refill(0, Some(tt_tre_d(2000)), refill_tx([a], [o], [#"c1", #"c2"]))
 }
 
 // ── C-REF-TOTAL (v3): `total_redeemed` gộp ĐÚNG TỔNG, không trôi ──────────────
@@ -1478,20 +1677,22 @@ test refill_ledger_mismatch_rejected() fail {
 // chiều HẠ dựng lại điểm hấp thụ mà sàn cắt ngọn có mặt để phá. Chiều hạ là chiều dễ
 // bị bỏ quên vì nó trông như "thận trọng".
 
-test refill_total_redeemed_sum_ok() {
-  // Gộp 2 UTxO kho: nợ 300+200, đã-rút 7000+3000 ⇒ ra phải mang đúng 500 và 10000.
+test refill_total_redeemed_from_carrier_ok() {
+  // Gộp 2 UTxO kho: carrier khai đã-rút 7000, UTxO tự đỗ khai 3000 (BỎ QUA) ⇒ ra mang 7000.
+  // ⚠ Bản trước của ca này kỳ vọng 10000 (phép TỔNG). Đổi vì ngữ nghĩa đổi, không vì bài
+  // hỏng — xem C-REF-PROV ở `carrier_ledger`.
   let a = tre_in_d_tr(0, 5_000_000, 1000, 300, 7000, True)
   let b = tre_in_d_tr(1, 2_000_000, 500, 200, 3000, False)
-  let o = tre_out_d_tr(7_000_000, 1900, 500, 10000, True)
+  let o = tre_out_d_tr(7_000_000, 1900, 300, 7000, True)
   refill(0, Some(tt_tre_d_tr(300, 7000)), refill_tx([a, b], [o], [#"c1", #"c2"]))
 }
 
 test refill_total_redeemed_inflated_rejected() fail {
-  // Đặt 99000 thay vì 10000 — không bất biến nào của kho gãy (nợ vẫn đúng, value vẫn
-  // đúng), nhưng trần một lượt của MỌI tài khoản phồng lên gần mười lần.
+  // Đặt 99000 thay vì 7000 — không bất biến nào khác của kho gãy (nợ vẫn đúng, value vẫn
+  // đúng), nhưng trần một lượt của MỌI tài khoản phồng lên hơn mười lần.
   let a = tre_in_d_tr(0, 5_000_000, 1000, 300, 7000, True)
   let b = tre_in_d_tr(1, 2_000_000, 500, 200, 3000, False)
-  let o = tre_out_d_tr(7_000_000, 1900, 500, 99000, True)
+  let o = tre_out_d_tr(7_000_000, 1900, 300, 99000, True)
   refill(0, Some(tt_tre_d_tr(300, 7000)), refill_tx([a, b], [o], [#"c1", #"c2"]))
 }
 
@@ -1499,24 +1700,20 @@ test refill_total_redeemed_reset_to_zero_rejected() fail {
   // Xoá lịch sử rút về 0 ⇒ trần rơi về `trim_floor` cho toàn hệ.
   let a = tre_in_d_tr(0, 5_000_000, 1000, 300, 7000, True)
   let b = tre_in_d_tr(1, 2_000_000, 500, 200, 3000, False)
-  let o = tre_out_d_tr(7_000_000, 1900, 500, 0, True)
-  refill(0, Some(tt_tre_d_tr(300, 7000)), refill_tx([a, b], [o], [#"c1", #"c2"]))
-}
-
-test refill_total_redeemed_drops_absorbed_utxo_rejected() fail {
-  // Chỉ mang sang phần của carrier (7000), bỏ phần của input thứ hai (3000). Đây là
-  // dạng lệch TRÔNG HỢP LÝ NHẤT — "giữ nguyên sổ của kho chính" — và là lý do mệnh đề
-  // phải là TỔNG chứ không phải "bằng sổ của input đang chạy".
-  let a = tre_in_d_tr(0, 5_000_000, 1000, 300, 7000, True)
-  let b = tre_in_d_tr(1, 2_000_000, 500, 200, 3000, False)
-  let o = tre_out_d_tr(7_000_000, 1900, 500, 7000, True)
+  let o = tre_out_d_tr(7_000_000, 1900, 300, 0, True)
   refill(0, Some(tt_tre_d_tr(300, 7000)), refill_tx([a, b], [o], [#"c1", #"c2"]))
 }
 
 // ── C-REF-SIGN: cận DƯỚI cho sổ cái đi vào phép gộp ──────────────────────────
-// Bốn ca dưới đặt số ÂM ở INPUT THỨ HAI, không phải ở carrier — đó là hình dạng thật của
-// đường hại: kẻ tấn công không chiếm được carrier (nó mang NFT "TRSY"), nhưng đỗ một UTxO
-// ở địa chỉ kho thì ai cũng làm được, vì Cardano KHÔNG chạy validator lúc TẠO output.
+// ⚠ ĐỔI ĐÍCH 2026-09-26. Bốn ca này trước đây đặt số ÂM ở INPUT THỨ HAI, vì luật cũ cộng
+// sổ của mọi input có datum nên input tự đỗ là đúng lối vào. Sau C-REF-PROV lối ấy đã
+// đóng (sổ của input tự đỗ không đi vào mệnh đề nào), nên để nguyên thì bốn ca vẫn đỏ mà
+// đỏ ở C-REF-PROV, KHÔNG ở C-REF-SIGN — đúng màu, đúng tên, canh nhầm chỗ. Nay số âm đặt
+// ở CHÍNH CARRIER.
+//
+// Trạng thái ấy không dựng được trên chuỗi (mọi nhánh ghi vào carrier đều ép hai trường
+// không âm), và đó chính là lý do phải dựng nó ở đây: C-REF-SIGN nay là lớp phòng thủ
+// theo chiều sâu, và một lớp không có bài canh là một lớp gỡ đi mà không ai kêu.
 //
 // Vì sao bốn ca chứ không hai: mỗi trường cần CẢ ca âm bị từ chối LẪN ca 0 được qua. Không
 // có ca 0 thì một bản vá gõ nhầm thành `> 0` cũng xanh hệt như bản đúng — mà `> 0` giết
@@ -1527,21 +1724,21 @@ test refill_total_redeemed_drops_absorbed_utxo_rejected() fail {
 // Gỡ một trong hai dòng `expect` thì đúng một ca đỏ — đó là cách đọc được ca nào canh dòng nào.
 
 test refill_outstanding_negative_rejected() fail {
-  // Input thứ hai khai nợ −500. Σ sổ tụt từ 300 xuống −200 ⇒ nợ bị khai THẤP HƠN thật ⇒
-  // trần `nợ ≤ pool` nới ra vĩnh viễn. Vế `<= lamp_out` KHÔNG bắt: −200 ≤ 1900.
-  let a = tre_in_d_tr(0, 5_000_000, 1000, 300, 7000, True)
-  let b = tre_in_d_tr(1, 2_000_000, 500, -500, 3000, False)
-  let o = tre_out_d_tr(7_000_000, 1900, -200, 10000, True)
-  refill(0, Some(tt_tre_d_tr(300, 7000)), refill_tx([a, b], [o], [#"c1", #"c2"]))
+  // Carrier khai nợ −500 ⇒ nợ bị khai THẤP HƠN thật ⇒ trần `nợ ≤ pool` ở
+  // `GrantEntitlement` nới ra vĩnh viễn. Vế `<= lamp_out` KHÔNG bắt: −500 ≤ 1900.
+  let a = tre_in_d_tr(0, 5_000_000, 1000, -500, 7000, True)
+  let b = tre_in_d_tr(1, 2_000_000, 500, 200, 3000, False)
+  let o = tre_out_d_tr(7_000_000, 1900, -500, 7000, True)
+  refill(0, Some(tt_tre_d_tr(-500, 7000)), refill_tx([a, b], [o], [#"c1", #"c2"]))
 }
 
 test refill_total_redeemed_negative_rejected() fail {
-  // Đối xứng ở vế trần cắt ngọn: đã-rút gộp tụt 10000 → 4000, mẫu số nhỏ đi ⇒ trần một
-  // lượt co lại về phía `trim_floor` cho MỌI tài khoản.
-  let a = tre_in_d_tr(0, 5_000_000, 1000, 300, 7000, True)
-  let b = tre_in_d_tr(1, 2_000_000, 500, 200, -3000, False)
-  let o = tre_out_d_tr(7_000_000, 1900, 500, 4000, True)
-  refill(0, Some(tt_tre_d_tr(300, 7000)), refill_tx([a, b], [o], [#"c1", #"c2"]))
+  // Đối xứng ở vế trần cắt ngọn: mẫu số âm ⇒ trần một lượt rơi về `trim_floor` cho MỌI
+  // tài khoản.
+  let a = tre_in_d_tr(0, 5_000_000, 1000, 300, -3000, True)
+  let b = tre_in_d_tr(1, 2_000_000, 500, 200, 3000, False)
+  let o = tre_out_d_tr(7_000_000, 1900, 300, -3000, True)
+  refill(0, Some(tt_tre_d_tr(300, -3000)), refill_tx([a, b], [o], [#"c1", #"c2"]))
 }
 
 test refill_outstanding_zero_ok() {
@@ -1550,7 +1747,7 @@ test refill_outstanding_zero_ok() {
   // phân biệt được hai bản vá đó.
   let a = tre_in_d_tr(0, 5_000_000, 1000, 0, 7000, True)
   let b = tre_in_d_tr(1, 2_000_000, 500, 0, 3000, False)
-  let o = tre_out_d_tr(7_000_000, 1900, 0, 10000, True)
+  let o = tre_out_d_tr(7_000_000, 1900, 0, 7000, True)
   refill(0, Some(tt_tre_d_tr(0, 7000)), refill_tx([a, b], [o], [#"c1", #"c2"]))
 }
 
@@ -1558,7 +1755,7 @@ test refill_total_redeemed_zero_ok() {
   // Đối xứng cho trường thứ hai: kho chưa ai rút đồng nào cũng phải gộp được.
   let a = tre_in_d_tr(0, 5_000_000, 1000, 300, 0, True)
   let b = tre_in_d_tr(1, 2_000_000, 500, 200, 0, False)
-  let o = tre_out_d_tr(7_000_000, 1900, 500, 0, True)
+  let o = tre_out_d_tr(7_000_000, 1900, 300, 0, True)
   refill(0, Some(tt_tre_d_tr(300, 0)), refill_tx([a, b], [o], [#"c1", #"c2"]))
 }
 
@@ -1567,7 +1764,7 @@ test refill_insufficient_committee_rejected() fail {
   // UTxO singleton của kho liên tục.
   let a = tre_in_d(0, 5_000_000, 1000, 300, True)
   let b = tre_in_d(1, 2_000_000, 500, 200, False)
-  let o = tre_out_d(7_000_000, 1900, 500, True)
+  let o = tre_out_d(7_000_000, 1900, 300, True)
   refill(0, Some(tt_tre_d(300)), refill_tx([a, b], [o], [#"c1"]))
 }
 
@@ -1582,28 +1779,29 @@ test refill_two_script_outputs_rejected() fail {
 }
 
 test refill_committee_hash_mismatch_rejected() fail {
-  // Hai input khai `committee_hash` khác nhau → reject. Nếu không, kẻ đỗ sẵn một UTxO ở
-  // địa chỉ kho mang committee_hash của mình có thể "bỏ phiếu" đổi chủ sở hữu sổ cái.
+  // ⚠ ĐỔI ĐÍCH 2026-09-26. Bản trước đặt `committee_hash` lạ ở INPUT THỨ HAI, vì luật cũ
+  // bắt mọi input có datum khai cùng một giá trị. Nay `committee_hash` neo vào CARRIER,
+  // nên ca phân biệt là: output tự đặt một `committee_hash` khác của carrier. Đó cũng là
+  // hình dạng hại thật — "bỏ phiếu" đổi chủ sở hữu sổ cái trong một lượt gộp.
   let a = tre_in_d(0, 5_000_000, 1000, 300, True)
-  let b =
-    util.mk_input(
-      util.mk_ref(1),
-      util.mk_output(
-        util.script_address(tt_tre_sh),
-        tt_val(2_000_000, 500, False),
-        TreasuryDatum {
-          committee_hash: #"dddd",
-          outstanding_entitlement: 200,
-          total_redeemed: 0,
-        },
-      ),
+  let b = tre_in_d(1, 2_000_000, 500, 200, False)
+  let o =
+    util.mk_output(
+      util.script_address(tt_tre_sh),
+      tt_val(7_000_000, 1500, True),
+      TreasuryDatum {
+        committee_hash: #"dddd",
+        outstanding_entitlement: 300,
+        total_redeemed: 0,
+      },
     )
-  let o = tre_out_d(7_000_000, 1500, 500, True)
   refill(0, Some(tt_tre_d(300)), refill_tx([a, b], [o], [#"c1", #"c2"]))
 }
 
 test refill_no_datum_input_at_all_rejected() fail {
-  // Chỉ toàn input KHÔNG datum → `committee_hash` của output không neo vào đâu → reject.
+  // Chỉ toàn input KHÔNG datum (và không có carrier) → không sổ nào có gốc tích → reject.
+  // Trước C-REF-PROV ca này đỏ ở `expect Some(ch)`; nay đỏ ở `expect [carrier]`, và lý do
+  // mạnh hơn: nếu qua thì Refill SINH RA một UTxO ở địa chỉ kho mang sổ tuỳ ý.
   let b1 = tre_in_bare(0, 5_000_000, 1000)
   let b2 = tre_in_bare(1, 2_000_000, 500)
   let o = tre_out_d(7_000_000, 1500, 0, False)
@@ -1611,11 +1809,13 @@ test refill_no_datum_input_at_all_rejected() fail {
 }
 
 test refill_fake_debt_injection_rejected() fail {
-  // ĐƯỜNG PHÁ em tìm được (không có trong đặc tả được giao): ai cũng đỗ được một UTxO ở
-  // địa chỉ kho mang `TreasuryDatum` KHAI NỢ KHỐNG. Gộp nó vào, sổ cái phình lên đúng số
-  // khống ⇒ một tx { Refill(kho + UTxO khống N), Claim(N) } cấp entitlement N mà KHÔNG
-  // đi qua `GrantEntitlement`, tức né cửa `nợ ≤ pool`. Mệnh đề C-SOLV-2 mở rộng ở nhánh
-  // Refill chặn: nợ ra 1_000_300 > pool ra 1500.
+  // ĐƯỜNG PHÁ ghi từ 2026-08-12: ai cũng đỗ được một UTxO ở địa chỉ kho mang
+  // `TreasuryDatum` KHAI NỢ KHỐNG. Một tx { Refill(kho + UTxO khống N), Claim(N) } cấp
+  // entitlement N mà KHÔNG đi qua `GrantEntitlement`, tức né cửa `nợ ≤ pool`.
+  // Nay HAI lớp chặn độc lập: C-REF-PROV (sổ ra phải == sổ carrier = 300) và C-SOLV-2 mở
+  // rộng (1_000_300 > pool 1500). Lớp thứ nhất là lớp đóng được lối vào ở MỌI thang số;
+  // lớp thứ hai chỉ đóng được thang vượt pool — xem `refill_parked_utxo_inflating_
+  // outstanding_rejected` cho ca mà một mình C-SOLV-2 KHÔNG bắt.
   let a = tre_in_d(0, 5_000_000, 1000, 300, True)
   let fake = tre_in_d(1, 2_000_000, 500, 1_000_000, False)
   let o = tre_out_d(7_000_000, 1500, 1_000_300, True)
@@ -1644,13 +1844,13 @@ test refill_spending_claim_account_rejected() fail {
   let a = tre_in_d(0, 5_000_000, 1000, 300, True)
   let b = tre_in_d(1, 2_000_000, 500, 200, False)
   let ca = util.mk_input(util.mk_ref(2), tt_ca_utxo())
-  let o = tre_out_d(7_000_000, 1900, 500, True)
+  let o = tre_out_d(7_000_000, 1900, 300, True)
   refill(0, Some(tt_tre_d(300)), refill_tx([a, b, ca], [o], [#"c1", #"c2"]))
 }
 
 test refill_creating_claim_account_output_rejected() fail {
   let a = tre_in_d(0, 5_000_000, 1000, 300, True)
   let b = tre_in_d(1, 2_000_000, 500, 200, False)
-  let o = tre_out_d(7_000_000, 1900, 500, True)
+  let o = tre_out_d(7_000_000, 1900, 300, True)
   refill(0, Some(tt_tre_d(300)), refill_tx([a, b], [o, tt_ca_utxo()], [#"c1", #"c2"]))
 }

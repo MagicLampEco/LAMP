@@ -258,13 +258,19 @@ pub fn claim_refill_tx(
 /// Đối chứng cho `claim_refill_tx`: CÙNG phần kho, bỏ phần tài khoản. Tx này phải QUA
 /// Refill — nếu không, bài "kho từ chối Claim+Refill" có thể đỏ vì fixture kho hỏng chứ
 /// không vì C-REF-ACC.
+///
+/// ⚠ ĐỔI KỲ VỌNG 2026-09-26 (C-REF-PROV). Sổ ra trước đây là `outstanding_in + parked_debt`
+/// — phép TỔNG của luật cũ. Nay `treasury.ak` chỉ lấy sổ CỦA CARRIER (UTxO mang NFT
+/// "TRSY"), nên hình dạng QUA được là `outstanding_in`; `parked_debt` vẫn giữ nguyên ở
+/// input để value của nó bị hút vào pool, đúng việc mà Refill sinh ra để làm. Nói cách
+/// khác, chính con số đổi ở dòng này là con số mà bản vá lấy đi khỏi tay người lạ.
 pub fn refill_only_tx(outstanding_in: Int, parked_debt: Int) -> Transaction {
   base_tx(
     [
       treasury_input(treasury_ix, 5_000_000, pool, outstanding_in, True),
       treasury_input(parked_ix, 2_000_000, 0, parked_debt, False),
     ],
-    [treasury_output(7_000_000, pool, outstanding_in + parked_debt, True)],
+    [treasury_output(7_000_000, pool, outstanding_in, True)],
   )
 }
 
