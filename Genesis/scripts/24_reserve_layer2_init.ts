@@ -37,7 +37,7 @@ import {
   FLOOR_OILDROP, FLOOR_SOURCE, resolveDelegationAdmin,
 } from "./_reserve_layer2.js";
 import {
-  assertCustodyKhoPair, custodySeedRefFromEnv, refKey, sameRef,
+  assertCustodyKhoPair, custodySeedRefFromEnv, findOwnedCustodySeed, refKey, sameRef,
 } from "./_custodySeedRef.js";
 import { floorSourceWarning } from "./_floorLabel.js";
 import { requiredHashParam } from "./_guards.js";
@@ -186,14 +186,14 @@ async function main(): Promise<void> {
   if ((await custodyLive()).length === 1) {
     console.log(`↷ L2a bỏ qua — custody NFT đã ở ${cust.custodyAddr}`);
   } else {
-    const utxos = await lucid.wallet().getUtxos();
-    // Hạt giống là một UTxO CỤ THỂ, không phải "một cái nào cũng được": tìm đúng nó trong ví.
-    // Không còn trong ví = đã bị một giao dịch nào đó giữa hai bước tiêu mất (mỗi bước ở giữa
-    // có coin-selection tự do). Lúc đó KHÔNG đúc bừa bằng hạt giống khác — nói thẳng ra.
-    const seed = utxos.find((u) => key(u) === refKey(custodyRef));
+    // Hạt giống là một UTxO CỤ THỂ, không phải "một cái nào cũng được": tra đúng nó THEO OUTREF.
+    // Không tra trong `wallet().getUtxos()`: hạt giống được cất ở địa chỉ enterprise của cùng
+    // khoá để các bước ở giữa (coin-selection tự do) không tiêu nhầm — `findOwnedCustodySeed`.
+    // Không còn trên chuỗi = đã bị tiêu. Lúc đó KHÔNG đúc bừa bằng hạt giống khác — nói thẳng ra.
+    const seed = await findOwnedCustodySeed(lucid, custodyRef, pkh);
     if (!seed) {
       throw new Error(
-        `CUSTODY-SEED-003: hạt giống custody ${refKey(custodyRef)} KHÔNG còn trong ví, và ` +
+        `CUSTODY-SEED-003: hạt giống custody ${refKey(custodyRef)} KHÔNG còn trên chuỗi, và ` +
         `custody NFT cũng chưa có ở ${cust.custodyAddr}. Một UTxO chỉ tiêu được MỘT lần: nếu nó ` +
         `đã bị coin-selection của một bước trước tiêu mất thì policy \`custody_seed\` đã nướng ` +
         `vào khe #13 của lamp_mint KHÔNG BAO GIỜ đúc được nữa, và nhánh ReserveDraw của policy ` +

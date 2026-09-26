@@ -430,3 +430,45 @@ và nhầm cặp không ra script hỏng, nó ra một policy-id khác, im lặn
 state đó thuộc về một policy 12 tham số, không phải policy hiện tại.
 
 — LAMP agent
+
+## 2026-09-26 — cụm Preprod cuối (Capped Drop v3)
+
+Đúc lại sau khi #93 (Capped Drop v3), #95 (beacon) và #96 (custody) vào nhánh chính. Ba bản vá đổi
+script hash của `treasury`, `claim_account`, `beacon`; hash kho nướng vào `lamp_mint`, nên policy mới
+là bắt buộc. Bản ghi ACTIVE: `Genesis/offchain/src/lampPolicies.ts` ▸ `preprod-oneshot-14param-v3`
+(nguồn duy nhất cho policy id — mục này không chép lại).
+
+### Hạt giống custody cất NGOÀI ví
+
+Hạt giống custody (khe #13) phải sống tới lượt gieo custody. Giữa hai lượt đó ví vận hành chạy
+nhiều giao dịch có coin-selection tự do; chỉ lượt genesis có cổng tránh nó. Lượt này cất hạt giống ở
+**địa chỉ enterprise của cùng khoá thanh toán**: `wallet().getUtxos()` chỉ trả địa chỉ base nên không
+lượt chọn UTxO nào thấy nó, còn khoá vẫn ký tiêu được. `20_canonical_genesis.ts` và
+`24_reserve_layer2_init.ts` tra hạt giống theo outref (`_custodySeedRef.ts::findOwnedCustodySeed`).
+
+Thứ tự đã chạy:
+1. Gửi 5 tADA thuần tới địa chỉ enterprise của khoá vận hành → `CUSTODY_SEED_TX/IDX`.
+2. `custodySeedPolicyId(tx, idx)` → `RESERVE_KHO_NFT_POLICY`.
+3. `20_canonical_genesis.ts` (thử) → `SUBMIT=true`.
+4. `verify_canonical_v2.ts`: SUPPLY/TRSY/DROP/REG đúng chỗ, tổng cap 36 tỷ. MET còn ở ví (Lớp 2 chưa dựng).
+
+### Nạp kho: mồi → Refill → Grant → Redeem → bằng chứng → nạp thật
+
+`DistributionVest` hạ LAMP thành một UTxO RIÊNG ở địa chỉ kho (A-DEST đo độ tăng ròng tại địa chỉ,
+không đụng carrier TRSY). Sổ kho chỉ thấy LAMP sau `Refill` (`27_refill_treasury.ts`, nêu đích danh
+cả carrier lẫn UTxO mới trong `REFILL_INPUTS`).
+
+1. `21_vest_to_kho.ts DELTA_LAMP=1` — lượt mồi, dưới trần `BOOTSTRAP_CEILING_OILDROP`.
+2. `27_refill_treasury.ts` — gộp vào carrier.
+3. `28_beacon_grant_redeem.ts STEP=grant ENTITLEMENT_OILDROP=1000000` — tài khoản thử, cửa sổ 4144.
+4. **Từ cửa sổ 4145 (2026-09-29 07:00 +07)**: `STEP=redeem` → ghi `treasury-exit-proof.json` khoá
+   Preprod. Tài khoản mở ở cửa sổ `e` chỉ rút được từ `e + 1` (`A_span = 0` trong cùng cửa sổ).
+5. Sau bằng chứng: nạp lượng thật, Refill, rồi cấp theo pot.
+
+### Pot Wakeme: nhiều tài khoản cấp nguồn
+
+Cách cấp pot 6 đã chốt ở `Distribution/capped-drop/CONTRACT.md §4d-1`: `k` tài khoản Capped Drop,
+mỗi tài khoản một khoá vận hành riêng (tên NFT tài khoản = `blake2b_256(owner)`, nên một khoá chỉ
+mở được MỘT tài khoản). Việc còn thiếu trước khi chạy: một script dẫn xuất `k` khoá từ seed vận hành,
+rồi Grant / Redeem / chuyển vào kho Wakeme theo lô. Tài khoản mở ở cửa sổ 4145 rút được từ cửa sổ
+4146 (2026-10-04 07:00 +07).
