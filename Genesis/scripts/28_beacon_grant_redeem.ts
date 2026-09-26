@@ -89,19 +89,20 @@
 //   NETWORK=Preprod STEP=beacon SUBMIT=true tsx 28_beacon_grant_redeem.ts
 //   NETWORK=Preprod STEP=grant  SUBMIT=true tsx 28_beacon_grant_redeem.ts
 //   NETWORK=Preprod STEP=redeem SUBMIT=true tsx 28_beacon_grant_redeem.ts
-import { readFile } from "node:fs/promises";
-import { resolve, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
 import {
-  Data, applyParamsToScript, validatorToScriptHash, credentialToAddress,
-  scriptHashToCredential, toUnit, getAddressDetails,
-  type UTxO, type Validator, type MintingPolicy, type LucidEvolution,
+  Data, credentialToAddress, scriptHashToCredential, toUnit, getAddressDetails,
+  type LucidEvolution,
 } from "@lucid-evolution/lucid";
 
 import { NETWORK, SUBMIT, makeLucid, walletPkh, explorerTx } from "./config.js";
 import {
   rehydrate, canonicalCommittee, CANONICAL_COMMITTEE_THRESHOLD, MS_PER_EPOCH, DROP_NAME,
 } from "./_canonical_v2.js";
+// `claim_account` + `claim_account_nft` dựng lại từ blueprint, và chọn UTxO kho — dùng chung
+// với `30_feeder_accounts.ts`, không chép lại.
+import {
+  claimScripts, assertClaimScriptsMatch, pickTreasury, refKey,
+} from "./_distributionScripts.js";
 import { buildPostBeaconTx } from "../../Distribution/offchain/src/beaconBuilder.js";
 import { buildClaimTx } from "../../Distribution/offchain/src/claimBuilder.js";
 import { buildRedeemTx } from "../../Distribution/offchain/src/redeemBuilder.js";
@@ -117,8 +118,6 @@ import type { BeaconDatum, ClaimAccountDatum, TreasuryDatum } from "../../Distri
 // có bài kiểm riêng (`Distribution/tests/e2ePlan.test.ts`). Dùng lại thay vì tính C-BCN-6 lần
 // thứ hai ở đây — hai chỗ tính riêng là hai chỗ trôi riêng.
 import { planBeacon, planRedeem } from "../../Distribution/scripts/e2ePlan.js";
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
 
 // ── Tham số màn diễn tập ─────────────────────────────────────────────────────
 // Hai biến v2 CHẾT ở v3 — từ chối thẳng thay vì bỏ qua, cùng lý do với `04_e2e.ts`
@@ -148,7 +147,6 @@ const SEND_LOVELACE = BigInt(process.env.SEND_LOVELACE ?? "2000000");
 
 const STEP = (process.env.STEP ?? "").toLowerCase();
 
-const refKey = (u: UTxO) => `${u.txHash}#${u.outputIndex}`;
 const lamp = (oildrop: bigint) => `${oildrop / OILDROP_PER_LAMP} LAMP (${oildrop} oildrop)`;
 
 /** Epoch VALIDATOR (cửa sổ 5 ngày neo mốc Unix), KHÔNG phải epoch Cardano. */
@@ -201,59 +199,6 @@ function redeemOutlook(a: ClaimAccountDatum, b: BeaconDatum, t: TreasuryDatum, e
   }
 }
 
-// ── Hai script Distribution mà `rehydrate()` KHÔNG trả về ────────────────────
-// `CanonicalScripts` chỉ mang `treasury` + `beacon`; `claim_account` và `claim_account_nft`
-// chỉ có HASH trong wiring. Dựng lại ở đây từ chính blueprint, rồi ĐỐI CHIẾU hash với wiring
-// — dựng lệch một tham số là ra một địa chỉ khác, và Cardano không chạy validator lúc TẠO
-// output nên cái lệch đó sẽ không đỏ ở đâu cả cho tới lúc tiền đã nằm ở địa chỉ chết.
-async function claimScripts(pkh: string, khoPid: string, lampPid: string,
-                            tokenName: string, beaconPid: string) {
-  const p = resolve(__dirname, "../../Distribution/onchain/plutus.json");
-  const vs = (JSON.parse(await readFile(p, "utf8")) as {
-    validators: { title: string; compiledCode: string; parameters?: unknown[] }[];
-  }).validators;
-  const find = (title: string) => {
-    const v = vs.find((x) => x.title === title);
-    if (!v) throw new Error(`Không thấy '${title}' trong Distribution/onchain/plutus.json — chạy 'aiken build'.`);
-    if (!Array.isArray(v.parameters)) throw new Error(`APPLY-001: blueprint không khai 'parameters' cho '${title}'.`);
-    return v;
-  };
-  const apply = (title: string, params: unknown[]) => {
-    const v = find(title);
-    if (v.parameters!.length !== params.length) {
-      throw new Error(
-        `APPLY-002: '${title}' khai ${v.parameters!.length} tham số, truyền ${params.length}. ` +
-        `applyParamsToScript KHÔNG ném khi thiếu — nó trả một script hash KHÁC, im lặng.`,
-      );
-    }
-    return { type: "PlutusV3" as const, script: applyParamsToScript(v.compiledCode, params as never) };
-  };
-
-  const committee = canonicalCommittee(pkh);
-  const threshold = CANONICAL_COMMITTEE_THRESHOLD;
-  const accountNft: MintingPolicy = apply("claim_account_nft.claim_account_nft.mint",
-    [committee, threshold, khoPid]);
-  const accountPid = validatorToScriptHash(accountNft as Validator);
-  const claim: Validator = apply("claim_account.claim_account.spend", [
-    committee, threshold, MS_PER_EPOCH, lampPid, tokenName, beaconPid, khoPid, accountPid,
-  ]);
-  return { accountNft, accountPid, claim, claimHash: validatorToScriptHash(claim) };
-}
-
-/** UTxO kho canonical = cái mang ĐÚNG 1 NFT "TRSY". Địa chỉ kho công khai, ai cũng đỗ được vào. */
-function pickTreasury(all: UTxO[], khoUnit: string): UTxO {
-  const carriers = all.filter((u) => (u.assets[khoUnit] ?? 0n) === 1n);
-  if (carriers.length !== 1) {
-    throw new Error(
-      `TRSY-001: cần ĐÚNG 1 UTxO mang NFT "TRSY" ở địa chỉ kho, đếm ${carriers.length}. ` +
-      `Nhiều hơn 1 hoặc 0 ⇒ dừng; gộp bằng 27_refill_treasury.ts trước.`,
-    );
-  }
-  const u = carriers[0]!;
-  if (!u.datum) throw new Error(`TRSY-002: UTxO kho ${refKey(u)} không có inline datum.`);
-  return u;
-}
-
 async function main(): Promise<void> {
   if (NETWORK === "Mainnet") throw new Error("CHẶN: script diễn tập, không chạy trên Mainnet.");
 
@@ -264,12 +209,7 @@ async function main(): Promise<void> {
 
   const cs = await claimScripts(pkh, wiring.markers.khoPid, wiring.lampPid,
                                 wiring.tokenName, wiring.markers.beaconPid);
-  if (cs.claimHash !== wiring.claimHash) {
-    throw new Error(`APPLY-003: claim_account dựng lại ra hash ${cs.claimHash}, state ghi ${wiring.claimHash}.`);
-  }
-  if (cs.accountPid !== wiring.accountPid) {
-    throw new Error(`APPLY-003: claim_account_nft dựng lại ra pid ${cs.accountPid}, state ghi ${wiring.accountPid}.`);
-  }
+  assertClaimScriptsMatch(cs, wiring);
   const claimAddr = credentialToAddress(NETWORK, scriptHashToCredential(cs.claimHash));
 
   // ── Đọc trạng thái chuỗi ───────────────────────────────────────────────────
