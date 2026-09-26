@@ -412,7 +412,7 @@ C-REF-SIGN:  carrier.outstanding_entitlement ≥ 0 và carrier.total_redeemed �
 | mã định danh | treo cái gì | ràng buộc TẠM đang có hiệu lực (fail-closed) | khai ở file nào |
 |---|---|---|---|
 | ~~RFL-KILL-ONCHAIN-01~~ | **ĐÓNG 2026-09-26.** Đã vá on-chain: `carrier_ledger` ép `≥ 0` trên carrier, và C-REF-PROV làm số hạng của input lạ không còn đi vào sổ ở BẤT KỲ dấu nào | — | `Distribution/onchain/validators/treasury.ak` ▸ `fn carrier_ledger` |
-| RFL-BUILDER-SUM-01 | `refillBuilder` off-chain vẫn tính sổ ra bằng TỔNG trên mọi input có datum (`ledgerIn`/`redeemedIn`), tức nó dựng ra giao dịch mà chuỗi nay TỪ CHỐI khi tập input có một UTxO lạ mang datum | Fail-closed: giao dịch hỏng ở khâu nộp, không mất tiền. Ca thường gặp (carrier + UTxO không datum) vẫn đúng vì tổng khi đó bằng sổ carrier | `Distribution/offchain/src/refillBuilder.ts` ▸ `ledgerIn`, `redeemedIn`; bộ ca ở `Distribution/tests/refillBuilder.test.ts` |
+| ~~RFL-BUILDER-SUM-01~~ | **ĐÓNG 2026-09-26.** `buildRefillTx` nay lấy sổ ra từ ĐÚNG MỘT carrier (UTxO mang TRSY của policy thật, mirror `carrier_ledger`), bỏ qua datum mọi input khác; loại khỏi tập gộp UTxO mang tài sản tên TRSY dưới policy khác (`bearsForeignTreasuryName`, báo trong `RefillResult.excluded`) vì chuỗi nhận carrier theo TÊN. UTxO lạ mang datum khống không còn chặn được Refill | — | `Distribution/offchain/src/refillBuilder.ts` ▸ `buildRefillTx`, `bearsForeignTreasuryName`; bộ ca ở `Distribution/tests/refillBuilder.test.ts` ▸ `UTxO lạ ở địa chỉ kho (griefing)` |
 
 ## 4d. Sổ tên NFT đã đúc — phạm vi của MỌI trần per-account
 

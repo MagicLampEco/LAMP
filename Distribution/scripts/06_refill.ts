@@ -20,7 +20,7 @@ import {
   makeLucid, loadDeployed, reapplyValidators, toUnit, explorerTx, awaitTx,
 } from "./config.js";
 import { decodeTreasuryDatum } from "../offchain/src/datum.js";
-import { buildRefillTx } from "../offchain/src/refillBuilder.js";
+import { buildRefillTx, bearsForeignTreasuryName } from "../offchain/src/refillBuilder.js";
 
 const STEP = (process.env.STEP ?? "").trim();
 const SUBMIT = (process.env.SUBMIT ?? "false").toLowerCase() === "true";
@@ -71,15 +71,20 @@ async function main(): Promise<void> {
     return;
   }
 
-  // STEP=refill — singleton mang TRSY + mọi UTxO KHÔNG datum ở địa chỉ kho. UTxO mang datum mà
-  // không mang TRSY thì KHÔNG gộp (xem chú thích đầu `refillBuilder.ts`: người lạ đỗ được mọi thứ
-  // ở địa chỉ script; UTxO mang datum lạ sẽ làm `fold_ledger` fail cả giao dịch).
+  // STEP=refill — singleton mang TRSY + mọi UTxO KHÔNG datum ở địa chỉ kho. Diễn tập cố ý giữ tập
+  // gộp HẸP hơn chuỗi cho phép: `treasury.ak` ▸ `carrier_ledger` bỏ qua datum của mọi input không
+  // phải carrier nên gộp được cả UTxO mang datum lạ, nhưng runner này chỉ lấy đúng hình dạng A-DEST
+  // (không datum) để phép đối chiếu LAMP bên dưới biết chính xác phần nào đã gộp. UTxO mang tài sản
+  // tên TRSY dưới policy KHÁC thì loại — chuỗi nhận carrier theo TÊN, gộp vào là 2 carrier ⇒ từ
+  // chối (builder cũng loại, `bearsForeignTreasuryName`; loại ở đây để `loose` khớp tập đã gộp).
   const all = await lucid.utxosAt(treAddr);
   const single = all.filter((u) => (u.assets[trsyUnit] ?? 0n) === 1n);
   if (single.length !== 1) {
     throw new Error(`REFILL-RUN-005: cần đúng 1 UTxO mang TRSY ở kho, thấy ${single.length}.`);
   }
-  const loose = all.filter((u) => (u.assets[trsyUnit] ?? 0n) === 0n && !u.datum && !u.datumHash);
+  const loose = all.filter((u) =>
+    (u.assets[trsyUnit] ?? 0n) === 0n && !u.datum && !u.datumHash &&
+    !bearsForeignTreasuryName(u, state.params.treasuryNftPolicy));
   const skipped = all.length - 1 - loose.length;
   const inputs: UTxO[] = [single[0]!, ...loose];
   const before = decodeTreasuryDatum(Data.from(single[0]!.datum!));
@@ -87,7 +92,7 @@ async function main(): Promise<void> {
   const deposit = oildropEnv("DEPOSIT_OILDROP", false);
 
   console.log(`UTxO ở kho: ${all.length} · gộp ${inputs.length} (singleton + ${loose.length} không datum)` +
-    ` · bỏ qua ${skipped} (có datum, không TRSY)`);
+    ` · bỏ qua ${skipped} (có datum hoặc mang TRSY policy khác)`);
 
   const res = await buildRefillTx({
     lucid, treasuryUtxos: inputs, treasuryScript,
