@@ -45,6 +45,7 @@ function datum(over: Partial<CustodyDatum> = {}): CustodyDatum {
     governance_ref: "",
     epoch: 5n,
     consumed_proposals: [],
+    buckets: [0n, 1n, 2n, 3n, 7n, 9n],
     ...over,
   };
 }
@@ -250,11 +251,11 @@ describe("F4 — bucket Reserve chỉ MigrateIn được ghi", () => {
     ({ app_id: "aa", policy: LAMP, name: TLAMP, amount: 100n, category });
 
   it("allItemsValid ĐỎ khi Collect nhắm vào bucket dành riêng Reserve", () => {
-    expect(allItemsValid([item(RESERVE_INFLOW_BUCKET_ID)], accepted)).toBe(false);
+    expect(allItemsValid([item(RESERVE_INFLOW_BUCKET_ID)], accepted, [0n, 1n, 2n, 3n, 7n, 9n])).toBe(false);
   });
 
   it("allItemsValid XANH với bucket thường", () => {
-    expect(allItemsValid([item(0n)], accepted)).toBe(true);
+    expect(allItemsValid([item(0n)], accepted, [0n, 1n, 2n, 3n, 7n, 9n])).toBe(true);
   });
 
   it("noReservedBucketLines ĐỎ khi sổ genesis khai khống số dư Reserve-inflow", () => {

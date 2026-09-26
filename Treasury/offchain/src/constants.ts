@@ -41,3 +41,18 @@ export const RESERVE_SOURCE_TAG = "726573657276652d64726177";
  *  Chỉ nhận ADA: `stake_reward.reward_policy` là `#""`. Thưởng uỷ quyền trên Cardano không có
  *  biến thể nào khác, nên mở thêm asset chỉ mở bề mặt cho người dựng tx chọn. */
 export const STAKE_REWARD_BUCKET_ID = 1_000_001n;
+
+/** C-LINES — trần SỐ DÒNG sổ custody.
+ *
+ *  BẢN SAO CÓ NHÃN. Nguồn duy nhất: `Treasury/onchain/lib/magiclamp/treasury/ledger.ak`
+ *  ▸ `max_ledger_lines`. Đối chiếu lúc chép: 2026-09-26, nhánh
+ *  `fix/custody-ledger-cap-closed-category`. Căn cứ cho con số (bảng ExUnit 5 nhánh × nhiều N,
+ *  hai hình dạng sổ) nằm cạnh hằng đó và ở `Treasury/CONTRACT.md §13` — KHÔNG chép số đo sang đây.
+ *
+ *  Ép on-chain trong `ledger.is_canonical`, tức cả năm đường ghi sổ (Collect, Release, MigrateIn,
+ *  StakeRewardIn, custody_seed) đều từ chối sổ ra dài hơn trần. Off-chain giữ bản sao để builder
+ *  từ chối SỚM — không có nó thì người dùng nhận một tx bị ledger từ chối thay vì một lỗi đọc được.
+ *
+ *  ⚠ Đổi một bên mà không đổi bên kia: nếu off-chain LỚN hơn on-chain thì builder dựng tx chết;
+ *  nếu NHỎ hơn thì builder chặn cả lô hợp lệ. Cả hai đều lộ ra ở bài kiểm trước khi ra mạng. */
+export const MAX_LEDGER_LINES = 20;

@@ -58,6 +58,9 @@ Chữ ký: `collectToTreasury(asset ∈ accepted_assets, amount, app_id, categor
    contention), Collect ép **`Σcut per-asset > 0`** (TECH C-COL-11): mỗi Collect phải sinh cut THẬT. Vá
    GIẢM griefing **zero-cost** (kẻ tấn công nay tốn value), NHƯNG contention gốc 1-UTxO vẫn cần **shard
    custody (T4)** đóng hẳn — van rẻ trước, shard khi đo thấy nghẽn.
+7. **Collect KHÔNG đẩy sổ vượt trần số dòng (`C-COL-LINES`).** Vì Collect permissionless và mỗi
+   `(category, asset)` mới sinh một dòng sổ, đường này là đường bơm dòng rác. Sổ ĐẦU RA phải
+   ≤ `ledger.max_ledger_lines`. Xem §13 cho trần + số đo.
 
 ## 4. Bucket release — chi ra (nhóm B)
 
@@ -163,6 +166,8 @@ testnet → đổi param/script hash KHÔNG cần migrate (lý do làm ngay bây
   (C-SORT, thay `no_dup_lines` O(n²)→O(n)) + cho prune dòng khi số dư mới == 0 (C-PRUNE). T3 (sổ↔value)
   giữ nguyên (dòng 0 đóng góp 0). Vá gốc (v1.x): đưa `consumed_proposals` ra khỏi custody datum (cần
   Governance trạng thái `Spent`); van tạm = trần `N_max` đo-thực trước Mainnet. (TECH §3.)
+  → **Trần `N_max` nay ĐÃ hiện thực** (`C-LINES`, §13). Phần `consumed_proposals` vẫn MỞ: trần này
+  đếm dòng SỔ, không đếm phần tử `consumed_proposals`, nên đường phình qua marker proposal chưa đóng.
 - **H4 — epoch neo chain.** `epoch_out == get_epoch(tx) ∧ get_epoch(tx) >= epoch_in` (thay chỉ `>=`).
   Field `epoch` thành audit thật. **Vá lần 2 (F4): dùng `get_epoch_bounded`** — validity_range hữu hạn
   CẢ HAI biên + gọn 1 epoch (chống đóng băng: kẻ đặt lower epoch cũ submit muộn). (TECH C-EPOCH.)
@@ -250,5 +255,78 @@ ISSUED ──claim──▶ PENDING(txHash) ──▶ CONSUMED
    khớp) ⇒ **không ký**, không đoán.
 3. Cho tới khi 4 bước verify chạy thật và có test, **mọi tài liệu LAMP nói về Grant phải ở thì tương
    lai kèm nhãn trạng thái** — như mục này.
+
+## 13. `C-LINES` — trần SỐ DÒNG sổ custody (2026-09-26, **ĐÃ HIỆN THỰC**, interface KHÓA)
+
+Hiện thực van tạm mà §10 H3 đã đặt ra ("trần `N_max` đo-thực trước Mainnet"). Vá TRƯỚC lần gieo
+instance đầu tiên — chưa instance nào sống nên đổi script hash không cần migrate.
+
+**Lỗ được bịt.** `C-POS` + `C-SORT` nói về HÌNH DẠNG của sổ, không nói gì về KÍCH CỠ. Sổ là một
+`List` trong datum; mỗi dòng mới làm mọi lần tiêu kho SAU đó đắt hơn theo **bậc hai** (hai phép
+kiểm sổ đều duyệt sổ lồng nhau). Không trần thì kẻ tấn công bơm dòng rác qua `Collect`
+(permissionless, mỗi `(category, asset)` mới = một dòng) tới lúc mọi giao dịch tiêu kho vượt trần
+ExUnit ⇒ **kho khoá vĩnh viễn**, và LAMP không burn được nên đó là phá huỷ cung thật, không phải
+một dòng kế toán.
+
+**Chốt.** Sổ ĐẦU RA của mọi đường ghi phải có `≤ N_max` dòng. Ép tại MỘT chỗ — `ledger.is_canonical`,
+cổng duy nhất cả năm đường đều đi qua — nên nhánh ghi sổ viết sau này không thể ra đời mà thiếu trần.
+Mã chốt theo nhánh: `C-COL-LINES` · `C-REL-LINES` · `C-MIG-LINES` · `C-STK-LINES` · `S-LEDGER-LINES`.
+Trần chỉ áp cho sổ ra; sổ vào không cần kiểm vì genesis đã bị chặn và mọi lượt sau ép đầu ra ≤ trần
+⇒ theo quy nạp không trạng thái tới được nào vượt trần.
+
+**`N_max = 20`, chọn bằng ĐO.** Trần giao dịch: mem 14.000.000 · steps 10.000.000.000 · tx 16.384 B.
+Yêu cầu dư ≥ 40%. Nhánh nặng nhất (`Release`) ở N = 20: mem 7,48 M = **53,4%** trần (dư 46,6%) ·
+steps 2,523 B = **25,2%** (dư 74,8%) · datum CBOR 2.846 B = **17,4%** trần tx (dư 82,6%).
+N = 21 vẫn đạt nhưng chỉ còn dư 42,3% mem — trần này cách ngưỡng ĐÚNG MỘT BẬC, không cách xa.
+Bảng số đo đầy đủ (5 nhánh × nhiều N, hai hình dạng sổ, đã trừ chi phí dựng fixture) nằm cạnh hằng
+tại `onchain/lib/magiclamp/treasury/ledger.ak` ▸ `max_ledger_lines` — **nguồn duy nhất, đừng chép
+số sang đây**. Phép đo chạy trên mock `Transaction` nên KHÔNG gồm chi phí giải mã `ScriptContext`
+thật ⇒ mọi con số là **cận dưới** của chi phí on-chain; đó là lý do không lấy số đo sát biên.
+
+**Hệ quả thiết kế phải biết trước, không phải điều bất ngờ.** 20 dòng là 20 cặp `(bucket, asset)`
+cho MỘT instance — gồm cả hai bucket dành riêng (`reserve_inflow`, `stake_reward`). Instance cần
+nhiều hơn thì đường đi là **T4 shard-by-asset** (mỗi shard một UTxO, bất biến áp per-shard), KHÔNG
+phải nâng trần: chi phí bậc hai không biến mất khi nâng con số. Off-chain builder nên từ chối sớm
+một lô `Collect` làm sổ vượt trần, để người dùng thấy lỗi ở nơi đọc được chứ không thấy tx bị
+ledger từ chối.
+
+**Chưa đóng.** Trần này đếm dòng SỔ. Nó KHÔNG đếm `consumed_proposals` — đường phình datum qua
+marker single-use proposal vẫn mở, và vá gốc của nó vẫn là việc §10 H3 đã nêu (đưa
+`consumed_proposals` ra khỏi custody datum, cần Governance có trạng thái `Spent`).
+
+## 14. `C-COL-CAT` — category ĐÓNG theo instance (2026-09-26, **ĐÃ HIỆN THỰC**, interface KHÓA)
+
+Vá cùng đợt với §13, trước lần gieo instance đầu tiên.
+
+**Lỗ được bịt.** Trước bản vá, `Collect` nhận `item.category` là một số nguyên BẤT KỲ (trừ hai id dành
+riêng). Hệ quả kép: (1) tiền rơi vào một bucket không ai định nghĩa, và không nhánh `Release` nào có
+lý do để chi nó ra; (2) mỗi category lạ là một dòng sổ mới — đúng đường bơm mà §13 phải chặn bằng trần.
+
+**Chốt.**
+- `CustodyDatum` thêm trường `buckets: List<Int>`, ĐẶT CUỐI (chỉ số Constr 7; datum nay 8 trường). Codec
+  offchain từ chối datum 7 trường (`TDATUM-041`) — không có đường đọc hình dạng cũ.
+- `C-COL-CAT` — mọi item của `Collect`: `category ∈ datum.buckets` (`buckets.ak` ▸ `is_declared`, gọi trong
+  `collect.all_items_valid`). Một item lạc làm hỏng cả lô.
+- `S-BUCKETS-NONEMPTY` · `S-BUCKETS-SORTED` · `S-BUCKETS-RESERVED` — lúc gieo: `buckets` khác rỗng, tăng
+  NGHIÊM NGẶT (⇒ không trùng), không chứa `reserve_inflow` hay `stake_reward` (`buckets.ak` ▸ `config_ok`,
+  gọi trong `custody_seed`). Đây là cửa DUY NHẤT kiểm hình dạng `buckets`.
+- `C-BUCKETS-KEEP` — cả bốn nhánh tiêu kho (`Collect` · `Release` · `MigrateIn` · `StakeRewardIn`) ép
+  `out.buckets == in.buckets`. ⇒ **danh sách category là cấu hình của instance, chốt lúc gieo, bất biến đời
+  instance.** Cần category mới = gieo instance mới (hoặc một nhánh đổi cấu hình qua Governance — chưa có).
+
+**Nghĩa vụ vận hành lúc gieo.** Công cụ gieo (`scripts/01_seed_custody.ts`) KHÔNG có giá trị mặc định cho
+`BUCKETS` hay `CUT_BPS` (`SEED-BKT-001`, `SEED-CUT-001`): một mặc định ở đây là một cấu hình vĩnh viễn mà
+không ai chọn. PlatformKit lấy `buckets` từ `config.buckets[].id`, sắp tăng dần.
+
+**Tương tác với §13.** Category đóng chặn kẻ ngoài bơm dòng, nhưng không tự bảo đảm lô `Collect` HỢP LỆ luôn
+vừa trần: số dòng tối đa người dùng tạo được là `|buckets| × |accepted_assets|`, cộng các dòng ở hai bucket
+dành riêng. Người gieo phải chọn hai danh sách sao cho tích đó cộng phần dành riêng `≤ N_max`; validator
+KHÔNG kiểm phép cộng này lúc gieo (nó phụ thuộc asset nào thật sự chảy vào bucket dành riêng).
+
+**Chốt nào bài kiểm hiện tại ghim được.** Đo bằng đột biến, mỗi lượt gỡ ĐÚNG một chốt (dấu `MUT-MARK` cắm tại
+dòng bị đổi) rồi chạy trọn `aiken check`: gỡ `is_declared` · `config_ok` ở seed · từng vế
+rỗng/tăng-ngặt/dành-riêng · từng `buckets ==` ở bốn nhánh · và `within_line_cap` của §13 — cả mười lượt đều
+có bài đỏ. Phép đo chạy trên validator; vế offchain (`isDeclaredBucket`, `bucketsConfigOk`) là GƯƠNG, có ca
+kiểm riêng nhưng chưa chạy đột biến.
 
 Đơn vị dùng chung: `1 LAMP = 1_000_000 oildrop` (khớp `Utils.OILDROP_PER_LAMP`).

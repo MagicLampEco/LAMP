@@ -29,11 +29,22 @@
 //   S-SEED-0  seed_value_ok: value == ledger.value_of(ledger) ⊕ reserved_min_ada (NỀN).
 //   S-LEDGER-0 sổ CANONICAL: strict-sorted ∧ mọi dòng > 0 (no-dup O(n) + chống dòng
 //             0/âm lọt qua seed — đặc biệt dòng ADA âm bù reserved).
+//   S-LEDGER-LINES sổ genesis ≤ `ledger.max_ledger_lines` dòng (cùng một cổng
+//             `ledger.is_canonical`). Seed là cửa DUY NHẤT đặt số dòng khởi điểm, nên
+//             không chặn ở đây thì trần ở các nhánh nạp vô nghĩa: một instance gieo
+//             thẳng 500 dòng đã khoá ngay từ giao dịch thứ hai.
 //   S-ACC-0   mọi dòng sổ thuộc accepted_assets (đa thuê bao nhất quán).
 //   S-LEDGER-RESERVED sổ genesis KHÔNG chứa dòng ở bucket dành riêng nào: nguồn Reserve
 //             (`migrate.reserve_inflow_bucket_id`, chỉ MigrateIn được ghi) và thưởng uỷ
 //             quyền (`stake_reward.stake_reward_bucket_id`, chỉ StakeRewardIn được ghi).
 //   S-CONSUMED-0 consumed_proposals == [] (chống seed pre-mark né replay-guard).
+//   S-BUCKETS-NONEMPTY  buckets != [] (không instance mà `Collect` không ghi được vào đâu).
+//   S-BUCKETS-SORTED    buckets tăng NGHIÊM NGẶT (⇒ không trùng, một lượt duyệt O(n)).
+//   S-BUCKETS-RESERVED  buckets KHÔNG chứa `migrate.reserve_inflow_bucket_id` hay
+//             `stake_reward.stake_reward_bucket_id`.
+//   Ba vế trên là CỬA DUY NHẤT ép `buckets` hợp lệ: bốn nhánh tiêu kho chỉ ghim
+//   `out.buckets == in.buckets` (C-BUCKETS-KEEP), không nhánh nào kiểm lại hình dạng. Gieo
+//   một danh sách rác ở đây là gieo nó vĩnh viễn — `buckets` bất biến đời instance.
 //
 // BURN — CẤM hoàn toàn (else fail): NFT authenticity sống suốt vòng đời instance.
 
@@ -42,6 +53,7 @@ use aiken/primitive/bytearray
 use aiken/collection/list
 use cardano/assets.{PolicyId}
 use cardano/transaction.{InlineDatum, OutputReference, Transaction}
+use magiclamp/treasury/buckets
 use magiclamp/treasury/collect
 use magiclamp/treasury/ledger
 use magiclamp/treasury/migrate
@@ -157,6 +169,13 @@ validator custody_seed(genesis_ref: OutputReference) {
 
     // ── S-CONSUMED-0: genesis CHƯA chi proposal nào (single-use marker rỗng) ─
     expect seed_datum.consumed_proposals == []
+
+    // ── S-BUCKETS-*: danh sách bucket khai báo hợp lệ (cửa DUY NHẤT) ─────────
+    // `buckets.config_ok` = khác rỗng ∧ tăng nghiêm ngặt ∧ không chứa bucket dành riêng.
+    // Đây là chỗ duy nhất trong hệ ép ba vế ấy; sau lượt này `buckets` chỉ được MANG QUA
+    // (C-BUCKETS-KEEP ở cả bốn nhánh tiêu kho), nên một danh sách rác gieo ở đây sống suốt
+    // đời instance và không nhánh nào sửa được.
+    expect buckets.config_ok(seed_datum.buckets)
 
     True
   }

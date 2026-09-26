@@ -11,7 +11,9 @@
 //   value_out == value_in ⊕ cut_value(items)
 // Residual (amount − cut) do CALLER trả thẳng provider ngoài custody.
 
-import { RESERVE_INFLOW_BUCKET_ID, STAKE_REWARD_BUCKET_ID } from "./constants.js";
+import {
+  MAX_LEDGER_LINES, RESERVE_INFLOW_BUCKET_ID, STAKE_REWARD_BUCKET_ID,
+} from "./constants.js";
 import type { CollectItem, CustodyDatum, LedgerEntry } from "./types.js";
 
 /** Đơn vị value đa-asset offchain: key "policy|name" → amount. "" cho lovelace. */
@@ -46,12 +48,31 @@ export function itemAccepted(item: CollectItem, accepted: CustodyDatum["accepted
  *  on-chain chắc chắn từ chối — sai theo chiều tốn phí chứ không mất tiền, nhưng vẫn là
  *  gương lệch, và gương lệch là thứ người ta phát hiện bằng một tx hỏng chứ không bằng
  *  bài kiểm. Đếm ở đây phải bằng đếm ở `collect.ak` ▸ `all_items_valid`: HAI. */
-export function allItemsValid(items: CollectItem[], accepted: CustodyDatum["accepted_assets"]): boolean {
+export function allItemsValid(
+  items: CollectItem[],
+  accepted: CustodyDatum["accepted_assets"],
+  declaredBuckets: CustodyDatum["buckets"],
+): boolean {
   return items.every((it) =>
     it.amount >= 0n
+    && isDeclaredBucket(declaredBuckets, it.category)               // C-COL-CAT
     && it.category !== RESERVE_INFLOW_BUCKET_ID
     && it.category !== STAKE_REWARD_BUCKET_ID
     && itemAccepted(it, accepted));
+}
+
+/** C-COL-CAT: `category` phải nằm trong danh sách bucket đã khai lúc seed
+ *  (khớp `onchain/lib/magiclamp/treasury/buckets.ak` ▸ `is_declared`). */
+export function isDeclaredBucket(buckets: CustodyDatum["buckets"], category: bigint): boolean {
+  return buckets.some((b) => b === category);
+}
+
+/** S-BUCKETS-*: khác rỗng, tăng nghiêm ngặt, không chứa bucket dành riêng
+ *  (khớp `buckets.ak` ▸ `config_ok`). */
+export function bucketsConfigOk(buckets: CustodyDatum["buckets"]): boolean {
+  if (buckets.length === 0) return false;
+  for (let i = 1; i < buckets.length; i++) if (!(buckets[i - 1]! < buckets[i]!)) return false;
+  return buckets.every((b) => b !== RESERVE_INFLOW_BUCKET_ID && b !== STAKE_REWARD_BUCKET_ID);
 }
 
 /** Số dư (bucket,policy,name) trong sổ; 0 nếu chưa có dòng. */
@@ -185,9 +206,16 @@ export function allPositive(ledger: LedgerEntry[]): boolean {
   return ledger.every((e) => e.amount > 0n);
 }
 
-/** is_canonical on-chain: strict_sorted ∧ all_positive. */
+/** within_line_cap on-chain (C-LINES): sổ không vượt trần số dòng.
+ *  Trần là bản sao có nhãn của `ledger.max_ledger_lines` — xem `constants.ts`. */
+export function withinLineCap(ledger: LedgerEntry[]): boolean {
+  return ledger.length <= MAX_LEDGER_LINES;
+}
+
+/** is_canonical on-chain: within_line_cap ∧ strict_sorted ∧ all_positive.
+ *  Thứ tự giống on-chain: trần đứng trước vì nó chặn đúng cái làm hai vế sau đắt. */
 export function isCanonical(ledger: LedgerEntry[]): boolean {
-  return strictSorted(ledger) && allPositive(ledger);
+  return withinLineCap(ledger) && strictSorted(ledger) && allPositive(ledger);
 }
 
 /** Sắp xếp sổ theo khóa canonical (bucket_id, policy, name) — khớp key_lt. KHÔNG đổi amount. */
@@ -375,7 +403,8 @@ export function seedDatumOk(
     && isCanonical(datum.ledger)                                     // S-LEDGER-0
     && allLinesAccepted(datum.ledger, datum.accepted_assets)         // S-ACC-0
     && noReservedBucketLines(datum.ledger)                           // S-LEDGER-RESERVED
-    && datum.consumed_proposals.length === 0;                        // S-CONSUMED-0
+    && datum.consumed_proposals.length === 0                         // S-CONSUMED-0
+    && bucketsConfigOk(datum.buckets);                               // S-BUCKETS-*
 }
 
 /** S-LEDGER-RESERVED (F4): sổ genesis KHÔNG được chứa dòng ở HAI bucket DÀNH RIÊNG — nguồn

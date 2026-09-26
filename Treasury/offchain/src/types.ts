@@ -30,6 +30,11 @@ export interface CustodyDatum {
   // SINGLE-USE marker chống replay proposal (HARD BLOCKER finding 7, TECH §7.2).
   // proposal_id (hex) đã chi — Release append id mới, chặn dùng lại cùng proposal.
   consumed_proposals : string[];   // hex[] — proposal_id đã chi (đơn điệu tăng)
+  // DANH SÁCH ĐÓNG các bucket_id mà `Collect` được ghi vào (C-COL-CAT · S-BUCKETS-*).
+  // Ở CUỐI, khớp `types.ak`: thứ tự trường quyết định layout CBOR, chèn giữa làm mọi datum
+  // đã mã hoá trỏ sai trường và nó không lỗi lúc build — nó lỗi lúc validator giải mã.
+  // Bất biến đời instance: ép một lần ở `custody_seed`, rồi mọi nhánh ghim out == in.
+  buckets            : bigint[];   // bucket_id hợp lệ cho Collect (tăng nghiêm ngặt)
 }
 
 /** Một micro-collect (gộp lô N item vào 1 settlement tx — anti-bloat).

@@ -29,6 +29,7 @@ const baseDatum: CustodyDatum = {
   governance_ref: "bb".repeat(28),
   epoch: 7n,
   consumed_proposals: [],
+  buckets: [0n, 1n, 2n, 3n, 7n, 9n],
 };
 
 // ══ Hằng bucket ════════════════════════════════════════════════════════
@@ -193,11 +194,11 @@ describe("planStakeRewardDatum", () => {
 describe("bucket thưởng bị cấm ở hai đầu, y như bucket Reserve", () => {
   it("Collect KHÔNG ghi được vào bucket thưởng", () => {
     const item = { category: STAKE_REWARD_BUCKET_ID, policy: "", name: "", amount: 1n };
-    expect(allItemsValid([item], [ADA])).toBe(false);
+    expect(allItemsValid([item], [ADA], [0n, 1n, 2n, 3n, 7n, 9n])).toBe(false);
   });
 
   it("Collect vào bucket thường vẫn qua — vế cấm không bắt oan", () => {
-    expect(allItemsValid([{ category: 7n, policy: "", name: "", amount: 1n }], [ADA])).toBe(true);
+    expect(allItemsValid([{ category: 7n, policy: "", name: "", amount: 1n }], [ADA], [0n, 1n, 2n, 3n, 7n, 9n])).toBe(true);
   });
 
   it("sổ genesis KHÔNG khai khống được số dư thưởng", () => {

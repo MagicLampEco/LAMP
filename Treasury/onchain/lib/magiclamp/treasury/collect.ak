@@ -15,6 +15,7 @@
 
 use aiken/collection/list
 use cardano/assets.{Value}
+use magiclamp/treasury/buckets
 use magiclamp/treasury/ledger
 use magiclamp/treasury/migrate
 use magiclamp/treasury/stake_reward
@@ -32,26 +33,40 @@ pub fn item_accepted(item: CollectItem, accepted: List<AssetKey>) -> Bool {
   list.any(accepted, fn(a) { a.policy == item.policy && a.name == item.name })
 }
 
-/// C-COL-5 + S-LEDGER-RESERVED (F4): mọi item hợp lệ VÀ không item nào ghi vào một bucket
+/// C-COL-5 + C-COL-CAT + S-LEDGER-RESERVED (F4): mọi item hợp lệ, `category` nằm trong DANH
+/// SÁCH ĐÓNG mà instance đã khai (`datum.buckets`), VÀ không item nào ghi vào một bucket
 /// DÀNH RIÊNG — nguồn Reserve (`migrate.reserve_inflow_bucket_id`) hoặc thưởng uỷ quyền
 /// (`stake_reward.stake_reward_bucket_id`).
 ///
-/// `item.category` là `Int` do người dựng tx đặt tự do, nên nếu không chặn ở đây thì bất
-/// kỳ ai chạy được `Collect` cũng ghi thẳng vào dòng sổ Reserve-inflow. Bất biến sổ↔value
-/// vẫn nguyên (tổng khớp), nhưng tính chất kiểm toán mà `migrate.reserve_inflow_bucket_id`
-/// sinh ra để giữ — "đọc kho đã nhận bao nhiêu từ Reserve bằng đúng một phép tra sổ" —
-/// mất sạch. `migrate.ak` trước đây chỉ dặn bằng chú thích rằng đây là quy ước off-chain;
-/// một dòng `expect` đóng được thì đừng để lại lời dặn.
+/// ── C-COL-CAT: vì sao danh sách ĐÓNG, không chỉ loại hai id dành riêng ──
+/// `item.category` là `Int` do người dựng tx đặt, và `Collect` là nhánh PERMISSIONLESS. Bản
+/// trước loại đúng hai id, nên mọi `Int` còn lại đi qua; mỗi `(category, asset)` mới sinh
+/// MỘT dòng sổ, và `C-LINES` chặn sổ ở 20 dòng. Ghép hai dữ kiện đó lại thì trần không còn
+/// là lá chắn mà là một tài nguyên hữu hạn AI CŨNG chiếm được: một lô `Collect` với cut nhỏ
+/// nhất có thể vào 20 category rác làm sổ đầy, và từ đó MỌI dòng hợp lệ mới bị từ chối —
+/// kho không khoá (Release vẫn chi được) nhưng thôi NHẬN được gì mới. Danh sách đóng chuyển
+/// quyền cấp phát dòng sổ về đúng người gieo instance (`custody_seed` ▸ S-BUCKETS-*).
 ///
-/// Bucket thưởng uỷ quyền vào cùng danh sách này khi nhánh `StakeRewardIn` ra đời, vì nó
-/// mua đúng một tính chất kiểu ấy ("kho đã thu bao nhiêu thưởng") và mất theo đúng một
-/// đường ấy. Đây là chỗ dễ bỏ sót nhất: vá một bucket rồi coi là xong thì bucket thứ hai
-/// nằm hở mà không cổng nào kêu.
-pub fn all_items_valid(items: List<CollectItem>, accepted: List<AssetKey>) -> Bool {
+/// ── Hai vế id dành riêng: PHÒNG THỦ THEO CHIỀU SÂU, và nói thẳng nó đo được gì ──
+/// Với một instance gieo hợp lệ, `buckets.config_ok` đã loại hai id ấy khỏi `buckets`, nên
+/// `is_declared` một mình đã bao trọn hai vế dưới ⇒ GỠ hai vế ấy KHÔNG làm bài kiểm ở tầng
+/// validator nào đỏ. Giữ lại vì vị từ này nhận `buckets` làm THAM SỐ: nó không đọc được
+/// datum, không biết ai đã kiểm `config_ok`, và một chỗ gọi tương lai (lô off-chain, một
+/// nhánh mới) có thể truyền vào một danh sách chưa qua cổng. Ghim hai vế ấy bằng bài ĐƠN VỊ
+/// gọi thẳng hàm này với `buckets` CHỨA id dành riêng — ca mà cổng seed không cho phép nhưng
+/// hàm này vẫn phải từ chối.
+/// ⚠ Tham số tên `declared_buckets`, KHÔNG `buckets`: `buckets` là tên MODULE được import ở
+/// đầu tệp, và một biến cùng tên che nó đi — `buckets.is_declared(...)` khi đó đọc thành
+/// "trường `is_declared` của biến", tức lỗi biên dịch ở chỗ không ai ngờ.
+pub fn all_items_valid(
+  items            : List<CollectItem>,
+  accepted         : List<AssetKey>,
+  declared_buckets : List<Int>,
+) -> Bool {
   list.all(
     items,
     fn(it) {
-      it.amount >= 0 && it.category != migrate.reserve_inflow_bucket_id && it.category != stake_reward.stake_reward_bucket_id && item_accepted(
+      it.amount >= 0 && buckets.is_declared(declared_buckets, it.category) && it.category != migrate.reserve_inflow_bucket_id && it.category != stake_reward.stake_reward_bucket_id && item_accepted(
         it,
         accepted,
       )

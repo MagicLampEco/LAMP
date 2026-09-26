@@ -13,8 +13,10 @@
 //   C-COL-1   ĐÚNG 1 custody input + 1 custody output theo PAYMENT SCRIPT HASH.
 //   C-COL-2   params instance (id, accepted, governance_ref, cut_bps) bảo toàn.
 //   C-COL-3   Sổ: ledger_out == ledger_in + Σcut tại đúng (category, asset), CANONICAL.
+//   C-COL-LINES  Sổ ra ≤ `ledger.max_ledger_lines` dòng (ép trong `ledger.is_canonical`).
 //   C-COL-4   Value: custody_out.value == custody_in.value ⊕ cut_value(items) — Σout=Σin.
 //   C-COL-5   Mọi item: amount ≥ 0 + asset ∈ accepted_assets.
+//   C-COL-CAT Mọi item: `category` ∈ `datum.buckets` (DANH SÁCH ĐÓNG) — xem khối dưới.
 //   C-COL-ADDR      cust_out.address == cust_in.address (GHIM CẢ stake credential).
 //   C-COL-REFSCRIPT cust_out.reference_script == None.
 //   C-EPOCH   out.epoch == get_epoch(tx) ∧ get_epoch(tx) ≥ in.epoch (neo chain, audit thật).
@@ -29,6 +31,7 @@
 //   C-REL-8   current_epoch ≥ proposal.execute_after_epoch (time-lock).
 //   C-REL-5   Value: custody_out.value == custody_in.value ⊖ Σdraw — Σout=Σin per-asset.
 //   C-REL-6   Sổ: ledger_out[(b,a)] == ledger_in[(b,a)] − Σdraw(b,a) ∧ draw ≤ số dư, CANONICAL.
+//   C-REL-LINES  Sổ ra ≤ `ledger.max_ledger_lines` dòng (ép trong `ledger.is_canonical`).
 //   C-REL-7   Người nhận: Σ output tới `to` ≥ Σ draw(to,asset) ∧ to ≠ custody.
 //   C-REL-9   SINGLE-USE proposal (chống replay / chi vượt ngưỡng duyệt).
 //   C-REL-ADDR      cust_out.address == cust_in.address (GHIM CẢ stake credential).
@@ -45,6 +48,7 @@
 //   C-MIG-7   Value: cust_out.value == cust_in.value ⊕ Δ; mọi asset khác NGUYÊN.
 //   C-MIG-8   Sổ: ledger_out == ledger_in + Δ tại ĐÚNG 1 (bucket, asset), CANONICAL;
 //             bucket là HẰNG dành riêng cho nguồn Reserve, `source` phải khớp nhãn.
+//   C-MIG-LINES  Sổ ra ≤ `ledger.max_ledger_lines` dòng (ép trong `ledger.is_canonical`).
 //   C-MIG-9   (lamp_policy, token_name) ∈ accepted_assets.
 //   C-MIG-ADDR      cust_out.address == cust_in.address (GHIM CẢ stake credential).
 //   C-MIG-REFSCRIPT cust_out.reference_script == None.
@@ -61,6 +65,7 @@
 //   C-STK-7   Value: lovelace_out == lovelace_in + Δ (ĐẲNG THỨC); mọi asset khác NGUYÊN.
 //   C-STK-8   Sổ: ledger_out == ledger_in + Δ tại HẰNG `stake_reward_bucket_id` × ADA,
 //             CANONICAL; bucket là HẰNG, không tham số nào do người gọi điều khiển.
+//   C-STK-LINES  Sổ ra ≤ `ledger.max_ledger_lines` dòng (ép trong `ledger.is_canonical`).
 //   C-STK-9   ADA ∈ accepted_assets (giữ bất biến S-ACC-0 "mọi dòng sổ ∈ accepted").
 //   C-STK-10  tx.withdrawals[stake credential của kho] == Δ — Δ là thưởng THẬT, không phải
 //             ADA tự bỏ; ghép với `treasury_stake` ▸ S-STK-BOOK thành ràng buộc HAI CHIỀU.
@@ -92,6 +97,18 @@
 //
 // MigrateIn KHÔNG phải đường vòng cho Collect/Release: nó KHÔNG đụng consumed_proposals,
 // KHÔNG chi ra cho ai, KHÔNG giảm value (C-MIG-3 + C-MIG-7 khoá cả ba).
+//
+// C-COL-CAT + C-BUCKETS-KEEP — DANH SÁCH BUCKET ĐÓNG (2026-09-26):
+//   `CollectItem.category` là `Int` do người dựng tx đặt, và `Collect` PERMISSIONLESS. Bản
+//   trước chỉ loại hai id dành riêng ⇒ mọi `Int` khác đi qua ⇒ mỗi `(category, asset)` mới
+//   sinh MỘT dòng sổ. Cùng với trần `C-LINES` = 20, trần thôi là lá chắn và thành một tài
+//   nguyên hữu hạn mà AI CŨNG chiếm được: lấp 20 dòng bằng category rác ⇒ mọi dòng hợp lệ
+//   mới bị từ chối. Vá gồm HAI vế, thiếu một vế thì vế kia vô nghĩa:
+//     • C-COL-CAT       `item.category` ∈ `datum.buckets`  (nhánh Collect)
+//     • C-BUCKETS-KEEP  `out.buckets == in.buckets`        (CẢ BỐN nhánh tiêu kho)
+//   Danh sách được ép hợp lệ ĐÚNG MỘT LẦN ở `custody_seed` ▸ S-BUCKETS-* (khác rỗng, tăng
+//   nghiêm ngặt, không chứa bucket dành riêng), nên bốn nhánh dưới chỉ mang nó qua — không
+//   nhánh nào kiểm lại `config_ok` (theo quy nạp đã đúng; kiểm lại là trả tiền mỗi lượt).
 
 use aiken/collection/pairs
 use cardano/address.{Inline}
@@ -153,6 +170,12 @@ validator custody(
         expect out_datum.accepted_assets == datum.accepted_assets
         expect out_datum.governance_ref == datum.governance_ref
         expect out_datum.cut_bps == datum.cut_bps
+        // C-BUCKETS-KEEP: danh sách bucket khai báo là BẤT BIẾN đời instance — ép một lần
+        // tại `custody_seed` ▸ S-BUCKETS-*, rồi mọi nhánh tiêu kho chỉ được mang nó qua.
+        // Thiếu vế này ở BẤT KỲ nhánh nào thì C-COL-CAT vô nghĩa: người dựng tx viết
+        // `buckets` mới vào datum ra rồi lượt `Collect` SAU ghi được vào category nào cũng
+        // được — và lượt đó tự nó hoàn toàn hợp lệ, nên không có chỗ nào để bắt.
+        expect out_datum.buckets == datum.buckets
         // Collect KHÔNG đụng marker single-use proposal — bảo toàn nguyên.
         expect out_datum.consumed_proposals == datum.consumed_proposals
 
@@ -178,7 +201,9 @@ validator custody(
         expect cust_out.reference_script == None
 
         // C-COL-5: mọi item hợp lệ + asset được nhận.
-        expect collect.all_items_valid(items, datum.accepted_assets)
+        // C-COL-CAT nằm trong cùng lời gọi: `item.category` phải ∈ `datum.buckets`.
+        expect
+          collect.all_items_valid(items, datum.accepted_assets, datum.buckets)
 
         // C-COL-11 (F3): Collect PHẢI sinh cut > 0 (custody thực sự nhận value). Chống
         // griefing no-op: items rỗng / mọi cut=0 → respend miễn phí mỗi block gây
@@ -213,6 +238,12 @@ validator custody(
         expect out_datum.accepted_assets == datum.accepted_assets
         expect out_datum.governance_ref == datum.governance_ref
         expect out_datum.cut_bps == datum.cut_bps
+        // C-BUCKETS-KEEP: danh sách bucket khai báo là BẤT BIẾN đời instance — ép một lần
+        // tại `custody_seed` ▸ S-BUCKETS-*, rồi mọi nhánh tiêu kho chỉ được mang nó qua.
+        // Thiếu vế này ở BẤT KỲ nhánh nào thì C-COL-CAT vô nghĩa: người dựng tx viết
+        // `buckets` mới vào datum ra rồi lượt `Collect` SAU ghi được vào category nào cũng
+        // được — và lượt đó tự nó hoàn toàn hợp lệ, nên không có chỗ nào để bắt.
+        expect out_datum.buckets == datum.buckets
         // custody output ở SCRIPT, không ví thường.
         expect !util.is_vk(cust_out.address)
 
@@ -308,6 +339,12 @@ validator custody(
         expect out_datum.accepted_assets == datum.accepted_assets
         expect out_datum.governance_ref == datum.governance_ref
         expect out_datum.cut_bps == datum.cut_bps
+        // C-BUCKETS-KEEP: danh sách bucket khai báo là BẤT BIẾN đời instance — ép một lần
+        // tại `custody_seed` ▸ S-BUCKETS-*, rồi mọi nhánh tiêu kho chỉ được mang nó qua.
+        // Thiếu vế này ở BẤT KỲ nhánh nào thì C-COL-CAT vô nghĩa: người dựng tx viết
+        // `buckets` mới vào datum ra rồi lượt `Collect` SAU ghi được vào category nào cũng
+        // được — và lượt đó tự nó hoàn toàn hợp lệ, nên không có chỗ nào để bắt.
+        expect out_datum.buckets == datum.buckets
         // MigrateIn KHÔNG được dùng làm đường vòng cho Release: marker single-use
         // proposal giữ NGUYÊN (không tiêu, không thêm).
         expect out_datum.consumed_proposals == datum.consumed_proposals
@@ -407,6 +444,12 @@ validator custody(
         expect out_datum.accepted_assets == datum.accepted_assets
         expect out_datum.governance_ref == datum.governance_ref
         expect out_datum.cut_bps == datum.cut_bps
+        // C-BUCKETS-KEEP: danh sách bucket khai báo là BẤT BIẾN đời instance — ép một lần
+        // tại `custody_seed` ▸ S-BUCKETS-*, rồi mọi nhánh tiêu kho chỉ được mang nó qua.
+        // Thiếu vế này ở BẤT KỲ nhánh nào thì C-COL-CAT vô nghĩa: người dựng tx viết
+        // `buckets` mới vào datum ra rồi lượt `Collect` SAU ghi được vào category nào cũng
+        // được — và lượt đó tự nó hoàn toàn hợp lệ, nên không có chỗ nào để bắt.
+        expect out_datum.buckets == datum.buckets
         // KHÔNG được dùng làm đường vòng cho Release: marker single-use giữ NGUYÊN.
         expect out_datum.consumed_proposals == datum.consumed_proposals
 

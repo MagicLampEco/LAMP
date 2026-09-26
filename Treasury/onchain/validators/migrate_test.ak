@@ -70,6 +70,9 @@ fn base_datum(
     governance_ref: gov_sh,
     epoch: epoch,
     consumed_proposals: [],
+    // `MigrateIn` không đọc `buckets` (nó ghi vào bucket HẰNG dành riêng); trường này ở
+    // đây để C-BUCKETS-KEEP có cái mà ghim.
+    buckets: [bucket_ops],
   }
 }
 
@@ -269,6 +272,21 @@ test migrate_reject_input_without_seed_nft() fail {
 
 test migrate_reject_cut_bps_mutated() fail {
   let d_out = CustodyDatum { ..d_out_ok(), cut_bps: 0 }
+  run_ok(
+    tx_of(
+      in_val_ok(), out_val_ok(), d_in_ok(), d_out,
+      out_epoch * ms_per_epoch, mint_ok_value(), [], [],
+    ),
+  )
+}
+
+/// C-BUCKETS-KEEP ở nhánh `MigrateIn`. Nhánh này KHÔNG đọc `buckets` (bucket đích là HẰNG
+/// dành riêng), nên dễ bị bỏ sót nhất trong bốn nhánh — và bỏ sót đúng ở đây là đủ để mở
+/// lại toàn bộ lỗ: `MigrateIn` permissionless, ai cũng dựng được một lượt nạp Δ hợp lệ và
+/// nhân đó viết `buckets` mới vào datum ra; lượt `Collect` kế tiếp ghi vào category nào
+/// cũng được, và lượt ấy tự nó hợp lệ hoàn toàn.
+test migrate_reject_buckets_mutated() fail {
+  let d_out = CustodyDatum { ..d_out_ok(), buckets: [bucket_ops, bucket_ops + 1] }
   run_ok(
     tx_of(
       in_val_ok(), out_val_ok(), d_in_ok(), d_out,

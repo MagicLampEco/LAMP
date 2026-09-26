@@ -55,6 +55,9 @@ fn datum(ledger: List<LedgerEntry>) -> CustodyDatum {
     governance_ref: #"9999",
     epoch: 10,
     consumed_proposals: [],
+    // Danh sách bucket ĐÓNG của instance mẫu (C-COL-CAT). Hai bucket đủ để phân biệt
+    // "category đã khai" với "category lạ" mà không làm fixture nào đắt thêm.
+    buckets: [bucket_ops, bucket_community],
   }
 }
 
@@ -122,6 +125,34 @@ fn collect_tx_anchored(
 // F4: interval GỌN trong 1 epoch (lo = lower_ms, hi = lo + ms_per_epoch − 1 cùng epoch).
 fn epoch_range(lower_ms: Int) -> interval.Interval {
   interval.between(lower_ms, lower_ms + ms_per_epoch - 1)
+}
+
+// Biến thể đặt `buckets` cho CẢ HAI datum (vào và ra) — cần cho mọi bài dò các vế nằm SAU
+// C-BUCKETS-KEEP. `collect_tx` dựng in/out từ cùng `datum()` nên `buckets` hai bên luôn
+// khớp; đổi một bên thôi thì tx chết ở C-BUCKETS-KEEP trước khi chạm vế đang xét, và bài
+// vẫn `fail` đúng như mong đợi — đúng màu, đúng tên, canh nhầm chốt.
+fn collect_tx_buckets(
+  in_val    : assets.Value,
+  out_val   : assets.Value,
+  ledger_in : List<LedgerEntry>,
+  ledger_out: List<LedgerEntry>,
+  out_epoch : Int,
+  bkts      : List<Int>,
+) -> Transaction {
+  let cust_addr = util.script_address(cust_sh)
+  let d_in = CustodyDatum { ..datum(ledger_in), buckets: bkts }
+  let cust_in =
+    util.mk_input(util.mk_ref(0), util.mk_output(cust_addr, with_nft(in_val), d_in))
+  let d_out =
+    CustodyDatum { ..datum(ledger_out), ledger: ledger_out, epoch: out_epoch, buckets: bkts }
+  let cust_out = util.mk_output(cust_addr, with_nft(out_val), d_out)
+  Transaction {
+    ..placeholder,
+    inputs: [cust_in],
+    outputs: [cust_out],
+    mint: assets.zero,
+    validity_range: epoch_range(out_epoch * ms_per_epoch),
+  }
 }
 
 // LƯU Ý: validator đọc datum thật từ input qua own_ref (cust_in mang datum(ledger_in)).
@@ -678,15 +709,23 @@ test collect_reference_script_attached() fail {
 //   tính chất kiểm toán "đọc kho đã nhận bao nhiêu từ Reserve bằng đúng một phép tra sổ"
 //   mất sạch. Sổ ra ghi ĐÚNG cut vào bucket đó (nên C-COL-3/C-COL-4 đều thoả) → cô lập F4.
 // ════════════════════════════════════════════════════════════
+//
+// ⚠ ĐỌC KỸ `buckets` của fixture: nó KHAI chính id dành riêng. Với `buckets` mặc định
+// ([1,2]) bài này vẫn `fail` nhưng đỏ ở C-COL-CAT — tức nó thôi canh vế mang tên nó, và
+// một lượt gỡ `!= reserve_inflow_bucket_id` sẽ đi lọt trong im lặng. Khai id ấy vào
+// `buckets` là dựng đúng ca mà cổng MẠNH HƠN (C-COL-CAT) CHO QUA; ca đó không dựng được
+// từ một instance gieo hợp lệ (`custody_seed` ▸ S-BUCKETS-RESERVED chặn), nhưng nhánh spend
+// KHÔNG kiểm lại `config_ok`, nên đây là ca đúng tầng để ghim vế phòng thủ chiều sâu.
 test collect_reject_reserve_inflow_bucket() fail {
   let ledger_in =
     [LedgerEntry { bucket_id: migrate.reserve_inflow_bucket_id, policy: lamp_policy, name: lamp_name, amount: 0 }]
   let ledger_out =
     [LedgerEntry { bucket_id: migrate.reserve_inflow_bucket_id, policy: lamp_policy, name: lamp_name, amount: 100 }]
   let items = [item(1000, migrate.reserve_inflow_bucket_id)]
+  let bkts = [migrate.reserve_inflow_bucket_id]
   let tx =
-    collect_tx(lamp_val(5_000_000, 5000), lamp_val(5_000_000, 5100), ledger_in, ledger_out, 11, [])
-  run_with(tx, datum(ledger_in), items)
+    collect_tx_buckets(lamp_val(5_000_000, 5000), lamp_val(5_000_000, 5100), ledger_in, ledger_out, 11, bkts)
+  run_with(tx, CustodyDatum { ..datum(ledger_in), buckets: bkts }, items)
 }
 
 // ════════════════════════════════════════════════════════════
@@ -696,13 +735,125 @@ test collect_reject_reserve_inflow_bucket() fail {
 //   theo đúng một đường ấy. Không có bài này thì vế `!= stake_reward_bucket_id` trong
 //   `collect.all_items_valid` gỡ ra mà cả bộ kiểm vẫn xanh.
 // ════════════════════════════════════════════════════════════
+//   `buckets` của fixture khai chính id ấy — cùng lý lẽ đã ghi ở bài 25.
 test collect_reject_stake_reward_bucket() fail {
   let ledger_in =
     [LedgerEntry { bucket_id: stake_reward.stake_reward_bucket_id, policy: lamp_policy, name: lamp_name, amount: 0 }]
   let ledger_out =
     [LedgerEntry { bucket_id: stake_reward.stake_reward_bucket_id, policy: lamp_policy, name: lamp_name, amount: 100 }]
   let items = [item(1000, stake_reward.stake_reward_bucket_id)]
+  let bkts = [stake_reward.stake_reward_bucket_id]
+  let tx =
+    collect_tx_buckets(lamp_val(5_000_000, 5000), lamp_val(5_000_000, 5100), ledger_in, ledger_out, 11, bkts)
+  run_with(tx, CustodyDatum { ..datum(ledger_in), buckets: bkts }, items)
+}
+
+// ════════════════════════════════════════════════════════════
+// 27. CATEGORY NGOÀI DANH SÁCH KHAI (fail) — C-COL-CAT.
+//   ĐÒN TẤN CÔNG mà chốt này chặn: `Collect` PERMISSIONLESS, nên trước vá bất kỳ ai cũng
+//   ghi được vào MỘT `category` bất kỳ, và mỗi `(category, asset)` mới sinh một dòng sổ.
+//   Trần `C-LINES` = 20 dòng khi đó không còn là lá chắn mà là một tài nguyên hữu hạn ai
+//   cũng chiếm được: lấp 20 dòng bằng category rác ⇒ mọi dòng hợp lệ mới bị từ chối.
+//   Bài này là MỘT bước của đòn đó, và tx hợp lệ ở MỌI vế khác — sổ ra ghi đúng cut vào
+//   đúng (category, asset), value khớp tuyệt đối, epoch neo đúng, NFT đủ. Thứ duy nhất sai
+//   là `category` (3) không nằm trong `buckets` ([1,2]) ⇒ cô lập đúng C-COL-CAT.
+// ════════════════════════════════════════════════════════════
+test collect_reject_undeclared_category() fail {
+  let undeclared = 3
+  let ledger_in = [LedgerEntry { bucket_id: bucket_ops, policy: lamp_policy, name: lamp_name, amount: 42 }]
+  let ledger_out =
+    [
+      LedgerEntry { bucket_id: bucket_ops, policy: lamp_policy, name: lamp_name, amount: 42 },
+      LedgerEntry { bucket_id: undeclared, policy: lamp_policy, name: lamp_name, amount: 100 },
+    ]
+  let items = [item(1000, undeclared)]
   let tx =
     collect_tx(lamp_val(5_000_000, 5000), lamp_val(5_000_000, 5100), ledger_in, ledger_out, 11, [])
+  run_with(tx, datum(ledger_in), items)
+}
+
+// ĐỐI CHỨNG DƯƠNG cho bài trên: ĐỔI ĐÚNG MỘT THỨ — `category` 3 → 2 (đã khai) — và tx
+// phải QUA. Không có cặp này thì bài `fail` ở trên không phân biệt được "C-COL-CAT chặn"
+// với "fixture hỏng ở một vế nào khác".
+test collect_declared_category_ok() {
+  let ledger_in = [LedgerEntry { bucket_id: bucket_ops, policy: lamp_policy, name: lamp_name, amount: 42 }]
+  let ledger_out =
+    [
+      LedgerEntry { bucket_id: bucket_ops, policy: lamp_policy, name: lamp_name, amount: 42 },
+      LedgerEntry { bucket_id: bucket_community, policy: lamp_policy, name: lamp_name, amount: 100 },
+    ]
+  let items = [item(1000, bucket_community)]
+  let tx =
+    collect_tx(lamp_val(5_000_000, 5000), lamp_val(5_000_000, 5100), ledger_in, ledger_out, 11, [])
+  run_with(tx, datum(ledger_in), items)
+}
+
+// ════════════════════════════════════════════════════════════
+// 28. LÔ GỘP: MỘT item lạ trong lô hợp lệ (fail) — C-COL-CAT áp cho MỌI item.
+//   `all_items_valid` là `list.all`, nên một lô N item chỉ cần MỘT item lạ là bị từ chối.
+//   Bài này chặn biến thể "trộn": gói một category rác vào giữa một lô thật để nó đi kèm.
+// ════════════════════════════════════════════════════════════
+test collect_reject_mixed_batch_one_undeclared() fail {
+  let undeclared = 7
+  let ledger_in = [LedgerEntry { bucket_id: bucket_ops, policy: lamp_policy, name: lamp_name, amount: 0 }]
+  let ledger_out =
+    [
+      LedgerEntry { bucket_id: bucket_ops, policy: lamp_policy, name: lamp_name, amount: 100 },
+      LedgerEntry { bucket_id: undeclared, policy: lamp_policy, name: lamp_name, amount: 100 },
+    ]
+  let items = [item(1000, bucket_ops), item(1000, undeclared)]
+  let tx =
+    collect_tx(lamp_val(5_000_000, 5000), lamp_val(5_000_000, 5200), ledger_in, ledger_out, 11, [])
+  run_with(tx, datum(ledger_in), items)
+}
+
+// ════════════════════════════════════════════════════════════
+// 29. ĐỔI `buckets` Ở DATUM RA (fail) — C-BUCKETS-KEEP, nhánh Collect.
+//   Vế này là nửa còn lại của vá: không có nó, người dựng tx viết `buckets` MỚI vào datum
+//   ra rồi lượt `Collect` SAU ghi vào category nào cũng được — và lượt sau ấy tự nó hợp lệ
+//   hoàn toàn, nên không có chỗ nào để bắt. Tx dưới đây nới `buckets` từ [1,2] lên [1,2,3];
+//   mọi vế khác giữ nguyên hình dạng bài dương.
+// ════════════════════════════════════════════════════════════
+test collect_reject_buckets_widened() fail {
+  let ledger_in = [LedgerEntry { bucket_id: bucket_ops, policy: lamp_policy, name: lamp_name, amount: 0 }]
+  let ledger_out = [LedgerEntry { bucket_id: bucket_ops, policy: lamp_policy, name: lamp_name, amount: 100 }]
+  let items = [item(1000, bucket_ops)]
+  let cust_addr = util.script_address(cust_sh)
+  let cust_in =
+    util.mk_input(util.mk_ref(0), util.mk_output(cust_addr, with_nft(lamp_val(5_000_000, 5000)), datum(ledger_in)))
+  let d_out =
+    CustodyDatum {
+      ..datum(ledger_out),
+      ledger: ledger_out,
+      epoch: 11,
+      buckets: [bucket_ops, bucket_community, 3],
+    }
+  let cust_out = util.mk_output(cust_addr, with_nft(lamp_val(5_000_000, 5100)), d_out)
+  let tx =
+    Transaction {
+      ..placeholder, inputs: [cust_in], outputs: [cust_out], mint: assets.zero,
+      validity_range: epoch_range(11 * ms_per_epoch),
+    }
+  run_with(tx, datum(ledger_in), items)
+}
+
+// Biến thể THU HẸP — cùng chốt, chiều ngược. Giữ riêng vì một cổng viết bằng `⊆` (thay vì
+// `==`) sẽ cho chiều này qua, và một cổng viết bằng `⊇` cho chiều kia qua; chỉ có hai bài
+// cùng đỏ mới phân biệt được `==` với hai phép bao hàm.
+test collect_reject_buckets_narrowed() fail {
+  let ledger_in = [LedgerEntry { bucket_id: bucket_ops, policy: lamp_policy, name: lamp_name, amount: 0 }]
+  let ledger_out = [LedgerEntry { bucket_id: bucket_ops, policy: lamp_policy, name: lamp_name, amount: 100 }]
+  let items = [item(1000, bucket_ops)]
+  let cust_addr = util.script_address(cust_sh)
+  let cust_in =
+    util.mk_input(util.mk_ref(0), util.mk_output(cust_addr, with_nft(lamp_val(5_000_000, 5000)), datum(ledger_in)))
+  let d_out =
+    CustodyDatum { ..datum(ledger_out), ledger: ledger_out, epoch: 11, buckets: [bucket_ops] }
+  let cust_out = util.mk_output(cust_addr, with_nft(lamp_val(5_000_000, 5100)), d_out)
+  let tx =
+    Transaction {
+      ..placeholder, inputs: [cust_in], outputs: [cust_out], mint: assets.zero,
+      validity_range: epoch_range(11 * ms_per_epoch),
+    }
   run_with(tx, datum(ledger_in), items)
 }

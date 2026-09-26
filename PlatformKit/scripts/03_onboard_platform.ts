@@ -222,6 +222,7 @@ async function main(): Promise<void> {
         governance_ref:     config.governanceRef,
         epoch:              createdEpoch,
         consumed_proposals: [],
+        buckets:            config.buckets.map((b) => b.id).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)),
       },
       reservedMinAda: config.reservedMinAda,
     });

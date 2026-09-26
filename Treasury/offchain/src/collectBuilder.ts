@@ -192,8 +192,11 @@ export function planCollect(
     }
   }
   // C-COL-5
-  if (!allItemsValid(items, datum.accepted_assets)) {
-    throw new Error("COLLECT-001: item không hợp lệ (amount < 0 hoặc asset ∉ accepted_assets)");
+  if (!allItemsValid(items, datum.accepted_assets, datum.buckets)) {
+    throw new Error(
+      "COLLECT-001: item không hợp lệ (amount < 0, asset ∉ accepted_assets, hoặc category ∉ buckets " +
+      "đã khai lúc seed / là bucket dành riêng)",
+    );
   }
   // C-COL-2 epoch không lùi
   const epoch = newEpoch ?? datum.epoch;
@@ -223,6 +226,7 @@ export function planCollect(
     epoch,
     // Collect KHÔNG đụng marker single-use — bảo toàn nguyên (chỉ Release append).
     consumed_proposals: datum.consumed_proposals,
+    buckets:         datum.buckets,   // bất biến đời instance
   };
 
   // Tự kiểm khớp validator (C-COL-3 / C-COL-4) trước khi dựng tx.

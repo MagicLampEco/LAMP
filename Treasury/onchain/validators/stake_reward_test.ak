@@ -98,6 +98,9 @@ fn base_datum(
     governance_ref: gov_sh,
     epoch: epoch,
     consumed_proposals: [],
+    // `StakeRewardIn` không đọc `buckets` (bucket đích là HẰNG); trường này ở đây để
+    // C-BUCKETS-KEEP có cái mà ghim.
+    buckets: [bucket_ops],
   }
 }
 
@@ -695,6 +698,19 @@ test stake_reward_reject_accepted_assets_mutated() fail {
         ..d_out_ok(),
         accepted_assets: [AssetKey { policy: #"", name: #"" }],
       },
+      out_epoch * ms_per_epoch, assets.zero, [], [],
+    ),
+  )
+}
+
+/// C-BUCKETS-KEEP ở nhánh `StakeRewardIn`. Nhánh này cũng KHÔNG đọc `buckets` (bucket đích
+/// là HẰNG), và nó PERMISSIONLESS y như `MigrateIn` — nên bỏ sót vế này ở đây mở lại đúng
+/// cái lỗ mà C-COL-CAT vừa đóng, chỉ đi qua một redeemer khác.
+test stake_reward_reject_buckets_mutated() fail {
+  run_ok(
+    tx_of(
+      in_val_ok(), out_val_ok(), d_in_ok(),
+      CustodyDatum { ..d_out_ok(), buckets: [bucket_ops, bucket_ops + 1] },
       out_epoch * ms_per_epoch, assets.zero, [], [],
     ),
   )
