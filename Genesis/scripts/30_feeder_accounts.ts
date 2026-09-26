@@ -148,24 +148,50 @@ async function readState(lucid: LucidEvolution, wiring: Wiring): Promise<ChainSt
   return { beaconUtxo, beacon, treasuryUtxo, treasury, pool: treasuryUtxo.assets[wiring.lampUnit] ?? 0n };
 }
 
-/** Tài khoản của từng feeder, khoá theo pkh. Datum phải mang đúng owner — không tin tên NFT suông. */
+type Account = { utxo: UTxO } & FeederAccount;
+
+/** Một UTxO mang NFT tài khoản của feeder `f` → tài khoản. Datum phải mang đúng owner — không tin tên NFT suông. */
+function toAccount(u: UTxO, f: Feeder): Account {
+  if (!u.datum) throw new Error(`FEED-ACC-001: tài khoản ${refKey(u)} của feeder #${f.index} không có datum.`);
+  const datum = decodeClaimAccountDatum(Data.from(u.datum));
+  if (datum.owner.toLowerCase() !== f.pkh.toLowerCase()) {
+    throw new Error(`FEED-ACC-002: tài khoản ${refKey(u)} mang NFT feeder #${f.index} nhưng datum owner ${datum.owner}.`);
+  }
+  return { utxo: u, pkh: f.pkh, datum, ref: refKey(u) };
+}
+
+/**
+ * Mọi tài khoản của cả dải. Một feeder có hơn một tài khoản (chuỗi không chặn đúc lại cùng tên —
+ * xem đầu `_feederPlan.ts`) thì KHÔNG dừng cả dải: báo FEED-ACC-003, giữ mọi tài khoản, vì tài
+ * khoản thứ hai vẫn rút được và phần E của nó vẫn nằm trong sổ nợ của kho.
+ */
 async function readAccounts(lucid: LucidEvolution, claimAddr: string, accountPid: string,
-                            feeders: Feeder[]): Promise<Map<string, { utxo: UTxO } & FeederAccount>> {
+                            feeders: Feeder[]): Promise<{ accounts: Account[]; owners: Set<string> }> {
   const byUnit = new Map(feeders.map((f) => [toUnit(accountPid, accountNftName(f.pkh)), f]));
-  const out = new Map<string, { utxo: UTxO } & FeederAccount>();
+  const accounts: Account[] = [];
   for (const u of await lucid.utxosAt(claimAddr)) {
     for (const [unit, f] of byUnit) {
-      if ((u.assets[unit] ?? 0n) !== 1n) continue;
-      if (!u.datum) throw new Error(`FEED-ACC-001: tài khoản ${refKey(u)} của feeder #${f.index} không có datum.`);
-      const datum = decodeClaimAccountDatum(Data.from(u.datum));
-      if (datum.owner.toLowerCase() !== f.pkh.toLowerCase()) {
-        throw new Error(`FEED-ACC-002: tài khoản ${refKey(u)} mang NFT feeder #${f.index} nhưng datum owner ${datum.owner}.`);
-      }
-      if (out.has(f.pkh)) throw new Error(`FEED-ACC-003: feeder #${f.index} có hơn một tài khoản.`);
-      out.set(f.pkh, { utxo: u, pkh: f.pkh, datum });
+      if ((u.assets[unit] ?? 0n) === 1n) accounts.push(toAccount(u, f));
     }
   }
-  return out;
+  const owners = new Set(accounts.map((a) => a.pkh));
+  if (owners.size !== accounts.length) {
+    const count = new Map<string, number>();
+    for (const a of accounts) count.set(a.pkh, (count.get(a.pkh) ?? 0) + 1);
+    const dup = feeders.filter((f) => (count.get(f.pkh) ?? 0) > 1).map((f) => `#${f.index}×${count.get(f.pkh)}`);
+    console.log(`⚠ FEED-ACC-003: ${dup.length} feeder có hơn một tài khoản (${dup.join(", ")}). ` +
+      `Không cấp thêm cho họ; từng tài khoản vẫn được rút riêng.`);
+  }
+  return { accounts, owners };
+}
+
+/** Tài khoản của MỘT feeder, đọc thẳng theo unit NFT — rẻ, dùng ngay trước mỗi grant. */
+async function accountsOf(lucid: LucidEvolution, claimAddr: string, accountPid: string,
+                          f: Feeder): Promise<Account[]> {
+  const unit = toUnit(accountPid, accountNftName(f.pkh));
+  return (await lucid.utxosAtWithUnit(claimAddr, unit))
+    .filter((u) => (u.assets[unit] ?? 0n) === 1n)
+    .map((u) => toAccount(u, f));
 }
 
 // ── Ký + gửi ─────────────────────────────────────────────────────────────────
@@ -215,7 +241,7 @@ async function main(): Promise<void> {
   if (STEP === "plan") {
     const st = await readState(lucid, wiring);
     const accs = await readAccounts(lucid, claimAddr, cs.accountPid, feeders);
-    const todo = feeders.length - accs.size;
+    const todo = feeders.length - accs.owners.size;
     const fit = grantsThatFit(st.pool, st.treasury.outstanding_entitlement, FEEDER_E, todo);
     const cost = trancheCost(fit, FEEDER_E);
     const walletLovelace = (await lucid.wallet().getUtxos()).reduce((s, u) => s + u.assets.lovelace, 0n);
@@ -223,12 +249,12 @@ async function main(): Promise<void> {
     const e = epochWindow(MS_PER_EPOCH).epoch;
     console.log(`\nKho             : pool ${lamp(st.pool)} · còn nợ ${lamp(st.treasury.outstanding_entitlement)} · đã phát ${lamp(st.treasury.total_redeemed)}`);
     console.log(`Beacon          : cửa sổ ${st.beacon.epoch} · w=${st.beacon.rate_root} · κ=${st.beacon.trim_num}/${st.beacon.trim_den}`);
-    console.log(`Đã có tài khoản : ${accs.size}/${feeders.length}`);
+    console.log(`Đã có tài khoản : ${accs.owners.size}/${feeders.length} feeder (${accs.accounts.length} UTxO tài khoản)`);
     console.log(`Grant còn lại   : ${todo} · vừa kho lúc này: ${fit}`);
     console.log(`Chi phí ${fit} grant: khoá ~${ada(cost.lockedLovelace)} + phí ~${ada(cost.grantFeeLovelace)} · ví đang có ${ada(walletLovelace)}`);
     console.log(`Mở khoá / feeder: ~${lamp(perWindow)} mỗi cửa sổ · đầy sau ${windowsToFull(FEEDER_E, 1n, st.beacon.rate_root)} cửa sổ`);
     console.log(`Mở khoá cả dải  : ~${lamp(perWindow * BigInt(feeders.length))} mỗi cửa sổ (chưa tính trần một lượt)`);
-    const next = pickNextRedeem([...accs.values()], st.beacon, st.treasury, e, TRIM_FLOOR, REDEEM_MIN);
+    const next = pickNextRedeem(accs.accounts, st.beacon, st.treasury, e, TRIM_FLOOR, REDEEM_MIN);
     console.log(`Rút kế tiếp     : ${next ? `feeder #${byPkh.get(next.pkh)!.index} · ${lamp(next.amount)} (cửa sổ ${e})` : "chưa tài khoản nào đạt ngưỡng"}`);
     return;
   }
@@ -236,10 +262,17 @@ async function main(): Promise<void> {
   // ── grant ─────────────────────────────────────────────────────────────────
   if (STEP === "grant") {
     const have = await readAccounts(lucid, claimAddr, cs.accountPid, feeders);
-    const todo = feeders.filter((f) => !have.has(f.pkh));
-    console.log(`Đã có tài khoản : ${have.size}; còn ${todo.length}. Lượt này tối đa ${MAX_TX}.`);
+    const todo = feeders.filter((f) => !have.owners.has(f.pkh));
+    console.log(`Đã có tài khoản : ${have.owners.size}; còn ${todo.length}. Lượt này tối đa ${MAX_TX}.`);
     let done = 0;
     for (const f of todo.slice(0, MAX_TX)) {
+      // Đọc lại NGAY trước khi dựng: danh sách đầu lượt có thể cũ (chỉ mục trễ, lượt chạy song
+      // song, lượt trước đứt sau khi gửi). Chuỗi không chặn đúc trùng tên — chỗ chặn là ở đây.
+      const already = await accountsOf(lucid, claimAddr, cs.accountPid, f);
+      if (already.length > 0) {
+        console.log(`Bỏ qua feeder #${f.index}: đã có tài khoản ${already.map((a) => a.ref).join(", ")}.`);
+        continue;
+      }
       const st = await readState(lucid, wiring);
       if (grantsThatFit(st.pool, st.treasury.outstanding_entitlement, FEEDER_E, 1) < 1) {
         console.log(`Kho hết chỗ (pool ${lamp(st.pool)}, nợ ${lamp(st.treasury.outstanding_entitlement)}). Dừng — vest + Refill rồi chạy lại.`);
@@ -274,12 +307,14 @@ async function main(): Promise<void> {
       const st = await readState(lucid, wiring);
       const accs = await readAccounts(lucid, claimAddr, cs.accountPid, feeders);
       const w = epochWindow(MS_PER_EPOCH);
-      const pick = pickNextRedeem([...accs.values()], st.beacon, st.treasury, w.epoch, TRIM_FLOOR, REDEEM_MIN);
+      const pick = pickNextRedeem(accs.accounts, st.beacon, st.treasury, w.epoch, TRIM_FLOOR, REDEEM_MIN);
       if (!pick) { console.log(`Không tài khoản nào đạt ngưỡng ${lamp(REDEEM_MIN)} ở cửa sổ ${w.epoch}.`); break; }
       const f = byPkh.get(pick.pkh)!;
+      const acc = accs.accounts.find((a) => a.ref === pick.ref);
+      if (!acc) throw new Error(`FEED-RDM-002: kế hoạch chọn ${pick.ref} nhưng không thấy trong danh sách vừa đọc.`);
       const r = await buildRedeemTx({
         lucid, network: NETWORK,
-        claimAccountUtxo: accs.get(pick.pkh)!.utxo, claimScript: cs.claim,
+        claimAccountUtxo: acc.utxo, claimScript: cs.claim,
         treasuryUtxo: st.treasuryUtxo, treasuryScript: scripts.treasury,
         dropBeaconUtxo: st.beaconUtxo,
         currentEpoch: w.epoch,

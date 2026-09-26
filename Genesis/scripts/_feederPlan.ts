@@ -8,7 +8,9 @@
 // Tốc độ tăng theo √k mà không đổi hằng số nào trên chuỗi. k là NÚM CÔNG SUẤT của người vận
 // hành, không phải trần của cơ chế: thiếu thì thêm feeder, không phải đợi ai duyệt.
 //
-// Tên tài khoản = blake2b_256(owner) ⇒ mỗi khoá chỉ CREATE được một lần; k tài khoản ⇒ k khoá.
+// Tên tài khoản = blake2b_256(owner) (A-ACC-4) ⇒ k tài khoản cần k khoá. Chuỗi KHÔNG chặn đúc
+// lại cùng tên ở một giao dịch sau: A-ACC-2 chỉ đếm trong một giao dịch. "Mỗi khoá một tài
+// khoản" là quy ước của runner, và runner giữ nó bằng cách đọc lại tài khoản ngay trước mỗi grant.
 import { getAddressDetails } from "@lucid-evolution/lucid";
 
 import { redeemable } from "../../Distribution/offchain/src/vested.js";
@@ -22,7 +24,9 @@ export interface FeederRange { base: number; count: number }
 /**
  * FEED-RANGE: dải chỉ số khoá feeder. `base ≥ 1` là BẮT BUỘC: account index 0 là chính ví vận
  * hành — cùng payment key, cùng pkh — nên feeder số 0 trùng owner với tài khoản ví vận hành đã
- * mở và đường CREATE sẽ bị từ chối (A-ACC-2 đúc trùng tên). Trần 2^31 − 1 là trần của chỉ số
+ * mở. Chuỗi KHÔNG chặn việc đó (A-ACC-2 chỉ đếm trong một giao dịch): grant nó sẽ đúc tài khoản
+ * thứ hai cho ví vận hành, và `28_beacon_grant_redeem.ts` dừng ở REDEEM-000 vì thấy hai tài
+ * khoản. Nên chính dải khoá phải chặn. Trần 2^31 − 1 là trần của chỉ số
  * hardened trong đường dẫn dẫn xuất.
  */
 export function feederIndices(r: FeederRange): number[] {
@@ -59,15 +63,18 @@ export function grantsThatFit(pool: bigint, outstanding: bigint, perFeeder: bigi
 export interface FeederAccount {
   pkh:   string;
   datum: ClaimAccountDatum;
+  /** `txHash#index` của UTxO tài khoản. Một feeder có thể có hơn một tài khoản (xem đầu tệp). */
+  ref?:  string;
 }
 
 export interface RedeemPick {
   pkh:    string;
   amount: bigint;
+  ref?:   string;
 }
 
 /**
- * Chọn tài khoản rút KẾ TIẾP: lấy tài khoản có `redeemable` LỚN NHẤT (hoà thì pkh nhỏ hơn, để
+ * Chọn tài khoản rút KẾ TIẾP: lấy tài khoản có `redeemable` LỚN NHẤT (hoà thì pkh nhỏ hơn, rồi `ref` nhỏ hơn, để
  * hai lần chạy trên cùng trạng thái chọn cùng một tài khoản). `redeemable` là hàm của SDK — cùng
  * hàm `buildRedeemTx` dùng, kể cả phép cắt ngọn — nên không có phép tính thứ hai để trôi.
  *
@@ -84,9 +91,11 @@ export function pickNextRedeem(accounts: FeederAccount[], beacon: BeaconDatum,
   for (const a of accounts) {
     const amount = redeemable(a.datum, beacon, treasury, window, trimFloor);
     if (amount <= 0n || amount < minAmount) continue;
-    if (!best || amount > best.amount || (amount === best.amount && a.pkh < best.pkh)) {
-      best = { pkh: a.pkh, amount };
-    }
+    const better = best === null
+      || amount > best.amount
+      || (amount === best.amount &&
+          (a.pkh < best.pkh || (a.pkh === best.pkh && (a.ref ?? "") < (best.ref ?? ""))));
+    if (better) best = { pkh: a.pkh, amount, ref: a.ref };
   }
   return best;
 }
