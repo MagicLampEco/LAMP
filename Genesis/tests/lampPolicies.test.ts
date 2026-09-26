@@ -77,7 +77,7 @@ describe("khớp — bản ACTIVE đọc ra được", () => {
     // 10.000 LAMP vào KHO dưới đúng policy này. Bản dựng 14 tham số, neo `oneshot-markers`.
     const pid = activeLampPolicyId("preprod");
     expect(pid).toMatch(/^[0-9a-f]{56}$/);
-    expect(pid).toBe("8169b76cdaba83cf7c9ae32ebd2bb3a58aa215c7dc0b62c8f5e268dd");
+    expect(pid).toBe("53bc12ade5ee24d43750b9560f152a54b48b804fab34dab810fb8743");
   });
 
   it("bản mainnet KHÔNG chép giá trị — nó trỏ về LAMP_MAINNET ở deployed.ts", async () => {

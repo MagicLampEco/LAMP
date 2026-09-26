@@ -181,7 +181,7 @@ export const LAMP_POLICY_REGISTRY: readonly LampPolicyRecord[] = [
     network: "preprod",
     assetName: "744c414d50",
     policyId: "8169b76cdaba83cf7c9ae32ebd2bb3a58aa215c7dc0b62c8f5e268dd",
-    status: "ACTIVE",
+    status: "SUPERSEDED",
     mintParamCount: 14,
     anchor: "oneshot-markers",
     anchorNote:
@@ -191,8 +191,8 @@ export const LAMP_POLICY_REGISTRY: readonly LampPolicyRecord[] = [
       "trước khi dựng giao dịch. Hạt giống genesis: `a00ab3de…1fee#5`. Khe #13-14 " +
       "(`reserve_kho_nft_*`) = policy id của `custody_seed` áp trên hạt giống custody " +
       "`a00ab3de…1fee#4`, tức `b4f9a9ee5373f5201928f0db79e6ba87fff2f06b920cef743d42ce23`.",
-    supersededBy: null,
-    recordedAt: "2026-09-14",
+    supersededBy: "preprod-oneshot-14param-v3",
+    recordedAt: "2026-09-26",
     evidence: [
       "Tx A (genesis, 5 marker one-shot): 612525047f0912518ca53aae732aa11fc418d38b8b55f84ceb84fc9b81ed36a6",
       "Tx B (DistributionVest → KHO): 47679b091e4db1d633efbd28f0747dfb8ddc0ddf403128c6f2bafe4532e2da39",
@@ -201,7 +201,10 @@ export const LAMP_POLICY_REGISTRY: readonly LampPolicyRecord[] = [
       "Blueprint dựng lại từ mã cùng lượt: `lamp_mint.lamp_mint.mint` khai 14 tham số.",
     ],
     caveats: [
-      "Đây là bản ACTIVE DUY NHẤT của preprod. `activeLampPolicyId(\"preprod\")` nay TRẢ VỀ " +
+      "BỊ THAY 2026-09-26 bởi `preprod-oneshot-14param-v3`: bản này đúc từ mã Distribution TRƯỚC " +
+        "Capped Drop v3 và trước các bản vá beacon/custody (#93, #95, #96) — script hash kho và " +
+        "claim_account khác. Token còn trên chuỗi; không tích hợp mới vào đây.",
+      "(lịch sử, lúc còn ACTIVE) Đây là bản ACTIVE DUY NHẤT của preprod. `activeLampPolicyId(\"preprod\")` nay TRẢ VỀ " +
         "thay vì ném. Đường đọc không đổi, nhưng ĐỪNG đọc câu đó thành \"không có gì đổi\": " +
         "có một van fail-closed cắm đúng vào cái NÉM đó, và nó vừa mở. " +
         "`Treasury/scripts/custodyParams.ts::resolveLampPolicy` bắt `LampPolicySourceError` " +
@@ -223,6 +226,44 @@ export const LAMP_POLICY_REGISTRY: readonly LampPolicyRecord[] = [
       "Cổng `POISON-002` trong `deriveCustody` chỉ fail-closed khi `network === \"Mainnet\"`; " +
         "trên preprod `proposal_policy` giữ chỗ đi lọt CÓ CHỦ Ý. Một lượt preprod xanh KHÔNG " +
         "chứng minh nhánh chi của két thông.",
+    ],
+  },
+
+  {
+    // Đúc lại sau khi Capped Drop v3 (#93) + vá beacon (#95) + custody (#96) vào nhánh chính:
+    // các bản vá đổi script hash của treasury/claim_account/beacon, mà hash kho nướng vào
+    // `lamp_mint` ⇒ policy mới là việc bắt buộc, không phải tuỳ chọn.
+    id: "preprod-oneshot-14param-v3",
+    network: "preprod",
+    assetName: "744c414d50",
+    policyId: "53bc12ade5ee24d43750b9560f152a54b48b804fab34dab810fb8743",
+    status: "ACTIVE",
+    mintParamCount: 14,
+    anchor: "oneshot-markers",
+    anchorNote:
+      "Registry-gate, `lamp_mint` 14 tham số, bốn khe marker neo `oneshot_nft.ak` (cổng " +
+      "`MARKER-001` xác nhận trước khi dựng). Hạt giống genesis `a00ab3de…1fee#0`. Khe #13-14 = " +
+      "`custody_seed` áp trên hạt giống custody `6a271c69…d1ae#0` = " +
+      "`9e9b1fabe87c043bc4fae6fa5aa89981f0b82a718507eadfa04b747b` / `lamp-reserve`. Hạt giống custody " +
+      "cất ở địa chỉ ENTERPRISE của khoá vận hành, ngoài tầm coin-selection của ví " +
+      "(`Genesis/scripts/_custodySeedRef.ts::findOwnedCustodySeed`).",
+    supersededBy: null,
+    recordedAt: "2026-09-26",
+    evidence: [
+      "Tx A (genesis, 5 marker one-shot): 21f39c9b92c51080a6dd769f637f6fb0e6ae8307eb0089c597d63f9b031aa716",
+      "Tx B (DistributionVest mồi 1 tLAMP → KHO): 0a252d63ba9e36691be2aa167b32253af23b0bfb04a495463ba287ea37f8b4a1",
+      "Refill (gộp vào carrier TRSY): af027fab64ea367641e1e64f32978f38b18d1863021717c85f75ebac789316e7",
+      "GrantEntitlement tài khoản thử 1 tLAMP: 838307c9738568a0cb1b8a718bb66942bd25f7beacd13dafb261f8d86b81da26",
+      "`verify_canonical_v2.ts` 2026-09-26: SUPPLY/TRSY/DROP/REG đúng chỗ, tổng cap 36 tỷ.",
+      "Mã: nhánh chính `3e43f96` + sửa offchain `findOwnedCustodySeed` (không đổi script hash).",
+    ],
+    caveats: [
+      "Beacon genesis: cửa sổ 4144, index 0, `rate_root` 77.460, κ = 1/1000 — cùng hằng với Mainnet.",
+      "Lối ra kho CHƯA chạy: lượt Redeem đầu sớm nhất cửa sổ 4145 (2026-09-29 07:00 +07). Tới lúc đó " +
+        "`Genesis/treasury-exit-proof.json` khoá Preprod còn `null` và cổng TRE-EXIT-001 chặn nạp lớn.",
+      "Lớp 2 (Reserve) CHƯA dựng: MET còn ở ví vận hành ⇒ khoá ví rút được toàn bộ 9,63 tỷ Reserve " +
+        "trong một giao dịch cho tới khi `24_reserve_layer2_init.ts` chạy. Lớp 2 chờ CARP dựng lại " +
+        "(instance custody chung nhận CARP) và `GOVERNANCE_SCRIPT_HASH`.",
     ],
   },
 

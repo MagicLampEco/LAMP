@@ -495,6 +495,29 @@ mệnh đề nào ràng `N` khoá với `N` NGƯỜI.
 
 Điểm treo liên quan, giữ nguyên: `Governance/VotingPower/CONTRACT.md §3 [IDENT-ONE-PERSON]`.
 
+### 4d-1. Pot Wakeme (pot 6): tách theo khoá là CÁCH CẤP NGUỒN đã chốt, không phải lỗ
+
+Pot 6 cấp 1001 LAMP cho mỗi người dùng mới qua kho Wakeme. Dồn cả pot qua MỘT tài khoản thì tốc
+độ nhận người mới bằng tốc độ mở khoá của một tài khoản: ở `w = 77.460` là khoảng 2,45 triệu LAMP
+mỗi cửa sổ, tức khoảng 490 người mới mỗi ngày. Trần đó do cơ chế phân phối đặt, không do nhu cầu.
+
+Cách cấp nguồn đã chốt (2026-09-26): chia pot 6 thành `k` tài khoản Capped Drop, mỗi tài khoản
+một khoá của bên vận hành, cùng `rate_root` với mọi pot khác, **không đổi mã, không đổi hằng**.
+Tốc độ tổng tăng theo `√k` (bảng ở đầu mục này). Ví dụ `k = 6.675`: khoảng 200 triệu LAMP mỗi cửa
+sổ, đủ 1,001 tỷ sau khoảng 5 cửa sổ.
+
+- Đây là dùng CÓ CHỦ Ý tính chất "trần lõm kháng tách theo `√N`, không vô hạn" đã nêu ở trên. Nó
+  hợp lệ ở pot 6 vì bảo vệ mà `√E` mang lại (hãm một bên nhận lớn xả hàng) không áp cho pot này:
+  LAMP rời tài khoản đi thẳng vào kho Wakeme, và kho đó phát theo từng người.
+- `k` là lựa chọn vận hành, tăng được lúc nào cũng được. Trần còn lại của số người mới là dung
+  lượng khối, không phải cơ chế phân phối.
+- Không được dùng lập luận này cho pot nào khác. Với hai pot sáng lập, bên nhận chính là bên xả,
+  và `√E` ở đó là bảo vệ thật.
+- Nạp kho Wakeme theo TỒN KHO MỤC TIÊU (giữ kho ≥ 1.002.001 LAMP để suất đủ 1001), không nạp hết
+  một lần: kho Wakeme một chiều, LAMP thừa trong đó không về lại Treasury.
+- Mỗi tài khoản giữ lại khoảng 1,6 ADA vĩnh viễn (min-ADA của UTxO tài khoản), và `Redeem` trả về
+  ví khoá thường (`util.ak`), nên LAMP đi qua ví vận hành trước khi vào kho Wakeme.
+
 ## 5. Móc mở rộng — `speed_policies` (RỖNG ở lượt đúc này)
 
 Mục tiêu: gắn được một hệ số theo **mức tiêu thụ MAGIC** của chủ tài khoản **sau** khi có số liệu
