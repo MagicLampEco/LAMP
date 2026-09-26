@@ -484,6 +484,10 @@ hiện tại:
 | **C-ACC-4** | CREATE: `1 ≤ ca_out.drops_per_epoch ≤ drops_per_epoch_max` | `treasury.ak`, nhánh `GrantEntitlement` ▸ CREATE; trần ở `lampdist/constants.ak` ▸ `drops_per_epoch_max` |
 | **C-REF-ACC** | `Refill`: không input nào và không output nào nằm ở `claim_account_hash` | `treasury.ak`, nhánh `Refill` |
 | **C-CLAIM-3/5/6** | cùng ba đẳng thức, ép từ phía tài khoản (bảng §Redeemer `Claim`) | `claim_account.ak` ▸ nhánh `Claim` |
+| **C-ACC-1** | CREATE: `quantity_of(tx.mint, account_nft_policy, blake2b_256(ca_out.owner)) == 1` — tx phải ĐÚC NFT tài khoản | `treasury.ak`, nhánh `GrantEntitlement` ▸ CREATE |
+| **C-ACC-1b** | CREATE: `quantity_of(ca_out.value, account_nft_policy, blake2b_256(ca_out.owner)) == 1` — NFT phải NẰM TRONG output tài khoản, không chỉ tồn tại trong `tx.mint` (thêm 2026-09-26; xem CONTRACT v3 §4b mục 4-bis) | `treasury.ak`, nhánh `GrantEntitlement` ▸ CREATE |
+| **C-REF-PROV** | `Refill`: đúng MỘT input ở địa chỉ kho mang tài sản tên "TRSY" (carrier); `out_datum.{committee_hash, outstanding_entitlement, total_redeemed}` bằng của carrier; datum input khác BỎ QUA, không fail (thêm 2026-09-26, THAY phép TỔNG; xem CONTRACT v3 §4c) | `treasury.ak` ▸ `fn carrier_ledger` + nhánh `Refill` |
+| **C-REF-SIGN** | `Refill`: `carrier.outstanding_entitlement ≥ 0` và `carrier.total_redeemed ≥ 0` — cận DƯỚI, đối xứng với `≤ lamp_out` là cận TRÊN | `treasury.ak` ▸ `fn carrier_ledger` |
 
 **Hệ quả người nhận thấy được.** Phần đã vest mà chưa rút tại lúc cấp thêm KHÔNG mất — nó nằm
 trong `E − redeemed` — nhưng nó vest lại từ đầu cùng lô mới. Muốn giữ tiến độ thì rút trước

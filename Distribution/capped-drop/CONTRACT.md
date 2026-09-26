@@ -350,6 +350,18 @@ Các ràng buộc solvency:
 3. **C-SOLV-2 (SOLVENCY):** `outstanding_entitlement_out ≤ treasury pool LAMP` → committee KHÔNG cấp
    E vượt số dư quỹ → redeem không bao giờ kẹt vì cạn pool.
 4. **C-VAL-0:** pool LAMP + mọi asset BẤT BIẾN khi grant (chỉ datum đổi).
+4-bis. **C-ACC-1 + C-ACC-1b (đường CREATE):** tx phải ĐÚC NFT tài khoản tên `blake2b_256(owner)`
+   dưới `account_nft_policy` (**C-ACC-1**, đo trên `tx.mint`), **và** NFT đó phải NẰM TRONG chính
+   output tài khoản vừa mở (**C-ACC-1b**, đo trên `ca_out.value` — thêm 2026-09-26).
+   Hai mệnh đề, hai đại lượng khác nhau: cái thứ nhất nói NFT **tồn tại**, cái thứ hai nói nó
+   **hạ cánh đúng chỗ**. `claim_account_nft.ak` ▸ A-ACC-3 cố ý chỉ ép "một Script bất kỳ" (vòng
+   tham số giữa policy và hash `claim_account`), và lời biện hộ ghi ở đó — *"đúc vào script khác
+   thì tự khoá tiền của kẻ dựng tx"* — đúng với ví người dựng và **sai với kho**: giao dịch ấy
+   vẫn cộng `granted` vào sổ nợ ở C-SOLV-1. Tài khoản ra đời không NFT thì `claim_account.spend`
+   từ chối nó vĩnh viễn ⇒ nợ vào sổ **không có đường lùi** (sổ chỉ giảm qua `ReleaseForRedeem`,
+   vốn cần một tài khoản tiêu được) ⇒ C-SOLV-2 siết dần trần cấp phát cho mọi pot về sau.
+   Ép được ở `treasury` vì nó đã nhận `claim_account_hash` làm tham số — đây là chỗ DUY NHẤT
+   trong hệ biết cả tên NFT phải đúc lẫn địa chỉ tài khoản.
 5. Treasury là singleton per-tx theo script hash + NFT "TRSY" toàn cục → sổ cái serial-hoá MỌI
    Claim/Redeem → sổ cái **BẰNG** `Σ(E − redeemed)`, nên `Σ(E − redeemed) ≤ pool` ép được PER-TX.
 6. `claim_account.spend` (Claim) ràng buộc `nợ_out = nợ_in + amount` để khoá amount nhất quán giữa
@@ -363,13 +375,44 @@ Các ràng buộc solvency:
 
 ## 4c. Refill (gộp kho, `treasury.spend` redeemer `Refill`) — danh mục trạng thái
 
-Refill gộp N UTxO ở địa chỉ kho về một singleton, cộng sổ cái các input mang datum qua
-`fold_ledger` (`treasury.ak` ▸ `fn fold_ledger`). `fold_ledger` ép mọi input có datum khai CÙNG
-`committee_hash`, nhưng KHÔNG ép từng số hạng `outstanding_entitlement` không-âm trước khi cộng.
+Refill gộp N UTxO ở địa chỉ kho về một singleton. **Sổ cái đi ra lấy từ ĐÚNG MỘT input: carrier**,
+tức UTxO mang NFT kho "TRSY" (`treasury.ak` ▸ `fn carrier_ledger`). Datum của mọi input khác bị
+BỎ QUA hoàn toàn — value của chúng vẫn được hút vào pool (đó là việc Refill sinh ra để làm), sổ
+của chúng thì không đi vào một mệnh đề nào.
+
+```
+C-REF-PROV:  đúng MỘT input ở địa chỉ kho mang tài sản tên "TRSY" (= carrier);
+             out_datum.{committee_hash, outstanding_entitlement, total_redeemed}
+               == của carrier;
+             input khác → datum BỎ QUA, KHÔNG fail.
+C-REF-TOTAL: out_datum.total_redeemed == carrier.total_redeemed  (hệ quả của C-REF-PROV)
+C-REF-SIGN:  carrier.outstanding_entitlement ≥ 0 và carrier.total_redeemed ≥ 0
+             (nay là lớp phòng thủ theo chiều sâu, không còn là lớp duy nhất)
+```
+
+> **Sửa 2026-09-26 — vì sao bỏ phép TỔNG.** Bản trước cộng sổ của MỌI input có inline datum, và
+> tự biện hộ nguyên văn rằng *"chặn chặt hơn sẽ giết cả lượt gộp hai kho hợp lệ"*. Câu đó sai vì
+> một dữ kiện nằm ở tệp khác: `treasury_nft` là policy **one-shot**, nên **không bao giờ tồn tại
+> hai kho hợp lệ** để mà gộp. Địa chỉ kho chỉ là một hash công khai và Cardano không chạy
+> validator lúc TẠO output, nên mọi input ngoài carrier hoặc là LAMP rót về qua A-DEST (không
+> datum), hoặc là một UTxO người lạ tự đỗ với datum tự viết. Phép TỔNG vì thế không gộp hai sự
+> thật — nó cộng một sự thật với một lời khai. Hai đường hại đo được, cả hai một chiều:
+> `total_redeemed` khống (10²⁴) giết vĩnh viễn phép cắt ngọn của §4 (trường CHỈ TĂNG, không nhánh
+> nào kéo về); `outstanding_entitlement` khống phình sổ nợ và khoá C-SOLV-2 cho mọi pot. Cả hai
+> đi qua `C-REF-SIGN` vì số khống là số **dương**.
+
+> **Giới hạn còn lại, nói thẳng.** `treasury` không nhận `treasury_nft_policy` làm tham số (đổi
+> arity = đổi đường apply-param của off-chain), nên phép nhận diện carrier đi theo **TÊN** tài
+> sản, không theo policy id. Đúc một tài sản trùng tên dưới policy khác rồi đỗ ở địa chỉ kho làm
+> tập carrier có 2 phần tử ⇒ lượt gộp đó bị từ chối. Đó là **quấy rối**, không phải đường chiếm
+> sổ (committee chọn input, và một Refill không có carrier thật sinh ra vật trơ mà
+> `claim_account` không bao giờ đọc). Khoá nốt khe này cần thêm tham số — một lượt deploy có
+> phối hợp với off-chain.
 
 | mã định danh | treo cái gì | ràng buộc TẠM đang có hiệu lực (fail-closed) | khai ở file nào |
 |---|---|---|---|
-| RFL-KILL-ONCHAIN-01 | *(v3: vá luôn ở lượt đúc này — xem §10)* `fold_ledger` tự nó chưa ép từng số hạng ≥ 0 — một UTxO tự đặt tại địa chỉ kho (Cardano không chạy validator lúc TẠO), khai đúng `committee_hash` công khai kèm `outstanding_entitlement` ÂM, kéo sổ nợ TỔNG sau Refill xuống thấp hơn thật. Vá on-chain đổi script hash (= địa chỉ kho đang chạy) | Chốt off-chain `RFL-013` (`Distribution/offchain/src/refillBuilder.ts`) chặn mọi input như vậy TRƯỚC khi cộng vào sổ cái — đủ cho mọi Refill đi qua builder này. KHÔNG chặn một giao dịch dựng tay thẳng vào validator bằng con đường khác | `Distribution/onchain/validators/treasury.ak:298-320` (mã), builder + test ở `Distribution/offchain/src/refillBuilder.ts` + `Distribution/tests/refillBuilder.test.ts` |
+| ~~RFL-KILL-ONCHAIN-01~~ | **ĐÓNG 2026-09-26.** Đã vá on-chain: `carrier_ledger` ép `≥ 0` trên carrier, và C-REF-PROV làm số hạng của input lạ không còn đi vào sổ ở BẤT KỲ dấu nào | — | `Distribution/onchain/validators/treasury.ak` ▸ `fn carrier_ledger` |
+| RFL-BUILDER-SUM-01 | `refillBuilder` off-chain vẫn tính sổ ra bằng TỔNG trên mọi input có datum (`ledgerIn`/`redeemedIn`), tức nó dựng ra giao dịch mà chuỗi nay TỪ CHỐI khi tập input có một UTxO lạ mang datum | Fail-closed: giao dịch hỏng ở khâu nộp, không mất tiền. Ca thường gặp (carrier + UTxO không datum) vẫn đúng vì tổng khi đó bằng sổ carrier | `Distribution/offchain/src/refillBuilder.ts` ▸ `ledgerIn`, `redeemedIn`; bộ ca ở `Distribution/tests/refillBuilder.test.ts` |
 
 ## 4d. Sổ tên NFT đã đúc — phạm vi của MỌI trần per-account
 
@@ -634,7 +677,9 @@ ngoài tầm với vì đã đóng băng vào script hash (`trim_floor`).
 sau vì cụm không có redeemer nâng cấp): §1 trần lõm · **§1b `C-ACC-DPE` ghim `dpe ≡ 1`** ·
 §2 `index_at_start` · §2b `total_redeemed` ·
 §3 chỉ số cộng dồn + `rate_root` một chiều · §4 cắt ngọn + `trim_floor` · §4d sổ tên NFT ·
-§5 móc `speed_policies` rỗng · RFL-KILL-ONCHAIN-01 (`fold_ledger` ép từng số hạng ≥ 0).
+§5 móc `speed_policies` rỗng · RFL-KILL-ONCHAIN-01 (§4c, nay vá bằng `C-REF-PROV`: sổ ra lấy từ
+carrier mang NFT "TRSY", không còn cộng sổ của input lạ ở BẤT KỲ dấu nào) ·
+§4b mục 4-bis `C-ACC-1b` (NFT tài khoản phải nằm TRONG output tài khoản, không chỉ trong `tx.mint`).
 
 **Cố ý để lại, và vì sao để lại được:**
 
