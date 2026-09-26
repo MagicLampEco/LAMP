@@ -37,6 +37,10 @@ describe("onboardPlatform — 2 bước plan", () => {
       seedDatumOk(plan.seed.custodyValue, plan.seed.datum, cfg.reservedMinAda, seedPolicy),
     ).toBe(true);
     expect(plan.seed.datum.consumed_proposals).toEqual([]);
+    // C-COL-CAT: buckets của datum = id khai trong cấu hình, tăng ngặt — đúng tập Collect sẽ nhận.
+    const ids = cfg.buckets.map((b) => b.id);
+    expect(plan.seed.datum.buckets).toEqual([...ids].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)));
+    expect(plan.seed.datum.buckets.length).toBe(new Set(ids).size);
     // NFT authenticity (seed_policy, instance_id) qty 1 trong custody value.
     expect(plan.seed.custodyValue[`${seedPolicy}|${cfg.instanceId}`]).toBe(1n);
 

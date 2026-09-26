@@ -38,6 +38,13 @@
 //             (`migrate.reserve_inflow_bucket_id`, chỉ MigrateIn được ghi) và thưởng uỷ
 //             quyền (`stake_reward.stake_reward_bucket_id`, chỉ StakeRewardIn được ghi).
 //   S-CONSUMED-0 consumed_proposals == [] (chống seed pre-mark né replay-guard).
+//   S-BUCKETS-NONEMPTY  buckets != [] (không instance mà `Collect` không ghi được vào đâu).
+//   S-BUCKETS-SORTED    buckets tăng NGHIÊM NGẶT (⇒ không trùng, một lượt duyệt O(n)).
+//   S-BUCKETS-RESERVED  buckets KHÔNG chứa `migrate.reserve_inflow_bucket_id` hay
+//             `stake_reward.stake_reward_bucket_id`.
+//   Ba vế trên là CỬA DUY NHẤT ép `buckets` hợp lệ: bốn nhánh tiêu kho chỉ ghim
+//   `out.buckets == in.buckets` (C-BUCKETS-KEEP), không nhánh nào kiểm lại hình dạng. Gieo
+//   một danh sách rác ở đây là gieo nó vĩnh viễn — `buckets` bất biến đời instance.
 //
 // BURN — CẤM hoàn toàn (else fail): NFT authenticity sống suốt vòng đời instance.
 
@@ -46,6 +53,7 @@ use aiken/primitive/bytearray
 use aiken/collection/list
 use cardano/assets.{PolicyId}
 use cardano/transaction.{InlineDatum, OutputReference, Transaction}
+use magiclamp/treasury/buckets
 use magiclamp/treasury/collect
 use magiclamp/treasury/ledger
 use magiclamp/treasury/migrate
@@ -161,6 +169,13 @@ validator custody_seed(genesis_ref: OutputReference) {
 
     // ── S-CONSUMED-0: genesis CHƯA chi proposal nào (single-use marker rỗng) ─
     expect seed_datum.consumed_proposals == []
+
+    // ── S-BUCKETS-*: danh sách bucket khai báo hợp lệ (cửa DUY NHẤT) ─────────
+    // `buckets.config_ok` = khác rỗng ∧ tăng nghiêm ngặt ∧ không chứa bucket dành riêng.
+    // Đây là chỗ duy nhất trong hệ ép ba vế ấy; sau lượt này `buckets` chỉ được MANG QUA
+    // (C-BUCKETS-KEEP ở cả bốn nhánh tiêu kho), nên một danh sách rác gieo ở đây sống suốt
+    // đời instance và không nhánh nào sửa được.
+    expect buckets.config_ok(seed_datum.buckets)
 
     True
   }

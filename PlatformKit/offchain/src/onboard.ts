@@ -74,6 +74,9 @@ export function onboardPlatform(params: OnboardParams): OnboardPlan {
     governance_ref:  config.governanceRef,
     epoch:           createdEpoch,
     consumed_proposals: [],
+    // S-BUCKETS-*: id bucket khai trong cấu hình platform, sắp tăng dần. Trùng id hoặc id dành
+    // riêng thì `planSeed` ▸ `seedDatumOk` ném trước khi dựng tx.
+    buckets:         config.buckets.map((b) => b.id).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)),
   };
   const seed = planSeed(custodyDatumIn, seedPolicy, config.reservedMinAda);
 

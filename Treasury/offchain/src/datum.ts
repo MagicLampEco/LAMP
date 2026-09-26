@@ -7,7 +7,7 @@
 //   LedgerEntry{bucket_id, policy, name, amount} = Constr(0, [int, bytes, bytes, int])
 //   CollectItem{app_id, policy, name, amount, category}
 //                                                = Constr(0, [bytes, bytes, bytes, int, int])
-//   CustodyDatum{instance_id, accepted_assets, ledger, cut_bps, governance_ref, epoch, consumed_proposals}
+//   CustodyDatum{instance_id, accepted_assets, ledger, cut_bps, governance_ref, epoch, consumed_proposals, buckets}
 //                                                = Constr(0, [bytes, List, List, int, bytes, int, List<bytes>])
 //
 //   CustodyRedeemer:
@@ -138,7 +138,8 @@ export function decodeCollectItem(d: Data): CollectItem {
 
 // ── CustodyDatum ───────────────────────────────────────────────────────
 // Constr(0, [instance_id:bytes, accepted_assets:List, ledger:List, cut_bps:int,
-//            governance_ref:bytes, epoch:int, consumed_proposals:List<bytes>])
+//            governance_ref:bytes, epoch:int, consumed_proposals:List<bytes>, buckets:List<int>])
+// `buckets` ở CUỐI (chỉ số 7) — khớp `types.ak` ▸ CustodyDatum, giữ nguyên chỉ số 0..6.
 
 export function encodeCustodyDatum(d: CustodyDatum): Constr<Data> {
   return new Constr(0, [
@@ -149,13 +150,14 @@ export function encodeCustodyDatum(d: CustodyDatum): Constr<Data> {
     normHex(d.governance_ref),
     d.epoch,
     d.consumed_proposals.map(normHex),
+    d.buckets,
   ]);
 }
 
 export function decodeCustodyDatum(d: Data): CustodyDatum {
   const c = asConstr(d, "CustodyDatum");
   if (c.index !== 0) throw new Error(`TDATUM-040: CustodyDatum expects Constr 0, got ${c.index}`);
-  if (c.fields.length !== 7) throw new Error(`TDATUM-041: CustodyDatum expects 7 fields, got ${c.fields.length}`);
+  if (c.fields.length !== 8) throw new Error(`TDATUM-041: CustodyDatum expects 8 fields, got ${c.fields.length}`);
   return {
     instance_id:     asBytes(c.fields[0]!, "CustodyDatum.instance_id"),
     accepted_assets: asList(c.fields[1]!, "CustodyDatum.accepted_assets").map(decodeAssetKey),
@@ -165,6 +167,8 @@ export function decodeCustodyDatum(d: Data): CustodyDatum {
     epoch:           asInt(c.fields[5]!, "CustodyDatum.epoch"),
     consumed_proposals: asList(c.fields[6]!, "CustodyDatum.consumed_proposals")
       .map((x, i) => asBytes(x, `CustodyDatum.consumed_proposals[${i}]`)),
+    buckets: asList(c.fields[7]!, "CustodyDatum.buckets")
+      .map((x, i) => asInt(x, `CustodyDatum.buckets[${i}]`)),
   };
 }
 

@@ -81,6 +81,7 @@ function custodyDatum(led: LedgerEntry[]): CustodyDatum {
     governance_ref: "9999",
     epoch: 10n,
     consumed_proposals: [],
+    buckets: [0n, 1n, 2n, 3n, 7n, 9n],
   };
 }
 

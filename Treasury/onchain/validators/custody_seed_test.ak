@@ -47,6 +47,8 @@ fn seed_datum(ledger: List<LedgerEntry>) -> CustodyDatum {
     governance_ref: #"99999999999999999999999999999999999999999999999999999999",
     epoch: 0,
     consumed_proposals: [],
+    // S-BUCKETS-*: khác rỗng, tăng nghiêm ngặt, không chứa bucket dành riêng.
+    buckets: [bucket_ops, bucket_community],
   }
 }
 
@@ -74,6 +76,20 @@ fn with_nft(value: assets.Value, name: ByteArray) -> assets.Value {
 // Output custody mang NFT name = instance_id (mặc định happy: khớp định danh datum).
 fn cust_output(value: assets.Value, ledger: List<LedgerEntry>) -> Output {
   util.mk_output(util.script_address(cust_sh), with_nft(value, instance_id), seed_datum(ledger))
+}
+
+// Output custody với `buckets` TÙY Ý (S-BUCKETS-*). Mọi vế khác giữ hình dạng bài dương,
+// nên bài âm dựng bằng hàm này chỉ có MỘT thứ sai: danh sách bucket khai báo.
+fn cust_output_buckets(
+  value : assets.Value,
+  ledger: List<LedgerEntry>,
+  bkts  : List<Int>,
+) -> Output {
+  util.mk_output(
+    util.script_address(cust_sh),
+    with_nft(value, instance_id),
+    CustodyDatum { ..seed_datum(ledger), buckets: bkts },
+  )
 }
 
 // Output custody mang NFT name TÙY Ý (test name ≠ instance_id): value + NFT(name).
@@ -513,5 +529,101 @@ test seed_ledger_stake_reward_bucket() fail {
     ]
   let value = assets.from_lovelace(2_000_000) |> assets.add(lamp_policy, lamp_name, 1500)
   let tx = seed_tx([genesis_input()], seed_mint(instance_id, 1), [cust_output(value, ledger)])
+  run(tx, reserved)
+}
+
+// ════════════════════════════════════════════════════════════
+// 21-25. DANH SÁCH BUCKET KHAI BÁO — S-BUCKETS-* (cửa DUY NHẤT).
+//   `buckets` là bất biến đời instance: bốn nhánh tiêu kho chỉ ghim
+//   `out.buckets == in.buckets` (C-BUCKETS-KEEP), KHÔNG nhánh nào kiểm lại hình dạng. Nên
+//   một danh sách rác gieo ở đây sống suốt đời kho và không có tx nào sửa được.
+//   Mỗi bài dưới đây đổi ĐÚNG MỘT THỨ so với `seed_happy`: `buckets`.
+// ════════════════════════════════════════════════════════════
+
+/// S-BUCKETS-NONEMPTY. Phải có bài RIÊNG: `strictly_ascending([])` và `no_reserved([])` đều
+/// `True` (đúng ngữ nghĩa của chúng), nên `buckets == []` KHÔNG suy được từ hai vế kia. Kho
+/// gieo như vậy là kho mà không `Collect` nào ghi được vào đâu — cùng họ với S-ACC-1.
+test seed_reject_buckets_empty() fail {
+  let tx =
+    seed_tx(
+      [genesis_input()],
+      seed_mint(instance_id, 1),
+      [cust_output_buckets(happy_value(), happy_ledger(), [])],
+    )
+  run(tx, reserved)
+}
+
+/// S-BUCKETS-SORTED, cực TRÙNG. Trùng khoá làm mọi phép đếm "kho có bao nhiêu khoang" sai,
+/// và nó là cực mà một cổng viết bằng `<=` (thay vì `<`) cho qua.
+test seed_reject_buckets_duplicate() fail {
+  let tx =
+    seed_tx(
+      [genesis_input()],
+      seed_mint(instance_id, 1),
+      [cust_output_buckets(happy_value(), happy_ledger(), [bucket_ops, bucket_ops])],
+    )
+  run(tx, reserved)
+}
+
+/// S-BUCKETS-SORTED, cực GIẢM. Hai cực (trùng · giảm) phải có hai bài: một cổng chỉ chặn
+/// trùng (`all_distinct`) cho cực này qua, và một cổng chỉ chặn giảm (`<=`) cho cực kia qua.
+test seed_reject_buckets_descending() fail {
+  let tx =
+    seed_tx(
+      [genesis_input()],
+      seed_mint(instance_id, 1),
+      [cust_output_buckets(happy_value(), happy_ledger(), [bucket_community, bucket_ops])],
+    )
+  run(tx, reserved)
+}
+
+/// S-BUCKETS-RESERVED — id nguồn Reserve. Khai id ấy vào `buckets` là mở lại đúng đường mà
+/// `collect.all_items_valid` đóng: `Collect` ghi được vào dòng sổ Reserve-inflow, và "kho đã
+/// nhận bao nhiêu từ Reserve" thôi đọc được bằng một phép tra sổ.
+test seed_reject_buckets_has_reserve_inflow() fail {
+  let tx =
+    seed_tx(
+      [genesis_input()],
+      seed_mint(instance_id, 1),
+      [
+        cust_output_buckets(
+          happy_value(),
+          happy_ledger(),
+          [bucket_ops, bucket_community, migrate.reserve_inflow_bucket_id],
+        ),
+      ],
+    )
+  run(tx, reserved)
+}
+
+/// S-BUCKETS-RESERVED — id thưởng uỷ quyền. Bài RIÊNG cho id thứ hai, không gộp: vá một
+/// bucket rồi coi là xong thì bucket còn lại nằm hở mà không cổng nào kêu (đúng ca đã xảy
+/// ra một lần với `collect.all_items_valid`).
+test seed_reject_buckets_has_stake_reward() fail {
+  let tx =
+    seed_tx(
+      [genesis_input()],
+      seed_mint(instance_id, 1),
+      [
+        cust_output_buckets(
+          happy_value(),
+          happy_ledger(),
+          [bucket_ops, bucket_community, stake_reward.stake_reward_bucket_id],
+        ),
+      ],
+    )
+  run(tx, reserved)
+}
+
+/// ĐỐI CHỨNG DƯƠNG cho cả năm bài trên: một `buckets` KHÁC mặc định nhưng hợp lệ (ba phần
+/// tử, tăng ngặt, không id dành riêng) phải QUA. Không có bài này thì năm bài `fail` ở trên
+/// không phân biệt được "S-BUCKETS-* chặn" với "`cust_output_buckets` dựng sai fixture".
+test seed_buckets_three_ok() {
+  let tx =
+    seed_tx(
+      [genesis_input()],
+      seed_mint(instance_id, 1),
+      [cust_output_buckets(happy_value(), happy_ledger(), [bucket_ops, bucket_community, 3])],
+    )
   run(tx, reserved)
 }

@@ -294,4 +294,39 @@ ledger từ chối.
 marker single-use proposal vẫn mở, và vá gốc của nó vẫn là việc §10 H3 đã nêu (đưa
 `consumed_proposals` ra khỏi custody datum, cần Governance có trạng thái `Spent`).
 
+## 14. `C-COL-CAT` — category ĐÓNG theo instance (2026-09-26, **ĐÃ HIỆN THỰC**, interface KHÓA)
+
+Vá cùng đợt với §13, trước lần gieo instance đầu tiên.
+
+**Lỗ được bịt.** Trước bản vá, `Collect` nhận `item.category` là một số nguyên BẤT KỲ (trừ hai id dành
+riêng). Hệ quả kép: (1) tiền rơi vào một bucket không ai định nghĩa, và không nhánh `Release` nào có
+lý do để chi nó ra; (2) mỗi category lạ là một dòng sổ mới — đúng đường bơm mà §13 phải chặn bằng trần.
+
+**Chốt.**
+- `CustodyDatum` thêm trường `buckets: List<Int>`, ĐẶT CUỐI (chỉ số Constr 7; datum nay 8 trường). Codec
+  offchain từ chối datum 7 trường (`TDATUM-041`) — không có đường đọc hình dạng cũ.
+- `C-COL-CAT` — mọi item của `Collect`: `category ∈ datum.buckets` (`buckets.ak` ▸ `is_declared`, gọi trong
+  `collect.all_items_valid`). Một item lạc làm hỏng cả lô.
+- `S-BUCKETS-NONEMPTY` · `S-BUCKETS-SORTED` · `S-BUCKETS-RESERVED` — lúc gieo: `buckets` khác rỗng, tăng
+  NGHIÊM NGẶT (⇒ không trùng), không chứa `reserve_inflow` hay `stake_reward` (`buckets.ak` ▸ `config_ok`,
+  gọi trong `custody_seed`). Đây là cửa DUY NHẤT kiểm hình dạng `buckets`.
+- `C-BUCKETS-KEEP` — cả bốn nhánh tiêu kho (`Collect` · `Release` · `MigrateIn` · `StakeRewardIn`) ép
+  `out.buckets == in.buckets`. ⇒ **danh sách category là cấu hình của instance, chốt lúc gieo, bất biến đời
+  instance.** Cần category mới = gieo instance mới (hoặc một nhánh đổi cấu hình qua Governance — chưa có).
+
+**Nghĩa vụ vận hành lúc gieo.** Công cụ gieo (`scripts/01_seed_custody.ts`) KHÔNG có giá trị mặc định cho
+`BUCKETS` hay `CUT_BPS` (`SEED-BKT-001`, `SEED-CUT-001`): một mặc định ở đây là một cấu hình vĩnh viễn mà
+không ai chọn. PlatformKit lấy `buckets` từ `config.buckets[].id`, sắp tăng dần.
+
+**Tương tác với §13.** Category đóng chặn kẻ ngoài bơm dòng, nhưng không tự bảo đảm lô `Collect` HỢP LỆ luôn
+vừa trần: số dòng tối đa người dùng tạo được là `|buckets| × |accepted_assets|`, cộng các dòng ở hai bucket
+dành riêng. Người gieo phải chọn hai danh sách sao cho tích đó cộng phần dành riêng `≤ N_max`; validator
+KHÔNG kiểm phép cộng này lúc gieo (nó phụ thuộc asset nào thật sự chảy vào bucket dành riêng).
+
+**Chốt nào bài kiểm hiện tại ghim được.** Đo bằng đột biến, mỗi lượt gỡ ĐÚNG một chốt (dấu `MUT-MARK` cắm tại
+dòng bị đổi) rồi chạy trọn `aiken check`: gỡ `is_declared` · `config_ok` ở seed · từng vế
+rỗng/tăng-ngặt/dành-riêng · từng `buckets ==` ở bốn nhánh · và `within_line_cap` của §13 — cả mười lượt đều
+có bài đỏ. Phép đo chạy trên validator; vế offchain (`isDeclaredBucket`, `bucketsConfigOk`) là GƯƠNG, có ca
+kiểm riêng nhưng chưa chạy đột biến.
+
 Đơn vị dùng chung: `1 LAMP = 1_000_000 oildrop` (khớp `Utils.OILDROP_PER_LAMP`).

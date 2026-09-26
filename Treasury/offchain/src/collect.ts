@@ -48,12 +48,31 @@ export function itemAccepted(item: CollectItem, accepted: CustodyDatum["accepted
  *  on-chain chắc chắn từ chối — sai theo chiều tốn phí chứ không mất tiền, nhưng vẫn là
  *  gương lệch, và gương lệch là thứ người ta phát hiện bằng một tx hỏng chứ không bằng
  *  bài kiểm. Đếm ở đây phải bằng đếm ở `collect.ak` ▸ `all_items_valid`: HAI. */
-export function allItemsValid(items: CollectItem[], accepted: CustodyDatum["accepted_assets"]): boolean {
+export function allItemsValid(
+  items: CollectItem[],
+  accepted: CustodyDatum["accepted_assets"],
+  declaredBuckets: CustodyDatum["buckets"],
+): boolean {
   return items.every((it) =>
     it.amount >= 0n
+    && isDeclaredBucket(declaredBuckets, it.category)               // C-COL-CAT
     && it.category !== RESERVE_INFLOW_BUCKET_ID
     && it.category !== STAKE_REWARD_BUCKET_ID
     && itemAccepted(it, accepted));
+}
+
+/** C-COL-CAT: `category` phải nằm trong danh sách bucket đã khai lúc seed
+ *  (khớp `onchain/lib/magiclamp/treasury/buckets.ak` ▸ `is_declared`). */
+export function isDeclaredBucket(buckets: CustodyDatum["buckets"], category: bigint): boolean {
+  return buckets.some((b) => b === category);
+}
+
+/** S-BUCKETS-*: khác rỗng, tăng nghiêm ngặt, không chứa bucket dành riêng
+ *  (khớp `buckets.ak` ▸ `config_ok`). */
+export function bucketsConfigOk(buckets: CustodyDatum["buckets"]): boolean {
+  if (buckets.length === 0) return false;
+  for (let i = 1; i < buckets.length; i++) if (!(buckets[i - 1]! < buckets[i]!)) return false;
+  return buckets.every((b) => b !== RESERVE_INFLOW_BUCKET_ID && b !== STAKE_REWARD_BUCKET_ID);
 }
 
 /** Số dư (bucket,policy,name) trong sổ; 0 nếu chưa có dòng. */
@@ -384,7 +403,8 @@ export function seedDatumOk(
     && isCanonical(datum.ledger)                                     // S-LEDGER-0
     && allLinesAccepted(datum.ledger, datum.accepted_assets)         // S-ACC-0
     && noReservedBucketLines(datum.ledger)                           // S-LEDGER-RESERVED
-    && datum.consumed_proposals.length === 0;                        // S-CONSUMED-0
+    && datum.consumed_proposals.length === 0                         // S-CONSUMED-0
+    && bucketsConfigOk(datum.buckets);                               // S-BUCKETS-*
 }
 
 /** S-LEDGER-RESERVED (F4): sổ genesis KHÔNG được chứa dòng ở HAI bucket DÀNH RIÊNG — nguồn

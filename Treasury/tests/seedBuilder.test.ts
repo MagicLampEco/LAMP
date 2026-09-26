@@ -41,6 +41,7 @@ function baseDatum(ledger: LedgerEntry[], over: Partial<CustodyDatum> = {}): Cus
     governance_ref: "9999",
     epoch: 0n,
     consumed_proposals: [],
+    buckets: [0n, 1n, 2n, 3n, 7n, 9n],
     ...over,
   };
 }

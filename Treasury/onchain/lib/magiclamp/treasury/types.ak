@@ -40,6 +40,20 @@ pub type CustodyDatum {
   // Release ép proposal_id ∉ consumed_proposals (chưa dùng) rồi append id vào out_datum.
   // Tách khỏi `ledger` → KHÔNG đụng bất biến sổ↔value (T3); Collect chỉ bảo toàn list này.
   consumed_proposals : List<ByteArray>,// proposal_id đã chi (đơn điệu tăng, không xóa)
+  // DANH SÁCH ĐÓNG các bucket_id mà `Collect` được ghi vào (S-BUCKETS-*, C-COL-CAT).
+  // `CONTRACT.md §1` đã khai `buckets[]` là tham số instance nằm ở DATUM từ đầu; trường này
+  // là chỗ nó thật sự sống, trước đây thiếu nên `CollectItem.category` là một `Int` TỰ DO.
+  //
+  // VÌ SAO Ở CUỐI, không chèn vào giữa cho gần `accepted_assets`/`cut_bps`: thứ tự trường
+  // quyết định layout CBOR của datum. Chèn giữa làm mọi `CustodyDatum` đã mã hoá trỏ sai
+  // trường, và nó KHÔNG lỗi lúc build — nó lỗi lúc validator giải mã. Thêm ở cuối giữ
+  // nguyên chỉ số 0..6, y lý lẽ đã dùng cho `StakeRewardIn` (index Constr 4) dưới đây.
+  // Chưa instance nào được gieo nên hôm nay hai cách đều chạy được; chọn cách không
+  // phụ thuộc vào dữ kiện đó, vì dữ kiện đó hết hiệu lực ở lượt gieo đầu tiên.
+  //
+  // Bất biến đời instance: ép MỘT LẦN tại `custody_seed` (khác rỗng, tăng nghiêm ngặt,
+  // không chứa bucket dành riêng) rồi mọi nhánh tiêu kho ghim `out.buckets == in.buckets`.
+  buckets            : List<Int>,      // bucket_id hợp lệ cho Collect (tăng nghiêm ngặt)
 }
 
 /// Một micro-collect (gộp lô N item vào 1 settlement tx — anti-bloat).

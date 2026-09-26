@@ -3,7 +3,7 @@ import {
   type AssetMap, assetKey, itemCut, cutValue, applyCut, planLedgerOut,
   ledgerGet, ledgerOk, valueOk, allItemsValid, itemAccepted,
   compareHexBytes, keyLt, strictSorted, allPositive, isCanonical,
-  sortLedger, pruneZeroLines, canonicalizeLedger,
+  sortLedger, pruneZeroLines, canonicalizeLedger, isDeclaredBucket, bucketsConfigOk,
 } from "../offchain/src/collect.js";
 import { planCollect, sameEpochValidToMs, VALID_TTL_MS } from "../offchain/src/collectBuilder.js";
 import type { CollectItem, CustodyDatum, LedgerEntry } from "../offchain/src/types.js";
@@ -26,6 +26,7 @@ function baseDatum(over: Partial<CustodyDatum> = {}): CustodyDatum {
     governance_ref: "cafe",
     epoch: 5n,
     consumed_proposals: [],
+    buckets: [0n, 1n, 2n, 3n, 7n, 9n],
     ...over,
   };
 }
@@ -224,20 +225,50 @@ describe("item validation (C-COL-5)", () => {
     const items: CollectItem[] = [
       { app_id: "a", policy: LAMP_POLICY, name: LAMP_NAME, amount: 0n, category: 1n },
     ];
-    expect(allItemsValid(items, datum.accepted_assets)).toBe(true);
+    expect(allItemsValid(items, datum.accepted_assets, [0n, 1n, 2n, 3n, 7n, 9n])).toBe(true);
   });
   it("reject asset ∉ accepted_assets", () => {
     const items: CollectItem[] = [
       { app_id: "a", policy: "ffff".repeat(14), name: "00", amount: 1n, category: 1n },
     ];
-    expect(allItemsValid(items, datum.accepted_assets)).toBe(false);
+    expect(allItemsValid(items, datum.accepted_assets, [0n, 1n, 2n, 3n, 7n, 9n])).toBe(false);
     expect(itemAccepted(items[0]!, datum.accepted_assets)).toBe(false);
   });
   it("reject amount < 0", () => {
     const items: CollectItem[] = [
       { app_id: "a", policy: LAMP_POLICY, name: LAMP_NAME, amount: -1n, category: 1n },
     ];
-    expect(allItemsValid(items, datum.accepted_assets)).toBe(false);
+    expect(allItemsValid(items, datum.accepted_assets, [0n, 1n, 2n, 3n, 7n, 9n])).toBe(false);
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════
+// CATEGORY ĐÓNG (C-COL-CAT) — gương `buckets.ak` ▸ is_declared / config_ok
+// ════════════════════════════════════════════════════════════════════════
+describe("category đóng (C-COL-CAT)", () => {
+  const datum = baseDatum();
+  const item = (category: bigint): CollectItem =>
+    ({ app_id: "a", policy: LAMP_POLICY, name: LAMP_NAME, amount: 1n, category });
+  it("item mang category chưa khai bị từ chối, dù asset + amount hợp lệ", () => {
+    expect(allItemsValid([item(4n)], datum.accepted_assets, datum.buckets)).toBe(false);
+    expect(isDeclaredBucket(datum.buckets, 4n)).toBe(false);
+  });
+  it("đối chứng: cùng item, category đã khai thì qua", () => {
+    expect(allItemsValid([item(7n)], datum.accepted_assets, datum.buckets)).toBe(true);
+  });
+  it("một item lạc category làm hỏng cả lô", () => {
+    expect(allItemsValid([item(1n), item(5n)], datum.accepted_assets, datum.buckets)).toBe(false);
+  });
+  it("planCollect ném khi item mang category chưa khai", () => {
+    expect(() => planCollect(datum, {}, [item(4n)])).toThrow(/COLLECT-001/);
+  });
+  it("config_ok: rỗng / không tăng ngặt / trùng / id dành riêng đều hỏng", () => {
+    expect(bucketsConfigOk([])).toBe(false);
+    expect(bucketsConfigOk([2n, 1n])).toBe(false);
+    expect(bucketsConfigOk([1n, 1n])).toBe(false);
+    expect(bucketsConfigOk([1n, 1_000_000n])).toBe(false);
+    expect(bucketsConfigOk([1n, 1_000_001n])).toBe(false);
+    expect(bucketsConfigOk([0n, 1n, 2n])).toBe(true);
   });
 });
 

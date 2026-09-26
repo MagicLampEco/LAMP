@@ -30,10 +30,17 @@ import {
 import type { CustodyDatum, OutputReference } from "../offchain/src/types.js";
 import { custodyDatumToCbor } from "../offchain/src/datum.js";
 import { planSeed, buildSeedTx, seedPolicyId } from "../offchain/src/seedBuilder.js";
+import { bucketsConfigOk } from "../offchain/src/collect.js";
 
 // ── Tham số instance (dev mặc định; override qua .env) ──────────
 const INSTANCE_ID    = asciiToHex(process.env.INSTANCE_ID ?? "treasury-custody-v1");
-const CUT_BPS        = BigInt(process.env.CUT_BPS ?? "500");                 // 5% mẫu
+// cut_bps và buckets nướng vào datum genesis; không nhánh nào đổi được chúng sau seed
+// (`out_datum.buckets == datum.buckets` ở cả bốn nhánh custody). Nên KHÔNG có giá trị mặc
+// định: một mặc định ở đây là một cấu hình vĩnh viễn mà không ai chọn.
+const CUT_BPS        = requireCutBps(process.env.CUT_BPS);
+// BUCKETS: danh sách id category ĐÓNG, dạng "0,1,2,3". Collect chỉ nhận item mang id có trong
+// danh sách (C-COL-CAT); seed đòi danh sách không rỗng, tăng ngặt, không id dành riêng.
+const BUCKETS        = requireBuckets(process.env.BUCKETS);
 const RESERVED_MIN_ADA = BigInt(process.env.RESERVED_MIN_ADA ?? "2000000"); // 2 ADA min-UTxO
 // governance_ref: script hash Governance gác treasury này. Dev → placeholder 28-byte.
 const GOVERNANCE_REF_ENV = (process.env.GOVERNANCE_REF ?? "").trim().toLowerCase();
@@ -45,6 +52,28 @@ const GOVERNANCE_REF = GOVERNANCE_REF_ENV || padHash28(asciiToHex("treasury-comm
 const DELEGATION_ADMIN_ENV = (process.env.DELEGATION_ADMIN ?? "").trim().toLowerCase();
 const DELEGATION_ADMIN_PLACEHOLDER = DELEGATION_ADMIN_ENV === "";
 const DELEGATION_ADMIN = DELEGATION_ADMIN_ENV || padHash28(asciiToHex("delegation-admin"));
+
+function requireCutBps(raw: string | undefined): bigint {
+  const v = (raw ?? "").trim();
+  if (!/^\d+$/.test(v)) {
+    throw new Error("SEED-CUT-001: CUT_BPS bắt buộc, số nguyên trong [0, 10000] (instance chung dùng 10000).");
+  }
+  const n = BigInt(v);
+  if (n > 10_000n) throw new Error(`SEED-CUT-001: CUT_BPS=${n} vượt 10000.`);
+  return n;
+}
+
+function requireBuckets(raw: string | undefined): bigint[] {
+  const v = (raw ?? "").trim();
+  if (v === "" || !/^\d+(\s*,\s*\d+)*$/.test(v)) {
+    throw new Error("SEED-BKT-001: BUCKETS bắt buộc, dạng \"0,1,2\" — id category nguyên không âm, tăng ngặt.");
+  }
+  const ids = v.split(",").map((x) => BigInt(x.trim()));
+  if (!bucketsConfigOk(ids)) {
+    throw new Error(`SEED-BKT-001: BUCKETS=${v} không hợp lệ — phải tăng ngặt và không chứa id dành riêng.`);
+  }
+  return ids;
+}
 
 /**
  * Chọn genesis UTxO. Có ví → UTxO đầu của ví (one-shot tiêu khi seed). DRY → đọc
@@ -114,6 +143,7 @@ async function main(): Promise<void> {
   console.log(`delegation_admin:${DELEGATION_ADMIN}${DELEGATION_ADMIN_PLACEHOLDER ? "  (PLACEHOLDER)" : ""}`);
   console.log(`instance_id:     ${INSTANCE_ID} ("${Buffer.from(INSTANCE_ID, "hex").toString("utf8")}")`);
   console.log(`cut_bps:         ${CUT_BPS}`);
+  console.log(`buckets:         [${BUCKETS.join(", ")}]`);
   console.log(`reserved_min_ada:${RESERVED_MIN_ADA} lovelace\n`);
 
   // ── Apply params 2 validator (offline — KHÔNG cần mạng) ───────
@@ -174,6 +204,7 @@ async function main(): Promise<void> {
     governance_ref:     GOVERNANCE_REF,
     epoch:              0n,
     consumed_proposals: [],
+    buckets:            BUCKETS,
   };
   const plan = planSeed(datumIn, applied.seedPolicy, RESERVED_MIN_ADA);
   const datumCbor = custodyDatumToCbor(plan.datum);

@@ -188,6 +188,7 @@ export function planRelease(
     epoch,
     // C-REL-9: append proposal_id lên đầu (khớp consumed_appended_ok onchain).
     consumed_proposals: [proposal.proposal_id, ...datum.consumed_proposals],
+    buckets:         datum.buckets,   // bất biến đời instance
   };
 
   // ── Tự kiểm khớp validator TRƯỚC khi dựng tx ──

@@ -70,6 +70,10 @@ fn datum(ledger_lines: List<LedgerEntry>) -> CustodyDatum {
     governance_ref: gov_sh,
     epoch: 3,
     consumed_proposals: [],
+    // Khai ĐỦ mọi bucket mà `lines(n, _)` dùng (1..n) CỘNG bucket n+1 — bucket mà bài
+    // `cap_collect_new_line_pushes_over_fail` ghi vào. Thiếu n+1 thì bài ấy đỏ ở
+    // C-COL-CAT chứ không ở C-COL-LINES: đúng màu, đúng tên, canh nhầm chốt.
+    buckets: list.range(1, ledger.max_ledger_lines + 1),
   }
 }
 

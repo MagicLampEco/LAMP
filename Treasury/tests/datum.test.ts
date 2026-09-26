@@ -84,6 +84,7 @@ describe("CustodyDatum", () => {
     governance_ref: "cafe".repeat(14),
     epoch: 42n,
     consumed_proposals: ["dead".repeat(16), "beef".repeat(16)],
+    buckets: [0n, 1n, 2n, 3n, 7n, 9n],
   };
 
   it("round-trips encode→decode", () => {
@@ -94,10 +95,10 @@ describe("CustodyDatum", () => {
     expect(custodyDatumFromCbor(custodyDatumToCbor(sample))).toEqual(sample);
   });
 
-  it("Constr(0, [bytes, List, List, int, bytes, int, List]) declared order", () => {
+  it("Constr(0, [bytes, List, List, int, bytes, int, List, List]) declared order", () => {
     const c = asConstr(custodyDatumToCbor(sample));
     expect(c.index).toBe(0);
-    expect(c.fields).toHaveLength(7);
+    expect(c.fields).toHaveLength(8);
     expect(c.fields[0]).toBe(sample.instance_id);          // instance_id
     expect(Array.isArray(c.fields[1])).toBe(true);         // accepted_assets
     expect(Array.isArray(c.fields[2])).toBe(true);         // ledger
@@ -105,6 +106,7 @@ describe("CustodyDatum", () => {
     expect(c.fields[4]).toBe(sample.governance_ref);       // governance_ref
     expect(c.fields[5]).toBe(42n);                         // epoch
     expect(Array.isArray(c.fields[6])).toBe(true);         // consumed_proposals
+    expect(c.fields[7]).toEqual([0n, 1n, 2n, 3n, 7n, 9n]);                   // buckets (cuối, chỉ số 7)
   });
 
   it("round-trips empty lists", () => {
@@ -114,9 +116,11 @@ describe("CustodyDatum", () => {
 
   it("rejects wrong field count / wrong constr", () => {
     expect(() => decodeCustodyDatum(new Constr(0, ["aa", [], []]))).toThrow();
-    // 6 fields (thiếu consumed_proposals) phải fail — field count nay là 7.
+    // 6 fields (thiếu consumed_proposals) phải fail — field count nay là 8.
     expect(() => decodeCustodyDatum(new Constr(0, ["aa", [], [], 0n, "bb", 0n]))).toThrow();
-    expect(() => decodeCustodyDatum(new Constr(1, ["aa", [], [], 0n, "bb", 0n, []]))).toThrow();
+    // 7 fields (thiếu buckets — hình dạng TRƯỚC C-COL-CAT) phải fail.
+    expect(() => decodeCustodyDatum(new Constr(0, ["aa", [], [], 0n, "bb", 0n, []]))).toThrow();
+    expect(() => decodeCustodyDatum(new Constr(1, ["aa", [], [], 0n, "bb", 0n, [], []]))).toThrow();
   });
 });
 

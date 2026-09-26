@@ -82,6 +82,9 @@ fn datum(ledger: List<LedgerEntry>) -> CustodyDatum {
     // before_timelock (cur=3 ≥ in.epoch=3 nhưng < execute_after=4).
     epoch: 3,
     consumed_proposals: [],
+    // `Release` không đọc `buckets` (nó rút theo `draw.bucket_id` đã có dòng sổ); trường
+    // này ở đây để C-BUCKETS-KEEP có cái mà ghim.
+    buckets: [bucket_ops, bucket_community],
   }
 }
 
@@ -656,6 +659,42 @@ test release_param_tamper() fail {
     CustodyDatum {
       ..datum(ledger_out), ledger: ledger_out, epoch: 5,
       governance_ref: #"dead", consumed_proposals: [prop_id],
+    }
+  let cust_out = util.mk_output(cust_addr, with_nft(lamp_val(5_000_000, 4700)), d_out)
+  let tx =
+    Transaction {
+      ..placeholder,
+      inputs: [cust_in],
+      reference_inputs: [proposal_input(Executed, spec, 4)],
+      outputs: [cust_out, pay(alice, 300)],
+      mint: assets.zero,
+      validity_range: epoch_range(5 * ms_per_epoch),
+    }
+  run(tx, datum(ledger_in), draws)
+}
+
+// ════════════════════════════════════════════════════════════
+// 18b. ĐỔI `buckets` trong RELEASE (fail) — C-BUCKETS-KEEP.
+//     `Release` KHÔNG đọc `buckets` (nó rút theo `draw.bucket_id`), nên đây là nhánh mà vế
+//     này dễ bị coi là dư nhất. Nó không dư: một proposal đã duyệt chỉ cam kết ai/bao nhiêu
+//     (`spend_spec_hash` khoá `draws`), KHÔNG cam kết gì về `buckets`. Thiếu vế này thì mọi
+//     lượt chi hợp lệ là một lượt được phép nới danh sách category, và lượt `Collect` sau đó
+//     tự nó hợp lệ hoàn toàn nên không có chỗ nào để bắt.
+//     Đổi ĐÚNG MỘT THỨ so với bài dương: `buckets` [1,2] → [1,2,3].
+// ════════════════════════════════════════════════════════════
+test release_reject_buckets_mutated() fail {
+  let cust_addr = util.script_address(cust_sh)
+  let ledger_in = [LedgerEntry { bucket_id: bucket_ops, policy: lamp_policy, name: lamp_name, amount: 1000 }]
+  let ledger_out = [LedgerEntry { bucket_id: bucket_ops, policy: lamp_policy, name: lamp_name, amount: 700 }]
+  let draws = happy_draws()
+  let spec = release.spend_spec_hash(instance_id, draws)
+  let cust_in =
+    util.mk_input(util.mk_ref(0), util.mk_output(cust_addr, with_nft(lamp_val(5_000_000, 5000)), datum(ledger_in)))
+  let d_out =
+    CustodyDatum {
+      ..datum(ledger_out), ledger: ledger_out, epoch: 5,
+      consumed_proposals: [prop_id],
+      buckets: [bucket_ops, bucket_community, 3],
     }
   let cust_out = util.mk_output(cust_addr, with_nft(lamp_val(5_000_000, 4700)), d_out)
   let tx =
