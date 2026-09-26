@@ -43,7 +43,7 @@ import {
   DIST_CAP, RESERVE_CAP, MS_PER_EPOCH, STATE_PATH, writeState, type CanonicalState,
 } from "./_canonical_v2.js";
 import {
-  assertSeedNotCustody, assertSeedNotSpent, custodySeedRefFromEnv, refKey,
+  assertSeedNotCustody, assertSeedNotSpent, custodySeedRefFromEnv, findOwnedCustodySeed, refKey,
   reserveKhoParamsFromEnv, type OutputRef,
 } from "./_custodySeedRef.js";
 import { INSTANCE_ID, custodySeedPolicyId } from "./_reserve_layer2.js";
@@ -104,9 +104,11 @@ async function main(): Promise<void> {
   // Không đọc được hạt giống custody thì KHÔNG đo được va chạm đó. Trạng thái mù ở đây phải
   // kêu, không được cho qua: đây là bước duy nhất còn quay lui được.
   const custodySeed: OutputRef = custodySeedRefFromEnv(process.env);
-  if (!utxos.some((u) => refKey(u) === refKey(custodySeed))) {
+  // Tra theo outref, không theo ví: hạt giống cất ở địa chỉ enterprise của cùng khoá là cách
+  // giữ nó sống qua các giao dịch có coin-selection tự do — xem `findOwnedCustodySeed`.
+  if (!(await findOwnedCustodySeed(lucid, custodySeed, pkh))) {
     throw new Error(
-      `CUSTODY-SEED-004: hạt giống custody ${refKey(custodySeed)} KHÔNG có trong ví lúc này. ` +
+      `CUSTODY-SEED-004: hạt giống custody ${refKey(custodySeed)} KHÔNG còn trên chuỗi lúc này. ` +
       `Khe #13 của lamp_mint là policy id của \`custody_seed\` áp trên đúng UTxO đó, và nó nướng ` +
       `vào policy-id ở giao dịch này. Hạt giống đã tiêu ⇒ policy trong khe #13 không bao giờ đúc ` +
       `được ⇒ nhánh ReserveDraw của token sắp đúc chết ngay từ lúc sinh. Chọn một hạt giống ` +

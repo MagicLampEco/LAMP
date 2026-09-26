@@ -27,6 +27,7 @@
 //   `true` khi HAI VẾ CÙNG RỖNG, và "hai chỗ chưa điền" là đúng ca nguy hiểm nhất — cổng im
 //   lặng lúc đó là nói "tôi không biết" bằng giọng "ổn".
 
+import { getAddressDetails, type UTxO } from "@lucid-evolution/lucid";
 import type { KhoNftPair } from "../offchain/src/reserveKhoPair.js";
 
 /** Một `OutputReference`: hash giao dịch + chỉ số output. */
@@ -523,4 +524,42 @@ export function custodySeedRefFromState(
     return { ref, source: "state" };
   }
   return { ref: custodySeedRefFromEnv(env), source: "env" };
+}
+
+/**
+ * Tìm hạt giống custody THEO `OutputReference`, không theo ví.
+ *
+ * Hạt giống custody phải sống từ lượt genesis tới lượt gieo custody, và giữa hai lượt đó ví vận
+ * hành chạy hàng loạt giao dịch có coin-selection tự do (vest, Grant, Redeem, nạp pot). Để hạt
+ * giống ở địa chỉ ví (base) thì mỗi giao dịch ấy là một lần có thể tiêu nhầm nó — và tiêu nhầm là
+ * nhánh `ReserveDraw` chết vĩnh viễn. Cách chặn bằng cấu trúc: cất hạt giống ở địa chỉ ENTERPRISE
+ * của CÙNG khoá thanh toán. `lucid.wallet().getUtxos()` chỉ trả UTxO ở địa chỉ base, nên không
+ * lượt chọn UTxO nào nhìn thấy nó; còn khoá thanh toán vẫn ký tiêu được nó khi lượt gieo gọi
+ * `collectFrom` tường minh.
+ *
+ * Vì vậy phép tra ở đây KHÔNG được là "có trong `wallet().getUtxos()` không" — phép đó trả "không"
+ * cho đúng hạt giống được cất an toàn. Phép tra đúng hỏi hai câu: UTxO còn sống không
+ * (`utxosByOutRef`), và khoá thanh toán của ví có tiêu được nó không (payment credential là khoá
+ * `pkh`). Sống nhưng thuộc khoá khác ⇒ NÉM: lượt gieo sẽ không ký được, và biết điều đó sau khi
+ * genesis đã nướng khe #13 là quá muộn.
+ *
+ * Trả `undefined` khi UTxO đã bị tiêu (không còn trên chuỗi).
+ */
+export async function findOwnedCustodySeed(
+  lucid: { utxosByOutRef(refs: OutputRef[]): Promise<UTxO[]> },
+  ref: OutputRef,
+  pkh: string,
+): Promise<UTxO | undefined> {
+  const found = (await lucid.utxosByOutRef([ref])).find((u) => refKey(u) === refKey(ref));
+  if (!found) return undefined;
+  const pay = getAddressDetails(found.address).paymentCredential;
+  if (pay?.type !== "Key" || norm(pay.hash) !== norm(pkh)) {
+    throw new Error(
+      `CUSTODY-SEED-005: hạt giống custody ${refKey(ref)} còn sống nhưng nằm ở ${found.address}, ` +
+        `payment credential ${pay ? `${pay.type}:${pay.hash}` : "(không đọc được)"} — KHÔNG phải ` +
+        `khoá ${pkh} của ví đang chạy. Lượt gieo custody sẽ không ký tiêu được nó. Chọn hạt giống ở ` +
+        `một địa chỉ mà khoá thanh toán của ví này tiêu được (base hoặc enterprise).`,
+    );
+  }
+  return found;
 }

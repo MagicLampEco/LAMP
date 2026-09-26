@@ -540,3 +540,46 @@ describe("reserveKhoParamsFromEnv — RESERVE-KHO-004 (khe #14)", () => {
     ).rejects.toThrow(/RESERVE-KHO-004/);
   });
 });
+
+// ── CUSTODY-SEED-004/005 — hạt giống tra THEO OUTREF, không theo ví ─────────────────────────
+//
+// Hạt giống custody được cất ở địa chỉ ENTERPRISE của cùng khoá để coin-selection của các giao
+// dịch ở giữa (vest, Grant, Redeem) không tiêu nhầm. `wallet().getUtxos()` không trả địa chỉ đó,
+// nên một phép tra "có trong ví không" sẽ báo "đã tiêu" cho đúng hạt giống được cất an toàn. Ca
+// quyết định là ca enterprise: phép tra theo ví ra `undefined`, phép tra đúng ra UTxO.
+import { credentialToAddress, type UTxO } from "@lucid-evolution/lucid";
+import { findOwnedCustodySeed } from "../scripts/_custodySeedRef.js";
+
+describe("findOwnedCustodySeed — tra theo outref + khoá thanh toán", () => {
+  const PKH = "603249abe9bc29ea474777fc4cfc2f220a784a53e201b9b9afac5ff5";
+  const STAKE = "85c86c6ed74462de681de427a2fc15451fbc5e9a62723d29421ad885";
+  const OTHER = "11".repeat(28);
+  const REF: OutputRef = { txHash: "ab".repeat(32), outputIndex: 0 };
+  const at = (address: string): UTxO =>
+    ({ txHash: REF.txHash, outputIndex: REF.outputIndex, address, assets: { lovelace: 5_000_000n } }) as UTxO;
+  const chain = (us: UTxO[]) => ({ utxosByOutRef: async () => us });
+  const enterprise = credentialToAddress("Preprod", { type: "Key", hash: PKH });
+  const base = credentialToAddress("Preprod", { type: "Key", hash: PKH }, { type: "Key", hash: STAKE });
+
+  it("enterprise cùng khoá ⇒ tìm thấy (ca phép tra theo ví báo sai là đã tiêu)", async () => {
+    expect((await findOwnedCustodySeed(chain([at(enterprise)]), REF, PKH))?.address).toBe(enterprise);
+  });
+  it("base cùng khoá ⇒ tìm thấy", async () => {
+    expect((await findOwnedCustodySeed(chain([at(base)]), REF, PKH))?.address).toBe(base);
+  });
+  it("đã tiêu (chuỗi không trả gì) ⇒ undefined, để người gọi ném CUSTODY-SEED-003/004", async () => {
+    expect(await findOwnedCustodySeed(chain([]), REF, PKH)).toBeUndefined();
+  });
+  it("sống nhưng thuộc khoá khác ⇒ ném CUSTODY-SEED-005", async () => {
+    const other = credentialToAddress("Preprod", { type: "Key", hash: OTHER });
+    await expect(findOwnedCustodySeed(chain([at(other)]), REF, PKH)).rejects.toThrow(/CUSTODY-SEED-005/);
+  });
+  it("sống nhưng ở địa chỉ script trùng hash ⇒ ném CUSTODY-SEED-005 (so cả loại credential)", async () => {
+    const script = credentialToAddress("Preprod", { type: "Script", hash: PKH });
+    await expect(findOwnedCustodySeed(chain([at(script)]), REF, PKH)).rejects.toThrow(/CUSTODY-SEED-005/);
+  });
+  it("chuỗi trả UTxO khác outref ⇒ undefined, không nhận nhầm", async () => {
+    const lech = { ...at(enterprise), outputIndex: 1 } as UTxO;
+    expect(await findOwnedCustodySeed(chain([lech]), REF, PKH)).toBeUndefined();
+  });
+});
