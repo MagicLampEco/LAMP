@@ -16,6 +16,47 @@ export const RATE_ROOT_GENESIS = 77_460n;
 /** Asset-name hex treasury authenticity NFT — PHẢI khớp onchain util.treasury_nft_name. */
 export const TREASURY_NFT_ASSET_NAME = "54525359"; // "TRSY"
 
+/**
+ * Cổng fail-closed cho `rate_root` của beacon GENESIS (`scripts/03_genesis.ts`).
+ *
+ * Hai chốt, HAI ĐẠI LƯỢNG khác nhau — đừng đọc gộp, vì mỗi cái mù đúng chỗ cái kia gác:
+ *
+ *   1. BIÊN CỨNG `[RATE_ROOT_MIN, RATE_ROOT_MAX]` — chặn ca BẾ TẮC. Genesis ngoài biên thì
+ *      KHÔNG lượt post nào sau đó hợp lệ, vĩnh viễn: `beacon.ak` ép đồng thời
+ *      `rate_root_out ∈ [min,max]` (C-BCN-5b), `rate_root_out ≥ rate_root_in` (C-BCN-5') và
+ *      một bước nới ≤ +10% (C-BCN-5a). `w > max` ⇒ mọi post đứt C-BCN-5b; `w < min/1,1` ⇒
+ *      post không với nổi tới sàn trong một bước. Chốt này nay CÓ Ở ON-CHAIN
+ *      (`beacon_nft.ak` ▸ C-BCN-GEN-2, thêm 2026-09-26) — bản off-chain giữ lại để người
+ *      vận hành thấy lỗi TRƯỚC khi trả phí, không phải để gác.
+ *
+ *   2. ĐÚNG MỐC HIỆU CHỈNH trên Mainnet — chốt này KHÔNG có ở on-chain và sẽ không bao giờ
+ *      có: một genesis nằm TRONG biên mà sai lịch không phá bất biến nào. `RATE_ROOT_MAX` là
+ *      w×100, nên một genesis hợp-biên vẫn mở khoá nhanh gấp 100 lần lịch đã chốt
+ *      (`Math-Spec.md` v3 §7: w = 77.460 cho pot 6 tỷ chạm `E` ở cửa sổ 1000). Chỉ tài liệu
+ *      biết con số đúng, nên chỉ off-chain gác được.
+ *
+ * Ngoài Mainnet thì vế 2 cố ý MỞ: đổi `rate_root` genesis là đúng cách dựng ca kiểm cho
+ * C-BCN-5a/5b trên mạng thử, và trên mạng thử thì bất khả hồi là rẻ.
+ */
+export function assertGenesisRateRoot(rateRoot: bigint, network: string): void {
+  if (rateRoot < RATE_ROOT_MIN || rateRoot > RATE_ROOT_MAX) {
+    throw new Error(
+      `GEN-V3-002: RATE_ROOT ${rateRoot} ngoài biên [${RATE_ROOT_MIN}, ${RATE_ROOT_MAX}] mà ` +
+      `\`beacon.ak\` ép ở C-BCN-5b và \`beacon_nft.ak\` ép ở C-BCN-GEN-2. Genesis đặt ngoài ` +
+      `biên thì KHÔNG lượt post nào sau đó hợp lệ — và genesis không undo được.`,
+    );
+  }
+  if (network === "Mainnet" && rateRoot !== RATE_ROOT_GENESIS) {
+    throw new Error(
+      `GEN-V3-003: Mainnet TỪ CHỐI RATE_ROOT=${rateRoot} — genesis Mainnet phải dùng đúng ` +
+      `RATE_ROOT_GENESIS=${RATE_ROOT_GENESIS} (mốc hiệu chỉnh của lịch mở khoá). Biên ` +
+      `[${RATE_ROOT_MIN}, ${RATE_ROOT_MAX}] rộng gấp 100 lần mốc đó, nên "trong biên" KHÔNG ` +
+      `đủ: một genesis hợp-biên vẫn mở khoá sai lịch, và genesis không undo được. Đổi lịch ` +
+      `thật thì đổi RATE_ROOT_GENESIS ở tệp này, qua một vòng chốt.`,
+    );
+  }
+}
+
 /** Biên của `rate_root` — PHẢI khớp `onchain/lib/magiclamp/lampdist/constants.ak`, nơi
  *  `beacon.ak` đọc chúng ở C-BCN-5a/5b. Chép có nhãn: nguồn là tệp `.ak` đó, bản chép
  *  này ngày 2026-09-22 (v3). */

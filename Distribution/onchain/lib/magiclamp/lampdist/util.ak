@@ -192,6 +192,20 @@ pub fn beacon_name(kind: BeaconKind) -> AssetName {
 /// Hai bên gọi (`claim_account` ▸ Redeem để tính `A_now`, `treasury` ▸ GrantEntitlement để
 /// ghim `index_at_start`) dùng CHUNG hàm này: hai đường đọc cùng một sự thật thì phải đi qua
 /// cùng một mệnh đề xác thực, nếu không chúng trôi độc lập.
+///
+/// ── C-BCN-GEN-6 (2026-09-26): BEACON PHẢI NGỤ TẠI MỘT SCRIPT ─────────────────────────
+/// Trước bản vá hàm này lọc THUẦN THEO NFT, không một chữ nào về địa chỉ — y hệt lỗ mà
+/// `find_treasury_in`/`find_treasury_out` đã vá cho TRSY (C-SOLV-5, `claim_account.ak`).
+/// Nếu DROP NFT từng ngụ ở VÍ (chỉ cần `03_genesis` dựng sai MỘT lần, hoặc `beacon_nft`
+/// thiếu cổng đích đến), thì `beacon.ak` — nơi giữ TRỌN BỘ C-BCN-* — **không bao giờ chạy**:
+/// người giữ ví viết lại `index` · `rate_root` · `trim_*` ở mỗi lần tiêu, và cả hai bên gọi
+/// dưới đây đọc chỉ số cộng dồn do chính kẻ dựng tx viết. Đó là toàn bộ trần tốc độ của v3
+/// bị gỡ trong im lặng: không bất biến nào vỡ, không giao dịch nào bị từ chối.
+///
+/// KHÔNG ràng được ĐÚNG hash beacon ở đây — vòng tham số: `beacon` nhận `beacon_nft_policy`,
+/// nên policy DROP mà nhận hash beacon là khép kín. "Phải là Script" là mệnh đề mạnh nhất
+/// đạt được mà không cần vòng, và nó đủ để mọi lần tiêu beacon đi qua MỘT validator nào đó;
+/// tầng còn lại do `beacon_nft` gác ở genesis (datum hợp lệ + hạ cánh ở Script).
 pub fn find_beacon(
   ref_inputs        : List<Input>,
   beacon_nft_policy : ByteArray,
@@ -202,6 +216,7 @@ pub fn find_beacon(
       ref_inputs,
       fn(i) { assets.quantity_of(i.output.value, beacon_nft_policy, drop_name) == 1 },
     )
+  expect Script(_) = ri.output.address.payment_credential
   expect InlineDatum(d) = ri.output.datum
   expect bd: BeaconDatum = d
   expect bd.kind == DropParam
@@ -282,6 +297,42 @@ test committee_exactly_16_still_passes() {
 
 test beacon_name_dropparam() {
   beacon_name(DropParam) == #"44524f50"
+}
+
+// ── C-BCN-GEN-6: beacon tham chiếu phải ngụ tại Script ───────────────────────
+// Hai bài dưới là CẶP: cùng một NFT, cùng một datum, khác nhau ĐÚNG MỘT THỨ là payment
+// credential của địa chỉ chứa nó. Không có cặp này thì bài đỏ ở dưới có thể đỏ vì fixture
+// hỏng thay vì vì mệnh đề mới.
+
+const fb_policy: ByteArray = #"beac"
+
+fn fb_datum() -> BeaconDatum {
+  BeaconDatum {
+    epoch: 10,
+    kind: DropParam,
+    index: 7_000,
+    rate_root: 100_000,
+    trim_num: 1,
+    trim_den: 1000,
+    speed_policies: [],
+  }
+}
+
+fn fb_ref_input(addr: Address) -> Input {
+  let v = assets.from_lovelace(2_000_000) |> assets.add(fb_policy, beacon_name(DropParam), 1)
+  mk_input(mk_ref(3), mk_output(addr, v, fb_datum()))
+}
+
+test find_beacon_at_script_ok() {
+  let bd = find_beacon([fb_ref_input(script_address(#"b0b0b0b0"))], fb_policy)
+  bd.rate_root == 100_000 && bd.index == 7_000
+}
+
+/// Beacon ở VÍ. Trước 2026-09-26 bài này TRẢ VỀ datum bình thường — tức `beacon.ak` bị bỏ
+/// qua hoàn toàn và người giữ ví tự đặt `rate_root`/`index`/`trim_*` cho toàn hệ.
+test find_beacon_at_wallet_rejected() fail {
+  let bd = find_beacon([fb_ref_input(vk_address(#"badbad"))], fb_policy)
+  bd.rate_root == 100_000
 }
 
 // ── Test-support builders (mock UTxO/tx) cho validator tests ──

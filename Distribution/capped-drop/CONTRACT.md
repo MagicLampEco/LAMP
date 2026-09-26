@@ -224,6 +224,57 @@ lượt rút, nó không bao giờ hạ `vested`. Đây là phân biệt trung t
 > **Thứ chạm TỐC ĐỘ TÍCH LUỸ thì chỉ được nới. Thứ chạm MỘT LƯỢT RÚT thì siết thoải mái.**
 > Cái thứ nhất viết lại quá khứ; cái thứ hai chỉ xếp hàng cho tương lai.
 
+### 3c. Beacon phải NGỤ Ở SCRIPT, và genesis phải thoả mọi thứ một lượt post thoả
+
+Mọi mệnh đề ở §3a/§3b nằm trong `beacon.ak`, tức chúng chỉ có hiệu lực khi beacon được **tiêu
+qua validator đó**. Hai chỗ trước 2026-09-26 không ép điều ấy, và cả hai đều im lặng:
+
+```
+C-BCN-GEN-6:  beacon tham chiếu PHẢI ngụ tại một Script       (util.find_beacon)
+C-BCN-HOME:   output mang DROP NFT về ĐÚNG địa chỉ input      (beacon.ak ▸ spend)
+```
+
+`util.find_beacon` lọc **thuần theo NFT**. DROP NFT nằm ở một **VÍ** thì người giữ ví viết lại
+`index` · `rate_root` · `trim_*` ở mỗi lần tiêu, `beacon.ak` **không bao giờ chạy**, và cả hai
+đường đọc (`Redeem` tính `A_now`, `GrantEntitlement` ghim `index_at_start`) lấy số từ chính kẻ
+dựng giao dịch. Toàn bộ trần tốc độ của v3 bị gỡ mà **không bất biến nào vỡ và không giao dịch
+nào bị từ chối** — cùng lớp lỗ mà C-SOLV-5 đã bịt cho TRSY, chỉ khác tên tài sản.
+
+`C-BCN-HOME` là vế vòng đời: `count_outputs_at_script` chỉ ép **payment** credential, nên một
+lượt post dời được beacon sang stake credential của người dựng tx (hai địa chỉ cùng script hash
+là hai địa chỉ — đúng dữ kiện audit C1 dựng ra).
+
+**Và genesis phải thoả MỌI bất biến mà một lượt post thoả**, nếu không chuỗi mất lượt post kế
+tiếp hợp lệ. Cardano không chạy validator lúc TẠO output, nên chỗ ép duy nhất là **minting
+policy** — `beacon_nft.ak` (đối xứng với `treasury_nft.ak` cho TRSY):
+
+```
+C-BCN-GEN-1:  kind == DropParam
+C-BCN-GEN-2:  rate_root ∈ [rate_root_min, rate_root_max]
+C-BCN-GEN-3:  trim_den > 0
+C-BCN-GEN-4:  trim_num > 0
+C-BCN-GEN-5:  index >= 0
+              + carrier ở Script, mang InlineDatum giải được thành BeaconDatum
+```
+
+`C-BCN-GEN-2` là chốt đắt nhất: nó là chốt **duy nhất không sửa được bằng một lượt post**.
+`beacon.ak` ép cùng lúc C-BCN-5b (biên), C-BCN-5' (chỉ nới) và C-BCN-5a (≤ +10% một bước), nên
+genesis `w > max` ⇒ mọi post đứt C-BCN-5b, còn `w < min/1,1` ⇒ post không với nổi tới sàn trong
+một bước. **Cả hai là bế tắc vĩnh viễn**: NFT one-shot, không đốt được, và không nhánh nào cho nó
+rời script. Trước bản vá chốt này CHỈ có ở off-chain (`scripts/03_genesis.ts`, `GEN-V3-002`) —
+một kỷ luật vận hành gác một trạng thái không hoàn tác.
+
+**Một chốt ở lại off-chain, có chủ đích** (`GEN-V3-003`, `offchain/src/constants.ts` ▸
+`assertGenesisRateRoot`): trên **Mainnet**, `rate_root` genesis phải **đúng** `RATE_ROOT_GENESIS`,
+không phải "một giá trị nào trong biên". `rate_root_max` là `w×100`, nên một genesis **hợp biên**
+vẫn mở khoá nhanh gấp 100 lần lịch §7 đã chốt. On-chain không gác được ca này và sẽ không bao giờ
+gác được — nó không sai theo bất biến nào, nó chỉ sai so với một con số mà chỉ tài liệu biết.
+
+`C-BCN-TRIM-NUM` — `beacon.ak` ▸ spend nay ép `trim_num > 0` cạnh `trim_den > 0`. Chú thích cũ
+viết *"`trim_num` thì không cần gác — số âm làm tích âm, và `max(trim_floor, ·)` nuốt nó"*: câu đó
+đúng về số ÂM và **mù với số 0**, mà 0 là giá trị duy nhất trong miền có người muốn đặt.
+`trim_num = 0` ⇒ trần một lượt rút ghim vĩnh viễn ở `trim_floor` cho **mọi** pot, mọi cỡ. Xem §9.
+
 ## 4. Redeem (`claim_account.spend`, redeemer `Redeem`)
 
 **Đổi vai ở v3:** người dựng tx **XIN** một `amount`; validator **KẸP** nó. v2 tự tính `amount`
@@ -599,6 +650,13 @@ Mỗi ca dưới đây canh một mệnh đề mà nếu gỡ đi thì **không 
 | mở tài khoản với `dpe = 2` ⟹ TỪ CHỐI | `C-ACC-DPE` §1b | v2 cho qua mọi giá trị tới 100; kiểm cả `dpe = 0` và `dpe = 100` |
 | tài khoản `consumed = 0`, cỡ ETD-max: vest hết ĐÚNG 20 cửa sổ khi móc BẬT | §5a | đầu vào phân biệt: chạy lại với `g_min = 0,10` (dưới ngưỡng 0,1194977) thì phải LÂU HƠN 20 — nếu hai bên ra cùng số thì ca này không kiểm gì |
 | **pot 6 tỷ chạm ĐÚNG `E` ở cửa sổ 1000** (`rate_root = 77.460`) | §1 · M-ROOT-CEIL | Phải chạy tới `n = 1000` thật, cấm ngoại suy: ở `n` nhỏ hai giá trị `w` cho kết quả **giống hệt nhau** (chênh <`1,3×10⁻⁵` ở `n=1`), nên bài ngắn xanh ở cả hai cực và không kiểm gì. Ca đối xứng: `w = 77.459` thì cửa sổ 1000 **chưa** chạm, và **chạm ở 1001** — kiểm cả hai mốc, đừng kiểm "không bao giờ chạm" vì điều đó SAI |
+| đúc DROP NFT thẳng vào một **VÍ** ⟹ TỪ CHỐI | §3c genesis | trước bản vá tx này PASS, và từ đó `beacon.ak` không bao giờ chạy — mọi ca C-BCN-* khác vẫn XANH vì chúng gọi validator trực tiếp, không đi qua đường sinh beacon |
+| beacon tham chiếu ngụ ở **VÍ** ⟹ TỪ CHỐI ở CẢ `Redeem` VÀ `GrantEntitlement` | `C-BCN-GEN-6` §3c | hai đường đọc, hai bài — một bài không nói gì về đường kia. Đầu vào giống `redeem_happy`/`grant_create_index_at_now_ok` từng byte trừ payment credential, nên lý do đỏ duy nhất là nơi beacon ngụ |
+| genesis `rate_root` = `min−1` và `max+1` ⟹ TỪ CHỐI; đúng `min` và đúng `max` ⟹ QUA | `C-BCN-GEN-2` §3c | cặp biên: thiếu vế QUA thì bài đỏ có thể đỏ vì hằng biên hỏng chứ không vì cái biên |
+| genesis `trim_den = 0` và `trim_num = 0` ⟹ TỪ CHỐI (hai bài, không gộp) | `C-BCN-GEN-3/4` §3c | hai giá trị cùng họ nhưng khác HƯỚNG HỎNG: một cái làm giao dịch rút **đổ vỡ**, cái kia làm nó **hợp lệ mà vô dụng** |
+| post `trim_num = 0` ⟹ TỪ CHỐI | `C-BCN-TRIM-NUM` §3c · §9 | beacon thoả MỌI chốt cũ (epoch, nhãn, biên `w`, đẳng thức `index`, `trim_den`, NFT) — trước bản vá tx này được chấp nhận và thông lượng ghim vĩnh viễn ở `trim_floor` |
+| post dời beacon sang **stake credential** khác ⟹ TỪ CHỐI | `C-BCN-HOME` §3c | đếm-theo-script-hash KHÔNG phân biệt được ca này (cùng dữ kiện audit C1, dùng theo chiều ngược) |
+| Mainnet + `rate_root` genesis **hợp biên** mà khác mốc hiệu chỉnh ⟹ TỪ CHỐI | `GEN-V3-003` §3c | phải dùng ĐÚNG `rate_root_max` làm đầu vào: nó thoả C-BCN-GEN-2 theo định nghĩa, nên bài này phân biệt được hai chốt. Ca đối xứng: cùng giá trị đó trên Preprod phải QUA |
 
 > **Đừng phát biểu "chốt X đã được ghim" chỉ vì có một bài đỏ ở chốt X.** Bài có thể trượt xuống
 > chốt kế tiếp và chết ở đó, đúng tên, đúng màu. Phép đo đúng là **gỡ hẳn chốt X rồi chạy trọn bộ
@@ -614,7 +672,7 @@ bằng hình phạt — chỉ xử được bằng **phân tán quyền**.
 
 | quyền | ai | ngưỡng | thu hồi được? | hỏng thì sao |
 |---|---|---|---|---|
-| post beacon (`rate_root`, `trim_*`, `speed_policies`) | committee | M-of-N | — | `rate_root` chỉ nới ⟹ không đóng băng được ai. `trim_num` siết được nhưng chỉ chạm lượt rút tương lai |
+| post beacon (`rate_root`, `trim_*`, `speed_policies`) | committee | M-of-N | — | `rate_root` chỉ nới ⟹ không đóng băng được ai. `trim_num` siết được nhưng chỉ chạm lượt rút tương lai, **và không tắt được**: `C-BCN-TRIM-NUM` ép `trim_num > 0` (§3c). Chữ "siết" ở dòng này trước 2026-09-26 bao luôn `trim_num = 0`, tức ghim thông lượng toàn hệ ở `trim_floor` vĩnh viễn — đúng cái quyền dòng này nói committee KHÔNG có |
 | `GrantEntitlement` (mở tài khoản, tăng `E`) | committee | M-of-N | — | cấp `E` khống bị C-SOLV-2 chặn ở `≤ pool` |
 | đặt `drops_per_epoch` lúc mở | — | — | — | **ĐÃ ĐÓNG ở v3**: `C-ACC-DPE` ép `dpe == 1` cho mọi tài khoản (§1b). Committee không còn núm per-account nào chạm được kênh tốc độ |
 | đặt `trim_floor` | — | — | — | **KHÔNG phải quyền của committee**: hằng trong `constants.ak`, đổi thì phải đúc lại script (`C-RDM-TRIM-FLOOR` §4 mục 4). Trong datum thì hạ về 0 dựng lại đúng điểm hấp thụ nó sinh ra để phá |
