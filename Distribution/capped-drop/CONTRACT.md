@@ -224,6 +224,20 @@ lượt rút, nó không bao giờ hạ `vested`. Đây là phân biệt trung t
 > **Thứ chạm TỐC ĐỘ TÍCH LUỸ thì chỉ được nới. Thứ chạm MỘT LƯỢT RÚT thì siết thoải mái.**
 > Cái thứ nhất viết lại quá khứ; cái thứ hai chỉ xếp hàng cho tương lai.
 
+**Đính chính 2026-09-27 — lập luận trên là của v2, và luật một chiều có giá của nó ở v3.**
+
+- Ở v3, quá khứ được định giá bằng chỉ số cộng dồn `A` (§3a, C-BCN-6): `A` chỉ tăng với mọi
+  `rate_root > 0`, nên `vested = min(E, √E · A_span)` không giảm kể cả khi `rate_root` giảm. Hạ
+  `rate_root` ở v3 KHÔNG đưa `vested` xuống dưới `redeemed` của ai — lý do "một chiều" ở đoạn trên
+  không còn đứng ở v3.
+- Giá của luật một chiều: mỗi lượt post nới được +10% (`beacon.ak` C-BCN-5a), mỗi cửa sổ một lượt,
+  và KHÔNG có đường siết lại. Từ `w = 77.460` tới trần `rate_root_max = 7.746.000` (100×) mất
+  **49 lượt post, khoảng 245 ngày**. Khi đó một pot 6 tỷ mở trọn sau khoảng 49 cửa sổ thay vì
+  khoảng 1.000, và một tài khoản mở sau khi `w` đã ở trần thì đầy sau 10 cửa sổ.
+- Trạng thái: **CD-RATE-ROOT-SYM — chưa vá.** Vá cần đổi script hash của beacon. Ràng buộc đang có
+  hiệu lực chỉ là biên cứng `[rate_root_min, rate_root_max]` và +10% mỗi lượt; mọi lượt nới là
+  quyết định của committee, và quyết định đó không đảo lại được.
+
 ### 3c. Beacon phải NGỤ Ở SCRIPT, và genesis phải thoả mọi thứ một lượt post thoả
 
 Mọi mệnh đề ở §3a/§3b nằm trong `beacon.ak`, tức chúng chỉ có hiệu lực khi beacon được **tiêu
@@ -508,7 +522,12 @@ sổ, đủ 1,001 tỷ sau khoảng 5 cửa sổ.
 
 - Đây là dùng CÓ CHỦ Ý tính chất "trần lõm kháng tách theo `√N`, không vô hạn" đã nêu ở trên. Nó
   hợp lệ ở pot 6 vì bảo vệ mà `√E` mang lại (hãm một bên nhận lớn xả hàng) không áp cho pot này:
-  LAMP rời tài khoản đi thẳng vào kho Wakeme, và kho đó phát theo từng người.
+  LAMP rời pot 6 để vào kho Wakeme, và kho đó phát theo từng người. **Đường đi thật** (đính chính
+  2026-09-27; câu cũ viết "đi thẳng vào kho Wakeme"): `Redeem` trả LAMP về ví khoá thường của chính
+  feeder (`util.lamp_to_owner`), runner gom về ví vận hành, rồi mới nạp kho Wakeme. Nên giữa tài
+  khoản và kho Wakeme, LAMP nằm trong các ví do bên vận hành giữ khoá. Lộ seed vận hành thì rút được
+  toàn bộ phần đã mở của mọi feeder. Cấp feeder theo nhu cầu, không cấp trước cả pot, để giới hạn
+  lượng nằm ở đó.
 - `k` là lựa chọn vận hành, tăng được lúc nào cũng được. Trần còn lại của số người mới là dung
   lượng khối, không phải cơ chế phân phối.
 - Không được dùng lập luận này cho pot nào khác. Với hai pot sáng lập, bên nhận chính là bên xả,
@@ -738,19 +757,30 @@ bằng hình phạt — chỉ xử được bằng **phân tán quyền**.
 
 | quyền | ai | ngưỡng | thu hồi được? | hỏng thì sao |
 |---|---|---|---|---|
-| post beacon (`rate_root`, `trim_*`, `speed_policies`) | committee | M-of-N | — | `rate_root` chỉ nới ⟹ không đóng băng được ai. `trim_num` siết được nhưng chỉ chạm lượt rút tương lai, **và không tắt được**: `C-BCN-TRIM-NUM` ép `trim_num > 0` (§3c). Chữ "siết" ở dòng này trước 2026-09-26 bao luôn `trim_num = 0`, tức ghim thông lượng toàn hệ ở `trim_floor` vĩnh viễn — đúng cái quyền dòng này nói committee KHÔNG có |
+| post beacon (`rate_root`, `trim_*`, `speed_policies`) | committee | M-of-N | — | `rate_root` chỉ nới ⟹ không đóng băng được ai, nhưng nới rồi thì không siết lại được (§3b, CD-RATE-ROOT-SYM). Cắt ngọn chỉ chạm lượt rút tương lai. **Nó siết được tới mức gần như tắt:** `C-BCN-TRIM-NUM` ép `trim_num > 0` và `beacon.ak` ép `trim_den > 0`, nhưng không có trần cho `trim_den`. Một lượt post với `trim_den` rất lớn đưa κ về gần 0, và trần một lượt rút bị ghim ở `trim_floor` — cùng hệ quả với `trim_num = 0` mà chốt tử số được dựng để chặn. Chiều ngược lại cũng không có biên: `trim_num ≥ trim_den` (κ ≥ 1) là hợp lệ, và bỏ hẳn cắt ngọn. Bất biến κ = 1/1000 không được mã ép. Lượt post sau sửa lại được. Trạng thái: **CD-TRIM-KAPPA-BOUND — chưa vá** (cần đổi script hash) |
 | `GrantEntitlement` (mở tài khoản, tăng `E`) | committee | M-of-N | — | cấp `E` khống bị C-SOLV-2 chặn ở `≤ pool` |
-| đặt `drops_per_epoch` lúc mở | — | — | — | **ĐÃ ĐÓNG ở v3**: `C-ACC-DPE` ép `dpe == 1` cho mọi tài khoản (§1b). Committee không còn núm per-account nào chạm được kênh tốc độ |
+| `GrantEntitlement` lên tài khoản ĐÃ CÓ (cấp thêm = rebase) | committee, **không cần chủ tài khoản** | M-of-N | — | Rebase giữ `E − redeemed` nhưng đặt lại mốc chỉ số về cửa sổ hiện tại (`claim_account.ak` C-CLAIM-4..8, `treasury.ak` C-CLAIM-8). Không ai mất LAMP, nhưng phần đã mở mà chưa rút quay về vạch xuất phát. Một lượt cấp thêm 1 oildrop mỗi cửa sổ giữ được một tài khoản cụ thể không bao giờ mở thêm. Trạng thái: **CD-TOPUP-OWNER-SIG — chưa vá** (đòi chữ ký chủ tài khoản ở nhánh cấp thêm; cần đổi script hash) |
+| đặt `drops_per_epoch` lúc mở | — | — | — | **ĐÃ ĐÓNG ở v3**: `C-ACC-DPE` ép `dpe == 1` cho mọi tài khoản (§1b). Núm `dpe` đã đóng; núm per-account còn lại là cấp thêm (dòng CD-TOPUP-OWNER-SIG) |
 | đặt `trim_floor` | — | — | — | **KHÔNG phải quyền của committee**: hằng trong `constants.ak`, đổi thì phải đúc lại script (`C-RDM-TRIM-FLOOR` §4 mục 4). Trong datum thì hạ về 0 dựng lại đúng điểm hấp thụ nó sinh ra để phá |
 | `DistributionVest` (đúc LAMP vào kho) | entry Registry `lamp_tag` | **PHẢI `MultiSig`, CẤM `SinglePkh`** | có (`Revoked`) | `SinglePkh` = một chữ ký đúc được tới `dist_cap`; nếu đúc từng đợt thì nhánh này còn sống suốt vòng đời |
 
 **Dòng `DistributionVest` là điểm treo thật, không phải thủ tục** — nó là điều kiện đi kèm của
 quyết định "đúc từng đợt": giữ nhánh mint sống thì entry Registry phải là `MultiSig`.
 
-Sau khi §1b ghim `dpe ≡ 1`, **committee không còn núm per-account nào chạm được kênh tốc độ**.
-Mọi quyền còn lại của họ hoặc chỉ-nới (`rate_root`), hoặc chỉ-chạm-lượt-rút-tương-lai
-(`trim_num`), hoặc bị chặn bởi một bất biến độc lập (`GrantEntitlement` ↔ C-SOLV-2), hoặc nằm
-ngoài tầm với vì đã đóng băng vào script hash (`trim_floor`).
+Sau khi §1b ghim `dpe ≡ 1`, `drops_per_epoch` không còn là núm per-account. **Nhưng committee
+vẫn còn MỘT núm per-account chạm được kênh tốc độ: cấp thêm (rebase) đặt lại mốc chỉ số của một
+tài khoản mà không cần chủ nó ký** (dòng CD-TOPUP-OWNER-SIG ở bảng trên). Câu cũ ở đây ("committee
+không còn núm per-account nào chạm được kênh tốc độ") sai với mã cho tới khi dòng đó được vá.
+
+Các quyền còn lại có dạng như sau:
+
+- `rate_root` chỉ nới, và nới rồi không siết lại được.
+- Cắt ngọn chỉ chạm lượt rút tương lai, nhưng hiện chưa có biên cho κ ở cả hai chiều.
+- `GrantEntitlement` bị chặn bởi một bất biến độc lập (C-SOLV-2).
+- `trim_floor` nằm ngoài tầm với vì đã đóng băng vào script hash.
+
+**Điểm treo đã biết của bảng này (đính chính 2026-09-27):** CD-RATE-ROOT-SYM · CD-TRIM-KAPPA-BOUND ·
+CD-TOPUP-OWNER-SIG. Cả ba đều cần đổi script hash, và chưa vá ở cụm đang chạy.
 
 ## 10. Phạm vi lượt này — cái gì vá, cái gì cố ý để lại
 
