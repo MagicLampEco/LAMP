@@ -39,25 +39,27 @@ import { NETWORK, SUBMIT, TOKEN_NAME, makeLucid, walletPkh, explorerTx } from ".
 import { assertOneShotMarkers } from "./_guards.js";
 import { supplyStateToCbor } from "../offchain/src/datum.js";
 import {
-  deriveWiring, printWiring, registryDatum, treasuryDatum,
-  DIST_CAP, RESERVE_CAP, STATE_PATH, writeState, type CanonicalState,
+  deriveWiring, printWiring, registryDatum, treasuryDatum, genesisBeaconDatum,
+  DIST_CAP, RESERVE_CAP, MS_PER_EPOCH, STATE_PATH, writeState, type CanonicalState,
 } from "./_canonical_v2.js";
 import {
   assertSeedNotCustody, assertSeedNotSpent, custodySeedRefFromEnv, refKey,
   reserveKhoParamsFromEnv, type OutputRef,
 } from "./_custodySeedRef.js";
 import { INSTANCE_ID, custodySeedPolicyId } from "./_reserve_layer2.js";
-import { D_GENESIS } from "../../Distribution/offchain/src/constants.js";
 
 /** min-ADA mỗi UTxO mang đúng 1 NFT + datum nhỏ. Dư một chút cho an toàn. */
 const NFT_ADA = 2_000_000n;
 /** Năm output NFT + phí + trả lại. Dưới mức này thì Lucid gãy ở bước cân bằng, khó đọc. */
 const MIN_BALANCE = 15_000_000n;
 
-/** `BeaconDatum = Constr(0, [epoch, BeaconKind, drop_value])` (`lampdist/types.ak:30-34`). */
-function beaconDatum(epoch: bigint, dropValue: bigint): string {
-  return Data.to(new Constr(0, [epoch, new Constr(0, []), dropValue]));
-}
+/**
+ * Lùi đồng hồ máy dựng khi chọn nhãn cửa sổ cho beacon genesis. Nhãn lệch về TƯƠNG LAI (đồng hồ
+ * máy chạy nhanh, dựng đúng lúc chuyển cửa sổ) làm lượt post beacon đầu tiên phải chờ trọn một
+ * cửa sổ 5 ngày (C-BCN-2 đòi nhãn tăng); nhãn lệch về QUÁ KHỨ thì vô hại — chỉ số cộng dồn chỉ
+ * được dùng qua hiệu. Nên lùi, cùng mức 60 s mà `epochWindow` của SDK dùng cho đầu dưới.
+ */
+const BEACON_LABEL_BACKDATE_MS = 60_000n;
 
 async function main(): Promise<void> {
   if (NETWORK === "Mainnet") {
@@ -169,6 +171,9 @@ async function main(): Promise<void> {
     dist_minted: 0n, reserve_minted: 0n, dist_cap: DIST_CAP, reserve_cap: RESERVE_CAP,
   });
 
+  const beaconEpoch = (BigInt(Date.now()) - BEACON_LABEL_BACKDATE_MS) / MS_PER_EPOCH;
+  console.log(`Beacon genesis: nhãn cửa sổ ${beaconEpoch}, index 0 (gốc chỉ số cộng dồn).`);
+
   const tx = await lucid.newTx()
     .collectFrom([seed])                                   // tiêu hạt giống — một lần duy nhất
     .mintAssets({ [wiring.threadUnit]: 1n }, Data.void()).attach.MintingPolicy(scripts.oneshotSupply)
@@ -194,19 +199,19 @@ async function main(): Promise<void> {
     // MET ở ví: bước 22 sẽ TIÊU nó để mở nhánh ReserveDraw. Đây là mức Lớp 1 — nó chứng
     // minh nhánh MỞ ĐƯỢC, KHÔNG chứng minh trần nhịp δ ≤ E/1000 (việc của `reserve_draw`).
     .pay.ToAddress(walletAddr, { lovelace: NFT_ADA, [wiring.metUnit]: 1n })
-    // D genesis = `D_GENESIS`, KHÔNG phải 0. Bản trước ghi 0 và nó khoá beacon ngay khi
-    // sinh: C-BCN-5 (`beacon.ak`) ép `|D' − D| ≤ MAX_DROP_DELTA_Q · D / Q`, nên `D = 0`
-    // cho ra trần delta = 0 ⟹ `D'` buộc phải bằng 0; mà C-BCN-4 lại đòi
-    // `D' ≥ DROP_VALUE_MIN` (10 LAMP). Hai chốt loại nhau — không lượt post beacon nào
-    // đi qua được, và DROP NFT thì không đổi được địa chỉ và không đốt được, nên cách
-    // duy nhất ra khỏi đó là đúc lại cả cụm.
+    // Beacon v3 lúc sinh: `DropParam{epoch = cửa sổ genesis, index = 0, rate_root = w,
+    // κ = 1/1000, speed_policies = []}` — dựng qua `genesisBeaconDatum` (SDK
+    // `beaconDatumToCbor`), cùng giá trị với anh em đã chạy thật `Distribution/scripts/03_genesis.ts`.
     //
-    // Cụm Preprod đang chạy KHÔNG dính, vì nó nhảy 0 → 100 LAMP từ trước khi C-BCN-4/5 có
-    // (đọc beacon 2026-09-17: `drop_value = 100000000`). Nghĩa là lỗ này chỉ nổ ở cụm
-    // SINH MỚI — đúng chỗ không ai chạy thử lại.
+    // Bản trước ghi datum v2 `[epoch, kind, drop_value]` 3 trường. `beacon_nft.ak` KHÔNG kiểm
+    // datum lúc đúc, nên Tx A vẫn qua — và beacon nằm đó với một datum mà `beacon.ak` v3 không
+    // giải mã được: lượt post đầu tiên bị từ chối, và DROP NFT không dời được khỏi địa chỉ
+    // này. Lỗi chỉ lộ SAU khi cả cụm đã đúc.
     //
-    // Anh em đúng: `Distribution/scripts/03_genesis.ts` ▸ `D_GENESIS`.
-    .pay.ToContract(wiring.beaconAddr, { kind: "inline", value: beaconDatum(0n, D_GENESIS) },
+    // `rate_root = w > 0` ngay từ genesis thay cho "D > 0" của v2: `RATE_ROOT_GENESIS` nằm trong
+    // biên cứng C-BCN-5b, nên lượt post đầu có đường hợp lệ (giữ nguyên hoặc nới ≤ +10%) — không
+    // còn cặp chốt loại nhau như `D = 0` của bản v2.
+    .pay.ToContract(wiring.beaconAddr, { kind: "inline", value: genesisBeaconDatum(beaconEpoch) },
       { lovelace: NFT_ADA, [toDropUnit(wiring)]: 1n })
     .complete();
 

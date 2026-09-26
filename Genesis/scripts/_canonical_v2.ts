@@ -48,6 +48,14 @@ import { assertParamCount as assertParamCountGate } from "../offchain/src/applyG
 import { lampMintParamList } from "../offchain/src/reserveKhoPair.js";
 import type { FloorSource } from "./_floorLabel.js";
 import { waitTimeoutError } from "./_waitTimeout.js";
+// Datum Distribution dựng bằng CHÍNH hàm SDK, không gõ `Constr` tại chỗ: hình dạng datum có
+// đúng một nguồn (`Distribution/offchain/src/datum.ts`, soi theo `lampdist/types.ak`). Bản gõ
+// tay trước đây đứng yên ở v2 (2 trường) trong khi validator lên v3 (3 trường), và không gì
+// kêu cho tới lúc chuỗi từ chối Tx A — `treasury_nft.ak` ép `expect td: TreasuryDatum = d`.
+import { beaconDatumToCbor, treasuryDatumToCbor } from "../../Distribution/offchain/src/datum.js";
+import {
+  RATE_ROOT_GENESIS, TRIM_NUM_GENESIS, TRIM_DEN_GENESIS,
+} from "../../Distribution/offchain/src/constants.js";
 // Xuất lại để chỗ gọi (`21_vest_to_kho.ts`, `22_reserve_draw.ts`) chỉ phải nhớ MỘT đường import.
 // Định nghĩa nằm ở `_waitTimeout.ts` vì tệp này ném lúc import khi môi trường chưa dựng, nên bài
 // kiểm không với tới được — xem đầu tệp đó.
@@ -334,9 +342,12 @@ export async function deriveWiring(
   const claimHash = hashOf(await applyDist("claim_account.claim_account.spend", [
     committee, threshold, MS_PER_EPOCH, lampPid, o.tokenName, beaconPid, khoPid, accountPid,
   ]));
+  // `treasury` v3 nhận 8 tham số; `beacon_nft_policy` ở KHE CUỐI (C-CLAIM-8: nhánh
+  // `GrantEntitlement` đọc beacon làm reference input để ghim `index_at_start`). Thứ tự khớp
+  // chữ ký `validator treasury(` và anh em đã chạy thật `Distribution/scripts/01_deploy.ts`.
   const treasury = { type: "PlutusV3" as const,
     script: (await applyDist("treasury.treasury.spend", [
-      claimHash, lampPid, o.tokenName, committee, threshold, accountPid, MS_PER_EPOCH,
+      claimHash, lampPid, o.tokenName, committee, threshold, accountPid, MS_PER_EPOCH, beaconPid,
     ])).script };
   const treHash = hashOf(treasury);
   const beacon = { type: "PlutusV3" as const,
@@ -391,12 +402,48 @@ export function registryDatum(pkh: string, tag = TOKEN_TAG, did = GOV_DID): stri
 }
 
 /**
- * `TreasuryDatum = Constr(0, [committee_hash, outstanding_entitlement])`
- * (`lampdist/types.ak:51-54`). Ghi thiếu trường thì `expect out_datum: TreasuryDatum`
- * hỏng ở MỌI nhánh `treasury.spend` ⇒ LAMP vào kho nằm chết, không nhánh nào rút ra.
+ * `TreasuryDatum` v3 = `Constr(0, [committee_hash, outstanding_entitlement, total_redeemed])`
+ * (`lampdist/types.ak` ▸ `TreasuryDatum`). Dựng qua `treasuryDatumToCbor` của SDK — không gõ
+ * `Constr` tại đây. Ghi thiếu trường thì `expect td: TreasuryDatum` hỏng ở `treasury_nft.ak`
+ * (Tx A bị từ chối) và ở MỌI nhánh `treasury.spend` ⇒ LAMP vào kho nằm chết.
+ *
+ * Genesis PHẢI mở sổ với cả hai số bằng 0: `treasury_nft.ak` ép `outstanding_entitlement == 0`
+ * và `total_redeemed == 0` lúc đúc TRSY. `total_redeemed` là mẫu số của phép cắt ngọn và không
+ * nhánh nào hạ được nó về sau, nên giá trị mở sổ sống mãi.
  */
-export function treasuryDatum(committeeHash: string, outstanding = 0n): string {
-  return Data.to(new Constr(0, [committeeHash, outstanding]));
+export function treasuryDatum(committeeHash: string, outstanding = 0n, totalRedeemed = 0n): string {
+  return treasuryDatumToCbor({
+    committee_hash: committeeHash,
+    outstanding_entitlement: outstanding,
+    total_redeemed: totalRedeemed,
+  });
+}
+
+/**
+ * `BeaconDatum` v3 lúc genesis: `DropParam{epoch, index = 0, rate_root = w, κ = 1/1000, []}`.
+ * Dựng qua `beaconDatumToCbor` của SDK, cùng giá trị với anh em đã chạy thật
+ * `Distribution/scripts/03_genesis.ts` (`RATE_ROOT_GENESIS`, `TRIM_NUM_GENESIS/TRIM_DEN_GENESIS`).
+ *
+ * `index = 0`: chỉ số cộng dồn lấy cửa sổ genesis làm gốc toạ độ. Mọi lượt post sau tính
+ * `index' = index + rate_root_CŨ · (epoch' − epoch)` (C-BCN-6), nên nhãn `epoch` ở đây là GỐC
+ * của phép cộng đó. Nhãn lệch về QUÁ KHỨ vô hại (chỉ số chỉ lấy hiệu); nhãn lệch về TƯƠNG LAI
+ * làm lượt post đầu phải chờ tới cửa sổ đó (C-BCN-2 đòi nhãn tăng) — bên gọi chọn nhãn theo
+ * chiều an toàn, xem `20_canonical_genesis.ts`.
+ *
+ * `beacon_nft.ak` KHÔNG kiểm datum lúc đúc DROP (khác `treasury_nft.ak`), nên hình dạng sai ở
+ * đây không đỏ ở Tx A — nó đỏ ở lượt post beacon đầu tiên, và DROP NFT không dời được khỏi
+ * địa chỉ beacon (`beacon.ak` ▸ `expect nft_out == 1`). Đó là lý do có bài kiểm giải mã ngược.
+ */
+export function genesisBeaconDatum(epoch: bigint, rateRoot: bigint = RATE_ROOT_GENESIS): string {
+  return beaconDatumToCbor({
+    epoch,
+    kind: "DropParam",
+    index: 0n,
+    rate_root: rateRoot,
+    trim_num: TRIM_NUM_GENESIS,
+    trim_den: TRIM_DEN_GENESIS,
+    speed_policies: [],
+  });
 }
 
 // ── State file ───────────────────────────────────────────────────────────────
