@@ -289,6 +289,7 @@ describe("buildMintTx — datum kho đúng HÌNH DẠNG TreasuryDatum (GMB-010)"
   it("nhánh 14: chặn Constr 0 thiếu trường, sai kiểu trường, số âm, CBOR hỏng", () => {
     const pkh = "ee".repeat(28);
     expect(() => assertTreasuryDatumShape("d8799f581c" + pkh + "00ff")).toThrow(/GMB-010/);     // 2 trường
+    expect(() => assertTreasuryDatumShape("d8799f581c" + pkh + "000000ff")).toThrow(/GMB-010/); // 4 trường
     expect(() => assertTreasuryDatumShape("d8799f00" + "0000ff")).toThrow(/GMB-010/);           // bytes → int
     expect(() => assertTreasuryDatumShape("d8799f581c" + pkh + "2000ff")).toThrow(/GMB-010/);   // outstanding -1
     expect(() => assertTreasuryDatumShape("d8799f581c" + pkh + "0020ff")).toThrow(/GMB-010/);   // total_redeemed -1

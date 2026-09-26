@@ -26,10 +26,16 @@ describe("cổng SUBMIT đứng trước lời gửi đầu tiên", () => {
     expect(all.length - runners.length).toBeGreaterThan(0);   // tệp `_*` bị loại có chủ đích
   });
 
+  // MỖI lời gửi cần một cổng nằm giữa nó và lời gửi đứng trước (hoặc đầu tệp). Chỉ đòi cổng
+  // trước lời gửi ĐẦU TIÊN là chưa đủ: runner nhiều bước chạy lại được sẽ bỏ qua bước đã có
+  // trên chuỗi, và lời gửi của bước sau không còn gì đứng trước nó.
   it.each(senders)("%s", (f) => {
     const src = readFileSync(join(scriptsDir, f), "utf8");
-    const firstSend = src.indexOf(".submit()");
-    const m = GATE.exec(src.slice(0, firstSend));
-    expect(m, `${f}: không có haltUnlessSubmit( / if (SUBMIT…) trước .submit() đầu tiên`).not.toBeNull();
+    let from = 0;
+    for (let at = src.indexOf(".submit()"); at !== -1; at = src.indexOf(".submit()", at + 1)) {
+      const line = src.slice(0, at).split("\n").length;
+      expect(GATE.test(src.slice(from, at)), `${f}:${line}: .submit() không có cổng SUBMIT đứng ngay trước`).toBe(true);
+      from = at;
+    }
   });
 });
