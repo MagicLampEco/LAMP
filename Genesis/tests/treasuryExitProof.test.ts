@@ -23,6 +23,7 @@ import {
 
 const TRE = "addr_test1_kho_dang_dung";
 const TRE_KHAC = "addr_test1_kho_cu_da_bo";
+const TX = "ab".repeat(32);
 
 function ledgerFile(content: string): string {
   const dir = mkdtempSync(join(tmpdir(), "exitproof-"));
@@ -32,7 +33,7 @@ function ledgerFile(content: string): string {
 }
 
 const PROVEN = JSON.stringify({
-  Preprod: { txHash: "abc123", date: "2026-09-20", branch: "Refill+Redeem", treasuryAddress: TRE },
+  Preprod: { txHash: TX, date: "2026-09-20", branch: "Refill+Redeem", treasuryAddress: TRE },
 });
 
 describe("measureExitProof — ba trạng thái, và trạng thái mù không tụt hạng", () => {
@@ -79,6 +80,37 @@ describe("measureExitProof — ba trạng thái, và trạng thái mù không t�
       JSON.stringify({ Preprod: { txHash: "", date: "2026-09-20", branch: "Redeem", treasuryAddress: TRE } }),
     );
     expect(measureExitProof("Preprod", p).state).toBe("unmeasurable");
+  });
+});
+
+describe("measureExitProof — mục đủ trường nhưng SAI HÌNH DẠNG = không đo được", () => {
+  // `txHash: "x"` từng đi qua cổng: cổng chỉ đếm chuỗi khác rỗng. Mục sai hình dạng là mục
+  // chưa từng được chép từ một giao dịch thật.
+  const entry = (over: Record<string, string>, net = "Preprod") =>
+    measureExitProof(net, ledgerFile(JSON.stringify({
+      [net]: { txHash: TX, date: "2026-09-20", branch: "Redeem", treasuryAddress: TRE, ...over },
+    })));
+
+  it("txHash không phải 64 hex thường", () => {
+    for (const bad of ["x", "abc123", TX.toUpperCase(), TX + "00", TX.slice(2) + "zz"]) {
+      const r = entry({ txHash: bad });
+      expect(r.state).toBe("unmeasurable");
+      expect(r.state === "unmeasurable" && r.reason).toMatch(/txHash/);
+    }
+  });
+
+  it("date không phải ngày có thật", () => {
+    for (const bad of ["2026-02-30", "2026-13-01", "20-09-2026", "hôm qua"]) {
+      const r = entry({ date: bad });
+      expect(r.state === "unmeasurable" && r.reason).toMatch(/date/);
+    }
+  });
+
+  it("treasuryAddress sai tiền tố mạng", () => {
+    const r = entry({ treasuryAddress: TRE }, "Mainnet");
+    expect(r.state === "unmeasurable" && r.reason).toMatch(/addr1/);
+    expect(entry({ treasuryAddress: "addr1_kho" }).state).toBe("unmeasurable");
+    expect(entry({ treasuryAddress: "addr1_kho" }, "Mainnet").state).toBe("proven");
   });
 });
 
@@ -179,6 +211,13 @@ describe("mọi script Genesis rót LAMP VÀO kho đều phải gọi cổng", (
     // `20_canonical_genesis.ts` rót NFT kho chứ không rót LAMP ⇒ nằm ngoài, có lý do, không
     // phải một ngoại lệ được gõ tay vào danh sách bỏ qua.
     expect(payers).not.toContain("20_canonical_genesis.ts");
+  });
+
+  // Đường rót thứ hai không đi qua `pay.ToContract`: Refill nạp thêm LAMP từ ví qua
+  // `depositOildrop` của builder, nên phép dò chuỗi ở trên không thấy nó. Ghim bằng tên.
+  it("27_refill_treasury.ts (nạp thêm qua depositOildrop) gọi cổng khi DEPOSIT > 0", () => {
+    const src = readFileSync(join(scriptsDir, "27_refill_treasury.ts"), "utf8");
+    expect(src).toContain("assertTreasuryHasExit(NETWORK, wiring.treAddr, DEPOSIT_OILDROP)");
   });
 
   it.each(payers)("%s gọi assertTreasuryHasExit", (f) => {

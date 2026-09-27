@@ -42,15 +42,26 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 //   NETWORK=… BLOCKFROST_KEY=… WALLET_SEED="…" tsx <tệp>.ts
 
 // ── Network + provider ─────────────────────────────────────────
-export const NETWORK: Network = (process.env.NETWORK ?? "Preview") as Network;
+const NETWORKS = ["Preview", "Preprod", "Mainnet"] as const;
+
+/** Danh sách ĐÓNG: một tên mạng gõ sai không được đi tiếp thành URL provider và tham số Lucid. */
+function readNetwork(): Network {
+  const n = process.env.NETWORK ?? "Preview";
+  if (!(NETWORKS as readonly string[]).includes(n)) {
+    throw new Error(`NETWORK='${n}' không thuộc ${NETWORKS.join(" | ")}.`);
+  }
+  return n as Network;
+}
+
+export const NETWORK: Network = readNetwork();
 export const BLOCKFROST_URL = `https://cardano-${NETWORK.toLowerCase()}.blockfrost.io/api/v0`;
-export const BLOCKFROST_KEY = process.env.BLOCKFROST_KEY ?? process.env.BLOCKFROST_TOKEN_GREENSUN ?? "";
+export const BLOCKFROST_KEY = process.env.BLOCKFROST_KEY ?? "";
 export const PRIVATE_KEY    = process.env.PRIVATE_KEY ?? "";
 export const WALLET_SEED    = (process.env.WALLET_SEED ?? "").trim().replace(/\s+/g, " ");
 
 export const MS_PER_EPOCH = msPerEpoch(NETWORK);
 
-/** Bắt lỗi rõ ràng khi thiếu credential — anh Aladin cấp .env sau. */
+/** Bắt lỗi rõ ràng khi thiếu credential: nói THIẾU BIẾN NÀO, không nói tìm nó ở đâu. */
 export function assertEnv(): void {
   if (!BLOCKFROST_KEY) {
     throw new Error(

@@ -240,6 +240,16 @@ export async function buildClaimTx(params: ClaimParams): Promise<ClaimResult> {
   );
 
   const owner = normHex(ownerPkh);
+  // CLAIM-007: owner phải là payment key hash 28 byte. Validator KHÔNG kiểm độ dài owner, nên
+  // grant cho một owner không ký được (sai độ dài, dán nhầm script hash cắt cụt…) vẫn hợp lệ.
+  // Không ai rút được tài khoản đó, còn `outstanding_entitlement` giữ chỗ E trong kho vĩnh
+  // viễn, vì chỉ ReleaseForRedeem mới giảm nợ.
+  if (!/^[0-9a-f]{56}$/.test(owner)) {
+    throw new Error(
+      `CLAIM-007: ownerPkh phải là 28 byte hex (56 ký tự), đang là '${ownerPkh}'. Tài khoản ` +
+      `mở cho owner không ký được sẽ không ai rút, và phần E của nó chiếm chỗ trong kho mãi mãi.`,
+    );
+  }
 
   let txb = lucid.newTx();
   let newDatum: ClaimAccountDatum;

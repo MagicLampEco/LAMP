@@ -4,6 +4,7 @@ import { Constr, toUnit, credentialToAddress, scriptHashToCredential, type Minti
 import {
   NETWORK, TOKEN_NAME, makeLucid, walletPkh,
   rawValidator, applyValidator, applyPolicy, scriptAddress, policyId, scriptHashOf, explorerTx,
+  haltUnlessSubmit,
 } from "./config.js";
 import { SUPPLY_NAME } from "../offchain/src/constants.js";
 import {
@@ -43,9 +44,9 @@ const myAddr = await lucid.wallet().address();
 const genesisRef = new Constr(0, [genesisRefHash, genesisRefIdx]);
 const threadPolicy: MintingPolicy = applyPolicy((await rawValidator("thread_nft.thread_nft.mint")).compiledCode, [genesisRef]);
 const threadPid = policyId(threadPolicy);
-// CỔNG GÁC apply-param — script này GỬI VÔ ĐIỀU KIỆN (`signed.submit()` cuối tệp, không có
-// nhánh SUBMIT), nên MỌI tham số hash/hex đọc từ env đều gác ở mức submit=true: không có chế
-// độ dựng-thử để nới placeholder. Trước đây chỉ DIST_DEST được gác (`ddfa2c6`), METER_* thì
+// CỔNG GÁC apply-param — MỌI tham số hash/hex đọc từ env đều gác ở mức submit=true, kể cả khi
+// chạy khô: từ 2026-09-26 script dừng trước ký + gửi khi SUBMIT≠true (`haltUnlessSubmit`),
+// nhưng lượt chạy khô vẫn dựng ĐÚNG giao dịch sẽ gửi, nên không có chỗ để nới placeholder. Trước đây chỉ DIST_DEST được gác (`ddfa2c6`), METER_* thì
 // không, và `genesis_ref` (gốc rễ của cả ba script) cũng không.
 const meterPid = requiredHashParam("METER_NFT_POLICY", { ...GUARD_IO, submit: true, consequence: CONSEQUENCE_METER }).value;
 const meterNm = requiredHexParam("METER_NFT_NAME", { ...GUARD_IO, submit: true, placeholder: "4d4554", consequence: CONSEQUENCE_METER }).value;
@@ -92,6 +93,7 @@ const tx = await lucid.newTx()
   .complete({ coinSelection: true });
 
 console.log(`Tx B built (eval OK). CBOR len: ${tx.toCBOR().length}`);
+haltUnlessSubmit("Tx B (mint DistributionVest)");
 const signed = await tx.sign.withWallet().complete();
 const h = await signed.submit();
 console.log(`SUBMITTED: ${explorerTx(h)}`);

@@ -113,7 +113,34 @@ export function measureExitProof(
     };
   }
 
+  // Khác rỗng chưa đủ: `txHash: "x"` từng đi qua cổng. Không có mạng ở đây nên không đối chiếu
+  // được với chuỗi — nhưng HÌNH DẠNG thì kiểm được, và một mục sai hình dạng là một mục chưa
+  // từng được chép từ giao dịch thật.
+  const bad = shapeErrors(network, rec as unknown as ExitProof);
+  if (bad.length > 0) {
+    return {
+      state: "unmeasurable",
+      reason: `mục "${network}" sai hình dạng: ${bad.join("; ")}.`,
+    };
+  }
+
   return { state: "proven", proof: rec as unknown as ExitProof };
+}
+
+/** Lỗi hình dạng của một mục bằng chứng. Mạng chính dùng `addr1…`, mạng thử dùng `addr_test1…`. */
+function shapeErrors(network: string, p: ExitProof): string[] {
+  const out: string[] = [];
+  if (!/^[0-9a-f]{64}$/.test(p.txHash)) out.push(`txHash phải là 64 hex thường (đang '${p.txHash}')`);
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(p.date);
+  const d = m ? new Date(Date.UTC(+m[1]!, +m[2]! - 1, +m[3]!)) : null;
+  if (!m || !d || d.getUTCMonth() !== +m[2]! - 1 || d.getUTCDate() !== +m[3]!) {
+    out.push(`date phải là ngày có thật dạng YYYY-MM-DD (đang '${p.date}')`);
+  }
+  const prefix = network === "Mainnet" ? "addr1" : "addr_test1";
+  if (!p.treasuryAddress.startsWith(prefix)) {
+    out.push(`treasuryAddress phải bắt đầu bằng '${prefix}' trên ${network} (đang '${p.treasuryAddress}')`);
+  }
+  return out;
 }
 
 /**

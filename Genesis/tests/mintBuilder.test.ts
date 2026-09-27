@@ -20,7 +20,7 @@
 
 import { describe, it, expect } from "vitest";
 import {
-  buildMintTx, readSupplyState,
+  buildMintTx, readSupplyState, assertTreasuryDatumShape,
   type MintParams, type MintParamsV8, type MintParamsV14,
 } from "../offchain/src/mintBuilder.js";
 import { assertParamCount } from "../offchain/src/applyGate.js";
@@ -58,6 +58,9 @@ interface TxTrace {
   signers: string[];
   completed: number;
 }
+
+/** TreasuryDatum Constr 0 [committee_hash, 0, 0] — hình dạng kho `treasury.ak` ép kiểu được. */
+const KHO_DATUM = "d8799f581c" + "ee".repeat(28) + "0000ff";
 
 function fakeLucid(): { trace: TxTrace; lucid: MintParams["lucid"] } {
   const trace: TxTrace = { readFrom: [], toContract: [], signers: [], completed: 0 };
@@ -99,7 +102,7 @@ function commonParams() {
     route: "DistributionVest" as const,
     amount: 10_000n * 1_000_000n,
     recipient: KHO_ADDR,
-    recipientDatum: "d87980",
+    recipientDatum: KHO_DATUM,
     authoritySigners: ["ee".repeat(28)],
   };
 }
@@ -261,9 +264,9 @@ describe("buildMintTx — no-datum LÀ MẤT TIỀN (GMB-006)", () => {
   // Ca đắt nhất TUYỆT ĐỐI trong builder này, và là ca DUY NHẤT mà chuỗi không cứu được:
   // kho là địa chỉ script; `lamp_mint` cấp phép A-DEST bằng `qty_to_script` — đếm theo
   // payment credential, KHÔNG nhìn datum — nên tx thiếu datum vẫn HỢP LỆ và mint thành
-  // công. UTxO sinh ra thì `treasury.ak:27 expect Some(datum)` từ chối vĩnh viễn, mà LAMP
-  // không burn được. Bản trước để `recipientDatum` là tuỳ chọn và mặc định rơi vào
-  // `pay.ToAddress` — tức đường MẶC ĐỊNH là đường mất tiền.
+  // công. Bản trước để `recipientDatum` là tuỳ chọn và mặc định rơi vào `pay.ToAddress` —
+  // tức đường MẶC ĐỊNH là đường mất tiền. (Kho nay khai `Option<TreasuryDatum>`; chỗ hở còn
+  // lại là HÌNH DẠNG datum — nhóm GMB-010 dưới.)
   it("chặn khi thiếu recipientDatum", async () => {
     const p = params14();
     delete (p as { recipientDatum?: string }).recipientDatum;
@@ -272,6 +275,39 @@ describe("buildMintTx — no-datum LÀ MẤT TIỀN (GMB-006)", () => {
 
   it("chặn khi recipientDatum rỗng", async () => {
     await expect(buildMintTx(params14({ recipientDatum: "" }))).rejects.toThrow(/GMB-006/);
+  });
+});
+
+describe("buildMintTx — datum kho đúng HÌNH DẠNG TreasuryDatum (GMB-010)", () => {
+  // Datum đơn vị `d87980` từng được docstring gọi là "đủ". Ở nhánh 14 kho khai
+  // `Option<TreasuryDatum>`, nên datum không ép kiểu được làm LAMP nằm ngoài sổ kho, và tx
+  // vẫn hợp lệ vì `lamp_mint` không nhìn datum.
+  it("nhánh 14: chặn datum đơn vị d87980", async () => {
+    await expect(buildMintTx(params14({ recipientDatum: "d87980" }))).rejects.toThrow(/GMB-010/);
+  });
+
+  it("nhánh 14: chặn Constr 0 thiếu trường, sai kiểu trường, số âm, CBOR hỏng", () => {
+    const pkh = "ee".repeat(28);
+    expect(() => assertTreasuryDatumShape("d8799f581c" + pkh + "00ff")).toThrow(/GMB-010/);     // 2 trường
+    expect(() => assertTreasuryDatumShape("d8799f581c" + pkh + "000000ff")).toThrow(/GMB-010/); // 4 trường
+    expect(() => assertTreasuryDatumShape("d8799f00" + "0000ff")).toThrow(/GMB-010/);           // bytes → int
+    expect(() => assertTreasuryDatumShape("d8799f581c" + pkh + "2000ff")).toThrow(/GMB-010/);   // outstanding -1
+    expect(() => assertTreasuryDatumShape("d8799f581c" + pkh + "0020ff")).toThrow(/GMB-010/);   // total_redeemed -1
+    expect(() => assertTreasuryDatumShape("d87a9f581c" + pkh + "0000ff")).toThrow(/GMB-010/);   // Constr 1
+    expect(() => assertTreasuryDatumShape("zz")).toThrow(/GMB-010/);
+  });
+
+  it("nhánh 14: nhận TreasuryDatum đúng hình dạng và dựng xong tx", async () => {
+    expect(() => assertTreasuryDatumShape(KHO_DATUM)).not.toThrow();
+    const { trace, lucid } = fakeLucid();
+    await buildMintTx(params14({ lucid }));
+    expect(trace.completed).toBe(1);
+  });
+
+  it("nhánh 8: KHÔNG kiểm hình dạng — dist_treasury nhận Option<Data>", async () => {
+    const { trace, lucid } = fakeLucid();
+    await buildMintTx(params8({ lucid, recipientDatum: "d87980" }));
+    expect(trace.completed).toBe(1);
   });
 });
 
