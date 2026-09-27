@@ -466,13 +466,16 @@ async function main(): Promise<void> {
     if (myAccounts.length !== 1) {
       throw new Error(`REDEEM-000: cần ĐÚNG 1 tài khoản ở ${claimAddr}, đếm ${myAccounts.length}. Chạy STEP=grant trước.`);
     }
+    const w = windowNow(e);   // ném nếu cửa sổ đã sang trang so với `e` in ở đầu lượt
     const r = await buildRedeemTx({
       lucid, network: NETWORK,
       claimAccountUtxo: myAccounts[0]!, claimScript: cs.claim,
       treasuryUtxo, treasuryScript: scripts.treasury,
       dropBeaconUtxo: beaconUtxo,
-      currentEpoch: e,
-      validFromMs: windowNow(e).loMs,   // đầu dưới ≤ now: giữa cửa sổ là mốc tương lai
+      // Builder SUY cửa sổ từ đầu dưới (`validFromMs / msPerEpoch`) — không truyền `e` rời.
+      msPerEpoch: MS_PER_EPOCH,
+      validFromMs: w.loMs,   // đầu dưới ≤ now: giữa cửa sổ là mốc tương lai
+      validToMs: w.hiMs,
       treasuryNftPolicy: wiring.markers.khoPid, treasuryNftAssetName: "54525359",
       lampPolicyId: wiring.lampPid, lampAssetName: wiring.tokenName,
     });

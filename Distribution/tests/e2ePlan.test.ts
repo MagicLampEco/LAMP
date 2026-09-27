@@ -175,9 +175,12 @@ describe("grantTimeParams — builder nhận được, tx mang cặp lo/hi cùng
   });
 
   it("redeemTimeParams: đầu dưới nằm TRONG cửa sổ (≥ biên), không phải epoch·mspe cố định", () => {
-    const r = redeemTimeParams(w);
-    expect(r.currentEpoch).toBe(w.epoch);
+    const r = redeemTimeParams(w, MSPE);
     expect(r.validFromMs).toBe(w.loMs);
+    expect(r.validToMs).toBe(w.hiMs);
+    expect(r.msPerEpoch).toBe(MSPE);
+    // Cửa sổ builder sẽ suy ra từ đầu dưới PHẢI là cửa sổ của kế hoạch.
+    expect(r.validFromMs / r.msPerEpoch).toBe(w.epoch);
   });
 });
 

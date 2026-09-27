@@ -205,6 +205,17 @@ export async function buildRefillTx(params: RefillParams): Promise<RefillResult>
   // loại bỏ  = không phải carrier và mang tài sản tên TRSY dưới policy KHÁC — gộp vào thì chuỗi
   //            thấy 2 carrier ⇒ `carrier_ledger` từ chối ⇒ người lạ chặn được Refill.
   // còn lại  = gộp value, BỎ QUA datum (inline, datum-hash, rác, khống — không số nào đi vào sổ).
+  //
+  // Vì sao KHÔNG lọc/ném UTxO lạc mang datum rác (đo 2026-09-27, compiler aiken v1.1.21,
+  // `treasury.ak` thật chạy trong Emulator của Lucid, pha 2 đánh giá cục bộ): tập
+  // {carrier + UTxO lạc} gộp được và lên chuỗi với UTxO lạc mang inline datum `Int 42`,
+  // inline `Constr 0 [1]` (sai hình TreasuryDatum), datum-hash có preimage, và không datum;
+  // ca đối chứng (thiếu chữ ký committee) thì `Spend[0]` fail — tức script CÓ chạy. Nhánh
+  // `Refill` không đọc `datum_opt`, và tham số `Option<TreasuryDatum>` không bị ép kiểu khi
+  // không dùng. Lọc chúng ra sẽ để LAMP rót qua A-DEST nằm chết ngoài sổ (đúng thứ Refill
+  // sinh ra để gom); ném thì người lạ chặn được Refill bằng một UTxO rẻ tiền. Datum-hash mà
+  // provider KHÔNG có preimage thì `complete()` ném (pha 1, không mất collateral) — khi đó
+  // bỏ UTxO ấy khỏi `treasuryUtxos`.
   const carriers: UTxO[] = [];
   const collected: UTxO[] = [];
   const excluded: RefillExcluded[] = [];

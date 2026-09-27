@@ -38,7 +38,7 @@
 
 import {
   Data, toUnit,
-  credentialToAddress, scriptHashToCredential, validatorToScriptHash,
+  credentialToAddress, scriptHashToCredential, validatorToScriptHash, getAddressDetails,
   type LucidEvolution, type UTxO, type Validator, type TxSignBuilder,
 } from "@lucid-evolution/lucid";
 import type { Network } from "@magiclamp/utils";
@@ -79,17 +79,36 @@ export interface RedeemParams {
   dropBeaconUtxo:   UTxO;
 
   /**
-   * Epoch hiện tại t (caller tính off-chain từ validity range).
-   * Validator đọc current_epoch từ validity_range → truyền `validFromMs` để khớp.
+   * ms mỗi cửa sổ — PHẢI khớp `ms_per_epoch` đã apply vào `claim_account` (Preview/Preprod
+   * canonical: xem `MS_PER_EPOCH` của runner đang dùng). Builder KHÔNG đo được giá trị đã
+   * nướng trong `claimScript` (tham số đã apply nằm trong CBOR) — truyền lệch thì cửa sổ
+   * suy ra lệch, và giao dịch bị từ chối. `epochWindow(msPerEpoch)` trong `constants.ts`
+   * trả cặp `validFromMs`/`validToMs` dùng thẳng được.
    */
-  currentEpoch:     bigint;
+  msPerEpoch:       bigint;
 
   /**
-   * POSIX ms cho lower_bound validity_range (BẮT BUỘC live tx).
-   * Validator get_epoch đọc lower_bound = current_epoch · ms_per_epoch.
-   * Bỏ trống → KHÔNG set (chỉ unit test off-chain; live sẽ fail get_epoch).
+   * POSIX ms đầu DƯỚI của validity_range — BẮT BUỘC. Cửa sổ t mà builder dùng để tính
+   * `A(t)` được SUY TỪ ĐÂY (`validFromMs / msPerEpoch`, chia sàn), đúng như validator:
+   * `claim_account.ak` nhánh `Redeem` gọi `util.get_epoch` = `lower_bound / ms_per_epoch`.
+   *
+   * Vì sao không nhận `currentEpoch` rời nữa: hai giá trị rời nhau thì lệch được, và lệch
+   * theo chiều nào cũng hỏng — t lớn hơn cửa sổ của `validFromMs` ⇒ builder tính `amount`
+   * lớn hơn trần mà validator tính ⇒ C-RDM-VEST từ chối; t nhỏ hơn ⇒ rút ít hơn phần
+   * đã vest. Bản trước còn để `validFromMs` TUỲ CHỌN: bỏ trống thì không đặt đầu dưới nào,
+   * và `get_epoch` (`expect Some(s) = … |> get_finite`) chết ngay. Một nguồn, không hai.
    */
-  validFromMs?:     bigint;
+  validFromMs:      bigint;
+
+  /**
+   * POSIX ms đầu TRÊN của validity_range — BẮT BUỘC, phải > `validFromMs`.
+   * Validator nhánh `Redeem` KHÔNG đọc đầu trên (`get_epoch` chỉ đọc đầu dưới — cửa sổ nhỏ
+   * đi thì chính người rút thiệt). Nó bắt buộc vì hai lẽ ngoài validator: (a) khoảng
+   * `[lo, hi)` với `hi ≤ lo` không chứa slot nào ⇒ sổ cái không bao giờ nhận; (b) để Lucid
+   * tự đặt đầu trên thì nó có thể vượt chân trời dự báo slot của node (PastHorizon — xem
+   * `WINDOW_TTL_MS` trong `constants.ts`). Không bắt buộc cùng cửa sổ với `validFromMs`.
+   */
+  validToMs:        bigint;
 
   /**
    * Policy của NFT "TRSY" — BẮT BUỘC, không có mặc định.
@@ -106,12 +125,31 @@ export interface RedeemParams {
   lampPolicyId:   string;
   lampAssetName?: string;
 
-  /** Nơi nhận LAMP redeem. Mặc định = ví owner (lucid wallet). */
+  /**
+   * Nơi nhận LAMP redeem. PHẢI có payment credential = khoá `owner` của tài khoản.
+   *
+   * `claim_account.ak` nhánh `Redeem` (C-RDM-3) ép `util.lamp_to_owner(outputs, owner, …)
+   * >= amount`, và `util.is_owned_by` chỉ đếm output có payment credential
+   * `VerificationKey(owner)` — stake credential tuỳ ý. Một đích khác owner thì LAMP rời
+   * khỏi tập đếm, và giao dịch chỉ lọt khi tiền thối của ví tình cờ mang đủ LAMP cho owner
+   * — builder không dựng tx dựa vào tình cờ đó (REDEEM-018).
+   *
+   * Bỏ trống ⇒ dùng địa chỉ ví đang nối vào `lucid` NẾU nó thuộc owner (giữ stake credential
+   * của ví). Ví khác owner (ví vận hành rút hộ, relayer) thì NÉM REDEEM-019 thay vì đoán một
+   * địa chỉ của owner: builder chỉ biết PKH, không biết stake credential owner muốn dùng, và
+   * một địa chỉ enterprise tự dựng là một địa chỉ ví của owner có thể không quét tới.
+   * Bản trước mặc định thẳng về ví `lucid` mà KHÔNG so với owner, trong khi chú thích nói
+   * "ví owner" — ở ca rút hộ, tx dựng ra chắc chắn bị từ chối.
+   */
   destinationAddress?: string;
 }
 
 export interface RedeemResult {
   tx:            TxSignBuilder;
+  /** Cửa sổ t đã dùng để tính `A(t)` — suy từ `validFromMs / msPerEpoch`, không nhận từ caller. */
+  currentEpoch:  bigint;
+  /** Địa chỉ nhận LAMP thật sự được đặt vào giao dịch (đã soát thuộc owner). */
+  destination:   string;
   amount:        bigint;     // released = min(vested − redeemed, trần một lượt)
   vested:        bigint;     // vested(t) đã tính
   /** Phần bị CẮT NGỌN lượt này (`vested − redeemed − amount`). 0 nghĩa là không bị cắt.
@@ -129,10 +167,31 @@ export async function buildRedeemTx(params: RedeemParams): Promise<RedeemResult>
   const {
     lucid, network, claimAccountUtxo, claimScript,
     treasuryUtxo, treasuryScript, dropBeaconUtxo,
-    currentEpoch, lampPolicyId,
+    msPerEpoch, validFromMs, validToMs, lampPolicyId,
   } = params;
   const lampAssetName = params.lampAssetName ?? DEFAULT_LAMP_ASSET_NAME;
   const lampUnit = toUnit(lampPolicyId, lampAssetName);
+
+  // ── Cửa sổ t: SUY từ đầu dưới validity, không nhận rời ──────────────
+  // Mirror `util.get_epoch` (`lower_bound / ms_per_epoch`, chia sàn trên số không âm) mà
+  // `claim_account.ak` nhánh `Redeem` dùng (C-RDM-EPOCH). Cùng khuôn với
+  // `Allocation/offchain/src/redeemBuilder.ts` (F1+F2).
+  if (msPerEpoch <= 0n) {
+    throw new Error(`REDEEM-015: msPerEpoch phải > 0, nhận ${msPerEpoch}.`);
+  }
+  if (validFromMs < 0n) {
+    throw new Error(
+      `REDEEM-016: validFromMs phải ≥ 0, nhận ${validFromMs}. POSIX ms âm không rơi vào cửa ` +
+      `sổ nào mà validator tính được theo cùng phép chia với builder.`,
+    );
+  }
+  if (validToMs <= validFromMs) {
+    throw new Error(
+      `REDEEM-017: validToMs (${validToMs}) phải > validFromMs (${validFromMs}). Khoảng ` +
+      `hiệu lực rỗng không chứa slot nào — sổ cái không bao giờ nhận giao dịch này.`,
+    );
+  }
+  const currentEpoch = validFromMs / msPerEpoch;   // BigInt chia sàn — mirror get_epoch
 
   // ── Decode ClaimAccount datum ──────────────────────────────────────
   if (!claimAccountUtxo.datum) throw new Error("REDEEM-001: claimAccountUtxo has no inline datum");
@@ -210,7 +269,44 @@ export async function buildRedeemTx(params: RedeemParams): Promise<RedeemResult>
   // mọi tx redeem dựng ra đều bị chuỗi từ chối — mất collateral, và không phép kiểm nào báo
   // trước vì không ca nào đọc tới địa chỉ dựng lại.
   const treasuryAddress = treasuryUtxo.address;
-  const destination = params.destinationAddress ?? (await lucid.wallet().address());
+
+  // Đích nhận LAMP: payment credential PHẢI là VerificationKey(owner) — C-RDM-3,
+  // `util.lamp_to_owner` + `util.is_owned_by`. Soát cả đích tường minh lẫn đích mặc định.
+  const paymentKeyHashOf = (addr: string): string | undefined => {
+    let cred;
+    try {
+      cred = getAddressDetails(addr).paymentCredential;
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      throw new Error(`REDEEM-018: không đọc được địa chỉ đích '${addr}' (${msg}).`);
+    }
+    return cred?.type === "Key" ? normHex(cred.hash) : undefined;
+  };
+  let destination: string;
+  if (params.destinationAddress !== undefined) {
+    destination = params.destinationAddress;
+    const pkh = paymentKeyHashOf(destination);
+    if (pkh !== owner) {
+      throw new Error(
+        `REDEEM-018: destinationAddress có payment credential ` +
+        `${pkh === undefined ? "không phải khoá (script/không có)" : `khoá ${pkh}`}, khác owner ` +
+        `${owner}. \`claim_account.ak\` (C-RDM-3, \`util.lamp_to_owner\`) chỉ đếm LAMP về ` +
+        `output có payment credential = khoá owner — đích này làm tx bị từ chối.`,
+      );
+    }
+  } else {
+    const walletAddr = await lucid.wallet().address();
+    const pkh = paymentKeyHashOf(walletAddr);
+    if (pkh !== owner) {
+      throw new Error(
+        `REDEEM-019: không truyền destinationAddress, và ví đang nối (payment ` +
+        `${pkh ?? "không phải khoá"}) KHÔNG phải owner ${owner}. Rút hộ thì truyền tường minh ` +
+        `một địa chỉ của owner (payment credential = khoá owner); builder không tự dựng địa chỉ ` +
+        `cho owner vì không biết stake credential owner dùng.`,
+      );
+    }
+    destination = walletAddr;
+  }
 
   // ── Output datums ──────────────────────────────────────────────────
   // ClaimAccount': redeemed' = redeemed + amount; field khác unchanged (C-RDM-4).
@@ -284,10 +380,9 @@ export async function buildRedeemTx(params: RedeemParams): Promise<RedeemResult>
     .pay.ToAddress(destination, { [lampUnit]: amount })   // C-RDM-3: user nhận đúng amount
     .addSignerKey(owner);                            // C-RDM-6: owner signs
 
-  // validity_range lower_bound → validator get_epoch khớp currentEpoch.
-  if (params.validFromMs !== undefined) {
-    txb = txb.validFrom(Number(params.validFromMs));
-  }
+  // validity_range: đầu dưới LUÔN đặt (C-RDM-EPOCH — `get_epoch` đòi Finite), và chính nó là
+  // nguồn của `currentEpoch` ở trên; đầu trên luôn đặt (REDEEM-017).
+  txb = txb.validFrom(Number(validFromMs)).validTo(Number(validToMs));
 
   const tx = await txb.complete();
 
@@ -299,7 +394,8 @@ export async function buildRedeemTx(params: RedeemParams): Promise<RedeemResult>
     `Beacon:         index=${beacon.index} rate_root=${beacon.rate_root} epoch=${beacon.epoch}`,
     `A(t):           ${beacon.index + beacon.rate_root * (currentEpoch - beacon.epoch)}` +
       `  −  a₀=${claim.index_at_start}  ⟹  A_span=${span}`,
-    `Cửa sổ:         t=${currentEpoch} (start_epoch=${claim.start_epoch}, KHÔNG vào phép tính)`,
+    `Cửa sổ:         t=${currentEpoch} = ${validFromMs} / ${msPerEpoch} ` +
+      `(start_epoch=${claim.start_epoch}, KHÔNG vào phép tính)`,
     `Vested(t):      ${vestedNow} oildrop`,
     `Trần một lượt:  ${cap} oildrop (κ=${beacon.trim_num}/${beacon.trim_den}, ` +
       `total_redeemed=${treasury.total_redeemed}, sàn=${TRIM_FLOOR})`,
@@ -313,7 +409,7 @@ export async function buildRedeemTx(params: RedeemParams): Promise<RedeemResult>
   ].join("\n");
 
   return {
-    tx, amount, vested: vestedNow, trimmed, trimCap: cap,
+    tx, currentEpoch, destination, amount, vested: vestedNow, trimmed, trimCap: cap,
     newClaimDatum, treasuryAfter, summary,
   };
 }

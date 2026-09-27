@@ -317,8 +317,11 @@ async function main(): Promise<void> {
         claimAccountUtxo: acc.utxo, claimScript: cs.claim,
         treasuryUtxo: st.treasuryUtxo, treasuryScript: scripts.treasury,
         dropBeaconUtxo: st.beaconUtxo,
-        currentEpoch: w.epoch,
+        // Builder SUY cửa sổ từ đầu dưới (`validFromMs / msPerEpoch`) — cùng `w` mà kế hoạch
+        // `pickNextRedeem` vừa dùng, nên `r.amount` so được với `pick.amount` bên dưới.
+        msPerEpoch: MS_PER_EPOCH,
         validFromMs: w.loMs,
+        validToMs: w.hiMs,
         treasuryNftPolicy: wiring.markers.khoPid, treasuryNftAssetName: "54525359",
         lampPolicyId: wiring.lampPid, lampAssetName: wiring.tokenName,
         destinationAddress: f.address,           // util.lamp_to_owner: payment = VK(owner)

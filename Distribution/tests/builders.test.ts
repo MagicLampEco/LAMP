@@ -90,6 +90,21 @@ const accNft = { script: FAKE_ACC_NFT };
 
 const NETWORK = "Preview" as const;
 const OWNER   = "aabbccddeeff00112233445566778899aabbccddeeff001122334455";
+/** Ví của OWNER (enterprise). Redeem chỉ mặc định đích về ví đang nối KHI ví đó thuộc owner
+ *  (REDEEM-019) — nên mọi ca redeem dựng mock ví bằng địa chỉ này, không bằng chuỗi giả. */
+const OWNER_ADDR = credentialToAddress(NETWORK, keyHashToCredential(OWNER));
+
+/** ms mỗi cửa sổ cho các ca redeem (giá trị Preview). */
+const REDEEM_MSPE = 86_400_000n;
+/**
+ * Tham số thời gian redeem cho cửa sổ t. Đầu dưới đặt LỆCH khỏi biên (t·mspe + 1 giờ) để
+ * một bản suy cửa sổ bằng làm tròn lên, hay bằng đầu trên, ra số KHÁC và đỏ; đầu trên cách
+ * đầu dưới 1 giờ, cùng cửa sổ.
+ */
+function redeemAt(t: bigint): { msPerEpoch: bigint; validFromMs: bigint; validToMs: bigint } {
+  const lo = t * REDEEM_MSPE + 3_600_000n;
+  return { msPerEpoch: REDEEM_MSPE, validFromMs: lo, validToMs: lo + 3_600_000n };
+}
 const LAMP_POLICY = "ff".repeat(28);
 const LAMP_UNIT   = toUnit(LAMP_POLICY, "744c414d50"); // tLAMP canonical
 
@@ -1007,14 +1022,14 @@ describe("buildRedeemTx — vested = min(E, isqrt(dpe²·E·A_span²))", () => {
   };
 
   it("releases vested−redeemed, preserves treasury dust + committee_hash, sets redeemed+=amount", async () => {
-    const { lucid, rec } = mockLucid("addr_user");
+    const { lucid, rec } = mockLucid(OWNER_ADDR);
     const DUST = toUnit("dd".repeat(28), "f00d");
     // Mốc ở cửa sổ 100, xét ở 103 ⇒ A_span = 3·RATE = 300.000.
     //   vested = isqrt(1² · 250.000 LAMP · 300.000²) = 500.000 · 300.000 = 150.000 LAMP
     //   redeemed = 50.000 LAMP ⇒ uncapped = 100.000 LAMP
     //   trần = max(1.000 LAMP, 10.000.000 LAMP · 1/1) = 10.000.000 LAMP ⇒ KHÔNG chạm
     const res = await buildRedeemTx({
-      ...base, lucid, currentEpoch: 103n,
+      ...base, lucid, ...redeemAt(103n),
       claimAccountUtxo: claimUtxo(PER_WINDOW, E, MARK, 1n, {}, WIDE),
       treasuryUtxo: treasuryUtxo(lampOildrop(1_000_000n), { [DUST]: 3n }),
       dropBeaconUtxo: dropBeaconUtxo(WIDE),
@@ -1055,19 +1070,19 @@ describe("buildRedeemTx — vested = min(E, isqrt(dpe²·E·A_span²))", () => {
     // user receives exactly amount LAMP
     expect(rec.payAddr).toHaveLength(1);
     expect(rec.payAddr[0]!.assets[LAMP_UNIT]).toBe(2n * PER_WINDOW);
-    expect(rec.payAddr[0]!.address).toBe("addr_user");
+    expect(rec.payAddr[0]!.address).toBe(OWNER_ADDR);
 
     // owner signs
     expect(rec.signers).toContain(OWNER);
   });
 
   it("E nhỏ hơn một cửa sổ → nhận trọn entitlement ngay cửa sổ đầu (cap E)", async () => {
-    const { lucid } = mockLucid("addr_user");
+    const { lucid } = mockLucid(OWNER_ADDR);
     // E = 400 LAMP, A_span = RATE ⇒ bound = isqrt(400 LAMP)·RATE = 20.000 · 100.000
     // = 2.000 LAMP ≫ E ⇒ `vested` bị CHẶN bởi E, không bởi chỉ số. Đây là vế `min(E, …)`.
     const small = lampOildrop(400n);
     const res = await buildRedeemTx({
-      ...base, lucid, currentEpoch: MARK + 1n,
+      ...base, lucid, ...redeemAt(MARK + 1n),
       claimAccountUtxo: claimUtxo(0n, small, MARK, 1n, {}, WIDE),
       treasuryUtxo: treasuryUtxo(lampOildrop(1_000n), {}, lampOildrop(1_000n)),
       dropBeaconUtxo: dropBeaconUtxo(WIDE),
@@ -1078,10 +1093,10 @@ describe("buildRedeemTx — vested = min(E, isqrt(dpe²·E·A_span²))", () => {
   });
 
   it("drip: một cửa sổ mở đúng √E · rate_root", async () => {
-    const { lucid } = mockLucid("addr_user");
+    const { lucid } = mockLucid(OWNER_ADDR);
     // A_span = RATE ⇒ vested = 500.000 · 100.000 = 50.000 LAMP = PER_WINDOW.
     const res = await buildRedeemTx({
-      ...base, lucid, currentEpoch: MARK + 1n,
+      ...base, lucid, ...redeemAt(MARK + 1n),
       claimAccountUtxo: claimUtxo(0n, E, MARK, 1n, {}, WIDE),
       treasuryUtxo: treasuryUtxo(lampOildrop(1_000_000n)),
       dropBeaconUtxo: dropBeaconUtxo(WIDE),
@@ -1090,15 +1105,131 @@ describe("buildRedeemTx — vested = min(E, isqrt(dpe²·E·A_span²))", () => {
     expect(res.amount).toBe(PER_WINDOW);
   });
 
-  it("sets validFrom khi truyền validFromMs", async () => {
-    const { lucid, rec } = mockLucid("addr_user");
-    await buildRedeemTx({
-      ...base, lucid, currentEpoch: MARK + 2n, validFromMs: 2n * 86_400_000n,
-      claimAccountUtxo: claimUtxo(0n, E, MARK, 1n, {}, WIDE),
-      treasuryUtxo: treasuryUtxo(lampOildrop(1_000_000n)),
-      dropBeaconUtxo: dropBeaconUtxo(WIDE),
+  // ── Cửa sổ t SUY từ đầu dưới validity (C-RDM-EPOCH, `util.get_epoch`) ──────────────
+  // Bản trước nhận `currentEpoch` và `validFromMs` RỜI nhau (đầu dưới còn tuỳ chọn): hai số
+  // lệch nhau thì builder tính `amount` theo một cửa sổ, validator ép theo cửa sổ khác.
+  const at = (lo: bigint, hi: bigint) => ({ msPerEpoch: REDEEM_MSPE, validFromMs: lo, validToMs: hi });
+  const drip = {
+    claimAccountUtxo: claimUtxo(0n, E, MARK, 1n, {}, WIDE),
+    treasuryUtxo: treasuryUtxo(lampOildrop(1_000_000n)),
+    dropBeaconUtxo: dropBeaconUtxo(WIDE),
+  };
+
+  it("đặt CẢ HAI đầu validity, và t = validFromMs / msPerEpoch", async () => {
+    const { lucid, rec } = mockLucid(OWNER_ADDR);
+    const p = redeemAt(MARK + 2n);
+    const res = await buildRedeemTx({ ...base, lucid, ...p, ...drip });
+    expect(rec.validFrom).toEqual([Number(p.validFromMs)]);
+    expect(rec.validTo).toEqual([Number(p.validToMs)]);
+    expect(res.currentEpoch).toBe(MARK + 2n);
+    expect(res.vested).toBe(2n * PER_WINDOW);   // A_span = 2·RATE
+  });
+
+  it("đầu dưới ở ms CUỐI của cửa sổ t ⇒ vẫn là t (chia SÀN như get_epoch, không làm tròn)", async () => {
+    const { lucid } = mockLucid(OWNER_ADDR);
+    const lo = (MARK + 3n) * REDEEM_MSPE - 1n;
+    const res = await buildRedeemTx({ ...base, lucid, ...at(lo, lo + 1_000n), ...drip });
+    expect(res.currentEpoch).toBe(MARK + 2n);
+    expect(res.vested).toBe(2n * PER_WINDOW);
+  });
+
+  it("đầu TRÊN không vào phép tính — hi ở cửa sổ sau vẫn tính theo cửa sổ của lo", async () => {
+    const { lucid } = mockLucid(OWNER_ADDR);
+    const lo = (MARK + 1n) * REDEEM_MSPE + 5n;
+    const res = await buildRedeemTx({ ...base, lucid, ...at(lo, (MARK + 4n) * REDEEM_MSPE), ...drip });
+    expect(res.currentEpoch).toBe(MARK + 1n);
+    expect(res.vested).toBe(PER_WINDOW);
+  });
+
+  it("REDEEM-015: msPerEpoch ≤ 0", async () => {
+    const { lucid } = mockLucid(OWNER_ADDR);
+    await expect(buildRedeemTx({ ...base, lucid, ...redeemAt(MARK + 1n), msPerEpoch: 0n, ...drip }))
+      .rejects.toThrow(/REDEEM-015/);
+  });
+
+  it("REDEEM-016: validFromMs âm", async () => {
+    const { lucid } = mockLucid(OWNER_ADDR);
+    await expect(buildRedeemTx({ ...base, lucid, ...at(-1n, 1_000n), ...drip }))
+      .rejects.toThrow(/REDEEM-016/);
+  });
+
+  it("REDEEM-017: validToMs == validFromMs (khoảng rỗng) — và biên +1 ms thì qua", async () => {
+    const { lucid } = mockLucid(OWNER_ADDR);
+    const lo = (MARK + 1n) * REDEEM_MSPE;
+    await expect(buildRedeemTx({ ...base, lucid, ...at(lo, lo), ...drip }))
+      .rejects.toThrow(/REDEEM-017/);
+    await expect(buildRedeemTx({ ...base, lucid, ...at(lo, lo + 1n), ...drip }))
+      .resolves.toBeDefined();
+  });
+
+  // ── Đích nhận LAMP: payment credential PHẢI là khoá owner (C-RDM-3, `util.lamp_to_owner`) ──
+  const OTHER_PKH = "99".repeat(28);
+  const OTHER_ADDR = credentialToAddress(NETWORK, keyHashToCredential(OTHER_PKH));
+  /** Địa chỉ BASE của owner: payment = owner, stake = khoá khác. Validator chỉ nhìn payment. */
+  const OWNER_BASE_ADDR = credentialToAddress(
+    NETWORK, keyHashToCredential(OWNER), keyHashToCredential(OTHER_PKH),
+  );
+
+  it("mặc định: ví đang nối thuộc owner ⇒ đích = địa chỉ ví (giữ nguyên, kể cả stake cred)", async () => {
+    const { lucid, rec } = mockLucid(OWNER_BASE_ADDR);
+    const res = await buildRedeemTx({ ...base, lucid, ...redeemAt(MARK + 1n), ...drip });
+    expect(res.destination).toBe(OWNER_BASE_ADDR);
+    expect(rec.payAddr.map(x => x.address)).toEqual([OWNER_BASE_ADDR]);
+  });
+
+  it("REDEEM-019: không truyền đích và ví đang nối KHÔNG phải owner ⇒ ném, không đoán", async () => {
+    const { lucid } = mockLucid(OTHER_ADDR);
+    await expect(buildRedeemTx({ ...base, lucid, ...redeemAt(MARK + 1n), ...drip }))
+      .rejects.toThrow(/REDEEM-019/);
+  });
+
+  it("rút hộ: ví KHÔNG phải owner nhưng đích tường minh thuộc owner ⇒ qua, LAMP về đích đó", async () => {
+    const { lucid, rec } = mockLucid(OTHER_ADDR);
+    const res = await buildRedeemTx({
+      ...base, lucid, ...redeemAt(MARK + 1n), ...drip, destinationAddress: OWNER_BASE_ADDR,
     });
-    expect(rec.validFrom).toEqual([Number(2n * 86_400_000n)]);
+    expect(res.destination).toBe(OWNER_BASE_ADDR);
+    expect(rec.payAddr[0]!.address).toBe(OWNER_BASE_ADDR);
+  });
+
+  it("REDEEM-018: đích tường minh là khoá KHÁC owner (dù ví đang nối là owner)", async () => {
+    const { lucid } = mockLucid(OWNER_ADDR);
+    await expect(buildRedeemTx({
+      ...base, lucid, ...redeemAt(MARK + 1n), ...drip, destinationAddress: OTHER_ADDR,
+    })).rejects.toThrow(/REDEEM-018/);
+  });
+
+  it("REDEEM-018: đích là địa chỉ SCRIPT (payment credential không phải khoá)", async () => {
+    const { lucid } = mockLucid(OWNER_ADDR);
+    await expect(buildRedeemTx({
+      ...base, lucid, ...redeemAt(MARK + 1n), ...drip, destinationAddress: scriptAddr(FAKE_CLAIM),
+    })).rejects.toThrow(/REDEEM-018/);
+  });
+
+  // Ca trên xanh cả khi builder chỉ so HASH mà quên so KIỂU credential (script hash ≠ owner
+  // nên đằng nào cũng lệch). Ca này đặt owner = đúng hash của script đích: chỉ phép phân biệt
+  // Key/Script mới từ chối được — đúng như `util.is_owned_by` (chỉ `VerificationKey(h)`).
+  it("REDEEM-018: đích script có hash TRÙNG owner vẫn bị từ chối (chỉ nhận VerificationKey)", async () => {
+    const { lucid } = mockLucid(OWNER_ADDR);
+    const h = validatorToScriptHash(FAKE_CLAIM);
+    const acc: UTxO = {
+      ...claimUtxo(0n, E, MARK, 1n, {}, WIDE),
+      datum: claimAccountDatumToCbor({
+        owner: h, entitlement: E, redeemed: 0n, start_epoch: MARK, drops_per_epoch: 1n,
+        index_at_start: beaconIndexAt(WIDE, MARK),
+      }),
+    };
+    await expect(buildRedeemTx({
+      ...base, lucid, ...redeemAt(MARK + 1n), ...drip, claimAccountUtxo: acc,
+      destinationAddress: scriptAddr(FAKE_CLAIM),
+    })).rejects.toThrow(/REDEEM-018/);
+  });
+
+  it("REDEEM-018: đích không phải địa chỉ đọc được", async () => {
+    const { lucid } = mockLucid(OWNER_ADDR);
+    await expect(buildRedeemTx({
+      ...base, lucid, ...redeemAt(MARK + 1n), ...drip, destinationAddress: "addr_user",
+    })).rejects.toThrow(/REDEEM-018/);
   });
 
   // ── C-RDM-TRIM / C-RDM-CAP: trần MỘT LƯỢT rút ────────────────────────
@@ -1106,11 +1237,11 @@ describe("buildRedeemTx — vested = min(E, isqrt(dpe²·E·A_span²))", () => {
   // một nhánh thì nó xanh cả khi bản hiện thực bỏ hẳn nhánh kia.
 
   it("C-RDM-TRIM: ở total_redeemed = 0 thì SÀN chặn, và phần bị cắt được NÓI RA", async () => {
-    const { lucid, rec } = mockLucid("addr_user");
+    const { lucid, rec } = mockLucid(OWNER_ADDR);
     // `total_redeemed = 0` là ĐIỂM HẤP THỤ nếu thiếu sàn: trần 0 ⇒ không ai rút được ⇒
     // `total_redeemed` mãi bằng 0. Sàn tồn tại chính để phá điểm đó.
     const res = await buildRedeemTx({
-      ...base, lucid, currentEpoch: 103n,
+      ...base, lucid, ...redeemAt(103n),
       claimAccountUtxo: claimUtxo(0n, E, MARK),
       treasuryUtxo: treasuryUtxo(lampOildrop(1_000_000n), {}, E, 0n),
       dropBeaconUtxo: dropBeaconUtxo(),
@@ -1128,12 +1259,12 @@ describe("buildRedeemTx — vested = min(E, isqrt(dpe²·E·A_span²))", () => {
   });
 
   it("C-RDM-TRIM: nhánh TỈ LỆ chặn khi total_redeemed · κ vượt sàn", async () => {
-    const { lucid } = mockLucid("addr_user");
+    const { lucid } = mockLucid(OWNER_ADDR);
     // κ = 1/1000 và total_redeemed = 2.000.000 LAMP ⇒ trần = 2.000 LAMP > sàn 1.000 LAMP.
     // Một bản bỏ hẳn nhánh tỉ lệ (chỉ giữ sàn) sẽ trả 1.000 LAMP ở đây và đỏ.
     const totalRedeemed = lampOildrop(2_000_000n);
     const res = await buildRedeemTx({
-      ...base, lucid, currentEpoch: 103n,
+      ...base, lucid, ...redeemAt(103n),
       claimAccountUtxo: claimUtxo(0n, E, MARK),
       treasuryUtxo: treasuryUtxo(lampOildrop(1_000_000n), {}, E, totalRedeemed),
       dropBeaconUtxo: dropBeaconUtxo(),
@@ -1148,7 +1279,7 @@ describe("buildRedeemTx — vested = min(E, isqrt(dpe²·E·A_span²))", () => {
   // cánh không datum và `Refill` (treasury.ak:177) tồn tại chính vì kho sẽ có nhiều UTxO. Chọn theo
   // SỐ DƯ LAMP thì có ngày vớ trúng cái không mang TRSY ⇒ validator từ chối ⇒ mất collateral.
   it("REDEEM-013: từ chối treasury UTxO KHÔNG mang NFT TRSY (dù thừa LAMP)", async () => {
-    const { lucid } = mockLucid("addr_user");
+    const { lucid } = mockLucid(OWNER_ADDR);
     const noTrsy: UTxO = {
       txHash: "22".repeat(32), outputIndex: 1,
       address: scriptAddr(FAKE_TREASURY),
@@ -1158,7 +1289,7 @@ describe("buildRedeemTx — vested = min(E, isqrt(dpe²·E·A_span²))", () => {
       }),
     };
     await expect(buildRedeemTx({
-      ...base, lucid, currentEpoch: 103n,
+      ...base, lucid, ...redeemAt(103n),
       claimAccountUtxo: claimUtxo(PER_WINDOW, E, MARK, 1n, {}, WIDE),
       treasuryUtxo: noTrsy,
       dropBeaconUtxo: dropBeaconUtxo(WIDE),
@@ -1166,9 +1297,9 @@ describe("buildRedeemTx — vested = min(E, isqrt(dpe²·E·A_span²))", () => {
   });
 
   it("REDEEM-013: từ chối cả khi kho mang 2 TRSY (không mơ hồ carrier)", async () => {
-    const { lucid } = mockLucid("addr_user");
+    const { lucid } = mockLucid(OWNER_ADDR);
     await expect(buildRedeemTx({
-      ...base, lucid, currentEpoch: 103n,
+      ...base, lucid, ...redeemAt(103n),
       claimAccountUtxo: claimUtxo(PER_WINDOW, E, MARK, 1n, {}, WIDE),
       treasuryUtxo: treasuryUtxo(lampOildrop(1_000_000n), { [TRSY_UNIT]: 2n }),
       dropBeaconUtxo: dropBeaconUtxo(WIDE),
@@ -1178,11 +1309,11 @@ describe("buildRedeemTx — vested = min(E, isqrt(dpe²·E·A_span²))", () => {
   // REDEEM-014 — `treasury.ak:92-95` ép nợ_out == nợ_in − released VÀ nợ_out ≥ 0. Builder
   // trước bản này trừ thẳng, dựng ra tx sổ cái ÂM: CBOR hợp lệ, chuỗi từ chối, mất collateral.
   it("REDEEM-014: từ chối khi sổ cái nợ kho < amount (nợ_out sẽ âm)", async () => {
-    const { lucid } = mockLucid("addr_user");
+    const { lucid } = mockLucid(OWNER_ADDR);
     // Cửa sổ 101 ⇒ amount = PER_WINDOW = 50.000 LAMP; sổ cái nợ chỉ 10 LAMP.
     // Pool LAMP để DƯ để REDEEM-012 không che mất ca này — nó đứng TRƯỚC REDEEM-014.
     await expect(buildRedeemTx({
-      ...base, lucid, currentEpoch: MARK + 1n,
+      ...base, lucid, ...redeemAt(MARK + 1n),
       claimAccountUtxo: claimUtxo(0n, E, MARK, 1n, {}, WIDE),
       treasuryUtxo: treasuryUtxo(lampOildrop(1_000_000n), {}, lampOildrop(10n)),
       dropBeaconUtxo: dropBeaconUtxo(WIDE),
@@ -1190,10 +1321,10 @@ describe("buildRedeemTx — vested = min(E, isqrt(dpe²·E·A_span²))", () => {
   });
 
   it("rejects double-redeem (redeemable ≤ 0, đã redeem hết vested)", async () => {
-    const { lucid } = mockLucid("addr_user");
+    const { lucid } = mockLucid(OWNER_ADDR);
     // Cửa sổ 103 ⇒ vested = 3·PER_WINDOW; redeemed đúng bằng đó → uncapped = 0 → reject.
     await expect(buildRedeemTx({
-      ...base, lucid, currentEpoch: 103n,
+      ...base, lucid, ...redeemAt(103n),
       claimAccountUtxo: claimUtxo(3n * PER_WINDOW, E, MARK, 1n, {}, WIDE),
       treasuryUtxo: treasuryUtxo(lampOildrop(1_000_000n)),
       dropBeaconUtxo: dropBeaconUtxo(WIDE),
@@ -1201,12 +1332,12 @@ describe("buildRedeemTx — vested = min(E, isqrt(dpe²·E·A_span²))", () => {
   });
 
   it("rejects khi chưa tới cửa sổ mở khoá (A_span = 0)", async () => {
-    const { lucid } = mockLucid("addr_user");
+    const { lucid } = mockLucid(OWNER_ADDR);
     // Mốc chỉ số chụp ở ĐÚNG cửa sổ đang xét ⇒ A_span = 0 ⇒ vested = 0 ⇒ reject.
     // Ở v3 điều kiện này đọc từ CHỈ SỐ, không từ `start_epoch` — mà fixture để `start_epoch`
     // lệch 7 cửa sổ về TRƯỚC, nên một bản còn so `t ≤ start_epoch` sẽ cho qua và đỏ ở đây.
     await expect(buildRedeemTx({
-      ...base, lucid, currentEpoch: 103n,
+      ...base, lucid, ...redeemAt(103n),
       claimAccountUtxo: claimUtxo(0n, E, 103n, 1n, {}, WIDE),
       treasuryUtxo: treasuryUtxo(lampOildrop(1_000_000n)),
       dropBeaconUtxo: dropBeaconUtxo(WIDE),
@@ -1214,12 +1345,12 @@ describe("buildRedeemTx — vested = min(E, isqrt(dpe²·E·A_span²))", () => {
   });
 
   it("rejects beacon thiếu inline datum", async () => {
-    const { lucid } = mockLucid("addr_user");
+    const { lucid } = mockLucid(OWNER_ADDR);
     // Không dựng được beacon "kind sai" vì `BeaconKind` chỉ còn DropParam — cực duy nhất
     // ca này còn giữ được là beacon KHÔNG có datum. Builder phải NÉM, không được đoán.
     const noDatum: UTxO = { ...dropBeaconUtxo(WIDE), datum: null as unknown as string };
     await expect(buildRedeemTx({
-      ...base, lucid, currentEpoch: 103n,
+      ...base, lucid, ...redeemAt(103n),
       claimAccountUtxo: claimUtxo(0n, E, MARK, 1n, {}, WIDE),
       treasuryUtxo: treasuryUtxo(lampOildrop(1_000_000n)),
       dropBeaconUtxo: noDatum,
@@ -1227,10 +1358,10 @@ describe("buildRedeemTx — vested = min(E, isqrt(dpe²·E·A_span²))", () => {
   });
 
   it("rejects treasury với LAMP không đủ", async () => {
-    const { lucid } = mockLucid("addr_user");
+    const { lucid } = mockLucid(OWNER_ADDR);
     // amount = PER_WINDOW = 50.000 LAMP ở cửa sổ 101; kho chỉ có 100 LAMP.
     await expect(buildRedeemTx({
-      ...base, lucid, currentEpoch: MARK + 1n,
+      ...base, lucid, ...redeemAt(MARK + 1n),
       claimAccountUtxo: claimUtxo(0n, E, MARK, 1n, {}, WIDE),
       treasuryUtxo: treasuryUtxo(lampOildrop(100n)),
       dropBeaconUtxo: dropBeaconUtxo(WIDE),
@@ -1241,9 +1372,9 @@ describe("buildRedeemTx — vested = min(E, isqrt(dpe²·E·A_span²))", () => {
   // chối thẳng, nên off-chain phải NÉM chứ không được kẹp về 0: kẹp làm ví dựng ra một giao
   // dịch mà validator chắc chắn từ chối, và lỗi hiện ra ở nơi không đọc được nguyên nhân.
   it("VESTED-005: A_span âm thì NÉM, không kẹp về 0", async () => {
-    const { lucid } = mockLucid("addr_user");
+    const { lucid } = mockLucid(OWNER_ADDR);
     await expect(buildRedeemTx({
-      ...base, lucid, currentEpoch: MARK,
+      ...base, lucid, ...redeemAt(MARK),
       claimAccountUtxo: claimUtxo(0n, E, MARK + 5n, 1n, {}, WIDE),
       treasuryUtxo: treasuryUtxo(lampOildrop(1_000_000n)),
       dropBeaconUtxo: dropBeaconUtxo(WIDE),
@@ -1576,18 +1707,18 @@ describe("C-SOLV-5 — địa chỉ kho theo input, hai cực enterprise/base", 
   });
 
   it("buildRedeemTx — kho enterprise ⇒ output enterprise (cực 1)", async () => {
-    const { lucid, rec } = mockLucid("addr_user");
+    const { lucid, rec } = mockLucid(OWNER_ADDR);
     await buildRedeemTx({
-      ...rbase, lucid, currentEpoch: 3n,
+      ...rbase, lucid, ...redeemAt(3n),
       claimAccountUtxo: accUtxo(), treasuryUtxo: treAt(entAddr), dropBeaconUtxo: beaconUtxo(),
     });
     expect(treOutAddr(rec)).toBe(entAddr);
   });
 
   it("buildRedeemTx — kho base (có stake cred) ⇒ output GIỮ stake cred (cực 2)", async () => {
-    const { lucid, rec } = mockLucid("addr_user");
+    const { lucid, rec } = mockLucid(OWNER_ADDR);
     await buildRedeemTx({
-      ...rbase, lucid, currentEpoch: 3n,
+      ...rbase, lucid, ...redeemAt(3n),
       claimAccountUtxo: accUtxo(), treasuryUtxo: treAt(baseAddr), dropBeaconUtxo: beaconUtxo(),
     });
     // Dựng lại từ hash sẽ ra `entAddr` ⇒ `trsy_in_addr != trsy_out_addr` ⇒ chuỗi TỪ CHỐI.
