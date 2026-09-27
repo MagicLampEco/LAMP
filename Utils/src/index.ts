@@ -56,7 +56,11 @@ export function msPerEpoch(network: Network): bigint {
   return MS_PER_EPOCH_BY_NETWORK[network];
 }
 
-/** POSIX ms → POSIX-derived epoch number (matches Aiken validator's get_current_epoch). */
+/** POSIX ms → PROTOCOL epoch: `posixMs / ms_per_epoch`, origin = Unix epoch (1970), NOT
+ *  the network genesis. This is the epoch system of every LAMP validator:
+ *  `Distribution/onchain/lib/magiclamp/lampdist/util.ak` ▸ `get_epoch` / `get_epoch_strict`
+ *  (`lower_bound / ms_per_epoch`). It is a different number from the Cardano (chain) epoch
+ *  returned by `slotToEpoch` — see the note above `slotToEpoch`. */
 export function posixMsToEpoch(posixMs: bigint, network: Network): bigint {
   return posixMs / msPerEpoch(network);
 }
@@ -69,49 +73,166 @@ export const MIN_BURN_FOR_OAC    = 1_000_000_000n;  // 1 MAGIC
 // §2.4 Epoch utilities
 // ══════════════════════════════════════════════════════════════
 
-// Cardano genesis UNIX timestamps per network (used as fallback when Blockfrost
-// is unavailable). Preview Shelley genesis: slot 0 = block 1 (2022-10-25).
-export const GENESIS_UNIX: Record<"Preview" | "Preprod" | "Mainnet", number> = {
-  Preview:  1666656000,  // 2022-10-25
-  Preprod:  1654041600,  // 2022-06-01
-  Mainnet:  1596491091,  // 2020-08-03
-};
-
 export type Network = "Preview" | "Preprod" | "Mainnet";
 
-/** slot → epoch (integer division). Must pass the network because slots/epoch differs:
- *    Mainnet:  432_000
- *    Preprod:  432_000   ← mirrors mainnet, NOT preview
- *    Preview:   86_400
- */
-export function slotToEpoch(slot: bigint, network: Network): bigint {
-  return slot / slotsPerEpoch(network);
-}
+// ── Two epoch systems — do not mix them ──────────────────────────────────────
+//   PROTOCOL epoch = posixMs / ms_per_epoch            (`posixMsToEpoch`, `slotToProtocolEpoch`)
+//                    origin 1970; what every LAMP validator computes from validity_range
+//                    and what every `*_epoch` datum field carries.
+//   CHAIN epoch    = the Cardano epoch explorers show   (`slotToEpoch`, `getCurrentEpoch`)
+//                    origin = network genesis, with the Byron era in front of it.
+// Same instant (late 2026-09), Preprod: chain epoch ≈ 315, protocol epoch ≈ 4_144. A chain epoch put
+// into a datum or a validity range is rejected by the validator with no explanation.
 
-/** Get current tip slot from a Lucid-compatible provider.
- *  Falls back to wall-clock estimate using the network's genesis UNIX time.
- *  Hardcoding 1666656000 in callers breaks Preprod/Mainnet — always pass `network`.
- */
-export async function getTipSlot(
-  lucid   : { provider: unknown },
-  network : Network = "Preview",
-): Promise<number> {
-  try {
-    const tip = await (lucid.provider as { getBlock: (s: string) => Promise<{ slot?: number }> })
-      .getBlock("latest");
-    return tip.slot ?? 0;
-  } catch {
-    const genesis = GENESIS_UNIX[network] ?? GENESIS_UNIX.Preview;
-    return Math.max(0, Math.floor(Date.now() / 1000) - genesis);
+/** First Shelley-era slot of each network: its slot number, chain epoch and POSIX time.
+ *  From this slot on every network has slot_length = 1 s (`MS_PER_SLOT`), so slot ↔ time is
+ *  linear; BEFORE it (Byron, 20 s slots) the linear formula is wrong, hence the guards below.
+ *
+ *  Derivation (Byron genesis `startTime` + Shelley hard-fork epoch × Byron epoch duration,
+ *  Byron epoch = 21_600 slots × 20 s = 432_000 s):
+ *    Mainnet  1_506_203_091 + 208 × 432_000 = 1_596_059_091   (HF at epoch 208, slot 208×21_600 = 4_492_800)
+ *    Preprod  1_654_041_600 +   4 × 432_000 = 1_655_769_600   (HF at epoch 4,   slot   4×21_600 =    86_400)
+ *    Preview  no Byron era; Shelley `systemStart` 2022-10-25T00:00:00Z = 1_666_656_000
+ *  Cross-checked against `@lucid-evolution/plutus` 0.1.x ▸ `SLOT_CONFIG_NETWORK`
+ *  (zeroTime/zeroSlot, "Starting at Shelley era"), read 2026-09-27; the test suite re-derives
+ *  the three rows from the Byron start times above. */
+export const SHELLEY_START_BY_NETWORK: Record<Network, { slot: bigint; epoch: bigint; posixMs: bigint }> = {
+  Preview: { slot: 0n,         epoch: 0n,   posixMs: 1_666_656_000_000n },
+  Preprod: { slot: 86_400n,    epoch: 4n,   posixMs: 1_655_769_600_000n },
+  Mainnet: { slot: 4_492_800n, epoch: 208n, posixMs: 1_596_059_091_000n },
+};
+
+/** POSIX seconds of the LINEARLY EXTRAPOLATED slot 0: `slot = unixSec − GENESIS_UNIX[n]`
+ *  holds for every Shelley-era slot. It is NOT the time of the first block on Preprod or
+ *  Mainnet (Byron slots were 20 s long), which is why the old literals were wrong:
+ *  Preprod had the Byron start 1_654_041_600 (off by +1_641_600 s = 1_641_600 slots) and
+ *  Mainnet had 1_596_491_091 (off by +4_924_800 s). Derived from
+ *  `SHELLEY_START_BY_NETWORK` so the two cannot drift:
+ *    Preview 1_666_656_000 · Preprod 1_655_683_200 · Mainnet 1_591_566_291. */
+export const GENESIS_UNIX: Record<Network, number> = Object.fromEntries(
+  (Object.keys(SHELLEY_START_BY_NETWORK) as Network[]).map((n) => {
+    const s = SHELLEY_START_BY_NETWORK[n];
+    return [n, Number(s.posixMs / MS_PER_SLOT - s.slot)];
+  }),
+) as Record<Network, number>;
+
+export const CHAIN_TIME_ERRORS = {
+  PROVIDER_NO_GETBLOCK: "UTILS-TIME-001-PROVIDER-NO-GETBLOCK",
+  PROVIDER_FAILED:      "UTILS-TIME-002-PROVIDER-FAILED",
+  TIP_SLOT_INVALID:     "UTILS-TIME-003-TIP-SLOT-INVALID",
+  PRE_SHELLEY:          "UTILS-TIME-004-PRE-SHELLEY",
+} as const;
+
+/** Chain-time error with a stable code, so callers can tell the causes apart. */
+export class ChainTimeError extends Error {
+  readonly code: string;
+  constructor(code: string, message: string, options?: { cause?: unknown }) {
+    super(`${code}: ${message}`, options);
+    this.name = "ChainTimeError";
+    this.code = code;
   }
 }
 
-/** Get current epoch from a Lucid-compatible provider. */
+function assertShelleySlot(slot: bigint, network: Network): void {
+  const start = SHELLEY_START_BY_NETWORK[network].slot;
+  if (slot < start) {
+    throw new ChainTimeError(
+      CHAIN_TIME_ERRORS.PRE_SHELLEY,
+      `slot ${slot} is before the first Shelley slot ${start} of ${network}; ` +
+        `the 1-slot-per-second conversion does not apply to Byron slots`,
+    );
+  }
+}
+
+/** slot → POSIX ms (Shelley era onward). Throws `PRE_SHELLEY` for Byron slots. */
+export function slotToPosixMs(slot: bigint, network: Network): bigint {
+  assertShelleySlot(slot, network);
+  const s = SHELLEY_START_BY_NETWORK[network];
+  return s.posixMs + (slot - s.slot) * MS_PER_SLOT;
+}
+
+/** slot → PROTOCOL epoch (the validator's system): `posixMsToEpoch(slotToPosixMs(slot))`. */
+export function slotToProtocolEpoch(slot: bigint, network: Network): bigint {
+  return posixMsToEpoch(slotToPosixMs(slot, network), network);
+}
+
+/** slot → CHAIN epoch (the Cardano epoch explorers show), Shelley era onward.
+ *
+ *  ⚠ NOT the protocol epoch. Never use it for a LAMP validity range or `*_epoch` datum
+ *  field — use `slotToProtocolEpoch` / `posixMsToEpoch`.
+ *
+ *  The old body was `slot / slots_per_epoch`, which ignores the Byron era: it was right on
+ *  Preview only, 4 epochs low on Preprod and ~198 epochs low on Mainnet.
+ *  Throws `PRE_SHELLEY` for Byron slots. */
+export function slotToEpoch(slot: bigint, network: Network): bigint {
+  assertShelleySlot(slot, network);
+  const s = SHELLEY_START_BY_NETWORK[network];
+  return s.epoch + (slot - s.slot) / slotsPerEpoch(network);
+}
+
+/** ESTIMATE of the tip slot from a wall clock (`nowMs`, POSIX ms) — never read from the chain.
+ *  This is the old silent fallback of `getTipSlot`, now a separate, explicitly named call:
+ *  it is only as right as the caller's clock and says nothing about whether the node is
+ *  synced. Throws `PRE_SHELLEY` if `nowMs` is before the network's first Shelley slot. */
+export function estimateSlotFromClock(nowMs: bigint, network: Network): bigint {
+  const s = SHELLEY_START_BY_NETWORK[network];
+  if (nowMs < s.posixMs) {
+    throw new ChainTimeError(
+      CHAIN_TIME_ERRORS.PRE_SHELLEY,
+      `time ${nowMs} ms is before the first Shelley slot of ${network} (${s.posixMs} ms)`,
+    );
+  }
+  return s.slot + (nowMs - s.posixMs) / MS_PER_SLOT;
+}
+
+/** Tip slot read from the provider's `getBlock("latest")`. Throws — never falls back:
+ *    `PROVIDER_NO_GETBLOCK` the provider has no `getBlock` (NOTE: `@lucid-evolution` 0.x
+ *                           providers do not implement it; the old code therefore ALWAYS
+ *                           ended in its clock fallback with such a provider)
+ *    `PROVIDER_FAILED`      `getBlock` threw / rejected (original error kept as `cause`)
+ *    `TIP_SLOT_INVALID`     the block has no slot, or it is not a non-negative safe integer
+ *                           (the old `tip.slot ?? 0` turned this into slot 0 = epoch 0)
+ *  Want a clock estimate instead? Call `estimateSlotFromClock` explicitly. */
+export async function getTipSlot(lucid: { provider: unknown }): Promise<number> {
+  const provider = lucid.provider as { getBlock?: unknown } | null | undefined;
+  if (!provider || typeof provider.getBlock !== "function") {
+    throw new ChainTimeError(
+      CHAIN_TIME_ERRORS.PROVIDER_NO_GETBLOCK,
+      `provider has no getBlock(); cannot read the tip slot from the chain`,
+    );
+  }
+  let tip: unknown;
+  try {
+    tip = await (provider.getBlock as (s: string) => Promise<unknown>).call(provider, "latest");
+  } catch (e) {
+    throw new ChainTimeError(
+      CHAIN_TIME_ERRORS.PROVIDER_FAILED,
+      `provider.getBlock("latest") failed: ${e instanceof Error ? e.message : String(e)}`,
+      { cause: e },
+    );
+  }
+  const slot = (tip as { slot?: unknown } | null | undefined)?.slot;
+  if (typeof slot !== "number" || !Number.isSafeInteger(slot) || slot < 0) {
+    throw new ChainTimeError(
+      CHAIN_TIME_ERRORS.TIP_SLOT_INVALID,
+      // String(), not JSON.stringify: the latter throws on bigint and would mask this error.
+      `latest block has no valid slot (got ${typeof slot} ${String(slot)})`,
+    );
+  }
+  return slot;
+}
+
+/** Current CHAIN epoch (the Cardano epoch explorers show), read from the provider tip.
+ *
+ *  ⚠ NOT the protocol epoch the LAMP validators use — do not put it in a validity range or
+ *  a `*_epoch` datum field. For that: `slotToProtocolEpoch(BigInt(await getTipSlot(lucid)), network)`
+ *  or `posixMsToEpoch(nowMs, network)`.
+ *  `network` is required: a default network would silently mis-convert on the other two. */
 export async function getCurrentEpoch(
   lucid   : { provider: unknown },
-  network : Network = "Preview",
+  network : Network,
 ): Promise<bigint> {
-  return slotToEpoch(BigInt(await getTipSlot(lucid, network)), network);
+  return slotToEpoch(BigInt(await getTipSlot(lucid)), network);
 }
 
 // ══════════════════════════════════════════════════════════════

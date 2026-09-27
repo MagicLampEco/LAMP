@@ -18,24 +18,28 @@ const MAGIC = Q;
 // Epoch + conversions
 // ══════════════════════════════════════════════════════════════
 describe("Epoch utilities", () => {
-  it("slotToEpoch Mainnet: 432_000 slots = 1 epoch", () => {
-    expect(slotToEpoch(432_000n, "Mainnet")).toBe(1n);
-    expect(slotToEpoch(863_999n, "Mainnet")).toBe(1n);
-    expect(slotToEpoch(864_000n, "Mainnet")).toBe(2n);
+  // slotToEpoch is the CHAIN epoch: Shelley start epoch + Shelley slots / slots_per_epoch.
+  // The previous version of these tests asserted `slot / slots_per_epoch` on Mainnet and
+  // Preprod (e.g. Mainnet slot 432_000 → epoch 1) — that ignored the Byron era; slot 432_000
+  // is a Byron slot on Mainnet. Flipped deliberately; see `SHELLEY_START_BY_NETWORK`.
+  it("slotToEpoch Mainnet: Shelley starts at slot 4_492_800 = epoch 208, then 432_000 slots/epoch", () => {
+    expect(slotToEpoch(4_492_800n, "Mainnet")).toBe(208n);
+    expect(slotToEpoch(4_492_800n + 431_999n, "Mainnet")).toBe(208n);
+    expect(slotToEpoch(4_492_800n + 432_000n, "Mainnet")).toBe(209n);
   });
-  it("slotToEpoch Preview: 86_400 slots = 1 epoch", () => {
+  it("slotToEpoch Preview: 86_400 slots = 1 epoch, no Byron era", () => {
+    expect(slotToEpoch(0n, "Preview")).toBe(0n);
     expect(slotToEpoch(86_400n, "Preview")).toBe(1n);
     expect(slotToEpoch(172_799n, "Preview")).toBe(1n);
     expect(slotToEpoch(172_800n, "Preview")).toBe(2n);
   });
   // Preprod mirrors MAINNET (ShelleyGenesis epochLength = 432_000), it does NOT mirror Preview.
-  // The previous version of this test asserted 86_400 and passed — a green test that pinned the bug.
-  it("slotToEpoch Preprod: 432_000 slots = 1 epoch (mirrors mainnet, not preview)", () => {
-    expect(slotToEpoch(432_000n, "Preprod")).toBe(1n);
-    expect(slotToEpoch(863_999n, "Preprod")).toBe(1n);
-    expect(slotToEpoch(864_000n, "Preprod")).toBe(2n);
+  it("slotToEpoch Preprod: Shelley starts at slot 86_400 = epoch 4, then 432_000 slots/epoch", () => {
+    expect(slotToEpoch(86_400n, "Preprod")).toBe(4n);
+    expect(slotToEpoch(86_400n + 431_999n, "Preprod")).toBe(4n);
+    expect(slotToEpoch(86_400n + 432_000n, "Preprod")).toBe(5n);
     // a Preview-length span is NOT a full Preprod epoch
-    expect(slotToEpoch(86_400n, "Preprod")).toBe(0n);
+    expect(slotToEpoch(86_400n + 86_400n, "Preprod")).toBe(4n);
   });
   it("Preprod and Preview disagree — grouping them was the bug", () => {
     expect(slotsPerEpoch("Preprod")).not.toBe(slotsPerEpoch("Preview"));
