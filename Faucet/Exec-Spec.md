@@ -126,8 +126,8 @@ môi trường, KHÔNG phải lỗi code** — test files đầy đủ, logic đ
 
 ### 3.3 E2e Preview — CHƯA chạy (gap M4)
 
-Harness 3 bước ([`scripts/`](./scripts/)), đọc `.env` từ `MAGIC/.env`
-(`BLOCKFROST_TOKEN_GREENSUN` + `VEDATA_WALLET_MNEMONIC` — [`config.ts:22-29`](./scripts/config.ts)):
+Harness 3 bước ([`scripts/`](./scripts/)), nhận `BLOCKFROST_KEY` + `WALLET_SEED` qua biến môi
+trường đặt ngay trước lệnh ([`config.ts`](./scripts/config.ts), `assertEnv`):
 
 1. **`00_preflight.ts`** — kiểm tra `.env`, kết nối Blockfrost, ví ≥ 10 tADA, `plutus.json` có 2
    validator. KHÔNG build/submit. ([`00_preflight.ts`](./scripts/00_preflight.ts))
