@@ -6,7 +6,7 @@
 // thiếu thì bài ĐỎ kèm lời nhắc, không tự bỏ qua.
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
-import { validatorToScriptHash } from "@lucid-evolution/lucid";
+import { validatorToAddress, validatorToScriptHash } from "@lucid-evolution/lucid";
 import {
   parseArgs, assertNetworkAllowed, parseCaps, frozenCaps, closureDelta, supplyStateFromCbor,
   supplyStateToCbor, readFrozenBlueprint, assertFrozenReproducesMainnet, applyFrozen, mainnetMintParams,
@@ -92,5 +92,9 @@ describe("tái dựng mã mainnet từ blueprint đóng băng", () => {
     const kho = applyFrozen(bp, "dist_treasury.dist_treasury.spend", [p.distAuthority[0]]);
     expect(validatorToScriptHash({ type: "PlutusV3", script: ss })).toBe(LAMP_MAINNET.supplyStateHash);
     expect(validatorToScriptHash({ type: "PlutusV3", script: kho })).toBe(LAMP_MAINNET.khoHash);
+  });
+  it("lock_vault dựng từ blueprint đóng băng ra đúng địa chỉ ghi ở LAMP_MAINNET.closure", () => {
+    const lock = applyFrozen(bp, "lock_vault.lock_vault.spend", []);
+    expect(validatorToAddress("Mainnet", { type: "PlutusV3", script: lock })).toBe(LAMP_MAINNET.closure!.lockVaultAddress);
   });
 });

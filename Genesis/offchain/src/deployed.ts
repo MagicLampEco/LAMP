@@ -59,6 +59,22 @@ export interface DeployedLamp {
   provenance: { script: string; hash: string; sourceCommit: string; byteMatch: boolean; onChainSize: number | null }[];
   /** Cảnh báo phải đọc trước khi tích hợp. */
   caveats: string[];
+  /**
+   * Bản ghi ĐÓNG policy — chỉ có khi policy đã bị đóng vĩnh viễn bằng giao dịch trên chuỗi.
+   * Vắng = policy chưa đóng. Có mặt KHÔNG thay việc đo: `verify_mainnet_supply.ts` đọc chuỗi
+   * và báo lệch nếu trạng thái thật khác bản ghi này.
+   */
+  closure?: {
+    /** Ngày tx cuối cùng được xác nhận (UTC). */
+    closedAt: string;
+    /** tx đúc nốt quota: sau tx này `dist_minted == dist_cap`. */
+    closeMintTx: string;
+    /** tx gom toàn bộ LAMP từ kho sang `lock_vault`. */
+    closeLockTx: string;
+    /** Địa chỉ script `lock_vault` (spend luôn trả False, không tham số) — nơi LAMP nằm vĩnh viễn. */
+    lockVaultAddress: string;
+    note: string;
+  };
 }
 
 /**
@@ -126,8 +142,21 @@ export const LAMP_MAINNET: DeployedLamp = {
     "Nhánh ReserveDraw KHÔNG dùng được trên bản này: meter_nft_policy = 28 byte 0, nên điều kiện " +
       "count_inputs_holding_nft(...) == 1 không bao giờ thoả ⇒ 9,63 tỷ Reserve không rút được qua policy này.",
     "Kho CHƯA TỪNG BỊ TIÊU: koios /script_info không trả bytecode cho d5e80c9a… — trên Cardano " +
-      "byte của script chỉ lên chain khi nó được dùng. Tức tới 2026-08-12 chưa ai mở kho lần nào.",
+      "byte của script chỉ lên chain khi nó được dùng. Tức tới 2026-08-12 chưa ai mở kho lần nào. " +
+      "(Lần tiêu đầu tiên và duy nhất là tx close-lock 2026-09-27 — xem `closure`.)",
+    "🔒 POLICY ĐÃ ĐÓNG 2026-09-27 (xem `closure`): không đúc thêm được, toàn bộ 26,37 tỷ LAMP nằm " +
+      "vĩnh viễn ở lock_vault. Đây KHÔNG phải token LAMP chính thức sẽ lưu hành.",
   ],
+  closure: {
+    closedAt: "2026-09-27",
+    closeMintTx: "9d0724bd9865b14a6e77cf4495bdf73c41489689f38264e43e7ea2757dcff275",
+    closeLockTx: "8cb8e9abfe318d74cd5f4faaf6e28dd0dd7479e0231f181efa10a1c3bd7ebf9c",
+    lockVaultAddress: "addr1wy5gl6nh5rm8f3sgp2ka3mfu5skdt2fqhu0spsxnucesdeqatlhxl",
+    note:
+      "Đúc nốt dist_cap − dist_minted vào kho (DistributionVest) rồi gom toàn bộ sang lock_vault. " +
+      "ReserveDraw vốn đã chết (meter_nft_policy = 28 byte 0). Công cụ + lượt diễn tập Preprod: " +
+      "Genesis/bootstrap-closure/.",
+  },
 };
 
 /** Tra định danh theo mạng. Ném lỗi thay vì trả undefined — fail-closed. */

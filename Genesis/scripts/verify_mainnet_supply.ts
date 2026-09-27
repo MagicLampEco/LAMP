@@ -1,5 +1,6 @@
 // Genesis/scripts/verify_mainnet_supply.ts — XÁC MINH đường lazy-mint LAMP trên MAINNET.
-// READ-ONLY (koios, không key). Đọc supply_state UTxO + kho, báo cap 36B + headroom còn mint.
+// READ-ONLY (koios, không key). Đọc supply_state UTxO + kho + mọi địa chỉ giữ LAMP, báo cap
+// và policy đã ĐÓNG chưa (đối chiếu `LAMP_MAINNET.closure`; lệch ⇒ mã thoát 1).
 // Chạy: npx tsx verify_mainnet_supply.ts
 
 const KOIOS = "https://api.koios.rest/api/v1";
@@ -75,6 +76,17 @@ async function kpostAll<T>(path: string, body: unknown): Promise<T[]> {
     const page = await kpost<T[]>(`${path}?offset=${offset}&limit=${PAGE}`, body);
     rows.push(...page);
     if (page.length < PAGE) return rows; // trang chưa đầy = hết dữ liệu
+  }
+}
+/** Bản GET của kpostAll — cùng lý do phân trang. `path` đã mang query string. */
+async function kgetAll<T>(path: string): Promise<T[]> {
+  const rows: T[] = [];
+  for (let offset = 0; ; offset += PAGE) {
+    const res = await fetch(`${KOIOS}${path}&offset=${offset}&limit=${PAGE}`, { headers: { accept: "application/json" } });
+    if (!res.ok) throw new Error(`koios ${res.status} ${path}`);
+    const page = (await res.json()) as T[];
+    rows.push(...page);
+    if (page.length < PAGE) return rows;
   }
 }
 
@@ -169,17 +181,63 @@ async function main() {
     console.log(`    ${v}${v === LAMP_MAINNET.khoAddress ? "  (enterprise — bản ghi ở deployed.ts)" : "  ⚠ BIẾN THỂ KHÁC"}`);
   }
 
-  // 3) headroom cho 3 đợt launch
-  const need = { ETD: 12_000_000n, Airdrop: 120_000_000n, SRCL: 381_000_000n }; // LAMP
-  const needOildrop = Object.values(need).reduce((s, x) => s + x, 0n) * OILDROP;
-  console.log(`\nNhu cầu 3 đợt (ETD 12M + Airdrop 120M + SRCL ~381M) = ${lamp(needOildrop)}`);
-  console.log(`Headroom distribution ${(distCap - distMinted) >= needOildrop ? "ĐỦ ✓" : "THIẾU ✗"} (còn ${lamp(distCap - distMinted)}).`);
+  // 3) Policy đã đóng chưa — đo trên chuỗi, đối chiếu với bản ghi `closure` ở deployed.ts.
+  // Bản ghi là lời khai; lời khai không thay phép đo. Lệch ⇒ in ✗ và thoát mã 1.
+  const holders = (await kgetAll<{ payment_address: string; quantity: string }>(
+    `/asset_addresses?_asset_policy=${LAMP_POLICY}&_asset_name=${LAMP_NAME}`,
+  )).map((h) => ({ address: h.payment_address, quantity: BigInt(h.quantity) }));
+  const verdict = closureVerdict(
+    { distMinted, reserveMinted, distCap, khoLamp, holders },
+    LAMP_MAINNET.closure?.lockVaultAddress ?? null,
+  );
+  console.log(`\nĐịa chỉ giữ LAMP của policy này: ${holders.length}`);
+  for (const h of holders) console.log(`    ${h.address}  ${lamp(h.quantity)}`);
 
-  // pickSupplyState() đã bảo đảm thread NFT có mặt (không thì đã ném) ⇒ chỉ còn kiểm cap.
-  console.log(`\nKẾT LUẬN: lazy-mint validator B ${totalCap === 36_000_000_000n * OILDROP ? "ĐÃ wired trên mainnet" : "CẦN kiểm tra thêm"}.`);
-  console.log("Để mint THẬT cho pot: cần (a) registry WHO-gate + khoá authority (Tuân giữ),");
-  console.log("(b) builder advance supply_state + mint→kho + release→pot. Xem HANDOFF.");
+  const c = LAMP_MAINNET.closure;
+  if (c) {
+    console.log(`\nBản ghi đóng (deployed.ts): ${c.closedAt} · close-mint ${c.closeMintTx.slice(0, 8)}… · close-lock ${c.closeLockTx.slice(0, 8)}…`);
+    for (const r of verdict.reasons) console.log(`  ${verdict.closed ? "✓" : "✗"} ${r}`);
+    if (verdict.closed) {
+      console.log(`\nKẾT LUẬN: POLICY ${LAMP_POLICY.slice(0, 8)}… ĐÃ ĐÓNG — không đúc thêm được, toàn bộ`);
+      console.log(`${lamp(distMinted + reserveMinted)} nằm ở lock_vault (spend luôn trả False). Đây KHÔNG phải`);
+      console.log("token LAMP sẽ lưu hành; policy chính thức sẽ là một policy KHÁC.");
+    } else {
+      console.log("\nKẾT LUẬN: ✗ CHUỖI LỆCH VỚI BẢN GHI ĐÓNG ở deployed.ts — đừng tin bản ghi, điều tra.");
+      process.exitCode = 1;
+    }
+  } else {
+    // pickSupplyState() đã bảo đảm thread NFT có mặt (không thì đã ném) ⇒ chỉ còn kiểm cap.
+    console.log(`\nKẾT LUẬN: lazy-mint ${totalCap === 36_000_000_000n * OILDROP ? "ĐÃ wired trên mainnet" : "CẦN kiểm tra thêm"}; ` +
+      `còn đúc được ${lamp(distCap - distMinted)} qua DistributionVest.`);
+  }
   console.log("═".repeat(64));
+}
+
+/**
+ * Phán quyết thuần: policy đã ĐÓNG khi và chỉ khi (1) quota Distribution cạn, (2) kho không còn
+ * LAMP, (3) MỌI LAMP đang tồn tại nằm ở lock_vault, và (4) tổng ở đó bằng đúng tổng đã đúc.
+ * Điều (4) bắt ca có LAMP ở một địa chỉ mà danh sách holders bỏ sót. Không có địa chỉ lock_vault
+ * ⇒ không kết luận được ⇒ `closed: false`.
+ * ReserveDraw không được xét ở đây: nó đã chết từ lúc deploy (meter_nft_policy = 28 byte 0).
+ */
+export function closureVerdict(
+  o: { distMinted: bigint; reserveMinted: bigint; distCap: bigint; khoLamp: bigint;
+       holders: { address: string; quantity: bigint }[] },
+  lockVaultAddress: string | null,
+): { closed: boolean; reasons: string[] } {
+  const minted = o.distMinted + o.reserveMinted;
+  const atLock = o.holders.filter((h) => h.address === lockVaultAddress).reduce((s, h) => s + h.quantity, 0n);
+  const elsewhere = o.holders.filter((h) => h.address !== lockVaultAddress);
+  const checks: [boolean, string][] = [
+    [lockVaultAddress !== null, "có địa chỉ lock_vault để đối chiếu"],
+    [o.distMinted === o.distCap, `dist_minted == dist_cap (${o.distMinted} / ${o.distCap})`],
+    [o.khoLamp === 0n, `kho không còn LAMP (${o.khoLamp})`],
+    [elsewhere.length === 0, `không địa chỉ nào ngoài lock_vault giữ LAMP (${elsewhere.length})`],
+    [atLock === minted, `LAMP ở lock_vault == tổng đã đúc (${atLock} / ${minted})`],
+  ];
+  const closed = checks.every(([ok]) => ok);
+  // Đóng ⇒ liệt kê mọi điều đã thoả; chưa đóng ⇒ chỉ liệt kê điều hỏng, để người đọc thấy ngay chỗ lệch.
+  return { closed, reasons: checks.filter(([ok]) => ok === closed).map(([, r]) => r) };
 }
 // Chỉ chạy khi được gọi TRỰC TIẾP. File này export mấy hàm thuần để test được (tests/
 // verify_supply.test.ts); nếu để main() chạy ở top-level thì mỗi lần import là một lượt bắn

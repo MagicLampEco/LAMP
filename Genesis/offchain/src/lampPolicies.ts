@@ -115,6 +115,8 @@ export const LAMP_POLICY_REGISTRY: readonly LampPolicyRecord[] = [
     caveats: [
       "Bản MỒI. Sẽ bị thay bởi policy uỷ quyền OrgDID — policy id SẼ KHÁC. Đừng nhúng cứng.",
       "Nhánh ReserveDraw chết vĩnh viễn: `meter_nft_policy` = 28 byte 0 (deployed.ts:92-93).",
+      "ĐÃ ĐÓNG 2026-09-27: không đúc thêm được, toàn bộ LAMP của policy này ở lock_vault vĩnh viễn " +
+        "(`LAMP_MAINNET.closure`). `status` giữ `ACTIVE` chỉ vì mainnet chưa có bản thay thế.",
     ],
   },
 

@@ -22,6 +22,12 @@
 > **Ngày phát hành chưa định.** Policy mới chưa tồn tại; đường triển khai và bài diễn tập trên
 > mạng thử nghiệm đang được dựng. Tới lúc đó, `55d3e01b…180f0` vẫn là policy LAMP duy nhất trên
 > mainnet — không có token thứ hai nào đang song song.
+>
+> **Cập nhật 2026-09-27 — bản khởi tạo `55d3e01b…180f0` đã được khai tử trên chuỗi.** Hai giao
+> dịch `9d0724bd…` và `8cb8e9ab…` đúc nốt quota rồi chuyển toàn bộ 26,37 tỷ đơn vị sang một địa chỉ
+> script không ai tiêu được. Policy đó không đúc thêm được, không ai nắm giữ token của nó, và nó
+> không phải token sẽ lưu hành. Kiểm chứng: `Genesis/scripts/verify_mainnet_supply.ts` (read-only)
+> in `ĐÃ ĐÓNG`.
 
 ## 0. Tra cứu nhanh (on-chain, mainnet Cardano)
 

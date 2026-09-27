@@ -6,7 +6,7 @@
 
 ## Vì sao cần một policy mới, chứ không dùng tiếp bản 18/06
 
-Policy LAMP đang chạy trên mainnet — `55d3e01bb6c469e02665e4b6573ce65bbaf7a50ad2024e247eb180f0`,
+Policy LAMP bản mồi trên mainnet (ĐÃ ĐÓNG 2026-09-27, `deployed.ts` `LAMP_MAINNET.closure`) — `55d3e01bb6c469e02665e4b6573ce65bbaf7a50ad2024e247eb180f0`,
 đúc **2026-06-18**, `lifecycle: "bootstrap"`, **8 tham số** — có một ngõ cụt không sửa được:
 
 | | bản mồi mainnet (8 tham số) | bản canonical (runbook này chạy bản **12 tham số**) |

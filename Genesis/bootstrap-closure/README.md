@@ -37,3 +37,5 @@ Hai giao dịch, do khoá `dist_authority` ký:
 
 ReserveDraw đã chết từ lúc deploy (`meter_nft_policy` = 28 byte 0). Lượt diễn tập và các bước mainnet:
 `REHEARSAL.md`.
+
+**Đã đóng trên mainnet 2026-09-27** — hai tx và output `verify-closed`: `REHEARSAL.md` §5.
