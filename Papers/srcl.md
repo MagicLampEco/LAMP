@@ -33,12 +33,12 @@ khi chưa có ai đứng tên nhận. Trạng thái của pháp nhân: `PHAP-NHA
 — văn kiện lâm thời, nhưng phải nêu rõ quyền và nghĩa vụ của người ký, và người ký phải đọc được
 nó trước khi ký. **Không** đếm lượt bấm "đồng ý" với một bản điều khoản dài. Lý do nằm ở đại lượng
 chứ không ở hình thức: một lượt bấm đo được sự có mặt, không đo được sự cam kết, mà thứ SRCL cần
-trước khi chạy là người **nhận việc vận hành**. Ngưỡng này đặt **cao hơn** ngưỡng lập ban quản trị
-DAO — ban quản trị là một nhóm nhỏ điều phối, còn đây là số người chịu trách nhiệm vận hành.
+trước khi chạy là người **nhận việc vận hành**. Ngưỡng là **21 người ký**: MagicLamp Foundation — bên phát hành SRCL — do hội
+đồng DAO lập khi đủ từ 21 thành viên trở lên, sau ETD và Airdrop.
 
 | mã | trạng thái đang mở | ràng buộc TẠM đang có hiệu lực (fail-closed) | khai ở |
 |---|---|---|---|
-| `SRCL-KICH-HOAT-001` | con số ngưỡng, và nội dung văn kiện lâm thời | đại lượng đã định (số người ký văn kiện thành lập); con số và văn kiện chưa công bố ⇒ SRCL **không kích hoạt** | mục này |
+| `SRCL-KICH-HOAT-001` | nội dung văn kiện lâm thời, và cách đếm chữ ký (chữ ký cam kết vào văn kiện nào, có hạn hay không, đếm tại mốc nào) | con số đã định: ≥ 21 người ký văn kiện thành lập. Chưa công bố văn kiện và cách đếm ⇒ SRCL **không kích hoạt** | mục này |
 | `SRCL-PHAP-NHAN-005` | khoảng thời gian giữa **đủ người ký** và **pháp nhân tồn tại** | ngưỡng ở `SRCL-KICH-HOAT-001` đo *ý định thành lập*, không đo *đã thành lập* — hai mốc này không trùng nhau. Chừng nào chưa có mốc đo được cho vế thứ hai ⇒ **cấm** mô tả tài sản SRCL nhận vào là "đã có pháp nhân đứng tên", và đợt 1 giữ bên thụ hưởng là **kho cộng đồng on-chain**, không phải một pháp nhân | mục này; `pot-catalog.md` §3 `PHAP-NHAN-001` |
 | `SRCL-ADMIN-002` | ai giữ `delegation_admin`, lộ trình chuyển giao | chưa công bố ⇒ **cấm** mô tả cơ chế là "bất biến" hoặc "không có admin" trong mọi tài liệu | §8 |
 | `SRCL-UYTHAC-003` | nhánh `publish` của `srcl_stake.ak` nhận mọi certificate ngoài huỷ-đăng-ký, không đòi chữ ký | ⇒ **cấm** mô tả đóng góp của người tham gia là "được bảo đảm" hoặc "không ai can thiệp được". Bản vá **đã tồn tại và đã có bài kiểm** — commit `d1d554c` (PR #16) gác `publish` bằng `list.has(self.extra_signatories, owner)`, kèm ca `n6_publish_delegate_no_sig_rejected`; lần chuyển mã sang thư mục hiện tại lấy một bản cũ hơn nên bản vá không đi theo. Ràng buộc này gỡ được khi commit đó được chuyển lại, không cần viết mới | §8 |
