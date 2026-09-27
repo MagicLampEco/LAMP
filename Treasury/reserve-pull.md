@@ -88,8 +88,10 @@ Treasury-pull thực thi trong **MỘT tx duy nhất**, **4** validator chạy �
 - `reserve_gate` KHÔNG kiểm chi tiết draw của Reserve (reserve_draw tự ép trần/kế toán);
   `reserve_draw` KHÔNG kiểm sàn (gate tự ép). Phân tách trách nhiệm sạch.
 
-Off-chain: gọi `attachGateSpend(txb, gateParams)` để thêm phần gate vào `buildDrawTx`
-(Reserve SDK) đang dựng dở, rồi `.complete()` MỘT lần → 1 tx gộp.
+Off-chain: `buildDrawTx` (Reserve SDK) TỰ dựng phần gate — tiêu auth UTxO (redeemer Void) và tái tạo
+auth NFT về đúng địa chỉ gate (inline Void, value nguyên) — nên KHÔNG gọi thêm `attachGateSpend` lên tx
+của nó (auth sẽ bị tiêu hai lần). `attachGateSpend(txb, gateParams)` dành cho tx dựng tay
+(`Genesis/scripts/25_gated_draw.ts`), rồi `.complete()` MỘT lần → 1 tx gộp.
 
 ## Interface contract (orchestrator chốt khi apply-param)
 

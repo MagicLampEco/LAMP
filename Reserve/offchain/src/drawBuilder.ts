@@ -6,13 +6,25 @@
 //
 //   - Input:  ReserveState UTxO (mang reserve thread NFT) — redeemer Draw.
 //             SupplyState  UTxO (mang SUPPLY NFT)         — redeemer Advance (Genesis).
-//             Treasury auth UTxO (mang Treasury auth NFT) — bằng chứng Treasury-pull.
+//             Treasury auth UTxO (mang Treasury auth NFT) — redeemer Void (reserve_gate).
 //             KHO custody UTxO (mang kho NFT)             — redeemer MigrateIn (Treasury).
 //             ReserveState NFT đóng vai "meter" gate nhịp của Genesis ReserveDraw.
 //   - Mint:   delta oildrop LAMP qua policy lamp_mint, redeemer ReserveDraw (Constr 1).
 //   - Output: ReserveState' (NFT trả lại, drawn_oildrop += delta, last_epoch := epoch).
 //             SupplyState'  (NFT trả lại, reserve_minted += delta).
 //             KHO custody'  (value += delta LAMP **VÀ** một DÒNG SỔ += delta trong datum).
+//             Auth NFT'     (về ĐÚNG địa chỉ gate, inline datum Void, value nguyên như input).
+//
+// ⚠ PHẦN GATE DO BUILDER NÀY DỰNG, KHÔNG ĐỂ CALLER GHÉP THÊM:
+//   Tiêu auth UTxO kích `reserve_gate.spend` (`Treasury/onchain/validators/reserve_gate.ak`),
+//   và validator đó đòi TRONG CÙNG tx: đúng 1 output mang auth NFT (G-DS-1), ở đúng địa chỉ
+//   input kể cả stake credential (G-REOUT-1), inline datum Void (G-DATUM-1), không reference
+//   script (G-REF-1), lovelace không giảm (G-VALUE-1), và parked của kho < sàn (G-FLOOR-1).
+//   Bản cũ `.collectFrom(auth)` mà KHÔNG tái tạo output auth ⇒ mọi lượt draw qua SDK bị gate
+//   từ chối; và nếu gate có ngày bị nới, auth NFT rơi về ví người dựng qua output thối.
+//   Không import `attachGateSpend` của Treasury SDK vì §PHỤ THUỘC MỘT CHIỀU dưới đây — hình
+//   dạng output được dựng lại tại chỗ, gương từng luật G-* ở trên. Caller KHÔNG được gọi thêm
+//   `attachGateSpend` lên tx này: auth UTxO sẽ bị collect hai lần và có hai output auth.
 //
 // ⚠ ĐÍCH KHÔNG PHẢI MỘT ĐỊA CHỈ, MÀ LÀ MỘT DÒNG SỔ — vì sao bản này không còn `reserve_dest`:
 //   Bản cũ rót toàn bộ delta tới ĐỊA CHỈ kho bằng `.pay.ToAddress(...)`, sinh một UTxO KHÔNG
@@ -35,7 +47,7 @@
 // truyền `validFromUnixMs`/`epoch` nhất quán; builder set validFrom để lower_bound = epoch.
 
 import {
-  Data, toUnit, getAddressDetails,
+  Constr, Data, toUnit, getAddressDetails, validatorToScriptHash,
   type Assets, type LucidEvolution, type MintingPolicy, type TxSignBuilder,
   type UTxO, type Validator,
 } from "@lucid-evolution/lucid";
@@ -98,10 +110,27 @@ export interface DrawParams {
    * (Tham chiếu/đối chiếu: reserve_draw đã apply-param gate_script_hash = hash này.)
    */
   gateScriptHash: string;
-  /** redeemer spend Treasury auth UTxO (Treasury validator quản — CBOR). */
-  treasuryAuthRedeemerCbor?: string;
-  /** Treasury validator giữ auth UTxO (đính nếu auth UTxO ở script address). */
-  treasuryAuthScript?: Validator;
+  /**
+   * `reserve_gate` spend validator (đã apply-param) — BẮT BUỘC: auth UTxO luôn ở gate (RDB-002),
+   * nên tiêu nó luôn kích gate. Hash của nó phải khớp `gateScriptHash` (RDB-007).
+   *
+   * Redeemer gate là Void, cố định — không nhận qua tham số (bản cũ nhận `treasuryAuthRedeemerCbor`
+   * tuỳ chọn: bỏ trống thì lucid dựng spend script không redeemer).
+   */
+  gateScript: Validator;
+  /** policy id (hex) + asset name (hex) auth NFT — khớp param `auth_policy`/`auth_name` của gate. */
+  authPolicyId: string;
+  authName: string;
+  /**
+   * SÀN parked (oildrop) — khớp param `floor_oildrop` của reserve_gate. G-FLOOR-1 đo LAMP trong
+   * value của UTxO mang custody NFT; ở đường rút này đó chính là `custodyUtxo` (vai input,
+   * trạng thái VÀO). parked ≥ sàn ⇒ builder ném RDB-009 trước khi dựng.
+   *
+   * Giả định: param `custody_nft_*` của gate trùng `reserveKhoNft*` ở dưới. Lệch thì G-CUST-1
+   * on-chain không tìm thấy custody nào (builder không thêm reference input) ⇒ tx bị từ chối —
+   * hỏng về phía đóng, không mất gì.
+   */
+  floorOildrop: bigint;
 
   /** lamp_mint minting policy + policy id (hex). */
   tlampPolicy: MintingPolicy;
@@ -178,6 +207,47 @@ export function readReserveState(utxo: UTxO): ReserveState {
   return decodeReserveState(Data.from(utxo.datum));
 }
 
+/** Datum/redeemer Void = Constr(0, []) — hình dạng reserve_gate đòi (G-DATUM-1, redeemer `_r: Void`). */
+function voidCbor(): string {
+  return Data.to(new Constr(0, []));
+}
+
+/**
+ * Gương off-chain các luật của `reserve_gate.spend` mà builder này chịu trách nhiệm dựng đúng.
+ * Chạy TRƯỚC khi đụng `p.lucid`.
+ *
+ *   RDB-007  hash(gateScript) == gateScriptHash — script đính phải là script giữ auth UTxO.
+ *   RDB-008  auth UTxO mang ĐÚNG 1 auth NFT (G-AUTH-1); output tái tạo lấy nguyên value này nên
+ *            nó cũng là vế "đúng 1 output mang auth NFT" (G-DS-1).
+ *   RDB-009  parked của kho < sàn (G-FLOOR-1).
+ */
+function assertGateOk(p: DrawParams, lampUnit: string): void {
+  const gateHash = validatorToScriptHash(p.gateScript);
+  if (gateHash !== p.gateScriptHash) {
+    throw new Error(
+      `RDB-007: hash(gateScript) = ${gateHash} khác gateScriptHash (${p.gateScriptHash}) — ` +
+      `script đính không phải script đang giữ auth UTxO, tx sẽ thiếu witness cho reserve_gate.`,
+    );
+  }
+
+  const authUnit = toUnit(p.authPolicyId, p.authName);
+  const authQty = p.treasuryAuthUtxo.assets[authUnit] ?? 0n;
+  if (authQty !== 1n) {
+    throw new Error(
+      `RDB-008: treasuryAuthUtxo không mang đúng 1 auth NFT (${authUnit} = ${authQty}) — ` +
+      `reserve_gate G-AUTH-1 + G-DS-1 đòi đúng 1 ở input và đúng 1 ở output về gate.`,
+    );
+  }
+
+  const parked = p.custodyUtxo.assets[lampUnit] ?? 0n;
+  if (parked >= p.floorOildrop) {
+    throw new Error(
+      `RDB-009: parked (${parked}) ≥ sàn (${p.floorOildrop}) — reserve_gate G-FLOOR-1 chỉ cho kéo ` +
+      `Reserve khi Treasury DƯỚI sàn.`,
+    );
+  }
+}
+
 /** Value thread NFT (1 reserve NFT + min-ADA) cho output ReserveState'. */
 function reserveNftAssets(policyId: string, name: string, minAda: bigint): Assets {
   return {
@@ -225,9 +295,9 @@ function assertCustodyValueOk(
 /**
  * Dựng tx draw. Tính ReserveState' + delta qua applyDraw (kẹp trần/pot; fail-fast nếu
  * t ≤ last_epoch hoặc pot cạn), rồi build: spend ReserveState (Draw) + spend SupplyState
- * (Advance) + spend Treasury auth (Treasury-pull) + spend KHO custody (MigrateIn)
+ * (Advance) + spend Treasury auth (reserve_gate, Void) + spend KHO custody (MigrateIn)
  * + mint delta LAMP (route ReserveDraw) + recreate cả 2 state + tái tạo KHO với
- * value += Δ VÀ dòng sổ += Δ.
+ * value += Δ VÀ dòng sổ += Δ + tái tạo auth NFT về gate.
  */
 export async function buildDrawTx(p: DrawParams): Promise<{
   tx: TxSignBuilder;
@@ -252,6 +322,10 @@ export async function buildDrawTx(p: DrawParams): Promise<{
         "Vector 3: auth ở ví thường/script khác sẽ bị reserve_draw onchain reject.",
     );
   }
+
+  // G-* gate guard: gương `reserve_gate.ak` — xem assertGateOk.
+  const lampUnit = toUnit(p.tlampPolicyId, tokenName);
+  assertGateOk(p, lampUnit);
 
   // Luật 9 guard: kho UTxO phải mang ĐÚNG 1 kho NFT. Không NFT thì on-chain không nhận nó là
   // kho "thật" — `count_inputs_with_nft(...) == 1` sẽ đếm 0 và cả tx chết.
@@ -299,7 +373,6 @@ export async function buildDrawTx(p: DrawParams): Promise<{
   // Fail-fast offchain: ép t>last_epoch + delta>0 (≤trần & ≤pot) + transition đúng.
   const { next: sOut, drawn } = applyDraw(sIn, p.epoch, requested);
 
-  const lampUnit = toUnit(p.tlampPolicyId, tokenName);
   const mintAssets: Assets = { [lampUnit]: drawn };
 
   const reserveOutValue = reserveNftAssets(
@@ -309,7 +382,7 @@ export async function buildDrawTx(p: DrawParams): Promise<{
   // C-MIG-7 guard: value kho ra == value vào ⊕ Δ (phi-lovelace đẳng thức, lovelace chỉ tăng).
   assertCustodyValueOk(p.custodyUtxo.assets, p.custodyOutValue, lampUnit, drawn);
 
-  let txb = p.lucid
+  const txb = p.lucid
     .newTx()
     // ReserveState (Draw) — gate nhịp/meter của Genesis ReserveDraw.
     .collectFrom([p.reserveUtxo], drawRedeemerToCbor())
@@ -317,20 +390,15 @@ export async function buildDrawTx(p: DrawParams): Promise<{
     // SupplyState (Advance) — Genesis cộng reserve_minted += delta.
     .collectFrom([p.supplyUtxo], p.supplyStateRedeemerCbor)
     .attach.SpendingValidator(p.supplyStateScript)
-    // Treasury auth UTxO — bằng chứng Treasury-pull (Treasury co-spend authority NFT).
-    .collectFrom([p.treasuryAuthUtxo], p.treasuryAuthRedeemerCbor)
+    // Treasury auth UTxO (redeemer Void) — kích reserve_gate (ép sàn) + thoả Luật 5 của
+    // reserve_draw. Output tái tạo auth NFT ở dưới là PHẦN BẮT BUỘC của cùng lượt tiêu này.
+    .collectFrom([p.treasuryAuthUtxo], voidCbor())
+    .attach.SpendingValidator(p.gateScript)
     // KHO custody (MigrateIn) — TIÊU kho để chính validator kho ghi Δ vào SỔ (Luật 9+10).
     // Đây là chỗ thay cho `.pay.ToAddress(reserveDest, …)` của bản cũ: kho phải bị TIÊU và
     // TÁI TẠO, không phải được rót thêm một UTxO trần bên cạnh.
     .collectFrom([p.custodyUtxo], p.custodyRedeemerCbor)
-    .attach.SpendingValidator(p.custodyScript);
-
-  // Đính Treasury validator nếu auth UTxO ở script address (co-spend authority).
-  if (p.treasuryAuthScript) {
-    txb = txb.attach.SpendingValidator(p.treasuryAuthScript);
-  }
-
-  txb = txb
+    .attach.SpendingValidator(p.custodyScript)
     // Mint delta LAMP qua route ReserveDraw.
     .mintAssets(mintAssets, p.reserveDrawRedeemerCbor)
     .attach.MintingPolicy(p.tlampPolicy)
@@ -360,6 +428,17 @@ export async function buildDrawTx(p: DrawParams): Promise<{
       p.custodyUtxo.address,
       { kind: "inline", value: p.custodyOutDatumCbor },
       p.custodyOutValue,
+    )
+    // Tái tạo auth NFT về gate (G-REOUT-1 + G-DATUM-1 + G-VALUE-1 + G-REF-1 của reserve_gate).
+    //
+    // Địa chỉ TỪ CHÍNH `treasuryAuthUtxo.address` — G-REOUT-1 ép `auth_out.address ==
+    // own_out.address` KỂ CẢ stake credential; cùng lý do như kho và ReserveState ở trên.
+    // Value = NGUYÊN value input (lovelace không giảm, đúng 1 auth NFT, không asset nào rơi về
+    // ví qua output thối). Inline Void, không reference script.
+    .pay.ToContract(
+      p.treasuryAuthUtxo.address,
+      { kind: "inline", value: voidCbor() },
+      { ...p.treasuryAuthUtxo.assets },
     )
     // validity_range: lower_bound → epoch; upper_bound CÙNG epoch (Luật 2b ghim t).
     .validFrom(p.validFromUnixMs)

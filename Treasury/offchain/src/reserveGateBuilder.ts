@@ -8,7 +8,8 @@
 //
 //   Builder này CHỈ dựng phần GATE: spend auth UTxO + custody THẬT (xem §Vai custody) +
 //   re-output auth về gate. Phần Reserve (spend ReserveState, mint LAMP, recreate ReserveState,
-//   SupplyState…) do Reserve SDK drawBuilder dựng — caller GỘP 2 phần vào 1 tx (xem §Gộp).
+//   SupplyState…) do caller dựng tay — caller GỘP 2 phần vào 1 tx (xem §Gộp). Reserve SDK
+//   `buildDrawTx` thì TỰ dựng cả phần gate, không dùng hàm này.
 //
 // §Vai custody — REFERENCE hay INPUT, và vì sao builder KHÔNG tự chọn:
 //   `reserve_gate.ak` nhánh G-CUST-1 chấp nhận CẢ HAI vai: nó tìm custody UTxO trong tập GỘP
@@ -104,7 +105,9 @@ export interface ReserveGateSpendParams {
  * của custody, không phụ thuộc custody bị tiêu hay không.
  *
  * GỘP với Reserve: caller dùng `attachGateSpend(txb, params)` để thêm phần gate vào
- * một TxBuilder Reserve đang dựng (drawBuilder), rồi `.complete()` MỘT lần → 1 tx duy nhất.
+ * một TxBuilder Reserve DỰNG TAY, rồi `.complete()` MỘT lần → 1 tx duy nhất.
+ * KHÔNG gọi lên tx của `buildDrawTx` (Reserve SDK): builder đó đã tự dựng phần gate, gọi
+ * thêm là tiêu auth UTxO hai lần.
  */
 export function attachGateSpend(
   txb: ReturnType<LucidEvolution["newTx"]>,

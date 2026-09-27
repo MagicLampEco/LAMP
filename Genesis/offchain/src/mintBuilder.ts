@@ -22,7 +22,7 @@
 //
 // Flow (khớp luật onchain):
 //   - Input:  SupplyState UTxO (mang thread NFT) — spend redeemer Advance.
-//   - Mint:   Δ oildrop LAMP qua policy lamp_mint, redeemer DistributionVest|ReserveDraw.
+//   - Mint:   Δ oildrop LAMP qua policy lamp_mint, redeemer DistributionVest (GMB-011).
 //   - Output: SupplyState' tại CÙNG script address, mang lại thread NFT, datum cập nhật
 //             (dist_minted hoặc reserve_minted += Δ); + Δ tLAMP trả `recipient`.
 //   - Ref:    CHỈ nhánh 14 tham số — registry UTxO (mang registry NFT) + kho UTxO (mang kho
@@ -87,6 +87,8 @@
 // input không datum. Chỗ hở thật là ở HÌNH DẠNG datum, và docstring cũ còn bảo `"d87980"` là
 // đủ cho cả hai nhánh. Guard mới:
 //   GMB-010 — nhánh 14 tham số: `recipientDatum` phải giải mã được thành TreasuryDatum.
+//   GMB-011 — `route` ≠ DistributionVest. Builder chỉ dựng hình dạng DistributionVest; nhận
+//     ReserveDraw mà dựng hình dạng đó là dựng tx on-chain chắc chắn từ chối.
 //
 // LƯU Ý KIẾN TRÚC: builder KHÔNG tự gắn signature — nó addSigner(authority) để Lucid
 // yêu cầu ví ký. Caller (script/ví) cấp khóa thật. tx.mint thread NFT == 0 (không đụng
@@ -128,8 +130,11 @@ export interface MintParamsCommon {
   /** policy id thread NFT (hex) — để định vị NFT trong value. */
   threadPolicyId: string;
 
-  /** Đường mint + lượng oildrop. */
-  route: MintRoute;
+  /** Đường mint + lượng oildrop. CHỈ `DistributionVest` (GMB-011) — builder này không dựng
+   *  được hình dạng ReserveDraw (meter spend + kho custody MigrateIn); tx đó do
+   *  `Reserve/offchain/src/drawBuilder.ts` dựng. Kiểu hẹp ở đây chặn lúc biên dịch; GMB-011
+   *  là lưới runtime cho JS thuần và chỗ ép kiểu bằng `as`. */
+  route: Extract<MintRoute, "DistributionVest">;
   amount: bigint;
 
   /** Người nhận tLAMP đã mint (bech32 address).
@@ -343,6 +348,19 @@ export async function buildMintTx(p: MintParams): Promise<{
         `chuyển sang mintParamCount: 14, đừng nhét ref-input vào bản 8.`,
       );
     }
+  }
+
+  // ── GMB-011: builder CHỈ dựng DistributionVest ─────────────────────────────
+  // Bản trước nhận `route: "ReserveDraw"`, cộng `reserve_minted` vào SupplyState' nhưng vẫn dựng
+  // hình dạng DistributionVest (không tiêu meter NFT, không tiêu kho custody MigrateIn, rót Δ
+  // vào `recipient`). On-chain ReserveDraw từ chối hình dạng đó — tốn phí, và tệ hơn: ai đọc
+  // kiểu `MintRoute` sẽ tin builder này làm được đường Reserve. Ném, đừng dựng.
+  if ((p.route as string) !== "DistributionVest") {
+    throw new Error(
+      `GMB-011: route "${String(p.route)}" không được hỗ trợ — buildMintTx CHỈ dựng DistributionVest. ` +
+      `Tx ReserveDraw (tiêu meter NFT + kho custody MigrateIn) dựng bằng ` +
+      `Reserve/offchain/src/drawBuilder.ts::buildDrawTx.`,
+    );
   }
 
   const sIn = readSupplyState(p.supplyUtxo);
