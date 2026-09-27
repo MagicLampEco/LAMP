@@ -127,7 +127,7 @@ pot không vận hành phần tương ứng, chứ không vận hành tạm rồ
 |---|---|---|---|
 | 9 · Foundation | pháp nhân chưa lập | **không** giữ tài sản trọng yếu trước khi có pháp nhân; khoá vĩnh viễn chỉ thực hiện sau khi lập | §3 pot 9 |
 | `PHAP-NHAN-001` (áp cho pot 9 · 14 · 15) | quốc gia đặt pháp nhân, hình thức pháp nhân, quy chế của nó | đã định **hướng**: pháp nhân đặt ở **nước ngoài**, lập bởi cộng đồng DAO hình thành từ Airdrop. Chừng nào chưa công bố đủ ba thứ đang mở ⇒ **cấm** mọi tài liệu mô tả Foundation như pháp nhân **đang tồn tại**, **cấm** nêu một quốc gia cụ thể như đã chọn, và pot 9 giữ trạng thái **chưa-mint** | §3 pot 9, pot 14; `srcl.md` §1 |
-| 15 · SRCL | đại lượng đo ngưỡng kích hoạt (`SRCL-KICH-HOAT-001`) · người giữ `delegation_admin` (`SRCL-ADMIN-002`) | ngưỡng = 21 người ký, văn kiện và cách đếm chưa công bố ⇒ **không kích hoạt**; admin chưa công bố ⇒ **cấm** mô tả cơ chế là "bất biến"/"không admin" | `srcl.md` §1, §8 |
+| 15 · SRCL | đại lượng đo ngưỡng kích hoạt (`SRCL-KICH-HOAT-001`) · người giữ `delegation_admin` (`SRCL-ADMIN-002`) | ngưỡng = 21; đơn vị đếm, văn kiện và cách đếm chưa công bố ⇒ **không kích hoạt**; admin chưa công bố ⇒ **cấm** mô tả cơ chế là "bất biến"/"không admin" | `srcl.md` §1, §8 |
 | 17 · RedBack | phạm vi CARP ↔ LAMP | quỹ peg thuộc tài liệu riêng của CARP; kho này **không** định nghĩa lại điều kiện hy sinh quỹ | `srcl.md` §5 đợt 2 |
 | 18 · Liquidity | điều kiện pháp lý để cấp thanh khoản | **chưa kích hoạt**; không cặp nào được mở trước khi có kết luận tư vấn cho khu vực tương ứng | §3 pot 18 |
 
