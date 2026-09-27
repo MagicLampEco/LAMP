@@ -61,6 +61,22 @@ export function allItemsValid(
     && itemAccepted(it, accepted));
 }
 
+// ── Nhánh DEPOSIT (P7, CONTRACT §15.2) — mirror `collect.ak` ▸ `deposit_bps` / `deposit_items_valid` ──
+
+/** Tỉ lệ "cắt" của Deposit = 100%. `itemCut(amount, DEPOSIT_BPS) === amount` đúng tuyệt đối,
+ *  nên `cutValue` / `applyCut` / `planLedgerOut` / `ledgerOk` / `valueOk` áp nguyên văn. */
+export const DEPOSIT_BPS = 10_000n;
+
+/** C-DEP-5 + C-DEP-CAT: đúng cổng `allItemsValid` của Collect VÀ mọi `amount > 0`
+ *  (chặt hơn `≥ 0` của Collect). */
+export function depositItemsValid(
+  items: CollectItem[],
+  accepted: CustodyDatum["accepted_assets"],
+  declaredBuckets: CustodyDatum["buckets"],
+): boolean {
+  return items.every((it) => it.amount > 0n) && allItemsValid(items, accepted, declaredBuckets);
+}
+
 /** C-COL-CAT: `category` phải nằm trong danh sách bucket đã khai lúc seed
  *  (khớp `onchain/lib/magiclamp/treasury/buckets.ak` ▸ `is_declared`). */
 export function isDeclaredBucket(buckets: CustodyDatum["buckets"], category: bigint): boolean {

@@ -73,6 +73,20 @@
 //   C-STK-ADDR      cust_out.address == cust_in.address (GHIM CẢ stake credential).
 //   C-STK-REFSCRIPT cust_out.reference_script == None.
 //
+// Nhánh DEPOSIT ÉP (P7 — nạp 100%; PERMISSIONLESS; CONTRACT §15.2). Chép ĐỦ Collect:
+//   C-DEP-MINT  KHÔNG mint/burn.
+//   C-DEP-1     ĐÚNG 1 custody input + 1 custody output theo PAYMENT SCRIPT HASH.
+//   C-NFT       cust_in/out mang đúng 1 NFT (seed_policy, instance_id).
+//   C-DEP-2     params instance bảo toàn (id, accepted, governance_ref, cut_bps, buckets, consumed).
+//   C-EPOCH     out.epoch == get_epoch(tx) ∧ get_epoch(tx) ≥ in.epoch.
+//   C-DEP-ADDR / C-DEP-REFSCRIPT  như Collect.
+//   C-DEP-5     Mọi item: amount > 0 (CHẶT hơn Collect) + asset ∈ accepted_assets.
+//   C-DEP-CAT   Mọi item: category ∈ datum.buckets ∧ không phải bucket dành riêng.
+//   C-DEP-11    Σ nạp per-asset > 0 (chặn items == [] — respend no-op).
+//   C-DEP-3     Sổ: ledger_out == ledger_in + Σamount tại (category, asset), CANONICAL.
+//   C-DEP-LINES Sổ ra ≤ `ledger.max_ledger_lines` dòng.
+//   C-DEP-4     Value: cust_out.value == cust_in.value ⊕ Σamount.
+//
 // C-STK-7 ĐO ĐỘ TĂNG RÒNG, nên KHÔNG cần thêm một chốt NET riêng: C-STK-1 ép đúng một
 // input kho và đúng một output kho, và Δ là hiệu lovelace giữa CHÍNH hai UTxO đó. Mọi
 // đường "rút lại từ kho trong cùng tx" — tiêu thêm một UTxO kho, mở một output kho thứ
@@ -120,7 +134,7 @@ use magiclamp/treasury/migrate
 use magiclamp/treasury/release
 use magiclamp/treasury/stake_reward
 use magiclamp/treasury/types.{
-  Collect, CustodyDatum, CustodyRedeemer, Executed, MigrateIn, Release,
+  Collect, CustodyDatum, CustodyRedeemer, Deposit, Executed, MigrateIn, Release,
   StakeRewardIn,
 }
 use magiclamp/treasury/util
@@ -523,7 +537,89 @@ validator custody(
         True
       }
 
-      // v1 triển khai Collect + Release + MigrateIn + StakeRewardIn; Rebalance ở v1.x.
+      // ── DEPOSIT (P7, CONTRACT §15.2): nạp 100% — bản chép ĐỦ ràng buộc của Collect ──
+      // Phép thử đối chứng: Collect có 22 lời `expect` (đếm ở nhánh trên, kể cả hai lời giải mã
+      // datum); nhánh này có ĐÚNG 22, cùng thứ tự, khác ba chỗ: (1) C-DEP-5 đòi `amount > 0` (Collect `≥ 0`); (2) sổ và
+      // value tính với `collect.deposit_bps` = 100% thay cho `datum.cut_bps`; (3) tên mã C-DEP-*.
+      // Không vế nào yếu hơn Collect.
+      Deposit { items } -> {
+        // C-DEP-MINT: tuyệt đối không mint/burn.
+        expect assets.is_zero(tx.mint)
+
+        // C-DEP-1: đúng 1 custody input + 1 custody output theo PAYMENT SCRIPT HASH.
+        expect util.count_inputs_at_script(tx.inputs, own_hash) == 1
+        expect util.count_outputs_at_script(tx.outputs, own_hash) == 1
+
+        let cust_in = util.input_at_script(tx.inputs, own_hash)
+        let cust_out = util.output_at_script(tx.outputs, own_hash)
+
+        // C-DEP-2: params instance bảo toàn (chỉ ledger + epoch được đổi).
+        expect InlineDatum(od) = cust_out.datum
+        expect out_datum: CustodyDatum = od
+        expect out_datum.instance_id == datum.instance_id
+        expect out_datum.accepted_assets == datum.accepted_assets
+        expect out_datum.governance_ref == datum.governance_ref
+        expect out_datum.cut_bps == datum.cut_bps
+        // C-BUCKETS-KEEP: nhánh thứ NĂM tiêu kho cũng phải mang `buckets` qua nguyên vẹn —
+        // thiếu ở đây thì Deposit thành cửa ghi lại danh sách đóng mà C-COL-CAT dựa vào.
+        expect out_datum.buckets == datum.buckets
+        // Deposit KHÔNG đụng marker single-use proposal.
+        expect out_datum.consumed_proposals == datum.consumed_proposals
+
+        // C-NFT: cust_in/out mang đúng 1 NFT authenticity (seed_policy, instance_id).
+        expect
+          assets.quantity_of(cust_in.value, seed_policy, datum.instance_id) == 1
+        expect
+          assets.quantity_of(cust_out.value, seed_policy, out_datum.instance_id) == 1
+
+        // C-EPOCH: neo epoch vào chain GỌN 1 epoch (không lùi, không đóng băng).
+        let cur = util.get_epoch_bounded(tx, ms_per_epoch)
+        expect cur >= datum.epoch
+        expect out_datum.epoch == cur
+
+        // C-DEP-2 (custody tách ví): output custody ở SCRIPT. Hệ quả của C-DEP-1 như ở
+        // Collect (`output_at_script` đã lọc Script) — giữ để bất biến đọc được tại chỗ.
+        expect !util.is_vk(cust_out.address)
+
+        // C-DEP-ADDR (F2): địa chỉ kho GIỮ NGUYÊN, kể cả stake credential. Deposit là nhánh
+        // permissionless thứ ba — không ghim thì người nạp đổi stake credential của kho.
+        expect cust_out.address == cust_in.address
+
+        // C-DEP-REFSCRIPT (F3): không đính script tham chiếu vào kho.
+        expect cust_out.reference_script == None
+
+        // C-DEP-5 + C-DEP-CAT: amount > 0, asset ∈ accepted, category ∈ `datum.buckets`,
+        // category KHÔNG là bucket dành riêng (Reserve / thưởng uỷ quyền) — cùng cổng Collect.
+        expect
+          collect.deposit_items_valid(items, datum.accepted_assets, datum.buckets)
+
+        // C-DEP-11: Σ nạp per-asset > 0. Với C-DEP-5 (mọi amount > 0) vế này chỉ còn chặn
+        // `items == []` — respend no-op miễn phí gây tranh chấp UTxO kho, như C-COL-11.
+        expect !assets.is_zero(collect.cut_value(items, collect.deposit_bps))
+
+        // C-DEP-3: sổ tăng ĐÚNG Σamount tại (category, asset), CANONICAL, ≤ trần số dòng
+        // (`ledger.is_canonical` trong `collect.ledger_ok` — C-DEP-LINES).
+        expect
+          collect.ledger_ok(
+            datum.ledger,
+            out_datum.ledger,
+            items,
+            collect.deposit_bps,
+          )
+
+        // C-DEP-4: value_out == value_in ⊕ Σamount — mọi asset khác NGUYÊN, không rút gì.
+        expect
+          collect.value_ok(
+            cust_in.value,
+            cust_out.value,
+            items,
+            collect.deposit_bps,
+          )
+
+        True
+      }
+
+      // Triển khai Collect + Release + MigrateIn + StakeRewardIn + Deposit; Rebalance ở v1.x.
       _ -> fail
     }
   }

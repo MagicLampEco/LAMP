@@ -368,4 +368,30 @@ proposal chỉ cần biết NFT của kho đích (công khai trên chuỗi), kh�
   release dương khác (`release_happy`, `release_batch_multi`, hai ca prune, `cap_release_at_cap_ok`). Ca âm hai kho KHÔNG đỏ ở đột biến này (kho B vẫn tính lệch hash) — vế "đúng tham số" do các
   ca dương ghim, không do ca âm.
 
+### 15.2 `Deposit` — nạp 100% vào kho
+
+**Lỗ được bịt.** Collect chỉ ghi `cut = ⌊amount × cut_bps / 10000⌋` vào sổ; phần dư là của bên nộp. Các
+khoản phải vào kho TRỌN VẸN — ADA thưởng staking của SRCL, LAMP dư khi Sweep, số dư quét từ kho cũ lúc chuyển
+pha governance — không có đường nào: đi Collect với `cut_bps < 10000` thì sổ ghi thiếu, còn gửi thẳng tới địa
+chỉ kho thì tài sản nằm ngoài sổ và không nhánh nào tiêu lại được.
+
+**Chốt.** Redeemer `Deposit { items: List<CollectItem> }`, Constr index **5** (thêm ở cuối; 0..4 giữ nguyên).
+PERMISSIONLESS như Collect. Ràng buộc = TOÀN BỘ ràng buộc của Collect, cùng thứ tự, khác đúng ba chỗ:
+1. **C-DEP-5**: mọi item `amount > 0` (Collect `≥ 0`).
+2. Sổ và value tính với `deposit_bps = 10000` (hằng trong `collect.ak`), KHÔNG đọc `datum.cut_bps`:
+   **C-DEP-3** `ledger_out == ledger_in + Σamount` tại `(category, asset)`, canonical, ≤ `max_ledger_lines`;
+   **C-DEP-4** `value_out == value_in ⊕ Σamount`.
+3. Mã ràng buộc mang tiền tố `C-DEP-*`.
+
+Giữ nguyên từ Collect: không mint/burn · đúng 1 input + 1 output kho theo payment script hash · NFT chứng thực
+ở cả hai đầu · params instance bảo toàn (kể cả `buckets`, `consumed_proposals`) · epoch neo chuỗi, không lùi ·
+địa chỉ kho giữ nguyên kể cả stake credential · không reference script · category ∈ `buckets` và KHÔNG là hai
+bucket dành riêng (sổ của chúng mang nghĩa nguồn gốc — Reserve-inflow và thưởng uỷ quyền của chính kho) ·
+`Σ nạp per-asset > 0` (chặn `items == []`).
+
+`app_id` trong item Deposit là nhãn nguồn cho kiểm toán, KHÔNG phải tín dụng VP (§3.4 F8 vẫn áp).
+
+Gương off-chain: `planDeposit` / `buildDepositTx` (`Treasury/offchain/src/depositBuilder.ts`),
+`depositItemsValid` / `DEPOSIT_BPS` (`collect.ts`); `seedPolicy` BẮT BUỘC như Release.
+
 Đơn vị dùng chung: `1 LAMP = 1_000_000 oildrop` (khớp `Utils.OILDROP_PER_LAMP`).

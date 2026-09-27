@@ -121,4 +121,14 @@ pub type CustodyRedeemer {
   // ⚠ Constr index 4 — thêm Ở CUỐI để index 0..3 (Collect/Release/Rebalance/MigrateIn)
   // giữ nguyên với offchain `encodeCustodyRedeemer` (Treasury/tests/datum.test.ts).
   StakeRewardIn { amount: Int }
+  // NẠP 100% vào kho (P7, CONTRACT §15.2): khoản phải vào kho TRỌN VẸN — ADA thưởng staking của
+  // SRCL, LAMP dư khi Sweep, số dư quét từ kho cũ khi chuyển pha governance. PERMISSIONLESS như
+  // `Collect`, cùng mọi ràng buộc của nó, nhưng mỗi item vào sổ ĐỦ `amount` (không cắt `cut_bps`)
+  // và `amount > 0` (chặt hơn `≥ 0` của Collect).
+  // Tái dùng `CollectItem` chứ không đặt `DepositItem`: cần đúng năm trường ấy (asset, amount,
+  // category + `app_id` làm nhãn nguồn cho kiểm toán), và nhờ đó `collect.all_items_valid` /
+  // `ledger_ok` / `value_ok` áp NGUYÊN VĂN với cut_bps = 10000 — một nguồn logic, không bản sao
+  // nào trôi riêng. ⚠ `app_id` ở đây KHÔNG phải tín dụng VP (CONTRACT §3.4 F8 vẫn áp).
+  // ⚠ Constr index 5 — thêm Ở CUỐI để 0..4 giữ nguyên.
+  Deposit { items: List<CollectItem> }
 }

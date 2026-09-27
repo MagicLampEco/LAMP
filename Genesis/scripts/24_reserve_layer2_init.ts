@@ -41,7 +41,7 @@ import {
   assertCustodyKhoPair, custodySeedRefFromEnv, findOwnedCustodySeed, refKey, sameRef,
 } from "./_custodySeedRef.js";
 import { floorSourceWarning } from "./_floorLabel.js";
-import { requiredHashParam } from "./_guards.js";
+import { requiredHashParam, requiredHexParam } from "./_guards.js";
 import { custodyDatumToCbor } from "../../Treasury/offchain/src/datum.js";
 import { mintAuthRedeemerToCbor } from "../../Treasury/offchain/src/reserveAuthBuilder.js";
 import { Constr, Data } from "@lucid-evolution/lucid";
@@ -112,6 +112,27 @@ function governanceRef(): string {
       "nhánh Release của két không bao giờ thoả ⇒ két chỉ nhận, không bao giờ chi, và lượt " +
       "sinh one-shot KHÔNG làm lại được",
   }).value;
+}
+
+/**
+ * CARP mà kho chung nhận. `accepted_assets` bất biến sau lượt sinh one-shot, nên thiếu CARP ở
+ * đây là kho không bao giờ nhận CARP — không có chế độ placeholder.
+ */
+function carpAsset(): { policy: string; name: string } {
+  const policy = requiredHashParam("CARP_POLICY_ID", {
+    env: process.env,
+    submit: true,
+    warn: console.warn,
+    consequence: "kho chung không bao giờ nhận CARP, và lượt sinh one-shot KHÔNG làm lại được",
+  }).value;
+  const name = requiredHexParam("CARP_TOKEN_NAME", {
+    env: process.env,
+    submit: true,
+    warn: console.warn,
+    placeholder: "",
+    consequence: "kho chung không bao giờ nhận CARP, và lượt sinh one-shot KHÔNG làm lại được",
+  }).value;
+  return { policy, name };
 }
 
 async function main(): Promise<void> {
@@ -215,7 +236,7 @@ async function main(): Promise<void> {
       .pay.ToContract(cust.custodyAddr,
         { kind: "inline",
           value: custodyDatumToCbor(
-            custodySeedDatum(wiring.lampPid, wiring.tokenName, governanceRef()),
+            custodySeedDatum(wiring.lampPid, wiring.tokenName, governanceRef(), carpAsset()),
           ) },
         { lovelace: RESERVED_MIN_ADA, [cust.custodyNftUnit]: 1n })
       .addSigner(walletAddr)

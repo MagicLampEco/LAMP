@@ -114,4 +114,7 @@ export type CustodyRedeemer =
   // Constr index 4 — thêm Ở CUỐI để 0..3 giữ nguyên với mọi bản đã mã hoá trước đó.
   // `amount` = Δ lovelace KHAI BÁO; validator ép nó khớp ĐẲNG THỨC với độ tăng lovelace
   // thực của UTxO kho, nên khai dối chỉ làm tx bị từ chối.
-  | { kind: "StakeRewardIn"; amount: bigint };
+  | { kind: "StakeRewardIn"; amount: bigint }
+  // Constr index 5 (P7, CONTRACT §15.2) — nạp 100%: mỗi item vào sổ ĐỦ `amount`, không cắt
+  // `cut_bps`. Tái dùng `CollectItem` như on-chain (`types.ak` ▸ `Deposit`).
+  | { kind: "Deposit"; items: CollectItem[] };

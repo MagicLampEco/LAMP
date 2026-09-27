@@ -74,6 +74,34 @@ pub fn all_items_valid(
   )
 }
 
+// ── Nhánh DEPOSIT (P7, CONTRACT §15.2) — nạp 100%, dùng lại toàn bộ logic Collect ──
+
+/// Tỉ lệ "cắt" của `Deposit`: 10000 bps = 100%. `item_cut(amount, deposit_bps) == amount` đúng
+/// tuyệt đối (amount × 10000 / 10000, không làm tròn), nên `ledger_ok` / `value_ok` / `cut_value`
+/// của Collect áp nguyên văn cho Deposit. Hằng này KHÔNG đọc từ datum: `datum.cut_bps` là của
+/// Collect, còn Deposit theo định nghĩa không cắt.
+pub const deposit_bps: Int = 10000
+
+/// C-DEP-5 + C-DEP-CAT: mọi item hợp lệ theo ĐÚNG cổng của Collect (`all_items_valid`: category ∈
+/// `buckets`, không phải bucket dành riêng Reserve/thưởng uỷ quyền, asset ∈ accepted) VÀ
+/// `amount > 0` — chặt hơn `≥ 0` của Collect: một item 0 trong khoản nạp trọn vẹn không mang
+/// nghĩa gì ngoài phình redeemer.
+///
+/// Hai id dành riêng bị loại vì sổ của chúng mang nghĩa NGUỒN GỐC — Δ đúc Reserve (`MigrateIn`)
+/// và thưởng uỷ quyền của CHÍNH kho (`StakeRewardIn`). Nạp permissionless vào đó làm sai nghĩa
+/// ấy; ADA thưởng staking của SRCL là tiền của bên khác, vào bucket khai báo như mọi khoản nạp.
+pub fn deposit_items_valid(
+  items            : List<CollectItem>,
+  accepted         : List<AssetKey>,
+  declared_buckets : List<Int>,
+) -> Bool {
+  list.all(items, fn(it) { it.amount > 0 }) && all_items_valid(
+    items,
+    accepted,
+    declared_buckets,
+  )
+}
+
 // ── Δ kỳ vọng cho sổ ──
 
 /// Tổng cut kỳ vọng cho 1 dòng (bucket=category, asset) từ items.

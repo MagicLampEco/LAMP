@@ -634,9 +634,40 @@ export const VOID_DATUM = Data.to(new Constr(0, []));
  * (`Treasury/CONTRACT.md §5`). Bản trước điền `""` lặng lẽ; nay `custody_seed.ak` luật
  * S-GOV-0 từ chối thẳng, và cổng dưới đây bắt sớm hơn với câu nói được nguyên nhân.
  */
+/**
+ * Danh sách bucket ĐÓNG của kho chung (C-COL-CAT, `Treasury/CONTRACT.md §14`). Bất biến đời
+ * instance — không nhánh nào thêm được bucket sau lượt sinh.
+ *   0 feecover  — CARP của pot TxFee (nguồn trả phí mạng).
+ *   1 community
+ *   2 parked
+ * Hai bucket dành riêng (Reserve-inflow, thưởng uỷ quyền) KHÔNG có ở đây — `custody_seed`
+ * từ chối danh sách chứa chúng; sổ của chúng do nhánh MigrateIn / StakeRewardIn ghi.
+ */
+export const CUSTODY_BUCKETS: readonly bigint[] = [0n, 1n, 2n];
+
+/**
+ * Tỉ lệ cắt của Collect ở kho chung: 100%. Kho chung không trả phần dư về cho ai — mọi
+ * khoản Collect vào đây là của kho trọn vẹn. BẤT BIẾN đời instance (`custody.ak` C-COL-2).
+ */
+export const CUSTODY_CUT_BPS = 10_000n;
+
 export function custodySeedDatum(
   lampPid: string, tokenName: string, governanceRef: string,
+  carp: { policy: string; name: string },
 ): CustodyDatum {
+  // `accepted_assets` BẤT BIẾN sau lượt sinh (C-COL-2 ở mọi nhánh), và lượt sinh dùng NFT
+  // one-shot ⇒ quên CARP ở đây là kho KHÔNG BAO GIỜ nhận CARP được nữa.
+  if (!/^[0-9a-f]{56}$/.test(carp.policy) || carp.policy === "00".repeat(28)) {
+    throw new Error(
+      `CARP-REF-001: policy CARP = "${carp.policy}" — cần policy id 28 byte (56 hex thường), khác 0. ` +
+        `accepted_assets bất biến sau lượt sinh one-shot: sai ở đây là kho không bao giờ nhận CARP.`,
+    );
+  }
+  if (!/^([0-9a-f]{2}){1,32}$/.test(carp.name)) {
+    throw new Error(
+      `CARP-REF-002: tên token CARP = "${carp.name}" — cần hex thường, 1..32 byte.`,
+    );
+  }
   if (!/^[0-9a-fA-F]{56}$/.test(governanceRef)) {
     throw new Error(
       `GOV-REF-001: governance_ref = "${governanceRef}" — cần script hash 28 byte (56 ký tự hex). ` +
@@ -651,12 +682,14 @@ export function custodySeedDatum(
     accepted_assets: [
       { policy: lampPid, name: tokenName },
       { policy: "", name: "" },                       // "" / "" = lovelace (quy ước types.ts:10-11)
+      { policy: carp.policy, name: carp.name },
     ],
     ledger: [],
-    cut_bps: 1000n,
+    cut_bps: CUSTODY_CUT_BPS,
     governance_ref: governanceRef,
     epoch: 0n,
     consumed_proposals: [],
+    buckets: [...CUSTODY_BUCKETS],
   };
 }
 

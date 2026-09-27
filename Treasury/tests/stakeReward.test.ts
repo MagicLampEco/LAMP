@@ -75,10 +75,11 @@ describe("CustodyRedeemer StakeRewardIn", () => {
     expect(back).toEqual({ kind: "StakeRewardIn", amount: big });
   });
 
-  it("ĐỎ: Constr 5 (nhánh chưa tồn tại) bị từ chối, không đọc nhầm thành nhánh 4", () => {
+  // Constr 5 nay là `Deposit` (P7, CONTRACT §15.2) ⇒ index chưa tồn tại đầu tiên là 6.
+  it("ĐỎ: Constr 6 (nhánh chưa tồn tại) bị từ chối, không đọc nhầm thành nhánh 4", () => {
     expect(() => decodeCustodyRedeemer(new (Data.from(custodyRedeemerToCbor(
       { kind: "StakeRewardIn", amount: 1n },
-    )).constructor as never)(5, [1n]) as never)).toThrow(/TDATUM-124/);
+    )).constructor as never)(6, [1n]) as never)).toThrow(/TDATUM-124/);
   });
 });
 
