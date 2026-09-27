@@ -4,7 +4,7 @@
 // "có inline datum". Import file script không bắn koios — main() có guard argv.
 
 import { describe, it, expect } from "vitest";
-import { pickSupplyState, parseSupplyDatum, type KoiosUtxo } from "../scripts/verify_mainnet_supply.js";
+import { pickSupplyState, parseSupplyDatum, closureVerdict, type KoiosUtxo } from "../scripts/verify_mainnet_supply.js";
 import { LAMP_MAINNET } from "../offchain/src/deployed.js";
 
 const THREAD = LAMP_MAINNET.mintParams.find((p) => p.name === "thread_nft_policy")!.cborHex.slice(4);
@@ -54,5 +54,50 @@ describe("parseSupplyDatum", () => {
 
   it("ném khi datum không đúng 4 field", () => {
     expect(() => parseSupplyDatum({ inline_datum: datum(1, 2) })).toThrow(/chờ 4/);
+  });
+});
+
+describe("closureVerdict", () => {
+  const LOCK = LAMP_MAINNET.closure!.lockVaultAddress;
+  const CAP = 26_370_000_000_000_000n;
+  const closedObs = {
+    distMinted: CAP, reserveMinted: 0n, distCap: CAP, khoLamp: 0n,
+    holders: [{ address: LOCK, quantity: CAP }],
+  };
+
+  it("trạng thái mainnet sau hai tx đóng ⇒ ĐÃ ĐÓNG", () => {
+    expect(closureVerdict(closedObs, LOCK).closed).toBe(true);
+  });
+
+  it("quota chưa cạn ⇒ chưa đóng", () => {
+    const r = closureVerdict({ ...closedObs, distMinted: CAP - 1n, holders: [{ address: LOCK, quantity: CAP - 1n }] }, LOCK);
+    expect(r.closed).toBe(false);
+    expect(r.reasons.join()).toMatch(/dist_minted == dist_cap/);
+  });
+
+  it("kho còn LAMP ⇒ chưa đóng", () => {
+    expect(closureVerdict({ ...closedObs, khoLamp: 1n }, LOCK).closed).toBe(false);
+  });
+
+  it("một địa chỉ ngoài lock_vault giữ LAMP ⇒ chưa đóng (dù tổng ở lock_vault vẫn khớp)", () => {
+    // lock_vault giữ ĐỦ tổng đã đúc ⇒ chỉ chốt "ngoài lock_vault" phân biệt được ca này.
+    const r = closureVerdict({ ...closedObs, holders: [{ address: LOCK, quantity: CAP }, { address: "addr1qxx", quantity: 5n }] }, LOCK);
+    expect(r.closed).toBe(false);
+    expect(r.reasons.join()).toMatch(/ngoài lock_vault/);
+  });
+
+  it("holders thiếu một phần (tổng ở lock_vault < tổng đã đúc) ⇒ chưa đóng", () => {
+    const r = closureVerdict({ ...closedObs, holders: [{ address: LOCK, quantity: CAP - 5n }] }, LOCK);
+    expect(r.closed).toBe(false);
+    expect(r.reasons.join()).toMatch(/tổng đã đúc/);
+  });
+
+  it("không có địa chỉ lock_vault ⇒ không kết luận ĐÃ ĐÓNG", () => {
+    expect(closureVerdict(closedObs, null).closed).toBe(false);
+  });
+
+  it("không có địa chỉ lock_vault ⇒ không kết luận ĐÃ ĐÓNG, kể cả khi cung = 0 làm mọi phép so tổng tự khớp", () => {
+    const empty = { distMinted: 0n, reserveMinted: 0n, distCap: 0n, khoLamp: 0n, holders: [] };
+    expect(closureVerdict(empty, null).closed).toBe(false);
   });
 });

@@ -2,7 +2,8 @@
 
 Mục đích: chạy đúng hai giao dịch sẽ đóng policy mainnet `55d3e01b…180f0`, trên Preprod, bằng
 **cùng mã** (thư mục `onchain/` cạnh tệp này), trên một trạng thái dựng lại giống mainnet.
-Công cụ: `Genesis/scripts/bootstrap_closure.ts`. Không có giao dịch mainnet nào được gửi.
+Công cụ: `Genesis/scripts/bootstrap_closure.ts`. §1–§4 chỉ gồm giao dịch Preprod; lượt chạy
+mainnet sau đó ghi ở §5.
 
 ## 1. Mã dùng trong lượt diễn tập là mã đang chạy mainnet
 
@@ -107,7 +108,38 @@ Hai điều đã đo được khi dựng phép thử, ghi lại vì cả hai là
 - Khuôn v5 mặc định của endpoint đó trả `{"ScriptFailures":{}}` rỗng khi script hỏng. Công cụ dùng
   khuôn v6 và chỉ tính là "bị từ chối" khi mã lỗi là 3010; mọi lỗi khác in ⚪ "không đo được".
 
-## 5. Mainnet — các bước dự kiến (chưa chạy)
+## 5. Mainnet — đã chạy 2026-09-27
+
+| tx | hash | block | phí (lovelace) | cỡ (byte) |
+|---|---|---|---|---|
+| close-mint | `9d0724bd9865b14a6e77cf4495bdf73c41489689f38264e43e7ea2757dcff275` | 13993953 | 343035 | 3387 |
+| close-lock | `8cb8e9abfe318d74cd5f4faaf6e28dd0dd7479e0231f181efa10a1c3bd7ebf9c` | 13993985 | 193850 | 809 |
+
+Số liệu lấy từ koios `tx_info`. Bản ghi giữ duy nhất: `offchain/src/deployed.ts` khối `LAMP_MAINNET.closure`.
+
+`verify-closed --network Mainnet --confirm-mainnet-closure` sau tx2 — output thô:
+
+```
+  SupplyState: dist_minted=26370000000000000 dist_cap=26370000000000000 ⇒ dist_minted==dist_cap: true
+               reserve_minted=0 reserve_cap=9630000000000000
+  tổng cung on-chain (55d3e01bb6c469e02665e4b6573ce65bbaf7a50ad2024e247eb180f04c414d50): 26370000000000000
+  số asset name dưới policy: 1 (4c414d50)
+  LAMP ở lock_vault addr1wy5gl6nh5rm8f3sgp2ka3mfu5skdt2fqhu0spsxnucesdeqatlhxl: 26370000000000000
+  LAMP ở nơi khác: 0 (không địa chỉ nào)
+  Phép thử âm (chỉ evaluate, không ký, không gửi):
+  ✅ DistributionVest 1 oildrop · UPLC cục bộ: BỊ SCRIPT TỪ CHỐI
+  ✅ DistributionVest 1 oildrop · nút mạng (Ogmios qua Blockfrost): BỊ SCRIPT TỪ CHỐI
+  ✅ ReserveDraw 1 oildrop · UPLC cục bộ: BỊ SCRIPT TỪ CHỐI
+  ✅ ReserveDraw 1 oildrop · nút mạng (Ogmios qua Blockfrost): BỊ SCRIPT TỪ CHỐI
+  ✅ spend lock_vault · UPLC cục bộ: BỊ SCRIPT TỪ CHỐI
+  ✅ spend lock_vault · nút mạng (Ogmios qua Blockfrost): BỊ SCRIPT TỪ CHỐI
+  KẾT LUẬN: ĐÃ ĐÓNG — quota cạn, mọi LAMP ở lock_vault, ba phép thử âm đều bị từ chối.
+```
+
+(Mỗi dòng ✅ gốc kèm nguyên văn lỗi script; đã lược ở đây.) Bộ kiểm công khai không cần ví
+`Genesis/scripts/verify_mainnet_supply.ts` đo lại cùng trạng thái và in `ĐÃ ĐÓNG`.
+
+Các bước đã theo, giữ nguyên để đối chiếu:
 
 Tham số phí mainnet và Preprod giống nhau (koios `cli_protocol_params`, 2026-09-27: `txFeePerByte 44`,
 `txFeeFixed 155381`, `priceMemory 0.0577`, `priceSteps 7.21e-05`), và tx mainnet cùng hình dạng, cùng

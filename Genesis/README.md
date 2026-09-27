@@ -1,11 +1,14 @@
 # Genesis — phát hành LAMP (lazy-mint, trần 36 tỷ ép trên chuỗi)
 
-> **Đây là module DUY NHẤT của repo đang chạy trên mainnet.** Mọi module khác chưa deploy,
-> hoặc chỉ chạy ở mạng thử nghiệm. Đọc mục "Trạng thái thật" ở cuối trước khi dùng.
+> **Policy mainnet duy nhất của module này, `55d3e01b…180f0` (bản mồi), ĐÃ ĐÓNG VĨNH VIỄN
+> 2026-09-27** — quota cạn, toàn bộ LAMP của nó nằm ở `lock_vault`. Bản ghi + hai tx:
+> `offchain/src/deployed.ts` khối `LAMP_MAINNET.closure`; công cụ: `bootstrap-closure/`.
+> Policy chính thức chưa phát hành. Mọi module khác chưa deploy, hoặc chỉ chạy ở mạng thử
+> nghiệm. Đọc mục "Trạng thái thật" ở cuối trước khi dùng.
 
 | | |
 |---|---|
-| **Policy LAMP (mainnet)** | `55d3e01bb6c469e02665e4b6573ce65bbaf7a50ad2024e247eb180f0` |
+| **Policy bản mồi (mainnet, ĐÃ ĐÓNG)** | `55d3e01bb6c469e02665e4b6573ce65bbaf7a50ad2024e247eb180f0` |
 | **Asset name** | `4c414d50` = "LAMP" (testnet dùng `744c414d50` = "tLAMP" — hai token độc lập) |
 | **Trần Distribution** | 26.370.000.000 LAMP |
 | **Trần Reserve** | 9.630.000.000 LAMP |

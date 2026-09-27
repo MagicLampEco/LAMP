@@ -6,15 +6,21 @@ Viết bằng [Aiken](https://aiken-lang.org/) (Plutus V3), off-chain bằng Typ
 
 | | |
 |---|---|
-| **Policy LAMP (mainnet)** | `55d3e01bb6c469e02665e4b6573ce65bbaf7a50ad2024e247eb180f0` |
-| **Asset** | `55d3e01b….4c414d50` — tên hiển thị **MagicLamp**, mã **LAMP** |
+| **Policy LAMP chính thức (mainnet)** | **chưa phát hành** — đang diễn tập trên mạng thử nghiệm |
 | **Tổng cung** | 36.000.000.000 LAMP — **cố định, không đốt** |
 | **Đơn vị con** | 1 LAMP = 1.000.000 **oildrop** (decimals 6) |
-| **Tra cứu** | [cexplorer.io/policy/55d3e01b…](https://cexplorer.io/policy/55d3e01bb6c469e02665e4b6573ce65bbaf7a50ad2024e247eb180f0) |
 | **Giấy phép mã nguồn** | Apache-2.0 |
 
-Trần 36 tỷ **không nằm trong tài liệu** — nó nằm trong datum của một UTxO trên chuỗi mang thread
-NFT `SUPPLY`. Tự kiểm chứng, không cần khoá, không cần tin ai:
+> **Policy bản mồi `55d3e01b…180f0` ĐÃ ĐÓNG VĨNH VIỄN (2026-09-27).** Đây là policy khởi tạo
+> đúc năm 2026-06-18, **không phải** token LAMP sẽ lưu hành. Hai giao dịch đóng:
+> [`9d0724bd…`](https://cexplorer.io/tx/9d0724bd9865b14a6e77cf4495bdf73c41489689f38264e43e7ea2757dcff275)
+> đúc nốt quota, rồi
+> [`8cb8e9ab…`](https://cexplorer.io/tx/8cb8e9abfe318d74cd5f4faaf6e28dd0dd7479e0231f181efa10a1c3bd7ebf9c)
+> chuyển toàn bộ 26,37 tỷ đơn vị sang một địa chỉ script không ai tiêu được. Nó không đúc thêm
+> được, và không ai giữ token của nó. Chi tiết: [`Genesis/bootstrap-closure/`](Genesis/bootstrap-closure/).
+
+Trạng thái trên chuỗi **không nằm trong tài liệu** — nó nằm trong datum của một UTxO mang thread
+NFT `SUPPLY` và trong danh sách địa chỉ giữ token. Tự kiểm chứng, không cần khoá, không cần tin ai:
 
 ```bash
 cd Genesis/scripts && npx tsx verify_mainnet_supply.ts
