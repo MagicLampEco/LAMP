@@ -110,6 +110,13 @@ describe("pickNextRedeem — chọn lượt rút kế tiếp", () => {
   it("danh sách rỗng ⇒ null", () => {
     expect(pickNextRedeem([], beacon, treasury(0n), w, TRIM_FLOOR, 1n)).toBeNull();
   });
+
+  it("một feeder hai tài khoản (chuỗi không chặn đúc trùng tên) ⇒ trả ref, hoà thì ref nhỏ hơn", () => {
+    const xs = [{ ...acc("aa", E), ref: "ff#1" }, { ...acc("aa", E), ref: "11#0" }];
+    const p = pickNextRedeem(xs, beacon, treasury(0n), w, TRIM_FLOOR, 1n);
+    expect(p).toEqual({ pkh: "aa", amount: TRIM_FLOOR, ref: "11#0" });
+    expect(pickNextRedeem([...xs].reverse(), beacon, treasury(0n), w, TRIM_FLOOR, 1n)).toEqual(p);
+  });
 });
 
 describe("chunk — lô gom", () => {
