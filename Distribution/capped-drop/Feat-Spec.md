@@ -120,7 +120,9 @@ người rút **tự đặt lại gốc thời gian của chính mình**.
   `rate_root` đã post lần cuối. Đây là khác biệt hành vi lớn so với mọi thiết kế cần một giao
   dịch mỗi cửa sổ: **không có phụ thuộc liveness**.
 - **Tốc độ chỉ được nới.** Committee tăng `rate_root` thì mọi người nhanh hơn kể từ cửa sổ đó;
-  họ **không** hạ được. Quyền siết nằm ở kênh cắt ngọn, nơi nó chỉ hoãn chứ không xoá.
+  họ **không** hạ được — và đã nới thì không siết lại được, mỗi lượt tối đa +10%, khoảng 49 lượt
+  là chạm trần 100× (CONTRACT v3 §3b, CD-RATE-ROOT-SYM). Quyền siết nằm ở kênh cắt ngọn, nơi nó
+  chỉ hoãn chứ không xoá; kênh đó hiện chưa có biên cho κ (CONTRACT v3 §9, CD-TRIM-KAPPA-BOUND).
 
 ### 3.3 Rút (permissionless)
 
