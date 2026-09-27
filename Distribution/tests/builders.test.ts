@@ -141,6 +141,14 @@ function bcnUtxo(d: BeaconDatum): UTxO {
   };
 }
 
+/** ms mỗi cửa sổ cho các ca `buildClaimTx` — builder SUY `start_epoch` từ `validFromMs / msPerEpoch`. */
+const CLAIM_MSPE = 432_000_000n;
+/** Cặp lo/hi CÙNG cửa sổ `e` (giữa cửa sổ, qua `epochWindow`) + `msPerEpoch` — thay cho `currentEpoch` rời. */
+function claimAt(e: bigint): { msPerEpoch: bigint; validFromMs: bigint; validToMs: bigint } {
+  const w = epochWindow(CLAIM_MSPE, e * CLAIM_MSPE + CLAIM_MSPE / 2n);
+  return { msPerEpoch: CLAIM_MSPE, validFromMs: w.loMs, validToMs: w.hiMs };
+}
+
 /** Tham số `beacon` mà `buildClaimTx` v3 đòi — BẮT BUỘC ở cả CREATE lẫn UPDATE. */
 function bcnParam(d: BeaconDatum = bcnDatum()) {
   return { utxo: bcnUtxo(d), datum: d };
@@ -256,7 +264,7 @@ describe("buildClaimTx — CREATE path", () => {
     const { lucid, rec } = mockLucid("addr_wallet");
     const res = await buildClaimTx({
       lucid, claimScript: FAKE_CLAIM, network: NETWORK,
-      ownerPkh: OWNER, amount: lampOildrop(250n), currentEpoch: 5n,
+      ownerPkh: OWNER, amount: lampOildrop(250n), ...claimAt(5n),
       committeeKeyHashes: COMMITTEE, treasury: trsyParam(0n), accountNft: accNft,
       beacon: bcnParam(),
     });
@@ -292,7 +300,7 @@ describe("buildClaimTx — CREATE path", () => {
     const { lucid } = mockLucid("addr_wallet");
     await expect(buildClaimTx({
       lucid, claimScript: FAKE_CLAIM, network: NETWORK,
-      ownerPkh: OWNER, amount: lampOildrop(250n), currentEpoch: 5n,
+      ownerPkh: OWNER, amount: lampOildrop(250n), ...claimAt(5n),
       committeeKeyHashes: COMMITTEE, treasury: trsyParam(0n), accountNft: accNft,
       beacon: bcnParam(),
       dropsPerEpoch: 0n,
@@ -308,7 +316,7 @@ describe("buildClaimTx — CREATE path", () => {
     const { lucid } = mockLucid("addr_wallet");
     const base = {
       lucid, claimScript: FAKE_CLAIM, network: NETWORK,
-      ownerPkh: OWNER, amount: lampOildrop(250n), currentEpoch: 5n,
+      ownerPkh: OWNER, amount: lampOildrop(250n), ...claimAt(5n),
       committeeKeyHashes: COMMITTEE, treasury: trsyParam(0n), accountNft: accNft,
       beacon: bcnParam(),
     };
@@ -331,10 +339,12 @@ describe("buildClaimTx — CREATE path", () => {
     const { lucid } = mockLucid("addr_wallet");
     await expect(buildClaimTx({
       lucid, claimScript: FAKE_CLAIM, network: NETWORK,
-      ownerPkh: OWNER, amount: lampOildrop(250n), currentEpoch: 5n,
+      ownerPkh: OWNER, amount: lampOildrop(250n), msPerEpoch: CLAIM_MSPE,
       committeeKeyHashes: COMMITTEE, treasury: trsyParam(0n), accountNft: accNft,
       beacon: bcnParam(),
       validFromMs: 5n * 432_000_000n,
+      // Kiểu nay bắt buộc `validToMs`; ca này giả lập bên gọi JavaScript không kiểu bỏ trống nó.
+      validToMs: undefined as unknown as bigint,
     })).rejects.toThrow(/CREATE-002/);
   });
 
@@ -343,7 +353,7 @@ describe("buildClaimTx — CREATE path", () => {
     const w = epochWindow(432_000_000n, 5n * 432_000_000n + 432_000_000n / 2n);
     const res = await buildClaimTx({
       lucid, claimScript: FAKE_CLAIM, network: NETWORK,
-      ownerPkh: OWNER, amount: lampOildrop(250n), currentEpoch: w.epoch,
+      ownerPkh: OWNER, amount: lampOildrop(250n), msPerEpoch: CLAIM_MSPE,
       committeeKeyHashes: COMMITTEE, treasury: trsyParam(0n), accountNft: accNft,
       beacon: bcnParam(),
       validFromMs: w.loMs, validToMs: w.hiMs,
@@ -359,7 +369,7 @@ describe("buildClaimTx — CREATE path", () => {
     const { lucid } = mockLucid("addr_wallet");
     await expect(buildClaimTx({
       lucid, claimScript: FAKE_CLAIM, network: NETWORK,
-      ownerPkh: OWNER, amount: lampOildrop(250n), currentEpoch: 5n,
+      ownerPkh: OWNER, amount: lampOildrop(250n), ...claimAt(5n),
       committeeKeyHashes: COMMITTEE, treasury: trsyParam(0n), accountNft: accNft,
       beacon: bcnParam(),
       dropsPerEpoch: -1n,
@@ -379,11 +389,72 @@ describe("buildClaimTx — CREATE path", () => {
     const { lucid } = mockLucid("addr_wallet");
     await expect(buildClaimTx({
       lucid, claimScript: FAKE_CLAIM, network: NETWORK,
-      ownerPkh: OWNER, amount: lampOildrop(250n), currentEpoch: 5n,
+      ownerPkh: OWNER, amount: lampOildrop(250n), ...claimAt(5n),
       committeeKeyHashes: COMMITTEE, treasury: trsyParam(0n), accountNft: accNft,
       beacon: bcnParam(),
       dropsPerEpoch: NaN as unknown as bigint,
     })).rejects.toThrow(/CLAIM-004/);
+  });
+});
+
+// ── Cửa sổ SUY từ validity range (C-CLAIM-6, C-ACC-2/3 — `util.get_epoch_strict`) ──────────
+// Bản trước nhận `currentEpoch` rời khỏi cặp lo/hi (và cặp đó còn tuỳ chọn): epoch lệch cửa
+// sổ của lo/hi thì `start_epoch` + `index_at_start` ghi vào datum là của một cửa sổ khác cửa
+// sổ validator tính ⇒ bị từ chối.
+describe("buildClaimTx — cửa sổ suy từ validity (get_epoch_strict)", () => {
+  const create = () => ({
+    lucid: mockLucid("addr_wallet").lucid, claimScript: FAKE_CLAIM, network: NETWORK,
+    ownerPkh: OWNER, amount: lampOildrop(250n),
+    committeeKeyHashes: COMMITTEE, treasury: trsyParam(0n), accountNft: accNft,
+    beacon: bcnParam(),
+  });
+  const at = (lo: bigint, hi: bigint) => ({ msPerEpoch: CLAIM_MSPE, validFromMs: lo, validToMs: hi });
+
+  it("start_epoch = validFromMs / msPerEpoch, và a₀ tính ở CÙNG cửa sổ đó", async () => {
+    const res = await buildClaimTx({ ...create(), ...at(7n * CLAIM_MSPE + 10n, 7n * CLAIM_MSPE + 20n) });
+    expect(res.currentEpoch).toBe(7n);
+    expect(res.newDatum.start_epoch).toBe(7n);
+    // Số tính tay: A(7) = 1.000.000 + 100.000·(7 − 3) = 1.400.000.
+    expect(res.newDatum.index_at_start).toBe(1_400_000n);
+  });
+
+  it("lo và hi ở ms CUỐI cùng cửa sổ ⇒ vẫn cửa sổ đó (chia SÀN, không làm tròn)", async () => {
+    const end = 8n * CLAIM_MSPE - 1n;
+    const res = await buildClaimTx({ ...create(), ...at(end - 1n, end) });
+    expect(res.newDatum.start_epoch).toBe(7n);
+  });
+
+  it("CLAIM-043: hi chạm biên cửa sổ sau ⇒ từ chối (cực đối của ca trên: hi lớn hơn 1 ms)", async () => {
+    await expect(buildClaimTx({ ...create(), ...at(8n * CLAIM_MSPE - 2n, 8n * CLAIM_MSPE) }))
+      .rejects.toThrow(/CLAIM-043/);
+  });
+
+  it("CLAIM-040: msPerEpoch ≤ 0 hoặc không phải bigint", async () => {
+    await expect(buildClaimTx({ ...create(), ...at(10n, 20n), msPerEpoch: 0n })).rejects.toThrow(/CLAIM-040/);
+    await expect(buildClaimTx({ ...create(), ...at(10n, 20n), msPerEpoch: undefined as unknown as bigint }))
+      .rejects.toThrow(/CLAIM-040/);
+  });
+
+  it("CLAIM-041: validFromMs âm hoặc thiếu; 0 thì qua", async () => {
+    await expect(buildClaimTx({ ...create(), ...at(-1n, 20n) })).rejects.toThrow(/CLAIM-041/);
+    await expect(buildClaimTx({ ...create(), ...at(undefined as unknown as bigint, 20n) }))
+      .rejects.toThrow(/CLAIM-041/);
+    const ok = await buildClaimTx({ ...create(), ...at(0n, 20n) });
+    expect(ok.newDatum.start_epoch).toBe(0n);
+  });
+
+  it("CLAIM-042: validToMs ≤ validFromMs; lớn hơn 1 ms thì qua", async () => {
+    await expect(buildClaimTx({ ...create(), ...at(7n * CLAIM_MSPE + 5n, 7n * CLAIM_MSPE + 5n) }))
+      .rejects.toThrow(/CLAIM-042/);
+    const ok = await buildClaimTx({ ...create(), ...at(7n * CLAIM_MSPE + 5n, 7n * CLAIM_MSPE + 6n) });
+    expect(ok.newDatum.start_epoch).toBe(7n);
+  });
+
+  it("tx mang ĐÚNG cặp lo/hi đã truyền", async () => {
+    const { lucid, rec } = mockLucid("addr_wallet");
+    await buildClaimTx({ ...create(), lucid, ...at(7n * CLAIM_MSPE + 10n, 7n * CLAIM_MSPE + 20n) });
+    expect(rec.validFrom).toEqual([Number(7n * CLAIM_MSPE + 10n)]);
+    expect(rec.validTo).toEqual([Number(7n * CLAIM_MSPE + 20n)]);
   });
 });
 
@@ -409,7 +480,7 @@ describe("buildClaimTx — UPDATE path", () => {
     const DUST = toUnit("ab".repeat(28), "cafe");
     const res = await buildClaimTx({
       lucid, claimScript: FAKE_CLAIM, network: NETWORK,
-      ownerPkh: OWNER, amount: lampOildrop(60n), currentEpoch: 9n,
+      ownerPkh: OWNER, amount: lampOildrop(60n), ...claimAt(9n),
       claimAccountUtxo: claimUtxo(prev, { [DUST]: 7n }),
       committeeKeyHashes: COMMITTEE, treasury: trsyParam(0n),
       beacon: bcnParam(),
@@ -443,11 +514,12 @@ describe("buildClaimTx — UPDATE path", () => {
     };
     await expect(buildClaimTx({
       lucid, claimScript: FAKE_CLAIM, network: NETWORK,
-      ownerPkh: OWNER, amount: lampOildrop(60n), currentEpoch: 9n,
+      ownerPkh: OWNER, amount: lampOildrop(60n), msPerEpoch: CLAIM_MSPE,
       claimAccountUtxo: claimUtxo(prev),
       committeeKeyHashes: COMMITTEE, treasury: trsyParam(0n),
       beacon: bcnParam(),
       validFromMs: 9n * 432_000_000n,
+      validToMs: undefined as unknown as bigint,   // bên gọi JavaScript không kiểu bỏ trống
     })).rejects.toThrow(/CREATE-002: đường UPDATE/);
   });
 
@@ -455,7 +527,7 @@ describe("buildClaimTx — UPDATE path", () => {
     const { lucid } = mockLucid("addr_wallet");
     await expect(buildClaimTx({
       lucid, claimScript: FAKE_CLAIM, network: NETWORK,
-      ownerPkh: OWNER, amount: 0n, currentEpoch: 1n, committeeKeyHashes: COMMITTEE, treasury: trsyParam(0n),
+      ownerPkh: OWNER, amount: 0n, ...claimAt(1n), committeeKeyHashes: COMMITTEE, treasury: trsyParam(0n),
       beacon: bcnParam(),
     })).rejects.toThrow(/amount must be > 0/);
   });
@@ -470,7 +542,7 @@ describe("buildClaimTx — UPDATE path", () => {
     };
     await expect(buildClaimTx({
       lucid, claimScript: FAKE_CLAIM, network: NETWORK,
-      ownerPkh: OWNER, amount: lampOildrop(60n), currentEpoch: 9n,
+      ownerPkh: OWNER, amount: lampOildrop(60n), ...claimAt(9n),
       claimAccountUtxo: claimUtxo(prev),
       committeeKeyHashes: COMMITTEE, treasury: trsyParam(0n),
       beacon: bcnParam(),
@@ -488,7 +560,7 @@ describe("buildClaimTx — UPDATE path", () => {
     };
     await expect(buildClaimTx({
       lucid, claimScript: FAKE_CLAIM, network: NETWORK,
-      ownerPkh: OWNER, amount: 1n, currentEpoch: 1n,
+      ownerPkh: OWNER, amount: 1n, ...claimAt(1n),
       claimAccountUtxo: claimUtxo(prev),
       committeeKeyHashes: COMMITTEE, treasury: trsyParam(0n),
       beacon: bcnParam(),
@@ -503,7 +575,7 @@ describe("buildClaimTx — UPDATE path", () => {
     };
     await expect(buildClaimTx({
       lucid, claimScript: FAKE_CLAIM, network: NETWORK,
-      ownerPkh: OWNER, amount: 1n, currentEpoch: 1n,
+      ownerPkh: OWNER, amount: 1n, ...claimAt(1n),
       claimAccountUtxo: claimUtxo(prev), committeeKeyHashes: COMMITTEE, treasury: trsyParam(0n),
       beacon: bcnParam(),
     })).rejects.toThrow(/ownerPkh mismatch/);
@@ -516,14 +588,14 @@ describe("buildClaimTx — UPDATE path", () => {
     for (const bad of ["aabb", OWNER + "00", OWNER.slice(0, 54), "zz".repeat(28)]) {
       await expect(buildClaimTx({
         lucid, claimScript: FAKE_CLAIM, network: NETWORK,
-        ownerPkh: bad, amount: 1n, currentEpoch: 1n,
+        ownerPkh: bad, amount: 1n, ...claimAt(1n),
         committeeKeyHashes: COMMITTEE, treasury: trsyParam(0n),
         beacon: bcnParam(),
       })).rejects.toThrow(/CLAIM-007/);
     }
     await expect(buildClaimTx({
       lucid, claimScript: FAKE_CLAIM, network: NETWORK,
-      ownerPkh: "0x" + OWNER.toUpperCase(), amount: 1n, currentEpoch: 1n,
+      ownerPkh: "0x" + OWNER.toUpperCase(), amount: 1n, ...claimAt(1n),
       committeeKeyHashes: COMMITTEE, treasury: trsyParam(0n),
       beacon: bcnParam(),
     })).rejects.not.toThrow(/CLAIM-007/);
@@ -533,7 +605,7 @@ describe("buildClaimTx — UPDATE path", () => {
     const { lucid } = mockLucid("addr_wallet");
     await expect(buildClaimTx({
       lucid, claimScript: FAKE_CLAIM, network: NETWORK,
-      ownerPkh: OWNER, amount: 1n, currentEpoch: 1n,
+      ownerPkh: OWNER, amount: 1n, ...claimAt(1n),
       committeeKeyHashes: COMMITTEE, treasury: trsyParam(0n),
       beacon: bcnParam(),
       signerKeyHashes: [COMMITTEE[0]!],   // 1 < threshold 2
@@ -1417,7 +1489,7 @@ describe("buildClaimTx — solvency guard tích hợp", () => {
     const { lucid } = mockLucid("addr_wallet");
     await expect(buildClaimTx({
       lucid, claimScript: FAKE_CLAIM, network: NETWORK,
-      ownerPkh: OWNER, amount: lampOildrop(600n), currentEpoch: 5n,
+      ownerPkh: OWNER, amount: lampOildrop(600n), ...claimAt(5n),
       committeeKeyHashes: COMMITTEE, treasury: trsyParam(0n), accountNft: accNft,
       beacon: bcnParam(),
       solvency: { treasuryLamp: lampOildrop(1000n), otherOutstanding: lampOildrop(500n) },
@@ -1428,7 +1500,7 @@ describe("buildClaimTx — solvency guard tích hợp", () => {
     const { lucid, rec } = mockLucid("addr_wallet");
     const res = await buildClaimTx({
       lucid, claimScript: FAKE_CLAIM, network: NETWORK,
-      ownerPkh: OWNER, amount: lampOildrop(400n), currentEpoch: 5n,
+      ownerPkh: OWNER, amount: lampOildrop(400n), ...claimAt(5n),
       committeeKeyHashes: COMMITTEE, treasury: trsyParam(0n), accountNft: accNft,
       beacon: bcnParam(),
       solvency: { treasuryLamp: lampOildrop(1000n), otherOutstanding: lampOildrop(500n) },
@@ -1447,7 +1519,7 @@ describe("buildClaimTx — solvency guard tích hợp", () => {
     };
     await expect(buildClaimTx({
       lucid, claimScript: FAKE_CLAIM, network: NETWORK,
-      ownerPkh: OWNER, amount: lampOildrop(250n), currentEpoch: 9n,
+      ownerPkh: OWNER, amount: lampOildrop(250n), ...claimAt(9n),
       claimAccountUtxo: claimUtxoS(prev), committeeKeyHashes: COMMITTEE, treasury: trsyParam(0n),
       beacon: bcnParam(),
       solvency: { treasuryLamp: lampOildrop(1000n), otherOutstanding: lampOildrop(600n) },
@@ -1458,7 +1530,7 @@ describe("buildClaimTx — solvency guard tích hợp", () => {
     const { lucid, rec } = mockLucid("addr_wallet");
     const res = await buildClaimTx({
       lucid, claimScript: FAKE_CLAIM, network: NETWORK,
-      ownerPkh: OWNER, amount: lampOildrop(999999n), currentEpoch: 5n,
+      ownerPkh: OWNER, amount: lampOildrop(999999n), ...claimAt(5n),
       committeeKeyHashes: COMMITTEE, treasury: trsyParam(0n), accountNft: accNft,
       beacon: bcnParam(),
     });
@@ -1473,7 +1545,7 @@ describe("buildClaimTx — treasury co-spend", () => {
     const { lucid, rec } = mockLucid("addr_wallet");
     await buildClaimTx({
       lucid, claimScript: FAKE_CLAIM, network: NETWORK,
-      ownerPkh: OWNER, amount: lampOildrop(400n), currentEpoch: 5n,
+      ownerPkh: OWNER, amount: lampOildrop(400n), ...claimAt(5n),
       committeeKeyHashes: COMMITTEE, treasury: trsyParam(lampOildrop(100n)), accountNft: accNft,
       beacon: bcnParam(),
     });
@@ -1487,7 +1559,7 @@ describe("buildClaimTx — treasury co-spend", () => {
     const { lucid, rec } = mockLucid("addr_wallet");
     const res = await buildClaimTx({
       lucid, claimScript: FAKE_CLAIM, network: NETWORK,
-      ownerPkh: OWNER, amount: lampOildrop(400n), currentEpoch: 5n,
+      ownerPkh: OWNER, amount: lampOildrop(400n), ...claimAt(5n),
       committeeKeyHashes: COMMITTEE, treasury: trsyParam(lampOildrop(100n)), accountNft: accNft,
       beacon: bcnParam(),
     });
@@ -1511,7 +1583,7 @@ describe("buildClaimTx — treasury co-spend", () => {
     delete (noNft.assets as Record<string, bigint>)[TRSY_UNIT];
     await expect(buildClaimTx({
       lucid, claimScript: FAKE_CLAIM, network: NETWORK,
-      ownerPkh: OWNER, amount: lampOildrop(400n), currentEpoch: 5n,
+      ownerPkh: OWNER, amount: lampOildrop(400n), ...claimAt(5n),
       committeeKeyHashes: COMMITTEE, accountNft: accNft,
       treasury: { utxo: noNft, script: FAKE_TREASURY, nftPolicy: TRSY_POLICY },
       beacon: bcnParam(),
@@ -1528,7 +1600,7 @@ describe("buildClaimTx — CREATE đúc account NFT (C-ACC-1)", () => {
     const { lucid, rec } = mockLucid("addr_wallet");
     const res = await buildClaimTx({
       lucid, claimScript: FAKE_CLAIM, network: NETWORK,
-      ownerPkh: OWNER, amount: lampOildrop(250n), currentEpoch: 5n,
+      ownerPkh: OWNER, amount: lampOildrop(250n), ...claimAt(5n),
       committeeKeyHashes: COMMITTEE, treasury: trsyParam(0n), accountNft: accNft,
       beacon: bcnParam(),
     });
@@ -1560,7 +1632,7 @@ describe("buildClaimTx — CREATE đúc account NFT (C-ACC-1)", () => {
     const { lucid } = mockLucid("addr_wallet");
     await expect(buildClaimTx({
       lucid, claimScript: FAKE_CLAIM, network: NETWORK,
-      ownerPkh: OWNER, amount: lampOildrop(250n), currentEpoch: 5n,
+      ownerPkh: OWNER, amount: lampOildrop(250n), ...claimAt(5n),
       committeeKeyHashes: COMMITTEE, treasury: trsyParam(0n),
       beacon: bcnParam(),
     })).rejects.toThrow(/CLAIM-030/);
@@ -1570,7 +1642,7 @@ describe("buildClaimTx — CREATE đúc account NFT (C-ACC-1)", () => {
     const { lucid } = mockLucid("addr_wallet");
     await expect(buildClaimTx({
       lucid, claimScript: FAKE_CLAIM, network: NETWORK,
-      ownerPkh: OWNER, amount: lampOildrop(250n), currentEpoch: 5n,
+      ownerPkh: OWNER, amount: lampOildrop(250n), ...claimAt(5n),
       committeeKeyHashes: COMMITTEE, treasury: trsyParam(0n),
       beacon: bcnParam(),
       accountNft: { script: FAKE_ACC_NFT, policyId: "99".repeat(28) },
@@ -1585,7 +1657,7 @@ describe("buildClaimTx — CREATE đúc account NFT (C-ACC-1)", () => {
     };
     await buildClaimTx({
       lucid, claimScript: FAKE_CLAIM, network: NETWORK,
-      ownerPkh: OWNER, amount: lampOildrop(60n), currentEpoch: 9n,
+      ownerPkh: OWNER, amount: lampOildrop(60n), ...claimAt(9n),
       claimAccountUtxo: {
         txHash: "ab".repeat(32), outputIndex: 0, address: scriptAddr(FAKE_CLAIM),
         assets: { lovelace: 2_000_000n }, datum: claimAccountDatumToCbor(prev),
@@ -1730,7 +1802,7 @@ describe("C-SOLV-5 — địa chỉ kho theo input, hai cực enterprise/base", 
     const { lucid, rec } = mockLucid("addr_wallet");
     await buildClaimTx({
       lucid, claimScript: FAKE_CLAIM, network: NETWORK, ownerPkh: OWNER,
-      amount: lampOildrop(10n), currentEpoch: 5n, committeeKeyHashes: COMMITTEE,
+      amount: lampOildrop(10n), ...claimAt(5n), committeeKeyHashes: COMMITTEE,
       claimAccountUtxo: accUtxo(),
       treasury: { utxo: treAt(entAddr), script: FAKE_TREASURY, nftPolicy: TRSY_POLICY },
       beacon: bcnParam(),
@@ -1742,7 +1814,7 @@ describe("C-SOLV-5 — địa chỉ kho theo input, hai cực enterprise/base", 
     const { lucid, rec } = mockLucid("addr_wallet");
     await buildClaimTx({
       lucid, claimScript: FAKE_CLAIM, network: NETWORK, ownerPkh: OWNER,
-      amount: lampOildrop(10n), currentEpoch: 5n, committeeKeyHashes: COMMITTEE,
+      amount: lampOildrop(10n), ...claimAt(5n), committeeKeyHashes: COMMITTEE,
       claimAccountUtxo: accUtxo(),
       treasury: { utxo: treAt(baseAddr), script: FAKE_TREASURY, nftPolicy: TRSY_POLICY },
       beacon: bcnParam(),
@@ -1758,7 +1830,7 @@ describe("C-SOLV-5 — địa chỉ kho theo input, hai cực enterprise/base", 
     const { lucid, rec } = mockLucid("addr_wallet");
     await buildClaimTx({
       lucid, claimScript: FAKE_CLAIM, network: NETWORK, ownerPkh: OWNER,
-      amount: lampOildrop(10n), currentEpoch: 5n, committeeKeyHashes: COMMITTEE,
+      amount: lampOildrop(10n), ...claimAt(5n), committeeKeyHashes: COMMITTEE,
       treasury: { utxo: treAt(baseAddr), script: FAKE_TREASURY, nftPolicy: TRSY_POLICY },
       beacon: bcnParam(),
       accountNft: accNft,
