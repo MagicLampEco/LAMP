@@ -112,22 +112,8 @@ pub fn spend_spec_hash(
   )
 }
 
-// ── C-REL-5/6: Σ draw per-asset + per-(bucket,asset) ──
-
-/// Tổng rút của 1 asset trên mọi draw (per-asset, gộp mọi bucket).
-pub fn drawn_of_asset(draws: List<ReleaseDraw>, policy: ByteArray, name: ByteArray) -> Int {
-  list.foldl(
-    draws,
-    0,
-    fn(d, acc) {
-      if d.policy == policy && d.name == name {
-        acc + d.amount
-      } else {
-        acc
-      }
-    },
-  )
-}
+// ── C-REL-6: Σ draw per-(bucket,asset) ──
+// (C-REL-5 không cần tổng theo asset: nó ép bằng phép bảo toàn value bên dưới.)
 
 /// Tổng rút của (bucket, asset) — Δ kỳ vọng cho 1 dòng sổ.
 pub fn drawn_of_line(

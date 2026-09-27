@@ -569,19 +569,6 @@ export async function reapplyValidators(state: DeployedState): Promise<{
   return { claimScript, beaconScript, treasuryScript, accountNftScript };
 }
 
-/** Lấy 1 UTxO theo BeaconRef (txHash#index) tại address. */
-export async function utxoByRef(
-  lucid: LucidEvolution, address: string, ref: BeaconRef,
-) {
-  const utxos = await lucid.utxosAt(address);
-  const u = utxos.find((x) => x.txHash === ref.txHash && x.outputIndex === ref.outputIndex);
-  if (!u) {
-    // có thể UTxO đã bị spend (bước trước) — caller phải re-resolve theo datum/asset.
-    throw new Error(`UTxO ${ref.txHash}#${ref.outputIndex} không còn tại ${address} (đã spend?)`);
-  }
-  return u;
-}
-
 export function toUnit(policyId: string, assetName: string): string {
   return policyId + assetName;
 }
