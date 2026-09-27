@@ -193,7 +193,7 @@ async function grantFor(args: {
       datum: args.beacon,
     },
     committeeKeyHashes: args.committee, threshold: args.threshold,
-    ...grantTimeParams(w),   // Luật 2b: hai đầu cùng cửa sổ (CREATE-002 áp cả UPDATE)
+    ...grantTimeParams(w, MS_PER_EPOCH),   // Luật 2b: hai đầu cùng cửa sổ (CREATE-002 áp cả UPDATE)
   });
   console.log(res.summary);
   await submit(lucid, res.tx, `grant ${label}`);

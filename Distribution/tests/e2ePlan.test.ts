@@ -140,7 +140,7 @@ describe("grantTimeParams — builder nhận được, tx mang cặp lo/hi cùng
       lucid, claimScript: FAKE_CLAIM, network: NETWORK, ownerPkh: OWNER, amount: E,
       accountNft: { script: FAKE_ACC_NFT }, treasury: treasury(0n), committeeKeyHashes: COMMITTEE,
       beacon: beaconParam(bcnDatum()),
-      ...grantTimeParams(w),
+      ...grantTimeParams(w, MSPE),
     });
     expect(rec.validFrom).toEqual([Number(w.loMs)]);
     expect(rec.validTo).toEqual([Number(w.hiMs)]);
@@ -156,7 +156,7 @@ describe("grantTimeParams — builder nhận được, tx mang cặp lo/hi cùng
       lucid, claimScript: FAKE_CLAIM, network: NETWORK, ownerPkh: OWNER, amount: E,
       accountNft: { script: FAKE_ACC_NFT }, treasury: treasury(0n), committeeKeyHashes: COMMITTEE,
       beacon: beaconParam(b),
-      ...grantTimeParams(w),
+      ...grantTimeParams(w, MSPE),
     });
     expect(res.newDatum.index_at_start).toBe(beaconIndexAt(b, w.epoch));
     expect(res.newDatum.index_at_start).not.toBe(b.index);
@@ -169,7 +169,7 @@ describe("grantTimeParams — builder nhận được, tx mang cặp lo/hi cùng
       lucid, claimScript: FAKE_CLAIM, network: NETWORK, ownerPkh: OWNER, amount: E,
       claimAccountUtxo: accountUtxo(prev), treasury: treasury(prev.entitlement),
       committeeKeyHashes: COMMITTEE, beacon: beaconParam(bcnDatum()),
-      ...grantTimeParams(w),
+      ...grantTimeParams(w, MSPE),
     });
     expect(rec.validTo).toEqual([Number(w.hiMs)]);
   });
@@ -278,7 +278,7 @@ describe("planGrant — CREATE / TOPUP rebase / bỏ qua khi còn phần rút đ
       lucid, claimScript: FAKE_CLAIM, network: NETWORK, ownerPkh: OWNER, amount: E,
       accountNft: { script: FAKE_ACC_NFT }, treasury: treasury(0n), committeeKeyHashes: COMMITTEE,
       beacon: beaconParam(B),
-      ...grantTimeParams(w),
+      ...grantTimeParams(w, MSPE),
     });
     // `accountDatumMismatches` nay so CẢ `index_at_start` — nếu kế hoạch và builder tính mốc
     // chỉ số ở hai chỗ khác nhau thì chính ca này đỏ.
@@ -324,7 +324,7 @@ describe("planGrant — CREATE / TOPUP rebase / bỏ qua khi còn phần rút đ
       lucid, claimScript: FAKE_CLAIM, network: NETWORK, ownerPkh: OWNER, amount: E,
       claimAccountUtxo: accountUtxo(prev), treasury: treasury(prev.entitlement - prev.redeemed),
       committeeKeyHashes: COMMITTEE, beacon: beaconParam(B),
-      ...grantTimeParams(w),
+      ...grantTimeParams(w, MSPE),
     });
     expect(accountDatumMismatches(plan.expected, res.newDatum)).toEqual([]);
   });

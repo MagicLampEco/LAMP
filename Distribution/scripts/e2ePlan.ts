@@ -31,9 +31,15 @@ export function windowNow(
   return w;
 }
 
-/** Tham số thời gian cho grant (CREATE lẫn UPDATE): CẢ HAI đầu, cùng cửa sổ (C-ACC-2/3). */
-export function grantTimeParams(w: EpochWindow): { currentEpoch: bigint; validFromMs: bigint; validToMs: bigint } {
-  return { currentEpoch: w.epoch, validFromMs: w.loMs, validToMs: w.hiMs };
+/**
+ * Tham số thời gian cho grant (CREATE lẫn UPDATE): CẢ HAI đầu, cùng cửa sổ (C-ACC-2/3).
+ * `buildClaimTx` SUY `start_epoch` từ đầu dưới (`validFromMs / msPerEpoch`) — không còn nhận
+ * `currentEpoch` rời.
+ */
+export function grantTimeParams(
+  w: EpochWindow, msPerEpoch: bigint,
+): { msPerEpoch: bigint; validFromMs: bigint; validToMs: bigint } {
+  return { msPerEpoch, validFromMs: w.loMs, validToMs: w.hiMs };
 }
 
 /**

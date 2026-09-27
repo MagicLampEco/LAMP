@@ -282,7 +282,7 @@ async function main(): Promise<void> {
       const r = await buildClaimTx({
         lucid, claimScript: cs.claim, network: NETWORK,
         ownerPkh: f.pkh, amount: FEEDER_E,
-        currentEpoch: w.epoch,                     // C-ACC-2
+        msPerEpoch: MS_PER_EPOCH,                  // C-ACC-2: builder suy start_epoch từ validFromMs
         accountNft: { script: cs.accountNft, policyId: cs.accountPid },
         treasury: { utxo: st.treasuryUtxo, ...treasuryCommon },
         beacon: { utxo: st.beaconUtxo, datum: st.beacon },   // C-CLAIM-8

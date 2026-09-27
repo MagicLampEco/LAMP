@@ -54,12 +54,17 @@ export interface ClaimParams {
   ownerPkh:     string;
   /** Số oildrop entitlement cấp thêm lần này (> 0). */
   amount:       bigint;
-  /** Epoch hiện tại (committee tính off-chain từ validity range). */
-  currentEpoch: bigint;
+
+  /**
+   * ms mỗi cửa sổ — PHẢI khớp `ms_per_epoch` đã apply vào `claim_account`/`treasury`.
+   * Builder không đọc được giá trị đã nướng trong script (nằm trong CBOR); truyền lệch thì
+   * `start_epoch` suy ra lệch, và giao dịch bị từ chối (C-CLAIM-6 / C-ACC-2).
+   */
+  msPerEpoch:   bigint;
 
   /**
    * ClaimAccount UTxO hiện tại của owner (UPDATE path). Bỏ trống → CREATE path
-   * (account đầu tiên cho owner này): start_epoch = currentEpoch.
+   * (account đầu tiên cho owner này): start_epoch = cửa sổ của validity range.
    */
   claimAccountUtxo?: UTxO;
 
@@ -158,13 +163,21 @@ export interface ClaimParams {
   };
 
   /**
-   * POSIX ms cho lower_bound validity_range (BẮT BUỘC live tx CREATE: validator
-   * get_epoch đọc lower_bound → start_epoch). Bỏ trống → KHÔNG set (unit test off-chain).
+   * POSIX ms đầu DƯỚI của validity_range — BẮT BUỘC. Cửa sổ ghi vào `start_epoch` và cửa sổ
+   * dùng để tính `index_at_start = A(cửa sổ)` đều SUY từ đây (`validFromMs / msPerEpoch`),
+   * đúng như `util.get_epoch_strict` mà `claim_account.ak` (C-CLAIM-6) và `treasury.ak`
+   * (C-ACC-2/3) dùng.
+   *
+   * Vì sao không nhận `currentEpoch` rời nữa: bản trước nhận epoch và hai đầu validity
+   * RIÊNG, hai đầu lại tuỳ chọn. Epoch lệch với cặp lo/hi thì `start_epoch` và
+   * `index_at_start` ghi vào datum là của một cửa sổ khác cửa sổ validator tính ⇒ bị từ chối;
+   * bỏ trống cặp lo/hi thì `get_epoch_strict` chết vì đầu vô hạn. Một nguồn, không hai.
    */
-  validFromMs?: bigint;
+  validFromMs:  bigint;
 
   /**
-   * POSIX ms cho upper_bound validity_range — BẮT BUỘC live tx CREATE kể từ C-ACC-2.
+   * POSIX ms cho upper_bound validity_range — BẮT BUỘC, và phải rơi CÙNG cửa sổ với
+   * `validFromMs` (`validToMs / msPerEpoch == validFromMs / msPerEpoch`, CLAIM-043).
    *
    * Trước bản vá Issue #72 chỉ có đầu dưới, và đầu dưới MỘT MÌNH không chứng minh được
    * `start_epoch` là cửa sổ thật: sổ cái nhận tx khi `lower ≤ now`, nên `lower` đặt lùi
@@ -174,7 +187,7 @@ export interface ClaimParams {
    * cuối cửa sổ khi khoảng mặc định vắt qua biên epoch. Tự đặt tay thì mấy lần mỗi chu kỳ
    * sẽ có một tx bị từ chối mà không có gì nói vì sao.
    */
-  validToMs?: bigint;
+  validToMs:    bigint;
 }
 
 export interface ClaimResult {
@@ -182,6 +195,8 @@ export interface ClaimResult {
   claimAddress:     string;
   newDatum:         ClaimAccountDatum;
   mode:             "create" | "update";
+  /** Cửa sổ đã ghi vào `start_epoch` — suy từ `validFromMs / msPerEpoch`, không nhận từ caller. */
+  currentEpoch:     bigint;
   /** Treasury datum mới (outstanding_entitlement += amount). Luôn có — treasury co-spend
    *  là BẮT BUỘC, xem `ClaimParams.treasury`. */
   newTreasuryDatum:  TreasuryDatum;
@@ -220,9 +235,45 @@ export function assertClaimSolvency(
 
 export async function buildClaimTx(params: ClaimParams): Promise<ClaimResult> {
   const {
-    lucid, claimScript, network, ownerPkh, amount, currentEpoch,
+    lucid, claimScript, network, ownerPkh, amount, msPerEpoch, validFromMs, validToMs,
     claimAccountUtxo, committeeKeyHashes, beacon,
   } = params;
+
+  // ── Cửa sổ: SUY từ validity range, mirror `util.get_epoch_strict` ──────────
+  // Kiểm KIỂU chứ không chỉ kiểm dấu: caller JavaScript không kiểu bỏ trống được, và
+  // `undefined < 0n` trả false — chốt chỉ so dấu sẽ cho qua đúng ca thiếu.
+  if (typeof msPerEpoch !== "bigint" || msPerEpoch <= 0n) {
+    throw new Error(`CLAIM-040: msPerEpoch phải là bigint > 0, nhận ${String(msPerEpoch)}.`);
+  }
+  if (typeof validFromMs !== "bigint" || validFromMs < 0n) {
+    throw new Error(
+      `CLAIM-041: validFromMs phải là bigint ≥ 0, nhận ${String(validFromMs)}. ` +
+      "`get_epoch_strict` (C-CLAIM-6, C-ACC-2/3) đòi đầu dưới hữu hạn — thiếu nó validator ném.",
+    );
+  }
+  // CREATE-002 giữ tên cũ để không gãy chỗ nào đang bắt nó.
+  if (typeof validToMs !== "bigint") {
+    throw new Error(
+      `CREATE-002: đường ${claimAccountUtxo ? "UPDATE" : "CREATE"} thiếu \`validToMs\`. C-ACC-2/C-ACC-3 (treasury.ak) ép cả hai đầu ` +
+        "validity_range rơi cùng một cửa sổ epoch — đầu dưới một mình đặt lùi bao xa cũng " +
+        "hợp lệ với sổ cái, nên nó không ghim được `start_epoch`. Lấy cặp lo/hi bằng " +
+        "`epochWindow(msPerEpoch)` trong `constants.ts`.",
+    );
+  }
+  if (validToMs <= validFromMs) {
+    throw new Error(
+      `CLAIM-042: validToMs (${validToMs}) phải > validFromMs (${validFromMs}). Khoảng ` +
+      "hiệu lực rỗng không chứa slot nào — sổ cái không bao giờ nhận giao dịch này.",
+    );
+  }
+  const currentEpoch = validFromMs / msPerEpoch;   // BigInt chia sàn — mirror get_epoch_strict
+  if (validToMs / msPerEpoch !== currentEpoch) {
+    throw new Error(
+      `CLAIM-043: hai đầu validity rơi hai cửa sổ khác nhau (lo ⇒ ${currentEpoch}, hi ⇒ ` +
+      `${validToMs / msPerEpoch}). \`util.get_epoch_strict\` ép chúng bằng nhau ("Luật 2b") ` +
+      "— kéo `hi` về trước biên cửa sổ, hoặc dùng `epochWindow(msPerEpoch)`.",
+    );
+  }
 
   // C-CLAIM-8: mốc CHỈ SỐ mà CẢ HAI đường (CREATE và UPDATE) phải ghi vào datum ra.
   // Tính MỘT lần ở đây để hai nhánh dưới không thể lệch nhau — hai chỗ tính riêng là hai
@@ -455,27 +506,9 @@ export async function buildClaimTx(params: ClaimParams): Promise<ClaimResult> {
 
   for (const k of signers) txb = txb.addSignerKey(k);
 
-  // validity_range → validator get_epoch_strict (CREATE start_epoch). Live tx bắt buộc CẢ HAI
-  // đầu: C-ACC-2 ép chúng rơi cùng một cửa sổ, vì đầu dưới một mình đặt lùi được tuỳ ý.
-  if (params.validFromMs !== undefined) {
-    txb = txb.validFrom(Number(params.validFromMs));
-  }
-  if (params.validToMs !== undefined) {
-    txb = txb.validTo(Number(params.validToMs));
-  }
-
-  // CREATE-002 — chặn ở đây thay vì để chuỗi từ chối. Thiếu đầu trên thì validator ném, mà
-  // lỗi từ chuỗi chỉ nói "validator crashed"; câu dưới nói ĐÚNG thứ thiếu. Áp cho CẢ UPDATE
-  // từ 2026-09-17: rebase ghim `start_epoch` bằng cùng `get_epoch_strict` (C-ACC-3, C-CLAIM-6).
-  // Mã lỗi giữ tên cũ để không gãy chỗ nào đang bắt nó.
-  if (params.validFromMs !== undefined && params.validToMs === undefined) {
-    throw new Error(
-      `CREATE-002: đường ${mode.toUpperCase()} thiếu \`validToMs\`. C-ACC-2/C-ACC-3 (treasury.ak) ép cả hai đầu ` +
-        "validity_range rơi cùng một cửa sổ epoch — đầu dưới một mình đặt lùi bao xa cũng " +
-        "hợp lệ với sổ cái, nên nó không ghim được `start_epoch`. Lấy cặp lo/hi bằng " +
-        "`epochWindow(msPerEpoch)` trong `constants.ts`.",
-    );
-  }
+  // validity_range → validator get_epoch_strict (start_epoch ở CẢ CREATE lẫn UPDATE). Hai đầu
+  // luôn đặt, và đã soát cùng cửa sổ ở đầu hàm (CLAIM-040..043, CREATE-002).
+  txb = txb.validFrom(Number(validFromMs)).validTo(Number(validToMs));
 
   const tx = await txb.complete();
 
@@ -486,7 +519,7 @@ export async function buildClaimTx(params: ClaimParams): Promise<ClaimResult> {
     `Amount:       ${amount / 1_000_000n} LAMP (${amount} oildrop)`,
     `Entitlement:  ${newDatum.entitlement} oildrop`,
     `Redeemed:     ${newDatum.redeemed} oildrop`,
-    `Start epoch:  ${newDatum.start_epoch}  · drops/epoch ${newDatum.drops_per_epoch}`,
+    `Start epoch:  ${newDatum.start_epoch} = ${validFromMs} / ${msPerEpoch}  · drops/epoch ${newDatum.drops_per_epoch}`,
     `Committee:    ${signers.length}/${committeeKeyHashes.length} signers (need ${threshold})`,
     `Outstanding:  ${newTreasuryDatum.outstanding_entitlement} oildrop (sổ cái nợ sau Claim)`,
     `Claim addr:   ${claimAddress}`,
@@ -494,7 +527,7 @@ export async function buildClaimTx(params: ClaimParams): Promise<ClaimResult> {
 
   // `exactOptionalPropertyTypes`: thêm khoá bằng spread có điều kiện, KHÔNG gán undefined.
   return {
-    tx, claimAddress, newDatum, mode, summary, newTreasuryDatum,
+    tx, claimAddress, newDatum, mode, currentEpoch, summary, newTreasuryDatum,
     ...(mintedAccountNft !== undefined ? { accountNftUnit: mintedAccountNft } : {}),
   };
 }

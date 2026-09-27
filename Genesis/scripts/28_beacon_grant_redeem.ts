@@ -326,7 +326,8 @@ async function main(): Promise<void> {
     const r = await buildClaimTx({
       lucid, claimScript: cs.claim, network: NETWORK,
       ownerPkh: pkh, amount: ENTITLEMENT,
-      currentEpoch: w.epoch,                    // C-ACC-2: start_epoch == cửa sổ hiện tại
+      // C-ACC-2: builder SUY start_epoch từ đầu dưới (`validFromMs / msPerEpoch`).
+      msPerEpoch: MS_PER_EPOCH,
       // `dropsPerEpoch` bỏ trống ⇒ mặc định 1 = giá trị ghim của v3 (CLAIM-006 chặn mọi số khác).
       accountNft: { script: cs.accountNft, policyId: cs.accountPid },
       treasury: {
@@ -407,7 +408,7 @@ async function main(): Promise<void> {
     const r = await buildClaimTx({
       lucid, claimScript: cs.claim, network: NETWORK,
       ownerPkh: pkh, amount: TOPUP,
-      currentEpoch: w.epoch,
+      msPerEpoch: MS_PER_EPOCH,
       claimAccountUtxo: accUtxo,          // ⇒ đường UPDATE, builder KHÔNG đúc NFT
       treasury: {
         utxo: treasuryUtxo, script: scripts.treasury,
