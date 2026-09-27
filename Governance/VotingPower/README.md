@@ -11,7 +11,8 @@ VP tính từ **≥4 tham số geometric có cap** — token đơn thuần **kh�
 | On-chain (Aiken PlutusV3) | `cd Governance/onchain && aiken check` | **90 pass / 0 fail** |
 | Off-chain (vitest) | — | Không áp dụng — v1 **chỉ on-chain**, chưa có `Governance/offchain` |
 
-Validators: `vote` · `proposal` · `proposal_nft` · `tally` · `tally_nft` · `nullifier`.
+Validators: `vote` · `proposal` · `proposal_nft` · `tally` · `tally_nft` · `nullifier` — **v1, sẽ bị
+thay**; kiến trúc thay thế (chưa có mã): [`../SPEC.md`](../SPEC.md) v2.0 §Kiến trúc on-chain v2.
 
 Bất biến đã xác minh khớp `CONTRACT.md`:
 - **VP = tích ≥4 tham số, KHÔNG token-weighted** — `vp_raw = p1·p2·p3·p4 / SCALE³` (`lib/.../power.ak`); geometric ⇒ 1 yếu tố = 0 làm sụp toàn bộ VP; nội suy lõm không thổi phồng VP.

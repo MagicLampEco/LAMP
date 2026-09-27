@@ -1,7 +1,9 @@
 # Voting Power — CONTRACT (mô hình đã duyệt)
 
-> **Phiên bản:** v1.0 — 2026-06-05. Lần đầu khai phiên bản — tệp trước đây chỉ có dòng `Trạng thái`,
-> không có số hiệu để tham chiếu; nội dung không đổi so với ngày duyệt khung.
+> **Phiên bản:** v1.1 — 2026-09-27. Vì sao bump: D2 và D10 trỏ sang
+> [`../SPEC.md`](../SPEC.md) v2.0 §Kiến trúc on-chain v2 cho cách đúc Proposal NFT (bỏ khuôn one-shot
+> mỗi proposal); mô hình Voting Power và `ProposalResult` 5 trường không đổi.
+> v1.0 — 2026-06-05: lần đầu khai phiên bản.
 > **Vai:** spec build-fact — nguồn chuẩn (interface contract) cho mô hình Voting Power. Khi lệch với
 > [`Feat-Spec.md`](./Feat-Spec.md) / [`Math-Spec.md`](./Math-Spec.md) / [`Tech-Spec.md`](./Tech-Spec.md) /
 > [`Exec-Spec.md`](./Exec-Spec.md), [`../SPEC.md`](../SPEC.md) (trang chỉ mục), hay `Papers/`,
@@ -132,6 +134,10 @@ Sau rà soát đối kháng, các interface dưới đây được **ghim cứng
   (`release.read_proposal` ép `nft_name == proposal_id`). Việc còn lại thuộc module này: đổi tham số
   `proposal_nft` sang per-governance, và chuyển tính duy nhất của `proposal_id` thành van của
   Governance (policy chung KHÔNG tự ép asset-name duy nhất).
+  **Hướng thiết kế đóng mâu thuẫn này (đặc tả, chưa có mã):** [`../SPEC.md`](../SPEC.md) v2.0
+  §Kiến trúc on-chain v2 — `proposal_policy` dùng chung trong một pha, là handler mint của chính
+  validator `governance`; `proposal_id` = tên = `blake2b_256(cbor(seed_ref))` với seed bị tiêu lúc
+  đúc, nên tính duy nhất là bất biến mật mã chứ không còn là van quy trình. Mã hiện có vẫn là v1.
 - **D3 — Release-gate = Model A.** Treasury KHÔNG tự tính ngưỡng; chỉ kiểm `status==Executed` +
   Proposal NFT + `spend_spec_hash`. Governance `ExecuteProposal` ép TOÀN BỘ ngưỡng (gồm clamp BFT
   `VP_eff` + sàn cứng `|S|≥F`) TRƯỚC. Đóng lỗ hổng "release bỏ qua clamp" (GAME-1).
@@ -227,8 +233,12 @@ Sau rà soát đối kháng, các interface dưới đây được **ghim cứng
   Audit phát hiện: Treasury `release.ak` decode type **`ProposalResult` 5 field**
   (`Treasury/onchain/lib/magiclamp/treasury/types.ak:78-84`), KHÔNG decode `ProposalDatum` 12 field.
   → Governance KHÔNG bắt Treasury đọc `ProposalDatum` nặng. Thay vào đó: tại `ExecuteProposal`,
-  Governance **phơi một Proposal UTxO mang Proposal NFT one-shot**, datum = **`ProposalResult` GỌN
-  khớp BYTE-PERFECT** định nghĩa Treasury hiện có:
+  Governance **phơi một Proposal UTxO mang Proposal NFT** (v1: one-shot mỗi proposal; v2: policy
+  dùng chung trong pha, tên sinh từ seed — [`../SPEC.md`](../SPEC.md) v2.0 §v2.4), datum =
+  **`ProposalResult` GỌN khớp BYTE-PERFECT** định nghĩa Treasury hiện có. ⚠️ Mã v1 KHÔNG thoả câu
+  này: output `Executed` của `proposal.ak` mang `ProposalDatum` 12 trường, giải mã sang
+  `ProposalResult` thất bại (`../SPEC.md` v2.0 §v2.1 lỗi 3); v2 ép datum proposal = đúng
+  `ProposalResult` ở mọi trạng thái (§v2.8 `R-RESULT-SHAPE`). Định nghĩa:
   ```
   ProposalResult { proposal_id: ByteArray, status: ProposalStatus,
                    spend_spec_hash: ByteArray, execute_after_epoch: Int,

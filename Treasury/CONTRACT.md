@@ -1,7 +1,8 @@
 # Treasury — CONTRACT (interface đa thuê bao)
 
-> **Phiên bản:** v1.0 — 2026-06-05. Lần đầu khai phiên bản — tệp trước đây chỉ có dòng `Trạng thái`,
-> không có số hiệu để tham chiếu; nội dung không đổi so với ngày đóng khung.
+> **Phiên bản:** v1.1 — 2026-09-27. Vì sao bump: §10 H1A-interface trỏ sang hướng đóng mâu thuẫn
+> Proposal NFT ở `Governance/SPEC.md` v2.0; không đổi interface nào của Treasury.
+> v1.0 — 2026-06-05: lần đầu khai phiên bản.
 > **Vai:** spec build-fact — nguồn chuẩn (interface contract) cho Treasury đa thuê bao. Khi lệch với
 > [`SPEC.md`](./SPEC.md) (trang chỉ mục) hay tài liệu đối ngoại (`Papers/`), CONTRACT.md này thắng.
 
@@ -143,6 +144,9 @@ testnet → đổi param/script hash KHÔNG cần migrate (lý do làm ngay bây
 - **H1A-interface — Proposal NFT = MỘT policy chung per-governance** (asset name = `proposal_id`),
   **KHÔNG one-shot-by-seed per-proposal**. Custody param `proposal_policy` là policy id đơn → chỉ đúng
   khi policy ổn định per-DAO. **Mâu thuẫn phải chốt với Governance** trước khi code Release thật.
+  Hướng đóng (đặc tả Governance, chưa có mã): `Governance/SPEC.md` v2.0 §Kiến trúc on-chain v2 —
+  policy dùng chung trong một pha, tên = `blake2b_256(cbor(seed_ref))`; custody giữ nguyên hai vế
+  ghim `proposal_policy` + `governance_ref`.
 - **H1B — ĐÓNG (vá lần 2 F10).** `spend_spec_hash` NAY gồm `instance_id`
   (`= blake2b(0x02 ‖ blake2b(instance_id) ‖ blake2b(cbor(draws)))`) → hai instance Treasury CÙNG
   `governance_ref` KHÔNG còn replay chéo (hash khác instance ⇒ release reject). Known-gap #1B chuyển

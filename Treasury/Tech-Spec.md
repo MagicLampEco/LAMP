@@ -527,9 +527,12 @@ BỎ khỏi Treasury) — 4 vị từ **gốc** về proposal/governance (1–4)
 Treasury **tin** cờ + NFT, KHÔNG đọc `yes_power/no_power/voter_count` để tự so ngưỡng (đó là việc của
 Governance — đọc lại sẽ nhân đôi logic + mở lỗ hổng "release bỏ qua clamp" GAME-1, đã đóng bởi D3).
 
-Governance phơi kết quả ở **Proposal UTxO** mang **Proposal authenticity NFT** (one-shot, mẫu
+Governance phơi kết quả ở **Proposal UTxO** mang **Proposal authenticity NFT** (v1: one-shot, mẫu
 `beacon_nft.ak`), datum `ProposalDatum{ status, spend_spec_hash, execute_after_epoch, released_cumulative,
-... }` (Gov CONTRACT §5 D2; [Governance TECH §3](../Governance/VotingPower/Tech-Spec.md)). Release đọc UTxO
+... }` (Gov CONTRACT §5 D2; [Governance TECH §3](../Governance/VotingPower/Tech-Spec.md)). ⚠️ Câu này tả
+v1 và v1 sai ở hai chỗ: NFT one-shot mỗi proposal, và datum 12 trường không giải mã được thành
+`ProposalResult` mà `read_proposal` đòi. Hình dạng thay thế: `Governance/SPEC.md` v2.0 §Kiến trúc on-chain
+v2 (datum proposal = đúng `ProposalResult` 5 trường, policy dùng chung trong pha). Release đọc UTxO
 này làm **reference input** (không tiêu — nhiều release/đọc song song):
 [`Transaction.reference_inputs`](https://aiken-lang.github.io/stdlib/cardano/transaction.html).
 
@@ -906,6 +909,13 @@ Evidence bắt buộc: `aiken check` output pass FULL (như chuẩn build mode �
     với vế Treasury: `read_proposal` đã ép `nft_name == result.proposal_id`. Việc còn lại nằm ở
     Governance: đổi tham số `proposal_nft` sang per-governance và chuyển tính duy nhất của
     `proposal_id` thành van của Governance (đúng như F11 dưới đã ghi).
+    **Hướng thiết kế đóng mâu thuẫn (đặc tả, chưa có mã):** `Governance/SPEC.md` v2.0 §Kiến trúc
+    on-chain v2 — `proposal_policy` dùng chung trong một pha (handler mint của validator
+    `governance`, nên cùng giá trị với `governance_ref`; custody vẫn kiểm cả hai), tên =
+    `blake2b_256(cbor(seed_ref))` với seed bị tiêu lúc đúc ⇒ F11 thành bất biến mật mã. Custody
+    KHÔNG phải đổi apply-param hay nhánh nào cho việc này; chuyển pha đi bằng quét kho sang instance
+    mới (§v2.7 đó, kèm hai điểm mở phía Treasury: nhánh nhận của instance mới và đường Reserve ghim
+    instance cũ).
   - **LỖ #1B — ĐÓNG (vá lần 2 F10):** `spend_spec_hash` NAY gồm `instance_id` (C-REL-3) → replay chéo
     giữa hai instance Treasury **CÙNG** `governance_ref` đã bị chặn (hash khác instance ⇒ C-REL-3 không
     khớp). Known-gap #1B chuyển **"MỞ (chờ Governance)" → ĐÓNG**. ⛔ **YÊU CẦU INTERFACE thay thế (Governance
