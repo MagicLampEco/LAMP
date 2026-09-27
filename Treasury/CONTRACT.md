@@ -62,6 +62,9 @@ Chữ ký: `collectToTreasury(asset ∈ accepted_assets, amount, app_id, categor
 7. **Collect KHÔNG đẩy sổ vượt trần số dòng (`C-COL-LINES`).** Vì Collect permissionless và mỗi
    `(category, asset)` mới sinh một dòng sổ, đường này là đường bơm dòng rác. Sổ ĐẦU RA phải
    ≤ `ledger.max_ledger_lines`. Xem §13 cho trần + số đo.
+8. **Khoản phải vào kho TRỌN VẸN không đi qua Collect.** Collect chỉ nhận `cut`; khoản nạp 100%
+   (ADA thưởng staking của SRCL, LAMP dư khi Sweep, số dư quét từ kho cũ lúc chuyển pha governance)
+   đi nhánh `Deposit` — §15.
 
 ## 4. Bucket release — chi ra (nhóm B)
 
@@ -153,6 +156,8 @@ testnet → đổi param/script hash KHÔNG cần migrate (lý do làm ngay bây
   **MỞ → ĐÓNG**. ⛔ **YÊU CẦU INTERFACE thay thế (Governance build-side):** khi tạo proposal, Governance
   PHẢI tính `spend_spec_hash` với ĐÚNG `instance_id` đích (commit target instance). Tính sai ⇒ proposal
   không chi được ở instance nào. Đây là ràng buộc đúng-đắn của Governance, KHÔNG còn lỗ hổng on-chain.
+  → **Công thức trên đã THAY ở P7 (§15, `C-REL-3-SEED`)**: `instance_id` không duy nhất, nên tiền ảnh nay
+  gắn thêm `seed_policy` và domain tag đổi `0x02 → 0x03`.
 - **H5 — custody ĐÒI NFT authenticity khi spend.** Param custody → `(proposal_policy, seed_policy,
   ms_per_epoch, lamp_policy, token_name)`. `lamp_policy`/`token_name` **VẪN LÀ THAM SỐ** — nhánh
   `MigrateIn` phải đo Δ nên phải biết token nào là LAMP, mà đọc điều đó từ `accepted_assets` trong
@@ -186,6 +191,7 @@ testnet → đổi param/script hash KHÔNG cần migrate (lý do làm ngay bây
   single-use (C-REL-9) neo vào asset name của Proposal NFT, KHÔNG field datum tự-khai. (TECH C-REL-1.)
 - **F10 + H1B-ĐÓNG — `spend_spec_hash` gồm `instance_id`** (xem §10 H1B). Đóng replay chéo cùng
   `governance_ref`. ⛔ Governance build-side PHẢI commit đúng `instance_id` đích khi tạo proposal.
+  (Vẫn còn hở ở ca hai kho khác hạt giống TRÙNG `instance_id` — đóng ở P7, §15 `C-REL-3-SEED`.)
 - **F2 — Release ép `draws != []`** (TECH C-REL-13). **F3 — Collect ép `Σcut > 0`** (§3.6, TECH C-COL-11).
   **F4 — epoch neo gọn 1 epoch** `get_epoch_bounded` (chống đóng băng, TECH C-COL-7/C-REL-11). **F5 —
   `custody_seed` ép mint đúng 1 policy** (least-authority, TECH S-MINT-2).
@@ -332,5 +338,64 @@ dòng bị đổi) rồi chạy trọn `aiken check`: gỡ `is_declared` · `con
 rỗng/tăng-ngặt/dành-riêng · từng `buckets ==` ở bốn nhánh · và `within_line_cap` của §13 — cả mười lượt đều
 có bài đỏ. Phép đo chạy trên validator; vế offchain (`isDeclaredBucket`, `bucketsConfigOk`) là GƯƠNG, có ca
 kiểm riêng nhưng chưa chạy đột biến.
+
+## 15. Đợt P7 (2026-09-27, **ĐÃ HIỆN THỰC**, interface KHÓA) — gộp vào lượt đúc lại genesis
+
+Hai thay đổi đổi script hash của `custody` (không đổi `custody_seed`), làm TRƯỚC lần gieo custody mainnet.
+
+### 15.1 `C-REL-3-SEED` — `spend_spec_hash` gắn định danh kho
+
+**Lỗ được bịt.** Bản F10 băm `0x02 ‖ blake2b(instance_id) ‖ blake2b(cbor(draws))`. `instance_id` do người
+gieo tự đặt — `custody_seed` chỉ ép khác rỗng (`S-ID-0`), không ép duy nhất. Hai kho gieo từ hai hạt giống
+khác nhau mà trùng `instance_id` cùng khớp MỘT proposal `Executed`. Mỗi validator đếm input của script CHÍNH
+NÓ (`C-REL-4` thấy đúng 1) và `consumed_proposals` là hai danh sách riêng (`C-REL-9` thoả ở cả hai) ⇒ một tx
+tiêu cả hai kho chi 2× điều Governance đã duyệt, và kho nào cũng tự thấy hợp lệ.
+
+**Chốt.** `spend_spec_hash(seed_policy, instance_id, draws) =
+blake2b_256(0x03 ‖ blake2b(seed_policy) ‖ blake2b(instance_id) ‖ blake2b(cbor(draws)))`. `seed_policy` là
+tham số apply của `custody` = policy id của NFT chứng thực kho; `custody_seed` là policy one-shot tham số hoá
+bằng `genesis_ref` ⇒ một hạt giống, một NFT, một kho. Domain tag `0x03` để một hash tính theo công thức cũ
+không bao giờ khớp công thức mới.
+
+Chọn `seed_policy` chứ không phải script hash của `custody`: cả hai đều duy nhất theo kho, nhưng `seed_policy`
+là định danh GỐC — script hash custody suy ra từ nó cộng `ms_per_epoch`, `lamp_policy`, `token_name`. Bên dựng
+proposal chỉ cần biết NFT của kho đích (công khai trên chuỗi), không cần cả bộ tham số apply.
+
+⛔ **Nghĩa vụ build-side của Governance** (thay cho nghĩa vụ ở §10 H1B): tính `spend_spec_hash` với ĐÚNG cặp
+`(seed_policy, instance_id)` của kho đích. Gương off-chain: `spendSpecHash(seedPolicy, instanceId, draws)`
+(`Treasury/offchain/src/release.ts`); `planRelease`/`buildReleaseTx` nay BẮT BUỘC `seedPolicy`.
+
+**Chốt nào bài kiểm hiện tại ghim được** (đột biến, dấu `MUT-MARK`, trọn `aiken check`):
+- bỏ `seed_policy` khỏi tiền ảnh ⇒ đỏ `release_two_custody_same_instance_id_other_rejects`,
+  `spend_spec_hash_binds_seed_policy`, hai vector.
+- validator truyền tham số khác (`proposal_policy`) thay cho `seed_policy` ⇒ đỏ `…_owner_accepts` và năm ca
+  release dương khác (`release_happy`, `release_batch_multi`, hai ca prune, `cap_release_at_cap_ok`). Ca âm hai kho KHÔNG đỏ ở đột biến này (kho B vẫn tính lệch hash) — vế "đúng tham số" do các
+  ca dương ghim, không do ca âm.
+
+### 15.2 `Deposit` — nạp 100% vào kho
+
+**Lỗ được bịt.** Collect chỉ ghi `cut = ⌊amount × cut_bps / 10000⌋` vào sổ; phần dư là của bên nộp. Các
+khoản phải vào kho TRỌN VẸN — ADA thưởng staking của SRCL, LAMP dư khi Sweep, số dư quét từ kho cũ lúc chuyển
+pha governance — không có đường nào: đi Collect với `cut_bps < 10000` thì sổ ghi thiếu, còn gửi thẳng tới địa
+chỉ kho thì tài sản nằm ngoài sổ và không nhánh nào tiêu lại được.
+
+**Chốt.** Redeemer `Deposit { items: List<CollectItem> }`, Constr index **5** (thêm ở cuối; 0..4 giữ nguyên).
+PERMISSIONLESS như Collect. Ràng buộc = TOÀN BỘ ràng buộc của Collect, cùng thứ tự, khác đúng ba chỗ:
+1. **C-DEP-5**: mọi item `amount > 0` (Collect `≥ 0`).
+2. Sổ và value tính với `deposit_bps = 10000` (hằng trong `collect.ak`), KHÔNG đọc `datum.cut_bps`:
+   **C-DEP-3** `ledger_out == ledger_in + Σamount` tại `(category, asset)`, canonical, ≤ `max_ledger_lines`;
+   **C-DEP-4** `value_out == value_in ⊕ Σamount`.
+3. Mã ràng buộc mang tiền tố `C-DEP-*`.
+
+Giữ nguyên từ Collect: không mint/burn · đúng 1 input + 1 output kho theo payment script hash · NFT chứng thực
+ở cả hai đầu · params instance bảo toàn (kể cả `buckets`, `consumed_proposals`) · epoch neo chuỗi, không lùi ·
+địa chỉ kho giữ nguyên kể cả stake credential · không reference script · category ∈ `buckets` và KHÔNG là hai
+bucket dành riêng (sổ của chúng mang nghĩa nguồn gốc — Reserve-inflow và thưởng uỷ quyền của chính kho) ·
+`Σ nạp per-asset > 0` (chặn `items == []`).
+
+`app_id` trong item Deposit là nhãn nguồn cho kiểm toán, KHÔNG phải tín dụng VP (§3.4 F8 vẫn áp).
+
+Gương off-chain: `planDeposit` / `buildDepositTx` (`Treasury/offchain/src/depositBuilder.ts`),
+`depositItemsValid` / `DEPOSIT_BPS` (`collect.ts`); `seedPolicy` BẮT BUỘC như Release.
 
 Đơn vị dùng chung: `1 LAMP = 1_000_000 oildrop` (khớp `Utils.OILDROP_PER_LAMP`).

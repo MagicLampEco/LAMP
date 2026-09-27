@@ -6,6 +6,7 @@ export * from "./constants.js";
 export * from "./datum.js";
 export * from "./collect.js";
 export * from "./collectBuilder.js";
+export * from "./depositBuilder.js";
 export * from "./releaseBuilder.js";
 export * from "./seedBuilder.js";
 

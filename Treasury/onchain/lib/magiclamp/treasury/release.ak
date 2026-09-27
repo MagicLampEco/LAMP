@@ -11,15 +11,16 @@
 // BẤT BIẾN ÉP (TECH §7):
 //   C-REL-1  proposal Ở ĐÚNG governance_ref (payment_credential == Script(governance_ref))
 //            ∧ mang ĐÚNG 1 Proposal NFT (chống NFT dời sang datum giả / replay chéo instance)
-//   C-REL-3  hash canonical (bucket,asset,amount,to) của draws == spend_spec_hash   (khóa đích chi)
+//   C-REL-3  hash canonical (seed_policy, instance_id, draws) == spend_spec_hash   (khóa đích chi + kho)
 //   C-REL-5  ∀a custody_out.value(a) == custody_in.value(a) − Σ draw(a)   (Σout=Σin, KHÔNG burn/drain)
 //   C-REL-6  ledger_out[(b,a)] == ledger_in[(b,a)] − Σ draw(b,a) ∧ draw ≤ số dư bucket  (sổ↔value)
 //   C-REL-7  Σ output tới `to` value(a) ≥ Σ draw(to,a) ∧ to ≠ custody  (tổng-khớp, chống double-sat)
 //   sổ out CANONICAL: strict-sorted ∧ mọi dòng > 0 (dòng cạn về 0 bị prune — ledger.ak)
 //
-// spend_spec_hash = blake2b_256(0x02 ‖ cbor.serialise(draws)) — canonical CBOR Plutus
-// (mẫu compute_batch_id Distribution). Proposal cam kết hash này; Release tái dựng từ
-// draws THỰC rồi so. Domain tag 0x02 tách khỏi merkle leaf(0x00)/node(0x01).
+// spend_spec_hash = blake2b_256(0x03 ‖ blake2b(seed_policy) ‖ blake2b(instance_id) ‖
+// blake2b(cbor.serialise(draws))) — canonical CBOR Plutus (mẫu compute_batch_id Distribution).
+// Proposal cam kết hash này; Release tái dựng từ draws THỰC rồi so. Domain tag 0x03 tách khỏi
+// merkle leaf(0x00)/node(0x01) và khỏi bản trước (0x02, chưa gắn seed_policy) — xem hàm.
 
 use aiken/cbor
 use aiken/collection/dict
@@ -68,17 +69,47 @@ pub fn read_proposal(
 
 // ── C-REL-3: hash canonical danh sách draw == spend_spec_hash ──
 
-/// Hash canonical của (instance_id, danh sách draw). Khóa đích chi (bucket,asset,amount,to)
-/// VÀ instance đích (F10/#1B — chống replay chéo giữa các instance CÙNG governance_ref).
+/// Hash canonical của (định danh custody, danh sách draw). Khóa đích chi
+/// (bucket,asset,amount,to) VÀ ĐÚNG MỘT custody instance.
 ///
-/// Tiền ảnh = 0x02 ‖ blake2b(instance_id) ‖ blake2b(cbor(draws)). Hai thành phần đều
-/// 32 byte cố định → ghép KHÔNG nhập nhằng biên byte (dễ mirror off-chain byte-perfect,
-/// tránh bẫy P8 khi nối instance_id độ dài thay đổi với cbor thô).
-/// Governance KHI tạo proposal PHẢI tính spec_hash với ĐÚNG instance_id đích.
-pub fn spend_spec_hash(instance_id: ByteArray, draws: List<ReleaseDraw>) -> ByteArray {
+/// Tiền ảnh = 0x03 ‖ blake2b(seed_policy) ‖ blake2b(instance_id) ‖ blake2b(cbor(draws)).
+/// Ba thành phần đều 32 byte cố định → ghép KHÔNG nhập nhằng biên byte (mirror off-chain
+/// byte-perfect, tránh bẫy P8 khi nối trường độ dài thay đổi với cbor thô).
+///
+/// VÌ SAO PHẢI CÓ `seed_policy`, không chỉ `instance_id` (P7, 2026-09-27):
+///   `instance_id` do người gieo TỰ ĐẶT — `custody_seed` chỉ ép nó khác rỗng, không ép nó
+///   duy nhất. Hai instance gieo từ hai hạt giống khác nhau vẫn trùng được `instance_id`, và
+///   khi ấy một proposal Executed khớp spec_hash ở CẢ HAI. Mỗi validator chỉ đếm input của
+///   script CHÍNH NÓ (C-REL-4 thấy đúng 1) và `consumed_proposals` là hai danh sách tách
+///   rời ⇒ một tx tiêu cả hai kho, chi 2× điều Governance đã duyệt, mỗi kho tự thấy hợp lệ.
+///   `seed_policy` thì DUY NHẤT theo hạt giống: `custody_seed` là policy one-shot tham số
+///   hoá bằng `genesis_ref`, một UTxO tiêu được đúng một lần ⇒ đúng một NFT, đúng một kho.
+///
+/// VÌ SAO `seed_policy` mà không phải script hash của chính custody: cả hai đều duy nhất theo
+///   kho, nhưng `seed_policy` là định danh GỐC — custody hash được suy RA từ nó (cộng
+///   `ms_per_epoch`, `lamp_policy`, `token_name`). Governance dựng proposal chỉ cần biết
+///   NFT của kho đích (thứ đã công khai trên chuỗi), không cần biết cả bộ tham số apply của
+///   validator; và định danh không trôi khi một tham số khác của custody đổi. Nó cũng đã sẵn
+///   trong validator (tham số apply), không phải đọc thêm gì từ tx.
+///
+/// Giữ `instance_id` trong tiền ảnh dù `seed_policy` đã đủ duy nhất: cặp (seed_policy,
+///   instance_id) là ĐÚNG danh tính NFT của kho, nên hash nói đúng điều nó cam kết.
+///
+/// Governance KHI tạo proposal PHẢI tính spec_hash với ĐÚNG (seed_policy, instance_id) đích.
+pub fn spend_spec_hash(
+  seed_policy : ByteArray,
+  instance_id : ByteArray,
+  draws       : List<ReleaseDraw>,
+) -> ByteArray {
+  let custody_h = crypto.blake2b_256(seed_policy)
   let id_h = crypto.blake2b_256(instance_id)
   let draws_h = crypto.blake2b_256(cbor.serialise(draws))
-  crypto.blake2b_256(#"02" |> bytearray.concat(id_h) |> bytearray.concat(draws_h))
+  crypto.blake2b_256(
+    #"03"
+      |> bytearray.concat(custody_h)
+      |> bytearray.concat(id_h)
+      |> bytearray.concat(draws_h),
+  )
 }
 
 // ── C-REL-5/6: Σ draw per-asset + per-(bucket,asset) ──

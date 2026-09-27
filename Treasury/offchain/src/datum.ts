@@ -36,6 +36,7 @@ export const CUSTODY_REDEEMER = {
   // luôn thêm Ở CUỐI: chèn vào giữa làm mọi redeemer đã mã hoá trỏ sang nhánh khác, và
   // nó KHÔNG lỗi lúc build — nó lỗi lúc validator chạy, sau khi đã trả phí.
   StakeRewardIn: 4,
+  Deposit: 5,
 } as const;
 
 // ── helpers ────────────────────────────────────────────────────────────
@@ -364,7 +365,13 @@ export function encodeCustodyRedeemer(r: CustodyRedeemer): Constr<Data> {
       return new Constr(CUSTODY_REDEEMER.MigrateIn, [normHex(r.source)]);
     case "StakeRewardIn":
       return new Constr(CUSTODY_REDEEMER.StakeRewardIn, [r.amount]);
+    case "Deposit":
+      return new Constr(CUSTODY_REDEEMER.Deposit, [r.items.map(encodeCollectItem)]);
   }
+}
+
+export function depositRedeemerToCbor(items: CollectItem[]): string {
+  return Data.to(encodeCustodyRedeemer({ kind: "Deposit", items }));
 }
 
 export function collectRedeemerToCbor(items: CollectItem[]): string {
@@ -388,7 +395,7 @@ function decodeBucketMove(d: Data): BucketMove {
   };
 }
 
-/** Decode CustodyRedeemer (mirror encodeCustodyRedeemer — 5 nhánh theo Constr index). */
+/** Decode CustodyRedeemer (mirror encodeCustodyRedeemer — 6 nhánh theo Constr index). */
 export function decodeCustodyRedeemer(d: Data): CustodyRedeemer {
   const c = asConstr(d, "CustodyRedeemer");
   switch (c.index) {
@@ -415,6 +422,10 @@ export function decodeCustodyRedeemer(d: Data): CustodyRedeemer {
     case CUSTODY_REDEEMER.StakeRewardIn: {
       if (c.fields.length !== 1) throw new Error(`TDATUM-125: StakeRewardIn expects 1 field, got ${c.fields.length}`);
       return { kind: "StakeRewardIn", amount: asInt(c.fields[0]!, "StakeRewardIn.amount") };
+    }
+    case CUSTODY_REDEEMER.Deposit: {
+      if (c.fields.length !== 1) throw new Error(`TDATUM-126: Deposit expects 1 field, got ${c.fields.length}`);
+      return { kind: "Deposit", items: asList(c.fields[0]!, "Deposit.items").map(decodeCollectItem) };
     }
     default:
       throw new Error(`TDATUM-124: CustodyRedeemer unknown Constr ${c.index}`);

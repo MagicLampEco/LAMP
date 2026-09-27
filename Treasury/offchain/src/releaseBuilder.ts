@@ -14,7 +14,9 @@
 //   C-REL-10  tx.mint == 0 (LAMP fixed-supply — không burn/mint).
 //   C-REL-13  draws != [] (F2 — một Release phải chi thật, không nhồi consumed rỗng).
 //   C-REL-2   proposal.status == Executed.
-//   C-REL-3   spend_spec_hash(instance_id, draws) == proposal.spend_spec_hash (F10).
+//   C-REL-3   spend_spec_hash(seed_policy, instance_id, draws) == proposal.spend_spec_hash
+//             (F10 + P7: gắn kho đích qua seed_policy — nên `seedPolicy` là tham số BẮT BUỘC).
+//   C-NFT     cust_in mang đúng 1 NFT (seed_policy, instance_id) — luôn kiểm, như on-chain.
 //   C-REL-8   current_epoch ≥ proposal.execute_after_epoch (caller set validity_range).
 //   C-REL-5   value_out == value_in ⊖ Σdraw — Σout=Σin per-asset (KHÔNG drain/burn).
 //   C-REL-6   ledger_out[(b,a)] == ledger_in[(b,a)] − Σdraw(b,a) ∧ draw ≤ số dư bucket.
@@ -70,11 +72,13 @@ export interface ReleasePlan {
   specHash:     string;             // spend_spec_hash(draws) — khớp proposal
 }
 
-/** Tùy chọn hardening v1 cho planRelease (mirror custody.ak nhánh Release). */
+/** Cổng hardening cho planRelease (mirror custody.ak nhánh Release). */
 export interface ReleaseGuards {
-  /** seed_policy (PolicyId NFT authenticity). Nếu set → ÉP cust_in mang NFT
-   *  (seed_policy, instance_id) qty 1 (C-NFT). */
-  seedPolicy?: string;
+  /** seed_policy (PolicyId NFT authenticity) — BẮT BUỘC. Hai việc: (1) ÉP cust_in mang NFT
+   *  (seed_policy, instance_id) qty 1 (C-NFT); (2) là thành phần của spend_spec_hash
+   *  (C-REL-3-SEED, P7) — thiếu nó thì không tái dựng được hash mà validator so. Bản trước
+   *  để trường này tuỳ chọn; nay tuỳ chọn nghĩa là tính sai hash, nên không còn tuỳ chọn. */
+  seedPolicy: string;
   /** payment script hash của proposal reference UTxO. Nếu set → ÉP == datum.governance_ref
    *  (C-REL-1 / read_proposal #1A: proposal Ở ĐÚNG địa chỉ Script(governance_ref)). */
   proposalScriptHash?: string;
@@ -84,7 +88,8 @@ export interface ReleaseGuards {
  * Plan release thuần. Ném lỗi nếu vi phạm bất biến onchain (fail-fast trước submit).
  * @param custodyHash payment script hash của custody (chống to == custody, đếm double-sat).
  * @param currentEpoch epoch tx sẽ submit (so execute_after_epoch — caller set validity_range).
- * @param guards (hardening v1) ÉP NFT authenticity ở cust_in + proposal Ở ĐÚNG governance_ref.
+ * @param guards BẮT BUỘC `seedPolicy` (NFT authenticity + thành phần spec hash); tuỳ chọn
+ *   `proposalScriptHash` (proposal Ở ĐÚNG governance_ref).
  */
 export function planRelease(
   datum: CustodyDatum,
@@ -93,9 +98,16 @@ export function planRelease(
   draws: ReleaseDraw[],
   custodyHash: string,
   currentEpoch: bigint,
-  newEpoch?: bigint,
-  guards: ReleaseGuards = {},
+  newEpoch: bigint | undefined,
+  guards: ReleaseGuards,
 ): ReleasePlan {
+  // Người gọi JS (không qua kiểu TS) vẫn có thể bỏ trống — ném, đừng băm một chuỗi rỗng.
+  if (guards === undefined || typeof guards.seedPolicy !== "string" || guards.seedPolicy === "") {
+    throw new Error(
+      "RELEASE-SEED: thiếu guards.seedPolicy — spend_spec_hash gắn kho đích qua seed_policy (P7); " +
+      "không có nó thì hash tái dựng không khớp proposal nào.",
+    );
+  }
   // C-REL-1 (#1A): proposal reference UTxO PHẢI ở ĐÚNG địa chỉ Script(governance_ref).
   // So payment script hash của proposalUtxo == datum.governance_ref TRƯỚC khi build.
   if (guards.proposalScriptHash !== undefined) {
@@ -109,13 +121,12 @@ export function planRelease(
 
   // C-NFT: cust_in PHẢI mang đúng 1 NFT authenticity (seed_policy, instance_id).
   // Chống dựng custody-GIẢ (không NFT) tại địa chỉ script với datum bịa để spend.
-  if (guards.seedPolicy !== undefined) {
-    const nftK = assetKey(guards.seedPolicy, datum.instance_id);
-    if ((valueIn[nftK] ?? 0n) !== 1n) {
-      throw new Error(
-        `RELEASE-NFT: cust_in thiếu NFT authenticity (${guards.seedPolicy}, ${datum.instance_id}) qty 1`,
-      );
-    }
+  // Luôn kiểm (on-chain cũng luôn kiểm) — seedPolicy nay bắt buộc.
+  const nftK = assetKey(guards.seedPolicy, datum.instance_id);
+  if ((valueIn[nftK] ?? 0n) !== 1n) {
+    throw new Error(
+      `RELEASE-NFT: cust_in thiếu NFT authenticity (${guards.seedPolicy}, ${datum.instance_id}) qty 1`,
+    );
   }
 
   // C-REL-13 (F2): draws KHÔNG rỗng — proposal rỗng chỉ nhồi consumed_proposals
@@ -130,9 +141,9 @@ export function planRelease(
     throw new Error(`RELEASE-002: proposal chưa Executed (status=${proposal.status})`);
   }
 
-  // C-REL-3: hash canonical (instance_id, draws) thực tế == spend_spec_hash đã duyệt.
-  // F10: instance_id từ custody datum → khóa proposal vào ĐÚNG instance.
-  const specHash = spendSpecHash(datum.instance_id, draws);
+  // C-REL-3: hash canonical (seed_policy, instance_id, draws) thực tế == spend_spec_hash đã
+  // duyệt. F10: instance_id từ custody datum; P7: seed_policy khoá proposal vào ĐÚNG MỘT kho.
+  const specHash = spendSpecHash(guards.seedPolicy, datum.instance_id, draws);
   if (specHash.toLowerCase() !== proposal.spend_spec_hash.toLowerCase()) {
     throw new Error(
       `RELEASE-003: spend_spec_hash lệch — draws(${specHash}) ≠ proposal(${proposal.spend_spec_hash})`,
@@ -231,8 +242,9 @@ export interface ReleaseParams {
   /** POSIX ms ↔ epoch (mirror onchain ms_per_epoch). */
   msPerEpoch:  bigint;
 
-  /** seed_policy (PolicyId NFT authenticity). ÉP cust_in mang NFT (seed_policy, instance_id). */
-  seedPolicy?: string;
+  /** seed_policy (PolicyId NFT authenticity) — BẮT BUỘC: ÉP cust_in mang NFT
+   *  (seed_policy, instance_id) VÀ là thành phần của spend_spec_hash (C-REL-3-SEED). */
+  seedPolicy: string;
 }
 
 export interface ReleaseResult {
@@ -266,8 +278,7 @@ export async function buildReleaseTx(params: ReleaseParams): Promise<ReleaseResu
   }
   const proposalScriptHash = proposalCred.hash;
 
-  const guards: ReleaseGuards = { proposalScriptHash };
-  if (seedPolicy !== undefined) guards.seedPolicy = seedPolicy;
+  const guards: ReleaseGuards = { seedPolicy, proposalScriptHash };
 
   const { newDatum, custodyAfter, recipients, specHash } = planRelease(
     datum, valueIn, proposal, draws, custodyHash, currentEpoch,

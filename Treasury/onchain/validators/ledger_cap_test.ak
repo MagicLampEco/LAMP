@@ -212,7 +212,7 @@ fn release_run(
         to: util.vk_address(alice),
       },
     ]
-  let spec = release.spend_spec_hash(instance_id, draws)
+  let spec = release.spend_spec_hash(seed_policy, instance_id, draws)
   let result =
     ProposalResult {
       proposal_id: prop_id,
