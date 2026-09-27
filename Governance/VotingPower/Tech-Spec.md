@@ -154,6 +154,12 @@ Lý do: hai UTxO **cùng script hash** nhưng **khác stake credential** là **h
 
 ## 3. Validator 1 — Proposal
 
+> ⚠️ **§3 mô tả hình dạng v1, đã bị thay.** Khuôn one-shot mỗi proposal ở dưới khiến một custody chỉ
+> chi được cho đúng một proposal; datum `ProposalDatum` 12 trường ở dưới không giải mã được thành
+> `ProposalResult` mà Treasury đọc. Hình dạng hiện hành (policy dùng chung trong pha, tên sinh từ
+> seed, datum proposal = `ProposalResult`, dữ liệu phiếu nằm ở tally, ba pha):
+> [`../SPEC.md`](../SPEC.md) v2.0 §Kiến trúc on-chain v2. Giữ §3 để đối chiếu với mã v1.
+
 ### 3.1 Vai trò
 Một UTxO duy nhất đại diện cho một đề xuất. Giữ trạng thái vòng đời (mở vote → đóng → đã tally).
 Mang **Proposal authenticity NFT** (one-shot, mint khi mở đề xuất) để chống giả mạo địa chỉ.
