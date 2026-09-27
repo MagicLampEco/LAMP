@@ -131,8 +131,8 @@ pool mới rẻ). Nếu v1.1 cần chống cạn: thêm per-address marker UTxO 
 - Constants: `OILDROP_PER_LAMP=1e6`, `TOTAL_SUPPLY_OILDROP=3.6e16`, `CLAIM_AMOUNT_OILDROP=1e8`,
   `TLAMP_ASSET_NAME="744c414d50"`.
 
-Scripts (`Faucet/scripts/`, đọc `.env` từ `MAGIC/.env`:
-`BLOCKFROST_TOKEN_GREENSUN` + `VEDATA_WALLET_MNEMONIC`):
+Scripts (`Faucet/scripts/`, nhận `BLOCKFROST_KEY` + `WALLET_SEED` qua biến môi trường đặt
+ngay trước lệnh — `scripts/config.ts`):
 `00_preflight.ts` → `01_mint_pool.ts` → `02_claim.ts`. Mặc định `SUBMIT=false` (chỉ
 build + log, KHÔNG gửi tx live); `SUBMIT=true` để chạy thật.
 

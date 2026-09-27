@@ -1,8 +1,7 @@
 // Faucet/scripts/config.ts — cấu hình deploy tLAMP + Faucet trên Preview/Preprod.
 //
-// Đọc .env từ /Users/ductiger/Projects/MAGIC/.env (theo yêu cầu): BLOCKFROST_TOKEN_GREENSUN
-// + VEDATA_WALLET_MNEMONIC (seed ví test). KHÔNG hard-code secret. KHÔNG submit tx
-// live trong các script này (chỉ build + log) — caller tự bật SUBMIT khi sẵn sàng.
+// Nhận BLOCKFROST_KEY + WALLET_SEED (seed ví test) qua biến môi trường. KHÔNG hard-code secret.
+// KHÔNG submit tx live trong các script này (chỉ build + log) — caller tự bật SUBMIT khi sẵn sàng.
 
 import {
   Lucid, Blockfrost,
@@ -25,22 +24,31 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 // lặng đúng ở ca đó. Đặt biến ngay trước lệnh, để bí mật sống trong đúng một tiến trình:
 //   NETWORK=… BLOCKFROST_KEY=… WALLET_SEED="…" tsx <tệp>.ts
 
-export const NETWORK: Network = (process.env.NETWORK ?? "Preview") as Network;
+const NETWORKS = ["Preview", "Preprod", "Mainnet"] as const;
+
+/** Danh sách ĐÓNG: một tên mạng gõ sai không được đi tiếp thành URL provider và tham số Lucid. */
+function readNetwork(): Network {
+  const n = process.env.NETWORK ?? "Preview";
+  if (!(NETWORKS as readonly string[]).includes(n)) {
+    throw new Error(`NETWORK='${n}' không thuộc ${NETWORKS.join(" | ")}.`);
+  }
+  return n as Network;
+}
+
+export const NETWORK: Network = readNetwork();
 export const BLOCKFROST_URL = `https://cardano-${NETWORK.toLowerCase()}.blockfrost.io/api/v0`;
-export const BLOCKFROST_KEY =
-  process.env.BLOCKFROST_KEY ?? process.env.BLOCKFROST_TOKEN_GREENSUN ?? "";
-export const WALLET_SEED =
-  (process.env.WALLET_SEED ?? process.env.VEDATA_WALLET_MNEMONIC ?? "").trim().replace(/\s+/g, " ");
+export const BLOCKFROST_KEY = process.env.BLOCKFROST_KEY ?? "";
+export const WALLET_SEED = (process.env.WALLET_SEED ?? "").trim().replace(/\s+/g, " ");
 
 /** Có thật sự submit tx live? Mặc định FALSE (chỉ build + log, theo yêu cầu). */
 export const SUBMIT = (process.env.SUBMIT ?? "false").toLowerCase() === "true";
 
 export function assertEnv(): void {
   if (!BLOCKFROST_KEY) {
-    throw new Error("thiếu BLOCKFROST_TOKEN_GREENSUN trong MAGIC/.env (project Preview/Preprod).");
+    throw new Error("thiếu BLOCKFROST_KEY — đặt ngay trước lệnh (project Preview/Preprod).");
   }
   if (!WALLET_SEED) {
-    throw new Error("thiếu VEDATA_WALLET_MNEMONIC trong MAGIC/.env (ví test, KHÔNG dùng ví mainnet).");
+    throw new Error("thiếu WALLET_SEED — đặt ngay trước lệnh (ví test, KHÔNG dùng ví mainnet).");
   }
 }
 

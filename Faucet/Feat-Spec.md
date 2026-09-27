@@ -68,8 +68,8 @@ với faucet "mint-on-demand" thông thường: Σ tLAMP **bất biến** sau m�
 
 ### 1.1 Người deploy (foundation, 1 lần)
 
-Một ví test của MagicLamp (đọc seed từ `MAGIC/.env` `VEDATA_WALLET_MNEMONIC`, xem
-[`scripts/config.ts:28-29`](./scripts/config.ts)) chạy **đúng 1 lần** để khởi tạo cả hệ:
+Một ví test của MagicLamp (seed nhận qua biến môi trường `WALLET_SEED`, xem
+[`scripts/config.ts`](./scripts/config.ts) `WALLET_SEED`) chạy **đúng 1 lần** để khởi tạo cả hệ:
 
 - Chọn 1 UTxO ví làm **genesis** (one-shot anchor).
 - Mint **toàn bộ** test supply = 36 tỷ tLAMP = `36_000_000_000_000_000` oildrop.
