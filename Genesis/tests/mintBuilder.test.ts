@@ -311,6 +311,20 @@ describe("buildMintTx — datum kho đúng HÌNH DẠNG TreasuryDatum (GMB-010)"
   });
 });
 
+describe("buildMintTx — CHỈ dựng DistributionVest (GMB-011)", () => {
+  // Bản trước nhận ReserveDraw nhưng dựng hình dạng DistributionVest (không meter, không kho
+  // custody MigrateIn) ⇒ on-chain từ chối. `lucid` GIẢ dựng xong được, nên nếu cổng mất thì
+  // `completed` tăng và bài đỏ — ca này phân biệt được có cổng / không cổng.
+  for (const [nhanh, mk] of [["8", params8], ["14", params14]] as const) {
+    it(`nhánh ${nhanh}: route ReserveDraw → ném GMB-011, KHÔNG dựng tx`, async () => {
+      const { trace, lucid } = fakeLucid();
+      const p = { ...mk({ lucid }), route: "ReserveDraw" } as unknown as MintParams;
+      await expect(buildMintTx(p)).rejects.toThrow(/GMB-011/);
+      expect(trace.completed).toBe(0);
+    });
+  }
+});
+
 describe("buildMintTx — reference input phải THẬT (GMB-005)", () => {
   it("chặn distKhoRefUtxo không mang kho-NFT", async () => {
     // Ca này lọt qua GMB-004 vì recipient == distKhoRefUtxo.address — guard địa chỉ tự thoả

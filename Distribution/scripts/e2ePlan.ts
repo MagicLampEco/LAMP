@@ -36,9 +36,16 @@ export function grantTimeParams(w: EpochWindow): { currentEpoch: bigint; validFr
   return { currentEpoch: w.epoch, validFromMs: w.loMs, validToMs: w.hiMs };
 }
 
-/** Redeem chỉ đọc đầu dưới (`get_epoch`); đầu dưới phải ≤ now và nằm trong cửa sổ. */
-export function redeemTimeParams(w: EpochWindow): { currentEpoch: bigint; validFromMs: bigint } {
-  return { currentEpoch: w.epoch, validFromMs: w.loMs };
+/**
+ * Tham số thời gian cho redeem. Validator chỉ đọc đầu dưới (`get_epoch`), và `buildRedeemTx`
+ * SUY cửa sổ từ chính đầu dưới đó (`validFromMs / msPerEpoch`) — không còn nhận `currentEpoch`
+ * rời. Đầu trên vẫn truyền (builder bắt buộc: khoảng rỗng không bao giờ lên chuỗi, và để Lucid
+ * tự đặt thì có thể vượt chân trời slot).
+ */
+export function redeemTimeParams(
+  w: EpochWindow, msPerEpoch: bigint,
+): { msPerEpoch: bigint; validFromMs: bigint; validToMs: bigint } {
+  return { msPerEpoch, validFromMs: w.loMs, validToMs: w.hiMs };
 }
 
 export type BeaconPlan =

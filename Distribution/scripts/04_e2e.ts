@@ -342,7 +342,7 @@ async function main(): Promise<void> {
     claimAccountUtxo: accA1, claimScript,
     treasuryUtxo: treasuryU, treasuryScript,
     dropBeaconUtxo: dropBeacon,
-    ...redeemTimeParams(windowNow(MS_PER_EPOCH, e)),
+    ...redeemTimeParams(windowNow(MS_PER_EPOCH, e), MS_PER_EPOCH),
     lampPolicyId: state.testLamp.policyId, lampAssetName: state.testLamp.assetName,
     treasuryNftPolicy,
   });
