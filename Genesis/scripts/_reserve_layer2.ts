@@ -60,7 +60,7 @@
 import {
   Constr, Data, fromText, toUnit,
   credentialToAddress, scriptHashToCredential, validatorToScriptHash, applyParamsToScript,
-  type Data as LucidData, type Script, type Validator, type MintingPolicy, type Network,
+  type Script, type Validator, type MintingPolicy, type Network,
 } from "@lucid-evolution/lucid";
 import { readFile } from "node:fs/promises";
 import { resolve, dirname } from "node:path";
@@ -229,28 +229,6 @@ function requireDelegationAdmin(pkh: string | undefined): string {
     );
   }
   return h;
-}
-
-/**
- * `Address = Constr(0, [payment_credential, Option<stake_credential>])`.
- * Script credential = `Constr(1, [hash])`; `None` = `Constr(1, [])`.
- *
- * ⚠ KHÔNG CÒN CHỖ GỌI — sót lại từ thời `reserve_draw` nhận apply-param `reserve_dest: Address`.
- *
- * Câu cũ ở đây ("stake credential vẫn nướng vào script hash, nên phải cố định") NAY SAI, và nó
- * sai theo kiểu đắt: một kho khác đã trích chính dòng này làm bằng chứng rằng quyết định "kho có
- * uỷ quyền stake không" bị khoá vào apply-param của LAMP. Khe `reserve_dest` đã bị gỡ — kho nay
- * định danh bằng NFT (`kho_nft_policy`/`kho_nft_name`), xem `Reserve/onchain/validators/
- * reserve_draw.ak` đầu tệp: "địa chỉ kho không còn bị nướng vào script hash của Reserve, nên
- * quyết định 'kho có uỷ quyền stake không' KHÔNG còn ràng vào apply-param."
- *
- * Đối chiếu máy đọc được: KHÔNG validator LAMP nào nhận `Address` làm tham số — mọi khe trong
- * `<module>/onchain/plutus.json` là PolicyId / ByteArray hash / Int / OutputReference.
- * (Viết `<module>` chứ KHÔNG viết dấu sao-gạch-chéo: chuỗi đó ĐÓNG khối chú thích ngay giữa câu,
- *  kể cả khi nó nằm trong dấu nháy ngược — phần còn lại của tệp khi đó bị đọc như mã.)
- */
-export function scriptAddressData(scriptHash: string): Constr<LucidData> {
-  return new Constr(0, [new Constr(1, [scriptHash]), new Constr(1, [])]);
 }
 
 // ── Kết quả wiring Lớp 2 ─────────────────────────────────────────────────────

@@ -174,47 +174,6 @@ pub fn count_inputs_with_nft(
   list.count(inputs, fn(i) { assets.quantity_of(i.output.value, policy, name) == 1 })
 }
 
-/// Đếm input vừa NẰM Ở script_hash VỪA mang NFT (policy, name) qty == 1.
-/// Dùng để khoá chéo: budget beacon BẮT BUỘC ở channel_budget script → consume nó
-/// CHẮC CHẮN kích channel_budget.spend (trừ remaining). "Có NFT" ở ví thường KHÔNG đếm.
-pub fn count_inputs_at_script_with_nft(
-  inputs      : List<Input>,
-  script_hash : ByteArray,
-  policy      : PolicyId,
-  name        : AssetName,
-) -> Int {
-  list.count(
-    inputs,
-    fn(i) {
-      is_at_script(i.output.address, script_hash) && assets.quantity_of(
-        i.output.value,
-        policy,
-        name,
-      ) == 1
-    },
-  )
-}
-
-/// Đếm output vừa NẰM Ở script_hash VỪA mang NFT (policy, name) qty == 1.
-/// Dùng ở budget_nft.mint: ép NFT genesis ra đúng channel_budget script (khoá NFT).
-pub fn count_outputs_at_script_with_nft(
-  outputs     : List<Output>,
-  script_hash : ByteArray,
-  policy      : PolicyId,
-  name        : AssetName,
-) -> Int {
-  list.count(
-    outputs,
-    fn(o) {
-      is_at_script(o.address, script_hash) && assets.quantity_of(
-        o.value,
-        policy,
-        name,
-      ) == 1
-    },
-  )
-}
-
 /// Đếm output mang NFT (policy, name) qty == 1.
 pub fn count_outputs_with_nft(
   outputs : List<Output>,

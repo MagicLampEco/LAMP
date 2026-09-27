@@ -49,11 +49,6 @@ pub fn execute_transition_ok(d_in: ProposalDatum, d_out: ProposalDatum) -> Bool 
   }
 }
 
-/// status getter tiện cho validator/test.
-pub fn status_of(d: ProposalDatum) -> ProposalStatus {
-  d.status
-}
-
 // ════════════════════════════════════════════════════════════
 // Tests — projection (D10 round-trip) + transition
 // ════════════════════════════════════════════════════════════
