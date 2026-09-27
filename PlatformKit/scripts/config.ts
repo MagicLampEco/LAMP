@@ -260,8 +260,9 @@ export function warnLiveBlocked(res: LiveGuardResult): void {
 
 // ── F14: kiểm KHÔNG hai instance chung governance_ref ──────────
 // Hai custody instance dùng CÙNG governance_ref ⇒ MỘT proposal Executed (cùng spec_hash)
-// có thể chi ở CẢ HAI (replay chéo instance). F10 (spend_spec_hash gồm instance_id) đã chặn
-// ở on-chain, nhưng cảnh báo sớm ở deploy giúp tránh cấu hình nhầm. Đọc lịch sử onboard
+// có thể chi ở CẢ HAI (replay chéo instance). On-chain đã chặn: spend_spec_hash gồm
+// instance_id (F10) VÀ seed_policy của kho (P7 — `Treasury/.../release.ak` ▸ spend_spec_hash),
+// nhưng cảnh báo sớm ở deploy giúp tránh cấu hình nhầm. Đọc lịch sử onboard
 // (danh sách instance) từ file json; cảnh báo nếu governance_ref mới trùng instance đã có.
 
 export const ONBOARDED_LIST_PATH = resolve(__dirname, "onboarded-instances.json");

@@ -27,7 +27,8 @@
 //   C-REL-4   ĐÚNG 1 custody input + 1 custody output theo PAYMENT SCRIPT HASH.
 //   C-REL-1   reference input tại proposal_ref Ở ĐÚNG governance_ref + mang ĐÚNG 1 Proposal NFT.
 //   C-REL-2   ProposalResult.status == Executed.
-//   C-REL-3   spend_spec_hash(draws) == proposal.spend_spec_hash (khóa đích chi).
+//   C-REL-3   spend_spec_hash(seed_policy, instance_id, draws) == proposal.spend_spec_hash
+//             (khóa đích chi VÀ đúng một kho — C-REL-3-SEED, xem `release.spend_spec_hash`).
 //   C-REL-8   current_epoch ≥ proposal.execute_after_epoch (time-lock).
 //   C-REL-5   Value: custody_out.value == custody_in.value ⊖ Σdraw — Σout=Σin per-asset.
 //   C-REL-6   Sổ: ledger_out[(b,a)] == ledger_in[(b,a)] − Σdraw(b,a) ∧ draw ≤ số dư, CANONICAL.
@@ -281,11 +282,14 @@ validator custody(
         // C-REL-2: CHỈ chi khi status == Executed.
         expect proposal.status == Executed
 
-        // C-REL-3: hash canonical (instance_id, draws) thực tế == spend_spec_hash đã duyệt.
-        // F10/#1B: gồm instance_id → proposal của instance A KHÔNG dùng được cho instance B
-        // dù CÙNG governance_ref (spec_hash khác instance ⇒ không khớp).
+        // C-REL-3: hash canonical (seed_policy, instance_id, draws) thực tế == spend_spec_hash
+        // đã duyệt. F10/#1B: gồm instance_id → proposal của instance A KHÔNG dùng được cho B
+        // dù CÙNG governance_ref. C-REL-3-SEED (P7): gồm cả `seed_policy` (tham số apply của
+        // CHÍNH validator này) — `instance_id` do người gieo tự đặt, không duy nhất; hai kho
+        // khác hạt giống trùng `instance_id` từng cùng khớp một proposal và bị tiêu chung một
+        // tx để chi 2×. Lý lẽ đầy đủ ở `release.spend_spec_hash`.
         expect
-          release.spend_spec_hash(datum.instance_id, draws) == proposal.spend_spec_hash
+          release.spend_spec_hash(seed_policy, datum.instance_id, draws) == proposal.spend_spec_hash
 
         // C-REL-8: time-lock — epoch hiện tại ≥ execute_after_epoch.
         expect cur >= proposal.execute_after_epoch

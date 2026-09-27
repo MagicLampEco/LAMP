@@ -211,7 +211,7 @@ test release_happy() {
   let ledger_in = [LedgerEntry { bucket_id: bucket_ops, policy: lamp_policy, name: lamp_name, amount: 1000 }]
   let ledger_out = [LedgerEntry { bucket_id: bucket_ops, policy: lamp_policy, name: lamp_name, amount: 700 }]
   let draws = happy_draws()
-  let spec = release.spend_spec_hash(instance_id, draws)
+  let spec = release.spend_spec_hash(seed_policy, instance_id, draws)
   let tx =
     release_tx(
       lamp_val(5_000_000, 5000),
@@ -240,7 +240,7 @@ test release_batch_multi() {
       LedgerEntry { bucket_id: bucket_community, policy: lamp_policy, name: lamp_name, amount: 300 },
     ]
   let draws = [draw_lamp(bucket_ops, 300, alice), draw_lamp(bucket_community, 500, bob)]
-  let spec = release.spend_spec_hash(instance_id, draws)
+  let spec = release.spend_spec_hash(seed_policy, instance_id, draws)
   let tx =
     release_tx(
       lamp_val(5_000_000, 5000),
@@ -263,7 +263,7 @@ test release_not_executed() fail {
   let ledger_in = [LedgerEntry { bucket_id: bucket_ops, policy: lamp_policy, name: lamp_name, amount: 1000 }]
   let ledger_out = [LedgerEntry { bucket_id: bucket_ops, policy: lamp_policy, name: lamp_name, amount: 700 }]
   let draws = happy_draws()
-  let spec = release.spend_spec_hash(instance_id, draws)
+  let spec = release.spend_spec_hash(seed_policy, instance_id, draws)
   let tx =
     release_tx(
       lamp_val(5_000_000, 5000), lamp_val(5_000_000, 4700),
@@ -298,7 +298,7 @@ test release_fake_nft() fail {
   let ledger_in = [LedgerEntry { bucket_id: bucket_ops, policy: lamp_policy, name: lamp_name, amount: 1000 }]
   let ledger_out = [LedgerEntry { bucket_id: bucket_ops, policy: lamp_policy, name: lamp_name, amount: 700 }]
   let draws = happy_draws()
-  let spec = release.spend_spec_hash(instance_id, draws)
+  let spec = release.spend_spec_hash(seed_policy, instance_id, draws)
   let result =
     ProposalResult {
       proposal_id: prop_id, status: Executed, spend_spec_hash: spec,
@@ -326,7 +326,7 @@ test release_spec_mismatch() fail {
   let ledger_out = [LedgerEntry { bucket_id: bucket_ops, policy: lamp_policy, name: lamp_name, amount: 500 }]
   // proposal duyệt draw 300 (spec của 300); caller rút 500.
   let approved = [draw_lamp(bucket_ops, 300, alice)]
-  let spec = release.spend_spec_hash(instance_id, approved)
+  let spec = release.spend_spec_hash(seed_policy, instance_id, approved)
   let actual = [draw_lamp(bucket_ops, 500, alice)]
   let tx =
     release_tx(
@@ -345,7 +345,7 @@ test release_before_timelock() fail {
   let ledger_in = [LedgerEntry { bucket_id: bucket_ops, policy: lamp_policy, name: lamp_name, amount: 1000 }]
   let ledger_out = [LedgerEntry { bucket_id: bucket_ops, policy: lamp_policy, name: lamp_name, amount: 700 }]
   let draws = happy_draws()
-  let spec = release.spend_spec_hash(instance_id, draws)
+  let spec = release.spend_spec_hash(seed_policy, instance_id, draws)
   let tx =
     release_tx(
       lamp_val(5_000_000, 5000), lamp_val(5_000_000, 4700),
@@ -366,7 +366,7 @@ test release_overdraw_bucket() fail {
   // sổ ra = 200 − 300 = −100 (over-draw) — draws_within_balance + each_out_line_ok fail.
   let ledger_out = [LedgerEntry { bucket_id: bucket_ops, policy: lamp_policy, name: lamp_name, amount: -100 }]
   let draws = happy_draws()
-  let spec = release.spend_spec_hash(instance_id, draws)
+  let spec = release.spend_spec_hash(seed_policy, instance_id, draws)
   let tx =
     release_tx(
       lamp_val(5_000_000, 5000), lamp_val(5_000_000, 4700),
@@ -384,7 +384,7 @@ test release_value_tamper() fail {
   let ledger_in = [LedgerEntry { bucket_id: bucket_ops, policy: lamp_policy, name: lamp_name, amount: 1000 }]
   let ledger_out = [LedgerEntry { bucket_id: bucket_ops, policy: lamp_policy, name: lamp_name, amount: 700 }]
   let draws = happy_draws()
-  let spec = release.spend_spec_hash(instance_id, draws)
+  let spec = release.spend_spec_hash(seed_policy, instance_id, draws)
   // custody LAMP 5000→4900 (chỉ −100) thay vì −300 → value_ok fail.
   let tx =
     release_tx(
@@ -403,7 +403,7 @@ test release_drain_ada() fail {
   let ledger_in = [LedgerEntry { bucket_id: bucket_ops, policy: lamp_policy, name: lamp_name, amount: 1000 }]
   let ledger_out = [LedgerEntry { bucket_id: bucket_ops, policy: lamp_policy, name: lamp_name, amount: 700 }]
   let draws = happy_draws()
-  let spec = release.spend_spec_hash(instance_id, draws)
+  let spec = release.spend_spec_hash(seed_policy, instance_id, draws)
   let tx =
     release_tx(
       lamp_val(5_000_000, 5000), lamp_val(2_000_000, 4700),
@@ -424,7 +424,7 @@ test release_double_sat() fail {
   let ledger_out = [LedgerEntry { bucket_id: bucket_ops, policy: lamp_policy, name: lamp_name, amount: 400 }]
   // 2 draw cùng (alice, LAMP): 300 + 300 = 600 rút khỏi sổ ops.
   let draws = [draw_lamp(bucket_ops, 300, alice), draw_lamp(bucket_ops, 300, alice)]
-  let spec = release.spend_spec_hash(instance_id, draws)
+  let spec = release.spend_spec_hash(seed_policy, instance_id, draws)
   // custody −600 (value_ok pass) NHƯNG chỉ 1 output 300 tới alice → Σ output(300) < Σ draw(600).
   let tx =
     release_tx(
@@ -445,7 +445,7 @@ test release_recipient_missing() fail {
   let ledger_in = [LedgerEntry { bucket_id: bucket_ops, policy: lamp_policy, name: lamp_name, amount: 1000 }]
   let ledger_out = [LedgerEntry { bucket_id: bucket_ops, policy: lamp_policy, name: lamp_name, amount: 700 }]
   let draws = happy_draws()
-  let spec = release.spend_spec_hash(instance_id, draws)
+  let spec = release.spend_spec_hash(seed_policy, instance_id, draws)
   // output gửi bob (sai recipient) thay vì alice → Σ output tới alice = 0 < 300.
   let tx =
     release_tx(
@@ -470,7 +470,7 @@ test release_to_custody() fail {
       to: util.script_address(cust_sh),
     }
   let draws = [bad_draw]
-  let spec = release.spend_spec_hash(instance_id, draws)
+  let spec = release.spend_spec_hash(seed_policy, instance_id, draws)
   let tx =
     release_tx(
       lamp_val(5_000_000, 5000), lamp_val(5_000_000, 4700),
@@ -489,7 +489,7 @@ test release_double_custody() fail {
   let ledger_in = [LedgerEntry { bucket_id: bucket_ops, policy: lamp_policy, name: lamp_name, amount: 1000 }]
   let ledger_out = [LedgerEntry { bucket_id: bucket_ops, policy: lamp_policy, name: lamp_name, amount: 700 }]
   let draws = happy_draws()
-  let spec = release.spend_spec_hash(instance_id, draws)
+  let spec = release.spend_spec_hash(seed_policy, instance_id, draws)
   let cust_addr2 = util.script_address_staked(cust_sh, #"5742")
   let extra =
     util.mk_input(util.mk_ref(9), util.mk_output(cust_addr2, lamp_val(5_000_000, 9999), datum(ledger_in)))
@@ -513,7 +513,7 @@ test release_mint_rejected() fail {
   let ledger_in = [LedgerEntry { bucket_id: bucket_ops, policy: lamp_policy, name: lamp_name, amount: 1000 }]
   let ledger_out = [LedgerEntry { bucket_id: bucket_ops, policy: lamp_policy, name: lamp_name, amount: 700 }]
   let draws = happy_draws()
-  let spec = release.spend_spec_hash(instance_id, draws)
+  let spec = release.spend_spec_hash(seed_policy, instance_id, draws)
   let tx =
     release_tx(
       lamp_val(5_000_000, 5000), lamp_val(5_000_000, 4700),
@@ -579,7 +579,7 @@ test release_replay_same_proposal() fail {
   let ledger_in = [LedgerEntry { bucket_id: bucket_ops, policy: lamp_policy, name: lamp_name, amount: 700 }]
   let ledger_out = [LedgerEntry { bucket_id: bucket_ops, policy: lamp_policy, name: lamp_name, amount: 400 }]
   let draws = happy_draws()
-  let spec = release.spend_spec_hash(instance_id, draws)
+  let spec = release.spend_spec_hash(seed_policy, instance_id, draws)
   let tx =
     replay_tx(
       lamp_val(5_000_000, 4700), lamp_val(5_000_000, 4400),
@@ -601,7 +601,7 @@ test release_strip_marker() fail {
   let ledger_in = [LedgerEntry { bucket_id: bucket_ops, policy: lamp_policy, name: lamp_name, amount: 1000 }]
   let ledger_out = [LedgerEntry { bucket_id: bucket_ops, policy: lamp_policy, name: lamp_name, amount: 700 }]
   let draws = happy_draws()
-  let spec = release.spend_spec_hash(instance_id, draws)
+  let spec = release.spend_spec_hash(seed_policy, instance_id, draws)
   let cust_in =
     util.mk_input(util.mk_ref(0), util.mk_output(cust_addr, with_nft(lamp_val(5_000_000, 5000)), datum(ledger_in)))
   // out_datum cố tình KHÔNG append prop_id (consumed=[]) → consumed_appended_ok fail.
@@ -628,7 +628,7 @@ test release_missing_datum() fail {
   let ledger_in = [LedgerEntry { bucket_id: bucket_ops, policy: lamp_policy, name: lamp_name, amount: 1000 }]
   let ledger_out = [LedgerEntry { bucket_id: bucket_ops, policy: lamp_policy, name: lamp_name, amount: 700 }]
   let draws = happy_draws()
-  let spec = release.spend_spec_hash(instance_id, draws)
+  let spec = release.spend_spec_hash(seed_policy, instance_id, draws)
   let tx =
     release_tx(
       lamp_val(5_000_000, 5000), lamp_val(5_000_000, 4700),
@@ -651,7 +651,7 @@ test release_param_tamper() fail {
   let ledger_in = [LedgerEntry { bucket_id: bucket_ops, policy: lamp_policy, name: lamp_name, amount: 1000 }]
   let ledger_out = [LedgerEntry { bucket_id: bucket_ops, policy: lamp_policy, name: lamp_name, amount: 700 }]
   let draws = happy_draws()
-  let spec = release.spend_spec_hash(instance_id, draws)
+  let spec = release.spend_spec_hash(seed_policy, instance_id, draws)
   let cust_in =
     util.mk_input(util.mk_ref(0), util.mk_output(cust_addr, with_nft(lamp_val(5_000_000, 5000)), datum(ledger_in)))
   // governance_ref đổi 9999→dead (chiếm quyền cổng release sau này) → params bảo toàn fail.
@@ -687,7 +687,7 @@ test release_reject_buckets_mutated() fail {
   let ledger_in = [LedgerEntry { bucket_id: bucket_ops, policy: lamp_policy, name: lamp_name, amount: 1000 }]
   let ledger_out = [LedgerEntry { bucket_id: bucket_ops, policy: lamp_policy, name: lamp_name, amount: 700 }]
   let draws = happy_draws()
-  let spec = release.spend_spec_hash(instance_id, draws)
+  let spec = release.spend_spec_hash(seed_policy, instance_id, draws)
   let cust_in =
     util.mk_input(util.mk_ref(0), util.mk_output(cust_addr, with_nft(lamp_val(5_000_000, 5000)), datum(ledger_in)))
   let d_out =
@@ -720,7 +720,7 @@ test release_negative_draw() fail {
   // all_draws_nonneg là nguyên nhân fail duy nhất (không lẫn each_out_line_ok).
   let ledger_out = [LedgerEntry { bucket_id: bucket_ops, policy: lamp_policy, name: lamp_name, amount: 1300 }]
   let neg = [draw_lamp(bucket_ops, -300, alice)]
-  let spec = release.spend_spec_hash(instance_id, neg)
+  let spec = release.spend_spec_hash(seed_policy, instance_id, neg)
   // value_ok: out = in − (−300) = in + 300 ⇒ custody 5000→5300 (cô lập all_draws_nonneg).
   let tx =
     release_tx(
@@ -740,7 +740,7 @@ test release_no_custody_output() fail {
   let cust_addr = util.script_address(cust_sh)
   let ledger_in = [LedgerEntry { bucket_id: bucket_ops, policy: lamp_policy, name: lamp_name, amount: 1000 }]
   let draws = happy_draws()
-  let spec = release.spend_spec_hash(instance_id, draws)
+  let spec = release.spend_spec_hash(seed_policy, instance_id, draws)
   let cust_in =
     util.mk_input(util.mk_ref(0), util.mk_output(cust_addr, with_nft(lamp_val(5_000_000, 5000)), datum(ledger_in)))
   // KHÔNG output custody — toàn bộ value đi ra ví thường.
@@ -795,7 +795,7 @@ test release_proposal_wrong_governance_addr() fail {
   let ledger_in = [LedgerEntry { bucket_id: bucket_ops, policy: lamp_policy, name: lamp_name, amount: 1000 }]
   let ledger_out = [LedgerEntry { bucket_id: bucket_ops, policy: lamp_policy, name: lamp_name, amount: 700 }]
   let draws = happy_draws()
-  let spec = release.spend_spec_hash(instance_id, draws)
+  let spec = release.spend_spec_hash(seed_policy, instance_id, draws)
   let tx =
     release_tx(
       lamp_val(5_000_000, 5000), lamp_val(5_000_000, 4700),
@@ -845,7 +845,7 @@ test release_custody_missing_seed_nft() fail {
   let ledger_in = [LedgerEntry { bucket_id: bucket_ops, policy: lamp_policy, name: lamp_name, amount: 1000 }]
   let ledger_out = [LedgerEntry { bucket_id: bucket_ops, policy: lamp_policy, name: lamp_name, amount: 700 }]
   let draws = happy_draws()
-  let spec = release.spend_spec_hash(instance_id, draws)
+  let spec = release.spend_spec_hash(seed_policy, instance_id, draws)
   let tx =
     release_tx_nft(
       lamp_val(5_000_000, 5000),               // cust_in KHÔNG NFT
@@ -865,7 +865,7 @@ test release_custody_nft_wrong_name() fail {
   let ledger_in = [LedgerEntry { bucket_id: bucket_ops, policy: lamp_policy, name: lamp_name, amount: 1000 }]
   let ledger_out = [LedgerEntry { bucket_id: bucket_ops, policy: lamp_policy, name: lamp_name, amount: 700 }]
   let draws = happy_draws()
-  let spec = release.spend_spec_hash(instance_id, draws)
+  let spec = release.spend_spec_hash(seed_policy, instance_id, draws)
   // NFT name SAI (#"ffff") ở cả in & out → quantity_of theo instance_id (#"abcd") == 0.
   let wrong_in = assets.add(lamp_val(5_000_000, 5000), seed_policy, #"ffff", 1)
   let wrong_out = assets.add(lamp_val(5_000_000, 4700), seed_policy, #"ffff", 1)
@@ -887,7 +887,7 @@ test release_epoch_not_anchored() fail {
   let ledger_in = [LedgerEntry { bucket_id: bucket_ops, policy: lamp_policy, name: lamp_name, amount: 1000 }]
   let ledger_out = [LedgerEntry { bucket_id: bucket_ops, policy: lamp_policy, name: lamp_name, amount: 700 }]
   let draws = happy_draws()
-  let spec = release.spend_spec_hash(instance_id, draws)
+  let spec = release.spend_spec_hash(seed_policy, instance_id, draws)
   let tx =
     release_tx_nft(
       with_nft(lamp_val(5_000_000, 5000)),
@@ -911,7 +911,7 @@ test release_prune_zero_line() {
   let ledger_in = [LedgerEntry { bucket_id: bucket_ops, policy: lamp_policy, name: lamp_name, amount: 700 }]
   let ledger_out = []
   let draws = [draw_lamp(bucket_ops, 700, alice)]
-  let spec = release.spend_spec_hash(instance_id, draws)
+  let spec = release.spend_spec_hash(seed_policy, instance_id, draws)
   let tx =
     release_tx(
       lamp_val(5_000_000, 5000),
@@ -934,7 +934,7 @@ test release_keep_nonzero_line_dropped() fail {
   // out rỗng dù số dư mới = 1000 − 600 = 400 > 0 (phải giữ dòng) → each_in_line_settled fail.
   let ledger_out = []
   let draws = [draw_lamp(bucket_ops, 600, alice)]
-  let spec = release.spend_spec_hash(instance_id, draws)
+  let spec = release.spend_spec_hash(seed_policy, instance_id, draws)
   let tx =
     release_tx(
       lamp_val(5_000_000, 5000),
@@ -978,7 +978,7 @@ test release_draw_targets_seed_nft() fail {
       to: util.vk_address(alice),
     }
   let draws = [nft_draw]
-  let spec = release.spend_spec_hash(instance_id, draws)
+  let spec = release.spend_spec_hash(seed_policy, instance_id, draws)
   // cust_in mang NFT; cust_out theo value_ok = in ⊖ NFT ⇒ KHÔNG còn NFT (chỉ ADA+LAMP).
   let cust_in =
     util.mk_input(util.mk_ref(0), util.mk_output(cust_addr, with_nft(lamp_val(5_000_000, 5000)), datum(ledger_in)))
@@ -1022,7 +1022,7 @@ test release_draw_unbooked_asset() fail {
       to: util.vk_address(alice),
     }
   let draws = [unbooked_draw]
-  let spec = release.spend_spec_hash(instance_id, draws)
+  let spec = release.spend_spec_hash(seed_policy, instance_id, draws)
   // cust_in: NFT + ADA + LAMP 5000 + 50 của asset chưa booked (#"dead",#"beef").
   let in_val = assets.add(with_nft(lamp_val(5_000_000, 5000)), #"dead", #"beef", 50)
   // cust_out = in ⊖ 50 asset (value_ok khớp) — chỉ C-REL-6 chặn (sổ không có dòng).
@@ -1056,7 +1056,7 @@ test release_prune_partial_multi_line() {
     [LedgerEntry { bucket_id: bucket_community, policy: lamp_policy, name: lamp_name, amount: 300 }]
   let draws =
     [draw_lamp(bucket_ops, 700, alice), draw_lamp(bucket_community, 200, bob)]
-  let spec = release.spend_spec_hash(instance_id, draws)
+  let spec = release.spend_spec_hash(seed_policy, instance_id, draws)
   let tx =
     release_tx(
       lamp_val(5_000_000, 5000),
@@ -1084,7 +1084,7 @@ test release_consumed_strip_old_id() fail {
   let ledger_in = [LedgerEntry { bucket_id: bucket_ops, policy: lamp_policy, name: lamp_name, amount: 1000 }]
   let ledger_out = [LedgerEntry { bucket_id: bucket_ops, policy: lamp_policy, name: lamp_name, amount: 700 }]
   let draws = happy_draws()
-  let spec = release.spend_spec_hash(instance_id, draws)
+  let spec = release.spend_spec_hash(seed_policy, instance_id, draws)
   // custody_in: consumed_proposals đã có 1 id cũ (#"01ad") — proposal_is_fresh(prop_id) PASS
   //   (prop_id #"0001" ≠ #"01ad" nên KHÔNG lẫn proposal_is_fresh).
   let d_in = datum_consumed(ledger_in, [#"01ad"])
@@ -1139,7 +1139,7 @@ test release_proposal_id_name_mismatch() fail {
   let ledger_in = [LedgerEntry { bucket_id: bucket_ops, policy: lamp_policy, name: lamp_name, amount: 1000 }]
   let ledger_out = [LedgerEntry { bucket_id: bucket_ops, policy: lamp_policy, name: lamp_name, amount: 700 }]
   let draws = happy_draws()
-  let spec = release.spend_spec_hash(instance_id, draws)
+  let spec = release.spend_spec_hash(seed_policy, instance_id, draws)
   let tx =
     release_tx(
       lamp_val(5_000_000, 5000), lamp_val(5_000_000, 4700),
@@ -1164,7 +1164,7 @@ test release_empty_draws() fail {
   let ledger_out = [LedgerEntry { bucket_id: bucket_ops, policy: lamp_policy, name: lamp_name, amount: 1000 }]
   let draws = []
   // spec của [] (đúng instance_id) → C-REL-3 KHỚP; nhưng draws!=[] chặn trước read_proposal.
-  let spec = release.spend_spec_hash(instance_id, draws)
+  let spec = release.spend_spec_hash(seed_policy, instance_id, draws)
   let tx =
     release_tx(
       lamp_val(5_000_000, 5000), lamp_val(5_000_000, 5000),
@@ -1189,7 +1189,7 @@ test release_wrong_instance_id() fail {
   let ledger_out = [LedgerEntry { bucket_id: bucket_ops, policy: lamp_policy, name: lamp_name, amount: 700 }]
   let draws = happy_draws()
   // spec tính cho instance_id #"9999" (KHÁC custody datum.instance_id #"abcd").
-  let spec_other_instance = release.spend_spec_hash(#"9999", draws)
+  let spec_other_instance = release.spend_spec_hash(seed_policy, #"9999", draws)
   let tx =
     release_tx(
       lamp_val(5_000_000, 5000), lamp_val(5_000_000, 4700),
@@ -1214,7 +1214,7 @@ test release_epoch_unbounded() fail {
   let ledger_in = [LedgerEntry { bucket_id: bucket_ops, policy: lamp_policy, name: lamp_name, amount: 1000 }]
   let ledger_out = [LedgerEntry { bucket_id: bucket_ops, policy: lamp_policy, name: lamp_name, amount: 700 }]
   let draws = happy_draws()
-  let spec = release.spend_spec_hash(instance_id, draws)
+  let spec = release.spend_spec_hash(seed_policy, instance_id, draws)
   let cust_in =
     util.mk_input(util.mk_ref(0), util.mk_output(cust_addr, with_nft(lamp_val(5_000_000, 5000)), datum(ledger_in)))
   let d_out =
@@ -1245,7 +1245,7 @@ test release_stake_credential_hijack() fail {
   let ledger_in = [LedgerEntry { bucket_id: bucket_ops, policy: lamp_policy, name: lamp_name, amount: 1000 }]
   let ledger_out = [LedgerEntry { bucket_id: bucket_ops, policy: lamp_policy, name: lamp_name, amount: 700 }]
   let draws = happy_draws()
-  let spec = release.spend_spec_hash(instance_id, draws)
+  let spec = release.spend_spec_hash(seed_policy, instance_id, draws)
   let cust_in =
     util.mk_input(util.mk_ref(0), util.mk_output(cust_addr, with_nft(lamp_val(5_000_000, 5000)), datum(ledger_in)))
   let d_out =
@@ -1277,7 +1277,7 @@ test release_reference_script_attached() fail {
   let ledger_in = [LedgerEntry { bucket_id: bucket_ops, policy: lamp_policy, name: lamp_name, amount: 1000 }]
   let ledger_out = [LedgerEntry { bucket_id: bucket_ops, policy: lamp_policy, name: lamp_name, amount: 700 }]
   let draws = happy_draws()
-  let spec = release.spend_spec_hash(instance_id, draws)
+  let spec = release.spend_spec_hash(seed_policy, instance_id, draws)
   let cust_in =
     util.mk_input(util.mk_ref(0), util.mk_output(cust_addr, with_nft(lamp_val(5_000_000, 5000)), datum(ledger_in)))
   let d_out =
@@ -1297,4 +1297,116 @@ test release_reference_script_attached() fail {
       validity_range: epoch_range(5 * ms_per_epoch),
     }
   run(tx, datum(ledger_in), draws)
+}
+
+// ════════════════════════════════════════════════════════════
+// 39–41. C-REL-3-SEED (P7) — HAI KHO KHÁC HẠT GIỐNG, TRÙNG `instance_id`, MỘT PROPOSAL.
+//   Lỗ trước bản vá: `spend_spec_hash` chỉ gắn `instance_id`, mà `instance_id` do người gieo
+//   tự đặt (`custody_seed` chỉ ép khác rỗng). Kho A (seed_policy #"5eed") và kho B
+//   (seed_policy #"5eeb") cùng khai `instance_id = #"abcd"`, cùng governance_ref. Một tx
+//   tiêu CẢ HAI, mỗi kho −300 LAMP, alice nhận 600:
+//     • mỗi validator đếm input của script CHÍNH NÓ ⇒ C-REL-4 thấy đúng 1 ở cả hai;
+//     • `consumed_proposals` là hai danh sách riêng ⇒ C-REL-9 thoả ở cả hai;
+//     • recipients_ok mỗi kho đòi alice ≥ 300 — 600 thoả cả hai.
+//   ⇒ trước bản vá cả hai validator trả True: chi 2× điều Governance duyệt.
+//   Sau bản vá, proposal cam kết (seed_A, abcd, draws); validator B tái dựng với seed_B ⇒
+//   lệch ⇒ C-REL-3 từ chối ⇒ cả tx bị từ chối.
+//   Ca 39 là ĐỐI CHỨNG DƯƠNG trên CHÍNH tx đó: validator A chấp nhận — tức tx không hỏng vì
+//   lý do nào khác, và ca 40 đỏ đúng vì định danh kho. Ca 41 đo trực tiếp trên hàm hash.
+// ════════════════════════════════════════════════════════════
+const seed_policy_b: assets.PolicyId = #"5eeb"
+
+const cust_sh_b: ByteArray = #"c1c1c1c1"
+
+fn two_custody_tx() -> Transaction {
+  let ledger_in = [LedgerEntry { bucket_id: bucket_ops, policy: lamp_policy, name: lamp_name, amount: 1000 }]
+  let ledger_out = [LedgerEntry { bucket_id: bucket_ops, policy: lamp_policy, name: lamp_name, amount: 700 }]
+  let draws = happy_draws()
+  // Proposal duyệt cho kho A (seed_policy #"5eed").
+  let spec_a = release.spend_spec_hash(seed_policy, instance_id, draws)
+  let d_out =
+    CustodyDatum { ..datum(ledger_out), ledger: ledger_out, epoch: 5, consumed_proposals: [prop_id] }
+  let addr_a = util.script_address(cust_sh)
+  let addr_b = util.script_address(cust_sh_b)
+  let nft_a = fn(v) { assets.add(v, seed_policy, instance_id, 1) }
+  let nft_b = fn(v) { assets.add(v, seed_policy_b, instance_id, 1) }
+  let in_a =
+    util.mk_input(util.mk_ref(0), util.mk_output(addr_a, nft_a(lamp_val(5_000_000, 5000)), datum(ledger_in)))
+  let in_b =
+    util.mk_input(util.mk_ref(1), util.mk_output(addr_b, nft_b(lamp_val(5_000_000, 5000)), datum(ledger_in)))
+  let out_a = util.mk_output(addr_a, nft_a(lamp_val(5_000_000, 4700)), d_out)
+  let out_b = util.mk_output(addr_b, nft_b(lamp_val(5_000_000, 4700)), d_out)
+  Transaction {
+    ..placeholder,
+    inputs: [in_a, in_b],
+    reference_inputs: [proposal_input(Executed, spec_a, 4)],
+    outputs: [out_a, out_b, pay(alice, 600)],
+    mint: assets.zero,
+    validity_range: epoch_range(5 * ms_per_epoch),
+  }
+}
+
+fn two_custody_ledger_in() -> List<LedgerEntry> {
+  [LedgerEntry { bucket_id: bucket_ops, policy: lamp_policy, name: lamp_name, amount: 1000 }]
+}
+
+test release_two_custody_same_instance_id_owner_accepts() {
+  // Validator của kho A (đúng kho proposal cam kết) trên CHÍNH tx chi đôi: chấp nhận.
+  custody.custody.spend(
+    prop_policy,
+    seed_policy,
+    ms_per_epoch,
+    lamp_policy,
+    lamp_name,
+    Some(datum(two_custody_ledger_in())),
+    Release { proposal_ref: prop_ref(), draws: happy_draws() },
+    util.mk_ref(0),
+    two_custody_tx(),
+  )
+}
+
+test release_two_custody_same_instance_id_other_rejects() fail {
+  // Validator của kho B (khác hạt giống, trùng instance_id) trên cùng tx: C-REL-3 từ chối
+  // ⇒ tx tiêu cả hai kho bị từ chối, proposal chỉ chi được ở đúng một kho.
+  custody.custody.spend(
+    prop_policy,
+    seed_policy_b,
+    ms_per_epoch,
+    lamp_policy,
+    lamp_name,
+    Some(datum(two_custody_ledger_in())),
+    Release { proposal_ref: prop_ref(), draws: happy_draws() },
+    util.mk_ref(1),
+    two_custody_tx(),
+  )
+}
+
+test spend_spec_hash_binds_seed_policy() {
+  // Cùng instance_id, cùng draws, khác seed_policy ⇒ khác hash.
+  release.spend_spec_hash(seed_policy, instance_id, happy_draws()) != release.spend_spec_hash(
+    seed_policy_b,
+    instance_id,
+    happy_draws(),
+  )
+}
+
+// ════════════════════════════════════════════════════════════
+// 42–43. VECTOR KIỂM CHÉO aiken ↔ TS (C-REL-3, công thức 0x03 của P7).
+//   Cùng hex ở `Treasury/tests/release.test.ts` khối "spend_spec_hash canonical". Hex tính
+//   ĐỘC LẬP bằng hashlib (blake2b-256) trên CBOR đã ghim ở cùng tệp TS — ba bản cài
+//   (aiken, @noble/hashes, hashlib) phải cho cùng một chuỗi. seed_policy 28 byte thật.
+// ════════════════════════════════════════════════════════════
+const vector_seed: ByteArray =
+  #"11ee11ee11ee11ee11ee11ee11ee11ee11ee11ee11ee11ee11ee11ee"
+
+test spend_spec_hash_vector_single() {
+  release.spend_spec_hash(vector_seed, instance_id, [draw_lamp(bucket_ops, 300, alice)]) == #"bcee7a33b9509d456dcc6d10d6275cc42acf6509c21c9a335afa7d4e34391b56"
+}
+
+test spend_spec_hash_vector_multi() {
+  release.spend_spec_hash(
+    vector_seed,
+    instance_id,
+    [draw_lamp(bucket_ops, 300, alice), draw_lamp(bucket_community, 500, bob)],
+  ) == #"da4718206f096865962155c98d4876f561bb9f285a391882b71866a8d7d46b22"
 }

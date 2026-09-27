@@ -3,17 +3,18 @@
 // (fail-fast trước khi submit tốn phí). Model A (CONTRACT §4,§9 T1/T5; TECH §7).
 //
 // BẤT BIẾN ÉP (khớp release.ak):
-//   C-REL-3  spend_spec_hash(draws) == proposal.spend_spec_hash      (khóa đích chi)
+//   C-REL-3  spend_spec_hash(seed_policy, instance_id, draws) == proposal.spend_spec_hash
 //   C-REL-5  ∀a custody_out.value(a) == custody_in.value(a) − Σdraw(a)  (Σout=Σin, KHÔNG burn)
 //   C-REL-6  ledger_out[(b,a)] == ledger_in[(b,a)] − Σdraw(b,a) ∧ draw ≤ số dư bucket
 //   C-REL-7  Σ output tới `to` value(a) == Σ draw(to,a) ∧ to ≠ custody  (tổng-khớp)
 //
-// spend_spec_hash = blake2b_256( 0x02 ‖ blake2b_256(instance_id) ‖ blake2b_256(cbor.serialise(draws)) )
-// F10/#1B — gồm instance_id để proposal của instance A KHÔNG dùng được cho instance B
-// dù CÙNG governance_ref. Hai thành phần blake2b đều 32 byte cố định → ghép KHÔNG nhập
-// nhằng biên byte (mirror release.ak dòng 78-82). drawsCbor = Data.to(encodeReleaseDraw[])
-// — đã xác minh BYTE-PERFECT với aiken cbor.serialise + aiken spend_spec_hash
-// (xem release.test.ts: fixture HASH_SINGLE/HASH_MULTI, probe aiken probe_single/multi).
+// spend_spec_hash = blake2b_256( 0x03 ‖ blake2b_256(seed_policy) ‖ blake2b_256(instance_id)
+//                                     ‖ blake2b_256(cbor.serialise(draws)) )
+// F10/#1B gắn instance_id; P7 gắn thêm seed_policy (định danh DUY NHẤT của kho) — xem
+// `spendSpecHash`. Ba thành phần blake2b đều 32 byte → ghép KHÔNG nhập nhằng biên byte
+// (mirror `release.ak` ▸ `spend_spec_hash`). drawsCbor = Data.to(encodeReleaseDraw[]).
+// Vector kiểm chéo aiken↔TS: `release_test.ak` ▸ `spend_spec_hash_vector_*` và
+// `release.test.ts` khối "spend_spec_hash canonical" dùng CHUNG một hex.
 
 import { Data } from "@lucid-evolution/lucid";
 import { blake2b } from "@noble/hashes/blake2b";
@@ -24,8 +25,9 @@ import {
   type AssetMap, assetKey, ledgerGet, isCanonical, canonicalizeLedger,
 } from "./collect.js";
 
-// Domain tag 0x02 — tách khỏi merkle leaf(0x00)/node(0x01) (release.ak dòng 18).
-export const SPEND_SPEC_PREFIX = 0x02;
+// Domain tag 0x03 — tách khỏi merkle leaf(0x00)/node(0x01) và khỏi bản trước 0x02 (chưa gắn
+// seed_policy), để một spec_hash tính theo công thức cũ không bao giờ khớp công thức mới.
+export const SPEND_SPEC_PREFIX = 0x03;
 
 // ── byte helpers (no Buffer — portable) ──
 
@@ -56,23 +58,39 @@ export function drawsCbor(draws: ReleaseDraw[]): string {
 }
 
 /**
- * spend_spec_hash = blake2b_256( 0x02 ‖ blake2b_256(instance_id) ‖ blake2b_256(cbor(draws)) ).
- * F10: khóa CẢ instance đích (chống replay chéo instance cùng governance_ref) lẫn đích chi.
- * Mirror BYTE-PERFECT release.ak spend_spec_hash(instance_id, draws):
- *   id_h    = blake2b_256(instanceIdBytes)          — 32 byte
- *   draws_h = blake2b_256(drawsCbor)                — 32 byte
- *   preimage = 0x02 ‖ id_h ‖ draws_h                — 1 + 32 + 32 = 65 byte (biên cố định)
- *   hash     = blake2b_256(preimage)
- * instanceIdBytes = hex→bytes của instance_id (KHÔNG hash hex-string). drawsCbor giữ
- * NGUYÊN cách cũ (Data.to(draws) — canonical Plutus CBOR). Trả hex (64 ký tự).
+ * spend_spec_hash = blake2b_256( 0x03 ‖ blake2b_256(seed_policy) ‖ blake2b_256(instance_id)
+ *                                     ‖ blake2b_256(cbor(draws)) ).
+ * Khóa CẢ kho đích lẫn đích chi. Mirror BYTE-PERFECT release.ak
+ * spend_spec_hash(seed_policy, instance_id, draws):
+ *   custody_h = blake2b_256(seedPolicyBytes)         — 32 byte
+ *   id_h      = blake2b_256(instanceIdBytes)         — 32 byte
+ *   draws_h   = blake2b_256(drawsCbor)               — 32 byte
+ *   preimage  = 0x03 ‖ custody_h ‖ id_h ‖ draws_h    — 1 + 3×32 = 97 byte (biên cố định)
+ *   hash      = blake2b_256(preimage)
+ *
+ * `seedPolicy` là policy id của NFT chứng thực kho (tham số apply `seed_policy` của custody).
+ * Nó phải có vì `instance_id` do người gieo tự đặt và KHÔNG duy nhất: hai kho khác hạt giống
+ * trùng `instance_id` từng cùng khớp một proposal và bị tiêu chung một tx để chi 2× (P7). Lý
+ * lẽ chọn `seed_policy` thay cho script hash của custody: `release.ak` ▸ `spend_spec_hash`.
+ *
+ * Hex → bytes (KHÔNG hash chuỗi hex). Rỗng hoặc không phải hex thì NÉM — một seedPolicy rỗng
+ * vẫn băm ra được một hash hợp lệ về hình dạng, và hash đó không khớp kho nào.
  */
-export function spendSpecHash(instanceId: string, draws: ReleaseDraw[]): string {
+export function spendSpecHash(seedPolicy: string, instanceId: string, draws: ReleaseDraw[]): string {
+  if (!/^[0-9a-fA-F]+$/.test(seedPolicy) || seedPolicy.length % 2 !== 0) {
+    throw new Error(
+      `RELEASE-SEED: seedPolicy = "${seedPolicy}" — cần policy id hex của NFT chứng thực kho ` +
+      `(tham số seed_policy của custody). spend_spec_hash gắn kho đích qua trường này.`,
+    );
+  }
+  const custodyH = blake2b(hexToBytes(seedPolicy), { dkLen: 32 });
   const idH = blake2b(hexToBytes(instanceId), { dkLen: 32 });
   const drawsH = blake2b(hexToBytes(drawsCbor(draws)), { dkLen: 32 });
-  const pre = new Uint8Array(1 + idH.length + drawsH.length);   // 0x02 ‖ id_h ‖ draws_h
-  pre[0] = SPEND_SPEC_PREFIX;
-  pre.set(idH, 1);
-  pre.set(drawsH, 1 + idH.length);
+  const pre = new Uint8Array(1 + custodyH.length + idH.length + drawsH.length);
+  pre[0] = SPEND_SPEC_PREFIX;                          // 0x03 ‖ custody_h ‖ id_h ‖ draws_h
+  pre.set(custodyH, 1);
+  pre.set(idH, 1 + custodyH.length);
+  pre.set(drawsH, 1 + custodyH.length + idH.length);
   return bytesToHex(blake2b(pre, { dkLen: 32 }));
 }
 

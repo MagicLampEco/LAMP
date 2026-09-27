@@ -571,7 +571,9 @@ C-REL-1  Reference input tồn tại tại proposal_ref, mang đúng Proposal NF
          > tính `spend_spec_hash` với ĐÚNG `instance_id` đích (commit target instance) — nếu Governance tính
          > sai instance, proposal sẽ KHÔNG bao giờ chi được ở instance nào (hash không khớp). Đây là ràng
          > buộc build-side của Governance, KHÔNG còn là lỗ hổng on-chain của Treasury. (Xem §11 Phụ thuộc +
-         > known-gap.) Code: `release.ak spend_spec_hash` L78-82.
+         > known-gap.) Code: `release.ak` ▸ `spend_spec_hash`.
+         > **Thay ở P7 (2026-09-27):** công thức trên còn hở khi hai kho khác hạt giống TRÙNG `instance_id`
+         > (một tx tiêu cả hai, chi 2×). Tiền ảnh nay gắn thêm `seed_policy`, tag `0x03` — xem C-REL-3 dưới.
          > **CHỐT INTERFACE với Governance (LỖ #1A hệ quả):** Proposal NFT phải là **MỘT policy chung
          > per-governance** (asset name = `proposal_id`), KHÔNG one-shot-by-seed **per-proposal**. Lý do:
          > custody param `proposal_policy` (một policy id đơn) chỉ đúng khi policy **ổn định per-DAO**;
@@ -592,11 +594,15 @@ C-REL-2  Proposal đã thông qua — CHỐT MODEL A (sửa audit finding 5): Ex
 C-REL-3  Khớp đích chi (HARD BLOCKER — sửa audit finding 7; vá lần 2 LỖ #F10 gồm instance_id):
            tổng các ReleaseDraw (bucket, asset, amount, to) phải KHỚP nội dung proposal.
            Proposal datum cam kết một "spend spec" (hash) → Release kiểm
-             spend_spec_hash(instance_id, draws) == proposal.spend_spec_hash.
-           Tiền ảnh (vá lần 2): 0x02 ‖ blake2b(instance_id) ‖ blake2b(cbor(draws)) — hai thành phần đều
-             32 byte cố định → ghép KHÔNG nhập nhằng biên byte (mirror off-chain byte-perfect, tránh bẫy
-             P8). Domain tag 0x02 tách khỏi merkle leaf(0x00)/node(0x01). Khóa CẢ đích chi (ai/bao nhiêu)
-             LẪN instance đích → proposal instance A không dùng được cho instance B (đóng #1B, xem trên).
+             spend_spec_hash(seed_policy, instance_id, draws) == proposal.spend_spec_hash.
+           Tiền ảnh (P7, 2026-09-27 — `C-REL-3-SEED`, CONTRACT §15):
+             0x03 ‖ blake2b(seed_policy) ‖ blake2b(instance_id) ‖ blake2b(cbor(draws)) — ba thành phần
+             đều 32 byte cố định → ghép KHÔNG nhập nhằng biên byte (mirror off-chain byte-perfect, tránh
+             bẫy P8). Domain tag 0x03 tách khỏi merkle leaf(0x00)/node(0x01) và khỏi bản vá lần 2 (0x02,
+             chỉ gắn instance_id). Khóa CẢ đích chi (ai/bao nhiêu) LẪN đúng MỘT kho: `instance_id` do người
+             gieo tự đặt, không duy nhất; `seed_policy` (policy one-shot theo hạt giống) thì duy nhất.
+             Nguồn: `release.ak` ▸ `spend_spec_hash`; ca âm `release_test.ak` ▸
+             `release_two_custody_same_instance_id_other_rejects`.
            Chống chi sai địa chỉ/sai số so với điều đã duyệt.
            ✅ **ĐÃ ĐÓNG (đo 2026-09-02).** Field `spend_spec_hash`, `released_cumulative`,
            `execute_after_epoch` NAY CÓ trong `Governance/onchain/lib/magiclamp/governance/types.ak`
@@ -826,6 +832,7 @@ Nền tảng lý thuyết double-satisfaction:
 | `release_double_custody` | 2 custody UTxO | **fail** (C-REL-4) |
 | **`release_proposal_wrong_governance_addr`** | proposal NFT ở UTxO **script lạ** (≠ Script(governance_ref)) | **fail** (C-REL-1 #1A) |
 | **`release_cross_instance_same_gov`** | proposal của instance khác, CÙNG governance_ref | **fail** (đã ĐÓNG #1B — spend_spec_hash gồm instance_id, C-REL-3; hash khác instance ⇒ reject) |
+| **`release_two_custody_same_instance_id_other_rejects`** | hai kho khác hạt giống, TRÙNG instance_id, một tx tiêu cả hai với một proposal | **fail** ở kho không được cam kết (C-REL-3-SEED, P7); đối chứng `…_owner_accepts` **pass** trên cùng tx |
 | **`release_nft_name_ne_proposal_id`** | NFT name ≠ proposal_id trong datum | **fail** (C-REL-1(c) F1) |
 | **`release_empty_draws`** | draws == [] (nhồi consumed_proposals, không chi) | **fail** (C-REL-13 F2) |
 | **`collect_zero_cut_noop`** | items rỗng / mọi cut==0 (no-op respend griefing) | **fail** (C-COL-11 F3) |

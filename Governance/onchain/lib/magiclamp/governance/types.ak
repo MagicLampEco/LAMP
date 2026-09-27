@@ -33,8 +33,11 @@ pub type ProposalStatus {
 /// Beacon kết quả Governance — projection GỌN phơi ở Proposal UTxO mang Proposal
 /// authenticity NFT one-shot. Treasury Release ĐỌC qua REFERENCE INPUT (CIP-31).
 /// 5 FIELD KHỚP BYTE-PERFECT Treasury types.ak:78-84 (D10).
-/// spend_spec_hash = blake2b_256(0x02 ‖ cbor.serialise(draws)) — cùng domain tag
-/// 0x02 với Treasury release.spend_spec_hash (khóa đích chi ai/bao nhiêu).
+/// spend_spec_hash = blake2b_256(0x03 ‖ blake2b(seed_policy) ‖ blake2b(instance_id) ‖
+/// blake2b(cbor.serialise(draws))) — nguồn duy nhất là Treasury `release.spend_spec_hash`
+/// (khóa đích chi ai/bao nhiêu VÀ đúng một kho: `seed_policy` là policy NFT chứng thực của
+/// custody đích). Governance không tính lại hash này on-chain, chỉ mang nó qua; bên dựng
+/// proposal PHẢI tính với đúng (seed_policy, instance_id) của kho đích.
 pub type ProposalResult {
   proposal_id: ByteArray,
   status: ProposalStatus,

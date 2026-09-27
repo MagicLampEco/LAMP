@@ -2,17 +2,20 @@
 // với on-chain (CBOR + spend_spec_hash trích từ aiken cbor.serialise + aiken
 // spend_spec_hash — fixture dưới, đã đối chiếu qua probe aiken trực tiếp).
 //
-// F10: spend_spec_hash NAY = blake2b(0x02 ‖ blake2b(instance_id) ‖ blake2b(cbor(draws))).
-// instance_id của các fixture = "abcd" (= custodyDatum.instance_id).
+// P7: spend_spec_hash NAY = blake2b(0x03 ‖ blake2b(seed_policy) ‖ blake2b(instance_id)
+//                                   ‖ blake2b(cbor(draws))).
+// instance_id của các fixture = "abcd" (= custodyDatum.instance_id); seed_policy = SEED_POLICY
+// ("11ee"×14, 28 byte).
 //
-// Fixtures BYTE-PERFECT (CBOR draws + HASH với instance_id="abcd"):
+// Fixtures BYTE-PERFECT (CBOR draws + HASH với seed_policy=SEED_POLICY, instance_id="abcd"):
 //   draws_single = [draw(ops, 300, alice)]
 //     CBOR  9FD8799F01421A3B444C414D5019012CD8799FD8799F43A11CE0FFD87A80FFFFFF
-//     HASH  CE5080F356F6FC29AD1B31A0CE5BD348DDA86E309E4E11BA99B5CD7C9E83337B
+//     HASH  BCEE7A33B9509D456DCC6D10D6275CC42ACF6509C21C9A335AFA7D4E34391B56
 //   draws_multi  = [draw(ops,300,alice), draw(community,500,bob)]
 //     CBOR  9FD8799F01421A3B444C414D5019012CD8799FD8799F43A11CE0FFD87A80FFFFD8799F02421A3B444C414D501901F4D8799FD8799F42B0B0FFD87A80FFFFFF
-//     HASH  920E780A3765D8BAA3C107B8D5F9F445CE0467443937F15AC2E8A99C3D71A266
-// (blake2b(instance_id="abcd") = 9606E52F00C679E548B5155AF5026F5AF4130D7A15C990A791FFF8D652C464F5)
+//     HASH  DA4718206F096865962155C98D4876F561BB9F285A391882B71866A8D7D46B22
+// Hai HASH trên là CÙNG hex với `release_test.ak` ▸ `spend_spec_hash_vector_single/_multi`
+// (aiken) — ba bản cài (aiken, @noble/hashes, hashlib) cho cùng chuỗi.
 
 import { describe, expect, it } from "vitest";
 import { Data } from "@lucid-evolution/lucid";
@@ -33,6 +36,9 @@ import { planRelease } from "../offchain/src/releaseBuilder.js";
 
 // ── Hằng số mirror release_test.ak ──
 const INSTANCE_ID = "abcd";                 // F10: instance_id của fixture (= custodyDatum)
+const SEED_POLICY = "11ee".repeat(14);      // PolicyId NFT authenticity (tham số seed_policy)
+/** guards bắt buộc của planRelease — seedPolicy là thành phần spec hash (P7). */
+const G = { seedPolicy: SEED_POLICY };
 const LAMP_POLICY = "1a3b";
 const LAMP_NAME = "4c414d50";
 const ALICE = "a11ce0";
@@ -119,7 +125,7 @@ describe("codec round-trip", () => {
   });
 
   it("ProposalResult round-trips (qua CBOR)", () => {
-    const p = proposal(spendSpecHash(INSTANCE_ID, drawsSingle));
+    const p = proposal(spendSpecHash(SEED_POLICY, INSTANCE_ID, drawsSingle));
     const cbor = Data.to(encodeProposalResult(p));
     expect(decodeProposalResult(Data.from(cbor))).toEqual(p);
   });
@@ -155,9 +161,9 @@ describe("spend_spec_hash canonical (byte-perfect on-chain)", () => {
     );
   });
 
-  it("HASH draws_single khớp release.spend_spec_hash on-chain (F10, instance_id=abcd)", () => {
-    expect(spendSpecHash(INSTANCE_ID, drawsSingle).toLowerCase()).toBe(
-      "ce5080f356f6fc29ad1b31a0ce5bd348dda86e309e4e11ba99b5cd7c9e83337b",
+  it("HASH draws_single khớp release.spend_spec_hash on-chain (P7, seed_policy + instance_id=abcd)", () => {
+    expect(spendSpecHash(SEED_POLICY, INSTANCE_ID, drawsSingle).toLowerCase()).toBe(
+      "bcee7a33b9509d456dcc6d10d6275cc42acf6509c21c9a335afa7d4e34391b56",
     );
   });
 
@@ -168,30 +174,43 @@ describe("spend_spec_hash canonical (byte-perfect on-chain)", () => {
     );
   });
 
-  it("HASH draws_multi khớp release.spend_spec_hash on-chain (F10, instance_id=abcd)", () => {
-    expect(spendSpecHash(INSTANCE_ID, drawsMulti).toLowerCase()).toBe(
-      "920e780a3765d8baa3c107b8d5f9f445ce0467443937f15ac2e8a99c3d71a266",
+  it("HASH draws_multi khớp release.spend_spec_hash on-chain (P7, seed_policy + instance_id=abcd)", () => {
+    expect(spendSpecHash(SEED_POLICY, INSTANCE_ID, drawsMulti).toLowerCase()).toBe(
+      "da4718206f096865962155c98d4876f561bb9f285a391882b71866a8d7d46b22",
     );
   });
 
   it("hash đổi khi draw đổi (amount)", () => {
     const other = [drawLamp(BUCKET_OPS, 301n, ALICE)];
-    expect(spendSpecHash(INSTANCE_ID, other)).not.toBe(spendSpecHash(INSTANCE_ID, drawsSingle));
+    expect(spendSpecHash(SEED_POLICY, INSTANCE_ID, other)).not.toBe(spendSpecHash(SEED_POLICY, INSTANCE_ID, drawsSingle));
   });
 
   it("hash đổi khi recipient đổi (to)", () => {
     const other = [drawLamp(BUCKET_OPS, 300n, BOB)];
-    expect(spendSpecHash(INSTANCE_ID, other)).not.toBe(spendSpecHash(INSTANCE_ID, drawsSingle));
+    expect(spendSpecHash(SEED_POLICY, INSTANCE_ID, other)).not.toBe(spendSpecHash(SEED_POLICY, INSTANCE_ID, drawsSingle));
   });
 
   it("F10: hash đổi theo instance_id (CÙNG draws, khác instance_id → hash khác)", () => {
     // Chống replay chéo instance CÙNG governance_ref: proposal của instance A (spec_hash
     // theo "abcd") KHÔNG khớp khi tái dựng cho instance B ("dcba").
-    const hashA = spendSpecHash("abcd", drawsSingle);
-    const hashB = spendSpecHash("dcba", drawsSingle);
+    const hashA = spendSpecHash(SEED_POLICY, "abcd", drawsSingle);
+    const hashB = spendSpecHash(SEED_POLICY, "dcba", drawsSingle);
     expect(hashA).not.toBe(hashB);
     // determinism: cùng (instance_id, draws) → cùng hash.
-    expect(spendSpecHash("abcd", drawsSingle)).toBe(hashA);
+    expect(spendSpecHash(SEED_POLICY, "abcd", drawsSingle)).toBe(hashA);
+  });
+
+  it("P7: hash đổi theo seed_policy (CÙNG instance_id + draws, khác kho → hash khác)", () => {
+    // Hai kho khác hạt giống trùng instance_id: proposal cho kho A KHÔNG khớp kho B.
+    const hashA = spendSpecHash(SEED_POLICY, INSTANCE_ID, drawsSingle);
+    const hashB = spendSpecHash("22ff".repeat(14), INSTANCE_ID, drawsSingle);
+    expect(hashA).not.toBe(hashB);
+  });
+
+  it("P7: seedPolicy rỗng / không phải hex → NÉM RELEASE-SEED (không băm chuỗi rỗng)", () => {
+    expect(() => spendSpecHash("", INSTANCE_ID, drawsSingle)).toThrow(/RELEASE-SEED/);
+    expect(() => spendSpecHash("zz", INSTANCE_ID, drawsSingle)).toThrow(/RELEASE-SEED/);
+    expect(() => spendSpecHash("abc", INSTANCE_ID, drawsSingle)).toThrow(/RELEASE-SEED/);
   });
 });
 
@@ -323,12 +342,12 @@ describe("recipients tổng-khớp (C-REL-7)", () => {
 // 6. planRelease — cổng Governance đầy đủ (gate + value + ledger + recipients)
 // ════════════════════════════════════════════════════════════════════════
 describe("planRelease gate đầy đủ", () => {
-  const valueIn = { [ADA_KEY]: 5_000_000n, [LAMP_KEY]: 5000n };
+  const valueIn = { [ADA_KEY]: 5_000_000n, [LAMP_KEY]: 5000n, [assetKey(SEED_POLICY, INSTANCE_ID)]: 1n };
 
   it("happy path: Executed + hash khớp + epoch ≥ execute_after → plan đúng", () => {
-    const spec = spendSpecHash(INSTANCE_ID, drawsSingle);
+    const spec = spendSpecHash(SEED_POLICY, INSTANCE_ID, drawsSingle);
     const datum = custodyDatum(ledger([BUCKET_OPS, 1000n]));
-    const plan = planRelease(datum, valueIn, proposal(spec), drawsSingle, CUST_SH, 5n, 11n);
+    const plan = planRelease(datum, valueIn, proposal(spec), drawsSingle, CUST_SH, 5n, 11n, G);
     expect(plan.specHash).toBe(spec);
     expect(plan.custodyAfter[LAMP_KEY]).toBe(4700n);
     expect(plan.newDatum.ledger).toEqual(ledger([BUCKET_OPS, 700n]));
@@ -341,43 +360,43 @@ describe("planRelease gate đầy đủ", () => {
     // proposal rỗng chỉ nhồi consumed_proposals (phình datum) mà không chi gì.
     // Mirror custody.ak `expect draws != []`. specHash của [] khớp proposal tương ứng
     // nhưng vẫn PHẢI reject sớm bởi guard draws.length === 0.
-    const specEmpty = spendSpecHash(INSTANCE_ID, []);
+    const specEmpty = spendSpecHash(SEED_POLICY, INSTANCE_ID, []);
     const datum = custodyDatum(ledger([BUCKET_OPS, 1000n]));
     expect(() =>
-      planRelease(datum, valueIn, proposal(specEmpty), [], CUST_SH, 5n, 11n),
+      planRelease(datum, valueIn, proposal(specEmpty), [], CUST_SH, 5n, 11n, G),
     ).toThrow(/RELEASE-013/);
   });
 
   it("reject chưa Executed (status=Tallied) → C-REL-2", () => {
-    const spec = spendSpecHash(INSTANCE_ID, drawsSingle);
+    const spec = spendSpecHash(SEED_POLICY, INSTANCE_ID, drawsSingle);
     const datum = custodyDatum(ledger([BUCKET_OPS, 1000n]));
     expect(() =>
-      planRelease(datum, valueIn, proposal(spec, "Tallied"), drawsSingle, CUST_SH, 5n),
+      planRelease(datum, valueIn, proposal(spec, "Tallied"), drawsSingle, CUST_SH, 5n, undefined, G),
     ).toThrow(/RELEASE-002/);
   });
 
   it("reject spend_spec_hash lệch (draws ≠ duyệt) → C-REL-3", () => {
-    const approvedSpec = spendSpecHash(INSTANCE_ID, drawsSingle);     // proposal duyệt draw 300
+    const approvedSpec = spendSpecHash(SEED_POLICY, INSTANCE_ID, drawsSingle);     // proposal duyệt draw 300
     const actual = [drawLamp(BUCKET_OPS, 500n, ALICE)];  // caller rút 500
     const datum = custodyDatum(ledger([BUCKET_OPS, 1000n]));
     expect(() =>
-      planRelease(datum, valueIn, proposal(approvedSpec), actual, CUST_SH, 5n),
+      planRelease(datum, valueIn, proposal(approvedSpec), actual, CUST_SH, 5n, undefined, G),
     ).toThrow(/RELEASE-003/);
   });
 
   it("reject trước time-lock (epoch < execute_after) → C-REL-8", () => {
-    const spec = spendSpecHash(INSTANCE_ID, drawsSingle);
+    const spec = spendSpecHash(SEED_POLICY, INSTANCE_ID, drawsSingle);
     const datum = custodyDatum(ledger([BUCKET_OPS, 1000n]));
     expect(() =>
-      planRelease(datum, valueIn, proposal(spec), drawsSingle, CUST_SH, 3n),
+      planRelease(datum, valueIn, proposal(spec), drawsSingle, CUST_SH, 3n, undefined, G),
     ).toThrow(/RELEASE-008/);
   });
 
   it("reject over-draw bucket → C-REL-6", () => {
-    const spec = spendSpecHash(INSTANCE_ID, drawsSingle);
+    const spec = spendSpecHash(SEED_POLICY, INSTANCE_ID, drawsSingle);
     const datum = custodyDatum(ledger([BUCKET_OPS, 200n]));  // chỉ 200
     expect(() =>
-      planRelease(datum, valueIn, proposal(spec), drawsSingle, CUST_SH, 5n),
+      planRelease(datum, valueIn, proposal(spec), drawsSingle, CUST_SH, 5n, undefined, G),
     ).toThrow(/RELEASE-006/);
   });
 
@@ -386,18 +405,40 @@ describe("planRelease gate đầy đủ", () => {
       bucket_id: BUCKET_OPS, policy: LAMP_POLICY, name: LAMP_NAME, amount: 300n,
       to: scriptAddr(CUST_SH),
     }];
-    const spec = spendSpecHash(INSTANCE_ID, bad);
+    const spec = spendSpecHash(SEED_POLICY, INSTANCE_ID, bad);
     const datum = custodyDatum(ledger([BUCKET_OPS, 1000n]));
     expect(() =>
-      planRelease(datum, valueIn, proposal(spec), bad, CUST_SH, 5n),
+      planRelease(datum, valueIn, proposal(spec), bad, CUST_SH, 5n, undefined, G),
     ).toThrow(/RELEASE-007a/);
   });
 
-  it("reject epoch lùi → RELEASE-009", () => {
-    const spec = spendSpecHash(INSTANCE_ID, drawsSingle);
+  it("P7: reject proposal tính cho kho KHÁC hạt giống (trùng instance_id) → RELEASE-003", () => {
+    const otherSeed = "22ff".repeat(14);
+    const specOther = spendSpecHash(otherSeed, INSTANCE_ID, drawsSingle);
     const datum = custodyDatum(ledger([BUCKET_OPS, 1000n]));
     expect(() =>
-      planRelease(datum, valueIn, proposal(spec), drawsSingle, CUST_SH, 5n, 9n),
+      planRelease(datum, valueIn, proposal(specOther), drawsSingle, CUST_SH, 5n, 11n, G),
+    ).toThrow(/RELEASE-003/);
+  });
+
+  it("P7: thiếu guards.seedPolicy (người gọi JS) → RELEASE-SEED", () => {
+    const spec = spendSpecHash(SEED_POLICY, INSTANCE_ID, drawsSingle);
+    const datum = custodyDatum(ledger([BUCKET_OPS, 1000n]));
+    const noGuards = undefined as unknown as typeof G;
+    expect(() =>
+      planRelease(datum, valueIn, proposal(spec), drawsSingle, CUST_SH, 5n, 11n, noGuards),
+    ).toThrow(/RELEASE-SEED/);
+    const emptySeed = { seedPolicy: "" };
+    expect(() =>
+      planRelease(datum, valueIn, proposal(spec), drawsSingle, CUST_SH, 5n, 11n, emptySeed),
+    ).toThrow(/RELEASE-SEED/);
+  });
+
+  it("reject epoch lùi → RELEASE-009", () => {
+    const spec = spendSpecHash(SEED_POLICY, INSTANCE_ID, drawsSingle);
+    const datum = custodyDatum(ledger([BUCKET_OPS, 1000n]));
+    expect(() =>
+      planRelease(datum, valueIn, proposal(spec), drawsSingle, CUST_SH, 5n, 9n, G),
     ).toThrow(/RELEASE-009/);
   });
 });
@@ -405,12 +446,11 @@ describe("planRelease gate đầy đủ", () => {
 // ════════════════════════════════════════════════════════════════════════
 // 7. HARDENING v1 — NFT authenticity (C-NFT) + governance_ref (#1A) + epoch neo
 // ════════════════════════════════════════════════════════════════════════
-const SEED_POLICY = "11ee".repeat(14);            // PolicyId NFT authenticity
 const GOV_REF = "9999";                            // = custodyDatum.governance_ref
 const nftKey = assetKey(SEED_POLICY, "abcd");      // instance_id = "abcd"
 
 describe("planRelease guards: NFT authenticity (C-NFT)", () => {
-  const spec = spendSpecHash(INSTANCE_ID, drawsSingle);
+  const spec = spendSpecHash(SEED_POLICY, INSTANCE_ID, drawsSingle);
   const datum = custodyDatum(ledger([BUCKET_OPS, 1000n]));
 
   it("happy: cust_in MANG NFT (seed_policy, instance_id) qty 1 → plan đúng", () => {
@@ -440,29 +480,29 @@ describe("planRelease guards: NFT authenticity (C-NFT)", () => {
 });
 
 describe("planRelease guards: proposal Ở ĐÚNG governance_ref (#1A)", () => {
-  const spec = spendSpecHash(INSTANCE_ID, drawsSingle);
+  const spec = spendSpecHash(SEED_POLICY, INSTANCE_ID, drawsSingle);
   const datum = custodyDatum(ledger([BUCKET_OPS, 1000n]));
-  const valueIn = { [ADA_KEY]: 5_000_000n, [LAMP_KEY]: 5000n };
+  const valueIn = { [ADA_KEY]: 5_000_000n, [LAMP_KEY]: 5000n, [nftKey]: 1n };
 
   it("happy: proposal script hash == governance_ref → plan đúng", () => {
     const plan = planRelease(
       datum, valueIn, proposal(spec), drawsSingle, CUST_SH, 5n, 11n,
-      { proposalScriptHash: GOV_REF },
+      { ...G, proposalScriptHash: GOV_REF },
     );
     expect(plan.newDatum.ledger).toEqual(ledger([BUCKET_OPS, 700n]));
   });
 
   it("reject: proposal script hash ≠ governance_ref → RELEASE-001 (fail-fast)", () => {
     expect(() =>
-      planRelease(datum, valueIn, proposal(spec), drawsSingle, CUST_SH, 5n, 11n, { proposalScriptHash: "deadbeef" }),
+      planRelease(datum, valueIn, proposal(spec), drawsSingle, CUST_SH, 5n, 11n, { ...G, proposalScriptHash: "deadbeef" }),
     ).toThrow(/RELEASE-001/);
   });
 });
 
 describe("epoch neo từ validity (C-EPOCH) — out.epoch = ⌊validFromMs/msPerEpoch⌋", () => {
-  const spec = spendSpecHash(INSTANCE_ID, drawsSingle);
+  const spec = spendSpecHash(SEED_POLICY, INSTANCE_ID, drawsSingle);
   const datum = custodyDatum(ledger([BUCKET_OPS, 1000n]));        // datum.epoch = 10
-  const valueIn = { [ADA_KEY]: 5_000_000n, [LAMP_KEY]: 5000n };
+  const valueIn = { [ADA_KEY]: 5_000_000n, [LAMP_KEY]: 5000n, [nftKey]: 1n };
 
   it("epoch out suy từ currentEpoch (builder dùng ⌊validFromMs/msPerEpoch⌋)", () => {
     const MS_PER_EPOCH = 432_000_000n;             // 5 ngày (Cardano epoch)
@@ -470,7 +510,7 @@ describe("epoch neo từ validity (C-EPOCH) — out.epoch = ⌊validFromMs/msPer
     const currentEpoch = validFromMs / MS_PER_EPOCH;     // ⌊⌋ = 12 (= builder)
     expect(currentEpoch).toBe(12n);
     // builder gọi planRelease(..., currentEpoch, currentEpoch) → out.epoch == 12.
-    const plan = planRelease(datum, valueIn, proposal(spec), drawsSingle, CUST_SH, currentEpoch, currentEpoch);
+    const plan = planRelease(datum, valueIn, proposal(spec), drawsSingle, CUST_SH, currentEpoch, currentEpoch, G);
     expect(plan.newDatum.epoch).toBe(12n);
     expect(plan.newDatum.epoch >= datum.epoch).toBe(true);  // ≥ in.epoch (10)
   });
@@ -481,7 +521,7 @@ describe("epoch neo từ validity (C-EPOCH) — out.epoch = ⌊validFromMs/msPer
     const currentEpoch = validFromMs / MS_PER_EPOCH;     // = 3
     // time-lock execute_after=4 > 3 → RELEASE-008 chặn trước (epoch quá sớm).
     expect(() =>
-      planRelease(datum, valueIn, proposal(spec), drawsSingle, CUST_SH, currentEpoch, currentEpoch),
+      planRelease(datum, valueIn, proposal(spec), drawsSingle, CUST_SH, currentEpoch, currentEpoch, G),
     ).toThrow(/RELEASE-008|RELEASE-009/);
   });
 });
