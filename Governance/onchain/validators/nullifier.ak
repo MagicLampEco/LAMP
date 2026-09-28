@@ -39,12 +39,11 @@
 use aiken/builtin
 use aiken/collection/dict
 use aiken/collection/list
-use aiken/crypto
 use aiken/interval.{Interval}
-use aiken/primitive/bytearray
 use cardano/assets.{PolicyId, Value}
 use cardano/transaction.{Input, Output, Transaction, placeholder}
 use magiclamp/governance/anchor_view
+use magiclamp/governance/names.{nullifier_name}
 use magiclamp/governance/tally_ref
 use magiclamp/governance/types.{Summing, TallyDatum}
 use magiclamp/governance/util
@@ -52,14 +51,6 @@ use magiclamp/governance/util
 pub type NullifierRedeemer {
   MintNullifier { did_commit: ByteArray, proposal_id: ByteArray }
   BurnNullifier
-}
-
-/// name nullifier canonical = blake2b_256(did_commit ‖ proposal_id).
-pub fn nullifier_name(
-  did_commit: ByteArray,
-  proposal_id: ByteArray,
-) -> ByteArray {
-  crypto.blake2b_256(bytearray.concat(did_commit, proposal_id))
 }
 
 /// (a) Tally BỊ TIÊU cùng tx và cửa sổ bỏ phiếu đã đóng.

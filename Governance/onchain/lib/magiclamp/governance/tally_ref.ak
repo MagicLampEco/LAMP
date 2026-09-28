@@ -10,7 +10,7 @@
 use aiken/collection/dict
 use aiken/collection/list
 use cardano/assets.{PolicyId}
-use cardano/transaction.{InlineDatum, Input}
+use cardano/transaction.{InlineDatum, Input, Output}
 use magiclamp/governance/types.{TallyDatum}
 
 /// Đúng MỘT UTxO trong `inputs` mang 1 đơn vị `(tally_policy, proposal_id)`,
@@ -76,6 +76,38 @@ pub fn find_tally_any(
         InlineDatum(d) ->
           if d is td: TallyDatum {
             Some(td)
+          } else {
+            None
+          }
+        _ -> None
+      }
+    _ -> None
+  }
+}
+
+/// Tally OUTPUT của đúng proposal — tìm bằng TOKEN, KHÔNG bằng
+/// `tally_script_hash`. Đây là vế làm `vote` kiểm được "phiếu này ĐÃ ĐƯỢC GHI
+/// VÀO SỔ" mà không cần biết hash của `tally` (biết là sinh vòng apply-param).
+pub fn find_tally_output(
+  outputs: List<Output>,
+  tally_policy: PolicyId,
+  proposal_id: ByteArray,
+) -> Option<TallyDatum> {
+  when
+    list.filter(
+      outputs,
+      fn(o) { assets.quantity_of(o.value, tally_policy, proposal_id) == 1 },
+    )
+  is {
+    [o] ->
+      when o.datum is {
+        InlineDatum(d) ->
+          if d is td: TallyDatum {
+            if td.proposal_id == proposal_id {
+              Some(td)
+            } else {
+              None
+            }
           } else {
             None
           }

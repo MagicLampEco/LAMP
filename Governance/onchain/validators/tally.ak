@@ -1,24 +1,45 @@
-// Validator 3 — Tally accumulator (2 pha Summing→Clamped). TECH §9.
+// Validator 3 — Tally accumulator v2 (Summing → Clamped).
 //
-// Một Tally UTxO/proposal mang Tally NFT. Pha Summing DERIVE power THÔ từ các Vote UTxO
-// THẬT bị tiêu trong tx (Finding 2 — KHÔNG nhận delta tùy ý), cộng dồn + đếm DID + đếm
-// DID thuận; mỗi Vote gộp PHẢI có nullifier BỊ ĐỐT trong cùng tx (Finding 3 — one-shot,
-// không cộng 2 lần). Pha Finalize chuyển Summing→Clamped: ÉP clamp_consistent (power_eff
-// == apply_clamp(Summing-data)) — chống off-chain mớm power_eff bịa (§9.5.3), bft_floor
-// LẤY TỪ WeightParam (Finding 1 — không redeemer).
+// Một Tally UTxO / proposal, mang Tally NFT `(tally_policy, proposal_id)`.
 //
-// Tham số hóa:
-//   tally_policy        : NFT bảo toàn acc.
-//   vote_script_hash    : hash Vote validator — nguồn Vote UTxO hợp lệ duy nhất.
-//   nullifier_policy    : policy nullifier — Tally ÉP đốt nullifier mỗi phiếu gộp.
-//   weight_param_policy : authenticity token bảng WeightParam (ngưỡng + bảng knots).
+// ┌─ ĐỔI BẢN CHẤT so với v1 ────────────────────────────────────────────────────┐
+// │ 1. SỔ DID. `TallyDatum.voted_root` là gốc một cây MPF: khoá = `did_commit`,  │
+// │    giá trị = `nullifier` của phiếu ĐƯỢC CỘNG. Đây là chỗ one-shot THẬT của   │
+// │    "một DID đếm tối đa một lần" — token nullifier không làm được việc đó.    │
+// │    `mpf.insert` tự `fail` khi khoá đã có trong cây, nên trùng TRONG lô và    │
+// │    trùng với sổ cũ bị bác bằng CẤU TRÚC, không bằng một phép so thêm.        │
+// │    Giá trị là `nullifier` cụ thể ⇒ một DID đúc đôi rồi để người dựng lô chọn │
+// │    phiếu nào ĐƯỢC ĐẾM thì lựa chọn đó hiện ra trên chuỗi, truy được.        │
+// │ 2. CHỐT THỜI GIAN ở cả hai nhánh. `SumBatch` trong `[close, close+window)`,  │
+// │    `Finalize` từ `close+window`. v1 KHÔNG có chốt nào — một giao dịch đóng   │
+// │    sổ sớm cộng với việc tiêu k phiếu của phe chống là đủ lật mọi proposal.   │
+// │ 3. GHIM ba trường mới ở `Finalize`. Thiếu vế ghim `voted_root` thì chính     │
+// │    `Finalize` vô hiệu hoá được lớp (V5) của `vote`.                         │
+// │ 4. NGUỒN c*. `c1/c2/c4` bị ép == 0 (chưa có policy nguồn nào chứng thực),    │
+// │    `c3` phải có NFT chứng thực tên = `did_commit` làm reference input. Cap    │
+// │    kiểm LẠI ở đây, không tin datum phiếu.                                   │
+// └─────────────────────────────────────────────────────────────────────────────┘
+//
+// Tham số hoá:
+//   tally_policy        : NFT bảo toàn acc; tên token = proposal_id.
+//   vote_script_hash    : nguồn Vote UTxO hợp lệ duy nhất.
+//   nullifier_policy    : Tally ép đốt nullifier mỗi phiếu gộp.
+//   weight_param_policy : authenticity token bảng WeightParam (ngưỡng + knots).
+//   c3_policy           : policy NFT chứng thực C3 (uy tín). `#""` = pha chưa dùng
+//                         C3 ⇒ ép `c3_capped == 0`.
+//   tally_window_epochs : độ dài cửa sổ gom.
+//   ms_per_epoch        : quy đổi POSIX ms → epoch.
 
 use aiken/collection/dict
 use aiken/collection/list
+use aiken/merkle_patricia_forestry as mpf
+use aiken/merkle_patricia_forestry.{Proof}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{
   InlineDatum, Input, Output, OutputReference, Transaction,
 }
+use magiclamp/governance/names.{nullifier_name}
+use magiclamp/governance/power.{cap_of}
 use magiclamp/governance/tally.{clamp_consistent, sum_batch_consistent,
   top_heap_consistent} as tally_lib
 use magiclamp/governance/types.{
@@ -28,19 +49,18 @@ use magiclamp/governance/util
 use magiclamp/governance/weight_guard
 
 pub type TallyRedeemer {
-  // cộng một lô phiếu vào acc (pha Summing). DERIVE power từ Vote inputs thật + đốt nullifier.
-  SumBatch
-  // Summing → Clamped: ÉP clamp_consistent với bft_floor đọc từ WeightParam.
+  /// `insert_proofs` — một chứng minh CHÈN MPF cho MỖI phiếu trong lô, ĐÚNG THỨ TỰ
+  /// của `collect_votes` (tức thứ tự input). Bên dựng lô sinh off-chain, mỗi
+  /// chứng minh ứng với trạng thái sổ ngay TRƯỚC lần chèn đó.
+  SumBatch { insert_proofs: List<Proof> }
   Finalize
 }
 
-/// Bảo toàn Tally acc UTxO: đúng 1 input + 1 output tại Tally script hash, output mang
-/// đúng 1 NFT, và TOÀN BỘ value đi qua nguyên vẹn.
-///
-/// Tên cũ là `nft_preserved` — đổi vì nó không còn chỉ giữ NFT. Tech-Spec.md:703 (§9.3)
-/// chốt: "Tally acc output value == input value (chỉ datum đổi); min-ADA các Vote UTxO
-/// bị tiêu trả về owner (không vào acc, không drain)". Luật áp cho CẢ HAI nhánh spend —
-/// acc không nhận thêm, cũng không mất đi. Cùng lớp lỗi đã vá ở `proposal.utxo_preserved`.
+/// cap4 cứng = 100 triệu LAMP (CONTRACT §3 — ngoại lệ "tham số mở").
+pub const cap4_hard: Int = 100_000_000
+
+/// Bảo toàn Tally acc UTxO: đúng 1 input + 1 output tại Tally script hash, output
+/// mang đúng 1 NFT, và TOÀN BỘ value đi qua nguyên vẹn.
 fn utxo_preserved(
   own_hash: ByteArray,
   tally_policy: PolicyId,
@@ -50,23 +70,18 @@ fn utxo_preserved(
   let n_out = util.count_outputs_at_script(tx.outputs, own_hash)
   let in_out = util.input_at_script(tx.inputs, own_hash)
   let out = util.output_at_script(tx.outputs, own_hash)
-  // `dict.size == 1` nói "đúng 1 TÊN tài sản", KHÔNG nói "đúng 1 token": số lượng nằm
-  // ở giá trị của cặp, không ở số cặp. Bóc lấy qty — cùng khuôn read_weight_param.
-  //
-  // Vế qty KHÔNG bị đẳng thức value bên dưới nuốt: đẳng thức chỉ nói hai bên BẰNG
-  // NHAU, không nói số lượng TUYỆT ĐỐI là 1; một acc mang sẵn 2 đơn vị đi qua êm ru.
+  // `dict.size == 1` nói "đúng 1 TÊN tài sản", KHÔNG nói "đúng 1 token": số lượng
+  // nằm ở giá trị của cặp, không ở số cặp.
   expect [Pair(_, qty)] = dict.to_pairs(assets.tokens(out.value, tally_policy))
   and {
     n_in == 1,
     n_out == 1,
     qty == 1,
-    // value NGUYÊN VẸN: giữ NFT thôi thì người tiêu giữ NFT + datum đúng rồi hút hết
-    // ADA của acc ra ví mình, và không ràng buộc cũ nào kêu lên.
+    // value NGUYÊN VẸN: giữ NFT thôi thì người tiêu giữ NFT + datum đúng rồi hút
+    // hết ADA của acc ra ví mình, và không ràng buộc cũ nào kêu lên.
     out.value == in_out.value,
-    // ĐỊA CHỈ ĐẦY ĐỦ. `util.is_at_script` chỉ so payment_credential — đúng cho việc ĐẾM,
-    // không đủ cho việc ÉP ĐÍCH; lý lẽ đầy đủ ở `proposal.utxo_preserved`, cùng một lỗ.
-    // Với Tally acc thì hệ quả đắt hơn một bậc: acc là nơi phiếu dồn về qua nhiều lượt
-    // SumBatch, nên một lượt đẩy acc sang địa chỉ khác làm lượt sau không tra ra nó nữa.
+    // ĐỊA CHỈ ĐẦY ĐỦ (kể cả stake credential). `util.is_at_script` chỉ so
+    // payment_credential — đúng cho việc ĐẾM, không đủ cho việc ÉP ĐÍCH.
     out.address == in_out.address,
   }
 }
@@ -78,8 +93,8 @@ fn out_datum(own_hash: ByteArray, outputs: List<Output>) -> TallyDatum {
   td
 }
 
-/// Đọc + xác thực WeightParam qua reference input (CONTRACT D1). Token + khớp ref đã cam
-/// kết trong TallyDatum (== Proposal.weight_param_ref qua RecordTally) → đúng bảng knots.
+/// Đọc + xác thực WeightParam qua reference input (CONTRACT D1). Token + khớp ref
+/// đã cam kết trong TallyDatum → đúng bảng knots.
 fn read_weight_param(
   reference_inputs: List<Input>,
   weight_param_policy: PolicyId,
@@ -100,15 +115,13 @@ fn read_weight_param(
   expect qty == 1
   expect InlineDatum(d) = ref.output.datum
   expect wp: WeightParam = d
-  // Cổng D8 — ÉP TẠI ĐÂY, không phải off-chain. Đây là đường DUY NHẤT bảng knots đi vào phép
-  // tính VP, nên chặn ở đây là chặn được mọi lối. Bảng vi phạm ⇒ tx fail.
-  // Vì sao dạng TỪNG CẶP chứ không dạng TỔNG: `weight_guard.ak` đầu tệp.
+  // Cổng D8 — ÉP TẠI ĐÂY. Đây là đường DUY NHẤT bảng knots đi vào phép tính VP.
   expect weight_guard.d8_ok(wp.k1, wp.k2, wp.k3, wp.k4)
   wp
 }
 
-/// Thu thập VoteDatum từ MỌI input tại vote_script_hash (Vote UTxO thật bị tiêu trong tx).
-/// Mỗi VoteDatum PHẢI khớp proposal_id của Tally (không gộp phiếu proposal khác).
+/// Thu thập VoteDatum từ MỌI input tại `vote_script_hash`. Mỗi VoteDatum PHẢI khớp
+/// `proposal_id` của Tally (không trộn phiếu của hai proposal trong một lô).
 fn collect_votes(
   inputs: List<Input>,
   vote_script_hash: ByteArray,
@@ -130,10 +143,8 @@ fn collect_votes(
   )
 }
 
-/// Mỗi phiếu gộp PHẢI có nullifier BỊ ĐỐT (qty −1) trong tx.mint (Finding 3 — one-shot:
-/// nullifier tiêu đúng 1 lần → KHÔNG cộng cùng phiếu 2 lần qua nhiều SumBatch). Đếm số
-/// token nullifier_policy bị đốt PHẢI == số phiếu trong lô, và mỗi nullifier của phiếu
-/// trong lô xuất hiện với qty −1.
+/// Mỗi phiếu gộp PHẢI có nullifier BỊ ĐỐT (qty −1) trong `tx.mint`, và số TÊN
+/// token bị đốt PHẢI bằng số phiếu (không thừa, không thiếu).
 fn nullifiers_burned(
   tx: Transaction,
   nullifier_policy: PolicyId,
@@ -141,9 +152,7 @@ fn nullifiers_burned(
 ) -> Bool {
   let burned = assets.tokens(tx.mint, nullifier_policy)
   and {
-    // số loại token nullifier trong mint == số phiếu (không thừa, không thiếu).
     dict.size(burned) == list.length(votes),
-    // mỗi nullifier của phiếu bị đốt đúng −1.
     list.all(
       votes,
       fn(v) { assets.quantity_of(tx.mint, nullifier_policy, v.nullifier) == -1 },
@@ -151,11 +160,106 @@ fn nullifiers_burned(
   }
 }
 
+/// Giá trị C3 được CHỨNG THỰC cho một DID: đúng một reference input mang
+/// `(c3_policy, did_commit)` với datum inline là một Int. Không tìm được ⟹ `-1`,
+/// và mọi `c3_capped >= 0` sẽ bác — fail-closed, không im lặng cho qua.
+fn attested_c3(
+  reference_inputs: List<Input>,
+  c3_policy: PolicyId,
+  did_commit: ByteArray,
+) -> Int {
+  when
+    list.filter(
+      reference_inputs,
+      fn(i) {
+        assets.quantity_of(i.output.value, c3_policy, did_commit) == 1
+      },
+    )
+  is {
+    [a] ->
+      when a.output.datum is {
+        InlineDatum(d) ->
+          if d is v: Int {
+            v
+          } else {
+            -1
+          }
+        _ -> -1
+      }
+    _ -> -1
+  }
+}
+
+/// Cổng NGUỒN của bốn đầu vào C1–C4 — ràng buộc TẠM, fail-closed.
+///
+/// Trước v2, `c*_capped` chỉ bị CAP, không bị chứng thực: một DID có anchor thật
+/// khai được VP tối đa mà không nắm MAGIC/LAMP nào. Cap không phải chứng thực.
+///
+///   • C1, C2, C4 — chưa có policy nguồn nào tồn tại ⇒ ép == 0. Với công thức
+///     tích, một thừa số ở mốc đầu bảng kéo VP xuống mốc đầu, nên pha nào dựa vào
+///     bốn yếu tố sẽ TỰ KHOÁ cho tới khi có nguồn. Đó là ý định: thà khoá còn hơn
+///     đếm một con số không ai chứng thực.
+///   • C3 — có nguồn: NFT chứng thực tên tài sản = `did_commit`, giá trị trong
+///     datum. Đòi giá trị chứng thực ≥ giá trị khai, và khai trong `[0, cap_3]`.
+///     `c3_policy == #""` = pha chưa bật C3 ⇒ ép == 0.
+fn c_sources_ok(
+  reference_inputs: List<Input>,
+  c3_policy: PolicyId,
+  wp: WeightParam,
+  votes: List<VoteDatum>,
+) -> Bool {
+  list.all(
+    votes,
+    fn(v) {
+      and {
+        v.c1_capped == 0,
+        v.c2_capped == 0,
+        v.c4_capped == 0,
+        // cap4 cứng vẫn giữ trong mã như một chốt dự phòng cho lượt mở C4.
+        v.c4_capped <= cap4_hard,
+        if c3_policy == #"" {
+          v.c3_capped == 0
+        } else {
+          and {
+            v.c3_capped >= 0,
+            v.c3_capped <= cap_of(wp.k3),
+            attested_c3(reference_inputs, c3_policy, v.did_commit) >= v.c3_capped,
+          }
+        },
+      }
+    },
+  )
+}
+
+/// Gốc sổ SAU khi ghi trọn lô: chèn lần lượt `(did_commit → nullifier)` của từng
+/// phiếu vào cây, mỗi lần một chứng minh. `mpf.insert` `fail` nếu chứng minh sai
+/// HOẶC khoá đã tồn tại ⇒ không cần phép so trùng nào thêm.
+fn book_root_after(
+  root_in: ByteArray,
+  votes: List<VoteDatum>,
+  proofs: List<Proof>,
+) -> ByteArray {
+  expect list.length(proofs) == list.length(votes)
+  let trie =
+    list.foldl(
+      list.zip(votes, proofs),
+      mpf.from_root(root_in),
+      fn(pair, acc) {
+        let (v, proof) = pair
+        mpf.insert(acc, v.did_commit, v.nullifier, proof)
+      },
+    )
+  mpf.root(trie)
+}
+
 validator tally(
   tally_policy: PolicyId,
   vote_script_hash: ByteArray,
   nullifier_policy: PolicyId,
   weight_param_policy: PolicyId,
+  c3_policy: PolicyId,
+  tally_window_epochs: Int,
+  ms_per_epoch: Int,
 ) {
   spend(
     datum_opt: Option<TallyDatum>,
@@ -167,12 +271,15 @@ validator tally(
     let own_addr = util.own_address(own_ref, tx.inputs)
     let own_hash = util.own_script_hash(own_addr)
     let d_out = out_datum(own_hash, tx.outputs)
+    let e = util.get_epoch_bounded(tx, ms_per_epoch)
 
     when redeemer is {
-      // ── SumBatch: DERIVE power THÔ từ Vote inputs THẬT (Finding 2) + đốt nullifier ──
-      //    (Finding 3). power_raw/voter chỉ tăng đúng tổng phiếu thật; không delta tùy ý.
-      SumBatch -> {
+      // ── SumBatch: cộng một lô phiếu THẬT vào acc + ghi sổ DID ──
+      SumBatch { insert_proofs } -> {
         expect d_in.phase == Summing
+        // cửa sổ gom: TỪ khi đóng phiếu (rời cửa sổ rút) tới khi đóng sổ.
+        expect e >= d_in.vote_close_epoch
+        expect e < d_in.vote_close_epoch + tally_window_epochs
         let wp =
           read_weight_param(
             tx.reference_inputs,
@@ -180,27 +287,47 @@ validator tally(
             d_in.weight_param_ref,
           )
         let votes = collect_votes(tx.inputs, vote_script_hash, d_in.proposal_id)
-        // PHẢI có ≥ 1 phiếu thật trong lô — chống SumBatch rỗng làm no-op che giấu.
+        // PHẢI có ≥ 1 phiếu thật — chống lượt gộp rỗng làm no-op che giấu, và nhờ
+        // đó số lượt gộp bị chặn trên bởi số DID bỏ phiếu (không spin vô hạn).
         expect list.length(votes) >= 1
+        // (T1) token BUỘC vào datum: tên nullifier của mỗi phiếu = H(did‖prop).
+        expect
+          list.all(
+            votes,
+            fn(v) {
+              v.nullifier == nullifier_name(v.did_commit, v.proposal_id)
+            },
+          )
+        // (T1b) NGUỒN của c* — kiểm LẠI ở đây, không tin datum phiếu.
+        expect c_sources_ok(tx.reference_inputs, c3_policy, wp, votes)
+        // (T2) SỔ DID: gốc ra = kết quả chèn trọn lô vào gốc vào.
+        expect
+          d_out.voted_root == book_root_after(
+            d_in.voted_root,
+            votes,
+            insert_proofs,
+          )
         and {
           d_out.phase == Summing,
-          // ĐÓNG soundness BFT-cap (D6): heap top-(F-1) PHẢI = canonical merge(heap cũ +
-          // vp_raw mỗi phiếu thật trong lô), cắt F−1. Mọi cá voi (vp_raw>ΣVP/F) buộc có
-          // mặt → Finalize clamp trừ đúng phần vượt → không DID nào thoát trần. Đồng thời
-          // chống nhồi entry giả (mỗi entry ứng 1 vote thật hoặc kế thừa d_in).
+          // cửa sổ GHIM: không lượt gộp nào dời được mốc mở/đóng phiếu.
+          d_out.vote_open_epoch == d_in.vote_open_epoch,
+          d_out.vote_close_epoch == d_in.vote_close_epoch,
+          // heap top-(F−1) canonical ⇒ mọi cá voi buộc có mặt ⇒ Finalize clamp
+          // trừ đúng phần vượt ⇒ không DID nào thoát trần.
           top_heap_consistent(d_in, d_out, wp, votes),
-          // power_raw + voter = cũ + DERIVE(phiếu thật) — KHÔNG nhận số tùy ý (Finding 2).
+          // power_raw + đếm = cũ + DERIVE(phiếu thật) — không nhận delta tuỳ ý.
           sum_batch_consistent(d_in, d_out, wp, votes),
-          // nullifier mỗi phiếu BỊ ĐỐT trong tx — one-shot, không cộng 2 lần (Finding 3).
           nullifiers_burned(tx, nullifier_policy, votes),
           utxo_preserved(own_hash, tally_policy, tx),
         }
       }
 
-      // ── Finalize: Summing → Clamped, ÉP clamp_consistent (power_eff đúng) ──
-      //    bft_floor LẤY TỪ WeightParam (Finding 1) — không redeemer.
+      // ── Finalize: Summing → Clamped, ÉP clamp_consistent + GHIM ba trường mới ──
       Finalize -> {
         expect d_in.phase == Summing
+        // (F0) cửa sổ gom đã hết. KHÔNG có vế này thì một giao dịch duy nhất gom
+        // chọn lọc rồi đóng sổ là hợp lệ, và phiếu chưa gom bị phá huỷ vĩnh viễn.
+        expect e >= d_in.vote_close_epoch + tally_window_epochs
         let wp =
           read_weight_param(
             tx.reference_inputs,
@@ -208,7 +335,6 @@ validator tally(
             d_in.weight_param_ref,
           )
         expect wp.bft_floor >= 1
-        // power THÔ + đếm + heap GIỮ NGUYÊN từ Summing (chỉ tính power_eff).
         and {
           d_out.phase == Clamped,
           d_out.proposal_id == d_in.proposal_id,
@@ -219,7 +345,12 @@ validator tally(
           d_out.voters_acc == d_in.voters_acc,
           d_out.yes_voters_acc == d_in.yes_voters_acc,
           d_out.top_did_vp == d_in.top_did_vp,
-          // ÉP clamp đúng: power_eff == apply_clamp(d_out raw + heap), F từ WeightParam.
+          // GHIM ba trường v2. Vế `voted_root` là BẮT BUỘC: thiếu nó thì `Finalize`
+          // ghi lại sổ tuỳ ý, và lớp (V5) của `vote` (phiếu phải có trong sổ) bị
+          // chính nhánh này vô hiệu hoá.
+          d_out.vote_open_epoch == d_in.vote_open_epoch,
+          d_out.vote_close_epoch == d_in.vote_close_epoch,
+          d_out.voted_root == d_in.voted_root,
           clamp_consistent(d_out, wp.bft_floor),
           utxo_preserved(own_hash, tally_policy, tx),
         }

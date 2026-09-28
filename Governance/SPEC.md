@@ -79,6 +79,15 @@ Lỗi 1–2 không vá được bằng cách chỉ đổi tham số: một polic
 nhất thì mất tính duy nhất của `proposal_id` — đúng lỗ F11 mà `Treasury/Tech-Spec.md` đã ghi là
 "van quy trình Governance". v2 đóng F11 bằng mật mã (§v2.8 `R-SEED-UNIQUE`).
 
+**Trạng thái vá của bốn lỗi** (neo vào mã, không vào bảng trên):
+
+| # | Trạng thái | Neo |
+|---|---|---|
+| 1 | CÒN MỞ ở Pha 0 (`proposal_nft` v1 chưa thay) | `Governance/onchain/validators/proposal_nft.ak` ▸ `validator proposal_nft` vẫn nhận `genesis_ref, asset_name` |
+| 2 | ĐÃ VÁ | `Governance/onchain/validators/tally_nft.ak` ▸ `validator tally_nft(_phase_tag)`, redeemer `MintTally { seed }`, tên tài sản ép bằng `names.ak` ▸ `proposal_id_of` |
+| 3 | CÒN MỞ (thuộc `governance.spend`, xem `[GOV-FINALIZE-BRANCH]` §v2.10) | `validators/governance.ak` chưa có nhánh `spend`; `validators/proposal.ak` v1 vẫn ghi `ProposalDatum` 12 trường |
+| 4 | ĐÃ VÁ | `validators/nullifier.ak` ▸ `burn_with_tally_spent` (đòi `e ≥ vote_close_epoch`) và `burn_after_tally_window`; cả hai cửa sổ đốt nằm NGOÀI cửa sổ đúc ⇒ đúc-lại-sau-khi-đốt bất khả về số học |
+
 ### v2.2 Nguyên tắc: gốc tin cậy cố định theo pha
 
 1. Mỗi pha quản trị là **một bản validator `governance` riêng**, một script hash riêng.
@@ -152,7 +161,9 @@ Ràng buộc suy ra từ đồ thị:
 - `tally_policy` đúc theo quy tắc seed-unique và không phụ thuộc gì, nên nó **không tự kiểm** nơi
   đến và datum khởi tạo của tally. Hai thứ đó do handler mint của governance kiểm trong giao dịch
   Open (governance biết `tally_script_hash`). Một token `tally_policy` đúc lẻ ngoài giao dịch Open
-  là vô hại: seed của nó đã bị tiêu, nên không bao giờ tồn tại proposal cùng tên.
+  KHÔNG bao giờ sinh ra một proposal (seed của nó đã bị tiêu, nên không tồn tại proposal cùng tên),
+  nhưng nó KHÔNG vô hại: nó dựng được một tally có datum bịa để hút phiếu. Khai đầy đủ ở
+  `[TALLY-TOKEN-OUTSIDE-OPEN]` §v2.10.
 - `phase_tag` (một chuỗi byte khác nhau cho mỗi pha) nằm trong apply-param của các policy không phụ
   thuộc gì, để hai pha không bao giờ trùng policy id.
 
@@ -161,13 +172,12 @@ Ràng buộc suy ra từ đồ thị:
 | Tên | Loại | Pha | Apply-param | Datum | Nhánh |
 |---|---|---|---|---|---|
 | `governance` | mint + spend | 0 | `committee_keys` (3 khoá, đôi một khác nhau), `committee_threshold` = 2, `delta_min_epochs` (> 0), `ms_per_epoch`, `phase_tag` | `ProposalResult` (5 trường, byte-khớp Treasury) | mint `OpenProposal { seed }` · spend `ExecuteCommittee` |
-| `governance` | mint + spend | 1 | `tally_policy`, `tally_script_hash`, `nullifier_policy`, `theta_num`/`theta_den`, `quorum_voters` (`[PHASE1-QUORUM]`), `delta_min_epochs`, `ms_per_epoch`, `phase_tag` | `ProposalResult` | mint `OpenProposal { seed, vote_open_epoch, vote_close_epoch }` · spend `FinalizeProposal` |
-| `governance` | mint + spend | 2 | như Pha 1, thêm `weight_param_policy`; ngưỡng pass đọc từ `WeightParam` đã cam kết | `ProposalResult` | như Pha 1 |
-| `tally_policy` | mint | 1, 2 | `phase_tag` | — | `MintTally { seed }`: tiêu `seed`, đúng 1 token, tên = `H(seed)`, qty 1; mọi lượng âm ⇒ từ chối |
-| `tally` | spend | 1, 2 | `tally_policy`, `vote_script_hash`, `nullifier_policy`, `tally_window_epochs`, `ms_per_epoch`; Pha 2 thêm `weight_param_policy`, policy các nguồn C1–C4 | `TallyDatum` v2: `proposal_id`, `vote_open_epoch`, `vote_close_epoch`, `weight_param_ref` (chỉ Pha 2), `phase` (`Summing`/`Final`), tổng thuận/chống/trắng, số DID; Pha 2 thêm vùng dữ liệu clamp của v1 | `SumBatch` · `Finalize` |
-| `vote` | spend | 1, 2 | `tally_policy`, `nullifier_policy` | `VoteDatum` v2: `proposal_id`, `did_commit`, `choice`; Pha 2 thêm đầu vào C1–C4 | chỉ tiêu được khi token `(tally_policy, proposal_id)` bị tiêu cùng giao dịch |
-| `nullifier` | mint | 1, 2 | `tally_policy`, `taad_policy`, `ms_per_epoch` | — | `MintNullifier { did_commit, proposal_id }` · `BurnNullifier` |
-| `weight_param_policy` | mint | 2 | `seed` một lần, `phase_tag` | — (UTxO nó đánh dấu mang datum `WeightParam` của v1) | đúc một lần lúc dựng pha (`[WEIGHT-PARAM-UPDATE]`) |
+| `governance` | mint (+ spend, `[GOV-FINALIZE-BRANCH]`) | 1, 2 | `tally_policy`, `tally_script_hash`, `weight_param_policy`, `ms_per_epoch`, `delta_min_epochs`, `recovery_timelock_epochs`, `phase_tag` | `ProposalResult` | mint `OpenProposal { seed, vote_open_epoch, vote_close_epoch, weight_param_ref }` · spend `FinalizeProposal` (CHƯA hiện thực — §v2.10) |
+| `tally_nft` (= `tally_policy`) | mint | 1, 2 | `phase_tag` | — | `MintTally { seed }`: tiêu `seed`, đúng 1 TÊN tài sản, tên = `H(seed)`, qty 1; mọi lượng âm ⇒ từ chối |
+| `tally` | spend | 1, 2 | `tally_policy`, `vote_script_hash`, `nullifier_policy`, `weight_param_policy`, `c3_policy`, `tally_window_epochs`, `ms_per_epoch` | `TallyDatum` v2 — 15 trường, thứ tự CBOR: `proposal_id`, `phase`, `weight_param_ref`, `yes/no/abstain_power_raw`, `voters_acc`, `yes_voters_acc`, `top_did_vp`, `yes/no/abstain_power_eff`, `vote_open_epoch`, `vote_close_epoch`, `voted_root` | `SumBatch { insert_proofs }` · `Finalize` |
+| `vote` | spend | 1, 2 | `tally_policy`, `nullifier_policy`, `taad_policy`, `ms_per_epoch`, `tally_window_epochs` | `VoteDatum` v2 — 8 trường: `proposal_id`, `did_commit`, `nullifier`, `choice`, `c1..c4_capped` | `ConsumeForTally { book_proof }` · `RetractVote` · `ReclaimVote` |
+| `nullifier` | mint | 1, 2 | `tally_policy`, `taad_policy`, `ms_per_epoch`, `tally_window_epochs` | — | `MintNullifier { did_commit, proposal_id }` · `BurnNullifier` |
+| `weight_param_nft` (= `weight_param_policy`) | mint | 2 | `seed_ref`, `phase_tag`, `bft_floor_min`, `bft_floor_max`, `quorum_voters_min` | — (output nó đánh dấu mang datum `WeightParam` 9 trường) | `MintWeightParam`: đúc một lần lúc dựng pha (`[WEIGHT-PARAM-UPDATE]`), kèm trọn bộ cổng bảng tham số |
 | `custody` (Treasury) | spend | mọi pha | `proposal_policy`, `seed_policy`, `ms_per_epoch`, `lamp_policy`, `token_name` | `CustodyDatum` (có `governance_ref`) | không đổi ở v2, trừ `[SPEND-SPEC-INSTANCE]` và `[PHASE-SWEEP-INTAKE]` |
 
 Điều kiện từng nhánh:
@@ -179,9 +189,18 @@ Ràng buộc suy ra từ đồ thị:
   - Pha 0: Open ghi `execute_after_epoch = 0`; giá trị thật do `ExecuteCommittee` ghi (custody chỉ
     đọc trường này khi `status == Executed`).
   - Pha 1/2: cùng giao dịch phải đúc token `(tally_policy, H(seed))` đặt tại `tally_script_hash` với
-    `TallyDatum { proposal_id: H(seed), phase: Summing, tổng = 0, … }`; `vote_open_epoch ≥ e`;
-    `vote_close_epoch > vote_open_epoch`; `execute_after_epoch ≥ vote_close_epoch + Δ_min`. Pha 2
-    thêm: `weight_param_ref` trỏ đúng một UTxO mang token `weight_param_policy`.
+    `TallyDatum` khởi tạo; `vote_open_epoch ≥ e`; `vote_close_epoch > vote_open_epoch`;
+    `execute_after_epoch ≥ vote_close_epoch + Δ_min`; `weight_param_ref` trỏ đúng một UTxO mang
+    token `weight_param_policy`; `spend_spec_hash == #""` (ràng buộc tạm của `[SELF-DUP-CHOICE]`);
+    `vote_close_epoch − vote_open_epoch < recovery_timelock_epochs` (`[DID-RECOVERY-TRUST]`); và
+    `tx.mint` chứa ĐÚNG hai policy (`governance` + `tally_policy`), không policy thứ ba.
+    `TallyDatum` khởi tạo bị ghim TOÀN BỘ, không chỉ các bộ đếm: `proposal_id == H(seed)`,
+    `phase == Summing`, sáu trường power = 0, `voters_acc = yes_voters_acc = 0`,
+    `top_did_vp == []`, `weight_param_ref` khớp redeemer, hai mốc cửa sổ khớp redeemer, và
+    `voted_root` = gốc cây MPF RỖNG (`mpf.root(mpf.empty)` = 32 byte 0). Vế `top_did_vp == []` và
+    vế sổ rỗng đều là vế TẤN CÔNG, không phải vệ sinh: một entry heap nạp sẵn đi thẳng vào phép
+    clamp ở `Finalize` mà không ứng phiếu nào; một `did_commit` ghi sẵn vào sổ làm DID đó không
+    chèn được phiếu nào nữa (`mpf.insert` bác khoá đã có) ⇒ bị loại khỏi cuộc bỏ phiếu.
 - **`ExecuteCommittee`** (Pha 0): tiêu proposal `Open`; `extra_signatories` chứa ≥ 2 khoá khác nhau
   trong `committee_keys`; đúng một output cùng địa chỉ (cả stake credential), cùng value, không
   reference script; datum ra giữ nguyên `proposal_id`, `spend_spec_hash`, `released_cumulative`;
@@ -191,22 +210,70 @@ Ràng buộc suy ra từ đồ thị:
   mang `(tally_policy, proposal_id)` với `phase == Final`; `status = Executed` nếu qua ngưỡng
   (Pha 1: θ + `quorum_voters`; Pha 2: `pass` canonical của `VotingPower/CONTRACT.md` §5 D1 trên
   power đã clamp), ngược lại `Rejected`; các trường khác giữ nguyên.
-- **`SumBatch`** (Pha 1/2, permissionless): `e ≥ vote_close_epoch`; tiêu tally và k UTxO tại
-  `vote_script_hash`, mỗi UTxO mang đúng một token `nullifier_policy` có tên
-  `blake2b_256(did_commit ‖ proposal_id)` khớp datum của nó; đốt đúng k token đó; cộng dồn theo
-  `choice` (Pha 2: power tính lại từ đầu vào C1–C4 như v1, không tin số VP khai).
-- **`Finalize`** (tally): `e ≥ vote_close_epoch + tally_window_epochs`; `Summing → Final` (Pha 2:
-  kèm clamp BFT như v1 `tally_lib.clamp_consistent`).
+- **`SumBatch { insert_proofs }`** (Pha 1/2, permissionless): `vote_close_epoch ≤ e <
+  vote_close_epoch + tally_window_epochs`; tiêu tally và k UTxO tại `vote_script_hash`, mỗi UTxO mang
+  đúng một token `nullifier_policy` có tên `blake2b_256(did_commit ‖ proposal_id)` khớp datum của nó;
+  `k ≥ 1`; đốt đúng k token đó; power tính LẠI từ đầu vào C1–C4 qua bảng knots, không tin số khai;
+  cộng dồn theo `choice`; heap top-(F−1) canonical; hai mốc cửa sổ GHIM y nguyên; và **sổ DID**:
+  `voted_root` ra = kết quả chèn lần lượt `(did_commit → nullifier)` của trọn lô vào `voted_root`
+  vào, mỗi lần một phần tử của `insert_proofs` (`R-BOOK-MPF` §v2.8).
+- **`Finalize`** (tally): `e ≥ vote_close_epoch + tally_window_epochs`; `bft_floor ≥ 1`;
+  `Summing → Clamped` kèm clamp BFT (`tally_lib.clamp_consistent`); GHIM y nguyên mọi trường
+  power/đếm/heap **và** `vote_open_epoch`, `vote_close_epoch`, `voted_root`. Vế ghim `voted_root` là
+  bắt buộc: thiếu nó thì chính `Finalize` ghi lại sổ tuỳ ý và lớp "phiếu phải có trong sổ" của `vote`
+  bị vô hiệu hoá.
+  Tên hai pha trong mã là `Summing` / **`Clamped`** (`types.ak` ▸ `TallyPhase`); bản SPEC trước ghi
+  `Final` — mã thắng, tên đúng là `Clamped`.
+- **`ConsumeForTally { book_proof }`** (vote): tên token nullifier của phiếu = `H(did_commit ‖
+  proposal_id)`, đúng một tên và một đơn vị trong input; token bị ĐỐT trong cùng giao dịch và không
+  output nào tại script phiếu còn giữ nó; token `(tally_policy, proposal_id)` bị TIÊU cùng giao dịch;
+  và `book_proof` chứng minh `(did_commit → nullifier)` CÓ TRONG `voted_root` của **Tally output**.
+  Vế cuối làm việc "tiêu huỷ phiếu chưa đếm" bất khả về cấu trúc.
+- **`RetractVote`** (vote): `e < vote_close_epoch` (tally đọc qua reference input); đúng 1 input và 1
+  output tại script phiếu; anchor TAAD của `did_commit` Active + Person gốc + hai chữ ký chính chủ;
+  value và địa chỉ đầy đủ bảo toàn, không reference script; CHỈ `choice` đổi và PHẢI đổi thật;
+  `tx.mint == 0`.
+- **`ReclaimVote`** (vote): `e ≥ vote_close_epoch + tally_window_epochs`; đúng 1 input tại script
+  phiếu; chữ ký chính chủ như trên; nullifier bị đốt và không output nào tại script phiếu giữ lại nó.
+  Không có nhánh này thì mọi phiếu không được ai gom chết vĩnh viễn, và "không gom phiếu của một
+  nhóm" thành đòn bẩy: nhóm đó mất phiếu VÀ mất cọc.
+- **`MintWeightParam`** (`weight_param_nft`, Pha 2): tiêu `seed_ref`; đúng một TÊN tài sản của
+  policy, tên = `phase_tag`, qty 1, và `tx.mint` chỉ có MỘT policy; đúng MỘT output giữ NFT đó, tại
+  `Script(policy_id)`, không reference script; datum giải được thành `WeightParam` và thoả:
+  `1 ≤ theta_num ≤ theta_den`, `2·theta_num ≥ theta_den`,
+  `bft_floor_min ≤ bft_floor ≤ bft_floor_max`, `quorum_voter_threshold ≥ quorum_voters_min`,
+  `quorum_vp_threshold ≥ 1`, và cổng D8 (`weight_guard.d8_ok`). Preprod chốt:
+  `bft_floor_min = 21`, `bft_floor_max = 64`, `quorum_voters_min = 21`.
 - **`MintNullifier`** (Pha 1/2): đúng một token, tên `blake2b_256(did_commit ‖ proposal_id)`, qty 1;
   reference input mang `(tally_policy, proposal_id)` và `vote_open_epoch ≤ e < vote_close_epoch`
-  đọc từ datum của nó; đúng một reference input mang `(taad_policy, did_commit)`; datum anchor đọc
-  theo chỉ số trên `Data`: trường chỉ số 5 = `Constr 0` (Active), và giao dịch có chữ ký của khoá
-  ở trường chỉ số 2 (`controller_pkh`) và trường chỉ số 14 (`device_pkh`). `did_commit =
-  blake2b_256(UTF8(did))`, không băm lần hai. Token nullifier nằm ở đâu thì policy không kiểm (vòng
-  phụ thuộc); `SumBatch` chỉ đếm token nằm tại `vote_script_hash` — đặt sai chỗ là tự mất phiếu, và
-  không đúc lại được.
-- **`BurnNullifier`**: chỉ khi `e ≥ vote_close_epoch` và token `tally_policy` bị tiêu cùng giao dịch;
-  mọi token của policy trong mint đều qty −1.
+  đọc từ datum của nó; `tx.mint` chỉ có MỘT policy; đúng một reference input mang
+  `(taad_policy, did_commit)` **và nằm tại địa chỉ `Script(taad_policy)`**; datum anchor đọc theo
+  CHỈ SỐ trên `Data` (`lib/magiclamp/governance/anchor_view.ak`, bản chép có nhãn kho nguồn + sha
+  + ngày):
+
+  | chỉ số | trường | dùng để |
+  |---|---|---|
+  | 1 | `entity_type` | A-PERSON: phải là `Constr 0` (`Person`) |
+  | 2 | `controller_pkh` | chữ ký bắt buộc |
+  | 5 | `status` | phải là `Constr 0` (`Active`) |
+  | 7 | `parent_did` | A-PERSON: phải là `Constr 1` (`None`) |
+  | 13 | `depth` | A-PERSON: phải `== 0` |
+  | 14 | `device_pkh` | chữ ký bắt buộc |
+  | 15 | `aux_device_pkhs` | danh sách khoá thiết bị phụ; chữ ký ở trường 14 **hoặc** một khoá trong danh sách này đều thoả vế "khoá thiết bị" |
+
+  Trường 15 trước nay không được SPEC nhắc tới; nó nới vế chữ ký thiết bị và phải khai ra, vì bản
+  chép của anchor đọc nó.
+  **A-PERSON** (ba vế ghép bằng AND) chặn đường một người thật đúc k DID con rồi bỏ k phiếu — không
+  có nó thì "cử tri = cá nhân" chỉ là một câu trong tài liệu.
+  `did_commit = blake2b_256(UTF8(did))`, không băm lần hai. Token nullifier nằm ở đâu thì policy
+  không kiểm (vòng phụ thuộc); `SumBatch` chỉ đếm token nằm tại `vote_script_hash` — đặt sai chỗ là
+  tự mất phiếu, và không đúc lại được.
+- **`BurnNullifier`**: mọi tên token của policy trong `tx.mint` đều qty −1, **và** một trong hai
+  đường: (a) token `tally_policy` bị TIÊU cùng giao dịch và `e ≥ vote_close_epoch` — đường của
+  `SumBatch`; (b) tally đọc qua REFERENCE input và `e ≥ vote_close_epoch + tally_window_epochs` —
+  đường của `ReclaimVote`, cần thiết vì sau `Finalize` không nhánh nào tiêu được tally nữa.
+  Cả hai đường nằm NGOÀI cửa sổ đúc (`vote_open ≤ e < vote_close`) ⇒ đốt-rồi-đúc-lại bất khả về số
+  học, không cần một chốt riêng (`R-WINDOW-DISJOINT`).
 
 ### v2.6 Luồng giao dịch
 
@@ -305,6 +372,31 @@ Ràng buộc và giới hạn của đường này:
   tiêu một UTxO có sẵn ở đó và trả lại nguyên giá trị, khiến tổng output "đủ" trong khi khoản chi
   thật đi nơi khác. Nhánh nhận của custody k+1 (`[PHASE-SWEEP-INTAKE]`) phải ép
   `value_out − value_in` đúng bằng khoản chi và ghi đúng khoản đó vào sổ.
+- **`R-BOOK-MPF` — sổ DID đã đếm là một GỐC 32 byte, không một danh sách.** `TallyDatum.voted_root`
+  là gốc Merkle Patricia Forestry với khoá = `did_commit`, giá trị = `nullifier` của phiếu được cộng.
+  `SumBatch` chèn trọn lô bằng `insert_proofs` (một chứng minh mỗi phiếu); `mpf.insert` tự `fail` khi
+  chứng minh sai **hoặc khoá đã có trong cây**, nên "mỗi DID đếm tối đa một lần" không cần phép so
+  trùng nào thêm, kể cả trong một lô và giữa nhiều lô. Kích thước datum không đổi theo số cử tri —
+  đây là lý do bỏ `voted_dids: List` và `merge_strict_asc` của bản thiết kế trước.
+  Giá trị lưu là `nullifier` chứ không phải một cờ: một DID bị đếm hai lần với hai `choice` khác nhau
+  đòi hai nullifier khác nhau cho cùng `did_commit`, và việc đó HIỆN RA trên chuỗi (`[SELF-DUP-CHOICE]`
+  mức 3).
+- **`R-C-SOURCE` — `c*_capped` phải có NGUỒN, không chỉ có TRẦN.** Cap không phải chứng thực: một DID
+  có anchor thật khai được trần tối đa của cả bốn yếu tố mà không nắm MAGIC/LAMP nào. `tally.SumBatch`
+  kiểm lại nguồn của từng yếu tố, KHÔNG tin datum phiếu. Trạng thái hiện hành fail-closed: C1, C2, C4
+  bị ép `== 0` (chưa có policy chứng thực nào — `[C1-C2-C4-SOURCE]`); C3 đòi một reference input mang
+  đúng một token `(c3_policy, did_commit)` với giá trị chứng thực `≥` số khai, và `c3_capped` không
+  vượt trần bảng knots. `c3_policy == #""` ⇒ C3 cũng bị ép `== 0`.
+- **`R-VOTE-THREE-WINDOW`.** Ba nhánh của `vote.spend` chia theo `e` thành ba cửa sổ RỜI NHAU:
+  `RetractVote` khi `e < vote_close`; `ConsumeForTally` khi `e ≥ vote_close` (do `SumBatch` cùng giao
+  dịch ép); `ReclaimVote` khi `e ≥ vote_close + tally_window`. Tính rời nhau là SỐ HỌC chứ không phải
+  một luật thêm, vì `e` là MỘT số (`util.get_epoch_bounded`). Đây là lý do mọi chốt thời gian dùng
+  khuôn hai-đầu chứ không ghép biên dưới với biên trên (`R-EPOCH-BOUNDED` dưới).
+- **`R-EPOCH-BOUNDED`.** Mọi chốt thời gian của đường biểu quyết dùng `util.get_epoch_bounded`: cả
+  hai biên validity range phải hữu hạn VÀ cùng epoch. Ghép `get_epoch` (biên dưới) với
+  `get_epoch_upper` (biên trên) cho hai bất đẳng thức ngược chiều vẫn ĐÚNG, nhưng nó để lại câu hỏi
+  "biên nào cho dấu nào" ở từng chỗ gọi, và câu đó bị trả lời sai ở lượt sửa sau mà không phép đo nào
+  kêu.
 - **`R-REGISTRY-NOT-AUTHORITY`.** `PlatformEntry.governance_ref` trong registry Treasury là trường
   khả biến (`registry.ak` U-MUT) — chỉ là bản ghi tra cứu. Nguồn thẩm quyền là datum custody cộng
   apply-param của custody. Bên đọc off-chain phải đối chiếu với datum custody, không tin registry.
@@ -325,32 +417,80 @@ Biện pháp trong v2:
   proposal đã được chi, nhưng theo §v2.4 governance không biết hash custody (custody phụ thuộc
   governance, không ngược lại).
 
+**Beacon khoá vĩnh viễn — hai UTxO, có chủ ý, kèm số đo.**
+
+Hai UTxO của đường biểu quyết KHÔNG có nhánh nào tiêu lại được, và đó là lựa chọn thiết kế chứ không
+phải sơ suất:
+
+| UTxO | Vì sao khoá | Chỗ cưỡng chế |
+|---|---|---|
+| **WeightParam beacon** | bảng tham số phải BẤT BIẾN trong đời một pha; cách rẻ nhất để ép bất biến là làm nó không tiêu được. Đổi bảng = đúc NFT pha MỚI với `phase_tag` khác (`[WEIGHT-PARAM-UPDATE]`) | `validators/weight_param_nft.ak`: đích bị ép là `Script(policy_id)` — địa chỉ có payment credential đúng bằng hash của CHÍNH script đó, mà script đó chỉ có nhánh `mint` và `else(_) { fail }` |
+| **Tally UTxO sau `Finalize`** | kết quả đã đóng là dữ kiện lịch sử; `ReclaimVote` đọc nó qua reference input nên nó phải còn sống | `validators/tally.ak`: `TallyRedeemer` chỉ có `SumBatch` và `Finalize`, và cả hai đòi `d_in.phase == Summing` ⇒ một tally đã `Clamped` không khớp nhánh nào |
+
+**min-ADA bị khoá — đo bằng công thức ledger, không đoán.** `min_ada = (160 + |TxOut CBOR|) ·
+utxoCostPerByte`, `utxoCostPerByte = 4310` lovelace (tham số giao thức, giống nhau ở mainnet ·
+Preprod · Preview). Kích thước `TxOut` tính bằng cách mã hoá CBOR đúng khuôn Plutus Data mà
+`aiken/cbor` dùng (mảng độ dài không xác định cho `List` và cho trường của `Constr`), địa chỉ script
+29 byte, value gồm ADA + đúng một NFT:
+
+| UTxO | Hình dạng datum | `TxOut` | min-ADA |
+|---|---|---|---|
+| WeightParam beacon | 5 mốc mỗi yếu tố | 421 B | **2,504110 ADA** |
+| WeightParam beacon | 9 mốc mỗi yếu tố | 709 B | **3,745390 ADA** |
+| WeightParam beacon | 17 mốc mỗi yếu tố | 1285 B | **6,227950 ADA** |
+| Tally (đã `Clamped`) | `top_did_vp` rỗng | 295 B | **1,961050 ADA** |
+| Tally (đã `Clamped`) | `top_did_vp` 20 entry | 617 B | **3,348870 ADA** |
+| Tally (đã `Clamped`) | `top_did_vp` 63 entry (`bft_floor = 64`) | 1305 B | **6,314150 ADA** |
+
+Đọc bảng theo đúng chiều: WeightParam beacon là **một** UTxO cho **cả pha** ⇒ khoản khoá là một
+lần, cỡ 2,5–6,3 ADA tuỳ độ phân giải bảng knots. Tally là **một UTxO mỗi proposal** ⇒ khoản khoá tỉ
+lệ với số proposal, và cận trên của nó do `bft_floor` định (heap giữ tối đa `F−1` entry). Với
+`bft_floor = 21` (chốt Launch) thì `top_did_vp` tối đa 20 entry ⇒ **≈ 3,35 ADA mỗi proposal**.
+
+Hai số này là chi phí của người MỞ proposal và người DỰNG pha, không lấy từ kho (§trên). Lời giải
+tổng cho việc thu hồi vẫn nằm ở `[PROPOSAL-CLOSE]`.
+
 ### v2.10 Danh mục điểm mở
 
 | Mã | Treo gì | Ràng buộc tạm thời đang có hiệu lực (fail-closed) | Khai ở |
 |---|---|---|---|
-| `[C2-SOURCE]` | C2 (LAMP cam kết) đọc từ nguồn on-chain nào | Pha 2 không được biên dịch; không bản `tally` nào nhận C2 | tệp này §v2.3; mô hình `VotingPower/CONTRACT.md` §1 |
-| `[C3-ISSUER]` | bên phát hành NFT chứng thực C3 | không policy C3 nào được nướng vào `tally`; Pha 2 không được biên dịch | tệp này §v2.3 |
+| `[C2-SOURCE]` | C2 (LAMP cam kết) đọc từ nguồn on-chain nào | `tally.SumBatch` ép `c2_capped == 0` với MỌI phiếu (`R-C-SOURCE`) ⇒ yếu tố C2 không đóng góp gì cho tới khi có nguồn | tệp này §v2.3, §v2.8; mô hình `VotingPower/CONTRACT.md` §1 |
+| `[C3-ISSUER]` | bên phát hành NFT chứng thực C3 | `c3_policy` là apply-param của `tally`; đặt `#""` ⇒ `c3_capped` bị ép `== 0`. Khác `#""` ⇒ mỗi phiếu đòi một reference input mang `(c3_policy, did_commit)` với giá trị `≥` số khai | tệp này §v2.3, §v2.8 |
+| `[C1-C2-C4-SOURCE]` | ba yếu tố C1 (MAGIC tiêu thụ), C2 (LAMP cam kết), C4 (LAMP nắm giữ) chưa có policy chứng thực nào trên chuỗi | `tally.SumBatch` ▸ `c_sources_ok` ép `c1_capped == c2_capped == c4_capped == 0` với MỌI phiếu. Hệ quả phải nói thẳng: VP hiện thời do MỘT yếu tố (C3) lái, nên mô hình tích-nhân-bốn-yếu-tố CHƯA có hiệu lực đầy đủ — Pha 2 không được coi là hoàn tất khi dòng này còn treo | tệp này §v2.8 `R-C-SOURCE` |
+| `[BALLOT-PUBLIC]` | phiếu KHÔNG ẩn — chủ dự án đã chốt là không làm phiếu ẩn ở v2 | không có ràng buộc tạm nào, vì đây không phải một thứ đang chờ: nó là một QUYẾT ĐỊNH, và hệ quả của nó vĩnh viễn. Hệ quả: (a) `did_commit` nằm công khai trong datum phiếu và trong sổ `voted_root`, nên ai tra được `did_commit → DID` thì biết một cá nhân cụ thể đã bỏ phiếu; (b) `choice` công khai vĩnh viễn trên chuỗi, không xoá được; (c) do đó mua phiếu và cưỡng ép bỏ phiếu KIỂM CHỨNG ĐƯỢC từ bên ngoài. Bất kỳ lời hứa đối ngoại nào về "bỏ phiếu riêng tư" đều sai với bản này | tệp này §v2.10 |
+| `[SELF-DUP-CHOICE]` | một cá nhân không bị chặn về mặt mật mã khỏi việc được đếm hai lần với hai `choice` khác nhau nếu có một đường nào đúc được hai nullifier cho cùng `did_commit` | hai mức đang có hiệu lực: **mức 1** — khoá sổ MPF là `did_commit` và giá trị là `nullifier`, nên một DID chèn lần thứ hai bị `mpf.insert` bác, và nếu nó xảy ra qua một đường chưa biết thì việc đó HIỆN RA trên chuỗi (hai giá trị khác nhau cho cùng khoá); **mức 3** — `governance.OpenProposal` ép `spend_spec_hash == #""`, tức Pha 1/2 KHÔNG cho proposal chi tiền, nên lỗ này không có đường dẫn tới tài sản. Mức 2 (đóng kín bằng mật mã) chưa có lời giải | tệp này §v2.5, §v2.8 `R-BOOK-MPF` |
+| `[DID-RECOVERY-TRUST]` | luồng phục hồi DID của PhoenixKey cho một nhóm guardian chiếm quyền điều khiển một anchor sau một thời hạn; Governance không kiểm soát luồng đó | `governance.OpenProposal` ép `vote_close_epoch − vote_open_epoch < recovery_timelock_epochs` (apply-param, soft-pin đọc từ cấu hình theo mạng). Cắt đường "chiếm DID rồi bỏ phiếu bằng nó trong CÙNG cửa sổ". KHÔNG đóng kín: guardian vẫn chiếm được giữa hai proposal | tệp này §v2.5 |
+| `[GOV-FINALIZE-BRANCH]` | `governance` chưa có nhánh `spend` (`FinalizeProposal`: đọc tally đã `Clamped`, ghi `status = Executed`/`Rejected`) | `else(_) { fail }` ⇒ UTxO proposal do `OpenProposal` sinh ra KHÔNG tiêu lại được. Hệ quả: Pha 1/2 CHƯA triển khai được — proposal mở ra đứng ở `Open` vĩnh viễn và Treasury không bao giờ đọc thấy `Executed`. Chọn hướng này thay vì một nhánh `spend` lỏng: một nhánh tiêu được mà chưa ép đủ ngưỡng là đường chi tiền, còn một UTxO khoá cứng chỉ là min-ADA bị kẹt | tệp này §v2.5, §v2.9 |
+| `[TALLY-TOKEN-OUTSIDE-OPEN]` | `tally_nft` không kiểm ĐÍCH và không kiểm datum khởi tạo (nó không biết `tally_script_hash` — biết là tạo vòng phụ thuộc, §v2.4), nên một token `tally_policy` đúc LẺ ngoài giao dịch Open dựng được một Tally UTxO có datum bịa | hở là HÚT PHIẾU, không phải chi tiền: cử tri có thể bị dụ đúc nullifier và bỏ phiếu vào một tally không ứng proposal nào. Nó KHÔNG bao giờ sinh ra một proposal, vì hạt giống của nó đã bị tiêu nên không giao dịch Open nào đúc lại được token cùng tên. Bên đọc off-chain phải xác minh tally bằng cách truy giao dịch đúc của nó và kiểm rằng giao dịch đó cũng đúc token `governance` cùng tên | tệp này §v2.5 |
 | `[IDENT-ONE-PERSON]` | một người k khoá ⇒ k anchor ⇒ k phiếu | ràng buộc tạm ở `VotingPower/CONTRACT.md` §3; Pha 1 đếm anchor, không được mô tả là đếm người | `VotingPower/CONTRACT.md` §3 |
 | `[PHASE1-QUORUM]` | giá trị quorum Pha 1 | governance Pha 1 không được biên dịch khi chưa có giá trị; không có giá trị ngầm định | tệp này §v2.5 |
 | `[SUMBATCH-EXUNIT]` | ExUnit mỗi lô `SumBatch`, cỡ lô, độ dài `tally_window`, và giao dịch quét kho §v2.7 | chưa đo; Pha 1 không triển khai mainnet trước khi đo trên testnet | tệp này §v2.6, §v2.7 |
 | `[PHASE-SWEEP-INTAKE]` | custody chưa có nhánh nhận 100% theo `(bucket, asset)` từ instance tiền nhiệm | không proposal chuyển pha nào được đưa tới `Executed` | tệp này §v2.7 |
 | `[PHASE-RESERVE-REPOINT]` | đường Reserve → custody ghim instance bằng apply-param (`reserve_gate`) | chuyển pha không được coi là hoàn tất khi đường Reserve còn trỏ instance cũ | tệp này §v2.7 |
-| `[WEIGHT-PARAM-UPDATE]` | cập nhật `WeightParam` trong một pha | `WeightParam` đúc một lần lúc dựng pha, đặt ở địa chỉ không nhánh nào tiêu được; đổi bảng tham số = chuyển pha | tệp này §v2.5 |
+| `[WEIGHT-PARAM-UPDATE]` | cập nhật `WeightParam` trong một pha | `weight_param_nft` đúc một lần theo `seed_ref`, ép đích là `Script(policy_id)` — script đó không có nhánh `spend` ⇒ không nhánh nào tiêu được; đổi bảng tham số = đúc NFT pha mới. min-ADA bị khoá đo được ở §v2.9 | tệp này §v2.5, §v2.9 |
 | `[PROPOSAL-CLOSE]` | thu hồi UTxO proposal/tally đã kết thúc | cấm đốt, không có nhánh đóng | tệp này §v2.9 |
 | `[SPEND-SPEC-INSTANCE]` | tiền ảnh `spend_spec_hash` sẽ gắn định danh custody instance (thay đổi phía Treasury) | governance tính theo `release.spend_spec_hash` hiện hành; đổi theo khi thay đổi được ghi vào `Treasury/CONTRACT.md` | `Treasury/CONTRACT.md` |
 
 ### v2.11 Mã v1 sẽ thay
 
-| Tệp v1 | Số phận ở v2 |
-|---|---|
-| `validators/proposal.ak`, `validators/proposal_nft.ak` | thay bằng một validator `governance` hai mục đích mỗi pha |
-| `validators/tally_nft.ak` | thay bằng `tally_policy` seed-unique |
-| `validators/tally.ak` | giữ logic cộng/clamp; bỏ phụ thuộc Proposal v1; thêm `tally_window`, cửa sổ `SumBatch` |
-| `validators/vote.ak` | bỏ `proposal_policy` và stub committee chứng thực DID; chỉ tiêu được trong `SumBatch` |
-| `validators/nullifier.ak` | thêm anchor TAAD + cửa sổ; `BurnNullifier` chỉ sau `vote_close` |
-| `lib/magiclamp/governance/{power,weight_guard,tally}.ak` | giữ (Pha 2) |
-| `lib/magiclamp/governance/types.ak` | `ProposalResult`/`ProposalStatus` giữ nguyên byte; `ProposalDatum` 12 trường bỏ; `TallyDatum`, `VoteDatum` theo §v2.5 |
+| Tệp v1 | Số phận ở v2 | Trạng thái |
+|---|---|---|
+| `validators/proposal.ak`, `validators/proposal_nft.ak` | thay bằng một validator `governance` hai mục đích mỗi pha | CHƯA — `validators/governance.ak` mới có nhánh `mint`; hai tệp v1 còn nguyên cho Pha 0 |
+| `validators/tally_nft.ak` | thay bằng `tally_policy` seed-unique | XONG — `validator tally_nft(_phase_tag)`, `MintTally { seed }` |
+| `validators/tally.ak` | giữ logic cộng/clamp; bỏ phụ thuộc Proposal v1; thêm `tally_window`, cửa sổ `SumBatch`, sổ MPF, cổng nguồn C* | XONG |
+| `validators/vote.ak` | bỏ `proposal_policy` và stub committee chứng thực DID; ba nhánh `ConsumeForTally`/`RetractVote`/`ReclaimVote` | XONG — `CastVote` đã bỏ: một UTxO phiếu được TẠO bằng giao dịch đúc nullifier, và một nhánh `spend` không gác được việc tạo ra chính UTxO của nó |
+| `validators/nullifier.ak` | thêm anchor TAAD + A-PERSON + cửa sổ; `BurnNullifier` chỉ ngoài cửa sổ đúc | XONG |
+| `validators/weight_param_nft.ak` | MỚI ở v2 — cổng bảng tham số DAO | XONG |
+| `lib/magiclamp/governance/{power,weight_guard,tally}.ak` | giữ (Pha 2); `power.ak` thêm `cap_of` (trần đọc thẳng từ knot cuối, không cần trường mới) | XONG |
+| `lib/magiclamp/governance/{anchor_view,names,tally_ref,mpf_fixtures}.ak` | MỚI ở v2 — bản chép anchor TAAD có nhãn; tên tài sản canonical; đọc tally theo TOKEN; fixture MPF sinh tự động | XONG |
+| `lib/magiclamp/governance/did_stub.ak` | bỏ khỏi đường biểu quyết (committee không còn chứng thực DID) | còn tệp, không còn nơi gọi trên đường biểu quyết |
+| `lib/magiclamp/governance/types.ak` | `ProposalResult`/`ProposalStatus` giữ nguyên byte; `ProposalDatum` 12 trường bỏ; `TallyDatum`, `VoteDatum` theo §v2.5 | `TallyDatum` XONG (ba trường v2 thêm ở CUỐI để giữ chỉ số CBOR của 12 trường đầu); `ProposalDatum` còn vì Pha 0 |
+
+**Hai chỗ SPEC lệch mã, mã thắng, đã sửa trong tệp này:** tên pha thứ hai của tally là `Clamped`
+(không phải `Final`); `nullifier` có thêm apply-param `tally_window_epochs` mà bảng §v2.5 trước
+không ghi. Một chỗ nữa ghi để không ai đi tìm: bản `aiken build` của v1 cho `proposal_nft` và
+`tally_nft` **cùng một script hash** (hai thân hàm giống nhau từng byte trước khi áp tham số); ở v2
+`tally_nft` đã đổi thân nên hai hash khác nhau.
 
 ---
 

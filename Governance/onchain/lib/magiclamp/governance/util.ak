@@ -16,6 +16,12 @@ pub fn own_address(own_ref: OutputReference, inputs: List<Input>) -> Address {
   i.output.address
 }
 
+/// Output của chính UTxO đang spend (dùng cho phép bảo toàn value/địa chỉ).
+pub fn own_input(own_ref: OutputReference, inputs: List<Input>) -> Output {
+  expect Some(i) = list.find(inputs, fn(x) { x.output_reference == own_ref })
+  i.output
+}
+
 /// Script hash của chính validator đang chạy.
 pub fn own_script_hash(own_addr: Address) -> ByteArray {
   expect Script(h) = own_addr.payment_credential

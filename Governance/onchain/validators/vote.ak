@@ -1,77 +1,58 @@
-// Validator 2 — Vote (1 phiếu = 1 UTxO, nullifier chống double-vote). TECH §4.
+// Validator 2 — Vote v2. Một phiếu = một UTxO mang đúng một token nullifier.
 //
-// CastVote kiểm (thứ tự fail sớm):
-//   1. Nullifier mint đúng: name == blake2b_256(did_commit‖proposal_id), qty +1 policy nullifier.
-//   2. Proposal đang Open (đọc qua REFERENCE INPUT mang Proposal NFT — không tiêu).
-//      vote_open_epoch ≤ epoch < vote_close_epoch.
-//   3. DID proof hợp lệ (STUB committee multisig — did_stub.verify_did; PhoenixKey thật sau).
-//   4. c*_capped trong [0, cap_k]: c1/c2/c3 ≤ cap (đọc redeemer caps), c4 ≤ 100_000_000 (cứng).
-//      v1 STUB: cap1..3 truyền qua redeemer (UTxO tham số là mở rộng EXEC; ref input C_k thật
-//      cần MAGIC encoding did_commit byte-perfect — D9, đánh dấu cho audit).
-//   5. Vote output tại Vote script hash mang nullifier + datum khớp redeemer.
+// ┌─ Ba nhánh, ba CỬA SỔ THỜI GIAN rời nhau ────────────────────────────────────┐
+// │ RetractVote      e < vote_close                    (đổi lựa chọn tại chỗ)   │
+// │ ConsumeForTally  e ≥ vote_close  (do `tally.SumBatch` cùng tx ép)           │
+// │ ReclaimVote      e ≥ vote_close + tally_window     (thu hồi phiếu chết)     │
+// │                                                                             │
+// │ Tính rời nhau là SỐ HỌC, không phải một luật thêm: `e` là MỘT số (khuôn hai │
+// │ đầu `util.get_epoch_bounded`), nên `e < close` và `e ≥ close` không cùng     │
+// │ đúng. Nhờ đó "rút phiếu trong cùng giao dịch với lượt gộp" chết không cần    │
+// │ chốt riêng.                                                                 │
+// └─────────────────────────────────────────────────────────────────────────────┘
 //
-// RetractVote: đổi choice TẠI CHỖ, GIỮ nullifier (KHÔNG burn-rồi-vote-lại — TECH §6.4).
+// ĐỔI BẢN CHẤT so với v1:
+//  • BỎ nhánh `CastVote`. Phiếu được TẠO bằng một giao dịch đúc nullifier —
+//    `nullifier.MintNullifier` là nơi giữ cổng WHO (anchor TAAD + A-PERSON + hai
+//    chữ ký). Một nhánh `spend` không thể gác việc tạo ra chính UTxO của nó.
+//  • BỎ apply-param `proposal_policy` (nhận là sinh vòng qua `tally_script_hash`)
+//    và BỎ `committee` (`did_stub` không còn nằm trên đường biểu quyết).
+//  • THÊM `taad_policy` (chứng thực chủ phiếu ở `RetractVote`/`ReclaimVote`) và
+//    `tally_window_epochs` (cửa sổ thu hồi).
+//  • Cap `c*_capped` KHÔNG kiểm ở đây nữa: datum của một UTxO phiếu do bên dựng
+//    giao dịch viết, nên kiểm ở `vote` không chặn được phiếu tạo trực tiếp. Cap
+//    được kiểm LẠI ở `tally.SumBatch` — chỗ duy nhất số đó đi vào phép tính.
 //
-// Tham số hóa: nullifier_policy, proposal_policy (NFT proposal để xác thực ref), committee, ms_per_epoch.
+// Tham số hoá: tally_policy, nullifier_policy, taad_policy, ms_per_epoch,
+//              tally_window_epochs.
 
 use aiken/collection/dict
 use aiken/collection/list
-use aiken/crypto
-use aiken/primitive/bytearray
+use aiken/merkle_patricia_forestry as mpf
+use aiken/merkle_patricia_forestry.{Proof}
 use cardano/assets.{PolicyId}
-use cardano/transaction.{InlineDatum, Input, OutputReference, Transaction}
-use magiclamp/governance/did_stub.{DidCommittee, verify_did}
-use magiclamp/governance/types.{Open, ProposalDatum, VoteDatum}
+use cardano/transaction.{InlineDatum, OutputReference, Transaction}
+use magiclamp/governance/anchor_view
+use magiclamp/governance/names.{nullifier_name}
+use magiclamp/governance/tally_ref
+use magiclamp/governance/types.{VoteDatum}
 use magiclamp/governance/util
 
-/// cap4 cứng = 100 triệu LAMP (CONTRACT §3 — ngoại lệ "tham số mở").
-pub const cap4_hard: Int = 100_000_000
-
 pub type VoteRedeemer {
-  CastVote {
-    did_proof: ByteArray,
-    // [EXTERNAL — PhoenixKey; v1 STUB không dùng, committee ký tx]
-    cap1: Int,
-    // cap C1 (DAO-param; v1 qua redeemer)
-    cap2: Int,
-    cap3: Int,
-  }
+  /// `book_proof` = chứng minh MPF rằng `(did_commit → nullifier)` CÓ TRONG sổ
+  /// `voted_root` của Tally OUTPUT trong cùng giao dịch. Bên dựng lô sinh nó
+  /// off-chain từ trạng thái sổ SAU khi chèn cả lô.
+  ConsumeForTally { book_proof: Proof }
   RetractVote
-}
-
-/// nullifier name canonical (đồng bộ nullifier.ak).
-fn nullifier_name(did_commit: ByteArray, proposal_id: ByteArray) -> ByteArray {
-  crypto.blake2b_256(bytearray.concat(did_commit, proposal_id))
-}
-
-/// Đọc Proposal đang Open qua reference input mang Proposal NFT (xác thực, không tiêu).
-fn read_open_proposal(
-  reference_inputs: List<Input>,
-  proposal_policy: PolicyId,
-) -> ProposalDatum {
-  expect Some(ref) =
-    list.find(
-      reference_inputs,
-      fn(i) { dict.size(assets.tokens(i.output.value, proposal_policy)) == 1 },
-    )
-  expect [Pair(_, qty)] =
-    dict.to_pairs(assets.tokens(ref.output.value, proposal_policy))
-  expect qty == 1
-  expect InlineDatum(d) = ref.output.datum
-  expect pd: ProposalDatum = d
-  pd
-}
-
-/// c*_capped đã cap đúng: 0 ≤ c ≤ cap.
-fn capped_ok(c: Int, cap: Int) -> Bool {
-  c >= 0 && c <= cap
+  ReclaimVote
 }
 
 validator vote(
+  tally_policy: PolicyId,
   nullifier_policy: PolicyId,
-  proposal_policy: PolicyId,
-  committee: DidCommittee,
+  taad_policy: PolicyId,
   ms_per_epoch: Int,
+  tally_window_epochs: Int,
 ) {
   spend(
     datum_opt: Option<VoteDatum>,
@@ -80,65 +61,140 @@ validator vote(
     tx: Transaction,
   ) {
     expect Some(vd) = datum_opt
-    let own_addr = util.own_address(own_ref, tx.inputs)
-    let own_hash = util.own_script_hash(own_addr)
+    let inp = util.own_input(own_ref, tx.inputs)
+    let own_hash = util.own_script_hash(inp.address)
 
     when redeemer is {
-      CastVote { did_proof: _did_proof, cap1, cap2, cap3 } -> {
-        // Biên thời gian (Finding 4): ràng "mở ≤ epoch" lấy LOWER bound (toàn khoảng ≥ open);
-        // ràng "epoch < đóng" lấy UPPER bound (TOÀN khoảng < đóng) — lower_bound cho '<' sai
-        // hướng, lọt vote tại epoch đóng. Hai biên độc lập cho hai bất đẳng thức ngược chiều.
-        let epoch_lo = util.get_epoch(tx, ms_per_epoch)
-        let epoch_hi = util.get_epoch_upper(tx, ms_per_epoch)
-        // 1. Nullifier mint đúng name + qty 1 policy nullifier.
-        let want_name = nullifier_name(vd.did_commit, vd.proposal_id)
-        expect vd.nullifier == want_name
-        let null_tokens = assets.tokens(tx.mint, nullifier_policy)
-        expect dict.size(null_tokens) == 1
-        expect assets.quantity_of(tx.mint, nullifier_policy, want_name) == 1
-        // 2. Proposal đang Open + trong cửa sổ vote.
-        let p = read_open_proposal(tx.reference_inputs, proposal_policy)
-        expect p.proposal_id == vd.proposal_id
-        expect p.status == Open
-        expect p.vote_open_epoch <= epoch_lo
-        expect epoch_hi < p.vote_close_epoch
-        // 3. DID proof (STUB committee multisig). _did_proof reserved cho PhoenixKey thật.
-        expect verify_did(committee, vd.did_commit, tx.extra_signatories)
-        // 4. c*_capped trong [0, cap_k]; c4 cap cứng 100 triệu.
-        expect capped_ok(vd.c1_capped, cap1)
-        expect capped_ok(vd.c2_capped, cap2)
-        expect capped_ok(vd.c3_capped, cap3)
-        expect capped_ok(vd.c4_capped, cap4_hard)
-        // 5. Vote output tại Vote script hash mang nullifier + datum khớp.
+      // ── ConsumeForTally: phiếu bị gộp vào Tally ──
+      ConsumeForTally { book_proof } -> {
+        // (V1) token BUỘC vào datum: đúng một tên token nullifier, đúng 1 đơn vị,
+        //      tên = H(did‖prop). Không có vế này thì một UTxO phiếu mang token
+        //      của DID khác vẫn được cộng cho `vd.did_commit`.
+        expect vd.nullifier == nullifier_name(vd.did_commit, vd.proposal_id)
+        expect assets.quantity_of(inp.value, nullifier_policy, vd.nullifier) == 1
+        expect dict.size(assets.tokens(inp.value, nullifier_policy)) == 1
+        // (V2) ĐỐT trong cùng giao dịch.
+        expect assets.quantity_of(tx.mint, nullifier_policy, vd.nullifier) == -1
+        // (V3) TIÊU HẲN: không output nào ở script này còn giữ nullifier này.
+        //      (V2) một mình không đủ — đốt một đơn vị mà giữ lại một đơn vị khác
+        //      cùng tên thì phiếu sống tiếp.
+        expect
+          list.all(
+            tx.outputs,
+            fn(o) {
+              !util.is_at_script(o.address, own_hash) || assets.quantity_of(
+                o.value,
+                nullifier_policy,
+                vd.nullifier,
+              ) == 0
+            },
+          )
+        // (V4) Tally của ĐÚNG proposal này bị TIÊU cùng tx (không phải reference).
+        expect
+          tally_ref.find_tally(tx.inputs, tally_policy, vd.proposal_id) != None
+        // (V5) phiếu ĐƯỢC GHI VÀO SỔ. Đây là vế làm việc "huỷ phiếu chưa đếm"
+        //      bất khả về cấu trúc: không có nó, một giao dịch tiêu k phiếu của
+        //      phe chống rồi `Finalize` ngay là hợp lệ — phiếu bị phá huỷ vĩnh
+        //      viễn mà không bao giờ vào tally.
+        //      Tìm Tally OUTPUT bằng TOKEN nên `vote` không cần biết
+        //      `tally_script_hash` ⇒ không sinh vòng apply-param.
+        expect Some(td_out) =
+          tally_ref.find_tally_output(tx.outputs, tally_policy, vd.proposal_id)
+        mpf.has(
+          mpf.from_root(td_out.voted_root),
+          vd.did_commit,
+          vd.nullifier,
+          book_proof,
+        )
+      }
+
+      // ── RetractVote: đổi lựa chọn TẠI CHỖ, giữ nullifier, TRƯỚC khi đóng phiếu ──
+      RetractVote -> {
+        // (R1) đúng 1 input + 1 output tại script này — chống gộp nhiều phiếu
+        //      trong một lần rút (một chữ ký thoả cho nhiều phiếu).
+        expect util.count_inputs_at_script(tx.inputs, own_hash) == 1
+        expect util.count_outputs_at_script(tx.outputs, own_hash) == 1
         let out = util.output_at_script(tx.outputs, own_hash)
+        // (R2) TRƯỚC khi đóng phiếu.
+        let td =
+          tally_ref.expect_tally(
+            tx.reference_inputs,
+            tally_policy,
+            vd.proposal_id,
+          )
+        expect util.get_epoch_bounded(tx, ms_per_epoch) < td.vote_close_epoch
+        // (R3) chứng thực CHỦ phiếu: anchor TAAD của `did_commit`, Active, Person
+        //      gốc, hai chữ ký. v1 KHÔNG có vế này — ai cũng đổi được lựa chọn
+        //      của người khác.
+        expect
+          anchor_view.person_owner_signed_ref(
+            tx.reference_inputs,
+            taad_policy,
+            vd.did_commit,
+            tx.extra_signatories,
+          )
+        // (R4) bảo toàn value TUYỆT ĐỐI + đúng địa chỉ đầy đủ + không đính script.
+        //      Giữ riêng token nullifier là chưa đủ: người rút giữ token, ghi datum
+        //      đúng, rồi hút hết ADA của phiếu ra ví mình.
+        expect out.value == inp.value
+        expect out.address == inp.address
+        expect out.reference_script == None
         expect InlineDatum(od) = out.datum
-        expect out_vd: VoteDatum = od
+        expect ov: VoteDatum = od
+        // (R5) CHỈ `choice` được đổi, và PHẢI đổi thật.
         and {
-          assets.quantity_of(out.value, nullifier_policy, want_name) == 1,
-          out_vd == vd,
+          ov.proposal_id == vd.proposal_id,
+          ov.did_commit == vd.did_commit,
+          ov.nullifier == vd.nullifier,
+          ov.c1_capped == vd.c1_capped,
+          ov.c2_capped == vd.c2_capped,
+          ov.c3_capped == vd.c3_capped,
+          ov.c4_capped == vd.c4_capped,
+          ov.choice != vd.choice,
+          // không đúc/đốt gì trong lượt rút — chặn cả đường lén đốt nullifier.
+          tx.mint == assets.zero,
         }
       }
 
-      // RetractVote: đổi choice TẠI CHỖ, GIỮ nullifier (không burn). proposal còn Open.
-      RetractVote -> {
-        let p = read_open_proposal(tx.reference_inputs, proposal_policy)
-        expect p.proposal_id == vd.proposal_id
-        expect p.status == Open
-        let out = util.output_at_script(tx.outputs, own_hash)
-        expect InlineDatum(od) = out.datum
-        expect out_vd: VoteDatum = od
-        // KHÔNG đổi nullifier/did/proposal/c*; CHỈ choice được đổi.
-        and {
-          out_vd.nullifier == vd.nullifier,
-          out_vd.did_commit == vd.did_commit,
-          out_vd.proposal_id == vd.proposal_id,
-          out_vd.c1_capped == vd.c1_capped,
-          out_vd.c2_capped == vd.c2_capped,
-          out_vd.c3_capped == vd.c3_capped,
-          out_vd.c4_capped == vd.c4_capped,
-          // nullifier token GIỮ trong output (không burn).
-          assets.quantity_of(out.value, nullifier_policy, vd.nullifier) == 1,
-        }
+      // ── ReclaimVote: lấy lại min-ADA của phiếu KHÔNG được ai gom ──
+      //    Không có nhánh này thì sau `Finalize` mọi phiếu chưa gom chết vĩnh
+      //    viễn (min-ADA + token nullifier), và "không gom phiếu của một nhóm"
+      //    trở thành đòn bẩy: nhóm đó mất phiếu VÀ mất cọc.
+      ReclaimVote -> {
+        // (C1) đúng 1 input tại script này — một chữ ký chỉ thu hồi một phiếu.
+        expect util.count_inputs_at_script(tx.inputs, own_hash) == 1
+        // (C2) cửa sổ gom đã đóng. Đọc qua REFERENCE input: sau `Finalize` Tally
+        //      không còn nhánh nào tiêu được nó.
+        let td =
+          tally_ref.expect_tally(
+            tx.reference_inputs,
+            tally_policy,
+            vd.proposal_id,
+          )
+        expect
+          util.get_epoch_bounded(tx, ms_per_epoch) >= td.vote_close_epoch + tally_window_epochs
+        // (C3) CHỈ chủ phiếu thu hồi.
+        expect
+          anchor_view.person_owner_signed_ref(
+            tx.reference_inputs,
+            taad_policy,
+            vd.did_commit,
+            tx.extra_signatories,
+          )
+        // (C4) nullifier PHẢI bị đốt — không để token phiếu sống ra ngoài script,
+        //      nơi không validator nào gác nó nữa.
+        expect assets.quantity_of(tx.mint, nullifier_policy, vd.nullifier) == -1
+        // (C5) và không output nào ở script này giữ lại nó.
+        list.all(
+          tx.outputs,
+          fn(o) {
+            !util.is_at_script(o.address, own_hash) || assets.quantity_of(
+              o.value,
+              nullifier_policy,
+              vd.nullifier,
+            ) == 0
+          },
+        )
       }
     }
   }

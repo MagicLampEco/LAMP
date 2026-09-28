@@ -50,6 +50,17 @@ pub fn interp(knots: List<Knot>, x: Int) -> Int {
   }
 }
 
+/// Trần `cap_k` của một bảng knots = giá trị `c` của knot CUỐI. Không cần trường
+/// mới trong `WeightParam`: `interp` NO ở knot cuối (nhánh `[only] -> only.pow`),
+/// nên mọi `x ≥ c` của knot cuối đều cho cùng một `pow` ⇒ knot cuối LÀ trần.
+pub fn cap_of(knots: List<Knot>) -> Int {
+  when knots is {
+    [] -> 0
+    [only] -> only.c
+    [_, ..rest] -> cap_of(rest)
+  }
+}
+
 /// VP THÔ của một cử tri (T3): tích bốn giá trị bảng chia SCALE^3.
 /// Mỗi cN_capped đã cap về [0, cap_N] ở Vote (verify từ ref input) — power CHỈ tra bảng.
 /// power = (pow1·pow2·pow3·pow4) / SCALE^3. Aiken Int bignum: tích ~SCALE^4 (~10^36) KHÔNG overflow.

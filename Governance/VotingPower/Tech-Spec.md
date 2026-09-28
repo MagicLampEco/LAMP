@@ -706,8 +706,18 @@ Proposal. **Không cần `consumed_root`** vì UTxO đã tiêu ở lô trước 
   theo Vote script hash; **mỗi Vote UTxO chỉ cộng được một lần** vì nó bị spend (không cần kiểm
   membership `consumed_root` nữa — sửa audit #3).
 - Chỉ cộng Vote UTxO **mang nullifier token hợp lệ** (phiếu-không-nullifier bị loại — §6.5).
-- Bảo toàn: Tally acc output value == input value + (chỉ datum đổi); min-ADA các Vote UTxO bị tiêu
-  trả về owner (không vào acc, không drain).
+- Bảo toàn: Tally acc output value == input value + (chỉ datum đổi).
+- **min-ADA của Vote UTxO bị tiêu là THƯỞNG của người gom, không trả về chủ phiếu.** Câu trước đó
+  ("trả về owner") không đúng với mã: `tally.SumBatch` ép đúng một vế về value — Tally acc ra bằng
+  Tally acc vào — và KHÔNG ép gì về nơi min-ADA của các Vote UTxO đi tới. Người dựng lô nhận nó.
+  Đây là lựa chọn, không phải sơ suất, và lý do là động cơ: `SumBatch` là permissionless và tốn phí
+  giao dịch; nếu min-ADA phải quay về chủ phiếu thì gom phiếu là việc lỗ, và không ai gom. Ràng buộc
+  "trả về owner" cũng không kiểm được rẻ: nó đòi validator biết địa chỉ chủ của từng phiếu, mà datum
+  phiếu chỉ mang `did_commit` — một commitment, không phải một địa chỉ.
+  Hai hệ quả phải nói ra vì chúng chạm người dùng: (a) bỏ phiếu có chi phí thực bằng min-ADA của
+  UTxO phiếu, không hoàn lại; (b) phiếu KHÔNG được ai gom thì chủ phiếu tự lấy lại được min-ADA
+  bằng nhánh `ReclaimVote` sau `vote_close + tally_window` (`Governance/SPEC.md` §v2.5) — nên khoản
+  đó chỉ mất khi phiếu ĐÃ được đếm.
 
 ### 9.4 Quorum — **biểu thức xác định, hai trục** (sửa audit #5)
 
