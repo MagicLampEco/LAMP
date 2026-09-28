@@ -222,8 +222,7 @@ test execute_forged_wp_wrong_token_reject() fail {
   let d_out = prop_datum(Executed, 199, 101, 30)
   let tin = tally_ref(199, 101, 21, 30)
   // ngưỡng giả pass-luôn nhưng token sai policy.
-  let bad_wp =
-    wp_ref_custom(#"beef", weight_ref(), 1, 0, 0, 0, 1)
+  let bad_wp = wp_ref_custom(#"beef", weight_ref(), 1, 0, 0, 0, 1)
   let tx = exec_tx_wp(d_in, d_out, tin, 25 * ms_per_epoch, bad_wp)
   expect run_exec(tx, d_in)
   True

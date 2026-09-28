@@ -190,8 +190,12 @@ fn run(tx: Transaction) -> Bool {
   )
 }
 
-fn mint_tx(outputs: List<Output>, mint: Value, inputs: List<Input>) -> Transaction {
-  Transaction { ..placeholder, inputs: inputs, outputs: outputs, mint: mint }
+fn mint_tx(
+  outputs: List<Output>,
+  mint: Value,
+  inputs: List<Input>,
+) -> Transaction {
+  Transaction { ..placeholder, inputs, outputs, mint }
 }
 
 fn one_mint() -> Value {
@@ -199,11 +203,7 @@ fn one_mint() -> Value {
 }
 
 fn happy_tx() -> Transaction {
-  mint_tx(
-    [beacon_out(good_wp())],
-    one_mint(),
-    [other_input(), seed_input()],
-  )
+  mint_tx([beacon_out(good_wp())], one_mint(), [other_input(), seed_input()])
 }
 
 test wp_mint_happy() {
@@ -257,8 +257,7 @@ test wp_dich_script_khac_tu_choi() fail {
 }
 
 test wp_dich_dinh_kem_script_tu_choi() fail {
-  let out =
-    Output { ..beacon_out(good_wp()), reference_script: Some(#"aabb") }
+  let out = Output { ..beacon_out(good_wp()), reference_script: Some(#"aabb") }
   expect run(mint_tx([out], one_mint(), [seed_input()]))
   True
 }
@@ -343,8 +342,7 @@ test wp_d8_von_nang_hon_uy_tin_tu_choi() fail {
 
 /// D8: một yếu tố bị TẮT (bảng phẳng).
 test wp_d8_yeu_to_bi_tat_tu_choi() fail {
-  let flat =
-    [Knot { c: 0, pow: scale }, Knot { c: 1_000_000_000, pow: scale }]
+  let flat = [Knot { c: 0, pow: scale }, Knot { c: 1_000_000_000, pow: scale }]
   let wp = WeightParam { ..good_wp(), k3: flat, k4: flat }
   expect run(mint_tx([beacon_out(wp)], one_mint(), [seed_input()]))
   True

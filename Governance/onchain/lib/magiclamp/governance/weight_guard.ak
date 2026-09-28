@@ -303,16 +303,22 @@ test g0_bac_bang_cap_bang_khong() {
 /// `c` GIẢM.
 test g0_bac_c_giam() {
   !knots_wellformed(
-    [Knot { c: 0, pow: 0 }, Knot { c: 100, pow: 5 * scale },
-     Knot { c: 50, pow: 10 * scale }],
+    [
+      Knot { c: 0, pow: 0 },
+      Knot { c: 100, pow: 5 * scale },
+      Knot { c: 50, pow: 10 * scale },
+    ],
   )
 }
 
 /// `pow` GIẢM ⇒ không ứng với `w ≥ 0` nào.
 test g0_bac_pow_giam() {
   !knots_wellformed(
-    [Knot { c: 0, pow: 0 }, Knot { c: 50, pow: 10 * scale },
-     Knot { c: 100, pow: 5 * scale }],
+    [
+      Knot { c: 0, pow: 0 },
+      Knot { c: 50, pow: 10 * scale },
+      Knot { c: 100, pow: 5 * scale },
+    ],
   )
 }
 
@@ -334,7 +340,10 @@ test g0_bac_bang_qua_ngan() {
 /// đó trong `knots_wellformed`.
 test g0_last_c_bang_khong_va_bang_bi_bac() {
   let cap_0 = [Knot { c: 0, pow: 0 }, Knot { c: 0, pow: 7 * scale }]
-  and { last_c(cap_0) == 0, !knots_wellformed(cap_0) }
+  and {
+    last_c(cap_0) == 0,
+    !knots_wellformed(cap_0),
+  }
 }
 
 /// `c` TRÙNG Ở GIỮA bảng, cap vẫn ≥ 1. Đây là ca DUY NHẤT ghim được vế "c tăng NGHIÊM
@@ -354,7 +363,10 @@ test g0_bac_c_trung_o_giua_bang() {
       Knot { c: 50, pow: 20 * scale },
       Knot { c: 100, pow: 30 * scale },
     ]
-  and { last_c(dup) == 100, !knots_wellformed(dup) }
+  and {
+    last_c(dup) == 100,
+    !knots_wellformed(dup),
+  }
 }
 
 /// Đối chứng PoC 3b, MỘT biến: chỉ đổi cap của `k3` từ 0 sang 10^6 ⇒ D8 vẫn chặn vì

@@ -16,11 +16,11 @@
 use aiken/collection/list
 use cardano/transaction.{OutputReference}
 use magiclamp/governance/power.{Knot, vp_raw}
-use magiclamp/governance/weight_guard
 use magiclamp/governance/types.{
   Abstain, Clamped, No, Summing, TallyDatum, TopEntry, VoteChoice, VoteDatum,
   WeightParam, Yes,
 }
+use magiclamp/governance/weight_guard
 
 /// Tổng power DERIVE từ một LÔ phiếu thật (Finding 2). Mỗi VoteDatum → vp_raw qua bảng
 /// knots của WeightParam → cộng vào đúng phe theo choice; đếm voter + voter THUẬN.
@@ -489,14 +489,22 @@ const small_c: Int = 5
 /// chú thích ở trên là một lời hứa không ai cưỡng chế.
 test hypothetical_bang_nay_bi_d8_bac() {
   let k = hypothetical_knots_pow0_scale()
-  and { !weight_guard.knots_wellformed(k), !weight_guard.d8_ok(k, k, k, k) }
+  and {
+    !weight_guard.knots_wellformed(k),
+    !weight_guard.d8_ok(k, k, k, k),
+  }
 }
 
 /// Tiền đề của mọi ca dưới đây: bảng giả định cho VP KHÁC 0 và PHÂN BIỆT được cá voi
 /// với cử tri nhỏ. Thiếu vế này thì các ca sau không nói được chúng đo cái gì.
 test hyp_vp_phan_biet_ca_voi_voi_nho() {
-  let (dy, _, _, _, _) = derive_batch(hyp_wp(3), [hyp_vote(Yes, whale_c, #"01")])
-  and { dy == hyp_vp(whale_c), hyp_vp(whale_c) > hyp_vp(small_c), dy > 0 }
+  let (dy, _, _, _, _) =
+    derive_batch(hyp_wp(3), [hyp_vote(Yes, whale_c, #"01")])
+  and {
+    dy == hyp_vp(whale_c),
+    hyp_vp(whale_c) > hyp_vp(small_c),
+    dy > 0,
+  }
 }
 
 /// (dời từ `sum_derive_happy` / `sum_two_votes_happy` / `sum_abstain_happy`)
@@ -509,11 +517,7 @@ test hyp_sum_batch_cong_dung_theo_phe() {
   let d_in = td_summing(0, 0, 0, [])
   let v = hyp_vp(10)
   let d_out =
-    TallyDatum {
-      ..td_summing(v, v, v, []),
-      voters_acc: 3,
-      yes_voters_acc: 1,
-    }
+    TallyDatum { ..td_summing(v, v, v, []), voters_acc: 3, yes_voters_acc: 1 }
   and {
     sum_batch_consistent(d_in, d_out, wp, [a, b, c]),
     // và nó BÁC khi power bị bơm quá mức derive (dời từ `sum_overcount_reject`)
@@ -568,7 +572,8 @@ test hyp_heap_da_lo_day_entry_nho_ra() {
       TopEntry { vp_raw: big, choice: No },
       TopEntry { vp_raw: nho, choice: Yes },
     ]
-  let mk = fn(h) { TallyDatum { ..d_in, no_power_raw: 2 * big, top_did_vp: h } }
+  let mk =
+    fn(h) { TallyDatum { ..d_in, no_power_raw: 2 * big, top_did_vp: h } }
   and {
     big > nho,
     top_heap_consistent(d_in, mk(heap_ok), wp, [b1, b2]),
@@ -583,14 +588,18 @@ test hyp_hai_ca_voi_heap_roi_clamp_tru_dung_phan_vuot() {
   let wp = hyp_wp(3)
   let a = hyp_vote(Yes, whale_c, #"01")
   let b = hyp_vote(No, whale_c, #"02")
-  let s = fn(i) { hyp_vote(Yes, small_c, i) }
+  let s =
+    fn(i) { hyp_vote(Yes, small_c, i) }
   let votes = [a, b, s(#"03"), s(#"04"), s(#"05"), s(#"06")]
   let big = hyp_vp(whale_c)
   let nho = hyp_vp(small_c)
   let yes_raw = big + 4 * nho
   let no_raw = big
   let heap =
-    [TopEntry { vp_raw: big, choice: Yes }, TopEntry { vp_raw: big, choice: No }]
+    [
+      TopEntry { vp_raw: big, choice: Yes },
+      TopEntry { vp_raw: big, choice: No },
+    ]
   let d_in = td_summing(0, 0, 0, [])
   let d_sum =
     TallyDatum {

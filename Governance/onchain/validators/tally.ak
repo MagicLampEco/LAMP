@@ -44,8 +44,9 @@ use cardano/transaction.{
 }
 use magiclamp/governance/names.{nullifier_name}
 use magiclamp/governance/power.{cap_of}
-use magiclamp/governance/tally.{clamp_consistent, sum_batch_consistent,
-  top_heap_consistent} as tally_lib
+use magiclamp/governance/tally.{
+  clamp_consistent, sum_batch_consistent, top_heap_consistent,
+} as tally_lib
 use magiclamp/governance/types.{
   Clamped, Summing, TallyDatum, VoteDatum, WeightParam,
 }
@@ -315,9 +316,7 @@ validator tally(
         expect
           list.all(
             votes,
-            fn(v) {
-              v.nullifier == nullifier_name(v.did_commit, v.proposal_id)
-            },
+            fn(v) { v.nullifier == nullifier_name(v.did_commit, v.proposal_id) },
           )
         // (T1b) NGUỒN của c* — kiểm LẠI ở đây, không tin datum phiếu.
         expect

@@ -183,7 +183,6 @@ pub type TallyDatum {
   // 13 epoch đóng phiếu — ghi lúc Open, GHIM ở mọi nhánh spend
   voted_root: ByteArray,
 }
-
 // 14 gốc MPF (32 B) của SỔ DID ĐÃ ĐẾM: khoá = did_commit, giá trị = nullifier
 //    của phiếu được cộng. Hằng 32 B nên không có trần số cử tri, và việc một DID
 //    đúc đôi rồi để người dựng lô chọn phiếu nào hiện ra TRÊN CHUỖI (giá trị

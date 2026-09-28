@@ -36,16 +36,16 @@
 
 use aiken/collection/dict
 use aiken/collection/list
-use aiken/merkle_patricia_forestry as mpf
 use aiken/interval
+use aiken/merkle_patricia_forestry as mpf
 use cardano/assets.{PolicyId, Value}
 use cardano/transaction.{
   InlineDatum, Input, Output, OutputReference, Transaction, placeholder,
 }
 use magiclamp/governance/names.{proposal_id_of}
+use magiclamp/governance/power.{Knot, scale}
 use magiclamp/governance/tally as tally_lib
 use magiclamp/governance/tally_ref
-use magiclamp/governance/power.{Knot, scale}
 use magiclamp/governance/types.{
   Clamped, Executed, Open, ProposalResult, ProposalStatus, Rejected, Summing,
   TallyDatum, TopEntry, WeightParam, Yes,
@@ -98,8 +98,12 @@ validator governance(
   _phase_tag: ByteArray,
 ) {
   mint(redeemer: GovernanceRedeemer, policy_id: PolicyId, tx: Transaction) {
-    let OpenProposal { seed, vote_open_epoch, vote_close_epoch,
-                       weight_param_ref } = redeemer
+    let OpenProposal {
+      seed,
+      vote_open_epoch,
+      vote_close_epoch,
+      weight_param_ref,
+    } = redeemer
     let e = util.get_epoch_bounded(tx, ms_per_epoch)
     let proposal_id = proposal_id_of(seed)
 
@@ -364,10 +368,7 @@ fn seed_input() -> Input {
 
 fn wp_ref_input() -> Input {
   let val = assets.from_lovelace(2_000_000) |> assets.add(wp_policy, tag, 1)
-  util.mk_input(
-    wp_ref(),
-    util.mk_output(util.script_address(#"a0"), val, 0),
-  )
+  util.mk_input(wp_ref(), util.mk_output(util.script_address(#"a0"), val, 0))
 }
 
 fn pr_ok() -> ProposalResult {
@@ -428,10 +429,10 @@ fn run_with(
   let tx =
     Transaction {
       ..placeholder,
-      inputs: inputs,
+      inputs,
       reference_inputs: refs,
-      outputs: outputs,
-      mint: mint,
+      outputs,
+      mint,
       validity_range: interval.between(e * ms_ep, e * ms_ep + 1000),
     }
   governance.mint(
@@ -833,10 +834,7 @@ const e_fin: Int = close_e + delta_min
 // đã ghi ở đó: cổng nguồn ép `c1 = c2 = c4 = 0`, nên bảng có `pow(0) = 0` làm VP của
 // mọi cử tri bằng 0 và ca kiểm ngưỡng xanh ở CẢ HAI cực.
 fn lin_knots() -> List<Knot> {
-  [
-    Knot { c: 0, pow: 0 },
-    Knot { c: 1_000_000_000, pow: 1_000_000_000 * scale },
-  ]
+  [Knot { c: 0, pow: 0 }, Knot { c: 1_000_000_000, pow: 1_000_000_000 * scale }]
 }
 
 /// `bft_floor = 3` (sàn cứng số DID thuận), quorum người 2, quorum VP 1, θ = 2/3.
@@ -904,7 +902,10 @@ fn td_fail_theta() -> TallyDatum {
 fn tally_ref_input_of(td: TallyDatum, sh: ByteArray) -> Input {
   let val =
     assets.from_lovelace(2_000_000) |> assets.add(tally_policy_id, prop(), 1)
-  util.mk_input(util.mk_ref(50), util.mk_output(util.script_address(sh), val, td))
+  util.mk_input(
+    util.mk_ref(50),
+    util.mk_output(util.script_address(sh), val, td),
+  )
 }
 
 fn tally_ref_input(td: TallyDatum) -> Input {
@@ -947,10 +948,10 @@ fn run_fin_full(
   let tx =
     Transaction {
       ..placeholder,
-      inputs: inputs,
+      inputs,
       reference_inputs: refs,
-      outputs: outputs,
-      mint: mint,
+      outputs,
+      mint,
       validity_range: interval.between(e * ms_ep, e * ms_ep + 1000),
     }
   governance.spend(
@@ -1419,8 +1420,7 @@ test fin_hai_output_tai_script_tu_choi() fail {
 
 /// `execute_after_epoch` bị dời SỚM lên ở lượt ghi kết quả ⇒ custody chi ngay.
 test fin_doi_execute_after_tu_choi() fail {
-  let pr_out =
-    ProposalResult { ..result_of(Executed), execute_after_epoch: 0 }
+  let pr_out = ProposalResult { ..result_of(Executed), execute_after_epoch: 0 }
   expect run_fin(td_pass(), pr_out)
   True
 }
@@ -1501,8 +1501,7 @@ test fin_xoa_spend_spec_hash_tu_choi() fail {
 
 /// Datum ra không phải `ProposalResult` (Treasury sẽ không giải mã được beacon).
 test fin_datum_ra_sai_kieu_tu_choi() fail {
-  let out =
-    util.mk_output(util.script_address(gov_policy), proposal_value(), 0)
+  let out = util.mk_output(util.script_address(gov_policy), proposal_value(), 0)
   expect
     run_fin_full(
       pr_ok(),

@@ -282,7 +282,10 @@ fn tally_spent_input() -> Input {
 
 /// Tally của proposal CŨ `prop_q` — đã quá `close_q + window` từ lâu.
 fn tally_q_input() -> Input {
-  util.mk_input(util.mk_ref(9), tally_utxo_of(tally_datum_of(prop_q, 0, close_q)))
+  util.mk_input(
+    util.mk_ref(9),
+    tally_utxo_of(tally_datum_of(prop_q, 0, close_q)),
+  )
 }
 
 /// Datum anchor TAAD 18 trường — Person gốc, Active, controller `c1`, device `d1`.
@@ -320,7 +323,10 @@ fn anchor_datum(entity_ix: Int, parent_some: Bool, depth: Int) -> Data {
 
 fn anchor_input_at(pay: ByteArray, name: ByteArray, d: Data) -> Input {
   let val = assets.from_lovelace(2_000_000) |> assets.add(taad_policy, name, 1)
-  util.mk_input(util.mk_ref(1), util.mk_output(util.script_address(pay), val, d))
+  util.mk_input(
+    util.mk_ref(1),
+    util.mk_output(util.script_address(pay), val, d),
+  )
 }
 
 fn anchor_person() -> Input {
@@ -388,19 +394,19 @@ fn run_burn(tx: Transaction) -> Bool {
 
 test nl_mint_happy() {
   run_mint(
-    mint_tx(
-      15,
-      [tally_ref_input(), anchor_person()],
-      [ctrl, dev],
-      one_nl(1),
-    ),
+    mint_tx(15, [tally_ref_input(), anchor_person()], [ctrl, dev], one_nl(1)),
   )
 }
 
 test nl_mint_bien_duoi_cua_so() {
   // `e == vote_open_epoch` PHẢI qua (dấu ≤).
   run_mint(
-    mint_tx(open_e, [tally_ref_input(), anchor_person()], [ctrl, dev], one_nl(1)),
+    mint_tx(
+      open_e,
+      [tally_ref_input(), anchor_person()],
+      [ctrl, dev],
+      one_nl(1),
+    ),
   )
 }
 
@@ -416,7 +422,10 @@ fn one_nl_of(d: ByteArray, p: ByteArray, qty: Int) -> Value {
 /// `tally_utxo_of` đặt TÊN token bằng `td.proposal_id`, và `find_tally` còn đòi datum
 /// khai đúng tên đó — nên hai thứ phải đi cùng nhau.
 fn tally_ref_of(p: ByteArray) -> Input {
-  util.mk_input(util.mk_ref(0), tally_utxo_of(tally_datum_of(p, open_e, close_e)))
+  util.mk_input(
+    util.mk_ref(0),
+    tally_utxo_of(tally_datum_of(p, open_e, close_e)),
+  )
 }
 
 /// `did_commit` 31 byte. Mọi vế khác dựng ĐÚNG theo giá trị đó — anchor mang
@@ -428,7 +437,12 @@ test nl_mint_did_commit_31_byte_tu_choi() fail {
     run_mint_of(
       did_31,
       prop,
-      mint_tx(15, [tally_ref_input(), a], [ctrl, dev], one_nl_of(did_31, prop, 1)),
+      mint_tx(
+        15,
+        [tally_ref_input(), a],
+        [ctrl, dev],
+        one_nl_of(did_31, prop, 1),
+      ),
     )
   True
 }
@@ -480,38 +494,47 @@ test nl_mint_khong_ref_tally_tu_choi() fail {
 
 /// Đủ anchor + đủ ref tally, thiếu ĐÚNG chữ ký thiết bị.
 test nl_mint_thieu_chu_ky_thiet_bi_tu_choi() fail {
-  expect run_mint(
-    mint_tx(15, [tally_ref_input(), anchor_person()], [ctrl], one_nl(1)),
-  )
+  expect
+    run_mint(
+      mint_tx(15, [tally_ref_input(), anchor_person()], [ctrl], one_nl(1)),
+    )
   True
 }
 
 /// Đủ anchor + đủ ref tally, thiếu ĐÚNG chữ ký controller.
 test nl_mint_thieu_chu_ky_controller_tu_choi() fail {
-  expect run_mint(
-    mint_tx(15, [tally_ref_input(), anchor_person()], [dev], one_nl(1)),
-  )
+  expect
+    run_mint(
+      mint_tx(15, [tally_ref_input(), anchor_person()], [dev], one_nl(1)),
+    )
   True
 }
 
 /// Đủ mọi thứ, chỉ `e` ra ngoài cửa sổ (`e == vote_close_epoch`, dấu <).
 test nl_mint_dung_bien_dong_tu_choi() fail {
-  expect run_mint(
-    mint_tx(close_e, [tally_ref_input(), anchor_person()], [ctrl, dev], one_nl(1)),
-  )
+  expect
+    run_mint(
+      mint_tx(
+        close_e,
+        [tally_ref_input(), anchor_person()],
+        [ctrl, dev],
+        one_nl(1),
+      ),
+    )
   True
 }
 
 /// Đủ mọi thứ, `e` TRƯỚC khi mở phiếu.
 test nl_mint_truoc_khi_mo_tu_choi() fail {
-  expect run_mint(
-    mint_tx(
-      open_e - 1,
-      [tally_ref_input(), anchor_person()],
-      [ctrl, dev],
-      one_nl(1),
-    ),
-  )
+  expect
+    run_mint(
+      mint_tx(
+        open_e - 1,
+        [tally_ref_input(), anchor_person()],
+        [ctrl, dev],
+        one_nl(1),
+      ),
+    )
   True
 }
 
@@ -547,24 +570,27 @@ test nl_mint_anchor_ngoai_script_taad_tu_choi() fail {
 /// Tên token không khớp `H(did‖prop)`.
 test nl_mint_ten_sai_tu_choi() fail {
   let bad = assets.zero |> assets.add(nl_policy, #"deadbeef", 1)
-  expect run_mint(
-    mint_tx(15, [tally_ref_input(), anchor_person()], [ctrl, dev], bad),
-  )
+  expect
+    run_mint(
+      mint_tx(15, [tally_ref_input(), anchor_person()], [ctrl, dev], bad),
+    )
   True
 }
 
 /// Đúc 2 đơn vị cùng tên: qty ≠ 1.
 test nl_mint_hai_don_vi_tu_choi() fail {
-  expect run_mint(
-    mint_tx(15, [tally_ref_input(), anchor_person()], [ctrl, dev], one_nl(2)),
-  )
+  expect
+    run_mint(
+      mint_tx(15, [tally_ref_input(), anchor_person()], [ctrl, dev], one_nl(2)),
+    )
   True
 }
 
 /// Đính kèm một policy LẠ vào cùng lượt đúc.
 test nl_mint_kem_policy_la_tu_choi() fail {
   let m = one_nl(1) |> assets.add(#"9999", #"01", 1)
-  expect run_mint(mint_tx(15, [tally_ref_input(), anchor_person()], [ctrl, dev], m))
+  expect
+    run_mint(mint_tx(15, [tally_ref_input(), anchor_person()], [ctrl, dev], m))
   True
 }
 
@@ -601,7 +627,7 @@ test nl_mint_hai_bien_khac_epoch_tu_choi() fail {
 fn burn_tx(e: Int, inputs: List<Input>, refs: List<Input>) -> Transaction {
   Transaction {
     ..placeholder,
-    inputs: inputs,
+    inputs,
     reference_inputs: refs,
     mint: one_nl(-1),
     validity_range: at_epoch(e),

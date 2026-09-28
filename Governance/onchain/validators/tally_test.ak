@@ -15,11 +15,10 @@
 // └─────────────────────────────────────────────────────────────────────────────┘
 
 use aiken/collection/list
-use aiken/interval
 use aiken/interval.{Interval}
 use aiken/merkle_patricia_forestry.{Proof}
-use cardano/assets.{PolicyId, Value}
 use cardano/address.{Address}
+use cardano/assets.{PolicyId, Value}
 use cardano/transaction.{
   Input, Output, OutputReference, Transaction, placeholder,
 }
@@ -89,10 +88,7 @@ fn wp_ref_or() -> OutputReference {
 
 // ── Bảng knots: pow(c) = SCALE·(c+1) trên [0, 10^9] ⇒ interp tuyến tính CHÍNH XÁC ──
 fn lin_knots() -> List<Knot> {
-  [
-    Knot { c: 0, pow: 0 },
-    Knot { c: 1_000_000_000, pow: 1_000_000_000 * scale },
-  ]
+  [Knot { c: 0, pow: 0 }, Knot { c: 1_000_000_000, pow: 1_000_000_000 * scale }]
 }
 
 /// vp_raw của một cử tri khai `c3 = c` (c1 = c2 = c4 = 0).
@@ -374,9 +370,9 @@ fn finalize_tx_many(
 ) -> Transaction {
   Transaction {
     ..placeholder,
-    inputs: inputs,
+    inputs,
     reference_inputs: [wp_input(bft)],
-    outputs: outputs,
+    outputs,
     validity_range: at_epoch(e_fin),
   }
 }
@@ -511,7 +507,10 @@ test finalize_doi_moc_dong_phieu_tu_choi() fail {
   let top = [TopEntry { vp_raw: 400, choice: Yes }]
   let d_in = summing(700, 200, 100, 30, 25, top)
   let d_out =
-    TallyDatum { ..clamped_of(d_in, 400, 200, 100), vote_close_epoch: close_e + 5 }
+    TallyDatum {
+      ..clamped_of(d_in, 400, 200, 100),
+      vote_close_epoch: close_e + 5,
+    }
   expect run_finalize(finalize_tx(d_in, d_out, 10), d_in)
   True
 }
@@ -521,7 +520,10 @@ test finalize_doi_moc_mo_phieu_tu_choi() fail {
   let top = [TopEntry { vp_raw: 400, choice: Yes }]
   let d_in = summing(700, 200, 100, 30, 25, top)
   let d_out =
-    TallyDatum { ..clamped_of(d_in, 400, 200, 100), vote_open_epoch: open_e + 1 }
+    TallyDatum {
+      ..clamped_of(d_in, 400, 200, 100),
+      vote_open_epoch: open_e + 1,
+    }
   expect run_finalize(finalize_tx(d_in, d_out, 10), d_in)
   True
 }
@@ -860,7 +862,15 @@ test sum_c4_khong_nguon_tu_choi() fail {
   let vp = vp_of(10) * 8 / 1
   let d_in = summing(0, 0, 0, 0, 0, [])
   let d_out =
-    summing_r(vp, 0, 0, 1, 1, [TopEntry { vp_raw: vp, choice: Yes }], fx.root_a1)
+    summing_r(
+      vp,
+      0,
+      0,
+      1,
+      1,
+      [TopEntry { vp_raw: vp, choice: Yes }],
+      fx.root_a1,
+    )
   let tx = sum_tx(d_in, d_out, [vote_input(v, 1)], [v], burn_all([v]))
   expect run_sum(tx, d_in, [fx.ins_a1()])
   True

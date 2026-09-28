@@ -388,19 +388,13 @@ test av_khong_phai_constr_tu_choi() {
 
 test av_tag_khac_0_tu_choi() {
   anchor_view(
-    builtin.constr_data(
-      1,
-      t_fields18(0, d_active(), d_none(), 0, d_none()),
-    ),
+    builtin.constr_data(1, t_fields18(0, d_active(), d_none(), 0, d_none())),
   ) == None
 }
 
 test av_recovering_khong_active() {
   let d =
-    builtin.constr_data(
-      0,
-      t_fields18(0, d_recovering(), d_none(), 0, d_none()),
-    )
+    builtin.constr_data(0, t_fields18(0, d_recovering(), d_none(), 0, d_none()))
   expect Some(v) = anchor_view(d)
   !v.status_active
 }
@@ -454,10 +448,7 @@ test aperson_person_goc_qua() {
 /// `entity_type = Bot` (Constr 5) — DID con đúc được hàng loạt từ một Person.
 test aperson_bot_tu_choi() {
   let d =
-    builtin.constr_data(
-      0,
-      t_fields18(5, d_active(), d_none(), 0, d_none()),
-    )
+    builtin.constr_data(0, t_fields18(5, d_active(), d_none(), 0, d_none()))
   expect Some(v) = anchor_view(d)
   and {
     // đủ chữ ký, đủ Active, đúng cha, đúng depth — KHÁC bản dương ĐÚNG một ô.
@@ -487,10 +478,7 @@ test aperson_co_cha_tu_choi() {
 /// `depth = 1` — vế dự phòng, độc lập với hai vế trên.
 test aperson_depth_khac_khong_tu_choi() {
   let d =
-    builtin.constr_data(
-      0,
-      t_fields18(0, d_active(), d_none(), 1, d_none()),
-    )
+    builtin.constr_data(0, t_fields18(0, d_active(), d_none(), 1, d_none()))
   expect Some(v) = anchor_view(d)
   and {
     owner_signed(v, sigs_ok),
@@ -503,5 +491,8 @@ test aperson_depth_khac_khong_tu_choi() {
 /// Chỉ số `Option` KHÔNG đảo: `Some` = 0, `None` = 1. Nếu đảo, `parent_none`
 /// đúng ở ca có cha và sai ở ca không cha — hai ca trên không thể cùng xanh.
 test aperson_chi_so_option_dung_chieu() {
-  and { constr_index(d_none()) == 1, constr_index(d_some(d_int(1))) == 0 }
+  and {
+    constr_index(d_none()) == 1,
+    constr_index(d_some(d_int(1))) == 0,
+  }
 }

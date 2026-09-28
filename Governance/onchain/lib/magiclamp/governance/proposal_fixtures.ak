@@ -14,9 +14,7 @@ use cardano/assets.{PolicyId}
 use cardano/transaction.{
   Input, Output, OutputReference, Transaction, placeholder,
 }
-use magiclamp/governance/types.{
-  Clamped, ProposalDatum, TallyDatum, WeightParam,
-}
+use magiclamp/governance/types.{Clamped, ProposalDatum, TallyDatum, WeightParam}
 use magiclamp/governance/util
 
 pub const prop_policy: PolicyId = #"9901"
@@ -94,12 +92,7 @@ pub fn wp_ref_custom(
   }
 }
 
-pub fn prop_datum(
-  status,
-  yes_p: Int,
-  no_p: Int,
-  voters: Int,
-) -> ProposalDatum {
+pub fn prop_datum(status, yes_p: Int, no_p: Int, voters: Int) -> ProposalDatum {
   ProposalDatum {
     proposal_id: prop_id,
     status,

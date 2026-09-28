@@ -71,7 +71,8 @@ validator vote(
         //      tên = H(did‖prop). Không có vế này thì một UTxO phiếu mang token
         //      của DID khác vẫn được cộng cho `vd.did_commit`.
         expect vd.nullifier == nullifier_name(vd.did_commit, vd.proposal_id)
-        expect assets.quantity_of(inp.value, nullifier_policy, vd.nullifier) == 1
+        expect
+          assets.quantity_of(inp.value, nullifier_policy, vd.nullifier) == 1
         expect dict.size(assets.tokens(inp.value, nullifier_policy)) == 1
         // (V2) ĐỐT trong cùng giao dịch.
         expect assets.quantity_of(tx.mint, nullifier_policy, vd.nullifier) == -1

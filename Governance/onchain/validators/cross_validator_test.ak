@@ -8,7 +8,6 @@
 //   • một tham số đáng lẽ CHUNG (`ms_per_epoch`) bị áp lệch giữa các validator, và
 //     mỗi validator vẫn "đúng" theo con số của riêng nó.
 
-use aiken/interval
 use aiken/interval.{Interval}
 use cardano/assets.{PolicyId, Value}
 use cardano/transaction.{
@@ -68,10 +67,7 @@ fn at_epoch(e: Int) -> Interval {
 
 // ── WeightParam: pow(c) = SCALE·(c+1) ⇒ vp_raw = SCALE·(c3+1) ──
 fn lin_knots() -> List<Knot> {
-  [
-    Knot { c: 0, pow: 0 },
-    Knot { c: 1_000_000_000, pow: 1_000_000_000 * scale },
-  ]
+  [Knot { c: 0, pow: 0 }, Knot { c: 1_000_000_000, pow: 1_000_000_000 * scale }]
 }
 
 /// VP thật ở mức validator = 0 với bảng knots hợp khuôn (`pow(0) = 0`) cộng
@@ -253,13 +249,7 @@ fn d_sum_in() -> TallyDatum {
 }
 
 fn d_sum_out() -> TallyDatum {
-  td(
-    fx.root_a1,
-    vp_of(c3),
-    1,
-    1,
-    [TopEntry { vp_raw: vp_of(c3), choice: Yes }],
-  )
+  td(fx.root_a1, vp_of(c3), 1, 1, [TopEntry { vp_raw: vp_of(c3), choice: Yes }])
 }
 
 /// Giao dịch gom một phiếu: tiêu Tally + tiêu phiếu + đốt nullifier của phiếu đó.
@@ -280,7 +270,12 @@ fn gather_tx() -> Transaction {
 test gom_ba_validator_cung_tx_qua() {
   let tx = gather_tx()
   and {
-    call_tally(tx, d_sum_in(), tally.SumBatch { insert_proofs: [fx.ins_a1()] }, ms_ep),
+    call_tally(
+      tx,
+      d_sum_in(),
+      tally.SumBatch { insert_proofs: [fx.ins_a1()] },
+      ms_ep,
+    ),
     call_vote(tx, vote.ConsumeForTally { book_proof: fx.mem_a1_1() }),
     call_nullifier_burn(tx),
   }
@@ -447,8 +442,12 @@ fn tally_cu_input() -> Input {
     util.mk_output(
       util.script_address(tally_sh),
       val,
-      TallyDatum { ..td(fx.root_a0, 0, 0, 0, []), proposal_id: prop_cu,
-                   vote_open_epoch: 0, vote_close_epoch: close_cu },
+      TallyDatum {
+        ..td(fx.root_a0, 0, 0, 0, []),
+        proposal_id: prop_cu,
+        vote_open_epoch: 0,
+        vote_close_epoch: close_cu,
+      },
     ),
   )
 }
@@ -517,7 +516,6 @@ test dot_sau_han_tren_cung_hinh_dang_qua() {
     },
   )
 }
-
 // Nhánh thứ ba của `vote` — `RetractVote` — không cần ca ở đây: nó ép
 // `tx.mint == assets.zero`, nên KHÔNG giao dịch có đốt nào khớp nó. Chốt đó đã
 // được `retract_len_dot_nullifier_tu_choi` (tệp `vote_test`) ghim trên một giao

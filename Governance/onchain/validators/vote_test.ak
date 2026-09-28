@@ -5,7 +5,6 @@
 // cả một reference input — khi đó tx chết ở phép đọc Tally, không ở chốt đang đo.
 
 use aiken/builtin
-use aiken/interval
 use aiken/interval.{Interval}
 use aiken/merkle_patricia_forestry as mpf
 use cardano/assets.{PolicyId, Value}
@@ -95,7 +94,11 @@ fn tally_input(root: ByteArray) -> Input {
 }
 
 fn tally_output(root: ByteArray) -> Output {
-  util.mk_output(util.script_address(tally_sh), tally_value(), tally_datum(root))
+  util.mk_output(
+    util.script_address(tally_sh),
+    tally_value(),
+    tally_datum(root),
+  )
 }
 
 // ── Anchor TAAD ──
@@ -262,7 +265,12 @@ test consume_nullifier_cua_did_khac_nhung_co_trong_so_tu_choi() fail {
       validity_range: at_epoch(close_e),
     }
   expect
-    run(v, vote.ConsumeForTally { book_proof: fx.mem_c1_1() }, util.mk_ref(1), tx)
+    run(
+      v,
+      vote.ConsumeForTally { book_proof: fx.mem_c1_1() },
+      util.mk_ref(1),
+      tx,
+    )
   True
 }
 
@@ -309,35 +317,38 @@ test consume_phieu_khong_vao_so_tu_choi() fail {
       mint: burn(nl1()),
       validity_range: at_epoch(close_e),
     }
-  expect run(
-    v1,
-    vote.ConsumeForTally { book_proof: fx.mem_b1_1() },
-    util.mk_ref(1),
-    tx,
-  )
+  expect
+    run(
+      v1,
+      vote.ConsumeForTally { book_proof: fx.mem_b1_1() },
+      util.mk_ref(1),
+      tx,
+    )
   True
 }
 
 /// (V5) — sổ ra ĐÚNG nhưng chứng minh là của DID KHÁC.
 test consume_chung_minh_cua_did_khac_tu_choi() fail {
   let tx = consume_tx_two()
-  expect run(
-    vd_of(did1, Yes),
-    vote.ConsumeForTally { book_proof: fx.mem_b2_2() },
-    util.mk_ref(1),
-    tx,
-  )
+  expect
+    run(
+      vd_of(did1, Yes),
+      vote.ConsumeForTally { book_proof: fx.mem_b2_2() },
+      util.mk_ref(1),
+      tx,
+    )
   True
 }
 
 /// (V5) — chứng minh của sổ 2 DID dùng cho lô 1 DID: gốc không khớp.
 test consume_chung_minh_sai_the_he_so_tu_choi() fail {
-  expect run(
-    vd_of(did1, Yes),
-    vote.ConsumeForTally { book_proof: fx.mem_b1_2() },
-    util.mk_ref(1),
-    consume_tx_one(),
-  )
+  expect
+    run(
+      vd_of(did1, Yes),
+      vote.ConsumeForTally { book_proof: fx.mem_b1_2() },
+      util.mk_ref(1),
+      consume_tx_one(),
+    )
   True
 }
 
@@ -352,12 +363,13 @@ test consume_khong_dot_tu_choi() fail {
       mint: assets.zero,
       validity_range: at_epoch(close_e),
     }
-  expect run(
-    v1,
-    vote.ConsumeForTally { book_proof: fx.mem_b1_1() },
-    util.mk_ref(1),
-    tx,
-  )
+  expect
+    run(
+      v1,
+      vote.ConsumeForTally { book_proof: fx.mem_b1_1() },
+      util.mk_ref(1),
+      tx,
+    )
   True
 }
 
@@ -374,12 +386,13 @@ test consume_output_van_giu_nullifier_tu_choi() fail {
       mint: burn(nl1()),
       validity_range: at_epoch(close_e),
     }
-  expect run(
-    v1,
-    vote.ConsumeForTally { book_proof: fx.mem_b1_1() },
-    util.mk_ref(1),
-    tx,
-  )
+  expect
+    run(
+      v1,
+      vote.ConsumeForTally { book_proof: fx.mem_b1_1() },
+      util.mk_ref(1),
+      tx,
+    )
   True
 }
 
@@ -395,12 +408,13 @@ test consume_tally_khong_bi_tieu_tu_choi() fail {
       mint: burn(nl1()),
       validity_range: at_epoch(close_e),
     }
-  expect run(
-    v1,
-    vote.ConsumeForTally { book_proof: fx.mem_b1_1() },
-    util.mk_ref(1),
-    tx,
-  )
+  expect
+    run(
+      v1,
+      vote.ConsumeForTally { book_proof: fx.mem_b1_1() },
+      util.mk_ref(1),
+      tx,
+    )
   True
 }
 
@@ -421,12 +435,13 @@ test consume_token_cua_did_khac_tu_choi() fail {
       mint: burn(nl1()),
       validity_range: at_epoch(close_e),
     }
-  expect run(
-    v1,
-    vote.ConsumeForTally { book_proof: fx.mem_b1_1() },
-    util.mk_ref(1),
-    tx,
-  )
+  expect
+    run(
+      v1,
+      vote.ConsumeForTally { book_proof: fx.mem_b1_1() },
+      util.mk_ref(1),
+      tx,
+    )
   True
 }
 
@@ -441,12 +456,13 @@ test consume_nullifier_bia_tu_choi() fail {
       mint: burn(#"deadbeef"),
       validity_range: at_epoch(close_e),
     }
-  expect run(
-    bad,
-    vote.ConsumeForTally { book_proof: fx.mem_b1_1() },
-    util.mk_ref(1),
-    tx,
-  )
+  expect
+    run(
+      bad,
+      vote.ConsumeForTally { book_proof: fx.mem_b1_1() },
+      util.mk_ref(1),
+      tx,
+    )
   True
 }
 
@@ -493,24 +509,26 @@ test retract_happy() {
 /// (R2) — `e == vote_close_epoch`. Mọi vế khác y hệt bản dương.
 test retract_dung_bien_dong_tu_choi() fail {
   let out = retract_out(vd_of(did1, No), vote_value(nl1()))
-  expect run(
-    vd_of(did1, Yes),
-    vote.RetractVote,
-    util.mk_ref(1),
-    retract_tx(close_e, refs_ok(), out, assets.zero, [ctrl, dev]),
-  )
+  expect
+    run(
+      vd_of(did1, Yes),
+      vote.RetractVote,
+      util.mk_ref(1),
+      retract_tx(close_e, refs_ok(), out, assets.zero, [ctrl, dev]),
+    )
   True
 }
 
 /// (R3) — giữ NGUYÊN anchor + ref Tally, bỏ ĐÚNG chữ ký.
 test retract_khong_chu_ky_tu_choi() fail {
   let out = retract_out(vd_of(did1, No), vote_value(nl1()))
-  expect run(
-    vd_of(did1, Yes),
-    vote.RetractVote,
-    util.mk_ref(1),
-    retract_tx(close_e - 1, refs_ok(), out, assets.zero, []),
-  )
+  expect
+    run(
+      vd_of(did1, Yes),
+      vote.RetractVote,
+      util.mk_ref(1),
+      retract_tx(close_e - 1, refs_ok(), out, assets.zero, []),
+    )
   True
 }
 
@@ -519,12 +537,13 @@ test retract_anchor_bot_tu_choi() fail {
   let out = retract_out(vd_of(did1, No), vote_value(nl1()))
   let refs =
     [tally_input(fx.root_b0), anchor_ref(did1, anchor_datum(5, False, 0))]
-  expect run(
-    vd_of(did1, Yes),
-    vote.RetractVote,
-    util.mk_ref(1),
-    retract_tx(close_e - 1, refs, out, assets.zero, [ctrl, dev]),
-  )
+  expect
+    run(
+      vd_of(did1, Yes),
+      vote.RetractVote,
+      util.mk_ref(1),
+      retract_tx(close_e - 1, refs, out, assets.zero, [ctrl, dev]),
+    )
   True
 }
 
@@ -533,36 +552,39 @@ test retract_hut_ada_tu_choi() fail {
   let drained =
     assets.from_lovelace(1_000_000) |> assets.add(nl_policy, nl1(), 1)
   let out = retract_out(vd_of(did1, No), drained)
-  expect run(
-    vd_of(did1, Yes),
-    vote.RetractVote,
-    util.mk_ref(1),
-    retract_tx(close_e - 1, refs_ok(), out, assets.zero, [ctrl, dev]),
-  )
+  expect
+    run(
+      vd_of(did1, Yes),
+      vote.RetractVote,
+      util.mk_ref(1),
+      retract_tx(close_e - 1, refs_ok(), out, assets.zero, [ctrl, dev]),
+    )
   True
 }
 
 /// (R5) — `choice` KHÔNG đổi: rút phiếu phải là một thay đổi thật.
 test retract_khong_doi_lua_chon_tu_choi() fail {
   let out = retract_out(vd_of(did1, Yes), vote_value(nl1()))
-  expect run(
-    vd_of(did1, Yes),
-    vote.RetractVote,
-    util.mk_ref(1),
-    retract_tx(close_e - 1, refs_ok(), out, assets.zero, [ctrl, dev]),
-  )
+  expect
+    run(
+      vd_of(did1, Yes),
+      vote.RetractVote,
+      util.mk_ref(1),
+      retract_tx(close_e - 1, refs_ok(), out, assets.zero, [ctrl, dev]),
+    )
   True
 }
 
 /// (R5) — lén đốt nullifier trong lượt rút (đường đốt-rồi-đúc-lại).
 test retract_len_dot_nullifier_tu_choi() fail {
   let out = retract_out(vd_of(did1, No), assets.from_lovelace(2_000_000))
-  expect run(
-    vd_of(did1, Yes),
-    vote.RetractVote,
-    util.mk_ref(1),
-    retract_tx(close_e - 1, refs_ok(), out, burn(nl1()), [ctrl, dev]),
-  )
+  expect
+    run(
+      vd_of(did1, Yes),
+      vote.RetractVote,
+      util.mk_ref(1),
+      retract_tx(close_e - 1, refs_ok(), out, burn(nl1()), [ctrl, dev]),
+    )
   True
 }
 
@@ -617,24 +639,26 @@ test reclaim_happy() {
 
 /// (C2) — `e == close + window − 1`: chưa hết cửa sổ gom.
 test reclaim_truoc_han_tu_choi() fail {
-  expect run(
-    vd_of(did1, Yes),
-    vote.ReclaimVote,
-    util.mk_ref(1),
-    reclaim_tx(close_e + window - 1, refs_ok(), [ctrl, dev]),
-  )
+  expect
+    run(
+      vd_of(did1, Yes),
+      vote.ReclaimVote,
+      util.mk_ref(1),
+      reclaim_tx(close_e + window - 1, refs_ok(), [ctrl, dev]),
+    )
   True
 }
 
 /// (C3) — giữ NGUYÊN anchor + ref Tally, bỏ ĐÚNG chữ ký. Không có vế này thì bất
 /// kỳ ai cũng lấy được min-ADA phiếu của người khác.
 test reclaim_khong_chu_ky_tu_choi() fail {
-  expect run(
-    vd_of(did1, Yes),
-    vote.ReclaimVote,
-    util.mk_ref(1),
-    reclaim_tx(close_e + window, refs_ok(), []),
-  )
+  expect
+    run(
+      vd_of(did1, Yes),
+      vote.ReclaimVote,
+      util.mk_ref(1),
+      reclaim_tx(close_e + window, refs_ok(), []),
+    )
   True
 }
 
@@ -663,11 +687,7 @@ test roi_nhau_reclaim_qua_tren_tx_do() {
 }
 
 test roi_nhau_retract_do_tren_cung_tx() fail {
-  expect run(
-    vd_of(did1, Yes),
-    vote.RetractVote,
-    util.mk_ref(1),
-    tx_sau_cua_so_gom(),
-  )
+  expect
+    run(vd_of(did1, Yes), vote.RetractVote, util.mk_ref(1), tx_sau_cua_so_gom())
   True
 }
