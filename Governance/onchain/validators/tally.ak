@@ -46,7 +46,7 @@ use magiclamp/governance/types.{
   Clamped, Summing, TallyDatum, VoteDatum, WeightParam,
 }
 use magiclamp/governance/util
-use magiclamp/governance/weight_guard
+use magiclamp/governance/weight_ref.{read_weight_param}
 
 pub type TallyRedeemer {
   /// `insert_proofs` — một chứng minh CHÈN MPF cho MỖI phiếu trong lô, ĐÚNG THỨ TỰ
@@ -91,33 +91,6 @@ fn out_datum(own_hash: ByteArray, outputs: List<Output>) -> TallyDatum {
   expect InlineDatum(d) = out.datum
   expect td: TallyDatum = d
   td
-}
-
-/// Đọc + xác thực WeightParam qua reference input (CONTRACT D1). Token + khớp ref
-/// đã cam kết trong TallyDatum → đúng bảng knots.
-fn read_weight_param(
-  reference_inputs: List<Input>,
-  weight_param_policy: PolicyId,
-  weight_param_ref: OutputReference,
-) -> WeightParam {
-  expect Some(ref) =
-    list.find(
-      reference_inputs,
-      fn(i) {
-        and {
-          i.output_reference == weight_param_ref,
-          dict.size(assets.tokens(i.output.value, weight_param_policy)) == 1,
-        }
-      },
-    )
-  expect [Pair(_, qty)] =
-    dict.to_pairs(assets.tokens(ref.output.value, weight_param_policy))
-  expect qty == 1
-  expect InlineDatum(d) = ref.output.datum
-  expect wp: WeightParam = d
-  // Cổng D8 — ÉP TẠI ĐÂY. Đây là đường DUY NHẤT bảng knots đi vào phép tính VP.
-  expect weight_guard.d8_ok(wp.k1, wp.k2, wp.k3, wp.k4)
-  wp
 }
 
 /// Thu thập VoteDatum từ MỌI input tại `vote_script_hash`. Mỗi VoteDatum PHẢI khớp

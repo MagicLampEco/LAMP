@@ -7,6 +7,7 @@
 use aiken/builtin
 use aiken/interval
 use aiken/interval.{Interval}
+use aiken/merkle_patricia_forestry as mpf
 use cardano/assets.{PolicyId, Value}
 use cardano/transaction.{
   Input, Output, OutputReference, Transaction, placeholder,
@@ -220,6 +221,49 @@ test consume_happy_mot_phieu() {
     util.mk_ref(1),
     consume_tx_one(),
   )
+}
+
+// ── (V1) tên token BUỘC vào datum — ca DUY NHẤT phân biệt được hai cực ─────────
+//
+// Mọi ca âm khác quanh nullifier đều trượt xuống (V5): sổ MPF do `tally.SumBatch`
+// dựng chỉ chứa được cặp `(did → H(did‖prop))` canonical, nên một phiếu khai lệch
+// không có chứng minh nào qua nổi (V5) và (V1) không bao giờ là chốt đỏ. Để tách
+// (V1) ra, bộ `c` của `mpf_fixtures` dựng một sổ LỆCH: khoá `did1` trỏ nullifier
+// của `did2`. Sổ đó (V5) THOẢ — ca `so_lech_thi_v5_that_su_thoa` chứng minh điều
+// đó độc lập — nên chốt duy nhất còn lại chặn giao dịch là (V1).
+
+fn vd_lech() -> VoteDatum {
+  VoteDatum { ..vd_of(did1, Yes), nullifier: nl2() }
+}
+
+/// Tiền đề của ca sau: sổ `root_c1` THẬT SỰ chứa cặp `(did1 → nl2)`. Không có ca
+/// này thì ca sau không chứng minh được rằng chốt đang chặn là (V1) chứ không phải
+/// (V5) — đúng lỗi "bài đỏ đúng dòng mang tên nó mà chốt vẫn hở".
+test so_lech_thi_v5_that_su_thoa() {
+  mpf.has(mpf.from_root(fx.root_c1), did1, nl2(), fx.mem_c1_1())
+}
+
+/// (V1) — phiếu khai `did_commit = did1` nhưng mang token nullifier của `did2`.
+/// Token có thật trong input, bị đốt đúng tên, Tally bị tiêu, và sổ ở Tally output
+/// ghi đúng cặp lệch đó ⇒ (V2)…(V5) đều THOẢ. Chỉ (V1) bác.
+///
+/// Vì sao là đòn thật: không có (V1) thì `did_commit` trong datum phiếu là một
+/// trường TỰ KHAI không bị buộc vào token nào. `tally.SumBatch` cộng power theo
+/// `did_commit` và ghi sổ theo `did_commit`, nên một người nắm nullifier của DID
+/// khác khai được phiếu dưới tên DID đó.
+test consume_nullifier_cua_did_khac_nhung_co_trong_so_tu_choi() fail {
+  let v = vd_lech()
+  let tx =
+    Transaction {
+      ..placeholder,
+      inputs: [tally_input(fx.root_c0), vote_input(v, 1)],
+      outputs: [tally_output(fx.root_c1)],
+      mint: burn(nl2()),
+      validity_range: at_epoch(close_e),
+    }
+  expect
+    run(v, vote.ConsumeForTally { book_proof: fx.mem_c1_1() }, util.mk_ref(1), tx)
+  True
 }
 
 /// Lô HAI phiếu: cả hai phiếu phải qua trên CÙNG một `Transaction`.

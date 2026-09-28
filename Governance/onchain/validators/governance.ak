@@ -43,11 +43,20 @@ use cardano/transaction.{
   InlineDatum, Input, Output, OutputReference, Transaction, placeholder,
 }
 use magiclamp/governance/names.{proposal_id_of}
+use magiclamp/governance/tally as tally_lib
+use magiclamp/governance/tally_ref
+use magiclamp/governance/power.{Knot, scale}
 use magiclamp/governance/types.{
-  Clamped, Executed, Open, ProposalResult, Summing, TallyDatum, TopEntry, Yes,
+  Clamped, Executed, Open, ProposalResult, ProposalStatus, Rejected, Summing,
+  TallyDatum, TopEntry, WeightParam, Yes,
 }
 use magiclamp/governance/util
+use magiclamp/governance/weight_ref
 
+/// Redeemer của nhánh `mint`. Tách khỏi redeemer của nhánh `spend` thành HAI kiểu
+/// vì hai nhánh không bao giờ nhận redeemer của nhau: gộp một kiểu thì mỗi nhánh
+/// phải mang một nhánh `when` chết, và chỉ số Constr của nhánh này bị dịch mỗi lần
+/// thêm một redeemer cho nhánh kia.
 pub type GovernanceRedeemer {
   OpenProposal {
     seed: OutputReference,
@@ -55,6 +64,11 @@ pub type GovernanceRedeemer {
     vote_close_epoch: Int,
     weight_param_ref: OutputReference,
   }
+}
+
+/// Redeemer của nhánh `spend`.
+pub type GovernanceSpendRedeemer {
+  FinalizeProposal
 }
 
 /// Đúng MỘT output giữ 1 đơn vị `(policy, name)`. Nhiều hơn một ⇒ `fail`: hai
@@ -170,6 +184,127 @@ validator governance(
       // `did_commit` của phe đối lập: các DID đó không đúc được phiếu nào vào sổ
       // nữa (`mpf.insert` bác khoá đã có) ⇒ bị loại khỏi cuộc bỏ phiếu.
       ts.voted_root == mpf.root(mpf.empty),
+    }
+  }
+
+  // ── FinalizeProposal: Open → Executed / Rejected ────────────────────────────
+  //
+  // Đây là chỗ DUY NHẤT ngưỡng thông qua được ép (CONTRACT §5 D3 — "Release-gate =
+  // Model A"): Treasury KHÔNG tự tính ngưỡng, nó chỉ kiểm `status == Executed` +
+  // Proposal NFT + `spend_spec_hash` + time-lock. Nên nếu nhánh này ghi `Executed`
+  // sai một lần thì không có tầng nào phía sau bắt lại.
+  //
+  // Nhánh này KHÔNG chi một đồng nào, và điều đó KHÔNG phải vì nó thiếu đường chi:
+  // nó ghim `spend_spec_hash == #""`, mà `Treasury` ▸ `release.spend_spec_hash` so
+  // hash canonical của danh sách chi với trường đó — không danh sách chi nào băm ra
+  // chuỗi rỗng, nên mọi lượt Release đều bị từ chối. Đó là ràng buộc tạm fail-closed
+  // của `[SELF-DUP-CHOICE]`, không phải một hở.
+  spend(
+    datum_opt: Option<ProposalResult>,
+    _redeemer: GovernanceSpendRedeemer,
+    own_ref: OutputReference,
+    tx: Transaction,
+  ) {
+    expect Some(pr_in) = datum_opt
+    let inp = util.own_input(own_ref, tx.inputs)
+    // `own_hash` ĐỒNG THỜI là policy id của token proposal: `governance` là một
+    // script hai mục đích (`mint` + `spend`), nên hash script bằng policy id. Nhánh
+    // `spend` không được truyền `policy_id`, và đây là cách lấy nó mà không thêm một
+    // apply-param tự khai (apply-param thì người deploy đặt sai được, `own_hash` thì
+    // không).
+    let own_hash = util.own_script_hash(inp.address)
+    let e = util.get_epoch_bounded(tx, ms_per_epoch)
+
+    // ── (S1) chỉ đi từ `Open` ──
+    //    Vế này cũng là thứ làm proposal đã kết thúc KHÔNG tiêu lại được: một
+    //    proposal `Executed` hay `Rejected` không khớp nhánh nào (`[PROPOSAL-CLOSE]`).
+    expect pr_in.status == Open
+
+    // ── (S2) đúng 1 input + 1 output tại script này ──
+    //    Chống double satisfaction: `util.output_at_script` lấy output KHỚP ĐẦU TIÊN,
+    //    nên không đếm thì một output hợp lệ thoả cho nhiều proposal cùng lúc — và
+    //    mỗi proposal chỉ cần MỘT tally qua ngưỡng là đủ để lật tất cả.
+    expect util.count_inputs_at_script(tx.inputs, own_hash) == 1
+    expect util.count_outputs_at_script(tx.outputs, own_hash) == 1
+    let out = util.output_at_script(tx.outputs, own_hash)
+
+    // ── (S3) NFT xác thực đi qua nguyên vẹn, tên = `proposal_id` ──
+    //    `release.read_proposal` của Treasury ép `nft_name == result.proposal_id`;
+    //    nếu nhánh này để tên token và `proposal_id` trong datum trôi khỏi nhau thì
+    //    beacon thành không đọc được, hoặc đọc được dưới một danh tính khác.
+    expect assets.quantity_of(inp.value, own_hash, pr_in.proposal_id) == 1
+    expect dict.size(assets.tokens(inp.value, own_hash)) == 1
+    expect assets.quantity_of(out.value, own_hash, pr_in.proposal_id) == 1
+
+    // ── (S4) bảo toàn value + ĐỊA CHỈ ĐẦY ĐỦ + không đính script ──
+    //    `util.is_at_script` chỉ so payment credential (đúng cho việc ĐẾM); ép đích
+    //    thì phải so cả `stake_credential`, không thì người tiêu đổi stake cred và
+    //    lấy phần thưởng staking của UTxO beacon.
+    expect out.value == inp.value
+    expect out.address == inp.address
+    expect out.reference_script == None
+
+    // ── (S5) không đúc, không đốt ──
+    //    Chặn đường gộp lượt ghi kết quả vào một lượt đúc bất kỳ, gồm cả việc đúc
+    //    thêm một token proposal cùng tên.
+    expect tx.mint == assets.zero
+
+    // ── (S6) time-lock ──
+    //    Custody ép `cur >= execute_after_epoch` (C-REL-8) ở lượt CHI. Ép thêm ở
+    //    lượt GHI để `Executed` không tồn tại trên chuỗi trước mốc đó — cái đó là
+    //    thứ bên ngoài đọc, và nó là lời hứa về thời gian phản đối.
+    expect e >= pr_in.execute_after_epoch
+
+    // ── (S7) Tally của ĐÚNG proposal này, ĐÃ `Clamped`, tại ĐÚNG script tally ──
+    //    `Clamped` là điều kiện then chốt: pha `Summing` mang power CHƯA clamp, và
+    //    đọc ngưỡng trên số chưa clamp là đúng lỗ GAME-1 ("release bỏ qua clamp").
+    let td =
+      tally_ref.expect_tally_at(
+        tx.reference_inputs,
+        tally_policy,
+        pr_in.proposal_id,
+        tally_script_hash,
+      )
+    expect td.phase == Clamped
+
+    // ── (S8) bảng tham số ĐÚNG ref mà tally đã cam kết ──
+    //    Đọc theo `td.weight_param_ref`, KHÔNG theo một ref trong redeemer: ngưỡng
+    //    phải là ngưỡng đã chốt lúc Open, không phải ngưỡng người tiêu chọn lúc ghi
+    //    kết quả (audit Finding 1). `weight_ref.read_weight_param` ép cổng D8 bên trong.
+    let wp =
+      weight_ref.read_weight_param(
+        tx.reference_inputs,
+        weight_param_policy,
+        td.weight_param_ref,
+      )
+    expect wp.bft_floor >= 1
+
+    // ── (S9) datum ra: CHỈ `status` đổi, và đúng theo `pass` canonical ──
+    expect InlineDatum(od) = out.datum
+    expect pr_out: ProposalResult = od
+    let verdict =
+      if tally_lib.pass(
+        td,
+        wp.bft_floor,
+        wp.quorum_vp_threshold,
+        wp.quorum_voter_threshold,
+        wp.theta_num,
+        wp.theta_den,
+      ) {
+        Executed
+      } else {
+        Rejected
+      }
+    and {
+      pr_out.proposal_id == pr_in.proposal_id,
+      pr_out.spend_spec_hash == pr_in.spend_spec_hash,
+      // ràng buộc tạm `[SELF-DUP-CHOICE]`: ép LẠI ở đây, không chỉ ở Open. Một UTxO
+      // proposal có thể tồn tại từ trước bản này (hoặc từ một đường chưa biết) với
+      // `spend_spec_hash` khác rỗng; nhánh ghi kết quả là cửa cuối trước Treasury.
+      pr_out.spend_spec_hash == #"",
+      pr_out.released_cumulative == pr_in.released_cumulative,
+      pr_out.execute_after_epoch == pr_in.execute_after_epoch,
+      pr_out.status == verdict,
     }
   }
 
@@ -679,6 +814,703 @@ test open_weight_param_ref_khong_co_token_tu_choi() fail {
       outs_ok(),
       mint_ok(),
       e_now,
+    )
+  True
+}
+
+// ════════════════════════════════════════════════════════════
+// FinalizeProposal — Open → Executed / Rejected
+// ════════════════════════════════════════════════════════════
+
+const tally_policy_id: PolicyId = tally_policy
+
+/// epoch ghi kết quả: sau `execute_after_epoch` của `pr_ok()`.
+const e_fin: Int = close_e + delta_min
+
+// ── WeightParam dùng ở nhánh spend ──
+//
+// Bảng `pow(c) = SCALE·(c+1)` — cùng khuôn `tally_test` dùng, và vì sao giống nhau
+// đã ghi ở đó: cổng nguồn ép `c1 = c2 = c4 = 0`, nên bảng có `pow(0) = 0` làm VP của
+// mọi cử tri bằng 0 và ca kiểm ngưỡng xanh ở CẢ HAI cực.
+fn lin_knots() -> List<Knot> {
+  [
+    Knot { c: 0, pow: scale },
+    Knot { c: 1_000_000_000, pow: 1_000_000_001 * scale },
+  ]
+}
+
+/// `bft_floor = 3` (sàn cứng số DID thuận), quorum người 2, quorum VP 1, θ = 2/3.
+fn wp_datum() -> WeightParam {
+  WeightParam {
+    k1: lin_knots(),
+    k2: lin_knots(),
+    k3: lin_knots(),
+    k4: lin_knots(),
+    bft_floor: 3,
+    quorum_vp_threshold: 1,
+    quorum_voter_threshold: 2,
+    theta_num: 2,
+    theta_den: 3,
+  }
+}
+
+fn wp_ref_input_with(wp: WeightParam) -> Input {
+  let val = assets.from_lovelace(2_000_000) |> assets.add(wp_policy, tag, 1)
+  util.mk_input(wp_ref(), util.mk_output(util.script_address(#"a0"), val, wp))
+}
+
+fn wp_ref_input_ok() -> Input {
+  wp_ref_input_with(wp_datum())
+}
+
+/// Tally đã `Clamped`. `pass` canonical (`tally_lib.pass`) đọc đúng năm số dưới đây.
+fn td_clamped(
+  yes_eff: Int,
+  no_eff: Int,
+  abstain_eff: Int,
+  voters: Int,
+  yes_voters: Int,
+) -> TallyDatum {
+  TallyDatum {
+    proposal_id: prop(),
+    phase: Clamped,
+    weight_param_ref: wp_ref(),
+    yes_power_raw: yes_eff,
+    no_power_raw: no_eff,
+    abstain_power_raw: abstain_eff,
+    voters_acc: voters,
+    yes_voters_acc: yes_voters,
+    top_did_vp: [],
+    yes_power_eff: yes_eff,
+    no_power_eff: no_eff,
+    abstain_power_eff: abstain_eff,
+    vote_open_epoch: open_e,
+    vote_close_epoch: close_e,
+    voted_root: mpf.root(mpf.empty),
+  }
+}
+
+/// Thoả TRỌN BỘ `pass`: yes_voters 4 ≥ F=3 · total_vp 100 ≥ 1 · voters 5 ≥ 2 ·
+/// 70·3 = 210 ≥ (70+20)·2 = 180.
+fn td_pass() -> TallyDatum {
+  td_clamped(70, 20, 10, 5, 4)
+}
+
+/// Không thoả CHỈ ở vế θ: 50·3 = 150 < (50+40)·2 = 180. Ba vế kia vẫn thoả.
+fn td_fail_theta() -> TallyDatum {
+  td_clamped(50, 40, 10, 5, 4)
+}
+
+fn tally_ref_input_of(td: TallyDatum, sh: ByteArray) -> Input {
+  let val =
+    assets.from_lovelace(2_000_000) |> assets.add(tally_policy_id, prop(), 1)
+  util.mk_input(util.mk_ref(50), util.mk_output(util.script_address(sh), val, td))
+}
+
+fn tally_ref_input(td: TallyDatum) -> Input {
+  tally_ref_input_of(td, tally_sh)
+}
+
+// ── UTxO proposal ──
+
+fn proposal_value() -> Value {
+  assets.from_lovelace(2_000_000) |> assets.add(gov_policy, prop(), 1)
+}
+
+fn prop_in_of(pr: ProposalResult, val: Value) -> Input {
+  util.mk_input(
+    util.mk_ref(0),
+    util.mk_output(util.script_address(gov_policy), val, pr),
+  )
+}
+
+fn prop_in() -> Input {
+  prop_in_of(pr_ok(), proposal_value())
+}
+
+fn prop_out_of(pr: ProposalResult, val: Value) -> Output {
+  util.mk_output(util.script_address(gov_policy), val, pr)
+}
+
+fn result_of(status: ProposalStatus) -> ProposalResult {
+  ProposalResult { ..pr_ok(), status }
+}
+
+fn run_fin_full(
+  pr_in: ProposalResult,
+  inputs: List<Input>,
+  refs: List<Input>,
+  outputs: List<Output>,
+  mint: Value,
+  e: Int,
+) -> Bool {
+  let tx =
+    Transaction {
+      ..placeholder,
+      inputs: inputs,
+      reference_inputs: refs,
+      outputs: outputs,
+      mint: mint,
+      validity_range: interval.between(e * ms_ep, e * ms_ep + 1000),
+    }
+  governance.spend(
+    tally_policy,
+    tally_sh,
+    wp_policy,
+    ms_ep,
+    delta_min,
+    recovery_epochs,
+    tag,
+    Some(pr_in),
+    FinalizeProposal,
+    util.mk_ref(0),
+    tx,
+  )
+}
+
+/// Khuôn chuẩn: thay đổi duy nhất theo tham số là Tally và datum ra.
+fn run_fin(td: TallyDatum, pr_out: ProposalResult) -> Bool {
+  run_fin_full(
+    pr_ok(),
+    [prop_in()],
+    [tally_ref_input(td), wp_ref_input_ok()],
+    [prop_out_of(pr_out, proposal_value())],
+    assets.zero,
+    e_fin,
+  )
+}
+
+test fin_qua_nguong_ghi_executed() {
+  run_fin(td_pass(), result_of(Executed))
+}
+
+test fin_khong_qua_nguong_ghi_rejected() {
+  run_fin(td_fail_theta(), result_of(Rejected))
+}
+
+/// Qua ngưỡng nhưng datum ra ghi `Rejected` — nhánh này ép ĐÚNG phán quyết, không
+/// chỉ ép "một trong hai".
+test fin_qua_nguong_ma_ghi_rejected_tu_choi() fail {
+  expect run_fin(td_pass(), result_of(Rejected))
+  True
+}
+
+/// Không qua ngưỡng mà ghi `Executed` — đây là đòn CHÍNH: Treasury chỉ đọc
+/// `status == Executed`, nên nếu nhánh này lỏng thì không tầng nào phía sau bắt lại.
+test fin_khong_qua_nguong_ma_ghi_executed_tu_choi() fail {
+  expect run_fin(td_fail_theta(), result_of(Executed))
+  True
+}
+
+// ── (S9) từng vế của `pass` canonical ──
+
+/// Sàn cứng: `yes_voters_acc = 2 < F = 3`. Ba vế kia vẫn thoả ⇒ phán quyết phải là
+/// `Rejected`, nên ca này ghi `Executed` và phải đỏ.
+test fin_duoi_san_cung_bft_ghi_executed_tu_choi() fail {
+  expect run_fin(td_clamped(70, 20, 10, 5, 2), result_of(Executed))
+  True
+}
+
+/// Mặt thuận: đúng cùng Tally đó, ghi `Rejected` thì qua.
+test fin_duoi_san_cung_bft_ghi_rejected_qua() {
+  run_fin(td_clamped(70, 20, 10, 5, 2), result_of(Rejected))
+}
+
+/// Quorum THEO NGƯỜI: `voters_acc = 1 < 2`.
+test fin_duoi_quorum_nguoi_ghi_executed_tu_choi() fail {
+  expect run_fin(td_clamped(70, 20, 10, 1, 4), result_of(Executed))
+  True
+}
+
+/// Quorum THEO VP: tổng VP_eff = 0 < 1. Abstain NẰM TRONG mẫu của quorum-VP (D1),
+/// nên ca này cũng ghim chiều đó: ba số eff đều 0.
+test fin_duoi_quorum_vp_ghi_executed_tu_choi() fail {
+  expect run_fin(td_clamped(0, 0, 0, 5, 4), result_of(Executed))
+  True
+}
+
+/// θ đúng BẰNG ngưỡng phải PASS (dấu `≥`, D1): 60·3 = 180 ≥ (60+30)·2 = 180.
+test fin_theta_dung_bang_nguong_qua() {
+  run_fin(td_clamped(60, 30, 10, 5, 4), result_of(Executed))
+}
+
+/// Và lệch một đơn vị dưới ngưỡng thì `Rejected`: 59·3 = 177 < (59+30)·2 = 178.
+test fin_theta_lech_mot_don_vi_thi_rejected() {
+  run_fin(td_clamped(59, 30, 10, 5, 4), result_of(Rejected))
+}
+
+// ── (S1) nguồn trạng thái ──
+
+/// Proposal đã `Executed` không tiêu lại được — nếu tiêu được thì một proposal đã
+/// chi xong được ghi lại `Executed` với `released_cumulative` reset.
+test fin_tu_executed_tu_choi() fail {
+  expect
+    run_fin_full(
+      result_of(Executed),
+      [prop_in_of(result_of(Executed), proposal_value())],
+      [tally_ref_input(td_pass()), wp_ref_input_ok()],
+      [prop_out_of(result_of(Executed), proposal_value())],
+      assets.zero,
+      e_fin,
+    )
+  True
+}
+
+test fin_tu_rejected_tu_choi() fail {
+  expect
+    run_fin_full(
+      result_of(Rejected),
+      [prop_in_of(result_of(Rejected), proposal_value())],
+      [tally_ref_input(td_pass()), wp_ref_input_ok()],
+      [prop_out_of(result_of(Executed), proposal_value())],
+      assets.zero,
+      e_fin,
+    )
+  True
+}
+
+// ── (S6) time-lock ──
+
+/// `e = execute_after − 1`. Mọi vế khác y hệt `fin_qua_nguong_ghi_executed`.
+test fin_truoc_execute_after_tu_choi() fail {
+  expect
+    run_fin_full(
+      pr_ok(),
+      [prop_in()],
+      [tally_ref_input(td_pass()), wp_ref_input_ok()],
+      [prop_out_of(result_of(Executed), proposal_value())],
+      assets.zero,
+      e_fin - 1,
+    )
+  True
+}
+
+/// Khoảng hiệu lực mở một đầu ⇒ `get_epoch_bounded` bác. Không có khuôn hai-đầu thì
+/// người tiêu chọn được biên có lợi cho vế time-lock.
+test fin_khoang_hieu_luc_mo_tu_choi() fail {
+  let tx =
+    Transaction {
+      ..placeholder,
+      inputs: [prop_in()],
+      reference_inputs: [tally_ref_input(td_pass()), wp_ref_input_ok()],
+      outputs: [prop_out_of(result_of(Executed), proposal_value())],
+      validity_range: interval.after(e_fin * ms_ep),
+    }
+  expect
+    governance.spend(
+      tally_policy,
+      tally_sh,
+      wp_policy,
+      ms_ep,
+      delta_min,
+      recovery_epochs,
+      tag,
+      Some(pr_ok()),
+      FinalizeProposal,
+      util.mk_ref(0),
+      tx,
+    )
+  True
+}
+
+// ── (S7) Tally ──
+
+/// Tally còn ở pha `Summing`: power CHƯA clamp. Đây là lỗ GAME-1 ("release bỏ qua
+/// clamp") — cùng bộ số nhưng chưa trừ phần vượt trần của cá voi.
+test fin_tally_con_summing_tu_choi() fail {
+  let td = TallyDatum { ..td_pass(), phase: Summing }
+  expect run_fin(td, result_of(Executed))
+  True
+}
+
+/// Tally nằm NGOÀI script tally (`R-TALLY-HASH`). Token vẫn đúng tên và đúng số
+/// lượng, datum vẫn `Clamped` — chỉ địa chỉ khác.
+test fin_tally_ngoai_script_tally_tu_choi() fail {
+  expect
+    run_fin_full(
+      pr_ok(),
+      [prop_in()],
+      [tally_ref_input_of(td_pass(), #"dead"), wp_ref_input_ok()],
+      [prop_out_of(result_of(Executed), proposal_value())],
+      assets.zero,
+      e_fin,
+    )
+  True
+}
+
+/// Tally của proposal KHÁC (tên token khác) ⇒ không tìm được tally nào.
+test fin_tally_cua_proposal_khac_tu_choi() fail {
+  let val =
+    assets.from_lovelace(2_000_000) |> assets.add(tally_policy_id, #"beef", 1)
+  let bad =
+    util.mk_input(
+      util.mk_ref(50),
+      util.mk_output(util.script_address(tally_sh), val, td_pass()),
+    )
+  expect
+    run_fin_full(
+      pr_ok(),
+      [prop_in()],
+      [bad, wp_ref_input_ok()],
+      [prop_out_of(result_of(Executed), proposal_value())],
+      assets.zero,
+      e_fin,
+    )
+  True
+}
+
+/// HAI reference input cùng mang token tally của proposal này: một cái thật
+/// (`td_fail_theta` — trượt ngưỡng) và một cái dựng thêm mang `td_pass`. Nếu chỗ đọc
+/// chỉ "tìm cái đầu tiên" thì người tiêu CHỌN được tally nào validator đọc, và thứ
+/// tự reference input là thứ họ tự đặt. Chỉ vế "đúng MỘT" mới bác.
+test fin_hai_tally_cung_proposal_tu_choi() fail {
+  let gia =
+    util.mk_input(
+      OutputReference { transaction_id: #"77", output_index: 0 },
+      util.mk_output(
+        util.script_address(tally_sh),
+        assets.from_lovelace(2_000_000)
+          |> assets.add(tally_policy_id, prop(), 1),
+        td_pass(),
+      ),
+    )
+  expect
+    run_fin_full(
+      pr_ok(),
+      [prop_in()],
+      [gia, tally_ref_input(td_fail_theta()), wp_ref_input_ok()],
+      [prop_out_of(result_of(Executed), proposal_value())],
+      assets.zero,
+      e_fin,
+    )
+  True
+}
+
+// ── (S8) WeightParam ──
+
+/// Beacon `WeightParam` bị nhân bản: đúng MỘT tên tài sản nhưng số lượng 2. Vế đếm
+/// số TÊN vẫn thoả, chỉ vế `qty == 1` bác. Bảng tham số là thứ quyết định ngưỡng nên
+/// tính-độc-nhất của nó phải ép ở SỐ LƯỢNG, không chỉ ở tên.
+test fin_weight_param_nhan_ban_tu_choi() fail {
+  let val = assets.from_lovelace(2_000_000) |> assets.add(wp_policy, tag, 2)
+  let doi =
+    util.mk_input(
+      wp_ref(),
+      util.mk_output(util.script_address(#"a0"), val, wp_datum()),
+    )
+  expect
+    run_fin_full(
+      pr_ok(),
+      [prop_in()],
+      [tally_ref_input(td_pass()), doi],
+      [prop_out_of(result_of(Executed), proposal_value())],
+      assets.zero,
+      e_fin,
+    )
+  True
+}
+
+/// Tally cam kết `wp_ref()`, nhưng reference input mang bảng ở MỘT ref khác. Bảng
+/// đó có ngưỡng dễ hơn (θ = 1/2) và sẽ cho `Executed` với `td_fail_theta()`.
+test fin_weight_param_ref_khac_cam_ket_tu_choi() fail {
+  let easy = WeightParam { ..wp_datum(), theta_num: 1, theta_den: 2 }
+  let val = assets.from_lovelace(2_000_000) |> assets.add(wp_policy, tag, 1)
+  let other =
+    util.mk_input(
+      OutputReference { transaction_id: #"ee", output_index: 0 },
+      util.mk_output(util.script_address(#"a0"), val, easy),
+    )
+  expect
+    run_fin_full(
+      pr_ok(),
+      [prop_in()],
+      [tally_ref_input(td_fail_theta()), other],
+      [prop_out_of(result_of(Executed), proposal_value())],
+      assets.zero,
+      e_fin,
+    )
+  True
+}
+
+/// Bảng weight VI PHẠM D8 (C4 nặng hơn C3): `read_weight_param` bác ngay ở phép đọc.
+test fin_bang_weight_vi_pham_d8_tu_choi() fail {
+  let sqrt_knots =
+    [
+      Knot { c: 0, pow: scale },
+      Knot { c: 250_000_000, pow: 15_811 * scale },
+      Knot { c: 1_000_000_000, pow: 31_623 * scale },
+    ]
+  let bad = WeightParam { ..wp_datum(), k3: sqrt_knots, k4: lin_knots() }
+  expect
+    run_fin_full(
+      pr_ok(),
+      [prop_in()],
+      [tally_ref_input(td_pass()), wp_ref_input_with(bad)],
+      [prop_out_of(result_of(Executed), proposal_value())],
+      assets.zero,
+      e_fin,
+    )
+  True
+}
+
+/// `bft_floor = 0` làm sàn cứng biến mất VÀ `cap_per_did` chia cho 0 ở tầng clamp.
+test fin_bft_floor_khong_tu_choi() fail {
+  let bad = WeightParam { ..wp_datum(), bft_floor: 0 }
+  expect
+    run_fin_full(
+      pr_ok(),
+      [prop_in()],
+      [tally_ref_input(td_pass()), wp_ref_input_with(bad)],
+      [prop_out_of(result_of(Executed), proposal_value())],
+      assets.zero,
+      e_fin,
+    )
+  True
+}
+
+// ── (S3)/(S4)/(S5) bảo toàn beacon ──
+
+/// Hút ADA của UTxO beacon: giữ NFT, datum đúng, nhưng lovelace giảm.
+test fin_hut_ada_tu_choi() fail {
+  let drained =
+    assets.from_lovelace(500_000) |> assets.add(gov_policy, prop(), 1)
+  expect
+    run_fin_full(
+      pr_ok(),
+      [prop_in()],
+      [tally_ref_input(td_pass()), wp_ref_input_ok()],
+      [prop_out_of(result_of(Executed), drained)],
+      assets.zero,
+      e_fin,
+    )
+  True
+}
+
+/// Đổi stake credential của địa chỉ ra: `util.is_at_script` chỉ so payment
+/// credential nên mọi vế đếm vẫn thoả.
+test fin_doi_stake_credential_tu_choi() fail {
+  let out =
+    util.mk_output(
+      util.script_address_staked(gov_policy, #"5747"),
+      proposal_value(),
+      result_of(Executed),
+    )
+  expect
+    run_fin_full(
+      pr_ok(),
+      [prop_in()],
+      [tally_ref_input(td_pass()), wp_ref_input_ok()],
+      [out],
+      assets.zero,
+      e_fin,
+    )
+  True
+}
+
+test fin_dinh_kem_script_tu_choi() fail {
+  let out =
+    Output {
+      ..prop_out_of(result_of(Executed), proposal_value()),
+      reference_script: Some(#"aabb"),
+    }
+  expect
+    run_fin_full(
+      pr_ok(),
+      [prop_in()],
+      [tally_ref_input(td_pass()), wp_ref_input_ok()],
+      [out],
+      assets.zero,
+      e_fin,
+    )
+  True
+}
+
+/// Hai đơn vị NFT ở CẢ hai đầu ⇒ đẳng thức bảo toàn value thoả và `dict.size == 1`
+/// cũng thoả (nó đếm số TÊN). Chỉ vế số lượng bác.
+test fin_nhan_ban_nft_tu_choi() fail {
+  let doubled =
+    assets.from_lovelace(2_000_000) |> assets.add(gov_policy, prop(), 2)
+  expect
+    run_fin_full(
+      pr_ok(),
+      [prop_in_of(pr_ok(), doubled)],
+      [tally_ref_input(td_pass()), wp_ref_input_ok()],
+      [prop_out_of(result_of(Executed), doubled)],
+      assets.zero,
+      e_fin,
+    )
+  True
+}
+
+/// UTxO proposal mang THÊM một tên token nữa cùng policy `governance` — beacon của
+/// một proposal khác bị gộp vào. Hai vế số lượng đều thoả và value được bảo toàn;
+/// chỉ vế đếm SỐ TÊN bác. Không có vế đó thì beacon thứ hai bị nhốt vĩnh viễn trong
+/// một datum mang danh tính của proposal thứ nhất: `[PROPOSAL-CLOSE]` khoá UTxO lại
+/// ngay sau lượt này, và Treasury thì đòi đúng một token nên không đọc lại được.
+test fin_hai_ten_token_gov_cung_utxo_tu_choi() fail {
+  let merged =
+    assets.from_lovelace(2_000_000)
+      |> assets.add(gov_policy, prop(), 1)
+      |> assets.add(gov_policy, #"beef", 1)
+  expect
+    run_fin_full(
+      pr_ok(),
+      [prop_in_of(pr_ok(), merged)],
+      [tally_ref_input(td_pass()), wp_ref_input_ok()],
+      [prop_out_of(result_of(Executed), merged)],
+      assets.zero,
+      e_fin,
+    )
+  True
+}
+
+/// Đúc thêm một token cùng policy trong lượt ghi kết quả.
+test fin_duc_them_token_tu_choi() fail {
+  expect
+    run_fin_full(
+      pr_ok(),
+      [prop_in()],
+      [tally_ref_input(td_pass()), wp_ref_input_ok()],
+      [prop_out_of(result_of(Executed), proposal_value())],
+      assets.zero |> assets.add(gov_policy, #"beef", 1),
+      e_fin,
+    )
+  True
+}
+
+/// Double satisfaction: HAI proposal cùng script trong một giao dịch, MỘT output.
+/// `util.output_at_script` lấy output khớp đầu tiên, nên không đếm thì một output
+/// hợp lệ thoả cho cả hai — và cả hai được ghi `Executed` bằng một tally.
+test fin_hai_proposal_mot_output_tu_choi() fail {
+  let second =
+    util.mk_input(
+      util.mk_ref(88),
+      util.mk_output(util.script_address(gov_policy), proposal_value(), pr_ok()),
+    )
+  expect
+    run_fin_full(
+      pr_ok(),
+      [prop_in(), second],
+      [tally_ref_input(td_pass()), wp_ref_input_ok()],
+      [prop_out_of(result_of(Executed), proposal_value())],
+      assets.zero,
+      e_fin,
+    )
+  True
+}
+
+test fin_hai_output_tai_script_tu_choi() fail {
+  expect
+    run_fin_full(
+      pr_ok(),
+      [prop_in()],
+      [tally_ref_input(td_pass()), wp_ref_input_ok()],
+      [
+        prop_out_of(result_of(Executed), proposal_value()),
+        prop_out_of(result_of(Executed), proposal_value()),
+      ],
+      assets.zero,
+      e_fin,
+    )
+  True
+}
+
+// ── (S9) các trường KHÔNG được đổi ──
+
+/// `execute_after_epoch` bị dời SỚM lên ở lượt ghi kết quả ⇒ custody chi ngay.
+test fin_doi_execute_after_tu_choi() fail {
+  let pr_out =
+    ProposalResult { ..result_of(Executed), execute_after_epoch: 0 }
+  expect run_fin(td_pass(), pr_out)
+  True
+}
+
+/// `released_cumulative` bị reset ⇒ chống-chi-vượt của custody mất mốc.
+test fin_reset_released_cumulative_tu_choi() fail {
+  let pr_out = ProposalResult { ..result_of(Executed), released_cumulative: 0 }
+  expect
+    run_fin_full(
+      ProposalResult { ..pr_ok(), released_cumulative: 5 },
+      [
+        prop_in_of(
+          ProposalResult { ..pr_ok(), released_cumulative: 5 },
+          proposal_value(),
+        ),
+      ],
+      [tally_ref_input(td_pass()), wp_ref_input_ok()],
+      [prop_out_of(pr_out, proposal_value())],
+      assets.zero,
+      e_fin,
+    )
+  True
+}
+
+/// `proposal_id` trong datum ra bị đổi ⇒ `release.read_proposal` của Treasury ép
+/// `nft_name == result.proposal_id`, nên beacon sẽ mang một danh tính khác tên token.
+test fin_doi_proposal_id_tu_choi() fail {
+  let pr_out = ProposalResult { ..result_of(Executed), proposal_id: #"beef" }
+  expect run_fin(td_pass(), pr_out)
+  True
+}
+
+/// `spend_spec_hash` được ĐIỀN ở lượt ghi kết quả — đây là đường vòng quanh ràng
+/// buộc tạm của `[SELF-DUP-CHOICE]` nếu chỉ ép nó ở Open.
+test fin_dien_spend_spec_hash_tu_choi() fail {
+  let pr_out =
+    ProposalResult { ..result_of(Executed), spend_spec_hash: #"aabbcc" }
+  expect run_fin(td_pass(), pr_out)
+  True
+}
+
+/// Và cả khi datum VÀO đã mang `spend_spec_hash` khác rỗng (giữ nguyên, không đổi):
+/// vế `== #""` vẫn bác. Ca này phân biệt "ép giữ nguyên" với "ép rỗng".
+test fin_spend_spec_hash_vao_khong_rong_tu_choi() fail {
+  let pr_in = ProposalResult { ..pr_ok(), spend_spec_hash: #"aabbcc" }
+  let pr_out = ProposalResult { ..pr_in, status: Executed }
+  expect
+    run_fin_full(
+      pr_in,
+      [prop_in_of(pr_in, proposal_value())],
+      [tally_ref_input(td_pass()), wp_ref_input_ok()],
+      [prop_out_of(pr_out, proposal_value())],
+      assets.zero,
+      e_fin,
+    )
+  True
+}
+
+/// Chiều ngược lại: datum VÀO mang `spend_spec_hash` khác rỗng, datum RA XOÁ nó về
+/// rỗng. Vế `== #""` thoả, chỉ vế ghim "bằng đúng giá trị vào" bác. Hai vế đó không
+/// thay nhau được: thiếu vế ghim thì lượt ghi kết quả XOÁ được cam kết chi tiêu của
+/// proposal, và bên ngoài đọc beacon sẽ thấy một `Executed` không ràng buộc chi gì.
+test fin_xoa_spend_spec_hash_tu_choi() fail {
+  let pr_in = ProposalResult { ..pr_ok(), spend_spec_hash: #"aabbcc" }
+  let pr_out =
+    ProposalResult { ..pr_in, status: Executed, spend_spec_hash: #"" }
+  expect
+    run_fin_full(
+      pr_in,
+      [prop_in_of(pr_in, proposal_value())],
+      [tally_ref_input(td_pass()), wp_ref_input_ok()],
+      [prop_out_of(pr_out, proposal_value())],
+      assets.zero,
+      e_fin,
+    )
+  True
+}
+
+/// Datum ra không phải `ProposalResult` (Treasury sẽ không giải mã được beacon).
+test fin_datum_ra_sai_kieu_tu_choi() fail {
+  let out =
+    util.mk_output(util.script_address(gov_policy), proposal_value(), 0)
+  expect
+    run_fin_full(
+      pr_ok(),
+      [prop_in()],
+      [tally_ref_input(td_pass()), wp_ref_input_ok()],
+      [out],
+      assets.zero,
+      e_fin,
     )
   True
 }

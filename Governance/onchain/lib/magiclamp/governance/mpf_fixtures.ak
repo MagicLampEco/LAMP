@@ -7,6 +7,24 @@ use aiken/merkle_patricia_forestry.{Branch, Leaf, Proof}
 
 // ═══ bộ `a`: proposal_id = #"abcd", did_commit = #"11", #"12", #"13", #"14", #"15", #"16" ═══
 
+/// Giá trị lưu ở khoá #"11" của bộ `a`.
+pub const val_a1: ByteArray = #"5be9e373c645adedaca973f3de0223135aff7b00afd6985108fcd1bf95eb078e"
+
+/// Giá trị lưu ở khoá #"12" của bộ `a`.
+pub const val_a2: ByteArray = #"949913ec007f317797c9d4d0bb655f8fc4e975cd51e9287c1614de695243add8"
+
+/// Giá trị lưu ở khoá #"13" của bộ `a`.
+pub const val_a3: ByteArray = #"6d76b2dd94ece20602d4e0d4252e2fe101be7d4a27c29dbe7d9f4b903517143b"
+
+/// Giá trị lưu ở khoá #"14" của bộ `a`.
+pub const val_a4: ByteArray = #"13bfd9da089a430541ab1c2b836f3126538adedbb88479041eb17f308837b90b"
+
+/// Giá trị lưu ở khoá #"15" của bộ `a`.
+pub const val_a5: ByteArray = #"997e8c0ee634f0c4808d1b5211ab2a50e19db45281ab9ff93ab51c4113fee2e9"
+
+/// Giá trị lưu ở khoá #"16" của bộ `a`.
+pub const val_a6: ByteArray = #"56f5b94b58cf5861deac87736d94c44c488d323848651ce06220cb2c405da0c5"
+
 /// Gốc sổ sau khi ghi 0 DID đầu.
 pub const root_a0: ByteArray = #"0000000000000000000000000000000000000000000000000000000000000000"
 
@@ -89,6 +107,12 @@ pub fn mem_a2_2() -> Proof {
 
 // ═══ bộ `b`: proposal_id = #"22", did_commit = #"11", #"12" ═══
 
+/// Giá trị lưu ở khoá #"11" của bộ `b`.
+pub const val_b1: ByteArray = #"bb946cc46da7b64b2a76e743f2de7f1a2054fea3652b4670023024776b4878b7"
+
+/// Giá trị lưu ở khoá #"12" của bộ `b`.
+pub const val_b2: ByteArray = #"f5cb31c502476a43252984b8ec402a012dd17eb7faf47490279ba69e3309da70"
+
 /// Gốc sổ sau khi ghi 0 DID đầu.
 pub const root_b0: ByteArray = #"0000000000000000000000000000000000000000000000000000000000000000"
 
@@ -128,3 +152,26 @@ pub fn mem_b2_2() -> Proof {
   Leaf { skip: 0, key: #"4c54f47d69e097eed691c686ac18444a10d4abe934c311d0fffba9a3928f9e71", value: #"9cd469afb0031d5669e10b57e22f4482e767c526b56647cef44996e065e1bc8f" },
 ]
 }
+
+// ═══ bộ `c`: proposal_id = #"22", did_commit = #"11" ═══
+// sổ LỆCH: khoá did #"11" trỏ nullifier của did #"12"
+
+/// Giá trị lưu ở khoá #"11" của bộ `c`.
+pub const val_c1: ByteArray = #"f5cb31c502476a43252984b8ec402a012dd17eb7faf47490279ba69e3309da70"
+
+/// Gốc sổ sau khi ghi 0 DID đầu.
+pub const root_c0: ByteArray = #"0000000000000000000000000000000000000000000000000000000000000000"
+
+/// Gốc sổ sau khi ghi 1 DID đầu.
+pub const root_c1: ByteArray = #"231310334b733439f80491b9e40b861f89a93662df1f809f630640b7e0be8497"
+
+/// Chứng minh CHÈN did #1 vào sổ đang có 0 DID.
+pub fn ins_c1() -> Proof {
+  []
+}
+
+/// Chứng minh did #1 CÓ TRONG sổ 1 DID (gốc `root_c1`).
+pub fn mem_c1_1() -> Proof {
+  []
+}
+
