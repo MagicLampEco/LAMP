@@ -16,7 +16,7 @@
 // MPF), và mỗi bằng chứng được TỰ KIỂM bằng đúng phép on-chain làm trước khi trả ra.
 // Môi trường chạy: thư viện dùng `Buffer` ⇒ chỉ Node.
 
-import { Trie, type Proof } from "@aiken-lang/merkle-patricia-forestry";
+import { Proof, Trie } from "@aiken-lang/merkle-patricia-forestry";
 
 import { HASH32_BYTES } from "./datum.js";
 import type { MpfProof, MpfProofStep } from "./types.js";
@@ -219,4 +219,70 @@ function selfCheck(p: Proof, key: string, without: string, withKey: string): voi
       `GOV-LEDGER-006: bằng chứng chèn cho ${key} tự kiểm lệch — excluding ${ex} (mong ${without}), including ${inc} (mong ${withKey})`,
     );
   }
+}
+
+/** `MpfProof` (kiểu SDK) → JSON của thư viện — chiều ngược của `proofFromLibrary`. */
+function proofToLibrary(proof: MpfProof): object[] {
+  if (!Array.isArray(proof)) throw new Error("GOV-LEDGER-024: bằng chứng MPF phải là mảng bước");
+  return proof.map((s, i) => {
+    switch (s?.kind) {
+      case "Branch": return { type: "branch", skip: Number(s.skip), neighbors: s.neighbors };
+      case "Fork": return { type: "fork", skip: Number(s.skip), neighbor: { nibble: Number(s.neighbor.nibble), prefix: s.neighbor.prefix, root: s.neighbor.root } };
+      case "Leaf": return { type: "leaf", skip: Number(s.skip), neighbor: { key: s.key, value: s.value } };
+      default: throw new Error(`GOV-LEDGER-023: bước bằng chứng loại lạ '${String((s as { kind?: unknown })?.kind)}' ở step[${i}]`);
+    }
+  });
+}
+
+/**
+ * Chạy lại ĐÚNG phép `tally.ak ▸ book_root_after` trên một lô: với mỗi cặp `(entries[i],
+ * insertProofs[i])` theo thứ tự, gốc-KHÔNG-có-khoá phải bằng gốc hiện tại (`mpf.insert` đòi thế),
+ * rồi gốc hiện tại thành gốc-CÓ-khoá. Trả gốc sau cả lô.
+ *
+ * Vì sao builder cần phép này dù `planBatchInsert` đã tự kiểm từng bằng chứng: tự kiểm lúc lập kế
+ * hoạch chứng minh bằng chứng đúng cho thứ tự LẬP KẾ HOẠCH; on-chain chèn theo thứ tự INPUT
+ * (`collect_votes`). Hai thứ tự lệch nhau (ai đó sắp lại phiếu sau khi lập kế hoạch, hoặc đưa
+ * `insert_proofs` của lần dựng khác) thì mọi bằng chứng vẫn "đúng" riêng lẻ mà giao dịch trượt ở
+ * validator. Phép này bắt đúng chỗ đó trước khi tốn phí. Lệch ⇒ `GOV-LEDGER-007`.
+ */
+export function replayBatchInsert(
+  rootBefore: string,
+  entries: readonly VotedEntry[],
+  insertProofs: readonly MpfProof[],
+): string {
+  if (!Array.isArray(entries) || !Array.isArray(insertProofs) || entries.length !== insertProofs.length) {
+    throw new Error(
+      `GOV-LEDGER-008: số bằng chứng chèn (${Array.isArray(insertProofs) ? insertProofs.length : "?"}) ≠ số phiếu ` +
+      `(${Array.isArray(entries) ? entries.length : "?"}) — tally.ak ▸ book_root_after đòi bằng nhau`,
+    );
+  }
+  let cur = assertValue(rootBefore, "rootBefore");
+  entries.forEach((e, i) => {
+    const key = assertKey(e?.didCommit, `entries[${i}].didCommit`);
+    const val = assertValue(e?.nullifier, `entries[${i}].nullifier`);
+    const p = Proof.fromJSON(Buffer.from(key, "hex"), Buffer.from(val, "hex"), proofToLibrary(insertProofs[i]!));
+    // Thư viện tự `assert` khi đường của bằng chứng không khớp đường của khoá (bằng chứng của khoá
+    // KHÁC) — cùng một lỗi với nhánh so gốc bên dưới, chỉ lộ ra sớm hơn. Gói lại thành cùng mã,
+    // giữ nguyên lỗi gốc ở `cause`; không nuốt.
+    let ex: string;
+    let inc: string;
+    try {
+      ex = rootHexOf(p.verify(false, undefined));
+      inc = rootHexOf(p.verify(true, undefined));
+    } catch (e) {
+      throw new Error(
+        `GOV-LEDGER-007: bằng chứng chèn thứ ${i} (did ${key}) không thuộc đường của khoá này — ` +
+        `thứ tự insert_proofs phải trùng thứ tự INPUT (tally.ak ▸ collect_votes). Lỗi thư viện: ${(e as Error)?.message ?? String(e)}`,
+        { cause: e },
+      );
+    }
+    if (ex !== cur) {
+      throw new Error(
+        `GOV-LEDGER-007: bằng chứng chèn thứ ${i} (did ${key}) không ứng sổ hiện tại — gốc-không-khoá ${ex} ≠ gốc ${cur}. ` +
+        `Thứ tự insert_proofs phải trùng thứ tự INPUT của giao dịch (tally.ak ▸ collect_votes).`,
+      );
+    }
+    cur = inc;
+  });
+  return cur;
 }

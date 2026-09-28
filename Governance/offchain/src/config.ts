@@ -5,7 +5,7 @@
 //     → nullifier(tally_policy, taad_policy, ms_per_epoch, tally_window_epochs)
 //     → vote(tally_policy, nullifier_policy, taad_policy, ms_per_epoch, tally_window_epochs)
 //     → tally(tally_policy, vote_script_hash, nullifier_policy, weight_param_policy, c3_policy,
-//             tally_window_epochs, ms_per_epoch)
+//             c3_script_hash, tally_window_epochs, ms_per_epoch)
 //     → governance(tally_policy, tally_script_hash, weight_param_policy, ms_per_epoch,
 //                  delta_min_epochs, recovery_timelock_epochs, _phase_tag)
 // Danh sách tham số trên được KIỂM với `parameters` của blueprint lúc apply (tên VÀ số lượng) —
@@ -45,6 +45,12 @@ export interface GovernanceDeployParams {
   taadPolicyId: string;
   /** policy id NFT chứng thực C3; `""` = pha chưa bật C3 (tally ép `c3_capped == 0`). */
   c3PolicyId: string;
+  /**
+   * Hash script GIỮ NFT chứng thực C3 (apply-param `c3_script_hash` của `tally`). `tally.ak ▸
+   * attested_c3` chỉ đọc chứng thực tại `Script(c3_script_hash)`. PHẢI đi cặp với `c3PolicyId`:
+   * cả hai `""` (pha chưa bật C3) hoặc cả hai là hash 28 byte — lệch cặp ⇒ `GOV-APPLY-004`.
+   */
+  c3ScriptHash: string;
   msPerEpoch: bigint;
   tallyWindowEpochs: bigint;
   deltaMinEpochs: bigint;
@@ -61,6 +67,8 @@ export interface GovernanceConfig {
   recoveryTimelockEpochs: bigint;
   taadPolicyId: string;
   c3PolicyId: string;
+  /** `""` khi và chỉ khi `c3PolicyId == ""`. */
+  c3ScriptHash: string;
   tallyNftPolicy: MintingPolicy;
   tallyPolicyId: string;
   weightParamPolicyId: string;
@@ -134,7 +142,10 @@ export const EXPECTED_PARAMS: Record<keyof typeof T, string[]> = {
   weightParamNft: ["seed_ref", "phase_tag", "bft_floor_min", "bft_floor_max", "quorum_voters_min"],
   nullifier: ["tally_policy", "taad_policy", "ms_per_epoch", "tally_window_epochs"],
   vote: ["tally_policy", "nullifier_policy", "taad_policy", "ms_per_epoch", "tally_window_epochs"],
-  tally: ["tally_policy", "vote_script_hash", "nullifier_policy", "weight_param_policy", "c3_policy", "tally_window_epochs", "ms_per_epoch"],
+  tally: [
+    "tally_policy", "vote_script_hash", "nullifier_policy", "weight_param_policy", "c3_policy", "c3_script_hash",
+    "tally_window_epochs", "ms_per_epoch",
+  ],
   governance: ["tally_policy", "tally_script_hash", "weight_param_policy", "ms_per_epoch", "delta_min_epochs", "recovery_timelock_epochs", "_phase_tag"],
 };
 
@@ -167,6 +178,21 @@ export function applyGovernanceBlueprint(bp: Blueprint, p: GovernanceDeployParam
   const phaseTag = assertHex(p.phaseTag, null, "phaseTag");
   const taad = hash28(p.taadPolicyId, "taadPolicyId");
   const c3 = p.c3PolicyId === "" ? "" : hash28(p.c3PolicyId, "c3PolicyId");
+  if (typeof p.c3ScriptHash !== "string") {
+    throw new Error("GOV-APPLY-004: c3ScriptHash phải là chuỗi (\"\" khi pha chưa bật C3, hash 28 byte khi bật)");
+  }
+  const c3Sh = p.c3ScriptHash === "" ? "" : hash28(p.c3ScriptHash, "c3ScriptHash");
+  // Lệch cặp ⇒ ném. `c3_policy ≠ ""` với `c3_script_hash = ""` thì không địa chỉ nào khớp
+  // `Script(#"")` ⇒ mọi phiếu khai c3 ≥ 0 bị bác ⇒ SumBatch của pha TỰ KHOÁ (chú thích
+  // `tally.ak ▸ attested_c3`). Chiều ngược lại vô hại trên chuỗi nhưng cho ra một hash tally
+  // khác với cấu hình "chưa bật C3" chuẩn — hai triển khai cùng ý định mà khác địa chỉ. Cả hai
+  // là cấu hình khai lệch, nên SDK từ chối cả hai thay vì đoán ý người gọi.
+  if ((c3 === "") !== (c3Sh === "")) {
+    throw new Error(
+      "GOV-APPLY-004: c3PolicyId và c3ScriptHash phải cùng rỗng (pha chưa bật C3) hoặc cùng là hash 28 byte; " +
+      `nhận c3PolicyId='${c3}', c3ScriptHash='${c3Sh}'`,
+    );
+  }
   const msPerEpoch = assertPos(p.msPerEpoch, "msPerEpoch");
   const tallyWindow = assertPos(p.tallyWindowEpochs, "tallyWindowEpochs");
   // R-DELAY: Δ_min > 0 (SPEC §v2.8) — on-chain không tự kiểm apply-param, nên kiểm ở đây.
@@ -196,7 +222,7 @@ export function applyGovernanceBlueprint(bp: Blueprint, p: GovernanceDeployParam
   const voteScript = applyChecked(bp, "vote", [tallyPolicyId, nullifierPolicyId, taad, msPerEpoch, tallyWindow]);
   const voteScriptHash = validatorToScriptHash(voteScript);
   const tallyScript = applyChecked(bp, "tally", [
-    tallyPolicyId, voteScriptHash, nullifierPolicyId, weightParamPolicyId, c3, tallyWindow, msPerEpoch,
+    tallyPolicyId, voteScriptHash, nullifierPolicyId, weightParamPolicyId, c3, c3Sh, tallyWindow, msPerEpoch,
   ]);
   const tallyScriptHash = validatorToScriptHash(tallyScript);
   const governanceScript = applyChecked(bp, "governance", [
@@ -206,7 +232,7 @@ export function applyGovernanceBlueprint(bp: Blueprint, p: GovernanceDeployParam
 
   return {
     msPerEpoch, tallyWindowEpochs: tallyWindow, deltaMinEpochs: deltaMin, recoveryTimelockEpochs: recovery,
-    taadPolicyId: taad, c3PolicyId: c3,
+    taadPolicyId: taad, c3PolicyId: c3, c3ScriptHash: c3Sh,
     tallyNftPolicy, tallyPolicyId,
     weightParamPolicyId, ...(weightParamNft ? { weightParamNft } : {}),
     nullifierPolicy, nullifierPolicyId,

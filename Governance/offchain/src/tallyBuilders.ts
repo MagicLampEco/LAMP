@@ -7,8 +7,10 @@
 // SumBatch — một giao dịch gồm:
 //   · tiêu Tally (SumBatch{insert_proofs}) + k phiếu (vote ConsumeForTally{book_proof});
 //   · đốt k nullifier (nullifier BurnNullifier đường (a): Tally bị tiêu cùng tx, e ≥ close);
-//   · Tally ra: CÙNG địa chỉ + CÙNG value, datum = sumBatchNext(…) (tally.ak ▸ sum_batch_consistent,
-//     top_heap_consistent, book_root_after, utxo_preserved).
+//   · Tally ra: CÙNG địa chỉ + CÙNG value, KHÔNG reference script, datum = sumBatchNext(…)
+//     (tally.ak ▸ sum_batch_consistent, top_heap_consistent, book_root_after, utxo_preserved);
+//   · reference input: bảng tham số + (pha bật C3) một chứng thực C3 mỗi phiếu, đặt tại
+//     Script(c3_script_hash) (tally.ak ▸ attested_c3).
 // THỨ TỰ: `collect_votes` duyệt `tx.inputs` theo thứ tự ledger (txHash, index) ⇒ builder sắp phiếu
 // theo đúng thứ tự đó TRƯỚC khi sinh bằng chứng chèn. Sai thứ tự = bằng chứng thứ i chứng minh
 // cho sổ khác = trượt on-chain.
@@ -17,7 +19,7 @@
 // ép token bị đốt) — nó về ví người dựng lô như tiền thối. Đó là thiết kế on-chain hiện hành, không
 // phải lựa chọn của builder.
 
-import { Data, toUnit, type LucidEvolution, type TxSignBuilder, type UTxO } from "@lucid-evolution/lucid";
+import { Data, getAddressDetails, toUnit, type LucidEvolution, type TxSignBuilder, type UTxO } from "@lucid-evolution/lucid";
 
 import { compareInputOrder, isAtScript, qtyOf, readTally, readWeightParam, slotConfigOf } from "./chainRead.js";
 import type { GovernanceConfig } from "./config.js";
@@ -27,7 +29,7 @@ import { uniqueRefs, useScripts } from "./scriptUse.js";
 import { capOf, finalizeTallyNext, sumBatchNext } from "./tallyMath.js";
 import type { TallyDatum, VoteDatum, WeightParam } from "./types.js";
 import { readVote } from "./voteBuilders.js";
-import { VotedLedger, type BatchInsertPlan, type VotedEntry } from "./votedLedger.js";
+import { VotedLedger, replayBatchInsert, type BatchInsertPlan, type VotedEntry } from "./votedLedger.js";
 
 export type VotedLedgerSource = VotedLedger | readonly VotedEntry[];
 
@@ -40,17 +42,41 @@ async function resolveLedger(src: VotedLedgerSource, root: string): Promise<Vote
   throw new Error("GOV-TALLY-000: votedLedger phải là VotedLedger hoặc mảng VotedEntry");
 }
 
-/** Giá trị C3 chứng thực — mirror tally.ak ▸ attested_c3 (đúng MỘT ref mang (c3_policy, did)). */
-function attestedC3(refs: readonly UTxO[], c3Policy: string, did: string): bigint {
-  const hits = refs.filter((u) => qtyOf(u, c3Policy, did) === 1n);
-  if (hits.length !== 1) throw new Error(`GOV-TALLY-010: cần đúng 1 reference input chứng thực C3 cho did ${did}, thấy ${hits.length}`);
+/**
+ * Giá trị C3 chứng thực — mirror `tally.ak ▸ attested_c3`: trong TOÀN BỘ reference input của giao
+ * dịch, lọc những UTxO **nằm tại `Script(c3_script_hash)`** VÀ mang đúng 1 token `(c3_policy,
+ * did_commit)`; phải còn ĐÚNG MỘT ứng viên, datum inline là Int.
+ *
+ * On-chain không tìm được (0 hoặc ≥ 2 ứng viên, datum không phải Int inline) thì trả `-1` và mọi
+ * `c3_capped >= 0` bị bác — cả lô trượt. Builder ném thay vì trả `-1`, với mã riêng từng ca để người
+ * dựng biết sửa gì:
+ *   · `GOV-TALLY-016` — có UTxO mang token đúng tên nhưng nằm NGOÀI `Script(c3_script_hash)` (vd ở
+ *     ví thường). On-chain bỏ qua nó: datum ở đó do người giữ token tự viết, không phải bên phát hành.
+ *   · `GOV-TALLY-010` — số ứng viên hợp lệ ≠ 1.
+ *   · `GOV-TALLY-011` — datum không phải Int inline.
+ */
+export function attestedC3(refs: readonly UTxO[], c3Policy: string, c3ScriptHash: string, did: string): bigint {
+  const withToken = refs.filter((u) => qtyOf(u, c3Policy, did) === 1n);
+  const hits = withToken.filter((u) => isAtScript(u.address, c3ScriptHash));
+  if (hits.length === 0 && withToken.length > 0) {
+    throw new Error(
+      `GOV-TALLY-016: chứng thực C3 cho did ${did} nằm ngoài Script(c3_script_hash ${c3ScriptHash}) ` +
+      `(${withToken.map((u) => `${u.txHash}#${u.outputIndex}`).join(", ")}) — tally.ak ▸ attested_c3 không đọc nó`,
+    );
+  }
+  if (hits.length !== 1) {
+    throw new Error(`GOV-TALLY-010: cần đúng 1 reference input chứng thực C3 tại Script(${c3ScriptHash}) cho did ${did}, thấy ${hits.length}`);
+  }
   const d = hits[0]!.datum ? Data.from(hits[0]!.datum) : undefined;
   if (typeof d !== "bigint") throw new Error(`GOV-TALLY-011: datum chứng thực C3 của did ${did} phải là Int inline`);
   return d;
 }
 
-/** Mirror tally.ak ▸ c_sources_ok cho một phiếu. */
-function assertVoteSources(cfg: GovernanceConfig, wp: WeightParam, v: VoteDatum, c3Refs: readonly UTxO[]): void {
+/**
+ * Mirror `tally.ak ▸ c_sources_ok` cho một phiếu. `txRefs` = TOÀN BỘ reference input sẽ đi vào
+ * giao dịch (on-chain lọc trên `tx.reference_inputs`, không trên một danh sách riêng).
+ */
+function assertVoteSources(cfg: GovernanceConfig, wp: WeightParam, v: VoteDatum, txRefs: readonly UTxO[]): void {
   if (v.c1_capped !== 0n || v.c2_capped !== 0n || v.c4_capped !== 0n) {
     throw new Error(`GOV-TALLY-012: phiếu của did ${v.did_commit} khai c1/c2/c4 ≠ 0 — c_sources_ok bác cả lô; loại phiếu này khỏi lô`);
   }
@@ -61,8 +87,41 @@ function assertVoteSources(cfg: GovernanceConfig, wp: WeightParam, v: VoteDatum,
   if (v.c3_capped < 0n || v.c3_capped > capOf(wp.k3)) {
     throw new Error(`GOV-TALLY-014: c3 = ${v.c3_capped} ngoài [0, cap_3 = ${capOf(wp.k3)}] (did ${v.did_commit})`);
   }
-  const att = attestedC3(c3Refs, cfg.c3PolicyId, v.did_commit);
+  if (cfg.c3ScriptHash === "") {
+    // applyGovernanceBlueprint đã chặn cặp này (GOV-APPLY-004); config dựng tay thì chặn lại ở đây.
+    throw new Error("GOV-TALLY-017: pha bật C3 mà config không có c3ScriptHash — attested_c3 không khớp địa chỉ nào, lô tự khoá");
+  }
+  const att = attestedC3(txRefs, cfg.c3PolicyId, cfg.c3ScriptHash, v.did_commit);
   if (att < v.c3_capped) throw new Error(`GOV-TALLY-015: c3 khai ${v.c3_capped} > giá trị chứng thực ${att} (did ${v.did_commit})`);
+}
+
+/**
+ * Mirror phía OUTPUT của `tally.ak ▸ utxo_preserved`, soát trên giao dịch ĐÃ dựng: đúng MỘT output
+ * tại `Script(tally_script_hash)`, cùng địa chỉ đầy đủ với Tally vào, KHÔNG reference script
+ * (`R-ADDR-PRESERVE`; acc không có nhánh thu hồi nên min-ADA phình theo script gắn kèm bị khoá
+ * vĩnh viễn). Builder không bao giờ truyền script vào `pay.ToAddressWithData` của Tally — phép soát
+ * này ghim điều đó để một lần sửa sau (hoặc một phiên bản Lucid tự gắn) không lọt im lặng.
+ * Phía INPUT (đúng 1 token `(tally_policy, proposal_id)`) đã kiểm ở `readTally`.
+ */
+function assertTallyOutputShape(tx: TxSignBuilder, tallyIn: UTxO, cfg: GovernanceConfig): void {
+  const outs = tx.toTransaction().body().outputs();
+  const inHex = getAddressDetails(tallyIn.address).address.hex;
+  let n = 0;
+  for (let i = 0; i < outs.len(); i++) {
+    const o = outs.get(i);
+    const a = o.address();
+    // So theo payment credential (util.ak ▸ is_at_script) và theo byte địa chỉ — không qua bech32,
+    // vì tiền tố bech32 phụ thuộc mạng còn byte thì không.
+    if (a.payment_cred()?.as_script()?.to_hex() !== cfg.tallyScriptHash) continue;
+    n++;
+    if (a.to_hex() !== inHex) {
+      throw new Error(`GOV-TALLY-032: Tally ra ở ${a.to_hex()} ≠ địa chỉ Tally vào ${inHex} (utxo_preserved ép địa chỉ đầy đủ)`);
+    }
+    if (o.script_ref() !== undefined) {
+      throw new Error("GOV-TALLY-030: Tally ra mang reference script — tally.ak ▸ utxo_preserved ép reference_script == None");
+    }
+  }
+  if (n !== 1) throw new Error(`GOV-TALLY-031: giao dịch có ${n} output tại Script(tally), utxo_preserved đòi đúng 1`);
 }
 
 function assertTallyUtxo(u: UTxO, cfg: GovernanceConfig): TallyDatum {
@@ -114,32 +173,41 @@ export async function buildSumBatchTx(p: SumBatchParams): Promise<SumBatchResult
     if (compareInputOrder(ordered[i - 1]!, ordered[i]!) === 0) throw new Error("GOV-TALLY-004: một UTxO phiếu xuất hiện hai lần trong lô");
   }
   const c3Refs = p.c3AttestUtxos ?? [];
+  const used = useScripts(p.lucid.newTx(), cfg, [
+    { kind: "tally", role: "spend" }, { kind: "vote", role: "spend" }, { kind: "nullifier", role: "mint" },
+  ]);
+  // Đúng danh sách `tx.reference_inputs` sẽ lên chuỗi — kiểm C3 trên chính danh sách này.
+  const txRefs = uniqueRefs([p.weightParamUtxo], c3Refs, used.refs);
   const votes = ordered.map((u) => {
     const v = readVote(u, cfg);
     if (v.proposal_id !== td.proposal_id) {
       throw new Error(`GOV-TALLY-005: phiếu ${u.txHash}#${u.outputIndex} thuộc proposal ${v.proposal_id}, không phải ${td.proposal_id}`);
     }
-    assertVoteSources(cfg, wp, v, c3Refs);
+    assertVoteSources(cfg, wp, v, txRefs);
     return v;
   });
 
   const ledger = await resolveLedger(p.votedLedger, td.voted_root);            // GOV-LEDGER-001
-  const plan = await ledger.planBatchInsert(votes.map((v) => ({ didCommit: v.did_commit, nullifier: v.nullifier })));
+  const inputOrderEntries = votes.map((v) => ({ didCommit: v.did_commit, nullifier: v.nullifier }));
+  const plan = await ledger.planBatchInsert(inputOrderEntries);
+  // Chạy lại `book_root_after` trên đúng cặp (phiếu theo thứ tự INPUT, insert_proofs sẽ nằm trong
+  // redeemer) — lệch thứ tự ⇒ GOV-LEDGER-007 ở đây thay vì trượt ở validator.
+  const replayed = replayBatchInsert(td.voted_root, inputOrderEntries, plan.insertProofs);
+  if (replayed !== plan.rootAfter) {
+    throw new Error(`GOV-TALLY-006: gốc sổ chạy lại ${replayed} ≠ gốc kế hoạch ${plan.rootAfter}`);
+  }
   const tallyDatumOut = sumBatchNext(td, wp, votes, plan.rootAfter);
 
   const burn: Record<string, bigint> = {};
   for (const v of votes) burn[toUnit(cfg.nullifierPolicyId, v.nullifier)] = -1n;
 
-  const used = useScripts(p.lucid.newTx(), cfg, [
-    { kind: "tally", role: "spend" }, { kind: "vote", role: "spend" }, { kind: "nullifier", role: "mint" },
-  ]);
   let txb = used.txb
     .collectFrom([p.tallyUtxo], tallyRedeemerToCbor({ kind: "SumBatch", insert_proofs: plan.insertProofs }));
   ordered.forEach((u, i) => {
     txb = txb.collectFrom([u], voteRedeemerToCbor({ kind: "ConsumeForTally", book_proof: plan.membershipProofs[i]! }));
   });
   const tx = await txb
-    .readFrom(uniqueRefs([p.weightParamUtxo], c3Refs, used.refs))
+    .readFrom(txRefs)
     .mintAssets(burn, nullifierRedeemerToCbor({
       kind: "BurnNullifier",
       proposal_id: td.proposal_id,
@@ -149,6 +217,7 @@ export async function buildSumBatchTx(p: SumBatchParams): Promise<SumBatchResult
     .validFrom(loMs)
     .validTo(hiMs)
     .complete();
+  assertTallyOutputShape(tx, p.tallyUtxo, cfg);
 
   return { tx, epoch, tallyDatumOut, orderedVotes: votes, plan };
 }
@@ -184,6 +253,7 @@ export async function buildFinalizeTallyTx(p: FinalizeTallyParams): Promise<{ tx
     .validFrom(loMs)
     .validTo(hiMs)
     .complete();
+  assertTallyOutputShape(tx, p.tallyUtxo, cfg);
   return { tx, epoch, tallyDatumOut };
 }
 

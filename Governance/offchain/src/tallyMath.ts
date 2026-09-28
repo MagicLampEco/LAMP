@@ -1,9 +1,9 @@
 // Số học Tally + bảng knots — BẢN CHÉP CÓ NHÃN của logic on-chain, để builder dựng ĐÚNG datum
 // ra mà validator so bằng `==`.
 //
-// Nguồn (đọc 2026-09-29, gov-v2 @ 46a3a36):
+// Nguồn (đọc 2026-09-29, gov-v2 @ f2e1b31):
 //   `onchain/lib/magiclamp/governance/power.ak`        ▸ interp, cap_of, vp_raw, scale
-//   `onchain/lib/magiclamp/governance/weight_guard.ak` ▸ is_live, dominates, d8_ok
+//   `onchain/lib/magiclamp/governance/weight_guard.ak` ▸ knots_wellformed, is_live, dominates, d8_ok
 //   `onchain/lib/magiclamp/governance/tally.ak`        ▸ derive_batch, insert_desc, take_n,
 //        batch_entries, merge_top, sigma_vp_raw, cap_per_did, apply_clamp, pass
 //   `onchain/validators/tally.ak`                      ▸ c_sources_ok (phần kiểm được off-chain)
@@ -72,18 +72,69 @@ export function isLive(knots: readonly Knot[]): boolean {
   return lastPow(knots) > first.pow;
 }
 
-/** weight_guard.ak ▸ dominates. */
+/**
+ * weight_guard.ak ▸ knots_wellformed (G0) — trả LÝ DO bảng sai khuôn, hoặc `null` khi hợp khuôn.
+ *
+ * Bảy vế, ghép AND như on-chain: `length >= 2` · `first.c == 0` · `first.pow == 0` · `c` tăng
+ * NGHIÊM NGẶT · `pow` không giảm · `pow >= 0` · `last_c >= 1`. On-chain không có vế `pow >= 0`
+ * riêng — nó là hệ quả của `first.pow == 0` + `pow` không giảm; SDK vẫn nêu tên nó để thông báo
+ * lỗi chỉ đúng chỗ. Tương tự `last_c >= 1` là hệ quả của `first.c == 0` + `c` tăng nghiêm ngặt +
+ * `length >= 2` (chú thích "ĐỘT BIẾN TƯƠNG ĐƯƠNG" tại vế đó trong `weight_guard.ak`) — giữ lại
+ * vì on-chain giữ nó.
+ *
+ * Một nguồn trong SDK: `knotsWellformed` và `d8Ok` đều đọc từ hàm này.
+ */
+export function knotsProblem(knots: readonly Knot[]): string | null {
+  if (!Array.isArray(knots)) return "bảng knots không phải mảng";
+  if (knots.length < 2) return `bảng có ${knots.length} mốc, cần ≥ 2`;
+  const first = knots[0]!;
+  if (first.c !== 0n) return `mốc đầu c = ${first.c}, phải = 0`;
+  if (first.pow !== 0n) return `mốc đầu pow = ${first.pow}, phải = 0 (pow(0) = 0 — VotingPower CONTRACT §1)`;
+  for (let i = 1; i < knots.length; i++) {
+    const prev = knots[i - 1]!;
+    const k = knots[i]!;
+    if (!(k.c > prev.c)) return `c không tăng nghiêm ngặt ở mốc ${i} (${prev.c} → ${k.c})`;
+    if (!(k.pow >= prev.pow)) return `pow giảm ở mốc ${i} (${prev.pow} → ${k.pow})`;
+    if (k.pow < 0n) return `pow âm ở mốc ${i} (${k.pow})`;
+  }
+  if (capOf(knots) < 1n) return `mốc cuối c = ${capOf(knots)}, phải ≥ 1`;
+  return null;
+}
+
+/** weight_guard.ak ▸ knots_wellformed. */
+export function knotsWellformed(knots: readonly Knot[]): boolean {
+  return knotsProblem(knots) === null;
+}
+
+/**
+ * weight_guard.ak ▸ dominates. Miền chung `[1, min(cap_a, cap_b)]` RỖNG ⇒ `false` (không phải
+ * "đúng rỗng"): "không so được" không được đọc thành "đã so và đạt".
+ */
 export function dominates(a: readonly Knot[], b: readonly Knot[]): boolean {
   const hi = capOf(a) < capOf(b) ? capOf(a) : capOf(b);
+  if (hi < 1n) return false;
   const points = [...a.map((k) => k.c), ...b.map((k) => k.c)].filter((c) => c >= 1n && c <= hi);
-  const all = hi >= 1n ? [hi, ...points] : points;
-  return all.every((c) => interp(a, c) >= interp(b, c));
+  return [hi, ...points].every((c) => interp(a, c) >= interp(b, c));
+}
+
+/** Lý do bảng vi phạm cổng D8 đầy đủ (G0 ∧ G1 ∧ G2 ∧ G3), hoặc `null` khi đạt. */
+export function d8Problem(wp: Pick<WeightParam, "k1" | "k2" | "k3" | "k4">): string | null {
+  const tables = [["k1", wp.k1], ["k2", wp.k2], ["k3", wp.k3], ["k4", wp.k4]] as const;
+  for (const [name, k] of tables) {
+    const why = knotsProblem(k);
+    if (why !== null) return `G0 ${name}: ${why}`;
+  }
+  for (const [name, k] of tables) {
+    if (!isLive(k)) return `G3 ${name}: bảng phẳng (w = 0) — yếu tố bị tắt`;
+  }
+  if (!dominates(wp.k1, wp.k2)) return "G1: k1 không nằm trên k2 (w_1 < w_2)";
+  if (!dominates(wp.k3, wp.k4)) return "G2: k3 không nằm trên k4 (w_3 < w_4)";
+  return null;
 }
 
 /** weight_guard.ak ▸ d8_ok. */
 export function d8Ok(wp: Pick<WeightParam, "k1" | "k2" | "k3" | "k4">): boolean {
-  return isLive(wp.k1) && isLive(wp.k2) && isLive(wp.k3) && isLive(wp.k4)
-    && dominates(wp.k1, wp.k2) && dominates(wp.k3, wp.k4);
+  return d8Problem(wp) === null;
 }
 
 /** tally.ak ▸ derive_batch. */

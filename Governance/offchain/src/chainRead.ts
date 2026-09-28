@@ -11,7 +11,7 @@ import {
 
 import { decodeTallyDatum, decodeWeightParam } from "./datum.js";
 import type { SlotConfig } from "./epochWindow.js";
-import { d8Ok } from "./tallyMath.js";
+import { d8Problem } from "./tallyMath.js";
 import type { OutputRef, TallyDatum, WeightParam } from "./types.js";
 
 export function utxoRef(u: UTxO): OutputRef {
@@ -85,7 +85,8 @@ export function readWeightParam(u: UTxO, weightParamPolicyId: string, expectRef:
     throw new Error(`GOV-CHAIN-011: UTxO bảng tham số phải mang đúng 1 token của weight_param_policy, thấy ${JSON.stringify(toks.map(([n, q]) => [n, String(q)]))}`);
   }
   const wp = decodeWeightParam(Data.from(inlineDatumOf(u, "UTxO bảng tham số")));
-  if (!d8Ok(wp)) throw new Error("GOV-CHAIN-012: bảng WeightParam vi phạm cổng D8 (weight_guard.d8_ok) — on-chain sẽ bác");
+  const d8 = d8Problem(wp);
+  if (d8 !== null) throw new Error(`GOV-CHAIN-012: bảng WeightParam vi phạm cổng D8 (weight_guard.d8_ok) — on-chain sẽ bác: ${d8}`);
   return wp;
 }
 

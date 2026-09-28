@@ -3,7 +3,8 @@
 // On-chain (`onchain/validators/weight_param_nft.ak`): tiêu `seed_ref` · đúng 1 tên (policy,
 // phase_tag) ×1, không policy nào khác · đúng MỘT output giữ NFT, tại `Script(policy_id)`, không
 // reference script · datum `WeightParam`: 1 ≤ θ_num ≤ θ_den, 2·θ_num ≥ θ_den, bft_floor ∈
-// [bft_floor_min, bft_floor_max], quorum_voter ≥ quorum_voters_min, quorum_vp ≥ 1, D8.
+// [bft_floor_min, bft_floor_max], quorum_voter ≥ quorum_voters_min, quorum_vp ≥ 1, D8 (gồm G0
+// `knots_wellformed` — mọi bảng hợp khuôn, `pow(0) = 0`).
 //
 // UTxO ra là BEACON KHOÁ VĨNH VIỄN (script không có nhánh spend) — min-ADA đặt ở đây là mất hẳn.
 // Builder mặc định mức thấp và KHÔNG tự thêm gì vào value.
@@ -14,7 +15,7 @@ import { networkOf, sameRef, scriptAddress, utxoRef } from "./chainRead.js";
 import type { GovernanceConfig } from "./config.js";
 import { weightParamNftRedeemerToCbor, weightParamToCbor } from "./datum.js";
 import { useScripts } from "./scriptUse.js";
-import { d8Ok } from "./tallyMath.js";
+import { d8Problem, knotsProblem } from "./tallyMath.js";
 import type { WeightParam } from "./types.js";
 
 export interface MintWeightParamParams {
@@ -40,7 +41,14 @@ export function assertWeightParamMintable(
   }
   if (wp.quorum_voter_threshold < b.quorumVotersMin) bad("005", `quorum_voter_threshold ${wp.quorum_voter_threshold} < ${b.quorumVotersMin}`);
   if (wp.quorum_vp_threshold < 1n) bad("006", `quorum_vp_threshold ${wp.quorum_vp_threshold} < 1`);
-  if (!d8Ok(wp)) bad("007", "bảng knots vi phạm D8 (weight_guard.d8_ok)");
+  // G0 tách mã riêng khỏi G1–G3: bảng SAI KHUÔN và bảng hợp khuôn nhưng lệch trọng số là hai lỗi
+  // khác nhau về cách sửa (đổi hình dạng bảng vs đổi độ dốc), người dựng phải phân biệt được.
+  for (const [name, k] of [["k1", wp.k1], ["k2", wp.k2], ["k3", wp.k3], ["k4", wp.k4]] as const) {
+    const why = knotsProblem(k);
+    if (why !== null) bad("008", `bảng ${name} sai khuôn (weight_guard.knots_wellformed): ${why}`);
+  }
+  const d8 = d8Problem(wp);
+  if (d8 !== null) bad("007", `bảng knots vi phạm D8 (weight_guard.d8_ok): ${d8}`);
 }
 
 export async function buildMintWeightParamTx(p: MintWeightParamParams): Promise<{ tx: TxSignBuilder; unit: string; address: string }> {
