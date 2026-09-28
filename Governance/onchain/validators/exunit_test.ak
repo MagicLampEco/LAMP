@@ -35,6 +35,7 @@
 use aiken/builtin
 use aiken/collection/list
 use aiken/interval
+use aiken/merkle_patricia_forestry as mpf
 use aiken/merkle_patricia_forestry.{Proof}
 use cardano/address.{Address, Script, VerificationKey}
 use cardano/assets.{PolicyId, Value}
@@ -42,11 +43,13 @@ use cardano/transaction.{
   InlineDatum, Input, NoDatum, Output, OutputReference, Transaction, placeholder,
 }
 use exunit_fixtures as fx
-use magiclamp/governance/names.{nullifier_name}
+use governance
+use magiclamp/governance/names.{nullifier_name, proposal_id_of}
 use magiclamp/governance/power.{Knot, scale}
 use magiclamp/governance/tally as tally_lib
 use magiclamp/governance/types.{
-  Summing, TallyDatum, TopEntry, VoteDatum, WeightParam, Yes,
+  Open, ProposalResult, Summing, TallyDatum, TopEntry, VoteDatum, WeightParam,
+  Yes,
 }
 use magiclamp/governance/weight_guard
 use nullifier
@@ -2069,4 +2072,239 @@ test h0_e10_s0_on_votes() {
 test h0_e10_s0_on_nl() {
   let s = scn_h(S0, 10, True, bft, 0)
   force(s) && run_nl(s)
+}
+
+// ════════════════════════════════════════════════════════════
+// `governance ▸ OpenProposal` — bảng knots 8 MỐC THẬT (cổng D8 chạy ở nhánh này)
+//
+// Vì sao phải đo riêng: lượt tối ưu 2026-09-29 gỡ cổng D8 khỏi đường nóng
+// (`tally ▸ SumBatch` dùng `read_weight_param_skip_d8`), và một trong bốn chỗ giữ
+// lại nghĩa vụ đó là `OpenProposal` — nhánh này gọi `weight_ref.read_weight_param`
+// bản CÓ D8. `d8_ok` trên bảng 8 mốc là khoản lớn nhất của một lượt `SumBatch` cũ
+// (3 645 089 mem), nên câu "Open đắt thêm vì D8" cần một con số chứ không phải một
+// suy luận: Open chạy `d8_ok` ĐÚNG MỘT LẦN cho cả đời một proposal, còn `SumBatch`
+// chạy nó mỗi lô.
+//
+// Giao dịch dựng trọn theo đúng khuôn của ma trận trên: tiêu hạt giống + 1 input phí,
+// đúc `(gov_policy, H(seed))` + `(tally_policy, H(seed))`, reference input = 2 UTxO
+// mang reference script + bảng tham số ĐẶT CUỐI (`read_weight_param` dùng `list.find`
+// — đây là thứ tự đắt nhất), output = Proposal UTxO + Tally UTxO + output thối.
+// Chi phí script = ca `_run` − ca `_base`, cùng quy ước với phần trên.
+//
+// Nhánh này KHÔNG có vòng lặp theo số phiếu: nó đọc MỘT bảng tham số và ghi HAI
+// datum khởi tạo. Số bước chỉ phụ thuộc số mốc của bảng, nên một con số ở bảng 8 mốc
+// là đủ — không cần ma trận theo k.
+// ════════════════════════════════════════════════════════════
+
+const gov_policy: PolicyId =
+  #"90019001900190019001900190019001900190019001900190019001"
+
+/// `_phase_tag` — apply-param không đi vào logic, giữ đúng cỡ thật.
+const gov_tag: ByteArray = #"5031"
+
+const delta_min: Int = 2
+
+/// Thời hạn phục hồi DID (soft-pin theo mạng). Cửa sổ bỏ phiếu phải NGẮN HƠN
+/// (`[DID-RECOVERY-TRUST]`), và `close_e − open_e = 2` ở tệp này thoả.
+const recovery_epochs: Int = 15
+
+fn open_seed() -> OutputReference {
+  OutputReference {
+    transaction_id: #"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    output_index: 3,
+  }
+}
+
+fn ref_script_in(ix: Int, h: ByteArray) -> Input {
+  Input {
+    output_reference: OutputReference {
+      transaction_id: #"4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e",
+      output_index: ix,
+    },
+    output: Output {
+      address: vk_addr(ref_pkh),
+      value: assets.from_lovelace(40_000_000),
+      datum: NoDatum,
+      reference_script: Some(h),
+    },
+  }
+}
+
+type OpenScn {
+  tx: Transaction,
+  red: governance.GovernanceRedeemer,
+}
+
+fn open_scn() -> OpenScn {
+  let seed = open_seed()
+  let prop = proposal_id_of(seed)
+  let seed_in =
+    Input {
+      output_reference: seed,
+      output: Output {
+        address: vk_addr(fee_pkh),
+        value: assets.from_lovelace(20_000_000),
+        datum: NoDatum,
+        reference_script: None,
+      },
+    }
+  let fee_in =
+    Input {
+      output_reference: OutputReference {
+        transaction_id: #"fefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefe",
+        output_index: 0,
+      },
+      output: Output {
+        address: vk_addr(fee_pkh),
+        value: assets.from_lovelace(20_000_000),
+        datum: NoDatum,
+        reference_script: None,
+      },
+    }
+  let wp_in =
+    Input {
+      output_reference: wp_ref(),
+      output: out(
+        script_addr(wp_policy),
+        assets.from_lovelace(5_000_000) |> assets.add(wp_policy, gov_tag, 1),
+        wp_of(bft),
+      ),
+    }
+  let pr =
+    ProposalResult {
+      proposal_id: prop,
+      status: Open,
+      spend_spec_hash: #"",
+      execute_after_epoch: close_e + delta_min,
+      released_cumulative: 0,
+    }
+  let ts =
+    TallyDatum {
+      proposal_id: prop,
+      phase: Summing,
+      weight_param_ref: wp_ref(),
+      yes_power_raw: 0,
+      no_power_raw: 0,
+      abstain_power_raw: 0,
+      voters_acc: 0,
+      yes_voters_acc: 0,
+      top_did_vp: [],
+      yes_power_eff: 0,
+      no_power_eff: 0,
+      abstain_power_eff: 0,
+      vote_open_epoch: open_e,
+      vote_close_epoch: close_e,
+      voted_root: mpf.root(mpf.empty),
+    }
+  let tx =
+    Transaction {
+      ..placeholder,
+      inputs: [seed_in, fee_in],
+      reference_inputs: [
+        ref_script_in(0, gov_policy),
+        ref_script_in(1, tally_sh),
+        wp_in,
+      ],
+      outputs: [
+        out(
+          script_addr(gov_policy),
+          assets.from_lovelace(2_000_000) |> assets.add(gov_policy, prop, 1),
+          pr,
+        ),
+        out(
+          script_addr(tally_sh),
+          assets.from_lovelace(2_000_000) |> assets.add(tally_policy, prop, 1),
+          ts,
+        ),
+        Output {
+          address: vk_addr(fee_pkh),
+          value: assets.from_lovelace(34_000_000),
+          datum: NoDatum,
+          reference_script: None,
+        },
+      ],
+      mint: assets.zero
+        |> assets.add(gov_policy, prop, 1)
+        |> assets.add(tally_policy, prop, 1),
+      validity_range: interval.between(
+        open_e * ms_ep + 1_000,
+        open_e * ms_ep + 600_000,
+      ),
+    }
+  OpenScn {
+    tx,
+    red: governance.OpenProposal {
+      seed,
+      vote_open_epoch: open_e,
+      vote_close_epoch: close_e,
+      weight_param_ref: wp_ref(),
+    },
+  }
+}
+
+fn open_force(s: OpenScn) -> Bool {
+  let d: Data = s
+  builtin.length_of_bytearray(builtin.serialise_data(d)) > 0
+}
+
+fn open_run(s: OpenScn) -> Bool {
+  let rd: Data = s.red
+  expect r: governance.GovernanceRedeemer = rd
+  governance.governance.mint(
+    tally_policy,
+    tally_sh,
+    wp_policy,
+    ms_ep,
+    delta_min,
+    recovery_epochs,
+    gov_tag,
+    r,
+    gov_policy,
+    s.tx,
+  )
+}
+
+/// Bảng đo phải là bảng validator THẬT nhận, và phải đúng 8 mốc — không có vế này thì
+/// con số dưới nói về một bảng khác bảng mà câu chuyện đang bàn.
+test gov_open_bang_dung_8_moc() {
+  let wp = wp_of(bft)
+  and {
+    list.length(wp.k1) == 8,
+    list.length(wp.k2) == 8,
+    list.length(wp.k3) == 8,
+    list.length(wp.k4) == 8,
+  }
+}
+
+// ── Khoản D8 đo RIÊNG, cùng bảng, cùng tệp ──
+//
+// Cặp `_d8_base` / `_d8_run` khác nhau ĐÚNG một lời gọi `weight_guard.d8_ok`. Có nó
+// thì câu "phần lớn chi phí Open là cổng D8" là một phép TRỪ trong cùng một lần chạy,
+// không phải một tỉ số ghép từ hai phép đo ở hai điều kiện khác nhau. `_d8_run` xanh
+// cũng chính là phép khẳng định bảng này THOẢ D8.
+
+test gov_open_d8_base() {
+  let wp = wp_of(bft)
+  let d: Data = wp
+  builtin.length_of_bytearray(builtin.serialise_data(d)) > 0
+}
+
+test gov_open_d8_run() {
+  let wp = wp_of(bft)
+  let d: Data = wp
+  builtin.length_of_bytearray(builtin.serialise_data(d)) > 0 && weight_guard.d8_ok(
+    wp.k1,
+    wp.k2,
+    wp.k3,
+    wp.k4,
+  )
+}
+
+test gov_open_base() {
+  open_force(open_scn())
+}
+
+test gov_open_run() {
+  let s = open_scn()
+  open_force(s) && open_run(s)
 }

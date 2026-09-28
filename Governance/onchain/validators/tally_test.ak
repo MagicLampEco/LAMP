@@ -1059,6 +1059,110 @@ test sum_c3_hai_chung_thuc_tu_choi() fail {
   True
 }
 
+// ── TRẦN của `c3_capped`: vế `v.c3_capped <= cap3` ──
+//
+// Hai ca dưới đây khác nhau ĐÚNG MỘT đơn vị của `c3_capped`, và chứng thực C3 đi kèm
+// luôn bằng ĐÚNG số khai — nên vế `attested_c3(…) >= v.c3_capped` thoả ở CẢ HAI ca và
+// vế duy nhất phân định chúng là phép so với trần.
+//
+// Vì sao vế đó KHÔNG có ca nào ghim trước lượt này, và vì sao không ca nào ở mức
+// POWER ghim được nó: `interp` bão hoà ở knot cuối, còn `cap_of` trả đúng `c` của
+// knot cuối ⇒ `c3 = cap` và `c3 = cap + 1` cho CÙNG một `pow`. Cộng thêm
+// `[VP-ZERO-FACTOR]` (`c1 = c2 = c4 = 0` bị cổng nguồn ép ⇒ VP = 0 bất kể `c3`) thì
+// mọi ca đọc kết quả qua power XANH ở cả hai cực — tức không đo gì. Ca âm phải đặt
+// thẳng vào cổng nguồn, chỗ con số khai bị so với trần TRƯỚC khi đi vào bảng.
+//
+// Đo bằng phép gỡ chốt (bản chép ngoài cây làm việc): nới vế thành
+// `v.c3_capped <= cap3 + 1` ⇒ ca âm dưới đây lật; không nới thì toàn bộ bộ kiểm cũ
+// vẫn xanh.
+
+/// Đối chứng DƯƠNG — khai ĐÚNG BẰNG trần `cap_of(k3)`. Dựng bằng cùng khuôn
+/// `reference_inputs` TAY như ca âm ngay dưới, nên cặp này khác nhau đúng một con số.
+test sum_c3_khai_dung_bang_cap_qua() {
+  let cap = power.cap_of(lin_knots())
+  let v = vote_datum(Yes, cap, did_of(1))
+  let d_in = summing(0, 0, 0, 0, 0, [])
+  let d_out =
+    summing_r(
+      vp_of(cap),
+      0,
+      0,
+      1,
+      1,
+      [TopEntry { vp_raw: vp_of(cap), choice: Yes }],
+      fx.root_a1,
+    )
+  let tx =
+    Transaction {
+      ..sum_tx(d_in, d_out, [vote_input(v, 1)], [v], burn_all([v])),
+      reference_inputs: [wp_input(10), c3_ref(did_of(1), cap, 0)],
+    }
+  and {
+    run_sum(tx, d_in, [fx.ins_a1()]),
+    // tiền đề: con số khai ĐÚNG ở biên trên, không phải một giá trị nhỏ tuỳ ý.
+    v.c3_capped == power.cap_of(lin_knots()),
+  }
+}
+
+/// (T1b) — khai VƯỢT trần đúng MỘT đơn vị, chứng thực C3 nâng theo cho bằng số khai.
+///
+/// Vì sao là đòn thật chứ không phải vệ sinh: chứng thực là một con số do bên phát
+/// hành C3 viết, còn trần `cap_of(k3)` là thứ bảng tham số ĐÃ CAM KẾT lúc Open ấn
+/// định. Không có vế trần thì một bên phát hành C3 (hoặc một pha đặt `c3_policy` sai)
+/// đẩy được `c3_capped` lên bao nhiêu tuỳ ý, và con số đó đi thẳng vào `top_did_vp` —
+/// chỗ quyết định ai bị clamp ở `Finalize`. Hôm nay `[VP-ZERO-FACTOR]` làm mọi VP
+/// bằng 0 nên hậu quả chưa hiện ra; vế trần là thứ phải còn nguyên khi
+/// `[C1-C2-C4-SOURCE]` có nguồn.
+test sum_c3_khai_vuot_cap_tu_choi() fail {
+  let over = power.cap_of(lin_knots()) + 1
+  let v = vote_datum(Yes, over, did_of(1))
+  let d_in = summing(0, 0, 0, 0, 0, [])
+  let d_out =
+    summing_r(
+      vp_of(over),
+      0,
+      0,
+      1,
+      1,
+      [TopEntry { vp_raw: vp_of(over), choice: Yes }],
+      fx.root_a1,
+    )
+  let tx =
+    Transaction {
+      ..sum_tx(d_in, d_out, [vote_input(v, 1)], [v], burn_all([v])),
+      reference_inputs: [wp_input(10), c3_ref(did_of(1), over, 0)],
+    }
+  expect run_sum(tx, d_in, [fx.ins_a1()])
+  True
+}
+
+/// Vế SÀN của nguồn C3: `v.c3_capped >= 0`. Khai ÂM kèm chứng thực cũng âm
+/// tại đúng `Script(c3_sh)` ⇒ vế chứng thực (`attested >= khai`) và vế trần
+/// đều thoả, chỉ vế sàn bác. Trước ca này, gỡ vế sàn thì 656/656 vẫn xanh
+/// (đo bằng đột biến `v.c3_capped >= 0,` → `True,`, 2026-09-29).
+test sum_c3_khai_am_tu_choi() fail {
+  let neg = -1
+  let v = vote_datum(Yes, neg, did_of(1))
+  let d_in = summing(0, 0, 0, 0, 0, [])
+  let d_out =
+    summing_r(
+      vp_of(neg),
+      0,
+      0,
+      1,
+      1,
+      [TopEntry { vp_raw: vp_of(neg), choice: Yes }],
+      fx.root_a1,
+    )
+  let tx =
+    Transaction {
+      ..sum_tx(d_in, d_out, [vote_input(v, 1)], [v], burn_all([v])),
+      reference_inputs: [wp_input(10), c3_ref(did_of(1), neg, 0)],
+    }
+  expect run_sum(tx, d_in, [fx.ins_a1()])
+  True
+}
+
 /// (T1) — `vd.nullifier` không bằng `H(did‖prop)`. Đốt đúng tên bịa đó để
 /// `nullifiers_burned` vẫn thoả, nên ca đỏ ở (T1).
 test sum_nullifier_bia_tu_choi() fail {
