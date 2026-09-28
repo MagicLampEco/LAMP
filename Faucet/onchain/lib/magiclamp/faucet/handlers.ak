@@ -23,19 +23,18 @@ use cardano/transaction.{InlineDatum, OutputReference, Transaction}
 use magiclamp/faucet/ledger.{
   AccountRedeemer, BurnAccount, FaucetAccount, FaucetNftRedeemer, MintAccount,
   MintPool, PoolDatum, ReclaimIdle, TopUp, Use, acct_name, acct_name_prefix,
-  max_claims_ceiling, pool_nft_name,
+  empty_opened_root, max_claims_ceiling, pool_nft_name,
 }
 use magiclamp/faucet/util
 
-/// Ngưỡng reclaim, tính bằng CỬA SỔ — hằng protocol = 1001 cửa sổ. Độ dài thật
-/// phụ thuộc tham số `ms_per_epoch` của mạng: ≈ **13,7 năm** với cửa sổ 5 ngày
-/// (Preprod/Mainnet), ≈ 2,7 năm với cửa sổ 1 ngày (Preview). Con số 1001 lấy
-/// theo thương hiệu drip 1001, KHÔNG theo một khoảng thời gian nào ai chọn; ai
-/// đọc "1001" thành "nhanh" là đọc sai một bậc độ lớn. Hạ con số này là đổi
-/// hằng protocol, chờ chủ dự án quyết.
+/// Ngưỡng reclaim, tính bằng CỬA SỔ — hằng protocol = 72 cửa sổ. Độ dài thật phụ
+/// thuộc tham số `ms_per_epoch` của mạng: ≈ **1 năm** với cửa sổ 5 ngày
+/// (Preprod/Mainnet), ≈ **72 ngày** với cửa sổ 1 ngày (Preview). Con số chọn theo
+/// một khoảng thời gian thật: một account bỏ không tròn một năm thì tLAMP trong
+/// nó nên quay về pool, vì `tlamp_policy` là one-shot nên pool cạn là bất khả hồi.
 /// Hằng compile-time ở đây là NGUỒN DUY NHẤT — `FaucetConfig` KHÔNG còn bản sao
 /// `reclaim_epochs` (bản sao đó trước đây không được cưỡng chế ở đâu cả).
-const reclaim_epochs_const: Int = 1001
+const reclaim_epochs_const: Int = 72
 
 // ─────────────────────────────────────────────────────────────────────────
 // USE (chủ DID dùng tLAMP test):
@@ -290,6 +289,15 @@ pub fn nft_mint(
       expect pd.cfg.max_claims_per_window > 0
       // C-MP-7: trần compile-time.
       expect pd.cfg.max_claims_per_window <= max_claims_ceiling
+      // ── C-MP-8: sổ `opened_root` khởi tạo phải RỖNG ─────────────────────
+      // Đây là NEO của phép quy nạp giữ INV-ONE-ACCT. Không có dòng này, người
+      // deploy đặt được một gốc bất kỳ: gốc của một cây do chính họ dựng cho
+      // sẵn "đã có account" cho mọi DID họ chọn (khoá những DID đó khỏi faucet
+      // vĩnh viễn, vì `ClaimOpen` đòi chứng minh VẮNG), hoặc một gốc rác 32 byte
+      // không ứng với cây nào — lúc đó KHÔNG ai dựng nổi bằng chứng và cả
+      // `ClaimOpen` lẫn `Reclaim` chết cùng lúc. POOL NFT one-shot ⇒ không đúc
+      // lại được ⇒ cả hai đường đều bất khả hồi.
+      expect pd.opened_root == empty_opened_root()
       True
     }
 

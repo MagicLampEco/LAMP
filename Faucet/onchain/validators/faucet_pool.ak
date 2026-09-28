@@ -32,28 +32,36 @@
 //       Đây là chốt DUY NHẤT chặn vét pool; `tlamp_policy` one-shot nên pool cạn
 //       là bất khả hồi.
 //   (b) COOLDOWN — `cfg.cooldown_epochs` giữa hai claim của cùng MỘT CHUỖI
-//       ACCOUNT (`ClaimAgain`). Nó KHÔNG giới hạn số account mà một `did_name`
-//       mở được, nên một DID chiếm được trọn quota của tầng (a) trong một cửa
-//       sổ. Tầng (b) là tiện lợi kế toán, KHÔNG phải cơ chế công bằng.
-//       Điểm treo: `[FAUCET-ACCT-UNIQUE]`.
+//       ACCOUNT (`ClaimAgain`). Tự nó KHÔNG giới hạn số account mà một `did_name`
+//       mở được; thứ làm việc đó là tầng (c) dưới đây. Trước khi có tầng (c),
+//       một DID chiếm được trọn quota của tầng (a) trong một cửa sổ.
+//   (c) MỘT DID MỘT ACCOUNT — `PoolDatum.opened_root` (sổ MPF các khoá DID đang
+//       có account) + `ClaimOpen`/`Reclaim` phải nộp bằng chứng. Đây là thứ làm
+//       cooldown ở tầng (b) thành ràng buộc THẬT trên một DID, không chỉ trên một
+//       chuỗi account. Bất biến: INV-ONE-ACCT (xem `ledger.ak`).
 //
 // BỐN REDEEMER:
-//   ClaimOpen  — mở account MỚI: đúc ACCT NFT, 0 account input.
+//   ClaimOpen  — mở account MỚI: đúc ACCT NFT, 0 account input, CHÈN khoá DID vào
+//                sổ (C-OPEN-UNIQ-1).
 //   ClaimAgain — nạp thêm drip vào account đã có: 1 account input, ép cooldown.
-//   Reclaim    — nhận tLAMP từ account idle. ĐÒI đúng 1 account input (C-RECL-0):
+//   Reclaim    — nhận tLAMP từ account idle, XOÁ khoá DID khỏi sổ
+//                (C-RECL-UNIQ-1) và ĐỐT ACCT NFT của DID đó (C-RECL-BURN-1).
+//                ĐÒI đúng 1 account input (C-RECL-0):
 //                không có dòng đó thì đây là cửa spend RỖNG permissionless trên
 //                một singleton, tức DoS toàn phần giá một phí tx, và nó nuôi bậc
 //                thang quota bằng cách giữ `window_epoch` đứng im.
 //   TopUpPool  — nạp tLAMP vào pool (ops/deploy). Cấm account input, đòi nạp thật.
 
+use aiken/crypto
 use aiken/interval
+use aiken/merkle_patricia_forestry as mpf
 use cardano/assets
 use cardano/transaction.{InlineDatum, Input, Output, OutputReference,
   Transaction, placeholder}
 use magiclamp/faucet/ledger.{
   AccountRedeemer, ClaimAgain, ClaimOpen, FaucetAccount, FaucetConfig,
   MintAccount, PoolDatum, PoolRedeemer, Reclaim, ReclaimIdle, TopUp, TopUpPool,
-  Use, acct_name, pool_nft_name,
+  Use, acct_name, did_key, did_leaf_value, empty_opened_root, pool_nft_name,
 }
 use magiclamp/faucet/util
 
@@ -125,7 +133,7 @@ validator faucet_pool(
 
     when redeemer is {
       // ── CLAIM OPEN: mở account MỚI ─────────────────────────────────────
-      ClaimOpen -> {
+      ClaimOpen { proof } -> {
         let ctx =
           check_claim(
             tx,
@@ -147,6 +155,29 @@ validator faucet_pool(
         // C-OPEN-3: account mới nhận ĐÚNG drip.
         expect
           assets.quantity_of(ctx.acct_out.value, lamp_policy, lamp_name) == cfg.drip_oildrop
+        // ── C-OPEN-UNIQ-1: MỘT DID MỘT ACCOUNT ─────────────────────────────
+        // `mpf.insert` tự `expect` rằng `proof` chứng minh khoá CHƯA có trong
+        // `pd.opened_root` (nó tính lại gốc-không-có-khoá từ bằng chứng và so với
+        // gốc vào), rồi trả về gốc ĐÃ chèn. Nên một dòng này gánh cả hai vế:
+        // "chưa tồn tại" và "ghi vào sổ". Không có nó, cooldown và trần tốc độ
+        // vẫn còn nhưng một DID mở được vô số account song song và mỗi cái có
+        // quota riêng — đó là điểm treo `[FAUCET-ACCT-UNIQUE]`, nay đóng.
+        //
+        // `did` lấy từ ĐÚNG datum của account output (`ctx.acct.did_name`), cùng
+        // một nguồn với C-NAME-1/C-DID-1 — KHÔNG nhận `did` từ redeemer. Nhận từ
+        // redeemer thì kẻ dựng tx khai một DID chưa có khoá trong khi đúc ACCT NFT
+        // cho DID đã có, và sổ ghi sai chỗ.
+        // Ghim bởi `open_did_da_co_account` · `open_goc_output_sai` ·
+        // `open_proof_cua_did_khac`.
+        expect
+          out_pd.opened_root == mpf.root(
+            mpf.insert(
+              mpf.from_root(pd.opened_root),
+              did_key(ctx.acct.did_name),
+              did_leaf_value,
+              proof,
+            ),
+          )
         True
       }
 
@@ -188,14 +219,25 @@ validator faucet_pool(
             lamp_policy,
             lamp_name,
           ) + cfg.drip_oildrop
+        // ── C-ROOT-KEEP-1 (nhánh `ClaimAgain`): sổ KHÔNG đổi ────────────────
+        // Nhánh này không mở và không đóng account nào. Viết RIÊNG ở từng nhánh
+        // chứ không gộp lên prelude: gộp lên thì hai nhánh đổi sổ phải được miễn
+        // trừ, và một dòng miễn trừ là chỗ để lọt một nhánh thứ ba sau này.
+        // Không có dòng này, `ClaimAgain` — nhánh KHÔNG cần bằng chứng nào — ghi
+        // được gốc tuỳ ý, tức xoá khoá của chính mình rồi `ClaimOpen` lại: toàn
+        // bộ INV-ONE-ACCT sập bằng một đường không tốn gì.
+        expect out_pd.opened_root == pd.opened_root
         True
       }
 
       // ── RECLAIM (nhận tLAMP từ account idle) ───────────────────────────
-      Reclaim -> {
+      Reclaim { proof } -> {
         // ── C-RECL-0: đang THU HỒI một account, không phải spend rỗng ──────
         // Ghim bởi `reclaim_spend_rong`.
         expect util.count_inputs_at_script(tx.inputs, account_script_hash) == 1
+        let recl_acct_in = util.input_at_script(tx.inputs, account_script_hash)
+        expect InlineDatum(rad) = recl_acct_in.datum
+        expect recl_acct: FaucetAccount = rad
 
         let lamp_in = assets.quantity_of(pool_in.value, lamp_policy, lamp_name)
         let lamp_out = assets.quantity_of(pool_out.value, lamp_policy, lamp_name)
@@ -213,6 +255,53 @@ validator faucet_pool(
         // Ghim bởi `reclaim_doi_window` · `reclaim_reset_bo_dem`.
         expect out_pd.window_epoch == pd.window_epoch
         expect out_pd.claims_in_window == pd.claims_in_window
+        // ── C-RECL-UNIQ-1: XOÁ khoá khỏi sổ ────────────────────────────────
+        // Vế đối xứng của C-OPEN-UNIQ-1, và là vế làm cho INV-ONE-ACCT KHÔNG
+        // khoá chết một DID: mỗi account bị thu hồi phải trả khoá lại, nếu không
+        // thì một DID chỉ được dùng faucet đúng một lần trong cả đời hệ.
+        // `mpf.delete` tự `expect` rằng `proof` chứng minh khoá ĐANG có trong
+        // `pd.opened_root` trước khi trả về gốc đã xoá — nên không xoá khống được
+        // một khoá không tồn tại để làm loãng sổ.
+        //
+        // `did` lấy từ datum của ĐÚNG account input mà C-RECL-0 vừa ép là duy
+        // nhất. Datum đó KHÔNG đổi được trong suốt đời account (`Use`/`TopUp` đều
+        // ép `out_acct.did_name == acct.did_name`, và C-NAME-1 neo nó vào tên ACCT
+        // NFT lúc mở), nên nó là cùng một định danh với khoá đã được chèn.
+        // Một UTxO GIẢ đặt ở địa chỉ account với datum khai `did_name` của người
+        // khác KHÔNG đi tới đây được: chính nó cũng đang bị tiêu ⇒ `faucet_account`
+        // phải chạy, mà cả ba nhánh của nó đều đóng (`Use`/`TopUp` đòi DID NFT của
+        // nạn nhân, `ReclaimIdle` đòi đốt ACCT NFT của nạn nhân).
+        // Ghim bởi `reclaim_goc_khong_xoa` · `reclaim_xoa_did_khac`.
+        expect
+          out_pd.opened_root == mpf.root(
+            mpf.delete(
+              mpf.from_root(pd.opened_root),
+              did_key(recl_acct.did_name),
+              did_leaf_value,
+              proof,
+            ),
+          )
+        // ── C-RECL-BURN-1: xoá khoá ⇔ ĐỐT ACCT NFT, trong CÙNG tx ───────────
+        // Vế đối xứng của C-OPEN-1 (chèn khoá ⇔ đúc ACCT NFT). Không có dòng này,
+        // INV-ONE-ACCT sập bằng một hình dạng tx hoàn toàn hợp lệ ở mọi chốt khác:
+        // `pool.Reclaim` + `account.TopUp`. `Reclaim` chỉ đòi đúng 1 account input,
+        // `lamp_out >= lamp_in` (chủ DID tự bỏ drip vào nên pool không mất gì) và
+        // bộ đếm bảo toàn; `TopUp` giữ account SỐNG NGUYÊN cùng ACCT NFT của nó.
+        // Kết quả: khoá bị xoá khỏi sổ trong khi account vẫn tồn tại ⇒ chính chủ DID
+        // `ClaimOpen` được account THỨ HAI, và lặp lại bao nhiêu lần cũng được.
+        // Đây là chỗ mà cách phân vai của bản trước KHÔNG còn đúng: lúc pool chưa
+        // giữ sổ thì "canh việc đốt là việc của `faucet_account`" là đủ, vì pool
+        // không thay đổi trạng thái toàn cục nào. Nay pool LÀ nơi ghi sổ, nên nó
+        // phải tự canh điều kiện mà bút ghi của nó dựa vào.
+        // Cổng này CHỒNG với C-TOP-4 (`TopUp` đòi mint == 0) — hai vế trái nhau ⇒
+        // cặp `Reclaim`+`TopUp` bất khả thi ở CẢ HAI phía, cố ý giữ cả hai.
+        // Ghim bởi `reclaim_khong_dot_acct_nft` · `reclaim_dot_acct_did_khac`.
+        expect
+          assets.quantity_of(
+            tx.mint,
+            faucet_nft_policy,
+            acct_name(recl_acct.did_name),
+          ) == -1
         True
       }
 
@@ -235,6 +324,9 @@ validator faucet_pool(
         // C-TUP-2 / C-TUP-3: nạp tiền KHÔNG được đụng bộ đếm tốc độ.
         expect out_pd.window_epoch == pd.window_epoch
         expect out_pd.claims_in_window == pd.claims_in_window
+        // C-ROOT-KEEP-1 (nhánh `TopUpPool`): nạp tiền cũng không đổi sổ. Cùng lý
+        // do với vế ở `ClaimAgain` — nhánh này permissionless về phía ai nạp.
+        expect out_pd.opened_root == pd.opened_root
         True
       }
     }
@@ -371,8 +463,78 @@ fn fp_cfg() -> FaucetConfig {
   }
 }
 
+// ── SỔ `opened_root` trong ca kiểm ────────────────────────────────
+// Thư viện MPF KHÔNG có bộ dựng bằng chứng chạy on-chain (bằng chứng là việc của
+// off-chain), nên mọi gốc dùng ở đây được dựng bằng CHÍNH `mpf.insert` — tức cùng
+// một phép tính mà validator sẽ chạy — và mọi bằng chứng được viết tay theo đúng
+// định dạng của thư viện. Hai hệ quả phải nhớ:
+//   1. `fp_root_of` / `fp_root_of_two` KHÔNG phải hằng gõ tay ⇒ thư viện đổi cách
+//      băm thì ca kiểm đi theo, không phân kỳ im lặng.
+//   2. Hình dạng `Leaf{skip: 0, …}` chỉ đúng khi hai khoá KHÁC nhau ở nibble đầu
+//      (nếu trùng thì cây thật có nút nhánh và `skip > 0`). `fp_did_name` và
+//      `fp_other_did` đã được chọn thoả điều đó; `do_fork` của thư viện tự
+//      `expect branch != neighbor.nibble` nên chọn sai là ĐỎ ngay, không lọt.
+
+/// Gốc của sổ RỖNG.
+fn fp_root_empty() -> ByteArray {
+  empty_opened_root()
+}
+
+/// Bước bằng chứng "láng giềng ở nút này là lá của `did`". `key` là ĐƯỜNG ĐI
+/// (`blake2b_256` của khoá MPF) và `value` là `blake2b_256` của giá trị lá — đây
+/// là hình dạng thư viện đọc, không phải khoá/giá trị thô.
+fn fp_leaf_step(did: ByteArray) -> mpf.ProofStep {
+  mpf.Leaf {
+    skip: 0,
+    key: crypto.blake2b_256(did_key(did)),
+    value: crypto.blake2b_256(did_leaf_value),
+  }
+}
+
+/// Gốc của sổ chỉ chứa `did`.
+fn fp_root_of(did: ByteArray) -> ByteArray {
+  mpf.insert(mpf.empty, did_key(did), did_leaf_value, []) |> mpf.root
+}
+
+/// Gốc của sổ chứa `did_a` rồi `did_b` (chèn `did_b` bằng bằng chứng lá `did_a`).
+fn fp_root_of_two(did_a: ByteArray, did_b: ByteArray) -> ByteArray {
+  mpf.insert(
+    mpf.from_root(fp_root_of(did_a)),
+    did_key(did_b),
+    did_leaf_value,
+    [fp_leaf_step(did_a)],
+  )
+    |> mpf.root
+}
+
+/// PoolDatum với sổ đặt TƯỜNG MINH.
+fn fp_pd_at(window: Int, claims: Int, root: ByteArray) -> PoolDatum {
+  PoolDatum {
+    cfg: fp_cfg(),
+    window_epoch: window,
+    claims_in_window: claims,
+    opened_root: root,
+  }
+}
+
+/// PoolDatum với sổ RỖNG — trạng thái pool khi `fp_did_name` CHƯA có account.
+/// Đây là đầu VÀO của mọi ca `ClaimOpen`.
 fn fp_pd(window: Int, claims: Int) -> PoolDatum {
-  PoolDatum { cfg: fp_cfg(), window_epoch: window, claims_in_window: claims }
+  fp_pd_at(window, claims, fp_root_empty())
+}
+
+/// PoolDatum với sổ chứa đúng khoá của `fp_did_name` — trạng thái pool khi DID đó
+/// ĐANG có account. Đây là đầu RA của `ClaimOpen`, và đầu VÀO của `ClaimAgain` /
+/// `Reclaim`. Dùng `fp_pd` (sổ rỗng) ở những chỗ này là dựng một trạng thái
+/// KHÔNG thoả INV-ONE-ACCT, tức đo một thứ không tồn tại trên chuỗi.
+fn fp_pd_one(window: Int, claims: Int) -> PoolDatum {
+  fp_pd_at(window, claims, fp_root_of(fp_did_name))
+}
+
+/// Như `fp_pd_one` nhưng cho `fp_other_did` — dùng ở ca nào account bị chạm là của
+/// bob, không của alice.
+fn fp_pd_other(window: Int, claims: Int) -> PoolDatum {
+  fp_pd_at(window, claims, fp_root_of(fp_other_did))
 }
 
 fn fp_acct_datum(name: ByteArray, claim_ep: Int, touch_ep: Int) -> FaucetAccount {
@@ -466,6 +628,16 @@ fn fp_acct_output(did: ByteArray, claim_ep: Int, touch_ep: Int, tlamp: Int) -> O
   )
 }
 
+/// `ClaimOpen` với bằng chứng RỖNG. Đúng cho mọi ca mở account trên một sổ RỖNG:
+/// `excluding(key, [])` của thư viện trả về gốc rỗng, nên bằng chứng rỗng CHÍNH LÀ
+/// bằng chứng vắng mặt hợp lệ ở trạng thái đó. Sổ đã có khoá thì phải nộp bằng
+/// chứng thật — xem `open_did_thu_hai_chen_vao_cay_co_san`.
+const fp_open: PoolRedeemer = ClaimOpen { proof: [] }
+
+/// `Reclaim` với bằng chứng RỖNG. Đúng cho sổ chỉ có ĐÚNG MỘT khoá:
+/// `including(key, value, [])` là gốc của cây một lá.
+const fp_reclaim: PoolRedeemer = Reclaim { proof: [] }
+
 fn fp_run(pd: PoolDatum, r: PoolRedeemer, tx: Transaction) -> Bool {
   faucet_pool.spend(
     fp_nft_policy,
@@ -502,7 +674,7 @@ fn open_tx_with(
   extra_inputs: List<Input>,
   extra_outputs: List<Output>,
 ) -> Transaction {
-  let pd_out = fp_pd(now, fp_used(now, window, claims) + 1)
+  let pd_out = fp_pd_one(now, fp_used(now, window, claims) + 1)
   fp_tx_at(
     now,
     Transaction {
@@ -516,6 +688,37 @@ fn open_tx_with(
         extra_outputs,
       ),
       mint: mint,
+    },
+  )
+}
+
+/// Builder cho lớp ca về SỔ: DID mở account và cả hai gốc đặt TƯỜNG MINH. Mọi
+/// thứ khác giữ đúng hình dạng của ca dương, nên hai cực của một cặp chỉ khác
+/// nhau ở đúng cái đang thử.
+fn open_tx_for(
+  did: ByteArray,
+  now: Int,
+  window: Int,
+  claims: Int,
+  root_in: ByteArray,
+  root_out: ByteArray,
+) -> Transaction {
+  fp_tx_at(
+    now,
+    Transaction {
+      ..placeholder,
+      inputs: [
+        fp_pool_input(fp_pd_at(window, claims, root_in)),
+        fp_did_input(did),
+      ],
+      outputs: [
+        fp_pool_output(
+          fp_pd_at(now, fp_used(now, window, claims) + 1, root_out),
+          fp_pool_lamp - fp_drip,
+        ),
+        fp_acct_output(did, now, now, fp_drip),
+      ],
+      mint: fp_mint(did, 1),
     },
   )
 }
@@ -540,7 +743,7 @@ fn open_std(now: Int, window: Int, claims: Int) -> Transaction {
 }
 
 test open_happy() {
-  fp_run(fp_pd(100, 0), ClaimOpen, open_std(100, 100, 0))
+  fp_run(fp_pd(100, 0), fp_open, open_std(100, 100, 0))
 }
 
 /// C-OPEN-1: `ClaimOpen` mà không đúc ACCT NFT — account "mới" dùng lại một NFT
@@ -556,7 +759,7 @@ test open_khong_mint() fail {
       [],
       [],
     )
-  fp_run(fp_pd(100, 0), ClaimOpen, tx)
+  fp_run(fp_pd(100, 0), fp_open, tx)
 }
 
 /// C-OPEN-2: đúc ACCT thứ hai cùng name TRONG KHI account cũ có trong input —
@@ -581,7 +784,7 @@ test poc_duc_account_thu_hai_cung_name() fail {
       [old_acct],
       [],
     )
-  fp_run(fp_pd(100, 0), ClaimOpen, tx)
+  fp_run(fp_pd(100, 0), fp_open, tx)
 }
 
 /// C-OPEN-3: account mới nhận khác drip.
@@ -596,12 +799,12 @@ test claim_wrong_drip() fail {
       [],
       [],
     )
-  fp_run(fp_pd(100, 0), ClaimOpen, tx)
+  fp_run(fp_pd(100, 0), fp_open, tx)
 }
 
 /// C-DRIP-1: pool nhả nhiều hơn drip.
 test claim_pool_drain_extra() fail {
-  let pd_out = fp_pd(100, 1)
+  let pd_out = fp_pd_one(100, 1)
   let tx =
     fp_tx_at(
       100,
@@ -615,7 +818,7 @@ test claim_pool_drain_extra() fail {
         mint: fp_mint(fp_did_name, 1),
       },
     )
-  fp_run(fp_pd(100, 0), ClaimOpen, tx)
+  fp_run(fp_pd(100, 0), fp_open, tx)
 }
 
 /// C-ACCTOUT-4
@@ -630,7 +833,7 @@ test claim_last_epoch_not_now() fail {
       [],
       [],
     )
-  fp_run(fp_pd(100, 0), ClaimOpen, tx)
+  fp_run(fp_pd(100, 0), fp_open, tx)
 }
 
 /// C-ACCTOUT-5
@@ -645,12 +848,12 @@ test claim_touch_epoch_not_now() fail {
       [],
       [],
     )
-  fp_run(fp_pd(100, 0), ClaimOpen, tx)
+  fp_run(fp_pd(100, 0), fp_open, tx)
 }
 
 /// C-DID-1: không có DID NFT input.
 test claim_no_did_nft() fail {
-  let pd_out = fp_pd(100, 1)
+  let pd_out = fp_pd_one(100, 1)
   let tx =
     fp_tx_at(
       100,
@@ -664,7 +867,7 @@ test claim_no_did_nft() fail {
         mint: fp_mint(fp_did_name, 1),
       },
     )
-  fp_run(fp_pd(100, 0), ClaimOpen, tx)
+  fp_run(fp_pd(100, 0), fp_open, tx)
 }
 
 /// C-ACCTOUT-1: acct_out ở VÍ — value + datum ĐÚNG y hệt ca happy, chỉ đổi địa
@@ -676,7 +879,7 @@ test claim_acct_out_ra_vi() fail {
       fp_acct_val(fp_did_name, 2_000_000, fp_drip),
       fp_acct_datum(fp_did_name, 100, 100),
     )
-  fp_run(fp_pd(100, 0), ClaimOpen, open_tx_with(100, 100, 0, acct_out, fp_mint(fp_did_name, 1), [], []))
+  fp_run(fp_pd(100, 0), fp_open, open_tx_with(100, 100, 0, acct_out, fp_mint(fp_did_name, 1), [], []))
 }
 
 /// C-ACCTOUT-1: acct_out ở một script hash KHÁC.
@@ -687,7 +890,7 @@ test claim_acct_out_script_khac() fail {
       fp_acct_val(fp_did_name, 2_000_000, fp_drip),
       fp_acct_datum(fp_did_name, 100, 100),
     )
-  fp_run(fp_pd(100, 0), ClaimOpen, open_tx_with(100, 100, 0, acct_out, fp_mint(fp_did_name, 1), [], []))
+  fp_run(fp_pd(100, 0), fp_open, open_tx_with(100, 100, 0, acct_out, fp_mint(fp_did_name, 1), [], []))
 }
 
 /// C-ACCTOUT-2: cùng script hash, khác stake credential.
@@ -698,7 +901,7 @@ test claim_acct_out_stake_hijack() fail {
       fp_acct_val(fp_did_name, 2_000_000, fp_drip),
       fp_acct_datum(fp_did_name, 100, 100),
     )
-  fp_run(fp_pd(100, 0), ClaimOpen, open_tx_with(100, 100, 0, acct_out, fp_mint(fp_did_name, 1), [], []))
+  fp_run(fp_pd(100, 0), fp_open, open_tx_with(100, 100, 0, acct_out, fp_mint(fp_did_name, 1), [], []))
 }
 
 /// C-ACCTOUT-3: account khởi tạo mang reference script.
@@ -710,7 +913,7 @@ test claim_acct_out_script_carrier() fail {
       fp_acct_datum(fp_did_name, 100, 100),
       #"beef",
     )
-  fp_run(fp_pd(100, 0), ClaimOpen, open_tx_with(100, 100, 0, acct_out, fp_mint(fp_did_name, 1), [], []))
+  fp_run(fp_pd(100, 0), fp_open, open_tx_with(100, 100, 0, acct_out, fp_mint(fp_did_name, 1), [], []))
 }
 
 /// C-NAME-1: acct_out mang ACCT NFT với name của DID KHÁC, datum ghi did_name
@@ -722,7 +925,7 @@ test claim_name_khong_khop_did() fail {
       fp_acct_val(fp_other_did, 2_000_000, fp_drip),
       fp_acct_datum(fp_did_name, 100, 100),
     )
-  fp_run(fp_pd(100, 0), ClaimOpen, open_tx_with(100, 100, 0, acct_out, fp_mint(fp_did_name, 1), [], []))
+  fp_run(fp_pd(100, 0), fp_open, open_tx_with(100, 100, 0, acct_out, fp_mint(fp_did_name, 1), [], []))
 }
 
 /// C-NAME-2: hai output cùng mang ACCT NFT một name.
@@ -743,7 +946,7 @@ test claim_hai_acct_nft_cung_name() fail {
       [],
       [extra],
     )
-  fp_run(fp_pd(100, 0), ClaimOpen, tx)
+  fp_run(fp_pd(100, 0), fp_open, tx)
 }
 
 /// C-CFG-1: cấu hình bị đổi ở output.
@@ -755,7 +958,12 @@ test cfg_bi_doi_o_output() fail {
       max_claims_per_window: 999,
     }
   let pd_out =
-    PoolDatum { cfg: bad_cfg, window_epoch: 100, claims_in_window: 1 }
+    PoolDatum {
+      cfg: bad_cfg,
+      window_epoch: 100,
+      claims_in_window: 1,
+      opened_root: fp_root_of(fp_did_name),
+    }
   let tx =
     fp_tx_at(
       100,
@@ -769,7 +977,7 @@ test cfg_bi_doi_o_output() fail {
         mint: fp_mint(fp_did_name, 1),
       },
     )
-  fp_run(fp_pd(100, 0), ClaimOpen, tx)
+  fp_run(fp_pd(100, 0), fp_open, tx)
 }
 
 /// C-CFG-3: `max_claims_per_window == 0` ⇒ prelude gãy với MỌI redeemer (pool
@@ -781,8 +989,20 @@ test cfg_max_claims_khong_duong() fail {
       cooldown_epochs: fp_cooldown,
       max_claims_per_window: 0,
     }
-  let pd_in = PoolDatum { cfg: bad_cfg, window_epoch: 100, claims_in_window: 0 }
-  let pd_out = PoolDatum { cfg: bad_cfg, window_epoch: 100, claims_in_window: 1 }
+  let pd_in =
+    PoolDatum {
+      cfg: bad_cfg,
+      window_epoch: 100,
+      claims_in_window: 0,
+      opened_root: fp_root_empty(),
+    }
+  let pd_out =
+    PoolDatum {
+      cfg: bad_cfg,
+      window_epoch: 100,
+      claims_in_window: 1,
+      opened_root: fp_root_of(fp_did_name),
+    }
   let tx =
     fp_tx_at(
       100,
@@ -806,7 +1026,7 @@ test cfg_max_claims_khong_duong() fail {
         mint: fp_mint(fp_did_name, 1),
       },
     )
-  fp_run(pd_in, ClaimOpen, tx)
+  fp_run(pd_in, fp_open, tx)
 }
 
 test claim_two_pool_inputs() fail {
@@ -829,7 +1049,7 @@ test claim_two_pool_inputs() fail {
       [pool_in2],
       [],
     )
-  fp_run(fp_pd(100, 0), ClaimOpen, tx)
+  fp_run(fp_pd(100, 0), fp_open, tx)
 }
 
 // ── TRẦN TỐC ĐỘ (tầng a) ─────────────────────────────────────────
@@ -837,22 +1057,22 @@ test claim_two_pool_inputs() fail {
 /// Ca dương song sinh của `poc_vet_N_lan_trong_mot_cua_so`: claim thứ `max`
 /// trong cửa sổ phải XANH. Không có ca này, cặp không phân biệt được hai cực.
 test rate_claim_thu_max_pass() {
-  fp_run(fp_pd(100, fp_max_claims - 1), ClaimOpen, open_std(100, 100, fp_max_claims - 1))
+  fp_run(fp_pd(100, fp_max_claims - 1), fp_open, open_std(100, 100, fp_max_claims - 1))
 }
 
 /// C-RATE-2: claim thứ `max + 1` trong cùng cửa sổ.
 test poc_vet_N_lan_trong_mot_cua_so() fail {
-  fp_run(fp_pd(100, fp_max_claims), ClaimOpen, open_std(100, 100, fp_max_claims))
+  fp_run(fp_pd(100, fp_max_claims), fp_open, open_std(100, 100, fp_max_claims))
 }
 
 /// Cửa sổ mới reset bộ đếm: datum vào đầy quota của cửa sổ CŨ vẫn xanh.
 test rate_cua_so_moi_reset() {
-  fp_run(fp_pd(99, fp_max_claims), ClaimOpen, open_std(100, 99, fp_max_claims))
+  fp_run(fp_pd(99, fp_max_claims), fp_open, open_std(100, 99, fp_max_claims))
 }
 
 /// C-RATE-1: `now` nhỏ hơn `window_epoch` trong datum.
 test rate_window_lui_ve_qua_khu() fail {
-  fp_run(fp_pd(200, 0), ClaimOpen, open_std(100, 200, 0))
+  fp_run(fp_pd(200, 0), fp_open, open_std(100, 200, 0))
 }
 
 /// C-RATE-4: bộ đếm ở output không tăng.
@@ -864,13 +1084,13 @@ test rate_out_claims_khong_tang() fail {
         ..placeholder,
         inputs: [fp_pool_input(fp_pd(100, 3)), fp_did_input(fp_did_name)],
         outputs: [
-          fp_pool_output(fp_pd(100, 3), fp_pool_lamp - fp_drip),
+          fp_pool_output(fp_pd_one(100, 3), fp_pool_lamp - fp_drip),
           fp_acct_output(fp_did_name, 100, 100, fp_drip),
         ],
         mint: fp_mint(fp_did_name, 1),
       },
     )
-  fp_run(fp_pd(100, 3), ClaimOpen, tx)
+  fp_run(fp_pd(100, 3), fp_open, tx)
 }
 
 /// C-RATE-3: cửa sổ ở output bị đẩy lên tương lai.
@@ -882,19 +1102,19 @@ test rate_out_window_gia_mao() fail {
         ..placeholder,
         inputs: [fp_pool_input(fp_pd(100, 0)), fp_did_input(fp_did_name)],
         outputs: [
-          fp_pool_output(fp_pd(101, 1), fp_pool_lamp - fp_drip),
+          fp_pool_output(fp_pd_one(101, 1), fp_pool_lamp - fp_drip),
           fp_acct_output(fp_did_name, 100, 100, fp_drip),
         ],
         mint: fp_mint(fp_did_name, 1),
       },
     )
-  fp_run(fp_pd(100, 0), ClaimOpen, tx)
+  fp_run(fp_pd(100, 0), fp_open, tx)
 }
 
 /// C-RATE-0: cận trên VÔ HẠN ⇒ `now` là trường do người dựng tx đặt. Mọi thứ
 /// khác y hệt `open_happy`.
 test rate_upper_bound_vo_han() fail {
-  let pd_out = fp_pd(100, 1)
+  let pd_out = fp_pd_one(100, 1)
   let tx =
     fp_tx_open(
       100,
@@ -908,7 +1128,7 @@ test rate_upper_bound_vo_han() fail {
         mint: fp_mint(fp_did_name, 1),
       },
     )
-  fp_run(fp_pd(100, 0), ClaimOpen, tx)
+  fp_run(fp_pd(100, 0), fp_open, tx)
 }
 
 /// C-RATE-0 — ca leo thang bậc thang. Thời gian THẬT ở bucket 101; kẻ tấn công
@@ -917,7 +1137,7 @@ test rate_upper_bound_vo_han() fail {
 /// duy nhất còn lại). Mỗi bucket quá khứ khai được là một quota mới ⇒ trần tốc
 /// độ bị vượt trong CÙNG một cửa sổ thật.
 test rate_leo_thang_bac_thang() fail {
-  let pd_out = fp_pd(100, 1)
+  let pd_out = fp_pd_one(100, 1)
   let tx =
     fp_tx_span(
       100,
@@ -931,7 +1151,7 @@ test rate_leo_thang_bac_thang() fail {
         mint: fp_mint(fp_did_name, 1),
       },
     )
-  fp_run(fp_pd(100, 0), ClaimOpen, tx)
+  fp_run(fp_pd(100, 0), fp_open, tx)
 }
 
 // ── CLAIM AGAIN ──────────────────────────────────────────────────
@@ -957,9 +1177,9 @@ fn again_tx_with(
     now,
     Transaction {
       ..placeholder,
-      inputs: [fp_pool_input(fp_pd(now, 0)), acct_in, fp_did_input(fp_did_name)],
+      inputs: [fp_pool_input(fp_pd_one(now, 0)), acct_in, fp_did_input(fp_did_name)],
       outputs: [
-        fp_pool_output(fp_pd(now, 1), fp_pool_lamp - fp_drip),
+        fp_pool_output(fp_pd_one(now, 1), fp_pool_lamp - fp_drip),
         acct_out,
       ],
       mint: mint,
@@ -979,12 +1199,12 @@ fn again_std(now: Int, old_claim_ep: Int) -> Transaction {
 }
 
 test again_happy_sau_cooldown() {
-  fp_run(fp_pd(136, 0), ClaimAgain, again_std(136, 100))
+  fp_run(fp_pd_one(136, 0), ClaimAgain, again_std(136, 100))
 }
 
 /// C-COOL-1: thiếu đúng một cửa sổ.
 test again_cooldown_thieu_1_epoch() fail {
-  fp_run(fp_pd(135, 0), ClaimAgain, again_std(135, 100))
+  fp_run(fp_pd_one(135, 0), ClaimAgain, again_std(135, 100))
 }
 
 /// C-AGAIN-2: `ClaimAgain` mà KHÔNG kèm account cũ — đường né cooldown.
@@ -994,15 +1214,15 @@ test poc_claim_khong_kem_account_cu() fail {
       136,
       Transaction {
         ..placeholder,
-        inputs: [fp_pool_input(fp_pd(136, 0)), fp_did_input(fp_did_name)],
+        inputs: [fp_pool_input(fp_pd_one(136, 0)), fp_did_input(fp_did_name)],
         outputs: [
-          fp_pool_output(fp_pd(136, 1), fp_pool_lamp - fp_drip),
+          fp_pool_output(fp_pd_one(136, 1), fp_pool_lamp - fp_drip),
           fp_acct_output(fp_did_name, 136, 136, fp_drip * 2),
         ],
         mint: assets.zero,
       },
     )
-  fp_run(fp_pd(136, 0), ClaimAgain, tx)
+  fp_run(fp_pd_one(136, 0), ClaimAgain, tx)
 }
 
 /// C-AGAIN-2 — cực còn lại của cổng. `poc_claim_khong_kem_account_cu` ghim vế
@@ -1041,15 +1261,15 @@ test again_hai_account_input() fail {
       136,
       Transaction {
         ..placeholder,
-        inputs: [fp_pool_input(fp_pd(136, 0)), acct_a, acct_b, fp_did_input(fp_did_name)],
+        inputs: [fp_pool_input(fp_pd_one(136, 0)), acct_a, acct_b, fp_did_input(fp_did_name)],
         outputs: [
-          fp_pool_output(fp_pd(136, 1), fp_pool_lamp - fp_drip),
+          fp_pool_output(fp_pd_one(136, 1), fp_pool_lamp - fp_drip),
           fp_acct_output(fp_did_name, 136, 136, fp_drip * 2),
           thief_out,
         ],
       },
     )
-  fp_run(fp_pd(136, 0), ClaimAgain, tx)
+  fp_run(fp_pd_one(136, 0), ClaimAgain, tx)
 }
 
 /// C-AGAIN-4: account input ở ĐÚNG script nhưng của DID khác.
@@ -1063,7 +1283,7 @@ test again_acct_in_datum_gia() fail {
       assets.zero,
       fp_other_did,
     )
-  fp_run(fp_pd(136, 0), ClaimAgain, tx)
+  fp_run(fp_pd_one(136, 0), ClaimAgain, tx)
 }
 
 /// C-AGAIN-3: account input ở đúng script, đúng datum, nhưng KHÔNG mang ACCT NFT.
@@ -1084,18 +1304,18 @@ test again_acct_in_khong_mang_nft() fail {
       Transaction {
         ..placeholder,
         inputs: [
-          fp_pool_input(fp_pd(136, 0)),
+          fp_pool_input(fp_pd_one(136, 0)),
           acct_in,
           fp_did_input(fp_did_name),
         ],
         outputs: [
-          fp_pool_output(fp_pd(136, 1), fp_pool_lamp - fp_drip),
+          fp_pool_output(fp_pd_one(136, 1), fp_pool_lamp - fp_drip),
           fp_acct_output(fp_did_name, 136, 136, fp_drip * 2),
         ],
         mint: assets.zero,
       },
     )
-  fp_run(fp_pd(136, 0), ClaimAgain, tx)
+  fp_run(fp_pd_one(136, 0), ClaimAgain, tx)
 }
 
 /// C-AGAIN-1: đúc thêm ACCT NFT ở nhánh `ClaimAgain`.
@@ -1109,7 +1329,7 @@ test again_mint_them_acct() fail {
       fp_mint(fp_did_name, 1),
       fp_did_name,
     )
-  fp_run(fp_pd(136, 0), ClaimAgain, tx)
+  fp_run(fp_pd_one(136, 0), ClaimAgain, tx)
 }
 
 /// C-AGAIN-5: account_out chỉ mang drip mới, bỏ rơi số tLAMP cũ.
@@ -1123,7 +1343,7 @@ test again_bo_bot_tlamp_cu() fail {
       assets.zero,
       fp_did_name,
     )
-  fp_run(fp_pd(136, 0), ClaimAgain, tx)
+  fp_run(fp_pd_one(136, 0), ClaimAgain, tx)
 }
 
 // ── RECLAIM ──────────────────────────────────────────────────────
@@ -1131,92 +1351,118 @@ test again_bo_bot_tlamp_cu() fail {
 // C-RECL-2 thoả tầm thường và ca dương không chứng minh bộ đếm được BẢO TOÀN,
 // chỉ chứng minh 0 == 0.
 
-fn fp_reclaim_acct_input() -> Input {
+// Sổ `opened_root` trong nhánh này: đầu VÀO chứa khoá của DID bị thu hồi, đầu RA
+// KHÔNG còn nó. `fp_pd_one` / `fp_pd` đứng đúng hai vai đó (xem chú thích của
+// chúng). Mọi ca âm dưới đây giữ phép chuyển sổ HỢP LỆ và chỉ sai ĐÚNG một thứ
+// khác — nếu để sai hai thứ thì ablation chốt mang tên ca vẫn thấy ca đỏ và ta kết
+// luận sai rằng chốt đó đang được canh.
+
+fn fp_reclaim_acct_input_for(did: ByteArray) -> Input {
   util.mk_input(
     util.mk_ref(3),
     util.mk_output(
       util.script_address(fp_acct_sh),
-      fp_acct_val(fp_did_name, 2_000_000, fp_drip),
-      fp_acct_datum(fp_did_name, 100, 100),
+      fp_acct_val(did, 2_000_000, fp_drip),
+      fp_acct_datum(did, 100, 100),
     ),
   )
 }
 
-fn reclaim_tx_with(pd_in: PoolDatum, pool_out: Output, inputs_extra: List<Input>) -> Transaction {
+fn fp_reclaim_acct_input() -> Input {
+  fp_reclaim_acct_input_for(fp_did_name)
+}
+
+fn reclaim_tx_mint(
+  pd_in: PoolDatum,
+  pool_out: Output,
+  inputs_extra: List<Input>,
+  mint: assets.Value,
+) -> Transaction {
   fp_tx_at(
     2000,
     Transaction {
       ..placeholder,
       inputs: list_concat([fp_pool_input(pd_in)], inputs_extra),
       outputs: [pool_out],
+      mint: mint,
     },
   )
 }
 
+/// `Reclaim` hợp lệ ĐỐT ACCT NFT của `fp_did_name` (C-RECL-BURN-1), nên việc đốt
+/// nằm trong builder dùng chung: mọi ca âm bên dưới nhờ vậy chỉ còn sai ĐÚNG cái
+/// chúng mang tên.
+fn reclaim_tx_with(pd_in: PoolDatum, pool_out: Output, inputs_extra: List<Input>) -> Transaction {
+  reclaim_tx_mint(pd_in, pool_out, inputs_extra, fp_mint(fp_did_name, -1))
+}
+
 test reclaim_happy() {
-  let pd = fp_pd(100, fp_max_claims)
+  let pd = fp_pd_one(100, fp_max_claims)
   let tx =
     reclaim_tx_with(
       pd,
-      fp_pool_output(pd, fp_pool_lamp + fp_drip),
+      fp_pool_output(fp_pd(100, fp_max_claims), fp_pool_lamp + fp_drip),
       [fp_reclaim_acct_input()],
     )
-  fp_run(pd, Reclaim, tx)
+  fp_run(pd, fp_reclaim, tx)
 }
 
 /// C-RECL-0: cửa spend RỖNG — không account input, Δ = 0, output y hệt input.
 /// Giá = một phí tx, lặp mỗi block ⇒ mọi claim của người thật trượt vĩnh viễn.
+/// Sổ ở đây CỐ Ý để nguyên (không xoá gì): với 0 account input thì không có
+/// `did_name` nào để xoá, nên không tồn tại hình dạng tx hợp lệ ở nhánh này. Ca
+/// dừng ở C-RECL-0 — dòng ĐẦU TIÊN của nhánh — nên nó không chạm tới chốt sổ.
 test reclaim_spend_rong() fail {
   let pd = fp_pd(100, fp_max_claims)
   let tx = reclaim_tx_with(pd, fp_pool_output(pd, fp_pool_lamp), [])
-  fp_run(pd, Reclaim, tx)
+  fp_run(pd, fp_reclaim, tx)
 }
 
 /// C-RECL-2: xen một `Reclaim` để reset bộ đếm ⇒ trần tốc độ vô hiệu.
 test reclaim_reset_bo_dem() fail {
-  let pd = fp_pd(100, fp_max_claims)
+  let pd = fp_pd_one(100, fp_max_claims)
   let tx =
     reclaim_tx_with(
       pd,
       fp_pool_output(fp_pd(100, 0), fp_pool_lamp + fp_drip),
       [fp_reclaim_acct_input()],
     )
-  fp_run(pd, Reclaim, tx)
+  fp_run(pd, fp_reclaim, tx)
 }
 
 /// C-RECL-1: đổi `window_epoch` qua `Reclaim`.
 test reclaim_doi_window() fail {
-  let pd = fp_pd(100, fp_max_claims)
+  let pd = fp_pd_one(100, fp_max_claims)
   let tx =
     reclaim_tx_with(
       pd,
       fp_pool_output(fp_pd(101, fp_max_claims), fp_pool_lamp + fp_drip),
       [fp_reclaim_acct_input()],
     )
-  fp_run(pd, Reclaim, tx)
+  fp_run(pd, fp_reclaim, tx)
 }
 
 test reclaim_pool_loses() fail {
-  let pd = fp_pd(100, fp_max_claims)
+  let pd = fp_pd_one(100, fp_max_claims)
   let tx =
     reclaim_tx_with(
       pd,
-      fp_pool_output(pd, fp_pool_lamp - fp_drip),
+      fp_pool_output(fp_pd(100, fp_max_claims), fp_pool_lamp - fp_drip),
       [fp_reclaim_acct_input()],
     )
-  fp_run(pd, Reclaim, tx)
+  fp_run(pd, fp_reclaim, tx)
 }
 
 test reclaim_steal_ada() fail {
-  let pd = fp_pd(100, fp_max_claims)
+  let pd = fp_pd_one(100, fp_max_claims)
   let pool_out =
     util.mk_output(
       util.script_address(fp_pool_sh),
       fp_pool_val(2_000_000, fp_pool_lamp + fp_drip),
-      pd,
+      fp_pd(100, fp_max_claims),
     )
   let tx = reclaim_tx_with(pd, pool_out, [fp_reclaim_acct_input()])
-  fp_run(pd, Reclaim, tx)
+  fp_run(pd, fp_reclaim, tx)
 }
 
 // ── TOPUPPOOL ────────────────────────────────────────────────────
@@ -1268,37 +1514,37 @@ test topuppool_doi_bo_dem() fail {
 // Chúng đều mang account input để KHÔNG đỏ nhầm ở C-RECL-0.
 
 test poc_reclaim_pool_to_wallet() fail {
-  let pd = fp_pd(100, fp_max_claims)
+  let pd = fp_pd_one(100, fp_max_claims)
   let pool_out =
     util.mk_output(
       util.vk_address(fp_thief_pkh),
       fp_pool_val(10_000_000, fp_pool_lamp + fp_drip),
-      pd,
+      fp_pd(100, fp_max_claims),
     )
-  fp_run(pd, Reclaim, reclaim_tx_with(pd, pool_out, [fp_reclaim_acct_input()]))
+  fp_run(pd, fp_reclaim, reclaim_tx_with(pd, pool_out, [fp_reclaim_acct_input()]))
 }
 
 test poc_reclaim_pool_stake_hijack() fail {
-  let pd = fp_pd(100, fp_max_claims)
+  let pd = fp_pd_one(100, fp_max_claims)
   let pool_out =
     util.mk_output(
       util.script_address_staked(fp_pool_sh, fp_thief_pkh),
       fp_pool_val(10_000_000, fp_pool_lamp + fp_drip),
-      pd,
+      fp_pd(100, fp_max_claims),
     )
-  fp_run(pd, Reclaim, reclaim_tx_with(pd, pool_out, [fp_reclaim_acct_input()]))
+  fp_run(pd, fp_reclaim, reclaim_tx_with(pd, pool_out, [fp_reclaim_acct_input()]))
 }
 
 test poc_reclaim_pool_script_carrier() fail {
-  let pd = fp_pd(100, fp_max_claims)
+  let pd = fp_pd_one(100, fp_max_claims)
   let pool_out =
     util.mk_output_with_ref_script(
       util.script_address(fp_pool_sh),
       fp_pool_val(10_000_000, fp_pool_lamp + fp_drip),
-      pd,
+      fp_pd(100, fp_max_claims),
       #"beef",
     )
-  fp_run(pd, Reclaim, reclaim_tx_with(pd, pool_out, [fp_reclaim_acct_input()]))
+  fp_run(pd, fp_reclaim, reclaim_tx_with(pd, pool_out, [fp_reclaim_acct_input()]))
 }
 
 /// Tấn công qua ClaimOpen: drip đúng, quota đúng, DID đúng — chỉ pool_out về ví.
@@ -1307,7 +1553,7 @@ test poc_claim_pool_to_wallet() fail {
     util.mk_output(
       util.vk_address(fp_thief_pkh),
       fp_pool_val(10_000_000, fp_pool_lamp - fp_drip),
-      fp_pd(100, 1),
+      fp_pd_one(100, 1),
     )
   let tx =
     fp_tx_at(
@@ -1319,7 +1565,7 @@ test poc_claim_pool_to_wallet() fail {
         mint: fp_mint(fp_did_name, 1),
       },
     )
-  fp_run(fp_pd(100, 0), ClaimOpen, tx)
+  fp_run(fp_pd(100, 0), fp_open, tx)
 }
 
 /// C-POOL-IN-1: POOL NFT nằm ở VÍ, UTxO đang tiêu là một UTxO khác ở script pool.
@@ -1347,7 +1593,7 @@ test poc_pool_nft_input_not_at_own_script() fail {
         outputs: [util.mk_output(thief_addr, v, pd)],
       },
     )
-  fp_run(pd, Reclaim, tx)
+  fp_run(pd, fp_reclaim, tx)
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -1388,7 +1634,7 @@ fn fp_acct_run(r: AccountRedeemer, datum: FaucetAccount, tx: Transaction) -> Boo
 test open_happy_hai_validator() {
   let tx = open_std(100, 100, 0)
   and {
-    fp_run(fp_pd(100, 0), ClaimOpen, tx),
+    fp_run(fp_pd(100, 0), fp_open, tx),
     handlers.nft_mint(
       OutputReference { transaction_id: #"aa", output_index: 5 },
       fp_ms_per_epoch,
@@ -1407,7 +1653,7 @@ test open_happy_hai_validator() {
 test again_happy_hai_validator() {
   let tx = again_std(136, 100)
   and {
-    fp_run(fp_pd(136, 0), ClaimAgain, tx),
+    fp_run(fp_pd_one(136, 0), ClaimAgain, tx),
     fp_acct_run(TopUp, fp_acct_datum(fp_did_name, 100, 100), tx),
   }
 }
@@ -1423,55 +1669,72 @@ test again_account_dung_redeemer_Use() fail {
 /// Luồng RECLAIM / RECLAIM-IDLE: `faucet_pool.Reclaim` + `faucet_account.ReclaimIdle`
 /// trên cùng tx, kèm đốt ACCT NFT.
 test reclaim_idle_happy_hai_validator() {
-  let pd = fp_pd(100, fp_max_claims)
+  let pd = fp_pd_one(100, fp_max_claims)
   let tx =
     fp_tx_at(
       2000,
       Transaction {
         ..placeholder,
         inputs: [fp_pool_input(pd), fp_reclaim_acct_input()],
-        outputs: [fp_pool_output(pd, fp_pool_lamp + fp_drip)],
+        outputs: [
+          fp_pool_output(fp_pd(100, fp_max_claims), fp_pool_lamp + fp_drip),
+        ],
         mint: fp_mint(fp_did_name, -1),
       },
     )
   and {
-    fp_run(pd, Reclaim, tx),
+    fp_run(pd, fp_reclaim, tx),
     fp_acct_run(ReclaimIdle, fp_acct_datum(fp_did_name, 100, 100), tx),
   }
 }
 
-/// Cùng tx thu hồi, nhưng đốt ACCT NFT là bước bị bỏ ⇒ `faucet_pool.Reclaim`
-/// vẫn XANH (nó không canh mint) trong khi `faucet_account.ReclaimIdle` ĐỎ. Ca
-/// này ghim rằng C-BURN-1 là cổng DUY NHẤT canh việc đó — đừng trông vào pool.
+/// Cùng tx thu hồi, nhưng bỏ bước đốt ACCT NFT ⇒ NAY cả hai validator đều ĐỎ:
+/// `faucet_pool` ở C-RECL-BURN-1, `faucet_account` ở C-BURN-1. Giữ cả hai cổng là
+/// cố ý, không phải trùng lặp: `faucet_account.ReclaimIdle` chỉ đòi POOL NFT có mặt
+/// trong tx, nó KHÔNG đòi POOL NFT nằm ở script pool — nên nếu POOL NFT lạc ra ví
+/// thì `faucet_pool.spend` không được gọi và C-BURN-1 là cổng duy nhất còn đứng.
+/// Cực đơn-validator của C-BURN-1 nằm ở `reclaim_idle_khong_burn_acct`
+/// (`faucet_account.ak`), nên chốt đó vẫn có ca ghim riêng.
 test reclaim_idle_khong_burn_hai_validator() fail {
-  let pd = fp_pd(100, fp_max_claims)
+  let pd = fp_pd_one(100, fp_max_claims)
   let tx =
     fp_tx_at(
       2000,
       Transaction {
         ..placeholder,
         inputs: [fp_pool_input(pd), fp_reclaim_acct_input()],
-        outputs: [fp_pool_output(pd, fp_pool_lamp + fp_drip)],
+        outputs: [
+          fp_pool_output(fp_pd(100, fp_max_claims), fp_pool_lamp + fp_drip),
+        ],
       },
     )
   and {
-    fp_run(pd, Reclaim, tx),
+    fp_run(pd, fp_reclaim, tx),
     fp_acct_run(ReclaimIdle, fp_acct_datum(fp_did_name, 100, 100), tx),
   }
 }
 
-// ── GRIEFING qua `TopUp` không có DID (C-TOP-DID-1) ──────────────────────
-// Cặp hai cực trên CÙNG MỘT `Transaction`: pool `Reclaim` XANH, account `TopUp`
-// ĐỎ. Đó là điểm của cặp này — chốt canh đường griefing nằm ở `faucet_account`,
-// KHÔNG ở pool, nên "pool cho qua" không phải lỗi mà là dữ kiện phải ghim lại.
-// Kịch bản: kẻ dựng tx tiêu account của bob, TỰ BỎ `drip` tLAMP của mình vào
-// (nên C-TOP-5 về dòng tiền vẫn thoả), pool không mất gì (Δ = 0 nên C-RECL-*
-// thoả) — cái nó lấy được là GHI `last_claim_epoch = now` của bob, tức hoãn lần
-// claim kế tiếp của bob thêm `cooldown_epochs` cửa sổ, và hoãn cả `ReclaimIdle`.
-// Không cần DID NFT của bob nếu thiếu C-TOP-DID-1.
+// ── HÌNH DẠNG `Reclaim` + `TopUp` — BA cổng cùng đóng ────────────────────
+// Kịch bản: một tx tiêu account của bob, TỰ BỎ `drip` tLAMP vào (nên C-TOP-5 về
+// dòng tiền thoả), pool không mất gì (Δ = 0 nên C-RECL-* thoả). Hình dạng này đáng
+// một khối riêng vì nó là chỗ hai lớp lỗ KHÁC NHAU gặp nhau, và cả hai đều nằm
+// ngoài mọi ca đơn validator:
+//
+//   (1) GRIEFING — nó GHI `last_claim_epoch = now` của bob, tức hoãn lần claim kế
+//       tiếp của bob thêm `cooldown_epochs` cửa sổ và hoãn cả `ReclaimIdle`. Không
+//       cần DID NFT của bob nếu thiếu C-TOP-DID-1 (cổng ở `faucet_account`).
+//   (2) PHÁ INV-ONE-ACCT — `Reclaim` XOÁ khoá của bob khỏi sổ trong khi `TopUp`
+//       giữ account của bob SỐNG NGUYÊN cùng ACCT NFT. Người giữ DID NFT của bob
+//       làm được (nên (1) không chặn anh ta) và sau đó `ClaimOpen` account thứ hai.
+//       Cổng đóng đường này là C-RECL-BURN-1 ở pool.
+//
+// Hai cổng ở hai tệp, chặn hai thứ khác nhau, và KHÔNG cái nào thay được cái kia:
+// bỏ C-TOP-DID-1 thì người ngoài griefing được người thật; bỏ C-RECL-BURN-1 thì
+// người giữ DID NFT nhân bản account của mình. Cổng thứ ba (C-TOP-4, `TopUp` đòi
+// mint == 0) phủ chồng lên C-RECL-BURN-1 — giữ cả ba.
 
 fn topup_griefing_tx() -> Transaction {
-  let pd = fp_pd(100, fp_max_claims)
+  let pd = fp_pd_other(100, fp_max_claims)
   // Account của BOB, ở đúng script, mang ACCT NFT đúng tên của bob.
   let bob_acct =
     util.mk_input(
@@ -1498,8 +1761,9 @@ fn topup_griefing_tx() -> Transaction {
       ..placeholder,
       inputs: [fp_pool_input(pd), bob_acct, thief_funds],
       outputs: [
-        // Pool KHÔNG mất gì: Δ tLAMP = 0, datum y nguyên.
-        fp_pool_output(pd, fp_pool_lamp),
+        // Pool KHÔNG mất gì: Δ tLAMP = 0, bộ đếm y nguyên. Sổ thì PHẢI xoá khoá
+        // của bob — nhánh `Reclaim` không có đường nào bỏ bước đó.
+        fp_pool_output(fp_pd(100, fp_max_claims), fp_pool_lamp),
         // Account của bob nhận thêm drip, nhưng mốc cooldown bị đẩy lên now.
         fp_acct_output(fp_other_did, 2000, 2000, fp_drip * 2),
       ],
@@ -1507,19 +1771,383 @@ fn topup_griefing_tx() -> Transaction {
   )
 }
 
-/// Cực XANH: `faucet_pool.Reclaim` cho hình dạng tx này đi qua. Ca này KHÔNG nói
-/// bản vá hỏng — nó nói chốt canh nằm ở validator bên kia, nên đừng ai "tối giản"
-/// C-TOP-DID-1 với lý do "pool đã kiểm".
-test topup_griefing_pool_van_xanh() {
-  fp_run(fp_pd(100, fp_max_claims), Reclaim, topup_griefing_tx())
+/// C-RECL-BURN-1 ở PHÍA POOL: cùng hình dạng đó, `faucet_pool.Reclaim` một mình đã
+/// phải từ chối, vì nó xoá khoá của bob khỏi sổ mà không đốt ACCT NFT của bob.
+/// Trước khi pool giữ sổ, cực này là XANH và điều đó ĐÚNG (pool không đổi trạng
+/// thái toàn cục nào nên không có lý do canh mint). Nay nó phải ĐỎ.
+test reclaim_khong_dot_acct_nft() fail {
+  fp_run(fp_pd_other(100, fp_max_claims), fp_reclaim, topup_griefing_tx())
 }
 
-/// Cực ĐỎ: cùng tx đó, `faucet_account.TopUp` phải từ chối vì thiếu DID NFT của
-/// bob. Gỡ C-TOP-DID-1 thì ca này XANH và đường griefing mở.
+/// Cùng tx đó, cả hai validator đều từ chối — mỗi bên vì một lý do khác:
+/// `faucet_pool` vì C-RECL-BURN-1, `faucet_account` vì C-TOP-DID-1 (thiếu DID NFT
+/// của bob) và C-TOP-4 (mint phải bằng 0).
 test topup_griefing_hai_validator() fail {
   let tx = topup_griefing_tx()
   and {
-    fp_run(fp_pd(100, fp_max_claims), Reclaim, tx),
+    fp_run(fp_pd_other(100, fp_max_claims), fp_reclaim, tx),
     fp_acct_run(TopUp, fp_acct_datum(fp_other_did, 100, 100), tx),
   }
+}
+
+/// C-RECL-BURN-1: đốt ACCT NFT của một DID KHÁC (giữ lại vé của chính mình). Cùng
+/// builder với `reclaim_happy`, đổi ĐÚNG tên bị đốt. Không có vế "đúng tên" thì một
+/// lượt thu hồi bất kỳ trả được khoá của mình về sổ bằng cách đốt một ACCT NFT rẻ
+/// tiền khác.
+test reclaim_dot_acct_did_khac() fail {
+  let pd = fp_pd_one(100, fp_max_claims)
+  fp_run(
+    pd,
+    fp_reclaim,
+    reclaim_tx_mint(
+      pd,
+      fp_pool_output(fp_pd(100, fp_max_claims), fp_pool_lamp + fp_drip),
+      [fp_reclaim_acct_input()],
+      fp_mint(fp_other_did, -1),
+    ),
+  )
+}
+
+// ══════════════════════════════════════════════════════════════
+// MỘT DID MỘT ACCOUNT — SỔ `opened_root` (INV-ONE-ACCT)
+// ══════════════════════════════════════════════════════════════
+// Ba chốt ở tệp này: C-OPEN-UNIQ-1 (chèn) · C-RECL-UNIQ-1 (xoá) · C-ROOT-KEEP-1
+// (hai nhánh không đổi sổ). Chốt thứ tư — C-MP-8, gốc khởi tạo RỖNG — nằm ở
+// `faucet_nft.ak` cùng với các ca `MintPool` khác.
+//
+// Mỗi cặp dưới đây có MỘT cực xanh và MỘT cực đỏ dựng bằng CÙNG builder, khác đúng
+// một trường. Thiếu cực xanh thì cực đỏ không nói được nó đỏ VÌ chốt đang thử hay
+// vì fixture của nó vốn đã sai ở một tiền đề khác.
+//
+// `fp_third_did` chỉ tồn tại cho ca "bằng chứng của DID khác": nó KHÔNG bao giờ
+// nằm trong sổ, và nibble đầu của đường đi của nó khác của hai DID kia (điều kiện
+// để `do_fork` của thư viện không tự từ chối vì lý do khác).
+
+const fp_third_did: ByteArray = #"c0a201"
+
+// ── C-OPEN-UNIQ-1 ────────────────────────────────────────────────
+
+/// Cực XANH: DID chưa có account ⇒ sổ vào RỖNG, bằng chứng rỗng CHÍNH LÀ bằng
+/// chứng vắng mặt hợp lệ ở trạng thái đó, sổ ra CHỨA khoá.
+/// Vế `≠` ghim rằng phép chèn THẬT SỰ đổi gốc. Không có nó, một thư viện (hay một
+/// lần sửa) làm `insert` trả về gốc y nguyên vẫn đi lọt ca dương này, và cả ba ca
+/// âm bên dưới mất nghĩa CÙNG LÚC.
+test open_did_moi_chen_goc() {
+  and {
+    fp_root_of(fp_did_name) != fp_root_empty(),
+    fp_run(
+      fp_pd(100, 0),
+      fp_open,
+      open_tx_for(
+        fp_did_name,
+        100,
+        100,
+        0,
+        fp_root_empty(),
+        fp_root_of(fp_did_name),
+      ),
+    ),
+  }
+}
+
+/// DID ĐÃ có account mở thêm cái thứ hai. Sổ vào đã chứa khoá; người dựng tx nộp
+/// bằng chứng VẮNG MẶT (rỗng) ⇒ gốc suy ra là gốc RỖNG, khác gốc vào ⇒ `mpf.insert`
+/// từ chối. ĐÂY là chốt duy nhất chặn đường này: cooldown không chạm tới (nhánh
+/// `ClaimOpen` không đọc account cũ) và trần tốc độ vẫn còn quota.
+test open_did_da_co_account() fail {
+  let root = fp_root_of(fp_did_name)
+  fp_run(
+    fp_pd_at(100, 0, root),
+    fp_open,
+    open_tx_for(fp_did_name, 100, 100, 0, root, root),
+  )
+}
+
+/// Sổ ra KHÔNG ghi khoá vừa mở (giữ nguyên gốc rỗng). Bằng chứng hợp lệ, phép chèn
+/// chạy xong — chỉ đẳng thức với `out_pd.opened_root` vỡ. Không có vế đó thì
+/// `ClaimOpen` chèn vào một cái sổ không ai lưu lại, và cùng DID mở lại được ở tx
+/// ngay sau.
+test open_goc_output_sai() fail {
+  fp_run(
+    fp_pd(100, 0),
+    fp_open,
+    open_tx_for(fp_did_name, 100, 100, 0, fp_root_empty(), fp_root_empty()),
+  )
+}
+
+/// Cực XANH thứ hai: DID THỨ HAI mở account trên sổ đã có một khoá. Bằng chứng ở
+/// đây là bằng chứng THẬT (một bước `Leaf` trỏ láng giềng), nên chỉ cặp này phân
+/// biệt được "bằng chứng của đúng cây" với "bằng chứng của cây khác" — cặp bằng
+/// chứng rỗng ở trên không phân biệt được điều đó.
+test open_did_thu_hai_chen_vao_cay_co_san() {
+  let root_in = fp_root_of(fp_did_name)
+  let root_out = fp_root_of_two(fp_did_name, fp_other_did)
+  and {
+    root_out != root_in,
+    fp_run(
+      fp_pd_at(100, 0, root_in),
+      ClaimOpen { proof: [fp_leaf_step(fp_did_name)] },
+      open_tx_for(fp_other_did, 100, 100, 0, root_in, root_out),
+    ),
+  }
+}
+
+/// Bằng chứng của một DID KHÁC. Cùng builder với ca xanh trên, đổi ĐÚNG một thứ:
+/// bước `Leaf` trỏ láng giềng `fp_third_did` (không có trong sổ) thay vì
+/// `fp_did_name`. Gốc suy ra từ bằng chứng đó là gốc của một cây khác ⇒ từ chối.
+/// Không có chốt này thì bằng chứng chỉ là tham số trang trí: ai cũng dựng một cây
+/// riêng rồi khai gốc mới tuỳ ý, và sổ mất mọi liên hệ với tập account thật.
+test open_proof_cua_did_khac() fail {
+  let root_in = fp_root_of(fp_did_name)
+  let root_out = fp_root_of_two(fp_did_name, fp_other_did)
+  fp_run(
+    fp_pd_at(100, 0, root_in),
+    ClaimOpen { proof: [fp_leaf_step(fp_third_did)] },
+    open_tx_for(fp_other_did, 100, 100, 0, root_in, root_out),
+  )
+}
+
+// ── C-RECL-UNIQ-1 ────────────────────────────────────────────────
+// `reclaim_happy` đã phủ hình dạng một-lá / bằng chứng rỗng. Ba ca dưới đây làm
+// việc mà hình dạng đó KHÔNG làm được: phân biệt "xoá đúng khoá" với "xoá khoá
+// khác", thứ chỉ hiện ra khi sổ có từ hai khoá.
+
+fn reclaim_two_leaf_tx(root_out: ByteArray) -> Transaction {
+  let root_in = fp_root_of_two(fp_did_name, fp_other_did)
+  reclaim_tx_with(
+    fp_pd_at(100, fp_max_claims, root_in),
+    fp_pool_output(
+      fp_pd_at(100, fp_max_claims, root_out),
+      fp_pool_lamp + fp_drip,
+    ),
+    [fp_reclaim_acct_input()],
+  )
+}
+
+/// Cực XANH: thu hồi account của `fp_did_name` khỏi sổ hai-khoá ⇒ sổ ra chỉ còn
+/// khoá của `fp_other_did`.
+test reclaim_xoa_goc() {
+  let root_in = fp_root_of_two(fp_did_name, fp_other_did)
+  let root_out = fp_root_of(fp_other_did)
+  and {
+    root_out != root_in,
+    fp_run(
+      fp_pd_at(100, fp_max_claims, root_in),
+      Reclaim { proof: [fp_leaf_step(fp_other_did)] },
+      reclaim_two_leaf_tx(root_out),
+    ),
+  }
+}
+
+/// Thu hồi account nhưng GIỮ khoá trong sổ. `Reclaim` là nơi DUY NHẤT trả khoá lại;
+/// không có chốt này thì mỗi DID chỉ dùng được faucet đúng một lần trong cả đời hệ
+/// (account bị thu hồi, khoá vẫn nằm đó, `ClaimOpen` đòi chứng minh VẮNG mãi mãi
+/// không thoả) — hỏng theo chiều KHOÁ CHẾT, không theo chiều rò rỉ, nên nó không
+/// lộ ra ở bất kỳ ca nào về dòng tiền.
+test reclaim_goc_khong_xoa() fail {
+  let pd = fp_pd_one(100, fp_max_claims)
+  fp_run(
+    pd,
+    fp_reclaim,
+    reclaim_tx_with(
+      pd,
+      fp_pool_output(pd, fp_pool_lamp + fp_drip),
+      [fp_reclaim_acct_input()],
+    ),
+  )
+}
+
+/// Thu hồi account của `fp_did_name` nhưng xoá khoá của `fp_other_did` khỏi sổ.
+/// Cùng builder với `reclaim_xoa_goc`, đổi ĐÚNG gốc ra. Không có chốt này thì một
+/// người thu hồi account của mình cũng xoá được khoá của người khác, và người đó
+/// mở được account thứ hai — INV-ONE-ACCT sập mà không ai mất một token nào.
+test reclaim_xoa_did_khac() fail {
+  let root_in = fp_root_of_two(fp_did_name, fp_other_did)
+  fp_run(
+    fp_pd_at(100, fp_max_claims, root_in),
+    Reclaim { proof: [fp_leaf_step(fp_other_did)] },
+    reclaim_two_leaf_tx(fp_root_of(fp_did_name)),
+  )
+}
+
+// ── C-ROOT-KEEP-1 ────────────────────────────────────────────────
+
+/// Như `again_std` nhưng gốc ở output đặt TƯỜNG MINH, để cặp giữ/đổi khác nhau
+/// đúng một trường.
+fn again_tx_root_out(now: Int, old_claim_ep: Int, root_out: ByteArray) -> Transaction {
+  let acct_in =
+    util.mk_input(
+      util.mk_ref(3),
+      util.mk_output(
+        util.script_address(fp_acct_sh),
+        fp_acct_val(fp_did_name, 2_000_000, fp_drip),
+        fp_acct_datum(fp_did_name, old_claim_ep, old_claim_ep),
+      ),
+    )
+  fp_tx_at(
+    now,
+    Transaction {
+      ..placeholder,
+      inputs: [
+        fp_pool_input(fp_pd_one(now, 0)),
+        acct_in,
+        fp_did_input(fp_did_name),
+      ],
+      outputs: [
+        fp_pool_output(fp_pd_at(now, 1, root_out), fp_pool_lamp - fp_drip),
+        fp_acct_output(fp_did_name, now, now, fp_drip * 2),
+      ],
+      mint: assets.zero,
+    },
+  )
+}
+
+/// Cực XANH của cặp `ClaimAgain`: gốc GIỮ NGUYÊN.
+test again_giu_goc() {
+  fp_run(
+    fp_pd_one(136, 0),
+    ClaimAgain,
+    again_tx_root_out(136, 100, fp_root_of(fp_did_name)),
+  )
+}
+
+/// `ClaimAgain` — nhánh KHÔNG đòi bằng chứng nào — ghi một gốc khác. Không có
+/// C-ROOT-KEEP-1 ở nhánh này thì đây là đường xoá khoá của chính mình không tốn gì,
+/// rồi `ClaimOpen` lại: toàn bộ INV-ONE-ACCT sập bằng hai tx hợp lệ.
+test again_doi_goc() fail {
+  fp_run(
+    fp_pd_one(136, 0),
+    ClaimAgain,
+    again_tx_root_out(136, 100, fp_root_empty()),
+  )
+}
+
+/// Cực XANH của cặp `TopUpPool`: nạp tLAMP, gốc GIỮ NGUYÊN.
+test topuppool_giu_goc() {
+  let pd = fp_pd_one(100, fp_max_claims)
+  fp_run(pd, TopUpPool, topuppool_tx(pd, fp_drip * 1000, [], pd))
+}
+
+/// Nạp tLAMP mà tiện tay đổi sổ. `TopUpPool` permissionless về phía người nạp, nên
+/// không có chốt này thì bất kỳ ai cũng viết lại sổ với giá một lượt nạp.
+test topuppool_doi_goc() fail {
+  let pd = fp_pd_one(100, fp_max_claims)
+  fp_run(
+    pd,
+    TopUpPool,
+    topuppool_tx(pd, fp_drip * 1000, [], fp_pd(100, fp_max_claims)),
+  )
+}
+
+// ── CHUỖI: mở → thu hồi → mở LẠI ─────────────────────────────────
+
+/// Ba tx NỐI NHAU bằng GIÁ TRỊ: gốc ra của bước trước là gốc vào của bước sau.
+/// Ca này trả lời câu hỏi mà mọi ca đơn lẻ ở trên KHÔNG trả lời được — INV-ONE-ACCT
+/// có khoá chết một DID vĩnh viễn không. Vế `mpf.delete(...) == root0` là chỗ nối
+/// thật sự: nó khẳng định gốc sau khi xoá TRỞ VỀ đúng gốc rỗng ban đầu, chứ không
+/// phải một gốc thứ ba trông cũng hợp lệ.
+test open_sau_reclaim_duoc_mo_lai() {
+  let root0 = fp_root_empty()
+  let root1 = fp_root_of(fp_did_name)
+  let pd_after_open = fp_pd_at(100, 1, root1)
+  and {
+    // (1) mở account: sổ rỗng → sổ có khoá.
+    fp_run(
+      fp_pd_at(100, 0, root0),
+      fp_open,
+      open_tx_for(fp_did_name, 100, 100, 0, root0, root1),
+    ),
+    // chỗ nối: xoá khoá khỏi `root1` trả về ĐÚNG `root0`.
+    mpf.root(
+      mpf.delete(
+        mpf.from_root(root1),
+        did_key(fp_did_name),
+        did_leaf_value,
+        [],
+      ),
+    ) == root0,
+    // (2) thu hồi: sổ có khoá → sổ rỗng, bộ đếm giữ nguyên.
+    fp_run(
+      pd_after_open,
+      fp_reclaim,
+      reclaim_tx_with(
+        pd_after_open,
+        fp_pool_output(fp_pd_at(100, 1, root0), fp_pool_lamp + fp_drip),
+        [fp_reclaim_acct_input()],
+      ),
+    ),
+    // (3) CÙNG DID mở lại được ở một cửa sổ sau.
+    fp_run(
+      fp_pd_at(200, 0, root0),
+      fp_open,
+      open_tx_for(fp_did_name, 200, 200, 0, root0, root1),
+    ),
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
+// NGÂN SÁCH EX-UNIT THEO ĐỘ SÂU SỔ
+// ══════════════════════════════════════════════════════════════
+// Mọi ca ở trên dùng bằng chứng 0 hoặc 1 bước, tức sổ có 1–2 khoá. Sổ thật sâu
+// ~log₁₆(N) nên bằng chứng thật có ~log₁₆(N) bước `Branch`, và câu cần trả lời là
+// "sổ lớn có làm `ClaimOpen` vượt trần ex-unit không".
+//
+// Không dựng được cây nhiều khoá bằng Aiken thuần: thư viện MPF cố ý KHÔNG có bộ
+// dựng bằng chứng chạy on-chain (đó là việc của off-chain). Nhưng CHI PHÍ của một
+// bước KHÔNG phụ thuộc bằng chứng có đúng hay không — `do_branch` chỉ cắt 4×32 byte
+// từ `neighbors` rồi băm, không có nhánh nào rẽ theo kết quả so sánh. Nên đo được
+// bằng `mpf.miss` trên một gốc RÁC với bằng chứng dài dần: nó trả `False` và vẫn đi
+// TRỌN đường. Giá một bước = HIỆU giữa hai ca liền nhau; ex-unit từng ca đọc ở
+// output `aiken check` (hoặc trường `execution_units` khi stdout không phải TTY).
+//
+// Ba ca dưới đây KHÔNG kiểm một chốt nào của validator — chúng là phép ĐO. Đừng
+// xoá vì "không gác gì": không có chúng thì câu trả lời về ngân sách chỉ còn là ước
+// lượng, và ước lượng ex-unit là thứ chỉ sai khi đã lên mạng.
+
+/// 128 byte `neighbors` tuỳ ý — `do_branch` cắt đúng 4×32 byte đầu, không kiểm nội
+/// dung, nên giá trị cụ thể không ảnh hưởng chi phí.
+const fp_branch_neighbors: ByteArray =
+  #"0101010101010101010101010101010101010101010101010101010101010101020202020202020202020202020202020202020202020202020202020202020203030303030303030303030303030303030303030303030303030303030303030404040404040404040404040404040404040404040404040404040404040404"
+
+fn fp_branch_steps(n: Int) -> mpf.Proof {
+  if n <= 0 {
+    []
+  } else {
+    [
+      mpf.Branch { skip: 0, neighbors: fp_branch_neighbors },
+      ..fp_branch_steps(n - 1)
+    ]
+  }
+}
+
+const fp_garbage_root: ByteArray =
+  #"deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
+
+/// Mốc NỀN: đi hết đường với bằng chứng 0 bước.
+test budget_proof_0_buoc() {
+  mpf.miss(
+    mpf.from_root(fp_garbage_root),
+    did_key(fp_did_name),
+    fp_branch_steps(0),
+  ) == False
+}
+
+/// 1 bước `Branch`. Hiệu so với ca trên = giá MỘT bước.
+test budget_proof_1_buoc() {
+  mpf.miss(
+    mpf.from_root(fp_garbage_root),
+    did_key(fp_did_name),
+    fp_branch_steps(1),
+  ) == False
+}
+
+/// 5 bước `Branch` ≈ sổ ~16⁵ ≈ một triệu khoá. Hiệu so với ca 1 bước, chia 4, là
+/// giá một bước ở chỗ sâu — và tổng của ca này là phần bằng chứng cộng thêm vào
+/// ex-unit của `ClaimOpen` ở quy mô đó.
+test budget_proof_5_buoc() {
+  mpf.miss(
+    mpf.from_root(fp_garbage_root),
+    did_key(fp_did_name),
+    fp_branch_steps(5),
+  ) == False
 }

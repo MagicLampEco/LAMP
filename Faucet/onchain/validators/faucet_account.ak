@@ -22,12 +22,13 @@
 
 use aiken/collection/list
 use aiken/interval
+use aiken/merkle_patricia_forestry as mpf
 use cardano/assets
 use cardano/transaction.{Input, Output, OutputReference, Transaction, placeholder}
 use magiclamp/faucet/handlers
 use magiclamp/faucet/ledger.{
   AccountRedeemer, FaucetAccount, FaucetConfig, PoolDatum, ReclaimIdle, TopUp,
-  Use, acct_name, pool_nft_name,
+  Use, acct_name, did_key, did_leaf_value, pool_nft_name,
 }
 use magiclamp/faucet/util
 
@@ -109,8 +110,23 @@ fn fa_cfg() -> FaucetConfig {
   }
 }
 
+/// Datum POOL dùng trong ca kiểm của `faucet_account`. Sổ `opened_root` mang khoá
+/// của `fa_did_name` — đó là trạng thái thật khi DID đó ĐANG có account, và mọi ca
+/// ở tệp này đều chạm một account đang sống. `faucet_account` KHÔNG đọc trường
+/// này (nó là việc của `faucet_pool`), nhưng dựng datum sai trạng thái là để lại
+/// một fixture mô tả một pool không tồn tại được trên chuỗi.
 fn fa_pool_datum(window: Int, claims: Int) -> PoolDatum {
-  PoolDatum { cfg: fa_cfg(), window_epoch: window, claims_in_window: claims }
+  PoolDatum {
+    cfg: fa_cfg(),
+    window_epoch: window,
+    claims_in_window: claims,
+    opened_root: fa_root_of(fa_did_name),
+  }
+}
+
+/// Gốc sổ chỉ chứa `did` — dựng bằng chính `mpf.insert` để không phân kỳ với thư viện.
+fn fa_root_of(did: ByteArray) -> ByteArray {
+  mpf.insert(mpf.empty, did_key(did), did_leaf_value, []) |> mpf.root
 }
 
 /// account value: lovelace + ACCT NFT (tên neo vào DID) + tLAMP.
@@ -485,14 +501,24 @@ fn topup_tx_did(
       util.mk_output(
         util.script_address(fa_pool_sh),
         fa_pool_val(10_000_000, 5_000_000_000),
-        PoolDatum { cfg: pool_cfg, window_epoch: now, claims_in_window: 0 },
+        PoolDatum {
+          cfg: pool_cfg,
+          window_epoch: now,
+          claims_in_window: 0,
+          opened_root: fa_root_of(fa_did_name),
+        },
       ),
     )
   let pool_out =
     util.mk_output(
       util.script_address(fa_pool_sh),
       fa_pool_val(10_000_000, 5_000_000_000 - pool_drip),
-      PoolDatum { cfg: pool_cfg, window_epoch: now, claims_in_window: 1 },
+      PoolDatum {
+        cfg: pool_cfg,
+        window_epoch: now,
+        claims_in_window: 1,
+        opened_root: fa_root_of(fa_did_name),
+      },
     )
   fa_tx_at(
     now,
@@ -637,18 +663,22 @@ fn reclaim_idle_run(now: Int, outputs: List<Output>, mint: assets.Value) -> Bool
   )
 }
 
-test reclaim_idle_happy() {
-  // now=1101 ≥ 100+1001; pool nhận đủ Δ=fa_drip; ACCT NFT bị đốt.
-  reclaim_idle_run(1101, [fa_pool_out(fa_drip)], fa_mint(fa_did_name, -1))
+/// Biên của `reclaim_epochs_const = 72`, cực XANH: mốc idle 100, now = 172 =
+/// 100 + 72 ⇒ đủ điều kiện. Pool nhận đủ Δ = fa_drip; ACCT NFT bị đốt.
+/// Cặp 172/171 là phép đo DUY NHẤT phân biệt được hằng 72 với bất kỳ hằng khác:
+/// một ca đơn lẻ ở now = 2000 xanh với mọi giá trị ≤ 1900.
+test reclaim_idle_72() {
+  reclaim_idle_run(172, [fa_pool_out(fa_drip)], fa_mint(fa_did_name, -1))
 }
 
-test reclaim_idle_too_early() fail {
-  reclaim_idle_run(1100, [fa_pool_out(fa_drip)], fa_mint(fa_did_name, -1))
+/// Cực ĐỎ của cùng biên: thiếu ĐÚNG một cửa sổ (now = 171).
+test reclaim_idle_71() fail {
+  reclaim_idle_run(171, [fa_pool_out(fa_drip)], fa_mint(fa_did_name, -1))
 }
 
 test reclaim_idle_token_not_to_pool() fail {
   // pool nhận Δ = fa_drip − 1 < acct_lamp (keeper cuỗm 1 token) → reject.
-  reclaim_idle_run(1101, [fa_pool_out(fa_drip - 1)], fa_mint(fa_did_name, -1))
+  reclaim_idle_run(172, [fa_pool_out(fa_drip - 1)], fa_mint(fa_did_name, -1))
 }
 
 test reclaim_idle_no_pool_output() fail {
@@ -658,17 +688,17 @@ test reclaim_idle_no_pool_output() fail {
       assets.from_lovelace(2_000_000)
         |> assets.add(fa_lamp_policy, fa_lamp_name, fa_drip),
     )
-  reclaim_idle_run(1101, [bad_out], fa_mint(fa_did_name, -1))
+  reclaim_idle_run(172, [bad_out], fa_mint(fa_did_name, -1))
 }
 
 /// C-BURN-1: thu hồi mà KHÔNG đốt ACCT NFT ⇒ nó thành vé tái dùng vĩnh viễn.
 test reclaim_idle_khong_burn_acct() fail {
-  reclaim_idle_run(1101, [fa_pool_out(fa_drip)], assets.zero)
+  reclaim_idle_run(172, [fa_pool_out(fa_drip)], assets.zero)
 }
 
 /// C-BURN-1: đốt ACCT NFT của DID KHÁC (giữ lại vé của chính mình).
 test reclaim_idle_burn_name_khac() fail {
-  reclaim_idle_run(1101, [fa_pool_out(fa_drip)], fa_mint(fa_other_did, -1))
+  reclaim_idle_run(172, [fa_pool_out(fa_drip)], fa_mint(fa_other_did, -1))
 }
 
 /// ReclaimIdle: keeper trả đủ tLAMP nhưng đưa pool sang VÍ mình.
@@ -679,7 +709,7 @@ test reclaim_idle_pool_to_wallet() fail {
       fa_pool_val(10_000_000, fa_pool_base + fa_drip),
       fa_pool_datum(50, 7),
     )
-  reclaim_idle_run(1101, [pool_out], fa_mint(fa_did_name, -1))
+  reclaim_idle_run(172, [pool_out], fa_mint(fa_did_name, -1))
 }
 
 /// ReclaimIdle: pool_out cùng script hash, khác stake credential.
@@ -690,5 +720,5 @@ test reclaim_idle_pool_stake_hijack() fail {
       fa_pool_val(10_000_000, fa_pool_base + fa_drip),
       fa_pool_datum(50, 7),
     )
-  reclaim_idle_run(1101, [pool_out], fa_mint(fa_did_name, -1))
+  reclaim_idle_run(172, [pool_out], fa_mint(fa_did_name, -1))
 }

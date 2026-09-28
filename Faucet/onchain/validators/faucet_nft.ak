@@ -27,12 +27,13 @@
 // phải gọi được nó từ `faucet_pool.ak`. Xem đầu `handlers.ak`.
 
 use aiken/interval
+use aiken/merkle_patricia_forestry as mpf
 use cardano/assets.{PolicyId, Value}
 use cardano/transaction.{Input, Output, OutputReference, Transaction, placeholder}
 use magiclamp/faucet/handlers
 use magiclamp/faucet/ledger.{
   BurnAccount, FaucetConfig, FaucetNftRedeemer, MintAccount, MintPool, PoolDatum,
-  max_claims_ceiling, pool_nft_name,
+  did_key, did_leaf_value, empty_opened_root, max_claims_ceiling, pool_nft_name,
 }
 use magiclamp/faucet/util
 
@@ -98,12 +99,23 @@ fn fn_cfg(max_claims: Int) -> FaucetConfig {
   }
 }
 
-fn fn_pool_datum(max_claims: Int, window: Int, claims: Int) -> PoolDatum {
+fn fn_pool_datum_root(
+  max_claims: Int,
+  window: Int,
+  claims: Int,
+  root: ByteArray,
+) -> PoolDatum {
   PoolDatum {
     cfg: fn_cfg(max_claims),
     window_epoch: window,
     claims_in_window: claims,
+    opened_root: root,
   }
+}
+
+/// Datum khởi tạo HỢP LỆ: sổ `opened_root` RỖNG (C-MP-8).
+fn fn_pool_datum(max_claims: Int, window: Int, claims: Int) -> PoolDatum {
+  fn_pool_datum_root(max_claims, window, claims, empty_opened_root())
 }
 
 fn fn_pool_val() -> Value {
@@ -443,4 +455,54 @@ test burn_account_lan_prefix_pool() fail {
 test burn_account_qty_duong() fail {
   let tx = Transaction { ..placeholder, mint: fn_mint(fn_acct_name, 1) }
   faucet_nft.mint(fn_genesis_ref(), fn_ms_per_epoch, BurnAccount, fn_policy, tx)
+}
+
+// ── C-MP-8: sổ `opened_root` khởi tạo phải RỖNG ──────────────────
+// `mint_pool_happy` là cực XANH (nó dùng `fn_pool_datum`, đã mang gốc rỗng). Hai ca
+// dưới đây là hai cực ĐỎ của hai đường phá KHÁC NHAU — gộp làm một ca sẽ bỏ mất
+// một đường, vì chúng hỏng theo hai chiều ngược nhau.
+
+/// Deploy với sổ đã cài sẵn khoá của một DID: DID đó bị khoá khỏi faucet VĨNH VIỄN
+/// (`ClaimOpen` đòi chứng minh VẮNG, không bao giờ thoả), và không ai nhìn datum mà
+/// biết được — 32 byte nào cũng "trông đúng".
+test mintpool_goc_khong_rong() fail {
+  let root =
+    mpf.insert(mpf.empty, did_key(#"a11ce0"), did_leaf_value, []) |> mpf.root
+  let pool_out =
+    util.mk_output(
+      util.script_address(fn_pool_sh),
+      fn_pool_val(),
+      fn_pool_datum_root(20, fn_now, 0, root),
+    )
+  faucet_nft.mint(
+    fn_genesis_ref(),
+    fn_ms_per_epoch,
+    MintPool,
+    fn_policy,
+    fn_mintpool_tx(pool_out),
+  )
+}
+
+/// Deploy với 32 byte RÁC không ứng với cây nào: từ đó không ai dựng nổi bằng chứng,
+/// nên CẢ `ClaimOpen` LẪN `Reclaim` chết cùng lúc. POOL NFT one-shot ⇒ không đúc lại
+/// được ⇒ toàn bộ tLAMP trong pool kẹt vĩnh viễn.
+test mintpool_goc_rac() fail {
+  let pool_out =
+    util.mk_output(
+      util.script_address(fn_pool_sh),
+      fn_pool_val(),
+      fn_pool_datum_root(
+        20,
+        fn_now,
+        0,
+        #"deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+      ),
+    )
+  faucet_nft.mint(
+    fn_genesis_ref(),
+    fn_ms_per_epoch,
+    MintPool,
+    fn_policy,
+    fn_mintpool_tx(pool_out),
+  )
 }
