@@ -1,19 +1,11 @@
 # LAMP — Catalog 18 Pot (mô tả + khoá/nhỏ-giọt + gen-MAGIC)
 
-> **Paper class**: A — Positioning — giải thích 18 pot cho người ngoài.
-> Đây là tài liệu **đối ngoại** (bản phái sinh), không phải đặc tả nội bộ. Chuẩn: `../CONVENTIONS.md`.
-
 > **Trạng thái**: ĐÃ CHỐT — bảng 18 pot (§1), phân loại gen-MAGIC ba mức (§0, §2), thuyết minh
-> từng pot (§3) và kết luận về hệ-số-gen (§4) là quyết định của chủ repo.
-> `[NEEDS-EVIDENCE: ngày chốt bảng 18 pot — quyết định có thật, nhưng chưa có bản ghi nào trong
-> repo để tra; theo CONVENTIONS.md Rule 3 thì phải dẫn được nguồn mới ghi ngày ra đây]`
+> từng pot (§3) và kết luận về hệ-số-gen (§4) là quyết định đã chốt.
 >
 > **Còn mở** — hai chỗ, không phải một:
-> - **§5** — quy tắc claim chi tiết của **ETD** và **SRCL**. Airdrop thì KHÔNG còn mở nữa: schema
->   nạp/claim chốt 2026-07-31 và tham số vận hành chốt 2026-08-18
->   (`Airdrop/CONTRACT.md` §1.7 và §6 — module đã bàn giao ra ngoài repo này
->   2026-09-01, tra bằng `git show adf2a0e:Airdrop/CONTRACT.md`); phần duy nhất còn treo của
->   Airdrop là **nghĩa `owner` của vai SPO** (CONTRACT.md §1.7).
+> - Quy tắc claim chi tiết của **ETD** và **SRCL** (§5). Airdrop thì không còn mở: schema nạp/claim
+>   và tham số vận hành đã chốt; phần duy nhất còn treo của Airdrop là nghĩa `owner` của vai SPO.
 > - **§3, pot 18 (Liquidity)** — cơ chế, thời điểm và điều kiện pháp lý để kích hoạt.
 >
 > Một mục đã chốt vẫn sửa được, nhưng sửa bằng một quyết định mới có ngày — không phải vì tài
@@ -21,34 +13,39 @@
 >
 > Mục đích: để mọi người hiểu **mỗi pot là gì, dùng làm gì, bị khoá hay nhỏ-giọt thế nào, và có
 > sinh MAGIC hay không.**
-> Số liệu bám `TOKENOMICS-v17`. **Đơn vị: NGHÌN LAMP** (tổng 36.000.000 nghìn = 36 tỷ).
+> **Đơn vị: NGHÌN LAMP** (tổng 36.000.000 nghìn = 36 tỷ).
 > Dùng nghìn LAMP để PhoenixKey (142.857) và RedBack (21.143) thành SỐ NGUYÊN, hết lẻ.
 
-> **Hệ 3 token — CHỐT: KHÔNG hợp nhất CARP vào MAGIC** (đảo lại quyết-định gộp-1-token; nguồn `/CARP` SESSION-STATE §30/6-b).
+> **Hệ 3 token — KHÔNG hợp nhất CARP vào MAGIC.**
 > **LAMP** = tài sản nền 36 tỷ (tài liệu này mô tả). **MAGIC** = thuần **Consumable**: **KHÔNG chuyển nhượng**, không tiêu
 > thì mất (decay), neo sức-mua-dịch-vụ nội sinh, **chỉ chuộc-ra-DỊCH-VỤ** (không chuộc tiền); sinh từ nắm LAMP
-> (SnapshotMint) / tiêu định kỳ (ScheduleMint). **CARP** = đồng **Exchangeable** (lưu hành, chuyển nhượng, ổn định
-> đa-tầng, policy riêng) — đồng DUY NHẤT được thiết kế để chuyển nhượng trong hệ. MAGIC & CARP **không niêm yết sàn ngoài**.
+> (InstantGen) / tiêu định kỳ (ScheduleGen). **CARP** = đồng **Exchangeable** (lưu hành, chuyển nhượng, ổn định
+> đa-tầng, policy riêng) — đồng DUY NHẤT được thiết kế để chuyển nhượng trong hệ. MAGIC & CARP **không niêm yết sàn
+> ngoài**; dự án không cam kết về việc niêm yết CARP trong tương lai.
 
 ---
 
 ## 0. Ba thuộc tính mỗi pot
 
 1. **Mục đích** — pot này để làm gì.
-2. **Cách ra:** **Nhỏ-giọt (CappedDrop)** `vested(t)=min(E, D·dpe·max(0,t−start))` · **Chưa-mint**
-   (token chưa tồn tại, khoá tự nhiên) · **Snapshot** (chia theo ảnh chụp, claim Merkle permissionless)
-   · **Engine riêng** (Reserve: trần nhịp + cổng cầu / LP / RedBack).
+2. **Cách ra:** **Nhỏ-giọt (CappedDrop)** — công thức trần tích luỹ + cắt ngọn: `distribution.md` §3.1 ·
+   **Chưa-mint** (token chưa tồn tại, khoá tự nhiên) · **Snapshot** (chia theo ảnh chụp, claim Merkle
+   permissionless) · **Engine riêng** (Reserve: trần nhịp + cổng cầu / LP / RedBack).
 3. **Gen MAGIC?** — **NGUYÊN TẮC CỐT LÕI: MAGIC CHỈ gen trong VAULT của một DID, KHÔNG bao giờ gen "trong pot".**
    Một pot chỉ gen MAGIC khi **LAMP của nó đã nằm trong một vault-DID** (cá nhân / OrgDID / Platform-DID).
    3 mức = LAMP nằm ở **vault-DID nào**:
-   - **TỔ CHỨC/PLATFORM** 🏛️ — LAMP được giữ/khoá **trong vault của OrgDID / Platform-DID** (Foundation-DID,
-     OrgDID Aladin/GreenSun, Platform-DID LampNet/AffiSo/PhoenixKey) → vault đó gen MAGIC (tính cả phần khoá, C-SS-5).
-   - **USER khi claim** 👤 — LAMP nằm ở **kênh phân phối (KHÔNG phải vault-DID)** → chỉ gen khi **claim về vault
-     DID người dùng** (kể cả chưa redeem).
+   - **TỔ CHỨC/PLATFORM** 🏛️ — LAMP được giữ/khoá **trong vault của OrgDID / Platform-DID** (OrgDID
+     Aladin/GreenSun, Platform-DID LampNet/AffiSo/PhoenixKey) → vault đó gen MAGIC (tính cả phần khoá).
+     Pot Foundation cũng xếp ở mức này, **áp dụng khi** cách khoá công bố lúc lập pháp nhân cho phép LAMP
+     nằm trong một vault-DID — xem §3 pot 9.
+   - **USER** 👤 — hai đường: **(a)** LAMP nằm ở **kênh phân phối (KHÔNG phải vault-DID)** → chỉ gen khi
+     **claim về vault DID người dùng** (Development, Partnership); **(b)** LAMP đã khoá sẵn trong két theo
+     **PersonDID** ngay từ đầu, không rời két ra ví người dùng (Wakeme) — được tính là nằm trong vault gắn
+     DID cá nhân.
    - **KHÔNG** ❌ — chưa-gen on-chain / parked Treasury / trong LP sàn nội bộ / quỹ peg / hết sớm → KHÔNG ở vault-DID nào → không gen.
 
-> **Bất biến I-ACT-7 — LAMP ĐỨNG YÊN** (neo: `MAGIC/InstantGen/TECH.md` §A02 và
-> `MAGIC/ScheduleGen/TECH.md` đầu tệp + §3.2): LAMP **không rời vault khi sinh MAGIC**. Khi vault
+> **Bất biến quan trọng — LAMP ĐỨNG YÊN** (neo: kho `MagicLampEco/MAGIC` — `MAGIC/InstantGen/TECH.md`
+> §A02 và `MAGIC/ScheduleGen/TECH.md` đầu tệp + §3.2): LAMP **không rời vault khi sinh MAGIC**. Khi vault
 > fire, LAMP là **nền tính suất** — `lamp_balance` **bất biến**, LAMP trong vault UTxO
 > byte-identical trước và sau. MAGIC được tạo ra nhưng LAMP vẫn đứng yên. Mọi luồng "LAMP →
 > Treasury" phát sinh từ *hành động sinh MAGIC* là **bất hợp lệ**; chân Treasury đã bị xoá khỏi
@@ -56,39 +53,14 @@
 > *(Chính xác một vế: `lamp_locked` bất biến qua InstantGen, nhưng `ScheduleFire` **giải phóng khoá**
 > nên `lamp_locked` có giảm — giải phóng khoá không phải LAMP rời vault.)*
 >
-> **Riêng pot Wakeme — HAI ĐÍCH, và đây là mô hình ĐÃ CHỐT** (chủ dự án chốt **2026-08-12**;
-> trước đó là điểm còn tranh chấp giữa hai tài liệu, nay hết tranh chấp).
->
-> **Phát biểu chuẩn — dùng nguyên văn này ở mọi nơi:**
-> > *Mọi LAMP rời vault Wakeme đi ĐÚNG một trong hai đích: **pot** (kế toán Treasury/hồ chung)
-> > hoặc **ví-owner**. Không có đường đốt. LAMP vào vault chỉ từ genesis (pot).*
->
-> Ba nguồn độc lập cùng nói một điều — không phải suy diễn:
-> - **Đặc tả toán**: `PhoenixKey-Specs/PhoenixKey-Wakeme-Math.md:95` (hard-constraint) và
->   `:109` bất biến **I-ACT-5** *"mỗi LAMP rời vault → {pot, ví-owner}"*.
-> - **Mã đang chạy**: `PhoenixKey-Validator/validators/wakeme_vault.ak` (bản A, 2026-07-30) —
->   `Reclaim`/`ReclaimEpoch` đích cứng `pot_address`; `Redeem` đích cứng `owner_address`;
->   `OwnEpoch` **không rời vault** (chỉ đổi sổ nội bộ conditional → owned, `L(out) == L(in)`).
-> - **Định lý bảo toàn**: `Wakeme-Math.md:213` — phát biểu và chứng minh đúng hai đích đó.
-> - **Khung cũ đã bị loại, có ghi chép**: `PhoenixKey-Specs/PhoenixKey-Wakeme-Exec.md:8` ghi thẳng
->   rằng khung *closed-loop-pot / "tấm-pin"* (2026-07-17, *"user KHÔNG BAO GIỜ sở hữu LAMP"*)
->   **ĐÃ BỊ LOẠI** (chốt 2026-07-30) và đã chuyển vào `Legacy/` bên đó.
->
-> Nói cách khác, hai đường ra: **(a)** phần **chưa mở** mà người dùng bỏ không dùng →
-> `Reclaim`/`ReclaimEpoch` thu về **pot** (anti-idle); **(b)** phần **đã mở** — `OwnEpoch`
-> chuyển conditional → owned (chú thích mã ghi *"SỞ-HỮU-HẲN"*) — là **tài sản của người dùng**,
-> rút về ví qua `Redeem` (I-ACT-9: *"đường LAMP owned → user DUY NHẤT"*).
->
-> 🔴 **Việc còn phải làm ở nhà khác:** `Launch/Whitepaper-MagicLamp-Tokenomic-(Vi).md` còn **4 chỗ**
-> (đo 2026-08-12: dòng **13, 52, 86, 213**) nói người dùng *"KHÔNG BAO GIỜ sở hữu"* và *"mọi LAMP
-> rời vault chỉ về pot, KHÔNG về ví-người-dùng"* — **ngược với mô hình đã chốt**. Đáng chú ý:
-> dòng 213 viện dẫn chính `PhoenixKey-Wakeme-Math.md` làm bằng chứng, trong khi tệp đó ở dòng 95
-> nói ngược lại. LAMP KHÔNG tự sửa tệp nhà khác; đã gửi thư yêu cầu Launch agent sửa.
-> Gặp câu đó ở đâu thì đó là bản CHƯA cập nhật, đừng dẫn lại.
+> **Riêng pot Wakeme — MỘT ĐÍCH: LAMP rời két chỉ về kho.** LAMP trong két Wakeme không rút ra ví
+> người dùng được; đường ra duy nhất của nó là về kho của pot. Két mở dần 1 LAMP mỗi đêm trong 1001
+> đêm; đêm nào không dùng dịch vụ thì phần chưa mở của đêm đó bị thu hồi về kho. Wakeme không giữ
+> khoá nào chi phối tài sản người dùng.
 
 > ⚠️ **Mối lo pha loãng:** LAMP ở vault tầng tổ chức 🏛️ ≈ **20 tỷ**, gấp ~5× tầng user 👤 (~4 tỷ). Kết luận
-> phản biện ở §4. **Hệ-số-gen mỗi pot KHÁC nhau** và do **Aladin Contract điều chỉnh** thời gian đầu
-> (team dev Aladin vận hành giao thức), **sau giao DAO**.
+> phân tích ở §4. **Hệ-số-gen mỗi pot KHÁC nhau**; pháp nhân sáng lập vận hành giai đoạn đầu, chuyển
+> DAO theo lộ trình.
 
 ---
 
@@ -96,15 +68,15 @@
 
 | # | Pot | Nghìn LAMP | % | Mục đích | Cách ra | Gen MAGIC? |
 |---|---|---:|---:|---|---|---|
-| 1 | **Reserve** | 9.630.000 | 26,75% | Đệm cung cuối, điều tiết khi Treasury cạn | Engine hai vế: trần **9.630.000 LAMP/epoch** (E/1000) + cổng cầu khi kho Treasury dưới sàn; **không ấn định epoch kết thúc**. Luật: [`Specs/Emission/CONTRACT.md`](../Specs/Emission/CONTRACT.md) | ❌ chưa-mint |
+| 1 | **Reserve** | 9.630.000 | 26,75% | Đệm cung cuối, điều tiết khi Treasury cạn | Engine hai vế: trần **9.630 nghìn LAMP/epoch** (= 9,63 triệu LAMP = 1/1000 quỹ Reserve) + cổng cầu khi kho Treasury dưới sàn; **không ấn định epoch kết thúc**. Luật: [`Specs/Emission/CONTRACT.md`](../Specs/Emission/CONTRACT.md) | ❌ chưa-mint |
 | 2 | **Treasury** | 964.000 | 2,68% | Sổ điều tiết C↔T (giảm lưu hành = parked, không đốt) | Kế toán 2 chiều | ❌ parked |
 | 3 | **Development** | 2.718.000 | 7,55% | Quỹ duy trì & vận hành giao thức: R&D công nghệ lõi + mua app truyền thống tích hợp; DAO quyết, ai cũng đề xuất | Nhỏ-giọt | 👤 khi claim về DID |
 | 4 | **Platform** | 3.141.000 | 8,73% | Thưởng nền tảng dùng LAMP | Nhỏ-giọt | 🏛️ gen, chia DID theo MAGIC tiêu thụ |
 | 5 | **App** | 1.618.000 | 4,49% | Khuyến khích ứng dụng xây trên hệ | Nhỏ-giọt | 🏛️ gen, chia DID theo MAGIC tiêu thụ |
-| 6 | **Wakeme** | 1.001.000 | 2,78% | **Cho mượn để TIÊU dịch vụ, KHÔNG tặng, KHÔNG để mua-bán**: mỗi PersonDID ≤1001 LAMP, khoá 1001 đêm, ngày không dùng → thu 1 LAMP về pot; qua 1001 đêm nhả 1 LAMP/đêm thành sở-hữu | Module PhoenixKey **Wakeme** (tên cũ Activation): vault-vesting 1 LAMP/đêm + anti-idle | 👤 vault khoá theo PersonDID |
+| 6 | **Wakeme** | 1.001.000 | 2,78% | **Cho mượn để TIÊU dịch vụ, KHÔNG tặng, KHÔNG để mua-bán**: mỗi PersonDID mượn tối đa 1001 LAMP, khoá 1001 đêm, trong đó mở dần 1 LAMP mỗi đêm | Vault-vesting do PhoenixKey vận hành + thu hồi đêm không dùng | 👤 vault khoá theo PersonDID |
 | 7 | **Referrer** | 343.000 | 0,95% | Thưởng giới thiệu | Nhỏ-giọt | 🏛️ uỷ thác Platform **AffiSo** DID |
 | 8 | **PhoenixKey (Phoenix Treasury)** | 142.857 | 0,40% | Quỹ **Phoenix Treasury** — nguồn tài sản cho **Feecover** (trả phí hộ user). Cấp nguồn cho **Feecover** qua **1 đợt SRCL 7 epoch**: phần thưởng staking do người tham gia định tuyến về pot được dùng trả phí mạng, đóng góp đó được **ghi nhận** bằng 7 triệu LAMP (1 triệu/epoch). Quản lý số dư ADA của Feecover là nghiệp vụ vận hành nội bộ, không phải dịch vụ giao dịch cho bên thứ ba | Nhỏ-giọt + đợt SRCL 7 epoch | 🏛️ uỷ thác Platform **PhoenixKey** DID |
-| 9 | **MagicLamp Foundation** | 1.296.000 | 3,60% | Năng lượng vận hành DAO | **Chưa-mint→khoá VĨNH VIỄN** sau khi lập pháp nhân | 🏛️ gen → nuôi DAO (xem §3) |
+| 9 | **MagicLamp Foundation** | 1.296.000 | 3,60% | Quỹ dài hạn của pháp nhân đại diện, giữ ở dạng khoá gốc | **Chưa-mint→khoá VĨNH VIỄN** sau khi lập pháp nhân | 🏛️ *(áp dụng khi cách khoá cho phép — xem §3)* |
 | 10 | **Aladin Contract** | 6.000.000 | 16,67% | Pháp nhân sáng lập (1/6 cung) | Nhỏ-giọt **ngang cộng đồng** | 🏛️ gen → **OrgDID Aladin** |
 | 11 | **GreenSun Tech** | 6.000.000 | 16,67% | Pháp nhân sáng lập (1/6 cung) | Nhỏ-giọt **ngang cộng đồng** | 🏛️ gen → **OrgDID GreenSun** |
 | 12 | **Partnership** | 284.000 | 0,79% | Đối tác chiến lược | Nhỏ-giọt | 👤 khi partner claim về DID |
@@ -113,7 +85,7 @@
 | 15 | **SRCL** | 360.000 | 1,00% | Redirect staking-reward ADA ↔ LAMP | Snapshot/epoch theo ADA góp; SPO bonus tự đặt | ❌ hết sớm |
 | 16 | **Join LampNet** | 1.461.000 | 4,06% | Thưởng người góp tài nguyên thiết bị vào hạ tầng phân tán LampNet | Nhỏ-giọt | 🏛️ uỷ thác Platform **LampNet** DID |
 | 17 | **RedBack** | 21.143 | 0,06% | Quỹ phòng-thủ neo giá đồng ổn định (peg CARP↔MAGIC): hy sinh khi peg đỏ, lớn lên khi thế chấp vượt trần | Engine phòng thủ peg (vốn vô chủ) | ❌ quỹ peg |
-| 18 | **Liquidity** | 888.000 | 2,47% | Cấp thanh khoản cho **sàn nội bộ hệ sinh thái** (cặp CARP/LAMP, CARP/ADA, CARP/NIGHT) | Engine LP theo TVL | ❌ trong LP |
+| 18 | **Liquidity** | 888.000 | 2,47% | Dự phòng thanh khoản hệ sinh thái; cơ chế và cặp giao dịch: xem §3 pot 18 | Chưa có engine; xem §3 pot 18 | ❌ dự phòng |
 
 **Kiểm chứng:** tổng = 36.000.000 nghìn ✓ · mọi pot trừ Reserve = 26.370.000 (= `dist_cap`) ✓ · Reserve = 9.630.000 (= `reserve_cap`) ✓ · PhoenixKey 142.857 + RedBack 21.143 = 164.000 (bù lẻ tròn).
 
@@ -127,7 +99,7 @@ pot không vận hành phần tương ứng, chứ không vận hành tạm rồ
 |---|---|---|---|
 | 9 · Foundation | pháp nhân chưa lập | **không** giữ tài sản trọng yếu trước khi có pháp nhân; khoá vĩnh viễn chỉ thực hiện sau khi lập | §3 pot 9 |
 | `PHAP-NHAN-001` (áp cho pot 9 · 14 · 15) | quốc gia đặt pháp nhân, hình thức pháp nhân, quy chế của nó | đã định **hướng**: pháp nhân đặt ở **nước ngoài**, lập bởi cộng đồng DAO hình thành từ Airdrop. Chừng nào chưa công bố đủ ba thứ đang mở ⇒ **cấm** mọi tài liệu mô tả Foundation như pháp nhân **đang tồn tại**, **cấm** nêu một quốc gia cụ thể như đã chọn, và pot 9 giữ trạng thái **chưa-mint** | §3 pot 9, pot 14; `srcl.md` §1 |
-| 15 · SRCL | đại lượng đo ngưỡng kích hoạt (`SRCL-KICH-HOAT-001`) · người giữ `delegation_admin` (`SRCL-ADMIN-002`) | ngưỡng = 21; đơn vị đếm, văn kiện và cách đếm chưa công bố ⇒ **không kích hoạt**; admin chưa công bố ⇒ **cấm** mô tả cơ chế là "bất biến"/"không admin" | `srcl.md` §1, §8 |
+| 15 · SRCL | đại lượng đo ngưỡng kích hoạt (`SRCL-KICH-HOAT-001`) · người giữ `delegation_admin` (`SRCL-ADMIN-002`) | con số ngưỡng: **21**. Đơn vị đếm, văn kiện lâm thời và cách đếm công bố sau ⇒ SRCL **không kích hoạt** tới khi công bố; admin chưa công bố ⇒ **cấm** mô tả cơ chế là "bất biến"/"không admin" | `srcl.md` §1, §8 |
 | 17 · RedBack | phạm vi CARP ↔ LAMP | quỹ peg thuộc tài liệu riêng của CARP; kho này **không** định nghĩa lại điều kiện hy sinh quỹ | `srcl.md` §5 đợt 2 |
 | 18 · Liquidity | điều kiện pháp lý để cấp thanh khoản | **chưa kích hoạt**; không cặp nào được mở trước khi có kết luận tư vấn cho khu vực tương ứng | §3 pot 18 |
 
@@ -139,9 +111,12 @@ khâu claim**, không chỉ trong quy chế.
 
 ## 2. Ba mức gen-MAGIC (tổng theo nghìn LAMP)
 
-- **🏛️ Tổ chức/Platform — LAMP nằm trong vault OrgDID/Platform-DID, gen kể cả khi khoá (~20.001.857 ≈ 20 tỷ):**
-  Foundation, Aladin, GreenSun, Platform, App, Join LampNet→LampNet, Referrer→AffiSo, PhoenixKey→PhoenixKey-DID.
-- **👤 User — chỉ gen khi claim về DID (~4.003.000 ≈ 4 tỷ):** Development, Wakeme, Partnership.
+- **🏛️ Tổ chức/Platform — LAMP nằm trong vault OrgDID/Platform-DID, gen kể cả khi khoá (~20.001.857 ≈
+  20 tỷ, gồm Foundation — áp dụng khi cách khoá công bố lúc lập pháp nhân cho phép LAMP nằm trong
+  vault-DID):** Aladin, GreenSun, Platform, App, Join LampNet→LampNet, Referrer→AffiSo,
+  PhoenixKey→PhoenixKey-DID, Foundation.
+- **👤 User (~4.003.000 ≈ 4 tỷ):** hai đường — Development, Partnership gen **sau khi claim** về vault DID
+  người dùng; Wakeme gen vì LAMP đã nằm sẵn trong két theo **PersonDID** (không rời két ra ví).
 - **❌ Không gen (~11.995.143 ≈ 12 tỷ):** Reserve, Treasury, ETD, Airdrop, SRCL, RedBack, Liquidity.
 
 ---
@@ -150,12 +125,16 @@ khâu claim**, không chỉ trong quy chế.
 
 **Nhóm điều tiết & dự trữ**
 - **1. Reserve (9.630.000)** — lớp đệm cung **cuối cùng**, luật nhả có **hai vế phải thoả cả hai**: nhả
-  **tối đa 9.630.000 LAMP mỗi epoch** (= 1/1000 quỹ Reserve), và **chỉ nhả khi kho Treasury xuống dưới sàn**.
-  Cạn sau 1000 epoch là **cận dưới**, không phải lịch — mỗi epoch bị cổng đóng lại đẩy thời điểm cạn ra xa,
-  và **không có cận trên**; không cầu thì không nhả. Một chiều (no-burn). Permissionless, không ai rút tay.
-  Luật đầy đủ: [`Specs/Emission/CONTRACT.md`](../Specs/Emission/CONTRACT.md).
-- **2. Treasury (964.000)** — **vốn mồi + sổ điều tiết hai chiều** C↔T. "Giảm lưu hành" = parked vào đây (kế toán),
-  KHÔNG đốt. Là nơi bơm lại các pot khác (User, Development…) khi DAO quyết. Quản bởi DAO.
+  **tối đa 9.630 nghìn LAMP mỗi epoch** (= 9,63 triệu LAMP = 1/1000 quỹ Reserve), và **chỉ nhả khi kho
+  Treasury xuống dưới sàn**. Cạn sau 1000 epoch là **cận dưới**, không phải lịch — mỗi epoch bị cổng
+  đóng lại đẩy thời điểm cạn ra xa, và **không có cận trên**; không cầu thì không nhả. Một chiều
+  (no-burn). Permissionless, không ai rút tay. Luật đầy đủ: [`Specs/Emission/CONTRACT.md`](../Specs/Emission/CONTRACT.md).
+- **2. Treasury (964.000)** — **vốn mồi + sổ điều tiết hai chiều** C↔T. "Giảm lưu hành" = parked vào đây
+  (kế toán), KHÔNG đốt. Hai khái niệm KHÁC nhau, đừng gộp: **trần của một pot đã triển khai bị chốt cứng
+  trên chuỗi** (đổi ngân sách một pot nghĩa là triển khai lại cụm pot đó, không phải chỉnh một tham số);
+  còn **"Treasury cấp thêm cho một pot"** là một khoản **chuyển giữa hai pot theo biểu quyết** (rút từ
+  Treasury, cấp cho pot kia ở lượt triển khai kế tiếp) — tổng 36 tỷ không đổi. Thiết kế: DAO quản; giai
+  đoạn đầu pháp nhân sáng lập vận hành, chuyển DAO theo lộ trình.
 
 **Nhóm vận hành & sáng lập (PHÂN BIỆT RÕ)**
 - **3. Development (2.718.000)** — quỹ **duy trì & vận hành giao thức mạng lưới**: nghiên cứu & phát triển **công
@@ -175,41 +154,35 @@ khâu claim**, không chỉ trong quy chế.
 
 **Nhóm người dùng & giới thiệu**
 - **6. Wakeme (1.001.000)** — **KHÔNG phải tặng.** Giao thức **cho mỗi PersonDID (PhoenixKey) MƯỢN tối đa 1001 LAMP với
-  MỤC ĐÍCH DUY NHẤT là TIÊU dùng dịch vụ trong hệ — KHÔNG phải để mua-bán.** Khi kích hoạt DID (GetLAMP), LAMP vào một
-  **vault khoá 1001 đêm**, mở dần **1 LAMP mỗi đêm**; **đêm nào không dùng dịch vụ → 1 LAMP phần CHƯA-MỞ bị thu về pot**
-  (use-it-or-lose-it — chỉ đòi phần chưa trao, KHÔNG chạm phần đã mở). Ai dùng-thật giữ trọn dòng mở; ai bỏ cuộc trả
-  phần chưa-mở về pot nuôi người mới. **Chỉ phần đã mở mới chuyển-nhượng được** (LAMP đã mở → sinh MAGIC để tiêu dùng
-  dịch vụ trong hệ; phần đã mở là tài sản thuộc sở hữu người dùng, họ toàn quyền định đoạt). Cơ chế đầy đủ: đặc tả
-  `PhoenixKey Wakeme` (tên cũ Activation; validator `activation_vault.ak`+`activation_logic.ak`,
-  vault-vesting theo đồng-hồ-NGÀY slot/86400 + anti-idle thu-hồi, forfeit-1001-idle-epoch). **Pot tự-nuôi, không cạn**: 3 nguồn nạp — phần
-  thu-hồi của người bỏ cuộc + phí user-trước (thu bằng LAMP theo giá-trị, phản-chu-kỳ) + Treasury bơm khi cần.
+  MỤC ĐÍCH DUY NHẤT là TIÊU dùng dịch vụ trong hệ — KHÔNG phải để mua-bán.** LAMP trong két không rút
+  ra ví người dùng được; đường ra duy nhất của nó là về kho của pot. Két mở dần **1 LAMP mỗi đêm**
+  trong 1001 đêm; đêm nào không dùng dịch vụ thì phần chưa mở của đêm đó bị thu hồi về kho
+  (use-it-or-lose-it — chỉ đòi phần chưa mở). Wakeme không giữ khoá nào chi phối tài sản người dùng.
+  Ba nguồn nạp lại vào **đúng ngân sách đã chốt** của pot: phần thu-hồi của người bỏ cuộc (đêm chưa mở
+  bị thu hồi về kho) + phí user-trước (thu bằng LAMP theo giá-trị, phản-chu-kỳ) + Treasury cấp thêm theo
+  biểu quyết (một khoản chuyển giữa hai pot — xem pot 2, không phải tăng trần).
 - **7. Referrer (343.000)** — thưởng **giới thiệu** người dùng mới. Uỷ thác vào Platform **AffiSo** (DID riêng).
-- **8. PhoenixKey — Phoenix Treasury (142.857)** — **quỹ của Phoenix Treasury**, đóng vai **nguồn tài sản cho Feecover**
-  (tính năng trả phí hộ người dùng). Trích một phần pot làm tài sản chi trả **phí mạng** cho user. Hai nguồn nạp cho
-  Feecover: **(1)** `TxFee` user trả mỗi giao dịch — **phí cố định theo từng loại giao dịch, quy về CARP**; **(2)** chính
-  pot này — chạy **1 đợt SRCL trong 7 epoch**: phần thưởng staking do người tham gia định tuyến về pot được dùng trả
-  **phí mạng** cho user, và đóng góp đó được **ghi nhận** bằng **7 triệu LAMP** (1 triệu/epoch). **Vòng tự-bồi:** khi có
-  CARP (từ TxFee), hệ thống quy đổi CARP về ADA để tiếp tục có nguồn trả phí. Đây là **nghiệp vụ vận hành nội bộ** để
-  duy trì số dư trả phí, không phải dịch vụ giao dịch cung cấp cho bên thứ ba. **Quy tắc chi của pot này nằm trong mã, không do người quyết từng lượt.** Uỷ thác vào Platform **PhoenixKey** (DID riêng).
-> Câu này trước đây viết *"Giao thức TỰ ĐỘNG, KHÔNG người kiểm soát"*. Đã thay, vì cùng tệp này,
-> cách đó khoảng 50 dòng, có câu *"Hệ-số-gen mỗi pot = THAM SỐ ĐIỀU CHỈNH ĐƯỢC, do Aladin Contract
-> đặt thời gian đầu"*. Hai câu đứng cạnh nhau trong một tài liệu công khai thì câu mạnh hơn không
-> thắng — chúng **triệt tiêu nhau**, và người đọc có lý do tin câu bất lợi hơn. Mức phát biểu đúng
-> là phân biệt **quy tắc chi** (trong mã) với **tham số** (có người đặt, và đã khai ở §hệ-số-gen).
-  > Bản cũ ghi "quỹ tài trợ phí ADA/DUST, user không cần ADA" — mô tả sai (agent bịa), đã thay bằng mô hình Feecover
-  > thực: `TxFee` cố định (CARP) + đợt SRCL 7 epoch của pot này thu ADA + CARP mua lại ADA trên DEX.
+- **8. PhoenixKey — Phoenix Treasury (142.857)** — quỹ của Phoenix Treasury, nguồn tài sản cho
+  Feecover (tính năng trả phí mạng hộ người dùng). Một phần nguồn ADA của Feecover đến từ pot này
+  qua một đợt SRCL riêng, 7 epoch, dùng ngân sách của chính pot 8 — tách khỏi pot 15 (SRCL cộng
+  đồng). Đóng góp đó được **ghi nhận** bằng **7 triệu LAMP** (1 triệu/epoch). Việc quy đổi tài sản
+  khác về ADA để duy trì nguồn trả phí chỉ triển khai trong khuôn khổ pháp luật áp dụng cho hoạt
+  động đó, và hiện không vận hành. Quy tắc chi của pot này nằm trong mã, không do người quyết định
+  từng lượt. Uỷ thác vào Platform **PhoenixKey** (DID riêng).
 - **16. Join LampNet (1.461.000)** — thưởng **người đóng góp tài nguyên thiết bị** (sức tính toán, lưu trữ, băng thông)
-  vào **hạ tầng thiết bị phân tán LampNet**. Uỷ thác vào Platform **LampNet** (DID riêng).
+  vào **hạ tầng thiết bị phân tán LampNet**. Uỷ thác vào Platform **LampNet** (DID riêng). Nguồn phân
+  phối là cơ chế **LampNet Launch** (`launch-framework.md` §3) — cùng khung với SRCL, khác giải pháp
+  kỹ thuật; trạng thái: sẽ thiết kế.
 
 **Nhóm DAO & đối tác**
-- **9. MagicLamp Foundation (1.296.000)** — **năng lượng vận hành DAO**. Pháp nhân này **đặt ở nước ngoài** và
+- **9. MagicLamp Foundation (1.296.000)** — **quỹ dài hạn của pháp nhân đại diện**. Pháp nhân này **đặt ở nước ngoài** và
   do **cộng đồng DAO hình thành từ đợt Airdrop** lập ra, không do hai công ty sáng lập lập ra — vai của nó là
-  **đại diện pháp lý** cho hệ (trạng thái: `PHAP-NHAN-001`, bảng cổng pháp lý §3).
-  Khoá vĩnh viễn sau khi lập pháp nhân; LAMP
-  ở Foundation-DID **sinh MAGIC** chia cho các **ban chuyên môn** tiêu thụ. Ban được **tái uỷ quyền** phần chưa dùng
-  cho ban khác, hoặc **uỷ thác thu LAMP**; phần MAGIC dư sau phân bổ cũng tái uỷ quyền nhận LAMP. Mọi hình thức định
-  đoạt tài sản của Foundation ra ngoài hệ do quy chế Foundation quyết định **sau khi lập pháp nhân** — chưa nằm trong
-  phạm vi tài liệu này. Triết lý "tài sản khoá → năng lượng".
+  **đại diện pháp lý** cho hệ (trạng thái: `PHAP-NHAN-001`, mục "Cổng pháp lý theo pot" ở §1).
+  LAMP của Foundation **khoá gốc vĩnh viễn** sau khi lập pháp nhân; cách khoá — và việc cách khoá đó có để
+  LAMP nằm trong một vault-DID hay không — công bố **cùng lúc lập pháp nhân**. Mọi hình thức định đoạt tài
+  sản của Foundation ra ngoài hệ do quy chế Foundation quyết định **sau khi lập pháp nhân** — chưa nằm trong
+  phạm vi tài liệu này. Phần LAMP này không nhả ra lưu hành. Việc nó có tạo nguồn vận hành cho DAO hay
+  không phụ thuộc cách khoá, công bố cùng lúc lập pháp nhân.
 - **12. Partnership (284.000)** — **đối tác chiến lược**, theo thoả thuận; claim về **DID của partner**.
 
 **Nhóm phân phối sớm (snapshot, hết trong thời gian đầu)**
@@ -224,19 +197,14 @@ khâu claim**, không chỉ trong quy chế.
   (Foundation) **chưa-mint** cho tới khi pháp nhân được lập, và SRCL (pot 15) **không kích hoạt**
   trước khi đạt số người ký văn kiện thành lập — cả hai mốc đều nằm **sau** Airdrop, và cả hai đều
   đóng-mặc-định. Nói cách khác, Airdrop là bước duy nhất chạy được khi chưa có pháp nhân, và đó
-  chính là lý do nó đứng đầu. Trạng thái của chính pháp nhân: dòng `PHAP-NHAN-001`, bảng cổng pháp
-  lý §3.
+  chính là lý do nó đứng đầu. Trạng thái của chính pháp nhân: dòng `PHAP-NHAN-001`, mục "Cổng pháp
+  lý theo pot" ở §1.
 
   Chia **2 phần** (chốt 2026-09-25): **Delegator 100M**, chia theo `accStake` của chính người nhận ·
   **SPO 20M**, chia theo tổng `accStake` của các delegator đủ điều kiện đang uỷ thác vào pool đó.
   Người nhận phải vượt **sàn 1.000 ADA**. Không có phần Community Supporter, không có phần tương tác
-  (engage). Nguồn: `AffiSo/Launch` ▸ `Launch-Compliance-Vi.md` §7.4 (AffiSo/Launch#38). Cách chia
-  cũ **3 pot** (Delegator 100M · SPO 5M · CS 15M, chốt 2026-07-10) đã bị thay.
-  Đặc tả claim: `Airdrop/CONTRACT.md` — bản đó còn ghi cách chia 3 pot, phần chia lấy theo nguồn trên. Module `Airdrop/` đã **bàn giao ra ngoài repo này 2026-09-01** và không
-  còn trong cây làm việc này; bản cuối ở kho này tra bằng `git show adf2a0e:Airdrop/CONTRACT.md` (và
-  `git show adf2a0e:Airdrop/spo-cs.md`). (Mô hình cũ 5 epoch ×24.000 tỉ lệ
-  20:100 đã bị thay ngày 2026-07-10.)
-- **15. SRCL (360.000)** — **redirect staking-reward ADA ↔ LAMP** (delegator tự nguyện đổi % reward), 36 epoch.
+  (engage). Cách chia cũ 3 pot (Delegator 100M · SPO 5M · CS 15M) đã bị thay.
+- **15. SRCL (360.000)** — **redirect staking-reward ADA ↔ LAMP** (delegator tự nguyện đổi % reward), 36 epoch (≈180 ngày).
 
 **Nhóm thanh khoản & bình ổn peg**
 - **17. RedBack (21.143)** — **quỹ hỗ trợ neo giá đồng ổn định** (peg CARP↔MAGIC). **Hy sinh khi Peg chuyển sang đỏ**
@@ -250,7 +218,7 @@ khâu claim**, không chỉ trong quy chế.
 
 ---
 
-## 4. Giới hạn tỷ lệ gen? — KẾT LUẬN (phản biện toán + game-theory)
+## 4. Giới hạn tỷ lệ gen? — KẾT LUẬN
 
 **Mối lo loãng là CÓ THẬT nhưng chỉ ở TRỤC KINH TẾ, không phải trục QUYỀN LỰC.**
 
@@ -258,32 +226,28 @@ khâu claim**, không chỉ trong quy chế.
    MAGIC trong OrgDID/Foundation chỉ là **số dư kế toán** — muốn thành phiếu phải **tiêu thụ bởi một thân-nhân
    sinh-trắc**, mà pot/Org không có. ⟹ founder/Foundation **không thể** biến kho MAGIC thành quyền lực. Động lực
    đóng góp của user được bảo vệ ở **tầng thiết kế**, không phải tầng tỷ lệ gen.
-2. **Loãng kinh tế tự co.** Mỗi LAMP user gen MAGIC **nhiều hơn** org (hệ số hiệu dụng `eff_user≈1.79` vs
-   `eff_org≈1.47`: user OAC cao + decay Ember). Tỷ trọng org: cộng đồng giữ 0→80%, giữ 8 tỷ→58%. Tự cân theo thời gian.
+2. **Loãng kinh tế tự co.** Mỗi LAMP user gen MAGIC nhiều hơn LAMP tổ chức theo thiết kế (tham số OAC +
+   decay), nên tỷ trọng MAGIC do tổ chức nắm giảm dần khi cộng đồng tham gia nhiều hơn. Tự cân theo thời
+   gian, không cần thêm trần cứng.
 
-**Hệ-số-gen mỗi pot = THAM SỐ ĐIỀU CHỈNH ĐƯỢC, do Aladin Contract đặt thời gian đầu → sau giao DAO.**
-Mỗi pot một hệ số `μ_pot ∈ (0,1]` riêng (KHÁC nhau), áp lên công thức gen: `M_pot = ⌊μ_pot · L · R · LF · OAC · PM · B / Q⁵⌋`.
-Lý do để Aladin Contract chỉnh: team dev Aladin vận hành giao thức buổi đầu, cần tinh chỉnh theo dữ liệu thật; cơ chế
-governance đầy đủ chưa lên → giao DAO sau.
-
-**Khuyến nghị giá trị KHỞI ĐẦU (Aladin Contract đặt, chỉnh sau):**
-- `μ ≈ 0.25` cho **2 pot Founder** (Aladin + GreenSun) — nhả MAGIC về OrgDID cty, không tự-tiêu-lại-cho-cộng-đồng →
-  cân quang học ngày đầu (org 80%→50%; →25% khi cộng đồng giữ 8 tỷ).
-- `μ = 1.0` (đầy đủ) cho Foundation (nuôi DAO, ban tiêu-thụ-lại), Platform/App (chia DID theo tiêu thụ),
-  Join LampNet/Referrer/PhoenixKey (uỷ thác Platform-DID phục vụ cộng đồng) — cap nhóm này = tự bắn vào chân.
-- Vì Aladin chỉnh được, các mức trên là **điểm khởi đầu**, không khắc cứng vĩnh viễn.
+**Hệ-số-gen mỗi pot là THAM SỐ ĐIỀU CHỈNH ĐƯỢC, nhưng KHÔNG nằm trong mã sinh MAGIC.** Ký hiệu `μ_pot`
+trong công thức `M_pot = ⌊μ_pot · L · R · LF · OAC · PM · B / Q⁵⌋` là cách viết GỘP cho dễ đọc: cơ chế
+thật tác động qua **lượng LAMP mà mỗi pot nạp vào vault sinh MAGIC** (MAGIC tỉ lệ tuyến tính với LAMP
+trong vault, nên nạp ít hơn có hiệu quả tương đương nhân `μ_pot` vào công thức) — không sửa mã MAGIC,
+không đụng datum/constructor. Chi tiết cơ chế: `distribution.md` §4.1. Giá trị μ khởi đầu của từng pot
+công bố khi policy chính thức phát hành, và đổi được qua cập nhật cấu hình trên chuỗi; pháp nhân sáng
+lập vận hành giai đoạn đầu, chuyển DAO theo lộ trình.
 
 ---
 
 ## 5. Ba pot phân phối cộng đồng sớm (chi tiết claim — ETD/SRCL chốt sau, Airdrop đã chốt)
 
 - **ETD (12.000 nghìn)** — delegator sớm pool TIGER redeem TRƯỚC làm test toàn cầu. Rút theo claim_account vesting permissionless.
-- **Airdrop (120.000 nghìn)** — **2 phần** (chốt 2026-09-25): Delegator 100M theo `accStake` của người nhận · SPO 20M theo tổng `accStake` uỷ thác vào pool; sàn 1.000 ADA; không phần CS, không phần tương tác. Đăng ký bắt buộc; claim Merkle sau snapshot. **Quy tắc claim đã chốt**, đặc tả hiệu lực `Airdrop/CONTRACT.md` §1.7 (schema C, 2026-07-31) + §6 (tham số vận hành, 2026-08-18) — module đã bàn giao ra ngoài repo này, tra bằng `git show adf2a0e:Airdrop/CONTRACT.md`; chỉ còn nghĩa `owner` của vai **SPO** là chưa chốt.
-- **SRCL (360.000 nghìn)** — 36 epoch ×10.000 nghìn. Delegator tự nguyện định tuyến phần thưởng staking về pot; LAMP được **ghi nhận** ∝ phần thưởng đã đóng góp (việc đã xảy ra), theo công thức tất định công khai; **SPO tự đặt bonus rate**. SPO chỉ đăng-ký + đặt-rate 1 lần (decouple, không ký mỗi epoch). Phần thưởng ADA thuộc doanh thu vận hành pool của bên vận hành đợt, tách bạch với phân bổ LAMP.
+- **Airdrop (120.000 nghìn)** — **2 phần** (chốt 2026-09-25): Delegator 100M theo `accStake` của người nhận · SPO 20M theo tổng `accStake` uỷ thác vào pool; sàn 1.000 ADA; không phần CS, không phần tương tác. Đăng ký bắt buộc; claim Merkle sau snapshot. Quy tắc claim đã chốt; phần duy nhất còn treo là nghĩa `owner` của vai **SPO**.
+- **SRCL (360.000 nghìn)** — 36 epoch ×10.000 nghìn. Delegator tự nguyện định tuyến phần thưởng staking về pot; LAMP được **ghi nhận** ∝ phần thưởng đã đóng góp (việc đã xảy ra), theo công thức tất định công khai; **SPO tự đặt bonus rate**. SPO chỉ đăng-ký + đặt-rate 1 lần (decouple, không ký mỗi epoch). ADA phần-thưởng đi về bên thụ hưởng khai ở `srcl.md` §5, tách bạch với phân bổ LAMP.
 
 ---
 
-*Hết catalog. §4 (hệ-số-gen) đã có kết luận sau phản biện toán + game-theory — `μ_pot` là tham số
-điều chỉnh được theo thiết kế, không phải mục còn treo. Hai chỗ còn treo: quy tắc claim chi tiết của
-ETD / SRCL cùng nghĩa `owner` vai SPO của Airdrop (§5), và điều kiện kích hoạt pot Liquidity (§3,
-pot 18).*
+*Hết catalog. §4 (hệ-số-gen) đã có kết luận — `μ_pot` là tham số điều chỉnh được theo thiết kế,
+không phải mục còn treo. Hai chỗ còn treo: quy tắc claim chi tiết của ETD / SRCL cùng nghĩa `owner`
+vai SPO của Airdrop (§5), và điều kiện kích hoạt pot Liquidity (§3, pot 18).*
