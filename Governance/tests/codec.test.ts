@@ -103,7 +103,7 @@ describe("CBOR khớp Aiken cbor.serialise (giá trị neo sinh từ ca Aiken t�
   });
   it("NullifierRedeemer ×2, TallyNftRedeemer, WeightParamNftRedeemer, OutputReference", () => {
     expect(nullifierRedeemerToCbor({ kind: "MintNullifier", did_commit: DID, proposal_id: PID })).toBe(AIKEN.R_MINT_NULLIFIER);
-    expect(nullifierRedeemerToCbor({ kind: "BurnNullifier" })).toBe(AIKEN.R_BURN_NULLIFIER);
+    expect(nullifierRedeemerToCbor({ kind: "BurnNullifier", proposal_id: PID, did_commits: [DID] })).toBe(AIKEN.R_BURN_NULLIFIER);
     expect(tallyNftRedeemerToCbor({ kind: "MintTally", seed: seed0 })).toBe(AIKEN.R_MINT_TALLY);
     expect(weightParamNftRedeemerToCbor({ kind: "MintWeightParam" })).toBe(AIKEN.R_MINT_WEIGHT_PARAM);
     expect(outputRefToCbor({ transaction_id: TXID, output_index: 7n })).toBe(AIKEN.SEED7_CBOR);
@@ -153,7 +153,7 @@ describe("chỉ số Constr khớp blueprint onchain/plutus.json", () => {
     expect(ctors("governance/GovernanceSpendRedeemer")).toEqual(["0:FinalizeProposal()"]);
     expect(ctors("vote/VoteRedeemer")).toEqual(["0:ConsumeForTally(book_proof)", "1:RetractVote()", "2:ReclaimVote()"]);
     expect(ctors("tally/TallyRedeemer")).toEqual(["0:SumBatch(insert_proofs)", "1:Finalize()"]);
-    expect(ctors("nullifier/NullifierRedeemer")).toEqual(["0:MintNullifier(did_commit,proposal_id)", "1:BurnNullifier()"]);
+    expect(ctors("nullifier/NullifierRedeemer")).toEqual(["0:MintNullifier(did_commit,proposal_id)", "1:BurnNullifier(proposal_id,did_commits)"]);
     expect(ctors("tally_nft/TallyNftRedeemer")).toEqual(["0:MintTally(seed)"]);
     expect(ctors("weight_param_nft/WeightParamNftRedeemer")).toEqual(["0:MintWeightParam()"]);
   });

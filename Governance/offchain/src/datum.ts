@@ -19,7 +19,7 @@
 //   GovernanceSpendRed.  0=FinalizeProposal
 //   VoteRedeemer         0=ConsumeForTally{book_proof} 1=RetractVote 2=ReclaimVote
 //   TallyRedeemer        0=SumBatch{insert_proofs} 1=Finalize
-//   NullifierRedeemer    0=MintNullifier{did_commit, proposal_id} 1=BurnNullifier
+//   NullifierRedeemer    0=MintNullifier{did_commit, proposal_id} 1=BurnNullifier{proposal_id, did_commits}
 //   TallyNftRedeemer     0=MintTally{seed}
 //   WeightParamNftRed.   0=MintWeightParam
 //
@@ -504,7 +504,13 @@ export function encodeNullifierRedeemer(r: NullifierRedeemer): Constr<Data> {
         assertHex(r.did_commit, HASH32_BYTES, "MintNullifier.did_commit"),
         assertHex(r.proposal_id, HASH32_BYTES, "MintNullifier.proposal_id"),
       ]);
-    case "BurnNullifier": return new Constr(1, []);
+    case "BurnNullifier":
+      if (r.did_commits.length === 0)
+        throw new Error("GOV-DATUM-060: BurnNullifier.did_commits rỗng — policy dựng tập tên rỗng và đẳng thức B1 sẽ bác");
+      return new Constr(1, [
+        assertHex(r.proposal_id, HASH32_BYTES, "BurnNullifier.proposal_id"),
+        r.did_commits.map((d, i) => assertHex(d, HASH32_BYTES, `BurnNullifier.did_commits[${i}]`)),
+      ]);
     default: {
       const never: never = r;
       throw new Error(`GOV-DATUM-057: NullifierRedeemer loại lạ ${JSON.stringify(never)}`);
@@ -523,7 +529,16 @@ export function decodeNullifierRedeemer(d: Data): NullifierRedeemer {
         proposal_id: assertHex(asBytes(field(f, 1), "proposal_id"), HASH32_BYTES, "MintNullifier.proposal_id"),
       };
     }
-    case 1: fieldsOf(d, "BurnNullifier", 1, 0); return { kind: "BurnNullifier" };
+    case 1: {
+      const f = fieldsOf(d, "BurnNullifier", 1, 2);
+      const dids = asList(field(f, 1), "BurnNullifier.did_commits");
+      return {
+        kind: "BurnNullifier",
+        proposal_id: assertHex(asBytes(field(f, 0), "proposal_id"), HASH32_BYTES, "BurnNullifier.proposal_id"),
+        did_commits: dids.map((x, i) =>
+          assertHex(asBytes(x, `did_commits[${i}]`), HASH32_BYTES, `BurnNullifier.did_commits[${i}]`)),
+      };
+    }
     default: throw new Error(`GOV-DATUM-058: NullifierRedeemer Constr ${c.index} ngoài miền 0..1`);
   }
 }

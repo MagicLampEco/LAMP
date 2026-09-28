@@ -221,16 +221,20 @@ fn call_vote(tx: Transaction, redeemer: vote.VoteRedeemer) -> Bool {
   )
 }
 
-fn call_nullifier_burn(tx: Transaction) -> Bool {
+fn call_nullifier_burn_of(tx: Transaction, p: ByteArray) -> Bool {
   nullifier.nullifier.mint(
     tally_policy,
     taad_policy,
     ms_ep,
     window,
-    nullifier.BurnNullifier,
+    nullifier.BurnNullifier { proposal_id: p, did_commits: [did1] },
     nl_policy,
     tx,
   )
+}
+
+fn call_nullifier_burn(tx: Transaction) -> Bool {
+  call_nullifier_burn_of(tx, prop)
 }
 
 // ════════════════════════════════════════════════════════════
@@ -409,3 +413,106 @@ test finalize_do_khi_so_bi_ghi_o_luot_dong() fail {
   expect call_tally(finalize_ghi_so_tx(), d_fin_in(), tally.Finalize, ms_ep)
   True
 }
+
+// ════════════════════════════════════════════════════════════
+// Đốt nullifier GIỮA cửa sổ bỏ phiếu bằng căn cứ mượn từ proposal khác
+// ════════════════════════════════════════════════════════════
+//
+// Kịch bản phá: `tally_policy` là one-shot theo PHA, nên mọi proposal của pha dùng
+// chung policy đó và khác nhau ở TÊN token. Một tally CŨ đã quá hạn thoả mãn mọi
+// vế thời gian với MỌI `e`. Nếu căn cứ đốt lấy từ "một tally bất kỳ" thì đốt
+// nullifier của proposal đang mở đi lọt ngay giữa cửa sổ bỏ phiếu của nó.
+//
+// Năm ca dưới đây chạy trên CÙNG MỘT giao dịch và trả lời trọn vẹn câu hỏi "hậu
+// quả tới đâu": một ca ở tầng policy (chỗ được vá) và ba ca ở tầng `vote` (chỗ
+// chặn thật, và chúng chặn kể cả khi policy lỏng).
+
+const prop_cu: ByteArray = #"beef"
+
+const close_cu: Int = 5
+
+/// Tally của proposal CŨ, đã quá `close_cu + window` từ lâu.
+fn tally_cu_input() -> Input {
+  let val =
+    assets.from_lovelace(2_000_000) |> assets.add(tally_policy, prop_cu, 1)
+  util.mk_input(
+    OutputReference { transaction_id: #"cc", output_index: 0 },
+    util.mk_output(
+      util.script_address(tally_sh),
+      val,
+      TallyDatum { ..td(fx.root_a0, 0, 0, 0, []), proposal_id: prop_cu,
+                   vote_open_epoch: 0, vote_close_epoch: close_cu },
+    ),
+  )
+}
+
+/// Epoch 15 nằm GIỮA cửa sổ bỏ phiếu của `prop` ([10, 20)). Phiếu bị tiêu, token
+/// nullifier bị đốt, căn cứ là tally của `prop_cu`.
+fn dot_giua_cua_so_tx() -> Transaction {
+  Transaction {
+    ..placeholder,
+    inputs: [vote_input(), tally_cu_input()],
+    // Tally THẬT của `prop` có mặt làm reference input — để mỗi ca dưới đây đỏ ở
+    // đúng chốt mang tên nó, không đỏ vì "không tìm thấy tally nào".
+    reference_inputs: [
+      wp_input(),
+      c3_ref(),
+      tally_cu_input(),
+      tally_in(d_sum_in()),
+    ],
+    outputs: [],
+    mint: burn_nl(),
+    validity_range: at_epoch(15),
+  }
+}
+
+/// (1) Tầng policy — chỗ được vá. Căn cứ thời gian phải đọc từ tally của ĐÚNG
+/// `prop`; giao dịch này không có tally nào của `prop` nên cả hai đường tắt.
+test dot_giua_cua_so_policy_tu_choi() fail {
+  expect call_nullifier_burn(dot_giua_cua_so_tx())
+  True
+}
+
+/// (2) Đối chứng — chứng minh giao dịch này KHÔNG bị chặn vì một lý do khác. Khai
+/// `proposal_id = prop_cu` thì tên token đốt không khớp `H(did‖prop_cu)`, nên ca
+/// này cũng đỏ, nhưng ở chốt (B1) chứ không phải (B2). Hai ca cùng đỏ ở HAI chốt
+/// khác nhau ⇒ không chốt nào đang gánh hộ chốt kia.
+test dot_giua_cua_so_khai_proposal_cu_cung_tu_choi() fail {
+  expect call_nullifier_burn_of(dot_giua_cua_so_tx(), prop_cu)
+  True
+}
+
+/// (3) `ConsumeForTally` ĐỎ: (V4) đòi tally của ĐÚNG `prop` bị tiêu cùng tx.
+test dot_giua_cua_so_consume_do() fail {
+  expect
+    call_vote(
+      dot_giua_cua_so_tx(),
+      vote.ConsumeForTally { book_proof: fx.mem_a1_1() },
+    )
+  True
+}
+
+/// (4) `ReclaimVote` ĐỎ: (C2) đòi `e ≥ close + window` đọc từ tally của `prop`.
+test dot_giua_cua_so_reclaim_do() fail {
+  expect call_vote(dot_giua_cua_so_tx(), vote.ReclaimVote)
+  True
+}
+
+/// Đối chứng HÌNH DẠNG: CÙNG giao dịch đó, chỉ dịch `e` ra sau `close + window`
+/// của `prop`, thì đốt QUA ở tầng policy. Không có ca này thì bốn ca trên chỉ
+/// chứng minh "giao dịch đó bị từ chối", chứ không chứng minh nó bị từ chối vì
+/// CĂN CỨ THỜI GIAN — nó có thể bị từ chối vì dựng sai một chỗ nào khác.
+test dot_sau_han_tren_cung_hinh_dang_qua() {
+  call_nullifier_burn(
+    Transaction {
+      ..dot_giua_cua_so_tx(),
+      validity_range: at_epoch(close_e + window),
+    },
+  )
+}
+
+// Nhánh thứ ba của `vote` — `RetractVote` — không cần ca ở đây: nó ép
+// `tx.mint == assets.zero`, nên KHÔNG giao dịch có đốt nào khớp nó. Chốt đó đã
+// được `retract_len_dot_nullifier_tu_choi` (tệp `vote_test`) ghim trên một giao
+// dịch rút hợp lệ về mọi mặt khác — dựng lại ở đây chỉ được một ca đỏ ở chốt đếm
+// output, tức đỏ vì lý do khác với tên nó.

@@ -99,7 +99,7 @@ export function readTally(u: UTxO, tallyPolicyId: string, proposalId: string | n
     throw new Error(`GOV-CHAIN-021: Tally UTxO không mang đúng 1 token (tally_policy, ${td.proposal_id})`);
   }
   if (tokensOf(u, tallyPolicyId).size !== 1) {
-    throw new Error("GOV-CHAIN-022: Tally UTxO mang nhiều hơn một tên token tally_policy (find_tally_any on-chain sẽ không nhận)");
+    throw new Error("GOV-CHAIN-022: Tally UTxO mang nhiều hơn một tên token tally_policy — tên token PHẢI ứng đúng một proposal_id");
   }
   if (scriptHash !== null && !isAtScript(u.address, scriptHash)) {
     throw new Error(`GOV-CHAIN-023: Tally UTxO không nằm tại Script(${scriptHash}) — governance (R-TALLY-HASH) sẽ không đọc`);

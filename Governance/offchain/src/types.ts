@@ -173,10 +173,18 @@ export type TallyRedeemer =
   | { kind: "SumBatch"; insert_proofs: MpfProof[] }
   | { kind: "Finalize" };
 
-/** nullifier.ak ▸ NullifierRedeemer. 0=MintNullifier{did_commit, proposal_id} 1=BurnNullifier. */
+/**
+ * nullifier.ak ▸ NullifierRedeemer.
+ * 0=MintNullifier{did_commit, proposal_id}
+ * 1=BurnNullifier{proposal_id, did_commits}
+ *
+ * `did_commits` KHÔNG phải dữ liệu được tin: policy tự dựng lại tập tên token từ nó
+ * (`H(did ‖ proposal_id)`) rồi so bằng đẳng thức với `tx.mint`. Khai thiếu, khai thừa,
+ * khai trùng, hay khai sai proposal đều bị bác on-chain (chốt B1).
+ */
 export type NullifierRedeemer =
   | { kind: "MintNullifier"; did_commit: string; proposal_id: string }
-  | { kind: "BurnNullifier" };
+  | { kind: "BurnNullifier"; proposal_id: string; did_commits: string[] };
 
 /** tally_nft.ak ▸ TallyNftRedeemer. Constr 0 = MintTally{seed}. */
 export type TallyNftRedeemer = { kind: "MintTally"; seed: OutputRef };

@@ -26,12 +26,27 @@
 //      `parent_did = None`, `depth = 0`; giao dịch có chữ ký `controller_pkh` VÀ
 //      một thiết bị đã uỷ quyền. Cổng A-PERSON nằm ở `anchor_view`.
 //
-// BurnNullifier — HAI đường, cả hai đều ở NGOÀI cửa sổ bỏ phiếu:
-//   (a) gom phiếu: Tally của proposal bị TIÊU cùng tx và `e ≥ vote_close_epoch`;
-//   (b) thu hồi phiếu chết: Tally đã quá `vote_close + tally_window` (đọc qua
-//       reference input, vì sau khi đóng sổ Tally không tiêu được nữa).
-// Cả hai đòi `e ≥ vote_close_epoch`, còn `MintNullifier` đòi `e < vote_close_epoch`
-// ⇒ hai cửa sổ RỜI NHAU theo số học ⇒ đốt-rồi-đúc-lại trong cửa sổ là bất khả.
+// BurnNullifier { proposal_id, did_commits } — HAI đường, cả hai đều ở NGOÀI cửa
+// sổ bỏ phiếu CỦA CHÍNH `proposal_id`:
+//   (a) gom phiếu: Tally của `proposal_id` bị TIÊU cùng tx và `e ≥ vote_close_epoch`;
+//   (b) thu hồi phiếu chết: Tally của `proposal_id` đã quá `vote_close +
+//       tally_window` (đọc qua reference input, vì sau khi đóng sổ Tally không
+//       tiêu được nữa).
+//
+// Hai vế BẮT BUỘC đi cùng nhau, và lý do phải viết ra vì nó là chỗ bản trước SAI:
+//   • tên token bị đốt phải đúng bằng tập `{ H(d ‖ proposal_id) : d ∈ did_commits }`;
+//   • căn cứ thời gian phải đọc từ Tally của ĐÚNG `proposal_id` đó.
+// Bản trước lấy căn cứ từ "một tally BẤT KỲ" (`find_tally_any`) rồi kết luận hai
+// cửa sổ rời nhau. Kết luận đó SAI: `tally_policy` là one-shot theo PHA, nên mọi
+// proposal của pha dùng chung policy — một tally CŨ đã quá hạn thoả `e ≥
+// vote_close` cho MỌI `e`, kể cả `e` nằm giữa cửa sổ bỏ phiếu của proposal đang bị
+// đốt nullifier. Ca `nl_burn_muon_tally_proposal_khac_ref_tu_choi` và
+// `nl_burn_muon_tally_proposal_khac_tieu_tu_choi` giữ chỗ đó.
+//
+// Với hai vế trên thì tính rời nhau mới là SỐ HỌC: `MintNullifier` đòi `e <
+// vote_close_epoch` đọc từ Tally của `proposal_id`, `BurnNullifier` đòi `e ≥
+// vote_close_epoch` đọc từ Tally của CÙNG `proposal_id`, và `e` là MỘT số (khuôn
+// hai đầu `util.get_epoch_bounded`) ⇒ đốt-rồi-đúc-lại trong cửa sổ là bất khả.
 // Đây là vế vá lỗi 4 của `Governance/SPEC.md` §v2.1.
 //
 // Tham số hoá: tally_policy, taad_policy, ms_per_epoch, tally_window_epochs.
@@ -50,26 +65,36 @@ use magiclamp/governance/util
 
 pub type NullifierRedeemer {
   MintNullifier { did_commit: ByteArray, proposal_id: ByteArray }
-  BurnNullifier
+  /// `did_commits` — danh sách chủ phiếu của các nullifier bị đốt trong lượt này.
+  /// Nó KHÔNG phải dữ liệu được tin: policy tự dựng lại tên token từ nó và so
+  /// bằng đẳng thức, nên khai sai thì đẳng thức bác.
+  BurnNullifier { proposal_id: ByteArray, did_commits: List<ByteArray> }
 }
 
-/// (a) Tally BỊ TIÊU cùng tx và cửa sổ bỏ phiếu đã đóng.
-fn burn_with_tally_spent(tx: Transaction, tally_policy: PolicyId, e: Int) -> Bool {
-  when tally_ref.find_tally_any(tx.inputs, tally_policy) is {
+/// (a) Tally của ĐÚNG `proposal_id` bị TIÊU cùng tx và cửa sổ bỏ phiếu đã đóng.
+fn burn_with_tally_spent(
+  tx: Transaction,
+  tally_policy: PolicyId,
+  proposal_id: ByteArray,
+  e: Int,
+) -> Bool {
+  when tally_ref.find_tally(tx.inputs, tally_policy, proposal_id) is {
     Some(td) -> e >= td.vote_close_epoch
     None -> False
   }
 }
 
-/// (b) Tally đã quá cửa sổ gom — đọc qua REFERENCE input. Sau `Finalize` Tally
-/// không còn nhánh nào tiêu được nó, nên vế (a) không dùng được ở đây.
+/// (b) Tally của ĐÚNG `proposal_id` đã quá cửa sổ gom — đọc qua REFERENCE input.
+/// Sau `Finalize` Tally không còn nhánh nào tiêu được nó, nên vế (a) không dùng
+/// được ở đây.
 fn burn_after_tally_window(
   tx: Transaction,
   tally_policy: PolicyId,
+  proposal_id: ByteArray,
   e: Int,
   tally_window_epochs: Int,
 ) -> Bool {
-  when tally_ref.find_tally_any(tx.reference_inputs, tally_policy) is {
+  when tally_ref.find_tally(tx.reference_inputs, tally_policy, proposal_id) is {
     Some(td) -> e >= td.vote_close_epoch + tally_window_epochs
     None -> False
   }
@@ -104,13 +129,33 @@ validator nullifier(
           tx.extra_signatories,
         )
       }
-      BurnNullifier -> {
-        // đốt THUẦN: mọi tên token của policy này trong `tx.mint` đều qty −1.
-        expect list.all(dict.to_pairs(own_tokens), fn(p) { p.2nd == -1 })
+      BurnNullifier { proposal_id, did_commits } -> {
+        // (B1) tập tên token bị đốt PHẢI ĐÚNG BẰNG `{ H(d ‖ proposal_id) }`.
+        //      Một phép so đẳng thức trên dict ép cùng lúc năm thứ, nên không tách
+        //      ra thành năm vế rời: đốt THUẦN (mọi qty = −1), đủ tên, KHÔNG thừa
+        //      tên lạ, không thừa tên của proposal khác, và `did_commits` không có
+        //      phần tử trùng (trùng thì `assets.add` gộp thành −2 và đẳng thức bác).
+        let want =
+          list.foldr(
+            did_commits,
+            assets.zero,
+            fn(d, acc) {
+              assets.add(acc, policy_id, nullifier_name(d, proposal_id), -1)
+            },
+          )
+        expect own_tokens == assets.tokens(want, policy_id)
+        // (B2) căn cứ thời gian đọc từ Tally của ĐÚNG `proposal_id` trên — không
+        //      phải "một tally bất kỳ". Đây là vế làm hai cửa sổ thật sự rời nhau.
         let e = util.get_epoch_bounded(tx, ms_per_epoch)
         or {
-          burn_with_tally_spent(tx, tally_policy, e),
-          burn_after_tally_window(tx, tally_policy, e, tally_window_epochs),
+          burn_with_tally_spent(tx, tally_policy, proposal_id, e),
+          burn_after_tally_window(
+            tx,
+            tally_policy,
+            proposal_id,
+            e,
+            tally_window_epochs,
+          ),
         }
       }
     }
@@ -174,6 +219,28 @@ fn tally_datum() -> TallyDatum {
   }
 }
 
+/// Proposal CŨ dùng làm căn cứ giả trong các ca tấn công: cùng `tally_policy`
+/// (policy one-shot theo pha, mỗi proposal một TÊN token), cửa sổ đã đóng từ lâu.
+const prop_q: ByteArray = #"beef"
+
+const close_q: Int = 5
+
+fn tally_datum_of(p: ByteArray, o: Int, c: Int) -> TallyDatum {
+  TallyDatum {
+    ..tally_datum(),
+    proposal_id: p,
+    vote_open_epoch: o,
+    vote_close_epoch: c,
+  }
+}
+
+fn tally_utxo_of(td: TallyDatum) -> Output {
+  let val =
+    assets.from_lovelace(2_000_000)
+      |> assets.add(tally_policy, td.proposal_id, 1)
+  util.mk_output(util.script_address(tally_sh), val, td)
+}
+
 fn tally_utxo(name: ByteArray) -> Output {
   let val = assets.from_lovelace(2_000_000) |> assets.add(tally_policy, name, 1)
   util.mk_output(util.script_address(tally_sh), val, tally_datum())
@@ -185,6 +252,11 @@ fn tally_ref_input() -> Input {
 
 fn tally_spent_input() -> Input {
   util.mk_input(util.mk_ref(0), tally_utxo(prop))
+}
+
+/// Tally của proposal CŨ `prop_q` — đã quá `close_q + window` từ lâu.
+fn tally_q_input() -> Input {
+  util.mk_input(util.mk_ref(9), tally_utxo_of(tally_datum_of(prop_q, 0, close_q)))
 }
 
 /// Datum anchor TAAD 18 trường — Person gốc, Active, controller `c1`, device `d1`.
@@ -265,16 +337,21 @@ fn run_mint(tx: Transaction) -> Bool {
   )
 }
 
-fn run_burn(tx: Transaction) -> Bool {
+/// Đốt nullifier của `did` thuộc proposal `p`, khai `did_commits = [did]`.
+fn run_burn_of(p: ByteArray, dids: List<ByteArray>, tx: Transaction) -> Bool {
   nullifier.mint(
     tally_policy,
     taad_policy,
     ms_ep,
     window,
-    BurnNullifier,
+    BurnNullifier { proposal_id: p, did_commits: dids },
     nl_policy,
     tx,
   )
+}
+
+fn run_burn(tx: Transaction) -> Bool {
+  run_burn_of(prop, [did], tx)
 }
 
 // ── Dương ──
@@ -466,6 +543,105 @@ test nl_burn_sau_cua_so_gom_happy() {
 /// Đường (b) chưa tới hạn: `e == close + window − 1`.
 test nl_burn_truoc_han_thu_hoi_tu_choi() fail {
   expect run_burn(burn_tx(close_e + window - 1, [], [tally_ref_input()]))
+  True
+}
+
+// ── Căn cứ đốt phải là tally của ĐÚNG proposal đang bị đốt nullifier ──
+//
+// Hai ca dưới đây là kịch bản phá cụ thể: epoch 15 nằm TRONG cửa sổ bỏ phiếu của
+// `prop` ([10, 20)), nhưng tally của `prop_q` đã quá hạn từ lâu (`close_q = 5`).
+// Nếu căn cứ đốt lấy từ "một tally BẤT KỲ" thì đốt nullifier của `prop` đi lọt
+// ngay giữa cửa sổ bỏ phiếu của chính `prop` — đúng thứ chú thích đầu tệp khẳng
+// định là bất khả.
+
+/// Đường (b) — tally của proposal KHÁC làm reference input.
+test nl_burn_muon_tally_proposal_khac_ref_tu_choi() fail {
+  expect run_burn(burn_tx(15, [], [tally_q_input()]))
+  True
+}
+
+/// Đường (a) — tally của proposal KHÁC bị TIÊU cùng tx (ví dụ một lượt `Finalize`
+/// của `prop_q`: nhánh đó không ràng buộc `tx.mint` chút nào).
+test nl_burn_muon_tally_proposal_khac_tieu_tu_choi() fail {
+  expect run_burn(burn_tx(15, [tally_q_input()], []))
+  True
+}
+
+// ── Chốt (B1): tập tên bị đốt = tập dựng lại từ `did_commits` ──
+
+/// `did_commits` khai một DID KHÁC với DID của token bị đốt.
+test nl_burn_khai_did_khac_tu_choi() fail {
+  expect run_burn_of(prop, [#"99"], burn_tx(close_e, [tally_spent_input()], []))
+  True
+}
+
+/// `did_commits` rỗng ⇒ tập dựng lại rỗng, không khớp một tên bị đốt.
+test nl_burn_khai_rong_tu_choi() fail {
+  expect run_burn_of(prop, [], burn_tx(close_e, [tally_spent_input()], []))
+  True
+}
+
+/// `did_commits` có PHẦN TỬ TRÙNG: hai lần cùng `did` ⇒ `assets.add` gộp thành −2,
+/// đẳng thức bác. Không có vế này thì một lượt đốt k token khai được 2k chủ phiếu.
+test nl_burn_did_trung_trong_lo_tu_choi() fail {
+  expect
+    run_burn_of(prop, [did, did], burn_tx(close_e, [tally_spent_input()], []))
+  True
+}
+
+/// Đốt kèm một tên token LẠ của cùng policy (không dựng được từ `did_commits` nào).
+test nl_burn_them_ten_la_tu_choi() fail {
+  let m = one_nl(-1) |> assets.add(nl_policy, #"cafe", -1)
+  let tx =
+    Transaction {
+      ..placeholder,
+      inputs: [tally_spent_input()],
+      mint: m,
+      validity_range: at_epoch(close_e),
+    }
+  expect run_burn_of(prop, [did], tx)
+  True
+}
+
+// ── Lô nhiều DID — hình dạng của một lượt `SumBatch` thật ──
+
+const lo_dids: List<ByteArray> =
+  [
+    #"01", #"02", #"03", #"04", #"05", #"06", #"07", #"08", #"09", #"0a", #"0b",
+    #"0c", #"0d", #"0e", #"0f", #"10", #"11", #"12", #"13", #"14",
+  ]
+
+fn burn_lo(dids: List<ByteArray>) -> Value {
+  list.foldr(
+    dids,
+    assets.zero,
+    fn(d, acc) { assets.add(acc, nl_policy, name_of(d, prop), -1) },
+  )
+}
+
+fn burn_lo_tx(dids: List<ByteArray>) -> Transaction {
+  Transaction {
+    ..placeholder,
+    inputs: [tally_spent_input()],
+    mint: burn_lo(dids),
+    validity_range: at_epoch(close_e),
+  }
+}
+
+/// Lô 20 phiếu — cỡ lô `SumBatch` lớn nhất mà `bft_floor = 21` sinh ra ở nhánh
+/// heap. Ca này là phép ĐO ExUnit của chốt (B1), không phải một ca bảo mật.
+test nl_burn_lo_hai_muoi_did_happy() {
+  run_burn_of(prop, lo_dids, burn_lo_tx(lo_dids))
+}
+
+/// Thiếu ĐÚNG một DID trong khai báo khi lô đốt 20 tên.
+test nl_burn_lo_thieu_mot_did_tu_choi() fail {
+  expect
+    run_burn_of(
+      prop,
+      list.filter(lo_dids, fn(d) { d != #"14" }),
+      burn_lo_tx(lo_dids),
+    )
   True
 }
 

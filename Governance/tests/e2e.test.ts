@@ -274,7 +274,10 @@ describe("E2E Governance v2 trên Emulator — validator thật", () => {
         .collectFrom([vU], voteRedeemerToCbor({ kind: "ConsumeForTally", book_proof: b1.plan.membershipProofs[0]! }))
         .readFrom([wpUtxo, refs.tally!, refs.vote!, refs.nullifier!])
         .mintAssets({ [toUnit(cfg.nullifierPolicyId, voteDatumFromCbor(vU.datum!).nullifier)]: -1n },
-          nullifierRedeemerToCbor({ kind: "BurnNullifier" }))
+          nullifierRedeemerToCbor({
+            kind: "BurnNullifier", proposal_id: pid,
+            did_commits: [voteDatumFromCbor(vU.datum!).did_commit],
+          }))
         .pay.ToAddressWithData(tU.address, { kind: "inline", value: tallyDatumToCbor(badOut) }, { ...tU.assets })
         .validFrom(w.loMs).validTo(w.hiMs)
         .complete();
@@ -334,7 +337,7 @@ describe("E2E Governance v2 trên Emulator — validator thật", () => {
     const holders: UTxO[] = (await lucid.wallet().getUtxos()).filter((u) => (u.assets[toUnit(cfg.nullifierPolicyId, nA)] ?? 0n) > 0n);
     expect(holders).toHaveLength(1);
     const bn = await buildBurnNullifierTx({
-      lucid, config: cfg, tallyUtxo: await getTally(), nullifierNames: [nA], holderUtxos: holders, nowMs: emulator.now(),
+      lucid, config: cfg, tallyUtxo: await getTally(), didCommits: [dids[0]!], holderUtxos: holders, nowMs: emulator.now(),
     });
     await submit(lucid, emulator, bn.tx);
     const left = (await lucid.wallet().getUtxos()).filter((u) => (u.assets[toUnit(cfg.nullifierPolicyId, nA)] ?? 0n) > 0n);

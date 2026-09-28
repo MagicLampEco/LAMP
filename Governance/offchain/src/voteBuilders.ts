@@ -217,7 +217,11 @@ export async function buildReclaimVoteTx(p: ReclaimVoteParams): Promise<{ tx: Tx
     .collectFrom([p.voteUtxo], voteRedeemerToCbor({ kind: "ReclaimVote" }))
     .readFrom(uniqueRefs([p.tallyUtxo, p.anchorUtxo], refs))
     // C4 + nullifier đường (b): đốt −1, Tally đọc qua reference input.
-    .mintAssets({ [nUnit]: -1n }, nullifierRedeemerToCbor({ kind: "BurnNullifier" }))
+    .mintAssets({ [nUnit]: -1n }, nullifierRedeemerToCbor({
+      kind: "BurnNullifier",
+      proposal_id: vd.proposal_id,
+      did_commits: [vd.did_commit],
+    }))
     .addSignerKey(signers[0])
     .addSignerKey(signers[1])
     .validFrom(loMs)
@@ -231,10 +235,19 @@ export async function buildReclaimVoteTx(p: ReclaimVoteParams): Promise<{ tx: Tx
 export interface BurnNullifierParams {
   lucid: LucidEvolution;
   config: GovernanceConfig;
-  /** Tally dùng làm mốc thời gian (reference input). */
+  /**
+   * Tally dùng làm mốc thời gian (reference input). Nó phải là Tally CỦA CHÍNH
+   * proposal có nullifier bị đốt — on-chain (chốt B2) đọc căn cứ theo `proposal_id`
+   * trong redeemer, nên một tally của proposal khác không còn dùng được làm mốc.
+   */
   tallyUtxo: UTxO;
-  /** Tên token nullifier (hex) cần đốt — mỗi tên đúng 1 đơn vị (on-chain: mọi cặp == −1). */
-  nullifierNames: string[];
+  /**
+   * `did_commit` (hex 32 byte) của các chủ phiếu có nullifier bị đốt. Tên token
+   * được SINH từ đây (`H(did ‖ proposal_id)`), không nhận tên thô: on-chain dựng
+   * lại đúng tập đó rồi so bằng đẳng thức (chốt B1), nên một tên gõ tay mà lệch thì
+   * giao dịch bị bác chứ không đốt sai.
+   */
+  didCommits: string[];
   /** UTxO đang giữ các token đó (ví người gọi). */
   holderUtxos: UTxO[];
   nowMs: number;
@@ -243,11 +256,11 @@ export interface BurnNullifierParams {
 
 export async function buildBurnNullifierTx(p: BurnNullifierParams): Promise<{ tx: TxSignBuilder; epoch: bigint }> {
   const cfg = p.config;
-  if (!Array.isArray(p.nullifierNames) || p.nullifierNames.length === 0) {
-    throw new Error("GOV-BURN-001: phải có ≥ 1 tên nullifier để đốt");
+  if (!Array.isArray(p.didCommits) || p.didCommits.length === 0) {
+    throw new Error("GOV-BURN-001: phải có ≥ 1 did_commit để đốt");
   }
-  if (new Set(p.nullifierNames).size !== p.nullifierNames.length) {
-    throw new Error("GOV-BURN-002: tên nullifier trùng — on-chain đòi MỖI tên đúng −1");
+  if (new Set(p.didCommits).size !== p.didCommits.length) {
+    throw new Error("GOV-BURN-002: did_commit trùng — on-chain dựng tập tên bằng cộng dồn nên bản trùng thành −2 và đẳng thức B1 bác");
   }
   const td = readTally(p.tallyUtxo, cfg.tallyPolicyId, null, null);
   const { loMs, hiMs, epoch } = boundedEpochWindow(p.nowMs, cfg.msPerEpoch, slotConfigOf(p.lucid, p.slotConfig));
@@ -256,16 +269,21 @@ export async function buildBurnNullifierTx(p: BurnNullifierParams): Promise<{ tx
     throw new Error(`GOV-BURN-003: epoch ${epoch} < vote_close + tally_window = ${open} — đường (b) chưa mở`);
   }
   const burn: Record<string, bigint> = {};
-  for (const n of p.nullifierNames) {
+  for (const d of p.didCommits) {
+    const n = nullifierName(d, td.proposal_id);
     const held = p.holderUtxos.reduce((s, u) => s + qtyOf(u, cfg.nullifierPolicyId, n), 0n);
-    if (held < 1n) throw new Error(`GOV-BURN-004: không UTxO nào trong holderUtxos giữ token nullifier ${n}`);
+    if (held < 1n) throw new Error(`GOV-BURN-004: không UTxO nào trong holderUtxos giữ token nullifier ${n} (did ${d})`);
     burn[toUnit(cfg.nullifierPolicyId, n)] = -1n;
   }
   const { txb, refs } = useScripts(p.lucid.newTx(), cfg, [{ kind: "nullifier", role: "mint" }]);
   const tx = await txb
     .collectFrom(p.holderUtxos)
     .readFrom(uniqueRefs([p.tallyUtxo], refs))
-    .mintAssets(burn, nullifierRedeemerToCbor({ kind: "BurnNullifier" }))
+    .mintAssets(burn, nullifierRedeemerToCbor({
+      kind: "BurnNullifier",
+      proposal_id: td.proposal_id,
+      did_commits: p.didCommits,
+    }))
     .validFrom(loMs)
     .validTo(hiMs)
     .complete();

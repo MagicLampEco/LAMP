@@ -7,7 +7,6 @@
 // one-shot theo `H(seed)` nên một tên token ứng đúng một proposal trong cả đời
 // pha — đó là thứ làm phép nhận diện theo token đủ chắc.
 
-use aiken/collection/dict
 use aiken/collection/list
 use cardano/assets.{PolicyId}
 use cardano/transaction.{InlineDatum, Input, Output}
@@ -90,33 +89,6 @@ pub fn expect_tally_at(
   expect td: TallyDatum = d
   expect td.proposal_id == proposal_id
   td
-}
-
-/// Tally bị TIÊU trong giao dịch, KHÔNG pin `proposal_id` — chỉ dùng ở chỗ danh
-/// tính proposal đã được pin bởi một chốt khác trong cùng nhánh. Đúng một UTxO
-/// mang đúng một TÊN token của `tally_policy`.
-pub fn find_tally_any(
-  inputs: List<Input>,
-  tally_policy: PolicyId,
-) -> Option<TallyDatum> {
-  when
-    list.filter(
-      inputs,
-      fn(i) { dict.size(assets.tokens(i.output.value, tally_policy)) == 1 },
-    )
-  is {
-    [t] ->
-      when t.output.datum is {
-        InlineDatum(d) ->
-          if d is td: TallyDatum {
-            Some(td)
-          } else {
-            None
-          }
-        _ -> None
-      }
-    _ -> None
-  }
 }
 
 /// Tally OUTPUT của đúng proposal — tìm bằng TOKEN, KHÔNG bằng

@@ -140,7 +140,11 @@ export async function buildSumBatchTx(p: SumBatchParams): Promise<SumBatchResult
   });
   const tx = await txb
     .readFrom(uniqueRefs([p.weightParamUtxo], c3Refs, used.refs))
-    .mintAssets(burn, nullifierRedeemerToCbor({ kind: "BurnNullifier" }))
+    .mintAssets(burn, nullifierRedeemerToCbor({
+      kind: "BurnNullifier",
+      proposal_id: td.proposal_id,
+      did_commits: votes.map((v) => v.did_commit),
+    }))
     .pay.ToAddressWithData(p.tallyUtxo.address, { kind: "inline", value: tallyDatumToCbor(tallyDatumOut) }, { ...p.tallyUtxo.assets })
     .validFrom(loMs)
     .validTo(hiMs)

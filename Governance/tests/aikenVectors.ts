@@ -40,7 +40,8 @@ export const AIKEN = {
   R_TALLY_FINALIZE: "d87a80",
   R_MINT_NULLIFIER:
     "d8799f5820cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd5820ababababababababababababababababababababababababababababababababff",
-  R_BURN_NULLIFIER: "d87a80",
+  R_BURN_NULLIFIER:
+    "d87a9f5820abababababababababababababababababababababababababababababababab9f5820cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdffff",
   R_MINT_TALLY:
     "d8799fd8799f5820efefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefef00ffff",
   R_MINT_WEIGHT_PARAM: "d87980",
