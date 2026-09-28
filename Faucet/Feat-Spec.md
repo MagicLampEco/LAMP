@@ -1,16 +1,14 @@
 # tLAMP + Faucet — FEAT (Đặc tả tính năng / hành vi)
 
-**Trạng thái:** draft 2026-06-09. Bám sát [CONTRACT.md](./CONTRACT.md) (khung interface đã
-chốt) — KHÔNG mâu thuẫn. Một trong 4 spec FEAT/MATH/TECH/EXEC của module Faucet.
+> **Phiên bản:** v3.0 — 2026-09-28. Nâng cấp từ draft 2026-06-09 vì bản đó tả hai vai (người deploy
+> + dev claim) và hai luồng (mint pool, claim 100 tLAMP permissionless) của một validator đã bị xoá.
+> Mã hiện tại có **bốn vai** và **sáu luồng**, và luồng claim không còn permissionless trần.
+> **Vai:** hành vi nhìn thấy được — ai làm gì, trạng thái trước/sau, cái gì bị từ chối. Khi lệch với
+> mã trong `onchain/`, **mã thắng**.
 
-> Spec này mô tả **hành vi nhìn thấy được** của module: ai làm gì, luồng deploy pool +
-> luồng dev claim 100 tLAMP, trạng thái trước/sau mỗi thao tác. Bám hành vi **code thật**
-> ([`onchain/validators/tlamp_policy.ak`](./onchain/validators/tlamp_policy.ak),
-> [`onchain/validators/faucet.ak`](./onchain/validators/faucet.ak),
-> [`offchain/src/mintBuilder.ts`](./offchain/src/mintBuilder.ts),
-> [`offchain/src/claimBuilder.ts`](./offchain/src/claimBuilder.ts)).
-> KHÔNG đi sâu công thức/chứng minh (xem [MATH](./Math-Spec.md)) hay datum/redeemer/validator
-> byte-level (xem [TECH](./Tech-Spec.md)) hay lộ trình build/test/deploy (xem [EXEC](./Exec-Spec.md)).
+Bám [`CONTRACT.md`](./CONTRACT.md) v3.0 — KHÔNG mâu thuẫn. KHÔNG đi sâu công thức/chứng minh (xem
+[MATH](./Math-Spec.md) v3.0) hay bản đồ chốt ↔ tệp mã (xem [TECH](./Tech-Spec.md) v3.0) hay lộ trình
+build/test/deploy (xem [EXEC](./Exec-Spec.md) v3.0).
 
 ---
 
@@ -19,228 +17,354 @@ chốt) — KHÔNG mâu thuẫn. Một trong 4 spec FEAT/MATH/TECH/EXEC của mo
 ### 0.1 Mục tiêu
 
 Faucet là **vòi cấp token test tLAMP** cho mọi dev Cardano trên Preview/Preprod, hệt như
-[tADA faucet chính chủ Cardano](https://docs.cardano.org/cardano-testnet/tools/faucet): ai cũng
-tự lấy được **100 tLAMP** để test mọi tính năng LAMP mainnet (claim Distribution, nộp Treasury,
-bỏ phiếu Governance…) mà không phải tự mint token rời rạc.
+[tADA faucet chính chủ Cardano](https://docs.cardano.org/cardano-testnet/tools/faucet): ai có một DID
+test cũng tự lấy được tLAMP để test mọi tính năng LAMP mainnet (claim Distribution, nộp Treasury, bỏ
+phiếu Governance…) mà không phải tự mint token rời rạc.
 
-Mục tiêu cuối của cả dự án: **làm cho LAMP có giá trị** bằng cách mở SDK cho mọi Cardano team.
-Faucet phục vụ mục tiêu đó bằng cách cho **một token test canonical duy nhất** (1 policy id chia
-sẻ toàn mạng test) — dev của bất kỳ team eco nào đều dùng chung tLAMP để test SDK MagicLamp, thay
-vì mỗi ví mint một policy id khác nhau (token phân mảnh, không chia sẻ được — xem [CONTRACT §6](./CONTRACT.md)).
+Mục tiêu cuối của cả dự án: **làm cho LAMP có giá trị** bằng cách mở SDK cho mọi Cardano team. Faucet
+phục vụ mục tiêu đó bằng **một token test dùng chung** (một policy id chia sẻ toàn mạng test) — dev
+của bất kỳ team nào đều dùng chung tLAMP để test SDK MagicLamp, thay vì mỗi ví mint một policy id
+khác nhau ([CONTRACT](./CONTRACT.md) v3.0 §6).
 
-### 0.2 Hai thành phần — vì sao tách
+### 0.2 Khác biệt cốt lõi so với faucet "mint-on-demand"
 
-Module gồm **2 phần độc lập về vai trò** (CONTRACT §2, §3):
+Faucet **KHÔNG mint mỗi claim** — nó chuyển token từ pool sang account của dev. Σ tLAMP **bất biến**
+sau mọi claim. Hệ quả trực tiếp và đây là thứ chi phối cả thiết kế: **pool hữu hạn, và Faucet không có
+đường nào tự đúc thêm** — mọi validator ở đây chỉ chuyển token, không tạo token. Vì thế v3 có ba thứ mà
+một faucet mint-on-demand không cần: trần tốc độ toàn cục, cooldown, và đường thu hồi token nằm không.
 
-| Thành phần | Loại script | Ai chạy | Tần suất |
-|---|---|---|---|
-| **tLAMP policy** (`tlamp_policy.ak`) | minting policy one-shot | người deploy (1 ví foundation) | **đúng 1 lần trong lịch sử** |
-| **Faucet** (`faucet.ak`) | spend validator (pool) | mọi dev | bao nhiêu lần cũng được |
-
-Tách vì: token test phải **fixed-supply trung thực** (mint hết 1 lần rồi khóa), còn việc phát
-cho dev là **chuyển token từ pool sang ví** — KHÔNG mint mỗi claim. Đây là điểm khác cốt lõi so
-với faucet "mint-on-demand" thông thường: Σ tLAMP **bất biến** sau mọi claim ([CONTRACT §1](./CONTRACT.md),
-[`tlamp_policy.ak:1-11`](./onchain/validators/tlamp_policy.ak)).
+> **Đúng mức về vế "bất khả hồi":** pool cạn là bất khả hồi **khi** token nạp vào pool là token đúc bởi
+> `tlamp_policy` (one-shot, không đúc lại được). Pool nhận `(lamp_policy, lamp_name)` qua tham số nên
+> token tới từ đâu không quan trọng với validator — nếu nó là token đúc bởi một policy **còn đúc được**
+> thì việc nạp lại pool là chuyện vận hành, không phải bất khả hồi. Policy nào đang giữ vai đó trên mỗi
+> mạng: [CONTRACT](./CONTRACT.md) v3.0 §2 (khối phạm vi) và `Genesis/offchain/src/lampPolicies.ts`. Đọc
+> vế này sai một chiều thì đánh giá rủi ro lệch hẳn, nên nó phải nằm ngay cạnh câu trên.
 
 ### 0.3 Thuộc spec này
 
-- Vai của 2 caller: **người deploy** (mint pool 1 lần), **dev claim** (lấy 100 tLAMP).
-- Luồng deploy: one-shot mint toàn bộ supply → đổ hết vào 1 pool UTxO có datum.
-- Luồng claim: spend pool → pool giảm đúng `claim_amount`, dev nhận đúng `claim_amount`.
-- Trạng thái pool trước/sau mỗi claim; điều kiện pool cạn.
-- Vì sao permissionless, không cooldown (MVP); cooldown là v1.1.
-- tLAMP canonical thay token test cũ phân mảnh.
+- Bốn vai: người deploy · chủ DID claim · chủ DID dùng token · keeper thu hồi (và một vai vận hành
+  nạp pool).
+- Sáu luồng: `MintPool` · `ClaimOpen` · `ClaimAgain` · `Use` · `ReclaimIdle` · `TopUpPool`.
+- Trạng thái pool + account trước/sau mỗi thao tác; điều kiện pool cạn.
+- Cái gì bị từ chối ở mỗi luồng.
 
 ### 0.4 KHÔNG thuộc spec này
 
-| Chủ đề | Thuộc spec |
+| Chủ đề | Thuộc |
 |---|---|
-| Công thức + bất biến + chứng minh (value-preservation, one-shot, no-burn) | [MATH](./Math-Spec.md) |
-| Datum/redeemer byte-perfect, validator Aiken, chống double-satisfaction | [TECH](./Tech-Spec.md) |
-| Codec offchain↔onchain (`OutputReference` shape, Constr index) | [TECH](./Tech-Spec.md) |
-| Lộ trình build/test/deploy Preview, test plan, gaps | [EXEC](./Exec-Spec.md) |
-| Token LAMP **thật** mainnet (CIP-68, policy khác hẳn) | LAMP mainnet — tLAMP chỉ là test surrogate ([CONTRACT §2](./CONTRACT.md)) |
-| Cooldown per-address chống cạn pool | **v1.1, chưa code** ([CONTRACT §3](./CONTRACT.md)) |
+| Công thức + chứng minh (trần tốc độ, bảo toàn value, one-shot) | [MATH](./Math-Spec.md) v3.0 |
+| Danh sách bất biến theo redeemer | [CONTRACT](./CONTRACT.md) v3.0 §3.5–§3.9 |
+| Chốt nào nằm ở tệp/hàm nào, ngữ nghĩa helper | [TECH](./Tech-Spec.md) v3.0 |
+| Codec byte-perfect | [CONTRACT](./CONTRACT.md) v3.0 §4 |
+| Lộ trình build/test/deploy, gaps | [EXEC](./Exec-Spec.md) v3.0 |
+| Token LAMP **thật** mainnet | LAMP mainnet — tLAMP chỉ là test surrogate |
 
 ---
 
 ## 1. Vai và actor
 
-### 1.1 Người deploy (foundation, 1 lần)
+| Vai | Ai | Tần suất | Cần gì |
+|---|---|---|---|
+| **Người deploy** | một ví test của MagicLamp | **đúng 1 lần** cho mỗi pool | 1 UTxO làm genesis + tADA |
+| **Chủ DID claim** | bất kỳ ai giữ một DID NFT | mỗi cửa sổ, trong hạn trần tốc độ | DID NFT trong ví + tADA phí |
+| **Chủ DID dùng token** | chủ của chính account đó | bao nhiêu lần cũng được | DID NFT trong ví |
+| **Keeper thu hồi** | bất kỳ ai | khi có account nằm không ≥ 1001 cửa sổ | chỉ tADA phí — KHÔNG cần DID |
+| **Vận hành nạp pool** | bất kỳ ai có tLAMP | khi pool vơi | tLAMP ≥ `drip_oildrop` |
 
-Một ví test của MagicLamp (seed nhận qua biến môi trường `WALLET_SEED`, xem
-[`scripts/config.ts`](./scripts/config.ts) `WALLET_SEED`) chạy **đúng 1 lần** để khởi tạo cả hệ:
+**Không có vai admin.** Không committee, không whitelist, không khoá nào sửa được cấu hình pool sau
+deploy. Ba vai cuối đều permissionless — cái chặn lạm dụng là ràng buộc dòng tiền và bộ đếm, không
+phải danh sách người được phép.
 
-- Chọn 1 UTxO ví làm **genesis** (one-shot anchor).
-- Mint **toàn bộ** test supply = 36 tỷ tLAMP = `36_000_000_000_000_000` oildrop.
-- Đổ **hết** vào 1 Faucet pool UTxO, đính `FaucetDatum{ claim_amount }`.
-
-Sau bước này policy **tự khóa**: genesis UTxO đã bị tiêu, không UTxO nào tiêu lại được → KHÔNG
-ai mint thêm tLAMP, kể cả chính người deploy ([`tlamp_policy.ak:44-45`](./onchain/validators/tlamp_policy.ak),
-luồng tx ở [`mintBuilder.ts:92-102`](./offchain/src/mintBuilder.ts)).
-
-### 1.2 Dev claim (mọi người, permissionless)
-
-Bất kỳ ví test nào cũng claim được. KHÔNG cần whitelist, KHÔNG cần chữ ký foundation, KHÔNG có
-committee. Mỗi claim:
-
-- Spend pool UTxO với redeemer `Claim`.
-- Tạo pool mới = pool cũ trừ đúng `claim_amount` tLAMP.
-- Ví dev nhận đúng `claim_amount` tLAMP (mặc định 100 LAMP = `100_000_000` oildrop).
-
-Token test **vô giá trị** → permissionless là an toàn: kẻ spam chỉ tốn phí của chính nó, và pool
-cạn thì re-deploy pool mới rất rẻ ([CONTRACT §3](./CONTRACT.md), [`faucet.ak:8-10`](./onchain/validators/faucet.ak)).
+**"Chủ DID" nghĩa là gì trong v3:** người **mang DID NFT trong input của tx**. Không có ràng buộc
+khoá ký riêng — đủ cho testnet, còn treo ở `[FAUCET-DID-OWNERSHIP]`
+([README](./README.md) v3.0 §Điểm còn treo).
 
 ---
 
-## 2. Luồng A — Deploy pool (one-shot mint)
+## 2. Luồng A — Deploy pool (`MintPool`)
 
-**Caller:** người deploy. **Script chạy:** `tlamp_policy.mint`. **Builder:**
-[`buildMintPoolTx`](./offchain/src/mintBuilder.ts).
+**Caller:** người deploy. **Script chạy:** `faucet_nft.mint` với `MintPool`. **Builder:**
+`buildMintPoolTx` ([`mintBuilder.ts`](./offchain/src/mintBuilder.ts)).
 
 ### 2.1 Trạng thái trước
 
-- Chưa có tLAMP nào tồn tại (policy id của tLAMP chưa từng mint).
-- Ví deploy có ≥ 1 UTxO + đủ tADA (preflight đòi ≥ 10 tADA, [`00_preflight.ts:33`](./scripts/00_preflight.ts)).
+- Chưa có POOL NFT nào của `faucet_nft_policy` (policy one-shot, chưa từng chạy).
+- Ví deploy có ≥ 1 UTxO để làm genesis + đủ tADA.
+- Có nguồn tLAMP để nạp: hoặc đúc trong cùng tx bằng `tlamp_policy` (đường mà `buildMintPoolTx` đi),
+  hoặc tLAMP đã có sẵn trong ví.
 
 ### 2.2 Hành vi
 
-Tx deploy làm đồng thời 3 việc trong **1 giao dịch**:
+Một giao dịch làm bốn việc:
 
-1. **Consume genesis UTxO** — UTxO đã được dùng để parameterize policy
-   ([`01_mint_pool.ts:35-40`](./scripts/01_mint_pool.ts), `collectFrom([genesisUtxo])` ở
-   [`mintBuilder.ts:94`](./offchain/src/mintBuilder.ts)).
-2. **Mint đúng tổng cung** `(tLAMP, +TOTAL_SUPPLY_OILDROP)` — không hơn không kém
-   ([`mintBuilder.ts:95`](./offchain/src/mintBuilder.ts), validator ép ở
-   [`tlamp_policy.ak:49-53`](./onchain/validators/tlamp_policy.ak)).
-3. **Gửi toàn bộ tLAMP vào pool** UTxO ở địa chỉ Faucet + min-ADA + inline `FaucetDatum`
-   ([`mintBuilder.ts:97-101`](./offchain/src/mintBuilder.ts)).
+1. **Consume genesis UTxO** — chính UTxO đã dùng để parameterize `faucet_nft`.
+2. **Đúc đúng một POOL NFT** (`"POOL"`, qty 1) và **không đúc gì khác** dưới policy đó.
+3. **Đúc tLAMP** (khi đi đường `tlamp_policy`: đúng toàn bộ tổng cung, một lần duy nhất trong lịch sử).
+   Phần không nạp vào pool nằm lại ví deploy để nạp dần qua `TopUpPool`.
+4. **Gửi POOL NFT + phần tLAMP khởi tạo vào pool UTxO** ở địa chỉ enterprise của `faucet_pool`, kèm
+   inline `PoolDatum{cfg, window_epoch = cửa sổ THẬT, claims_in_window = 0}`.
 
 ### 2.3 Trạng thái sau
 
-- 1 pool UTxO tại địa chỉ Faucet: value = `{ lovelace: poolLovelace, tLAMP: TOTAL_SUPPLY_OILDROP }`,
-  inline datum `FaucetDatum{ claim_amount }`.
-- Genesis UTxO biến mất khỏi chain → **policy khóa vĩnh viễn** (không re-mint được).
-- Pool là **nguồn claim duy nhất** — không tLAMP nào nằm ngoài pool ([`mintBuilder.ts:18` C-POOL-1](./offchain/src/mintBuilder.ts)).
+- Một pool UTxO tại địa chỉ `faucet_pool`: value = `{ lovelace, POOL NFT, tLAMP }`, inline
+  `PoolDatum`.
+- Genesis UTxO biến mất → **POOL NFT khoá vĩnh viễn**, không ai đúc pool thứ hai.
+- `FaucetConfig` **đóng băng vĩnh viễn** từ giây này. Không có đường nào sửa nó.
 
 ### 2.4 Cái gì bị từ chối (người deploy không làm bậy được)
 
-- Mint mà **không** consume genesis → reject (one-shot, [`tlamp_policy.ak:45`](./onchain/validators/tlamp_policy.ak),
-  test `mint_without_genesis`).
-- Mint **sai tổng cung** (thừa/thiếu 1 oildrop) → reject ([`:53`](./onchain/validators/tlamp_policy.ak),
-  test `mint_wrong_quantity_less/more`).
-- Mint **kèm asset name lạ** cùng policy → reject (`dict.size == 1`, [`:51`](./onchain/validators/tlamp_policy.ak),
-  test `mint_extra_asset_name`).
-- Mint **âm** (burn) → reject (tLAMP fixed-supply không burn, [`:58 else fail`](./onchain/validators/tlamp_policy.ak),
-  test `mint_negative_burn`).
+| Mưu đồ / sai sót | Bị chặn bởi |
+|---|---|
+| Đúc mà không consume genesis (đúc pool thứ hai) | one-shot |
+| Đúc 2 POOL NFT, hoặc đúc kèm một ACCT NFT trong cùng tx | `dict.size == 1` + `quantity_of(POOL) == 1` |
+| Đúc POOL NFT **thẳng vào ví** | `C-MP-1` — nếu không chặn, `faucet_pool.spend` không bao giờ chạy và pool không có luật nào |
+| Pool khởi tạo ở địa chỉ có stake credential lạ | `C-MP-2` |
+| Pool khởi tạo mang reference script | `C-MP-3` |
+| Datum sai hình dạng / không có datum | `C-MP-4` — datum sai làm prelude gãy với MỌI redeemer ⇒ khoá chết toàn bộ tLAMP |
+| `claims_in_window` khởi tạo ≠ 0 | `C-MP-5` |
+| `window_epoch = 0` (mặc định tự nhiên khi viết builder) | `C-MP-6` — mỗi bucket chưa dùng là một quota cộng dồn, nên `0` cho sẵn hàng nghìn bậc thang dùng được ngay |
+| `max_claims_per_window = 0` | `C-MP-7` — `0` làm prelude pool gãy với mọi redeemer ⇒ khoá chết tLAMP |
+| `max_claims_per_window` gõ nhầm rất lớn | `C-MP-7` trần `max_claims_ceiling = 100` |
+
+Bốn hàng cuối đều **bất khả hồi**: sau tx này không còn cổng nào ép được datum pool.
 
 ---
 
-## 3. Luồng B — Claim 100 tLAMP
+## 3. Luồng B — `ClaimOpen`: mở chuỗi account mới cho một DID
 
-**Caller:** dev bất kỳ. **Script chạy:** `faucet.spend`. **Builder:**
-[`buildClaimTx`](./offchain/src/claimBuilder.ts).
+**Caller:** chủ DID. **Script chạy:** `faucet_pool.spend` (`ClaimOpen`) + `faucet_nft.mint`
+(`MintAccount`). **Builder:** `buildClaimOpenTx` ([`claimBuilder.ts`](./offchain/src/claimBuilder.ts)).
 
 ### 3.1 Trạng thái trước
 
-- Pool UTxO tồn tại với `tLAMP_pool ≥ claim_amount` (đủ để nhả 1 claim).
-- Dev có ví test với chút tADA trả phí.
+- Pool UTxO tồn tại với `tLAMP ≥ drip_oildrop`.
+- Trần tốc độ còn chỗ trong cửa sổ hiện tại: `claims_in_window + 1 ≤ max_claims_per_window` (nếu
+  đang ở cùng cửa sổ; sang cửa sổ mới thì bộ đếm tính lại từ 0).
+- Người claim có DID NFT trong ví.
 
 ### 3.2 Hành vi
 
-Tx claim spend pool với redeemer `Claim` và tạo ra:
+```
+inputs:  POOL UTxO (ClaimOpen) + DID-NFT UTxO         (0 account input)
+mint:    ACCT NFT("ACCT" ‖ blake2b_224(did_name)) +1
+outputs: pool'   = pool − drip tLAMP; PoolDatum{cfg giữ, window_epoch = now, claims = used+1}
+         account = ACCT NFT + drip tLAMP
+                   FaucetAccount{did_name, last_claim_epoch = now, last_touch_epoch = now}
+                   ở ĐÚNG địa chỉ enterprise của `account_script_hash`
+         DID NFT trả về ví người claim
+```
 
-1. **Pool mới** = pool cũ, chỉ tLAMP **giảm đúng** `claim_amount`; **mọi asset khác giữ
-   nguyên** (ADA, dust); datum **giữ nguyên** `claim_amount`
-   ([`claimBuilder.ts:78-84`](./offchain/src/claimBuilder.ts)).
-2. **Output cho dev** nhận **đúng** `claim_amount` tLAMP
-   ([`claimBuilder.ts:95`](./offchain/src/claimBuilder.ts)).
-3. **KHÔNG mint** gì (`tx.mint == 0`) — chỉ chuyển token pool → dev.
-
-Validator `faucet.spend` ép đẳng thức value: `pool_out.value == pool_in.value` với tLAMP
-`−claim_amount` ([`faucet.ak:63-69`](./onchain/validators/faucet.ak)). Một đẳng thức này bao trùm
-mọi gian lận (xem §3.4).
+`now` = cửa sổ **thật**, suy từ validity range bị neo hai đầu trong cùng một bucket. Builder phải
+đặt cửa sổ đó đúng cách, nếu không tx trượt ở biên bucket — xem
+[CONTRACT](./CONTRACT.md) v3.0 §5.
 
 ### 3.3 Trạng thái sau
 
-| | tLAMP | ADA | dust | datum |
-|---|---|---|---|---|
-| Pool trước | `P` | `A` | `D` | `claim_amount` |
-| Pool sau | `P − claim_amount` | `A` (giữ) | `D` (giữ) | `claim_amount` (giữ) |
-| Ví dev | `+claim_amount` | — | — | — |
+| | tLAMP | POOL/ACCT NFT | datum |
+|---|---|---|---|
+| Pool trước | `P` | POOL NFT | `{cfg, w, k}` |
+| Pool sau | `P − drip` | POOL NFT (giữ) | `{cfg giữ, now, used+1}` |
+| Account (mới) | `drip` | ACCT NFT của DID này | `{did_name, now, now}` |
 
-**Σ tLAMP bảo toàn:** `pool_out + claimer = pool_in` ([CONTRACT §3](./CONTRACT.md), test
-`claim_happy`, builder test `builders.test.ts:148`). Pool có thể claim **lặp lại** tới khi cạn.
+ADA và mọi asset khác của pool **bảo toàn tuyệt đối** (một đẳng thức `Value`).
 
-Khi pool nhả tới đúng 0 tLAMP, builder bỏ hẳn unit tLAMP khỏi pool output (giữ ADA) — pool vẫn
-còn UTxO nhưng hết tLAMP ([`claimBuilder.ts:80-81`](./offchain/src/claimBuilder.ts), test
-`drops tLAMP unit when pool drained`). Lúc đó claim tiếp **thất bại ở offchain** với lỗi
-`CLAIM-003: pool cạn — re-deploy` ([`claimBuilder.ts:66-70`](./offchain/src/claimBuilder.ts)).
+### 3.4 Cái gì bị từ chối
 
-### 3.4 Cái gì bị từ chối (dev không drain được)
+| Mưu đồ | Bị chặn bởi |
+|---|---|
+| Claim không mang DID NFT | `C-DID-1` |
+| Account mới đặt `did_name` khác DID NFT trong input | `C-NAME-1` + `C-DID-1` |
+| Nhả > `drip` / < `drip` / rút ADA / cuỗm asset khác của pool | `C-DRIP-1` (đẳng thức `Value`) |
+| Đẩy account ra **ví mình** (né cooldown và né thu hồi vĩnh viễn) | `C-ACCTOUT-1/2` |
+| Đẩy account sang **script khác** | `C-ACCTOUT-2` |
+| Cùng script hash nhưng khác stake credential | `C-ACCTOUT-2` (so địa chỉ đầy đủ) |
+| Account mới mang reference script | `C-ACCTOUT-3` |
+| Ghi mốc `last_*` lùi về quá khứ để thoả cooldown ngay lượt sau | `C-ACCTOUT-4/5` + `C-RATE-0` |
+| Dùng validity range cận trên vô hạn để tự chọn `now` | `C-RATE-0` |
+| Khai một bucket quá khứ để mở thêm quota (leo thang bậc thang) | `C-RATE-0` + `C-RATE-1` |
+| Claim khi bộ đếm đã đầy | `C-RATE-2` |
+| Ghi bộ đếm ra output sai (không tăng, hoặc cửa sổ giả) | `C-RATE-3/4` |
+| Đúc hai ACCT NFT, hoặc đúc kèm POOL NFT | `C-OPEN-1`, `C-MA-1/2`, `quantity_of(POOL) == 0` |
+| Đúc ACCT NFT mà không có pool nào bị spend | `C-MA-1` (đòi POOL NFT input) |
+| Mở account thứ hai **trong cùng tx** với account cũ | `C-OPEN-2` |
+| Hai pool input (double-satisfaction) | prelude: đúng 1 input mang POOL NFT |
+| POOL NFT input không nằm ở chính script pool | `C-POOL-IN-1` |
+| Đưa pool ra ví / sang địa chỉ khác | `C-POOL-OUT-1` |
+| Sửa `FaucetConfig` ở pool output | `C-CFG-1` |
 
-Tất cả nhờ 1 đẳng thức value + vài guard ([`faucet.ak:41-69`](./onchain/validators/faucet.ak)):
+---
 
-| Mưu đồ | Bị chặn bởi | Test |
+## 4. Luồng C — `ClaimAgain`: nạp thêm drip vào chuỗi account đã có
+
+**Caller:** chủ DID. **Script chạy:** `faucet_pool.spend` (`ClaimAgain`) **và**
+`faucet_account.spend` (`TopUp`) trên cùng một tx. **Builder:** `buildClaimAgainTx`
+([`claimDidBuilder.ts`](./offchain/src/claimDidBuilder.ts)).
+
+### 4.1 Trạng thái trước
+
+- Pool còn tLAMP và còn chỗ trong trần tốc độ.
+- Account của DID đó tồn tại với `last_claim_epoch` đủ cũ: `now ≥ last_claim_epoch + cooldown_epochs`.
+- DID NFT trong ví.
+
+### 4.2 Hành vi
+
+```
+inputs:  POOL UTxO (ClaimAgain) + account cũ (TopUp) + DID-NFT UTxO
+mint:    (không đúc gì)
+outputs: pool'    = pool − drip; bộ đếm tiến một bước
+         account' = account + drip tLAMP; cả hai mốc = now; địa chỉ và did_name bất biến
+```
+
+**Hai validator chia việc, không kiểm trùng:** `faucet_pool` ép cooldown và dòng tiền của pool;
+`faucet_account` ▸ `TopUp` ép số tiền cộng vào ĐÚNG `drip_oildrop` **đọc từ datum của POOL input**,
+và ép người dựng tx phải cầm DID NFT của chính account đó.
+
+### 4.3 Trạng thái sau
+
+| | tLAMP | datum |
 |---|---|---|
-| Nhả **>100** (lấy nhiều hơn) | value-eq lệch | `claim_too_much` |
-| Nhả **<100** (giam token) | value-eq lệch | `claim_too_little` |
-| Rút **ADA** của pool | value-eq lệch | `claim_drain_ada` |
-| Cuỗm **dust/asset khác** của pool | value-eq lệch | `claim_steal_other_asset`, `rt_steal_dust` |
-| **Bơm ngược** token vào pool rồi "claim âm" | value-eq lệch | `rt_negative_effective_claim` |
-| **Mint thêm** tLAMP trong tx claim | `assets.is_zero(tx.mint)` | `claim_mint_rejected` |
-| Mint **NFT rác policy khác** | `assets.is_zero(tx.mint)` | `rt_mint_other_policy` |
-| **Đổi `claim_amount`** ở pool mới (để claim sau lấy nhiều) | datum preservation | `claim_datum_tamper` |
-| **Xóa datum** pool mới (khóa/né check) | `expect InlineDatum` | `rt_pool_out_no_datum` |
-| Datum bịa `claim_amount ≤ 0` | `claim_amount > 0` | `claim_zero_amount_datum`, `rt_negative_claim_amount` |
-| **2 pool input** (double-satisfaction, 1 output trả) | count theo script hash | `claim_double_satisfaction` |
-| **2 pool output** (chẻ pool né value-eq) | count theo script hash | `rt_two_pool_outputs` |
-| Giả `own_ref` trỏ UTxO ví thường | `own_script_hash` ép `Script` | `rt_own_ref_not_script` |
+| Pool | `P − drip` | `{cfg giữ, now, used+1}` |
+| Account | `A + drip` | `{did_name giữ, now, now}` |
 
-Trường hợp **hợp lệ vẫn chạy:** pool ôm dust hợp lệ, nhả đúng 100 → PASS (`rt_happy_with_dust`)
-— value-eq KHÔNG cấm pool giữ asset phụ, chỉ cấm thay đổi nó.
+### 4.4 Cái gì bị từ chối
 
----
+| Mưu đồ | Bị chặn bởi |
+|---|---|
+| Claim lại **trước** khi hết cooldown | `C-COOL-1` |
+| **Không đưa account cũ vào input** để cooldown biến mất | `C-AGAIN-2` |
+| Đưa **hai** account input (tiêu account người khác kèm theo) | `C-AGAIN-2` |
+| Account input không mang ACCT NFT của DID này | `C-AGAIN-3` |
+| Đổi `did_name` giữa input và output | `C-AGAIN-4`, `C-TOP-2` |
+| Đúc thêm một ACCT NFT trong lượt claim lại | `C-AGAIN-1` |
+| Bỏ rơi số tLAMP cũ của account (chỉ để lại drip mới) | `C-AGAIN-5` |
+| Account nhận **nhiều hơn** drip mà pool khai | `C-TOP-5` |
+| Account **rút bớt** tLAMP trong khi mang danh "nhận thêm drip" | `C-TOP-5` |
+| Dựng tx `TopUp` mà không có POOL input (không nguồn nào khai drip) | `C-TOP-POOL-1` |
+| Tiêu account của **người khác** bằng `TopUp` để đẩy mốc cooldown của họ | `C-TOP-DID-1` |
+| Dùng redeemer `Use` cho account input trong tx `ClaimAgain` | `C-USE-NOPOOL-1` (cấm POOL NFT input) |
+| Không cập nhật mốc cooldown (làm claim này "không tính") | `C-TOP-6` |
 
-## 4. Vì sao permissionless + không cooldown (MVP)
-
-Quyết định ghi để truy vết (4 trục, [CONTRACT §3](./CONTRACT.md)):
-
-- **Lợi ích người dùng:** dev test cần token **ngay**, không qua phê duyệt — giống tADA faucet.
-- **Bền vững:** token test vô giá trị nên spam **không có động cơ kinh tế**; kẻ spam chỉ tốn phí
-  của mình. Pool cạn → re-deploy pool mới rẻ.
-- **Tối ưu eUTXO:** không cooldown nghĩa là không cần per-address marker UTxO → claim chỉ 1 input
-  + 2 output, ít ExUnit.
-- **v1.1 (chưa code):** nếu cần chống cạn, thêm marker UTxO "đã claim epoch N" per-address. GHI RÕ
-  KHÔNG thuộc MVP, không làm phức tạp eUTXO hiện tại.
+**Về hàng "tiêu account của người khác":** thiệt hại không phải mất tLAMP — `C-TOP-5` khoá dòng tiền
+nên kẻ dựng tx phải **tự bỏ** `drip` vào. Cái nó lấy được là quyền **ghi mốc** `last_claim_epoch` của
+nạn nhân, tức hoãn lần claim kế tiếp của họ thêm `cooldown_epochs` cửa sổ, và hoãn cả `ReclaimIdle`.
+Chốt canh nằm ở `faucet_account`, KHÔNG ở pool: `faucet_pool.Reclaim` cho hình dạng tx đó đi qua (nó
+không mất gì nên mọi ràng buộc của pool đều thoả). Đừng "tối giản" `C-TOP-DID-1` với lý do "pool đã
+kiểm".
 
 ---
 
-## 5. tLAMP canonical — thay token test cũ
+## 5. Luồng D — `Use`: chủ DID dùng tLAMP test
 
-Trước đây test-LAMP được mint ad-hoc bằng **native sig policy của ví deploy** → mỗi ví ra **policy
-id khác nhau** → token phân mảnh, không chia sẻ giữa dev, và KHÔNG fixed-supply (sig policy mint vô
-hạn) ([CONTRACT §6](./CONTRACT.md)).
+**Caller:** chủ DID. **Script chạy:** `faucet_account.spend` (`Use`). **Builder:** `buildUseTx`
+([`useBuilder.ts`](./offchain/src/useBuilder.ts)).
 
-**Chốt:** tLAMP canonical = policy one-shot ở §2 (1 policy id, supply cố định, chia sẻ toàn mạng
-test). Các module test khác (Distribution/Treasury/Governance) khi cần LAMP test nên trỏ tới
-`deployed-faucet.json.tlamp.policyId` thay vì tự mint. Token sig policy cũ **deprecated**.
+```
+inputs:  account UTxO (Use) + DID-NFT UTxO            (CẤM POOL NFT input)
+outputs: account': did_name bất biến
+                   last_claim_epoch BẤT BIẾN
+                   last_touch_epoch = now, và KHÔNG được lùi
+                   tLAMP ≤ cũ (rút ra dùng được)
+         phần tLAMP rút ra → đi đâu người dùng tự quyết
+```
 
-> ⚠️ **Đường trỏ đã đổi (2026-09-11).** Nguồn duy nhất cho policy id + trạng thái:
-> `Genesis/offchain/src/lampPolicies.ts`, đọc bằng `activeLampPolicyId(network)`.
-> `deployed-faucet.json` chỉ là ảnh chụp; giá trị trong đó (`7a1a7aed…`) mang trạng thái
-> **SUPERSEDED** vì marker neo bằng native-sig ví deploy (một khoá đúc thêm được).
-> Chi tiết: [`CONTRACT §6`](./CONTRACT.md).
+Hai việc trong một luồng: **gia hạn** mốc idle (để account không bị thu hồi) và **rút** tLAMP ra
+dùng. Account được phép về 0 tLAMP mà vẫn tồn tại.
+
+| Mưu đồ | Bị chặn bởi |
+|---|---|
+| Spend account mà không có DID NFT của nó | cổng DID trong nhánh `Use` |
+| `Use` đẩy mốc **cooldown** lên `now` (reset/né cooldown) | `C-USE-CLAIMFIX-1` |
+| `Use` **lùi** mốc idle về quá khứ (account bị thu hồi sớm hơn chủ tưởng) | `C-USE-MONO-1` |
+| Ghi mốc idle khác `now` | `C-USE-TOUCH-1` |
+| Cận trên vô hạn để tự chọn `now` | `C-USE-EPOCH-1` |
+| **Bơm** tLAMP vào account | `out ≤ in` |
+| Đưa account ra ví / đổi stake credential / gắn reference script | `C-ACCT-ADDR-1`, `C-ACCT-REF-1` |
+| Đúc thêm hoặc **đốt** ACCT NFT trong lượt `Use` (thoát script không qua `ReclaimIdle`) | `C-USE-2` |
+| Ghép một tx `ClaimAgain` nhưng dùng redeemer `Use` cho account | `C-USE-NOPOOL-1` |
+
+`Use` cố ý **không** có hình dạng tx nào chạy cùng `faucet_pool` — đó là tính chất, không phải chỗ
+thiếu: `Use` cấm tLAMP tăng, `TopUp` bắt buộc tăng; không rời nhau thì cả hai chốt mất nghĩa.
 
 ---
 
-## 6. Tóm tắt trạng thái — bảng chuyển
+## 6. Luồng E — `ReclaimIdle`: thu hồi account nằm không
+
+**Caller:** keeper bất kỳ (permissionless). **Script chạy:** `faucet_account.spend` (`ReclaimIdle`) +
+`faucet_pool.spend` (`Reclaim`) + `faucet_nft.mint` (`BurnAccount`). **Builder:** `buildReclaimTx`
+([`reclaimBuilder.ts`](./offchain/src/reclaimBuilder.ts)).
+
+```
+inputs:  account idle (ReclaimIdle) + POOL UTxO (Reclaim)
+mint:    ACCT NFT −1
+outputs: pool' = pool + TOÀN BỘ tLAMP của account
+                 window_epoch và claims_in_window GIỮ NGUYÊN
+```
+
+Điều kiện: `now ≥ last_touch_epoch + 1001` cửa sổ (≈ **13,7 năm** với cửa sổ 5 ngày). Đọc mốc
+**IDLE**, không phải mốc cooldown. KHÔNG cần DID NFT ⇒ ai cũng làm keeper được.
+
+Nhánh này cố ý đọc **cận dưới** của validity range: keeper lùi thời gian thì chỉ tự mình không đủ
+điều kiện, không ai khác thiệt.
+
+| Mưu đồ | Bị chặn bởi |
+|---|---|
+| Thu hồi **sớm** hơn ngưỡng | điều kiện idle |
+| Keeper cuỗm một phần tLAMP của account | `pool_out − pool_in ≥ acct_lamp` (so **delta**, không so tuyệt đối) |
+| Trả đủ tLAMP nhưng đưa **pool** sang ví mình | `C-ACCT-POOLADDR-1` |
+| Cùng script hash pool, khác stake credential | `C-ACCT-POOLADDR-1` |
+| Không đốt ACCT NFT (giữ nó làm vé tái dùng vĩnh viễn) | `C-BURN-1` |
+| Đốt ACCT NFT của DID **khác** (giữ lại vé của chính mình) | `C-BURN-1` |
+| Xen `Reclaim` để **reset bộ đếm** tốc độ | `C-RECL-1/2` |
+| `Reclaim` **spend rỗng** (không account input, Δ = 0) — DoS trên một singleton giá một phí tx | `C-RECL-0` |
+
+**Bảo toàn cung:** token nằm không quay lại pool, không bốc hơi, không vào ví keeper.
+
+---
+
+## 7. Luồng F — `TopUpPool`: nạp tLAMP vào pool
+
+**Caller:** bất kỳ ai có tLAMP (vận hành). **Script chạy:** `faucet_pool.spend` (`TopUpPool`).
+**Builder:** `buildTopUpPoolTx` ([`topUpPoolBuilder.ts`](./offchain/src/topUpPoolBuilder.ts)).
+
+```
+inputs:  POOL UTxO (TopUpPool) + nguồn tLAMP của người nạp   (CẤM account input)
+outputs: pool' = pool + Δ tLAMP, với Δ ≥ drip_oildrop
+                 window_epoch và claims_in_window GIỮ NGUYÊN
+```
+
+| Mưu đồ | Bị chặn bởi |
+|---|---|
+| "Nạp" Δ = 0 (spend rỗng đội lốt nạp tiền) | `C-TUP-1` |
+| Mượn đường nạp để tiêu một account input | 0 account input |
+| Nạp tiền mà tiện tay reset bộ đếm tốc độ | `C-TUP-2/3` |
+| Rút ADA hoặc asset khác của pool trong lượt nạp | đẳng thức `Value` trên delta |
+
+---
+
+## 8. Pool cạn — điều gì xảy ra
+
+Pool nhả `drip` mỗi claim. Khi `tLAMP_pool < drip`, `C-DRIP-1` không thoả được nữa ⇒ mọi tx claim
+**fail on-chain**, và builder nên chặn trước ở off-chain thay vì để người dùng trả phí cho một tx
+chắc chắn trượt.
+
+Đường phục hồi là `TopUpPool` (nạp thêm) hoặc `ReclaimIdle` (thu token nằm không về). **Không
+validator nào của Faucet đúc thêm tLAMP** — đó là điểm của thiết kế, không phải hạn chế. Nguồn tLAMP
+cho `TopUpPool` đến từ ngoài module (xem §0.2).
+
+---
+
+## 9. Tóm tắt trạng thái — bảng chuyển
 
 | Thao tác | Caller | Trước | Sau | Bất biến giữ |
 |---|---|---|---|---|
-| Deploy pool | foundation (1 lần) | chưa có tLAMP | pool đầy + policy khóa | Σ = total_supply, genesis consumed |
-| Claim | mọi dev | pool `P` tLAMP | pool `P−c`, dev `+c` | Σ tLAMP bất biến, datum + ADA + dust giữ |
-| Claim khi cạn | mọi dev | pool `< c` tLAMP | (reject offchain) | — |
+| `MintPool` | người deploy (1 lần) | chưa có POOL NFT | pool + POOL NFT khoá + cfg đóng băng | POOL NFT one-shot, `claims = 0`, `window = now` |
+| `ClaimOpen` | chủ DID | pool `P`, bộ đếm `k` | pool `P−drip`, `k+1`; account mới `drip` | Σ tLAMP, ADA + asset khác của pool, cfg |
+| `ClaimAgain` | chủ DID | pool `P`, account `A` | pool `P−drip`, account `A+drip` | Σ tLAMP, cooldown, cfg |
+| `Use` | chủ DID | account `A` | account `≤ A`, mốc idle = now | mốc cooldown, `did_name`, ACCT NFT ở lại |
+| `ReclaimIdle` | keeper bất kỳ | account `A` idle | pool `+A`, ACCT NFT bị đốt | Σ tLAMP, bộ đếm tốc độ |
+| `TopUpPool` | ai có tLAMP | pool `P` | pool `P+Δ`, `Δ ≥ drip` | bộ đếm tốc độ, cfg |
+| claim khi pool `< drip` | chủ DID | pool cạn | (reject) | — |
+| claim khi bộ đếm đầy | chủ DID | `k = max` | (reject) | trần tốc độ |
 
-Mọi thao tác **không bao giờ** burn tLAMP, không bao giờ vượt tổng cung — fixed-supply trung thực,
-phản chiếu đúng LAMP mainnet 36 tỷ bất biến.
+Mọi thao tác **không bao giờ** đúc thêm hay đốt tLAMP — fixed-supply trung thực, phản chiếu đúng LAMP
+mainnet 36 tỷ bất biến.

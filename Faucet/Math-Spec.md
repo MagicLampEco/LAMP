@@ -1,13 +1,14 @@
 # tLAMP + Faucet — MATH (Cơ sở toán)
 
-**Trạng thái:** draft 2026-06-09. Bám **[CONTRACT.md](./CONTRACT.md)** (xương sống) — tài liệu này
-KHÔNG mâu thuẫn nó; nó **chứng minh hình thức** các bất biến mà CONTRACT phát biểu, và mỗi định lý
-truy được về **dòng code thật** ([`tlamp_policy.ak`](./onchain/validators/tlamp_policy.ak),
-[`faucet.ak`](./onchain/validators/faucet.ak)).
+> **Phiên bản:** v3.0 — 2026-09-28. Nâng cấp từ draft 2026-06-09 vì §3–§6 của bản đó chứng minh các
+> vị từ `F0..F3` của `faucet.ak` — validator đã bị xoá khỏi cây mã. Bản này chứng minh các bất biến
+> của ba validator hiện tại, trong đó có hai tính chất bản cũ **không có**: trần tốc độ theo cửa sổ
+> và tính "thời gian không giả được".
+> **Vai:** chứng minh hình thức các bất biến mà [CONTRACT](./CONTRACT.md) v3.0 phát biểu. Khi lệch với
+> mã trong `onchain/`, **mã thắng** — một chứng minh không khớp mã là một chứng minh cho hệ khác.
 
-> Mọi số nguyên là **BigInt thuần** (không float). Đơn vị nhỏ nhất = **oildrop**, `1 LAMP = 10^6 oildrop`
-> (decimals 6, khớp `Distribution/constants` — [CONTRACT §0](./CONTRACT.md),
-> [`constants.ts:4`](./offchain/src/constants.ts)).
+> Mọi số nguyên là **BigInt thuần** (không float). Đơn vị nhỏ nhất = **oildrop**,
+> `1 LAMP = 10^6 oildrop` (decimals 6, khớp `Distribution/constants`).
 
 ---
 
@@ -15,238 +16,422 @@ truy được về **dòng code thật** ([`tlamp_policy.ak`](./onchain/validato
 
 | Ký hiệu | Nghĩa |
 |---|---|
-| `T` | tổng cung tLAMP (oildrop) = `36_000_000_000 × 10^6 = 36_000_000_000_000_000` = `3.6e16` |
-| `c` | `claim_amount` (oildrop) — lượng nhả mỗi claim; MVP = `100 × 10^6 = 1e8` |
-| `p` | policy id tLAMP; `n` = asset name = `#"744c414d50"` |
-| `V` | hàm value: `V(tx, p, n)` = số lượng asset `(p,n)` trong value |
-| `g` | `genesis_ref : OutputReference` (param one-shot) |
-| `qty(v,p,n)` | `assets.quantity_of(v, p, n)` |
-| `mint` | `tx.mint` (Value, có thể âm = burn) |
+| `T` | tổng cung tLAMP (oildrop) = `36_000_000_000 × 10^6` = `3.6e16` |
+| `d` | `cfg.drip_oildrop` — lượng nhả mỗi claim (chuẩn `1_001_000_000`) |
+| `K` | `cfg.max_claims_per_window` — trần claim mỗi cửa sổ, `0 < K ≤ 100` |
+| `L` | `cfg.cooldown_epochs` — số cửa sổ tối thiểu giữa hai claim của cùng một chuỗi account |
+| `R` | `handlers.reclaim_epochs_const` = `1001` cửa sổ |
+| `m` | `ms_per_epoch` — độ dài một cửa sổ, tính bằng ms |
+| `e(s)` | nhãn cửa sổ của một mốc POSIX-ms `s`, bằng `⌊s / m⌋` |
+| `w`, `k` | `PoolDatum.window_epoch`, `PoolDatum.claims_in_window` |
+| `p`, `n` | policy id và asset name của tLAMP (`n = #"744c414d50"`) |
+| `V(v, p, n)` | `assets.quantity_of(v, p, n)` |
+| `g` | `genesis_ref : OutputReference` (tham số one-shot) |
+| `an(x)` | `ledger.acct_name(x)` = `"ACCT" ‖ blake2b_224(x)`, 32 byte |
 
-Quy ước value: `assets.add(v, p, n, q)` = `v` với entry `(p,n)` cộng thêm `q`; nếu kết quả = 0 thì
-entry **biến mất** (đây là tính chất của `Value` stdlib, dùng ở chứng minh §2.3 và §4).
-
----
-
-## 1. Bất biến tổng — phát biểu
-
-Module có **2 bất biến nền** (CONTRACT §1):
-
-- **(I-SUPPLY) Fixed-supply trung thực:** tổng tLAMP tồn tại = `T`, **bất biến** sau bước mint
-  ban đầu; KHÔNG bao giờ tăng (re-mint) hay giảm (burn).
-- **(I-CONSERVE) Bảo toàn value tuyệt đối khi claim:** mỗi claim chỉ **di chuyển** tLAMP từ pool
-  sang dev, `Σ_out = Σ_in` cho **mọi** asset.
-
-Hai bất biến này độc lập với chuẩn metadata (native FT, không CIP-68 — [CONTRACT §2](./CONTRACT.md)).
-Phần dưới chứng minh chúng từ luật validator.
+Quy ước value: `assets.add(v, p, n, q)` = `v` với entry `(p,n)` cộng thêm `q`; kết quả 0 thì entry
+**biến mất** (tính chất của `Value` stdlib, dùng ở §2.2).
 
 ---
 
-## 2. tLAMP policy — định lý one-shot + đúng tổng cung
+## 1. Bất biến nền — phát biểu
 
-Validator mint chạy đúng các vị từ ([`tlamp_policy.ak:43-55`](./onchain/validators/tlamp_policy.ak)):
+- **(I-SUPPLY)** Tổng tLAMP tồn tại = `T`, bất biến sau bước mint ban đầu; không bao giờ tăng
+  (re-mint) hay giảm (burn).
+- **(I-CONSERVE)** Mỗi thao tác Faucet chỉ **di chuyển** tLAMP; `Σ_out = Σ_in` cho **mọi** asset, kể
+  cả ADA và dust của pool.
+- **(I-CFG)** `FaucetConfig` bất biến từ giây đúc POOL NFT tới vĩnh viễn.
+- **(I-RATE)** Trong một cửa sổ **thật**, số lượt claim thành công ≤ `K`. Đây là bất biến duy nhất
+  chặn vét pool, và nó không phụ thuộc số DID.
+- **(I-COOLDOWN)** Hai lượt claim liên tiếp trên **cùng một chuỗi account** cách nhau ≥ `L` cửa sổ.
+- **(I-RECOVER)** Token của một account bị thu hồi quay về pool **trọn vẹn**, và ACCT NFT của nó bị
+  đốt.
+
+`I-SUPPLY` độc lập với chuẩn metadata (native FT, không CIP-68). `I-RATE` và `I-COOLDOWN` **không
+thay thế nhau**: `I-RATE` chặn tổng, `I-COOLDOWN` chặn một chuỗi — xem §6.
+
+---
+
+## 2. `tlamp_policy` — one-shot + đúng tổng cung
+
+Vị từ của `tlamp_policy.mint`:
 
 ```
-(M1) list.any(tx.inputs, λi. i.output_reference == g)          -- consume genesis
-(M2) dict.size(assets.tokens(mint, p)) == 1                     -- đúng 1 asset name
-(M3) qty(mint, p, n) == T                                       -- đúng tổng cung
-else → fail                                                     -- mọi mint khác
+(M1) list.any(tx.inputs, λi. i.output_reference == g)     -- consume genesis
+(M2) dict.size(assets.tokens(mint, p)) == 1                -- đúng 1 asset name
+(M3) V(mint, p, n) == T                                    -- đúng tổng cung
+else → fail                                                -- mọi mint khác
 ```
 
-### 2.1 Định lý ONE-SHOT (policy chạy tối đa 1 lần trong lịch sử chain)
+### 2.1 Định lý ONE-SHOT
 
-**Mệnh đề.** Với `g` cố định, **không tồn tại 2 transaction hợp lệ phân biệt** `tx₁ ≠ tx₂` mà cả
-hai cùng mint dưới policy `p` thành công.
+**Mệnh đề.** Với `g` cố định, không tồn tại hai transaction hợp lệ phân biệt `tx₁ ≠ tx₂` mà cả hai
+cùng mint dưới policy `p` thành công.
 
-**Chứng minh.** Giả sử cả `tx₁`, `tx₂` mint thành công. Theo (M1), mỗi tx phải có một input với
-`output_reference == g`. Trong sổ cái eUTXO, **một `OutputReference` chỉ bị consume tối đa 1 lần**
-(luật no-double-spend của ledger Cardano — một UTxO đã chi không còn trong UTxO set). Vậy không thể
-có 2 tx riêng biệt cùng consume `g`. ⇒ `tx₁ = tx₂`. ∎
+**Chứng minh.** Theo (M1), mỗi tx phải có một input với `output_reference == g`. Trong sổ cái eUTXO,
+một `OutputReference` chỉ bị consume tối đa một lần (luật no-double-spend: UTxO đã chi không còn
+trong UTxO set). Vậy không thể có hai tx riêng biệt cùng consume `g`. ⇒ `tx₁ = tx₂`. ∎
 
-**Hệ quả (I-SUPPLY, nửa "không re-mint").** Sau tx mint đầu tiên, `g` đã bị tiêu → mọi mint sau
-fail tại (M1). Tổng tLAMP **không bao giờ tăng** quá `T`.
+**Hệ quả (I-SUPPLY, nửa "không re-mint").** Sau tx mint đầu tiên, `g` đã bị tiêu → mọi mint sau fail
+tại (M1). Tổng tLAMP không bao giờ vượt `T`.
 
-> Đây là bất biến mạnh nhất đạt được **không cần state on-chain** — anchor vào tính no-double-spend
-> của ledger ([`tlamp_policy.ak:7-11`](./onchain/validators/tlamp_policy.ak)). Test bằng chứng:
-> `mint_without_genesis`, `rt_mint_genesis_wrong_index` (off-by-one output_index cũng fail vì
-> `OutputReference` so cả 2 field).
+Đây là bất biến mạnh nhất đạt được **không cần state on-chain** — nó neo vào tính no-double-spend của
+ledger. Ca kiểm: `mint_without_genesis`, `rt_mint_genesis_wrong_index` (off-by-one `output_index` cũng
+fail vì `OutputReference` so cả hai trường).
 
-### 2.2 Định lý ĐÚNG TỔNG CUNG (mint đúng `T`, không thừa/thiếu/âm)
+### 2.2 Định lý ĐÚNG TỔNG CUNG
 
-**Mệnh đề.** Tx mint hợp lệ ⇒ `qty(mint, p, n) = T` **và** policy `p` không mint asset name nào
-khác `n`.
+**Mệnh đề.** Tx mint hợp lệ ⇒ `V(mint,p,n) = T` **và** policy `p` không mint asset name nào khác `n`.
 
-**Chứng minh.** (M3) cho trực tiếp `qty(mint,p,n) = T`. (M2) cho `dict.size(tokens(mint,p)) = 1`:
-chỉ đúng **1** entry asset name dưới policy `p`. Kết hợp với (M3) (entry đó là `n` với lượng `T ≠ 0`,
-nên nó **tồn tại** trong dict), suy ra entry duy nhất chính là `(n, T)`. Vậy không asset name lạ nào
-cùng policy được mint. ∎
+**Chứng minh.** (M3) cho trực tiếp `V(mint,p,n) = T`. (M2) cho `dict.size(tokens(mint,p)) = 1`: đúng
+một entry asset name dưới `p`. Kết hợp (M3) — entry đó là `n` với lượng `T ≠ 0` nên nó **tồn tại**
+trong dict — suy ra entry duy nhất chính là `(n, T)`. ∎
 
-**Các góc cạnh đã đóng (red-team):**
-
-- **Mint `n` đúng `T` + name lạ qty âm** (giả "burn" để né dict.size): `assets.add(..., name', -1)`
-  vẫn **tạo entry** `(name', -1)` → `dict.size = 2 ≠ 1` → fail (M2). Test `rt_mint_lamp_plus_negative_other`.
-- **Mint `n` qty = 0:** `assets.add(p, n, 0)` **không tạo entry** → `tokens(mint,p)` rỗng →
-  `dict.size = 0 ≠ 1` → fail (M2). Test `rt_mint_zero_qty`.
-- **Mint chỉ name lạ qty = `T`** (mạo danh): `dict.size = 1` qua (M2) NHƯNG `qty(mint,p,n) = 0 ≠ T`
-  → fail (M3). Test `rt_mint_only_fake_name`.
+**Ba góc đã đóng:**
+- Mint `n` đúng `T` + một name lạ qty âm (giả "burn" để né `dict.size`): `add(…, name', −1)` **vẫn tạo
+  entry** ⇒ `dict.size = 2` ⇒ fail (M2). Ca kiểm `rt_mint_lamp_plus_negative_other`.
+- Mint `n` qty 0: `add(p,n,0)` **không tạo entry** ⇒ `dict.size = 0` ⇒ fail (M2). Ca `rt_mint_zero_qty`.
+- Mint chỉ name lạ qty `T` (mạo danh): `dict.size = 1` qua (M2) nhưng `V(mint,p,n) = 0 ≠ T` ⇒ fail
+  (M3). Ca `rt_mint_only_fake_name`.
 
 ### 2.3 Định lý KHÔNG BURN
 
-**Mệnh đề.** Không tồn tại tx hợp lệ với `qty(mint, p, n) < 0`.
+**Mệnh đề.** Không tồn tại tx hợp lệ với `V(mint,p,n) < 0`.
 
-**Chứng minh.** (M3) đòi `qty(mint,p,n) = T > 0`. Một giá trị âm vi phạm (M3) → fail. Mọi nhánh mint
-khác (purpose ≠ mint, hay mint không qua các vị từ trên) rơi vào `else → fail`
-([`:58`](./onchain/validators/tlamp_policy.ak)). ∎ Test `mint_negative_burn`.
+**Chứng minh.** (M3) đòi `V(mint,p,n) = T > 0`; giá trị âm vi phạm (M3). Mọi nhánh khác rơi vào
+`else → fail`. ∎ Ca `mint_negative_burn`.
 
-> **Liên hệ định hướng dài hạn:** LAMP mainnet fixed-supply 36 tỷ BẤT BIẾN, KHÔNG bao giờ burn.
-> tLAMP phản chiếu đúng tính chất đó — mọi cửa thay đổi tổng cung bị đóng sau mint
-> ([CONTRACT §1](./CONTRACT.md)).
+> **Liên hệ định hướng dài hạn:** LAMP mainnet fixed-supply 36 tỷ BẤT BIẾN, không bao giờ burn. tLAMP
+> phản chiếu đúng tính chất đó.
 
 ---
 
-## 3. Faucet — định lý bảo toàn value khi claim
+## 3. Pool là một singleton — tiền đề cho mọi định lý sau
 
-Validator spend chạy đúng các vị từ ([`faucet.ak:41-69`](./onchain/validators/faucet.ak)), với
-`pool_in`, `pool_out` là input/output **duy nhất** tại script hash:
+**Mệnh đề (POOL-SINGLETON).** Tại mọi thời điểm sau deploy, tồn tại **đúng một** UTxO mang POOL NFT,
+và nó nằm ở địa chỉ mà tx `MintPool` đã đặt.
 
-```
-(F0) assets.is_zero(tx.mint)                                                -- không mint
-(F+) datum.claim_amount > 0                                                 -- claim hợp lệ
-(F1) count_inputs_at_script == 1  ∧  count_outputs_at_script == 1           -- 1 pool in/out
-(F2) pool_out.claim_amount == pool_in.claim_amount                          -- datum giữ
-(F3) pool_out.value == assets.add(pool_in.value, p, n, -c)                  -- value-eq
-```
+**Chứng minh.** Ba vế.
+1. *Tồn tại tối đa một bản.* `faucet_nft.mint ▸ MintPool` đòi consume `genesis_ref` (one-shot, §2.1),
+   `dict.size(own_tokens) == 1` và `quantity_of(POOL) == 1` ⇒ tổng cung POOL NFT = 1 vĩnh viễn. Nhánh
+   `MintAccount` ép `quantity_of(tx.mint, policy, POOL) == 0` nên không đúc thêm qua đường đó; nhánh
+   `BurnAccount` ép tên có tiền tố `"ACCT"` và độ dài 32 byte, còn `"POOL"` dài 4 byte ⇒ không đốt POOL
+   NFT qua đường đó.
+2. *Bản đó ở script pool.* `C-MP-1` ép `pool_out.address.payment_credential` là `Script(_)`, `C-MP-2`
+   ép không stake credential.
+3. *Nó ở lại đúng chỗ đó.* Prelude của `faucet_pool.spend` ép đúng một POOL NFT input và đúng một POOL
+   NFT output, `C-POOL-IN-1` ép input đó ở chính script đang chạy, `C-POOL-OUT-1` ép output ở **địa chỉ
+   đầy đủ** của input. Nếu POOL NFT lạc ra một địa chỉ không script thì `faucet_pool.spend` không được
+   gọi nữa — và khi đó `C-ACCT-POOLADDR-1` trong `ReclaimIdle` là cổng còn lại ép pool_out về đúng địa
+   chỉ pool_in. ∎
 
-### 3.1 Định lý VALUE-EQ (đẳng thức bao trùm mọi gian lận)
+Ca kiểm: `mint_pool_happy`, `mint_pool_without_genesis`, `mint_pool_wrong_qty`,
+`mint_pool_with_extra_acct`, `mintpool_nft_vao_vi`, `mintpool_stake_credential`,
+`mint_account_touches_pool_nft`, `burn_account_lan_prefix_pool`, `poc_pool_nft_input_not_at_own_script`,
+`poc_claim_pool_to_wallet`, `poc_reclaim_pool_to_wallet`, `poc_reclaim_pool_stake_hijack`.
 
-**Mệnh đề.** Với claim hợp lệ: với **mọi** asset `(p',n')`,
-
-```
-V(pool_out, p',n') = V(pool_in, p',n') − c·[ (p',n') = (p,n) ]
-```
-
-(nghĩa là: tLAMP `(p,n)` giảm đúng `c`; **mọi asset khác bất biến**).
-
-**Chứng minh.** (F3) là đẳng thức `Value`: `pool_out.value = pool_in.value + add(p,n,−c)`. Hàm
-`assets.add(v,p,n,−c)` thay đổi **duy nhất** entry `(p,n)` (trừ `c`), giữ nguyên mọi entry khác.
-Vì `Value` so sánh per-entry, đẳng thức ⇒ với `(p',n') ≠ (p,n)` thì `V(pool_out)=V(pool_in)`, và
-với `(p,n)` thì `V(pool_out)=V(pool_in)−c`. ∎
-
-**Hệ quả 1 — không drain ADA/asset khác.** Đặt `(p',n') = (lovelace)` hay bất kỳ dust: value bảo
-toàn ⇒ dev **không rút** ADA hay asset phụ của pool. Test `claim_drain_ada`, `claim_steal_other_asset`,
-`rt_steal_dust`. Ngược lại pool **được phép ôm** asset phụ hợp lệ (test `rt_happy_with_dust`).
-
-**Hệ quả 2 — nhả đúng `c`, không hơn không kém.** `V(pool_out,p,n) = V(pool_in,p,n) − c`. Nhả `>c`
-⇒ pool_out thiếu → lệch → fail (`claim_too_much`). Nhả `<c` ⇒ pool_out thừa → lệch → fail
-(`claim_too_little`).
-
-### 3.2 Định lý CONSERVE (Σ tLAMP bất biến mỗi claim)
-
-**Mệnh đề.** `V(pool_out,p,n) + (dev nhận) = V(pool_in,p,n)`.
-
-**Chứng minh.** Theo §3.1, pool_out chứa `V(pool_in,p,n) − c` tLAMP. Theo luật bảo toàn value
-**toàn tx** của ledger Cardano (`Σ inputs + mint = Σ outputs`), và (F0) `mint = 0`, phần `c` tLAMP
-"thiếu" ở pool_out phải xuất hiện ở output khác — chính là output dev
-([`claimBuilder.ts:95`](./offchain/src/claimBuilder.ts) trả đúng `c`). ∎ Test
-`claim_happy` (onchain), `builders.test.ts:148` (`pool_out + claimer == pool_in`).
-
-> **Lưu ý ranh giới:** validator KHÔNG đọc output dev (nó chỉ ép pool_in→pool_out). Việc dev nhận
-> đúng `c` được bảo đảm **bằng tổ hợp**: pool mất đúng `c` (F3) + `mint=0` (F0) + bảo toàn value
-> ledger ⇒ `c` tLAMP đi đâu đó ngoài pool. Builder offchain đặt nó vào ví dev; nếu builder lỗi đặt
-> nơi khác, dev không nhận — nhưng **không ai drain được** (đó là tính chất an toàn validator cần
-> bảo đảm). Đây là lựa chọn tối ưu eUTXO: không bắt validator quét toàn outputs.
-
-### 3.3 Định lý KHÔNG MINT khi claim
-
-**Mệnh đề.** Claim hợp lệ ⇒ `tx.mint = 0` (không tạo/đốt token nào, kể cả policy khác).
-
-**Chứng minh.** (F0) `assets.is_zero(tx.mint)` đòi value mint rỗng tuyệt đối. Mint thêm tLAMP
-(`claim_mint_rejected`) hay NFT rác policy khác (`rt_mint_other_policy`) đều làm `tx.mint ≠ 0` →
-fail. ∎ Kết hợp với §2 (one-shot), tổng cung tLAMP **không đường nào** tăng sau deploy.
-
-### 3.4 Định lý DATUM-PRESERVE (chống drain trễ)
-
-**Mệnh đề.** `pool_out.claim_amount = pool_in.claim_amount`, và pool_out **có** inline datum hợp lệ.
-
-**Chứng minh.** `expect InlineDatum(od) = pool_out.datum` ([`faucet.ak:55`](./onchain/validators/faucet.ak))
-fail nếu pool_out không có inline datum (test `rt_pool_out_no_datum`). `expect out_datum.claim_amount
-== datum.claim_amount` (F2) ép giá trị giữ nguyên (test `claim_datum_tamper`: đổi 100→1000 fail). ∎
-
-**Ý nghĩa:** không kẻ nào nâng `claim_amount` ở pool mới để **claim sau** rút nhiều hơn. `claim_amount`
-là hằng số đời pool.
-
-### 3.5 Định lý POSITIVITY (chống `claim_amount ≤ 0` bơm pool)
-
-**Mệnh đề.** Claim hợp lệ ⇒ `c > 0`.
-
-**Chứng minh.** (F+) `expect datum.claim_amount > 0` đứng **trước** (F3)
-([`faucet.ak:45`](./onchain/validators/faucet.ak)). Nếu `c ≤ 0`:
-- `c = 0`: (F+) fail (test `claim_zero_amount_datum`).
-- `c < 0`: (F+) fail (test `rt_negative_claim_amount`). Quan trọng — nếu không có (F+), một `c < 0`
-  biến `add(p,n,−c) = add(p,n,+|c|)` thành **bơm token vào pool** (claim ngược). (F+) đóng cửa này
-  **trước** khi value-eq dùng `−c`. ∎
-
-Bổ trợ: ngay cả khi `c > 0`, mưu "bơm ngược" bằng cách đặt pool_out **nhiều** tLAMP hơn pool_in vẫn
-fail value-eq (`rt_negative_effective_claim`).
+**Hệ quả (I-CFG).** `C-CFG-1` ép `out_pd.cfg == cfg` ở **mọi** lượt spend, và theo POOL-SINGLETON
+không có đường nào tạo một pool thứ hai với `cfg` khác. Vậy `cfg` đóng băng từ tx `MintPool`. Cổng duy
+nhất còn ép được giá trị khởi tạo là `C-MP-4..7`. Ca `cfg_bi_doi_o_output`, `cfg_max_claims_khong_duong`,
+`mintpool_max_vuot_tran`, `mintpool_max_bang_tran` (ca dương song sinh), `mintpool_max_bang_0`.
 
 ---
 
-## 4. Định lý CHỐNG DOUBLE-SATISFACTION
+## 4. Định lý THỜI GIAN KHÔNG GIẢ ĐƯỢC (tiền đề của I-RATE)
 
-Đếm theo **payment script hash**, không full-address ([`util.ak:29-35`](./onchain/lib/magiclamp/faucet/util.ak)).
+Hai hàm đọc thời gian:
 
-**Mệnh đề.** Claim hợp lệ ⇒ **đúng 1** input và **đúng 1** output mang payment credential `Script(own_hash)`.
+```
+get_epoch(tx, m)        = ⌊lo / m⌋                          -- chỉ cận dưới
+get_epoch_pinned(tx, m) = e  với  e = ⌊lo/m⌋  và  ⌊hi/m⌋ = e -- ép cả hai cận
+```
 
-**Chứng minh.** (F1) `count_inputs_at_script == 1 ∧ count_outputs_at_script == 1` với
-`count_*_at_script` đếm UTxO có `payment_credential == Script(own_hash)` **bất kể stake credential**.
-∎
+**Mệnh đề.** Gọi `s` là slot/mốc thời gian mà ledger dùng để xác nhận tx. Nếu tx hợp lệ với ledger và
+validator gọi `get_epoch_pinned(tx, m) = e`, thì `e(s) = e` — giá trị trả về là cửa sổ **thật**.
 
-**Vì sao theo hash, không theo address.** Cùng script hash + **khác** stake credential = address
-khác nhau nhưng **đều là UTxO của script**. Nếu đếm theo full-address, kẻ tấn công đặt 2 pool UTxO
-khác stake cred, thỏa value-eq trên 1 cái, "ăn" cái kia
-([`util.ak:1-3,53-59`](./onchain/lib/magiclamp/faucet/util.ak)). Đếm theo hash đóng cửa này.
+**Chứng minh.** Ledger chỉ chấp nhận tx khi `s ∈ [lo, hi]`. `get_epoch_pinned` đòi cả hai cận hữu hạn
+và `⌊lo/m⌋ = ⌊hi/m⌋ = e`, tức `[lo, hi]` nằm trọn trong một cửa sổ `e`. Vậy `s ∈ [lo,hi] ⊆` cửa sổ `e`
+⇒ `e(s) = e`. ∎
 
-**Hai biến thể đã đóng:**
+**Đối chiếu với `get_epoch`.** Ledger chỉ đòi `lo ≤ s`, nên `⌊lo/m⌋ ≤ e(s)` và người dựng tx đặt `lo`
+nhỏ tuỳ ý. `get_epoch` vì thế **chỉ** dùng được ở chốt mà "khai nhỏ hơn thật" gây bất lợi cho chính
+người dựng tx — trong toàn bộ mã đúng một chỗ: `ReclaimIdle` (khai nhỏ ⇒ `now ≥ last_touch + R` khó
+thoả hơn ⇒ tự mình không thu hồi được).
 
-- **2 pool INPUT** (1 output trả): `count_inputs == 2` → fail (test `claim_double_satisfaction`).
-  Nếu không có guard này, value-eq chỉ ràng buộc 1 cặp in/out, pool thứ 2 bị drain toàn bộ.
-- **2 pool OUTPUT** (1 input, chẻ pool né value-eq): `count_outputs == 2` → fail (test
-  `rt_two_pool_outputs`). Chẻ pool ra 2 output để mỗi cái lách đẳng thức cũng bị đếm bắt.
+**Vì sao không dùng một hàm cho cả hai:** hai họ chốt **ngược dấu**. Cooldown cần "không khai `now`
+LỚN hơn thật"; `window_epoch` cần "không khai `now` NHỎ hơn thật". Cận dưới chỉ trả lời vế đầu.
 
-**Bổ trợ — own_ref phải là script.** `own_script_hash` ép `expect Script(h) = own_addr.payment_credential`
-([`util.ak:17-20`](./onchain/lib/magiclamp/faucet/util.ak)); nếu `own_ref` trỏ UTxO ví thường thì fail
-(test `rt_own_ref_not_script`). Chống spoof own_ref sang non-script.
-
----
-
-## 5. Bảng truy vết property ↔ test (đã có, đã pass)
-
-27 test Aiken, **toàn bộ pass** (`aiken check`, exit 0 — xem [EXEC](./Exec-Spec.md)).
-
-| # | Property (định lý) | Onchain test |
-|---|---|---|
-| 1 | one-shot — consume genesis | `mint_without_genesis`, `rt_mint_genesis_wrong_index` |
-| 2 | đúng tổng cung `T` | `mint_full_supply_happy`, `mint_wrong_quantity_less/more` |
-| 3 | dict.size == 1 (no extra name) | `mint_extra_asset_name`, `rt_mint_lamp_plus_negative_other`, `rt_mint_zero_qty` |
-| 4 | no fake mint | `rt_mint_only_fake_name` |
-| 5 | no-burn | `mint_negative_burn` |
-| 6 | value-eq happy | `claim_happy`, `rt_happy_with_dust` |
-| 7 | nhả đúng `c` | `claim_too_much`, `claim_too_little` |
-| 8 | no drain ADA/asset | `claim_drain_ada`, `claim_steal_other_asset`, `rt_steal_dust` |
-| 9 | no negative effective claim | `rt_negative_effective_claim` |
-| 10 | no mint khi claim | `claim_mint_rejected`, `rt_mint_other_policy` |
-| 11 | datum preserve + có datum | `claim_datum_tamper`, `rt_pool_out_no_datum` |
-| 12 | positivity `c > 0` | `claim_zero_amount_datum`, `rt_negative_claim_amount` |
-| 13 | anti double-sat (in) | `claim_double_satisfaction` |
-| 14 | anti double-sat (out) | `rt_two_pool_outputs` |
-| 15 | own_ref là script | `rt_own_ref_not_script` |
+Ca kiểm: `rate_upper_bound_vo_han` (cận trên vô hạn ⇒ đỏ), `use_upper_bound_vo_han`,
+`rate_leo_thang_bac_thang` (khoảng **trải hai bucket** — hình dạng duy nhất còn lại để khai một bucket
+quá khứ, vì một khoảng nằm trọn trong quá khứ bị chính **ledger** từ chối, không phải validator),
+`reclaim_idle_too_early`.
 
 ---
 
-## 6. Property còn THIẾU test (gap → EXEC)
+## 5. Định lý TRẦN TỐC ĐỘ (I-RATE)
 
-- **CONSERVE end-to-end onchain** (`dev nhận đúng c`): hiện chỉ test ở builder offchain
-  (`builders.test.ts:148`). Validator KHÔNG kiểm output dev (cố ý, §3.2). Property đầy đủ chỉ
-  verify được ở **e2e Preview** (claim thật → đọc UTxO ví dev). Ghi ở [EXEC](./Exec-Spec.md).
-- **claim lặp tới cạn** (monotonic giảm `P → P−c → … → 0`): logic đúng theo §3.1 nhưng chưa có
-  test chuỗi nhiều claim liên tiếp onchain. MVP chấp nhận; e2e Preview phủ.
+Vị từ trong `check_claim` (chạy cho cả `ClaimOpen` và `ClaimAgain`), với `pd` là datum vào, `out_pd`
+datum ra:
+
+```
+(R0) now = get_epoch_pinned(tx, m)
+(R1) now ≥ pd.window_epoch
+(R2) used + 1 ≤ K,    used = if now == pd.window_epoch then pd.claims_in_window else 0
+(R3) out_pd.window_epoch == now
+(R4) out_pd.claims_in_window == used + 1
+```
+
+và ở hai nhánh không-claim:
+
+```
+(P1) Reclaim:   out_pd.window_epoch == pd.window_epoch  ∧  out_pd.claims_in_window == pd.claims_in_window
+(P2) TopUpPool: y hệt (P1)
+```
+
+**Mệnh đề (I-RATE).** Với mỗi nhãn cửa sổ `e`, số tx claim thành công có `e(s) = e` không vượt `K`.
+
+**Chứng minh.** Theo POOL-SINGLETON, mọi tx claim tạo thành một **chuỗi tuyến tính** trên pool UTxO;
+gọi `(w_i, k_i)` là datum sau tx thứ `i` của chuỗi. Theo §4 và (R0), mỗi tx claim có `now = e(s)`, tức
+cửa sổ thật của chính nó — không giả được.
+
+Xét các tx claim có `e(s) = e`, theo thứ tự chuỗi. Với tx đầu tiên trong nhóm đó, gọi `(w, k)` là datum
+vào. (R1) cho `e ≥ w`.
+- Nếu `w < e`: `used = 0`, và (R3)/(R4) cho datum ra `(e, 1)`.
+- Nếu `w = e`: `used = k`, datum ra `(e, k+1)`, với `k+1 ≤ K` theo (R2).
+
+Với mọi tx claim tiếp theo trong cùng nhóm, datum vào đã có `w = e` (nó là datum ra của tx trước, hoặc
+đã đi qua các tx `Reclaim`/`TopUpPool` mà theo (P1)/(P2) **bảo toàn** `(w, k)`). Vậy `used = k` và mỗi
+tx làm `k` tăng đúng 1, trong khi (R2) đòi `k + 1 ≤ K`. Dãy `k` trong cửa sổ `e` do đó tăng đơn vị một
+và bị chặn trên bởi `K`; khi `k = K` thì (R2) không thoả và không tx claim nào trong cửa sổ `e` đi qua
+được nữa. Số tx claim với `e(s) = e` ≤ `K`. ∎
+
+**Ba đường phá mà chứng minh này phụ thuộc — gỡ một cái là mất định lý:**
+1. Không có (R0) thì `now` khai được ở một bucket quá khứ, mỗi bucket chưa dùng là một quota mới, và
+   một chuỗi tx nối nhau **trong cùng một cửa sổ thật** vượt trần tuyệt đối (leo thang bậc thang).
+2. Không có (R1) thì `w` lùi được so với datum, cho lại quota đã tiêu.
+3. Không có (P1) thì xen một `Reclaim` reset bộ đếm miễn phí — và `Reclaim` là permissionless.
+
+Ca kiểm: `rate_claim_thu_max_pass` (ca dương ở đúng trần), `poc_vet_N_lan_trong_mot_cua_so`,
+`rate_cua_so_moi_reset` (ca dương: sang cửa sổ mới thì bộ đếm tính lại), `rate_window_lui_ve_qua_khu`,
+`rate_out_claims_khong_tang`, `rate_out_window_gia_mao`, `rate_upper_bound_vo_han`,
+`rate_leo_thang_bac_thang`, `reclaim_reset_bo_dem`, `reclaim_doi_window`, `topuppool_doi_bo_dem`,
+`mintpool_window_khong_phai_now`, `mintpool_claims_khac_0`.
+
+**Chặn trên của thiệt hại.** Kể cả khi một người điều khiển nhiều DID, họ không lấy được quá `K × d`
+oildrop mỗi cửa sổ. Đó là lý do `I-RATE` — không phải cooldown — là chốt chống vét pool.
+
+---
+
+## 6. Định lý COOLDOWN, và giới hạn CHÍNH XÁC của nó
+
+```
+(C1) ClaimAgain: now ≥ old.last_claim_epoch + L         -- đọc mốc COOLDOWN
+(C2) ClaimAgain: đúng 1 account input ở account_script_hash, mang ACCT NFT an(did_name)
+(C3) ClaimOpen:  0 account input
+(C4) Use:        out.last_claim_epoch == acct.last_claim_epoch
+(C5) TopUp:      out.last_claim_epoch == now  ∧  tx mang DID NFT của did_name
+```
+
+**Mệnh đề (I-COOLDOWN).** Trên một **chuỗi account** (dãy UTxO nối nhau mang cùng ACCT NFT), hai lượt
+`ClaimAgain` liên tiếp có nhãn cửa sổ cách nhau ≥ `L`.
+
+**Chứng minh.** Lượt claim thứ `i` ghi `last_claim_epoch = now_i` (`C-ACCTOUT-4` cho `ClaimOpen`,
+`C-TOP-6` cho `TopUp` ở `ClaimAgain`). Lượt thứ `i+1` đọc chính UTxO đó làm input — (C2) buộc account
+cũ phải có mặt và mang đúng ACCT NFT — rồi (C1) đòi `now_{i+1} ≥ now_i + L`. Theo §4, cả `now_i` và
+`now_{i+1}` là cửa sổ thật. (C4) đảm bảo không lượt `Use` nào chen vào giữa để dịch mốc đó, và (C5)
+đảm bảo không ai **khác** dịch được nó. ∎
+
+**Giới hạn — đây là phần quan trọng hơn cả định lý.** `I-COOLDOWN` nói về một **chuỗi account**, không
+nói về một **người** và cũng không nói về một `did_name`. (C3) chỉ đòi tx `ClaimOpen` không có account
+input trong **chính tx đó** — nó không đòi "DID này chưa có account nào ở bất kỳ đâu". Nên một
+`did_name` mở được nhiều chuỗi account song song, mỗi chuỗi có mốc cooldown riêng, và tổng số lượt của
+chúng chỉ bị chặn bởi `I-RATE`.
+
+⇒ **Cooldown là tiện lợi kế toán, KHÔNG phải cơ chế công bằng.** Điểm treo `[FAUCET-ACCT-UNIQUE]`
+([README](./README.md) v3.0 §Điểm còn treo) ghi đúng giới hạn này cùng ràng buộc tạm đang chặn thiệt
+hại (`I-RATE` + `max_claims_ceiling`). Ca kiểm cho vế đã đóng của nó:
+`poc_duc_account_thu_hai_cung_name` (đúc account thứ hai **trong cùng tx** với account cũ ⇒ đỏ),
+`poc_claim_khong_kem_account_cu`, `again_hai_account_input`, `again_cooldown_thieu_1_epoch`,
+`again_happy_sau_cooldown` (ca dương), `use_doi_last_claim_epoch`, `use_gia_han_khong_doi_cooldown`
+(ca dương song sinh), `topup_khong_did_nft`, `topup_griefing_hai_validator`.
+
+---
+
+## 7. Định lý BẢO TOÀN VALUE (I-CONSERVE)
+
+### 7.1 Claim — đẳng thức bao trùm
+
+```
+(D1) pool_out.value == assets.add(pool_in.value, p, n, −d)
+```
+
+**Mệnh đề.** Với claim hợp lệ, với **mọi** asset `(p',n')`:
+
+```
+V(pool_out, p',n') = V(pool_in, p',n') − d · [ (p',n') = (p,n) ]
+```
+
+**Chứng minh.** (D1) là đẳng thức `Value`: `assets.add(v,p,n,−d)` thay đổi **duy nhất** entry `(p,n)`,
+giữ nguyên mọi entry khác. `Value` so sánh per-entry ⇒ với `(p',n') ≠ (p,n)` thì hai bên bằng nhau, và
+với `(p,n)` thì lệch đúng `−d`. ∎
+
+**Hệ quả 1 — không rút ADA / asset khác.** Đặt `(p',n')` = lovelace hay bất kỳ dust: bảo toàn. Pool
+**được phép** ôm asset phụ; đẳng thức chỉ cấm **thay đổi** nó. Ca `claim_pool_drain_extra`,
+`reclaim_steal_ada`.
+
+**Hệ quả 2 — nhả đúng `d`.** Nhả `> d` ⇒ pool_out thiếu; nhả `< d` ⇒ pool_out thừa; cả hai lệch đẳng
+thức. Ca `claim_wrong_drip`.
+
+**Hệ quả 3 — POOL NFT không rời pool.** POOL NFT là một entry của `pool_in.value`, nên (D1) giữ nó lại
+cùng lúc với ADA. Không cần một dòng riêng.
+
+### 7.2 Token tới đúng ĐÍCH, không chỉ đúng SỐ LƯỢNG
+
+Đẳng thức (D1) nói pool **mất** đúng `d`; nó **không** nói `d` đi đâu. Vế đích do bốn chốt khác đóng:
+`C-ACCTOUT-1` (đúng một output ở `account_script_hash`), `C-ACCTOUT-2` (địa chỉ đó là địa chỉ
+enterprise của chính hash ấy), `C-ACCTOUT-3` (không reference script), `C-OPEN-3`/`C-AGAIN-5` (số tLAMP
+ở output đó đúng bằng `d`, hoặc `cũ + d`).
+
+**Vì sao vế đích phải có chốt riêng, và vì sao nó không phải phòng thủ thừa:** một output đúng số
+lượng nhưng sai đích là một tài sản **nằm ngoài mọi luật**. Nếu account ra ví, chủ nó né được cooldown
+(lượt sau mở chuỗi mới) **và** `ReclaimIdle` không bao giờ chạm tới được số tLAMP đó — pool chảy một
+chiều, và không validator nào trong module này đúc lại được. So **địa chỉ đầy đủ** chứ không chỉ payment
+credential:
+cùng script hash + khác stake credential là hai Address khác nhau nhưng cùng validator, và phần thưởng
+uỷ quyền trên ADA của UTxO đó chảy về khoá stake của kẻ dựng tx.
+
+Ca kiểm: `claim_acct_out_ra_vi`, `claim_acct_out_script_khac`, `claim_acct_out_stake_hijack`,
+`claim_acct_out_script_carrier`, `claim_name_khong_khop_did`, `claim_hai_acct_nft_cung_name`.
+
+### 7.3 Account — hai chiều ngược nhau, hai nhánh rời nhau
+
+```
+(U1) Use:   0 ≤ V(acct_out) ≤ V(acct_in)                    -- giảm được, tăng thì không
+(U2) Use:   0 POOL NFT input trong tx
+(T1) TopUp: V(acct_out) == V(acct_in) + pd.cfg.drip_oildrop  -- pd đọc từ POOL input
+(T2) TopUp: đúng 1 POOL NFT input
+```
+
+**Mệnh đề.** `Use` và `TopUp` **rời nhau**: không tồn tại tx nào cả hai nhánh cùng chấp nhận.
+
+**Chứng minh.** (U2) đòi 0 POOL NFT input, (T2) đòi đúng 1. Hai điều kiện loại trừ nhau. ∎
+
+**Vì sao cần mệnh đề này.** (U1) cấm tăng, (T1) bắt buộc tăng. Nếu hai nhánh không rời nhau, một tx
+`pool.ClaimAgain` chọn được nhánh `Use` cho account input, và khi đó **cả hai** chốt mất nghĩa: chốt
+"account không tự bơm" bị lách bằng cách dùng nhánh kia, còn chốt "account nhận đúng drip" bị lách
+bằng cách dùng nhánh này. Ca `again_account_dung_redeemer_Use` (đỏ), `use_co_pool_input` (đỏ),
+`again_happy_hai_validator` (ca dương: cùng một tx, pool `ClaimAgain` + account `TopUp`, **cả hai**
+xanh).
+
+**Mệnh đề (số tiền không do bên pool tự khai).** (T1) đọc `drip_oildrop` từ **datum của POOL input**,
+định vị bằng POOL NFT. Không có vế đó, một tx `pool.Reclaim` + `acct.TopUp` rút sạch tLAMP của một
+account mà **không cần** DID NFT của nó: `Reclaim` chỉ đòi đúng một account input và `lamp_out ≥
+lamp_in`, cả hai đều thoả khi Δ = 0. Ca `topup_rut_bot_tlamp`, `topup_nhan_hon_drip`,
+`topup_khong_co_pool_input`, `topup_happy` (ca dương).
+
+### 7.4 Thu hồi (I-RECOVER)
+
+```
+(G1) now ≥ acct.last_touch_epoch + R,  now = get_epoch(tx, m)   -- cận dưới, cố ý
+(G2) pool_lamp_out − pool_lamp_in ≥ V(acct_in, p, n)
+(G3) pool_out.address == pool_in.address
+(G4) V(tx.mint, faucet_nft_policy, an(did_name)) == −1
+```
+
+**Mệnh đề.** Thu hồi hợp lệ ⇒ toàn bộ tLAMP của account về pool, và ACCT NFT của nó bị đốt.
+
+**Chứng minh.** (G2) so **delta** của pool chứ không so tuyệt đối ⇒ keeper không "đếm sẵn" số tLAMP
+đang có trong pool để né; delta ≥ số tLAMP của account nghĩa là không thiếu một đơn vị nào. (G3) buộc
+delta đó rơi vào đúng pool UTxO chứ không vào một địa chỉ khác mang POOL NFT. (G4) đốt đúng một đơn vị
+ACCT NFT của **chính** `did_name` này. ∎
+
+**Vì sao (G4) không bỏ được:** không đốt thì ACCT NFT ra khỏi script và thành **vé tái dùng vĩnh
+viễn** — ai giữ nó dựng được một UTxO "account" ở ví với datum tự đặt. Và cổng này chỉ đứng ở
+`faucet_account`: `faucet_pool.Reclaim` **không** canh `tx.mint`, nên một tx thu hồi thiếu bước đốt vẫn
+làm pool xanh. Ca `reclaim_idle_khong_burn_hai_validator` ghim đúng cặp đó (pool xanh, account đỏ) —
+đừng trông vào pool. Ca khác: `reclaim_idle_happy` (dương), `reclaim_idle_happy_hai_validator` (dương,
+hai validator), `reclaim_idle_token_not_to_pool`, `reclaim_idle_no_pool_output`,
+`reclaim_idle_khong_burn_acct`, `reclaim_idle_burn_name_khac`, `reclaim_idle_pool_to_wallet`,
+`reclaim_idle_pool_stake_hijack`.
+
+**Vì sao (G1) dùng cận dưới là an toàn:** khai `now` nhỏ hơn thật chỉ làm `now ≥ last_touch + R` khó
+thoả hơn ⇒ keeper tự chặn chính mình. Không ai khác thiệt.
+
+### 7.5 `Reclaim` và `TopUpPool` không phải cửa spend rỗng
+
+`Reclaim` đòi **đúng một** account input (`C-RECL-0`); `TopUpPool` đòi `Δ ≥ d` (`C-TUP-1`) và **0**
+account input. Không có hai chốt đó, mỗi nhánh là một cửa spend rỗng **permissionless trên một
+singleton**: giá một phí tx, lặp mỗi block ⇒ mọi claim của người thật trượt vĩnh viễn, và với `Reclaim`
+thì việc giữ `window_epoch` đứng im còn nuôi thêm đường leo thang quota. Ca `reclaim_spend_rong`,
+`topuppool_delta_0`, `topuppool_co_account_input`.
+
+---
+
+## 8. Định lý CHỐNG DOUBLE-SATISFACTION
+
+Đếm theo **payment script hash**, không theo full-address (`util.count_*_at_script`,
+`util.count_*_with_nft`).
+
+**Mệnh đề.** Mỗi lượt spend hợp lệ có **đúng một** input và **đúng một** output mang beacon tương ứng
+(POOL NFT cho pool; script hash của chính nó cho account), và số account input/output ở
+`account_script_hash` bị ghim chính xác theo từng nhánh (`ClaimOpen`: 0 · `ClaimAgain`: 1 · `Reclaim`:
+1 · `TopUpPool`: 0).
+
+**Vì sao đếm theo hash, không theo address.** Cùng script hash + khác stake credential = address khác
+nhau nhưng **đều là UTxO của script**. Đếm theo full-address thì kẻ tấn công đặt hai UTxO khác stake
+credential, thoả ràng buộc trên một cái và "ăn" cái kia.
+
+**Vì sao ĐÍCH ĐẾN lại phải so full-address.** Hai câu trên không mâu thuẫn: phép **đếm** phải rộng
+(bắt hết mọi UTxO của script), phép **ghim đích** phải chặt (không cho trường stake credential tự do).
+Dùng lẫn hai phép là cách sinh ra đúng hai lớp lỗ ngược nhau.
+
+Ca kiểm: `claim_two_pool_inputs`, `again_hai_account_input`, `poc_pool_nft_input_not_at_own_script`,
+`claim_acct_out_stake_hijack`, `use_acct_out_stake_hijack`, `poc_reclaim_pool_stake_hijack`,
+`reclaim_idle_pool_stake_hijack`, `poc_reclaim_pool_script_carrier`, `use_acct_out_script_carrier`,
+`mintpool_script_carrier`.
+
+---
+
+## 9. Hình dạng asset name — phân vai giữa mint policy và pool
+
+```
+(N1) MintAccount: dict.size(own_tokens) == 1  ∧  qty == 1
+(N2) MintAccount: take(name,4) == "ACCT"  ∧  length(name) == 32
+(N3) MintAccount: đòi ≥ 1 POOL NFT input  ∧  qty(POOL) == 0
+(N4) pool:        has_nft(acct_out, faucet_nft_policy, an(did_name))
+(N5) pool:        count_outputs_with_nft(tx.outputs, faucet_nft_policy, an(did_name)) == 1
+```
+
+**Mệnh đề.** ACCT NFT được đúc trong một tx claim luôn có **hình dạng** hợp lệ và **tên khớp đúng
+`did_name`** của account được tạo.
+
+**Chứng minh.** (N2) cho hình dạng (tiền tố + 32 byte). (N4) cho tên khớp: `an` tính từ chính
+`did_name` trong datum của account output, và `C-DID-1` buộc `did_name` đó có DID NFT tương ứng trong
+input. (N3) cho tính uỷ quyền: không tx nào đúc ACCT NFT mà không có pool bị spend, tức pool validator
+đã chạy và mọi ràng buộc trên đã áp. (N1) + (N5) cho tính duy nhất trong tx. ∎
+
+**Phân vai, không kiểm trùng:** mint policy ép **hình dạng** (nó không biết `did_name` nào là hợp lệ —
+biết được thì lại là một vòng phụ thuộc); pool ép **tên khớp DID** và toàn bộ dòng tiền. Ca
+`mint_account_name_dung_32b` (dương), `mint_account_name_thieu_prefix`, `mint_account_name_31b`,
+`mint_account_qty_2`, `mint_account_hai_name`, `mint_account_no_pool_input`,
+`burn_account_happy` (dương), `burn_account_qty_minus_2`, `burn_account_qty_duong`.
+
+---
+
+## 10. Property còn THIẾU phép đo (gap → EXEC)
+
+- **Người claim nhận đúng `d` ở nơi họ muốn dùng** — validator ép account output nhận đúng `d`, nhưng
+  chuyện chủ DID **rút ra** rồi dùng ở đâu thì nằm ngoài luật (đúng thiết kế). Chỉ e2e trên mạng test
+  đo được đường đi đầy đủ.
+- **Chuỗi claim tới cạn** (`P → P−d → … < d`): logic suy ra từ §7.1 nhưng chưa có ca kiểm chạy nhiều
+  claim liên tiếp trên một chuỗi pool duy nhất.
+- **Chi phí thực thi trên tx THẬT.** Số ExUnit đo trên tx mock của bộ kiểm không phải số trên mạng: tx
+  thật có thêm input phí, output trả lại, và witness. Phải đo lại sau lượt deploy đầu.
+- **Ngưỡng `R = 1001` cửa sổ chưa từng bị vượt trong một phép đo nào** — với cửa sổ 5 ngày, đó là ≈
+  13,7 năm. Nhánh `ReclaimIdle` vì thế chỉ được kiểm bằng ca dựng thời gian giả trong bộ kiểm, không
+  bằng quan sát.
+
+**Kỷ luật phát ngôn cho bảng ca kiểm ở các mục trên:** "chốt X **có ca đỏ**" và "chốt X **đã được
+ghim**" là hai câu khác nhau. Câu thứ hai chỉ được phát sau khi **gỡ hẳn chốt X rồi chạy trọn bộ
+kiểm** và thấy có ca đỏ — một ca đỏ đúng tên chốt không chứng minh nó ghim được chốt đó, vì ca có thể
+trượt xuống chốt kế tiếp và chết ở đó với đúng màu, đúng tên.
