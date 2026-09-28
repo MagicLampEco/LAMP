@@ -1,0 +1,34 @@
+{
+  "name": "@magiclamp/governance-sdk",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Governance v2 off-chain SDK — codec, sổ voted_root (MPF), builder giao dịch biểu quyết",
+  "main": "dist/offchain/src/index.js",
+  "types": "dist/offchain/src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/offchain/src/index.d.ts",
+      "import": "./dist/offchain/src/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@aiken-lang/merkle-patricia-forestry": "1.3.1",
+    "@lucid-evolution/lucid": "0.4.34",
+    "@noble/hashes": "1.8.0"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.3",
+    "typescript": "5.9.3",
+    "vitest": "1.6.1"
+  }
+}
