@@ -1,10 +1,14 @@
 # tLAMP + Faucet — MATH (Cơ sở toán)
 
-> **Phiên bản:** v3.0 — 2026-09-28. Nâng cấp từ draft 2026-06-09 vì §3–§6 của bản đó chứng minh các
+> **Phiên bản:** v3.1 — 2026-09-28. Bump từ v3.0 vì mã thêm bất biến INV-ONE-ACCT (sổ `opened_root`)
+> và hạ `R` từ 1001 xuống 72: thêm §6a (tập khoá sổ ⇔ tập account), sửa giới hạn của I-COOLDOWN ở §6
+> (nay theo DID, cận `min(L, R)`), cập nhật §7.4 (pool cũng canh việc đốt; account 0 tLAMP thu hồi
+> được) và §10. §6a ghi rõ một giả thiết mà mã **chưa** ép — xem đó trước khi dựa vào INV-ONE-ACCT.
+> Bản v3.0 nâng cấp từ draft 2026-06-09 vì §3–§6 của bản đó chứng minh các
 > vị từ `F0..F3` của `faucet.ak` — validator đã bị xoá khỏi cây mã. Bản này chứng minh các bất biến
 > của ba validator hiện tại, trong đó có hai tính chất bản cũ **không có**: trần tốc độ theo cửa sổ
 > và tính "thời gian không giả được".
-> **Vai:** chứng minh hình thức các bất biến mà [CONTRACT](./CONTRACT.md) v3.0 phát biểu. Khi lệch với
+> **Vai:** chứng minh hình thức các bất biến mà [CONTRACT](./CONTRACT.md) v3.1 phát biểu. Khi lệch với
 > mã trong `onchain/`, **mã thắng** — một chứng minh không khớp mã là một chứng minh cho hệ khác.
 
 > Mọi số nguyên là **BigInt thuần** (không float). Đơn vị nhỏ nhất = **oildrop**,
@@ -19,9 +23,12 @@
 | `T` | tổng cung tLAMP (oildrop) = `36_000_000_000 × 10^6` = `3.6e16` |
 | `d` | `cfg.drip_oildrop` — lượng nhả mỗi claim (chuẩn `1_001_000_000`) |
 | `K` | `cfg.max_claims_per_window` — trần claim mỗi cửa sổ, `0 < K ≤ 100` |
-| `L` | `cfg.cooldown_epochs` — số cửa sổ tối thiểu giữa hai claim của cùng một chuỗi account |
-| `R` | `handlers.reclaim_epochs_const` = `1001` cửa sổ |
+| `L` | `cfg.cooldown_epochs` — số cửa sổ tối thiểu giữa hai claim của cùng một chuỗi account; `L ≥ 0`, **không** có trần compile-time |
+| `R` | `handlers.reclaim_epochs_const` = `72` cửa sổ; ra thời gian là `R · m`: ≈ 360 ngày khi `m` = 432 000 000 (Preprod/Mainnet), 72 ngày khi `m` = 86 400 000 (Preview) |
 | `m` | `ms_per_epoch` — độ dài một cửa sổ, tính bằng ms |
+| `κ(x)` | `ledger.did_key(x)` = `blake2b_224(x)`, 28 byte; `an(x) = "ACCT" ‖ κ(x)` |
+| `S` | tập khoá mà `PoolDatum.opened_root` cam kết (gốc MPF của `S`, lá rỗng) |
+| `A` | tập `did_name` có một UTxO account **đang sống**: ở `account_script_hash`, mang ACCT NFT `an(did_name)` |
 | `e(s)` | nhãn cửa sổ của một mốc POSIX-ms `s`, bằng `⌊s / m⌋` |
 | `w`, `k` | `PoolDatum.window_epoch`, `PoolDatum.claims_in_window` |
 | `p`, `n` | policy id và asset name của tLAMP (`n = #"744c414d50"`) |
@@ -44,11 +51,14 @@ Quy ước value: `assets.add(v, p, n, q)` = `v` với entry `(p,n)` cộng thê
 - **(I-RATE)** Trong một cửa sổ **thật**, số lượt claim thành công ≤ `K`. Đây là bất biến duy nhất
   chặn vét pool, và nó không phụ thuộc số DID.
 - **(I-COOLDOWN)** Hai lượt claim liên tiếp trên **cùng một chuỗi account** cách nhau ≥ `L` cửa sổ.
-- **(I-RECOVER)** Token của một account bị thu hồi quay về pool **trọn vẹn**, và ACCT NFT của nó bị
-  đốt.
+- **(I-ONE-ACCT)** `κ(d) ∈ S ⇔ d ∈ A`, và mỗi `d ∈ A` có **đúng một** account đang sống. Hệ quả: hai
+  lượt claim liên tiếp của **cùng một DID** cách nhau ≥ `min(L, R)` cửa sổ (§6).
+- **(I-RECOVER)** Token của một account bị thu hồi quay về pool **trọn vẹn**, ACCT NFT của nó bị
+  đốt, và khoá của DID rời sổ.
 
 `I-SUPPLY` độc lập với chuẩn metadata (native FT, không CIP-68). `I-RATE` và `I-COOLDOWN` **không
-thay thế nhau**: `I-RATE` chặn tổng, `I-COOLDOWN` chặn một chuỗi — xem §6.
+thay thế nhau**: `I-RATE` chặn tổng, `I-COOLDOWN` chặn một chuỗi — xem §6. `I-ONE-ACCT` là thứ nâng
+cận từ chuỗi lên DID, và nó dựa vào một giả thiết mã **chưa** ép — xem §6a.
 
 ---
 
@@ -241,19 +251,148 @@ cũ phải có mặt và mang đúng ACCT NFT — rồi (C1) đòi `now_{i+1} �
 `now_{i+1}` là cửa sổ thật. (C4) đảm bảo không lượt `Use` nào chen vào giữa để dịch mốc đó, và (C5)
 đảm bảo không ai **khác** dịch được nó. ∎
 
-**Giới hạn — đây là phần quan trọng hơn cả định lý.** `I-COOLDOWN` nói về một **chuỗi account**, không
-nói về một **người** và cũng không nói về một `did_name`. (C3) chỉ đòi tx `ClaimOpen` không có account
-input trong **chính tx đó** — nó không đòi "DID này chưa có account nào ở bất kỳ đâu". Nên một
-`did_name` mở được nhiều chuỗi account song song, mỗi chuỗi có mốc cooldown riêng, và tổng số lượt của
-chúng chỉ bị chặn bởi `I-RATE`.
+**Giới hạn — đây là phần quan trọng hơn cả định lý.** `I-COOLDOWN` tự nó nói về một **chuỗi
+account**, không nói về một `did_name`: (C3) chỉ đòi tx `ClaimOpen` không có account input trong
+**chính tx đó**. Ở v3.0 đó là toàn bộ câu chuyện — một `did_name` mở được nhiều chuỗi song song và chỉ
+`I-RATE` chặn tổng.
 
-⇒ **Cooldown là tiện lợi kế toán, KHÔNG phải cơ chế công bằng.** Điểm treo `[FAUCET-ACCT-UNIQUE]`
-([README](./README.md) v3.0 §Điểm còn treo) ghi đúng giới hạn này cùng ràng buộc tạm đang chặn thiệt
-hại (`I-RATE` + `max_claims_ceiling`). Ca kiểm cho vế đã đóng của nó:
+v3.1 nâng giới hạn lên mức DID **với điều kiện** `I-ONE-ACCT` đứng (§6a):
+
+**Hệ quả (cooldown theo DID).** Nếu `I-ONE-ACCT` đứng, hai lượt claim liên tiếp của cùng một `d` có
+nhãn cửa sổ cách nhau ≥ `min(L, R)`.
+
+**Chứng minh.** Bổ đề trước: trên mọi account, `last_touch_epoch ≥ last_claim_epoch`. `ClaimOpen` và
+`TopUp` ghi cả hai mốc bằng cùng `now`; `Use` giữ `last_claim_epoch` (C4) và ghi `last_touch_epoch =
+now ≥ mốc cũ` (`C-USE-MONO-1`) — quy nạp giữ bổ đề. Xét hai lượt claim liên tiếp của `d`. Theo
+`I-ONE-ACCT`, tại mỗi thời điểm `d` có ≤ 1 account. (a) Cùng account ⇒ lượt sau là `ClaimAgain`,
+khoảng cách ≥ `L` theo mệnh đề trên. (b) Khác account ⇒ account cũ phải rời `A` trước khi `ClaimOpen`
+mới được (`κ(d) ∉ S`), và đường duy nhất rời `A` là thu hồi (§6a): `now_r ≥ last_touch + R ≥
+last_claim + R`, với `now_r` là cận dưới của tx thu hồi, không lớn hơn thời gian thật; `ClaimOpen` sau
+đó đọc cửa sổ thật (§4) nên `now_open ≥ now_r`. Vậy khoảng cách ≥ `R`. ∎
+
+Hai điều phải đọc cùng định lý này: (1) `L` là tham số deploy **không có trần** — deploy `L > R` thì
+cận thật là `R`, không phải `L`, vì chờ thu hồi rồi mở lại nhanh hơn chờ cooldown; với tham số deploy
+Preprod (`L = 36`, `R = 72`) thì cận là `L`. (2) Cận nói về **DID**, không về **người**: một người giữ
+nhiều DID test vẫn có nhiều account, và chỉ `I-RATE` chặn tổng.
+
+`I-ONE-ACCT` nay KÍN (§6a.1, §6a.2); `I-RATE` + `max_claims_ceiling` vẫn là chốt chặn TỔNG cho
+người giữ nhiều DID. Ca kiểm cho vế cùng-tx:
 `poc_duc_account_thu_hai_cung_name` (đúc account thứ hai **trong cùng tx** với account cũ ⇒ đỏ),
 `poc_claim_khong_kem_account_cu`, `again_hai_account_input`, `again_cooldown_thieu_1_epoch`,
 `again_happy_sau_cooldown` (ca dương), `use_doi_last_claim_epoch`, `use_gia_han_khong_doi_cooldown`
 (ca dương song sinh), `topup_khong_did_nft`, `topup_griefing_hai_validator`.
+
+---
+
+## 6a. Định lý MỘT DID MỘT ACCOUNT (I-ONE-ACCT) — tập khoá ⇔ tập account
+
+Phát biểu và bảng chốt: [CONTRACT](./CONTRACT.md) v3.1 §3.3a. Ở đây là chứng minh và giả thiết của nó.
+
+```
+(U0) MintPool:   S₀ = ∅                         (gốc = mpf.root(mpf.empty))        -- C-MP-8
+(U1) ClaimOpen:  κ(d) ∉ S  ∧  S' = S ∪ {κ(d)}  ∧  tx.mint[an(d)] = +1             -- C-OPEN-UNIQ-1, C-OPEN-1
+(U2) Reclaim:    κ(d) ∈ S  ∧  S' = S \ {κ(d)}  ∧  tx.mint[an(d)] = −1,
+                 d = did_name của account input bị thu hồi                          -- C-RECL-UNIQ-1, C-RECL-BURN-1
+(U3) ClaimAgain, TopUpPool:  S' = S                                                -- C-ROOT-KEEP-1
+(U4) mọi lượt spend pool:  đúng một POOL input, đúng một POOL output               -- §3 (singleton)
+(H-MINT) ACCT NFT chỉ được ĐÚC trong một tx có nhánh pool `ClaimOpen`
+                 -- ĐƯỢC ÉP BỞI: C-MINT-ONLY-OPEN-1 (ClaimAgain), C-MINT-ONLY-OPEN-2 (TopUpPool),
+                    C-RECL-BURN-2 (Reclaim), và C-USE-2 / C-TOP-4 phía faucet_account
+(H-EXIT) ACCT NFT chỉ rời account script bằng cách bị ĐỐT
+                 -- ĐƯỢC ÉP BỞI: C-USE-NAME-1, C-USE-2, C-TOP-3, C-TOP-4, C-BURN-1
+```
+
+`κ(d) ∈ S` và `κ(d) ∉ S` được `mpf.insert` / `mpf.delete` tự ép bằng bằng chứng: chèn đòi bằng chứng
+"vắng" khớp gốc cũ, xoá đòi bằng chứng "có" khớp gốc cũ. Độ an toàn của phép đó quy về chống va chạm
+của `blake2b_256` trong cây — giả thiết mật mã, không chứng minh ở đây.
+
+**Mệnh đề.** Với (U0)–(U4) và (H-MINT), (H-EXIT): tại mọi trạng thái, `κ(d) ∈ S ⇔ d ∈ A`, và mỗi
+`d ∈ A` có đúng một account.
+
+**Chứng minh.** Quy nạp trên dãy tx chạm pool (U4 cho một dãy tuyến tính). Cơ sở: (U0) `S = ∅`, và
+chưa có ACCT NFT nào (MintAccount đòi POOL input — chưa có pool thì chưa đúc được). Bước:
+- `ClaimOpen` (U1): tiền điều kiện `κ(d) ∉ S` ⇒ theo giả thiết quy nạp `d ∉ A`; tx đúc đúng một
+  `an(d)` và `C-ACCTOUT-*` đưa nó vào account script ⇒ `d` vào `A` với đúng một account, `κ(d)` vào `S`.
+  `κ` đơn ánh (giả thiết chống va chạm blake2b-224) nên không DID nào khác đổi trạng thái.
+- `Reclaim` (U2): `κ(d) ∈ S` ⇒ `d ∈ A` với đúng một account, chính là account input (vì `d` đọc từ
+  datum của nó); tx đốt đúng `an(d)` ⇒ `d` rời `A`, `κ(d)` rời `S`.
+- `ClaimAgain`, `TopUpPool` (U3): `S` không đổi; theo (H-MINT) không đúc ACCT nào, theo (H-EXIT)
+  không ACCT nào rời script ⇒ `A` không đổi.
+- Tx không chạm pool: không đúc được ACCT (MintAccount đòi POOL input), không đốt được ngoài thu hồi
+  (`ReclaimIdle` đòi POOL input; `Use`/`TopUp` cấm đốt) ⇒ `A`, `S` không đổi. ∎
+
+Hệ quả mở lại: sau (U2), `κ(d) ∉ S` nên (U1) lại thoả được cho `d` — thu hồi không cấm DID. Ca
+`open_sau_reclaim_duoc_mo_lai` (on-chain) và vòng mở → thu hồi → mở lại ở
+`tests/openedLedger.test.ts` / `tests/faucetV2Builders.test.ts` đo đúng điều này: gốc sau lần mở lại
+bằng gốc sau lần mở đầu. Ca khác: `open_did_moi_chen_goc`, `open_did_da_co_account`,
+`open_goc_output_sai`, `open_proof_cua_did_khac`, `reclaim_xoa_goc`, `reclaim_goc_khong_xoa`,
+`reclaim_xoa_did_khac`, `reclaim_khong_dot_acct_nft`, `reclaim_dot_acct_did_khac`, `again_doi_goc`,
+`topuppool_doi_goc`, `mintpool_goc_khong_rong`, `mintpool_goc_rac`.
+
+Ca kiểm của hai giả thiết (§6a.1 / §6a.2), mỗi ca âm kèm ca DƯƠNG khẳng định các script KHÁC chấp nhận
+đúng tx đó — thiếu cực dương thì ca âm không nói được nó đỏ ở pool hay đỏ ở chỗ khác:
+`topuppool_duc_acct_mint_policy_chap_nhan` (dương) ⇄ `topuppool_duc_acct_hai_validator` ·
+`again_duc_acct_did_khac_hai_script_kia_chap_nhan` (dương) ⇄ `again_duc_acct_did_khac_ba_validator` ·
+`topuppool_dot_acct` · `reclaim_dot_va_duc_them` ⇄ `reclaim_dot_va_duc_them_nft_cung_tu_choi` ·
+`again_mint_them_acct` · `topup_acct_out_khong_mang_nft` · `topup_dot_acct` · `topup_duc_acct` ·
+`use_burn_acct` · `use_mint_them_acct`.
+
+### 6a.1 (H-MINT) — vì sao nó đứng, và cổng nằm ở đâu
+
+`faucet_nft ▸ MintAccount` chỉ đòi tx có POOL NFT **input** (`handlers.ak` ▸ `nft_mint`:
+`count_inputs_with_nft(...) >= 1`) rồi uỷ quyền phần còn lại cho pool. Vậy nên (H-MINT) quy về hai vế:
+
+**(a) Mọi tx đúc được ACCT NFT đều CHẠY `faucet_pool.spend`.** POOL NFT phải nằm trong `tx.inputs`
+(không phải `reference_inputs`), và POOL NFT chỉ sống ở địa chỉ script pool: `C-MP-1` ép nó vào một
+địa chỉ `Script(_)` lúc đúc, `C-POOL-OUT-1` ép `pool_out.address == pool_in.address` ở mọi lượt sau,
+và POOL NFT là one-shot nên không có bản thứ hai. Phần dư là rủi ro DEPLOY mà `C-MP-1` đã ghi: nếu
+giây deploy đúc POOL NFT vào một script KHÁC thì pool không bao giờ chạy.
+
+**(b) Trong bốn nhánh của pool, chỉ `ClaimOpen` cho phép một lượng DƯƠNG dưới `faucet_nft_policy`.**
+
+| nhánh | chốt | vế |
+|---|---|---|
+| `ClaimOpen` | `C-OPEN-1` | `tx.mint[an(d)] == +1`, `d` từ datum account output |
+| `ClaimAgain` | `C-MINT-ONLY-OPEN-1` | `dict.is_empty(assets.tokens(tx.mint, faucet_nft_policy))` |
+| `TopUpPool` | `C-MINT-ONLY-OPEN-2` | cùng vế |
+| `Reclaim` | `C-RECL-BURN-1` + `C-RECL-BURN-2` | `tx.mint[an(d)] == −1` **và** đúng một mục ⇒ `= {an(d): −1}` |
+
+Chốt đặt trong POOL, không trong mint policy. Cả hai phương án đều KHÔNG sinh vòng hash (pool đã nhận
+`faucet_nft_policy` làm tham số; mint policy nhận diện pool bằng POOL NFT). Lý do chọn là khác: đặt ở
+`MintAccount` thì mint policy phải đọc redeemer của pool trong `tx.redeemers` để biết nhánh nào đang
+chạy, tức phải ôm codec `PoolRedeemer` (thứ tự constructor là trường load-bearing, §3.4) và trở thành
+NGUỒN THỨ HAI cho câu hỏi "pool đang ở nhánh nào" — hai nguồn đó trôi khỏi nhau trong im lặng. Pool
+biết nhánh của chính nó miễn phí.
+
+`C-RECL-BURN-2` TRÙNG LẶP có chủ ý với `dict.size(own_tokens) == 1` mà `faucet_nft` ép ở cả ba nhánh
+của nó (và `faucet_nft` LUÔN chạy khi `tx.mint` có mục nào dưới policy này), nên hình dạng "đốt kèm
+đúc" hôm nay bất khả thi ở cả hai phía. Giữ vế ở pool vì cùng lý do đã viết cho `C-RECL-BURN-1`: pool
+là nơi GHI SỔ, nên tiền đề của bút ghi của nó không được đi vay hình dạng mà một script KHÁC tình cờ
+đang ép.
+
+### 6a.2 (H-EXIT) — không có đường đốt ACCT ngoài `Reclaim`
+
+Đốt một token đòi token đó có mặt trong input (luật bảo toàn value của ledger, không phải một chốt
+validator). Theo (H-MINT), mọi ACCT NFT sinh ra trong một tx `ClaimOpen` và `C-ACCTOUT-1..3` +
+`C-NAME-1` đưa nó vào account script; và nó KHÔNG rời script được: `C-USE-NAME-1` và `C-TOP-3` ép
+`acct_out` mang lại đúng ACCT NFT đó. Nên mọi lượt đốt phải TIÊU một account UTxO ⇒ `faucet_account`
+chạy ⇒ đúng một trong ba nhánh:
+
+- `Use` — `C-USE-2` ép `tx.mint[an] == 0` (ca `use_burn_acct`, `use_mint_them_acct`).
+- `TopUp` — `C-TOP-4` ép `tx.mint[an] == 0` (ca `topup_dot_acct`, `topup_duc_acct`).
+- `ReclaimIdle` — `C-BURN-1` ép `tx.mint[an] == −1` VÀ đòi đúng 1 POOL input + 1 POOL output ⇒ pool
+  chạy. Ba nhánh pool còn lại đều đóng: `ClaimOpen`/`TopUpPool` đòi **0** input ở
+  `account_script_hash` (`C-OPEN-2`, nhánh `TopUpPool`), `ClaimAgain` đòi `tx.mint` dưới policy này
+  RỖNG (`C-MINT-ONLY-OPEN-1`). Còn `Reclaim` ⇒ `C-RECL-UNIQ-1` XOÁ khoá, và `d` ở cả hai chốt đọc từ
+  datum của CÙNG account input ⇒ tên bị đốt và khoá bị xoá là của cùng một DID.
+
+Một UTxO GIẢ ở địa chỉ account script với datum khai `did_name` của người khác nhưng KHÔNG mang ACCT
+NFT không mở được đường nào: `ReclaimIdle` trên nó đòi đốt `an(d)`, mà `an(d)` nằm trong account THẬT
+của `d`, và nhánh đó chỉ cho phép ĐÚNG MỘT input ở `account_script_hash` ⇒ không có token để đốt ⇒
+ledger từ chối. Đây là chỗ (H-MINT) gánh cho (H-EXIT): trước khi (H-MINT) được ép, một ACCT NFT đúc
+qua `TopUpPool` nằm ở ví, đặt được vào một UTxO ở địa chỉ account script, rồi `pool.Reclaim` +
+`account.ReclaimIdle` XOÁ khoá của `d` khỏi sổ trong khi account THẬT của `d` còn sống — và `ClaimOpen`
+lần thứ hai thoả. Hai giả thiết không độc lập, nên vá (H-MINT) là vá cả hai.
 
 ---
 
@@ -336,9 +475,16 @@ lamp_in`, cả hai đều thoả khi Δ = 0. Ca `topup_rut_bot_tlamp`, `topup_nh
 (G2) pool_lamp_out − pool_lamp_in ≥ V(acct_in, p, n)
 (G3) pool_out.address == pool_in.address
 (G4) V(tx.mint, faucet_nft_policy, an(did_name)) == −1
+(G5) pool: κ(did_name) ∈ S  ∧  S' = S \ {κ(did_name)}                  -- C-RECL-UNIQ-1
 ```
 
-**Mệnh đề.** Thu hồi hợp lệ ⇒ toàn bộ tLAMP của account về pool, và ACCT NFT của nó bị đốt.
+**Mệnh đề.** Thu hồi hợp lệ ⇒ toàn bộ tLAMP của account về pool, ACCT NFT của nó bị đốt, và khoá của
+DID rời sổ.
+
+`V(acct_in, p, n)` được phép bằng 0: (G2) khi đó chỉ còn `delta ≥ 0`, nên account đã rút sạch vẫn thu
+hồi được. Đây là đường duy nhất trả khoá của một DID như thế về sổ (§6a); ca
+`reclaim_idle_account_rong_hai_validator` đo điều này, song sinh `reclaim_idle_account_rong_chua_du_72`
+đo rằng account rỗng không được miễn (G1).
 
 **Chứng minh.** (G2) so **delta** của pool chứ không so tuyệt đối ⇒ keeper không "đếm sẵn" số tLAMP
 đang có trong pool để né; delta ≥ số tLAMP của account nghĩa là không thiếu một đơn vị nào. (G3) buộc
@@ -346,10 +492,12 @@ delta đó rơi vào đúng pool UTxO chứ không vào một địa chỉ khác
 ACCT NFT của **chính** `did_name` này. ∎
 
 **Vì sao (G4) không bỏ được:** không đốt thì ACCT NFT ra khỏi script và thành **vé tái dùng vĩnh
-viễn** — ai giữ nó dựng được một UTxO "account" ở ví với datum tự đặt. Và cổng này chỉ đứng ở
-`faucet_account`: `faucet_pool.Reclaim` **không** canh `tx.mint`, nên một tx thu hồi thiếu bước đốt vẫn
-làm pool xanh. Ca `reclaim_idle_khong_burn_hai_validator` ghim đúng cặp đó (pool xanh, account đỏ) —
-đừng trông vào pool. Ca khác: `reclaim_idle_happy` (dương), `reclaim_idle_happy_hai_validator` (dương,
+viễn** — ai giữ nó dựng được một UTxO "account" ở ví với datum tự đặt. Từ v3.1 cổng này đứng ở **cả
+hai** phía: `faucet_account` (`C-BURN-1`) và `faucet_pool.Reclaim` (`C-RECL-BURN-1`). Phía pool là bắt
+buộc vì pool nay ghi sổ: xoá khoá mà không đốt thì DID còn account sống trong khi sổ nói "chưa có",
+và `ClaimOpen` mở được account thứ hai. Ca `reclaim_idle_khong_burn_hai_validator` ghim rằng cả hai
+validator đều đỏ; cực đơn-validator ở `reclaim_khong_dot_acct_nft` (pool) và
+`reclaim_idle_khong_burn_acct` (account). Ca khác: `reclaim_idle_happy` (dương), `reclaim_idle_happy_hai_validator` (dương,
 hai validator), `reclaim_idle_token_not_to_pool`, `reclaim_idle_no_pool_output`,
 `reclaim_idle_khong_burn_acct`, `reclaim_idle_burn_name_khac`, `reclaim_idle_pool_to_wallet`,
 `reclaim_idle_pool_stake_hijack`.
@@ -427,9 +575,13 @@ biết được thì lại là một vòng phụ thuộc); pool ép **tên khớ
   claim liên tiếp trên một chuỗi pool duy nhất.
 - **Chi phí thực thi trên tx THẬT.** Số ExUnit đo trên tx mock của bộ kiểm không phải số trên mạng: tx
   thật có thêm input phí, output trả lại, và witness. Phải đo lại sau lượt deploy đầu.
-- **Ngưỡng `R = 1001` cửa sổ chưa từng bị vượt trong một phép đo nào** — với cửa sổ 5 ngày, đó là ≈
-  13,7 năm. Nhánh `ReclaimIdle` vì thế chỉ được kiểm bằng ca dựng thời gian giả trong bộ kiểm, không
-  bằng quan sát.
+- **Ngưỡng `R = 72` cửa sổ chưa từng bị vượt trong một phép đo trên chuỗi** — `R · m` là ≈ 360 ngày
+  trên Preprod/Mainnet, 72 ngày trên Preview. Nhánh `ReclaimIdle` hiện chỉ được kiểm bằng ca dựng thời
+  gian giả trong bộ kiểm; Preview là mạng đầu tiên quan sát được nó trong tầm vài tháng.
+- **Vế (b) của (H-MINT) đã được ép và ĐÃ ĐO bằng đột biến; vế (a) thì KHÔNG đo được trong bộ kiểm** —
+  "POOL NFT chỉ sống ở địa chỉ script pool" tựa vào `C-MP-1`, và `C-MP-1` chỉ ép được `Script(_)`,
+  không ép được ĐÚNG script pool (đó mới là vòng hash). Phần dư này chỉ đóng được bằng đối chiếu datum
+  + địa chỉ on-chain sau lượt deploy đầu.
 
 **Kỷ luật phát ngôn cho bảng ca kiểm ở các mục trên:** "chốt X **có ca đỏ**" và "chốt X **đã được
 ghim**" là hai câu khác nhau. Câu thứ hai chỉ được phát sau khi **gỡ hẳn chốt X rồi chạy trọn bộ

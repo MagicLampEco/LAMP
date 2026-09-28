@@ -100,8 +100,30 @@ KHÔNG có state file canonical.
 ⇒ Sửa `ms_per_epoch` về đúng per-network (Preview 86_400_000, không phải 432_000_000) **không
 mồ côi deployment nào đang sống**. Trước đây off-chain nạp 432_000_000 cho Preview (số của
 Preprod/Mainnet): lệch 5× nhưng tx vẫn pass vì validator nhận cùng số ⇒ `COOLDOWN = 36 epoch`
-chạy thành 180 ngày, `RECLAIM = 1001 epoch` thành ~13,7 năm. Cổng gác
+chạy thành 180 ngày, `RECLAIM = 1001 epoch` (giá trị v3.0; v3.1 là 72) thành ~13,7 năm. Cổng gác
 `assertMsPerEpochMatchesNetwork` (`FAUCET-EPOCH-001`) chặn lần nạp sai kế tiếp.
+
+## Faucet v3.1 — CHƯA deploy, không có địa chỉ hay tx
+
+> Soát 2026-09-28. v3.1 thêm sổ một-DID-một-account (`PoolDatum.opened_root`, bất biến
+> INV-ONE-ACCT — [`CONTRACT.md`](./CONTRACT.md) v3.1 §3.3a) và hạ ngưỡng thu hồi 1001 → 72 cửa sổ.
+> **Không có pool, địa chỉ hay tx hash nào của v3.1 trên bất kỳ mạng nào.** Mọi địa chỉ ở các mục
+> trên là của v1.
+
+Hash dưới đây là **hash CHƯA áp tham số** (bản compiled trong blueprint) — dùng để nhận ra đúng bản
+mã, **KHÔNG** phải script hash hay địa chỉ sẽ có sau deploy: cả ba validator faucet nhận tham số
+compile-time (`ms_per_epoch`, policy, `account_script_hash`…), áp xong thì hash đổi. Nguồn:
+`onchain/plutus.json` sinh từ commit `75323b4`; đo lại bằng `aiken build` rồi đọc trường `hash`
+của từng validator.
+
+| Validator | Hash chưa áp tham số | Compiled | Mã nguồn đổi ở `75323b4`? |
+|---|---|---|---|
+| `faucet_nft` | `1b2adb0cf862eea048cfd944306d3329c55f7b6050a929acf3f075c3` | 1.598 B | có (C-MP-8) |
+| `faucet_account` | `298c9fcaceac0bd11fa14b572724e93017c91e78bbdc85125368fff2` | 2.387 B | có (`reclaim_epochs_const` = 72) |
+| `faucet_pool` | `05e1d5d350b25b2bac1866477dbe8e7a902c9e5ad33713e0e1287d2b` | 6.288 B (≈ 6,3 KB) | có (sổ MPF + bằng chứng trong redeemer; cộng ba chốt cổng đúc `C-MINT-ONLY-OPEN-1/2` + `C-RECL-BURN-2`, +75 B so với bản 28/09 sớm hơn) |
+| `tlamp_policy` | `4d0b5eb484dfd2ccce18ed688d7ece2c15ccd54e3f91162b7d53ebba` | 423 B | **không** — tệp không đổi, chỉ import stdlib ⇒ hash như v3.0 |
+
+`validators/ledger_parity.ak` chỉ chứa ca kiểm, không vào blueprint, không đổi hash nào.
 
 ## Reserve-Treasury (ngoài phạm vi faucet)
 - Faucet cho dev token canonical để test **downstream**: transfer, claim Distribution, **nạp Treasury custody**, vote.

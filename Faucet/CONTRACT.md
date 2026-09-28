@@ -1,9 +1,10 @@
 # tLAMP + Faucet — CONTRACT (interface chốt)
 
-> **Phiên bản:** v3.0 — 2026-09-28. Nâng cấp từ v1 vì §3 và §4 tả một validator đã bị xoá khỏi cây
-> mã (`validators/faucet.ak`, datum `FaucetDatum{claim_amount}`, redeemer `Claim` duy nhất). Ba
-> validator hiện tại có datum khác, ba nhóm redeemer khác, và một tầng chặn tốc độ mà bản cũ không
-> có.
+> **Phiên bản:** v3.1 — 2026-09-28. Bump từ v3.0 vì codec on-chain đổi: `PoolDatum` thêm trường thứ
+> tư `opened_root` (sổ MPF các DID đang có account), `PoolRedeemer::ClaimOpen`/`Reclaim` mang bằng
+> chứng MPF, ngưỡng thu hồi 1001 → 72 cửa sổ, và bất biến mới INV-ONE-ACCT (§3.3a). Bản v3.0 nâng từ
+> v1 vì v1 tả một validator đã bị xoá (`validators/faucet.ak`, `FaucetDatum{claim_amount}`).
+> **Trạng thái:** v3.1 **CHƯA deploy** trên mạng nào — xem [`deployed-artifacts.md`](./deployed-artifacts.md).
 > **Vai:** interface giữa on-chain và mọi bên tiêu thụ (SDK, script vận hành, module test khác).
 > Khi lệch với mã trong `onchain/`, **mã thắng** và chỗ lệch phải sửa ở đây.
 
@@ -136,9 +137,14 @@ Mọi bên off-chain phải tự tính bằng cùng thuật toán (blake2b, dige
 
 ```
 FaucetConfig  { drip_oildrop, cooldown_epochs, max_claims_per_window }
-PoolDatum     { cfg: FaucetConfig, window_epoch, claims_in_window }     ← datum của POOL UTxO
-FaucetAccount { did_name, last_claim_epoch, last_touch_epoch }          ← datum của account UTxO
+PoolDatum     { cfg: FaucetConfig, window_epoch, claims_in_window, opened_root }  ← datum POOL UTxO
+FaucetAccount { did_name, last_claim_epoch, last_touch_epoch }                    ← datum account UTxO
 ```
+
+- `opened_root` (32 byte) là gốc Merkle Patricia Forestry (`aiken-lang/merkle-patricia-forestry`
+  v2.1.0) của TẬP khoá `did_key(did_name) = blake2b_224(did_name)` các DID đang có account. Giá trị
+  lá = bytes rỗng. Tập khoá nằm off-chain; datum chỉ giữ gốc — giữ cả tập trong datum thì danh sách
+  phình theo số DID tới lúc một lượt spend vượt trần ex-unit và pool chết vĩnh viễn. Xem §3.3a.
 
 - `FaucetConfig` **bất biến vĩnh viễn** từ giây deploy (C-CFG-1 ép `out_pd.cfg == cfg` ở mọi lượt
   spend; POOL NFT one-shot nên không đúc lại datum được). Không có redeemer `Reconfigure`.
@@ -147,16 +153,41 @@ FaucetAccount { did_name, last_claim_epoch, last_touch_epoch }          ← datu
 - Hai mốc trong `FaucetAccount` có hai nghĩa, **không gộp**: `last_claim_epoch` là mốc COOLDOWN
   (chỉ `ClaimOpen`/`ClaimAgain`/`TopUp` đổi được); `last_touch_epoch` là mốc IDLE (`Use` gia hạn
   được, `ReclaimIdle` đọc trường này).
-- Ngưỡng thu hồi là hằng compile-time `reclaim_epochs_const = 1001` cửa sổ (≈ **13,7 năm** với cửa
-  sổ 5 ngày) ở `lib/magiclamp/faucet/handlers.ak` — nguồn duy nhất, không có bản sao trong datum.
+- Ngưỡng thu hồi là hằng compile-time `reclaim_epochs_const = 72` cửa sổ (≈ **360 ngày** với cửa sổ
+  5 ngày của Preprod/Mainnet; 72 ngày trên Preview) ở `lib/magiclamp/faucet/handlers.ak` — nguồn duy
+  nhất, không có bản sao trong datum. v3.0 dùng 1001 (≈ 13,7 năm), tức trên thực tế không bao giờ
+  thu hồi — với sổ một-DID-một-account, thu hồi là đường DUY NHẤT trả khoá của DID về, nên ngưỡng
+  phải nằm trong tầm đời một mạng test.
 - Trần compile-time `ledger.max_claims_ceiling = 100` chặn một con số `max_claims_per_window` gõ
   nhầm ở giây deploy.
+
+### 3.3a Bất biến INV-ONE-ACCT — mỗi DID tối đa MỘT account
+
+**Phát biểu:** tại mọi thời điểm, khoá `did_key(did_name)` nằm trong `PoolDatum.opened_root` ⇔ đang
+tồn tại ĐÚNG MỘT ACCT NFT của DID đó.
+
+Validator là hàm thuần trên một tx, không thấy UTxO nào khác đang sống — câu "DID này đã có account
+chưa" không trả lời được bằng ràng buộc cục bộ nào, nên phải có một SỔ trong datum pool và mỗi lượt
+mở/thu hồi phải chứng minh nó chuyển đúng. Quy nạp giữ bất biến; hai vế của mỗi bước đi CÙNG một tx:
+
+| Bước | Sổ | Tập ACCT NFT | Chốt |
+|---|---|---|---|
+| `MintPool` | gốc RỖNG (`mpf.root(mpf.empty)`) | rỗng | `C-MP-8` |
+| `ClaimOpen` | chứng minh VẮNG rồi CHÈN khoá | đúc 1 ACCT NFT | `C-OPEN-UNIQ-1` ⇔ `C-OPEN-1` |
+| `Reclaim` | chứng minh CÓ rồi XOÁ khoá | đốt đúng ACCT NFT đó | `C-RECL-UNIQ-1` ⇔ `C-RECL-BURN-1` (+ `C-BURN-1` ở account) |
+| `ClaimAgain` · `TopUpPool` | giữ NGUYÊN gốc | không đổi | `C-ROOT-KEEP-1` |
+
+Tách một cặp "⇔" ra là bất biến sập mà không cổng nào còn phát hiện được, vì sổ chính là thứ đứng ra
+làm chứng. **Trạng thái mã:** bảng trên giả thiết ACCT NFT chỉ được đúc trong tx `ClaimOpen`, và
+giả thiết đó ĐÃ được mã ép: `C-MINT-ONLY-OPEN-1` (`ClaimAgain`) · `C-MINT-ONLY-OPEN-2` (`TopUpPool`)
+· `C-RECL-BURN-2` (`Reclaim` đúng một mục mint) — xem [MATH](./Math-Spec.md) v3.1 §6a. Khoá trùng đúng phần đuôi asset name ACCT (`"ACCT"` ‖ khoá) nên bên off-chain dựng lại
+được toàn bộ tập khoá từ các ACCT NFT đang sống, không cần lưu trạng thái riêng (§5).
 
 ### 3.4 Redeemer
 
 | Nhóm | Constructor (thứ tự = Constr index) |
 |---|---|
-| `PoolRedeemer` | `ClaimOpen` · `ClaimAgain` · `Reclaim` · `TopUpPool` |
+| `PoolRedeemer` | `ClaimOpen{proof}` · `ClaimAgain` · `Reclaim{proof}` · `TopUpPool` — `proof: mpf.Proof` |
 | `AccountRedeemer` | `Use` · `TopUp` · `ReclaimIdle` |
 | `FaucetNftRedeemer` | `MintPool` · `MintAccount` · `BurnAccount` |
 
@@ -196,17 +227,24 @@ chúng ngay lúc đúc: một datum khởi tạo sai khoá chết toàn bộ tLA
 | `ClaimOpen` | `C-OPEN-1` | đúc đúng 1 ACCT NFT của DID này |
 | | `C-OPEN-2` | **0** input ở `account_script_hash` — đây là đường mở mới |
 | | `C-OPEN-3` | account mới nhận ĐÚNG `drip_oildrop` tLAMP |
-| `ClaimAgain` | `C-AGAIN-1` | không đúc thêm ACCT NFT |
+| | `C-OPEN-UNIQ-1` | `out_pd.opened_root == mpf.root(mpf.insert(from_root(pd.opened_root), did_key(acct.did_name), "", proof))` — `mpf.insert` tự ép khoá CHƯA có. `did` lấy từ datum account OUTPUT, không từ redeemer |
+| `ClaimAgain` | `C-MINT-ONLY-OPEN-1` | `tx.mint` dưới `faucet_nft_policy` **RỖNG**. THAY chốt cũ `C-AGAIN-1` (chỉ so `an` của CHÍNH DID trong tx) — vế cũ để lọt việc đúc ACCT NFT của một DID khác, và giữ cả hai thì vế cũ thành bất khả ghim |
 | | `C-AGAIN-2` | ĐÚNG 1 input ở `account_script_hash` — không có nó thì chỉ cần không đưa account cũ vào input là cooldown biến mất |
 | | `C-AGAIN-3/4` | account input mang đúng ACCT NFT của DID này; `old.did_name` khớp |
 | | `C-COOL-1` | `now ≥ old.last_claim_epoch + cooldown_epochs` — đọc mốc COOLDOWN, không phải mốc idle |
 | | `C-AGAIN-5` | `acct_out(tLAMP) == acct_in(tLAMP) + drip_oildrop` — cộng thêm, không bỏ rơi số cũ |
+| | `C-ROOT-KEEP-1` | `out_pd.opened_root == pd.opened_root`. Nhánh không cần bằng chứng nào — thiếu dòng này thì nó ghi được gốc tuỳ ý (xoá khoá của chính mình rồi `ClaimOpen` lại) |
 | `Reclaim` | `C-RECL-0` | ĐÚNG 1 input ở `account_script_hash`. Không có dòng này thì đây là cửa spend RỖNG permissionless trên một singleton, tức DoS toàn phần giá một phí tx |
 | | — | `lamp_out ≥ lamp_in` và `pool_out.value == add(pool_in.value, lamp, lamp_out − lamp_in)` |
 | | `C-RECL-1/2` | `window_epoch` và `claims_in_window` **bảo toàn**. Không có chúng, xen một `Reclaim` reset bộ đếm miễn phí ⇒ trần tốc độ vô hiệu |
+| | `C-RECL-UNIQ-1` | `out_pd.opened_root == mpf.root(mpf.delete(from_root(pd.opened_root), did_key(recl_acct.did_name), "", proof))` — `mpf.delete` tự ép khoá ĐANG có; `did` lấy từ datum của account input duy nhất (C-RECL-0) |
+| | `C-RECL-BURN-2` | `dict.size(assets.tokens(tx.mint, faucet_nft_policy)) == 1` — cùng `C-RECL-BURN-1` thì `tx.mint` dưới policy này = đúng `{an(d): −1}`, tức một lượt thu hồi không kèm một lượt ĐÚC. Trùng lặp có chủ ý với `dict.size(own_tokens) == 1` của `faucet_nft`: pool là nơi GHI SỔ nên tiền đề của bút ghi không đi vay hình dạng mà script khác đang ép |
+| | `C-RECL-BURN-1` | `quantity_of(tx.mint, faucet_nft_policy, acct_name(recl_acct.did_name)) == −1` — xoá khoá ⇔ đốt ĐÚNG ACCT NFT trong cùng tx. Thiếu nó, cặp `pool.Reclaim` + `account.TopUp` xoá khoá mà account vẫn sống ⇒ cùng DID `ClaimOpen` được account thứ hai |
 | `TopUpPool` | — | **0** input ở `account_script_hash` (không mượn đường thu hồi) |
 | | `C-TUP-1` | `lamp_out − lamp_in ≥ drip_oildrop` — nạp thật, không phải spend rỗng |
 | | `C-TUP-2/3` | bộ đếm tốc độ bảo toàn |
+| | `C-ROOT-KEEP-1` | `out_pd.opened_root == pd.opened_root` |
+| | `C-MINT-ONLY-OPEN-2` | `tx.mint` dưới `faucet_nft_policy` **RỖNG**. Nhánh này trước đây KHÔNG đọc `tx.mint`, mà `MintAccount` chỉ đòi có POOL input ⇒ một lượt nạp tiền đúc kèm được ACCT NFT ra ví và cả hai validator đều chấp nhận |
 
 ### 3.8 Bất biến `faucet_account.spend` (thân ở `handlers.account_spend`)
 
@@ -244,6 +282,7 @@ qua stake credential).
 | | `C-MP-4/5` | datum parse được thành `PoolDatum`; `claims_in_window == 0` |
 | | `C-MP-6` | `window_epoch == get_epoch_pinned(tx, ms_per_epoch)` — `window_epoch = 0` (mặc định tự nhiên của builder) cho sẵn hàng nghìn bậc thang quota dùng được ngay sau deploy |
 | | `C-MP-7` | `drip_oildrop > 0` · `cooldown_epochs ≥ 0` · `0 < max_claims_per_window ≤ max_claims_ceiling` |
+| | `C-MP-8` | `opened_root == empty_opened_root()` (= `mpf.root(mpf.empty)`) — sổ khởi tạo RỖNG; đúc pool với một gốc khác là cấp sẵn "account ma" cho các DID chưa từng mở |
 | `MintAccount` | `C-MA-1/2` | ≥ 1 POOL NFT input (pool đang được spend ⇒ pool validator đã chạy); `quantity_of(POOL) == 0`; đúng 1 asset name; đúng 1 đơn vị |
 | | `C-MA-3/4` | tên = tiền tố `"ACCT"` + độ dài đúng 32 byte |
 | `BurnAccount` | `C-MB-1..3` | đúng 1 asset name, `qty == −1`, tiền tố + độ dài 32 byte (POOL name dài 4 byte ⇒ không burn POOL NFT qua nhánh này) |
@@ -265,12 +304,16 @@ Constr index `i` (với `i < 7`) mã hoá thành CBOR tag `121 + i`.
 | Loại | Plutus Data | CBOR |
 |---|---|---|
 | `FaucetConfig{drip_oildrop, cooldown_epochs, max_claims_per_window}` | `Constr(0, [int, int, int])` | — |
-| `PoolDatum{cfg, window_epoch, claims_in_window}` | `Constr(0, [Constr(0,[int,int,int]), int, int])` | — |
+| `PoolDatum{cfg, window_epoch, claims_in_window, opened_root}` | `Constr(0, [Constr(0,[int,int,int]), int, int, bytes(32)])` | — |
 | `FaucetAccount{did_name, last_claim_epoch, last_touch_epoch}` | `Constr(0, [bytes, int, int])` | — |
-| `PoolRedeemer::ClaimOpen` | `Constr(0, [])` | `d87980` |
+| `PoolRedeemer::ClaimOpen{proof}` | `Constr(0, [Proof])` | bằng chứng rỗng: `d8799f80ff` |
 | `PoolRedeemer::ClaimAgain` | `Constr(1, [])` | `d87a80` |
-| `PoolRedeemer::Reclaim` | `Constr(2, [])` | `d87b80` |
+| `PoolRedeemer::Reclaim{proof}` | `Constr(2, [Proof])` | bằng chứng rỗng: `d87b9f80ff` |
 | `PoolRedeemer::TopUpPool` | `Constr(3, [])` | `d87c80` |
+| `Proof` (MPF) | `List<ProofStep>` — danh sách rỗng hợp lệ (`ClaimOpen` trên sổ rỗng; `Reclaim` trên sổ một khoá) | — |
+| `ProofStep::Branch{skip, neighbors}` | `Constr(0, [int, bytes(128)])` | — |
+| `ProofStep::Fork{skip, neighbor}` | `Constr(1, [int, Constr(0, [nibble: int, prefix: bytes, root: bytes(32)])])` | — |
+| `ProofStep::Leaf{skip, key, value}` | `Constr(2, [int, bytes(32), bytes(32)])` — `key`/`value` là dạng ĐÃ BĂM (`blake2b_256`) | — |
 | `AccountRedeemer::Use` | `Constr(0, [])` | `d87980` |
 | `AccountRedeemer::TopUp` | `Constr(1, [])` | `d87a80` |
 | `AccountRedeemer::ReclaimIdle` | `Constr(2, [])` | `d87b80` |
@@ -288,6 +331,13 @@ Constr index `i` (với `i < 7`) mã hoá thành CBOR tag `121 + i`.
 2. `FaucetConfig` vẫn 3 trường nhưng trường thứ ba đổi nghĩa: `reclaim_epochs` → `max_claims_per_window`.
 3. `FaucetAccount` từ 2 trường thành 3 trường; `AccountRedeemer::ReclaimIdle` dịch từ index 1 sang 2;
    `PoolRedeemer::Reclaim` dịch từ index 1 sang 2.
+4. **v3.1:** `PoolDatum` từ 3 trường thành 4 (`opened_root` NỐI CUỐI); `ClaimOpen`/`Reclaim` từ
+   `Constr` rỗng thành `Constr` một trường `proof`. Index constructor KHÔNG đổi. Một bộ giải mã v3.0
+   đọc datum v3.1 phải ném vì sai số trường — không được đệm gốc rỗng cho trường thiếu.
+
+Bằng chứng MPF sinh bằng thư viện JS `@aiken-lang/merkle-patricia-forestry` (SDK dùng 1.3.1) —
+không dựng tay. CBOR SDK mã hoá trùng từng byte với `Proof.toCBOR()` của thư viện (kiểm ở
+`tests/openedLedger.test.ts`), kể cả cách chẻ 128 byte `neighbors` thành hai khúc 64 byte.
 
 Asset name ACCT phải tính bằng `blake2b_224(did_name)` cho **mọi** lượt dựng tx — không có hằng nào
 dùng lại được.
@@ -298,14 +348,26 @@ dùng lại được.
 
 | Hàm | Việc | Tệp |
 |---|---|---|
-| `buildMintPoolTx` | deploy: đúc POOL NFT one-shot + `PoolDatum` khởi tạo, nạp tLAMP vào pool | `mintBuilder.ts` |
-| `buildClaimOpenTx` | mở chuỗi account mới cho một DID (đúc ACCT NFT) | `claimBuilder.ts` |
-| `buildClaimAgainTx` | nạp thêm drip vào chuỗi account đã có (pool `ClaimAgain` + account `TopUp`) | `claimDidBuilder.ts` |
-| `buildUseTx` | chủ DID gia hạn mốc idle + rút tLAMP ra dùng | `useBuilder.ts` |
-| `buildReclaimTx` | thu hồi account nằm không về pool (permissionless) | `reclaimBuilder.ts` |
-| `buildTopUpPoolTx` | nạp tLAMP vào pool (vận hành) | `topUpPoolBuilder.ts` |
+| `buildMintPoolTx` | deploy: đúc POOL NFT one-shot + `PoolDatum` khởi tạo (`opened_root` rỗng), nạp tLAMP vào pool | `mintBuilder.ts` |
+| `buildClaimOpenTx` | mở chuỗi account mới cho một DID (đúc ACCT NFT, chèn khoá vào sổ) — nhận `openedLedger` | `claimBuilder.ts` |
+| `buildClaimAgainTx` | nạp thêm drip vào chuỗi account đã có (pool `ClaimAgain` + account `TopUp`); giữ gốc sổ | `claimDidBuilder.ts` |
+| `buildUseTx` | chủ DID gia hạn mốc idle + rút tLAMP ra dùng (không đụng pool) | `useBuilder.ts` |
+| `buildReclaimTx` | thu hồi account nằm không về pool (permissionless), xoá khoá khỏi sổ + đốt ACCT NFT — nhận `openedLedger` | `reclaimBuilder.ts` |
+| `buildTopUpPoolTx` | nạp tLAMP vào pool (vận hành); giữ gốc sổ | `topUpPoolBuilder.ts` |
 
-Codec: `datum.ts` (`encode/decode` + `*ToCbor` cho cả ba nhóm redeemer) trên các kiểu ở `types.ts`.
+Codec: `datum.ts` (`encode/decode` + `*ToCbor` cho cả ba nhóm redeemer, và bộ mã hoá `Proof`
+`encodeMpfProof`/`decodeMpfProof`) trên các kiểu ở `types.ts`.
+
+**Sổ `opened_root`: `openedLedger.ts`.** `OpenedLedger.fromLiveAccounts([...])` dựng lại tập khoá từ
+danh sách account đang sống — mỗi phần tử là `{ didName }` hoặc `{ acctAssetName }` (asset name ACCT
+NFT ở địa chỉ account). `rebuild(list, root)` / `assertRoot(root)` đối chiếu gốc dựng lại với
+`opened_root` trên datum: lệch ⇒ ném `FAUCET-LEDGER-001`, **không** dựng tiếp. `planInsert(did)` /
+`planDelete(did)` trả bằng chứng + gốc trước/sau + sổ kế tiếp (sổ bất biến, không sửa tại chỗ).
+Builder `ClaimOpen`/`Reclaim` nhận tham số `openedLedger` là một `OpenedLedger` HOẶC chính danh sách
+đó. Mã lỗi: `FAUCET-LEDGER-002` hai account cùng một DID đang sống · `-003` chèn khoá đã có ·
+`-004` xoá khoá không có · `-005` bằng chứng tự kiểm lệch · `-01x` hình dạng đầu vào lạ.
+`CLAIM-OPEN-007`: DID đã có account ⇒ dùng `buildClaimAgainTx`. Module chạy trên Node (thư viện MPF
+dùng `Buffer` + `node:assert`).
 
 Hằng và cổng gác: `constants.ts` — `DRIP_OILDROP`, `COOLDOWN`, `RECLAIM`, `POOL_NFT_NAME`,
 `MAX_CLAIMS_CEILING`, `acctName()`, và `assertMsPerEpochMatchesNetwork` (`FAUCET-EPOCH-001`) chặn
@@ -324,7 +386,7 @@ live); `SUBMIT=true` để chạy thật.
 **Không còn harness đánh số `00/01/02`** — bộ script đó gọi validator v1 nên đã bị xoá cùng nó. Đường
 chạy thật của v3 là gọi trực tiếp sáu builder ở bảng trên (script demo hiện có:
 `scripts/demo_faucet_v2.ts`, nội dung v3 nhưng tên còn nhãn cũ). Lộ trình deploy ở
-[`Exec-Spec.md`](./Exec-Spec.md) v3.0 §4.
+[`Exec-Spec.md`](./Exec-Spec.md) v3.1 §4.
 
 ---
 

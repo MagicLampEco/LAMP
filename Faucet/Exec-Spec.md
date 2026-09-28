@@ -1,11 +1,14 @@
 # tLAMP + Faucet — EXEC: Lộ trình build / test / deploy
 
-> **Phiên bản:** v3.0 — 2026-09-28. Nâng cấp từ draft 2026-06-09 vì bảng trạng thái của bản đó khai
+> **Phiên bản:** v3.1 — 2026-09-28. Bump từ v3.0 vì on-chain + SDK sang v3.1 (sổ `opened_root`,
+> bằng chứng MPF trong `ClaimOpen`/`Reclaim`, ngưỡng thu hồi 72): trạng thái §1, mốc §2, phủ kiểm §3,
+> bước deploy §4 và DoD §6 đổi theo. v3.1 **chưa deploy**.
+> Bản v3.0 nâng cấp từ draft 2026-06-09 vì bảng trạng thái của bản đó khai
 > `faucet.ak` và `types.ak` là "code xong, test pass" — **cả hai đã bị xoá khỏi cây mã**; bản đó cũng
 > chép một con số ca kiểm cố định và một mốc M4 "chưa chạy" trong khi hai mạng test đã có pool sống từ
 > lâu.
 > **Vai:** thứ tự build, cách đo, tham số deploy, việc còn lại. KHÔNG định nghĩa lại datum/bất biến
-> (việc của [CONTRACT](./CONTRACT.md) v3.0 và [TECH](./Tech-Spec.md) v3.0). Khi lệch với mã hoặc với
+> (việc của [CONTRACT](./CONTRACT.md) v3.1 và [TECH](./Tech-Spec.md) v3.1). Khi lệch với mã hoặc với
 > [`deployed-artifacts.md`](./deployed-artifacts.md), **bên kia thắng**.
 
 ---
@@ -16,7 +19,7 @@
 
 Đưa Faucet v3 từ mã tới **chạy thật trên Preprod**: deploy một pool tLAMP có POOL NFT + trần tốc độ,
 rồi mọi dev có DID test tự claim được. Phục vụ mục tiêu cuối **làm LAMP có giá trị** (open SDK: một
-policy id tLAMP dùng chung toàn mạng test cho mọi Cardano team — [CONTRACT](./CONTRACT.md) v3.0 §6).
+policy id tLAMP dùng chung toàn mạng test cho mọi Cardano team — [CONTRACT](./CONTRACT.md) v3.1 §6).
 
 ### 0.2 Thuộc EXEC
 
@@ -30,10 +33,10 @@ policy id tLAMP dùng chung toàn mạng test cho mọi Cardano team — [CONTRA
 
 | Hạng mục | Thuộc |
 |---|---|
-| Datum/redeemer, danh sách bất biến | [CONTRACT](./CONTRACT.md) v3.0 §3–§4 |
-| Chốt nào ở tệp/hàm nào, ngữ nghĩa helper | [TECH](./Tech-Spec.md) v3.0 |
-| Chứng minh one-shot / trần tốc độ / bảo toàn value | [MATH](./Math-Spec.md) v3.0 |
-| Vai caller, luồng, trạng thái trước/sau | [FEAT](./Feat-Spec.md) v3.0 |
+| Datum/redeemer, danh sách bất biến | [CONTRACT](./CONTRACT.md) v3.1 §3–§4 |
+| Chốt nào ở tệp/hàm nào, ngữ nghĩa helper | [TECH](./Tech-Spec.md) v3.1 |
+| Chứng minh one-shot / trần tốc độ / bảo toàn value | [MATH](./Math-Spec.md) v3.1 |
+| Vai caller, luồng, trạng thái trước/sau | [FEAT](./Feat-Spec.md) v3.1 |
 | Tx hash, policy id, địa chỉ pool của bản **đang chạy** | [`deployed-artifacts.md`](./deployed-artifacts.md) |
 
 ---
@@ -42,24 +45,27 @@ policy id tLAMP dùng chung toàn mạng test cho mọi Cardano team — [CONTRA
 
 | Thành phần | Trạng thái | Bằng chứng |
 |---|---|---|
-| `lib/magiclamp/faucet/ledger.ak` | code xong — `FaucetConfig` 3 trường, `PoolDatum`, `FaucetAccount` 3 trường, ba nhóm redeemer, `max_claims_ceiling` | [tệp](./onchain/lib/magiclamp/faucet/ledger.ak) |
+| `lib/magiclamp/faucet/ledger.ak` | code xong — `FaucetConfig` 3 trường, `PoolDatum` 4 trường (thêm `opened_root`), `FaucetAccount` 3 trường, ba nhóm redeemer (`ClaimOpen`/`Reclaim` mang `proof`), `max_claims_ceiling`, `did_key` / `did_leaf_value` / `empty_opened_root` | [tệp](./onchain/lib/magiclamp/faucet/ledger.ak) |
 | `lib/magiclamp/faucet/util.ak` | code xong — có cả `get_epoch` và `get_epoch_pinned` | [tệp](./onchain/lib/magiclamp/faucet/util.ak) |
-| `lib/magiclamp/faucet/handlers.ak` | code xong — `account_spend`, `nft_mint`, `reclaim_epochs_const` | [tệp](./onchain/lib/magiclamp/faucet/handlers.ak) |
+| `lib/magiclamp/faucet/handlers.ak` | code xong — `account_spend`, `nft_mint` (gồm `C-MP-8` gốc rỗng), `reclaim_epochs_const = 72` | [tệp](./onchain/lib/magiclamp/faucet/handlers.ak) |
 | `validators/faucet_nft.ak` | code xong — `MintPool` / `MintAccount` / `BurnAccount` | [tệp](./onchain/validators/faucet_nft.ak) |
-| `validators/faucet_pool.ak` | code xong — `ClaimOpen` / `ClaimAgain` / `Reclaim` / `TopUpPool` | [tệp](./onchain/validators/faucet_pool.ak) |
+| `validators/faucet_pool.ak` | code xong — `ClaimOpen` / `ClaimAgain` / `Reclaim` / `TopUpPool` + INV-ONE-ACCT (`C-OPEN-UNIQ-1`, `C-RECL-UNIQ-1`, `C-RECL-BURN-1`, `C-ROOT-KEEP-1`) | [tệp](./onchain/validators/faucet_pool.ak) |
+| `validators/ledger_parity.ak` | chỉ ca kiểm — ghim gốc + bằng chứng do SDK JS sinh; không phải validator, không đổi hash | [tệp](./onchain/validators/ledger_parity.ak) |
 | `validators/faucet_account.ak` | code xong — `Use` / `TopUp` / `ReclaimIdle` | [tệp](./onchain/validators/faucet_account.ak) |
 | `validators/tlamp_policy.ak` | code xong, **không bị bản vá v3 chạm tới** | [tệp](./onchain/validators/tlamp_policy.ak) |
 | `validators/faucet.ak` + `lib/.../types.ak` (v1) | **ĐÃ XOÁ** khỏi cây làm việc | không còn trong `onchain/` |
 | Bộ kiểm on-chain | có, gồm lớp ca "hai validator một tx" | §3.1 — đọc số ở `Summary` của `aiken check`, tài liệu không chép |
-| SDK off-chain | code xong theo codec v3 (6 builder + codec + `epochWindow`) | [`offchain/src/index.ts`](./offchain/src/index.ts) |
+| SDK off-chain | code xong theo codec v3.1 (6 builder + codec gồm bằng chứng MPF + `epochWindow` + sổ `openedLedger`) | [`offchain/src/index.ts`](./offchain/src/index.ts) |
+| Phụ thuộc sổ | Aiken `aiken-lang/merkle-patricia-forestry` v2.1.0 · npm `@aiken-lang/merkle-patricia-forestry` 1.3.1 (chỉ chạy trên Node — cần `Buffer`) | `onchain/aiken.toml` · `offchain/package.json` |
+| Kích thước | `faucet_pool` ≈ 6,2 KB compiled (đo ở `plutus.json`; MPF là phần lớn phần tăng) | `onchain/plutus.json` |
 | Bộ kiểm off-chain | có | §3.2 |
 | Harness vận hành đánh số `00_preflight` / `01_mint_pool` / `02_claim` (v1) | **ĐÃ XOÁ** — chúng gọi validator `faucet.ak` v1 | không còn trong `scripts/` |
 | Script chạy thật còn lại | `scripts/demo_faucet_v2.ts` (nội dung v3, tên còn nhãn cũ) + `scripts/config.ts` (env + `SUBMIT`) | [`scripts/`](./scripts/) |
-| Deploy v3 | ❌ **chưa deploy trên mạng nào** | [`deployed-artifacts.md`](./deployed-artifacts.md) |
+| Deploy v3 / v3.1 | ❌ **chưa deploy trên mạng nào** — v3.1 đổi hash cả ba validator faucet, nên hash v3.0 cũ không còn là đích deploy | [`deployed-artifacts.md`](./deployed-artifacts.md) |
 | Pool đang sống Preprod + Preview | **bản v1** (`claim_amount`, không POOL NFT, không DID-gate) | [`deployed-artifacts.md`](./deployed-artifacts.md) |
 
 > **Hai điều phải đọc cùng nhau, đừng tách:** (1) bản v3 chưa deploy ⇒ mọi tính chất an toàn chứng minh
-> ở [MATH](./Math-Spec.md) v3.0 **chưa có hiệu lực trên chuỗi**; (2) pool đang sống là v1, và v1 có
+> ở [MATH](./Math-Spec.md) v3.1 **chưa có hiệu lực trên chuỗi**; (2) pool đang sống là v1, và v1 có
 > đúng cái lỗ vét kho mà trần tốc độ ở v3 dựng ra để đóng. Đọc một vế mà bỏ vế kia dẫn tới kết luận
 > ngược nhau.
 >
@@ -75,11 +81,11 @@ policy id tLAMP dùng chung toàn mạng test cho mọi Cardano team — [CONTRA
 |---|---|---|---|
 | **M0** | Kiểu + helper: datum, redeemer, `acct_name`, đếm theo script hash, hai hàm epoch | — | ✅ xong |
 | **M1** | `tlamp_policy.mint` one-shot + ca kiểm mint/phá | M0 | ✅ xong |
-| **M2** | `faucet_nft.mint` — ba nhánh + `C-MP-1..7` ép datum khởi tạo | M0 | ✅ xong |
+| **M2** | `faucet_nft.mint` — ba nhánh + `C-MP-1..8` ép datum khởi tạo (gồm gốc sổ rỗng) | M0 | ✅ xong |
 | **M3** | `faucet_account.spend` — `Use` / `TopUp` / `ReclaimIdle` | M0 | ✅ xong |
-| **M4** | `faucet_pool.spend` — bốn nhánh + trần tốc độ + lớp ca "hai validator một tx" | M2, M3 | ✅ xong |
-| **M5** | SDK off-chain theo codec v3 (6 builder + `pinnedEpochWindow`) | M4 | ✅ code xong |
-| **M6** | Deploy Preprod v3 theo §4, đối chiếu datum on-chain | M5 + credential + tLAMP | ❌ **chưa chạy** |
+| **M4** | `faucet_pool.spend` — bốn nhánh + trần tốc độ + INV-ONE-ACCT + lớp ca "hai validator một tx" | M2, M3 | ✅ xong |
+| **M5** | SDK off-chain theo codec v3.1 (6 builder + `pinnedEpochWindow` + `OpenedLedger` + ca đối chiếu sổ JS ↔ Aiken) | M4 | ✅ code xong |
+| **M6** | Deploy Preprod v3.1 theo §4, đối chiếu datum on-chain | M5 + credential + tLAMP | ❌ **chưa chạy** |
 
 Thứ tự M2 → M3 → M4 **không đảo được**: nó chính là thứ tự áp tham số (`faucet_nft_policy` →
 `account_script_hash` → pool). Đảo lại là dựng một vòng phụ thuộc hash.
@@ -109,9 +115,15 @@ bộ kiểm). Số thật đọc ở `Summary` của chính lệnh trên.
 3. **Ca gọi HAI script trên CÙNG một `Transaction`.** Đây là phép đo duy nhất bắt được lớp lỗi "hai
    validator đòi hai điều trái nhau" — một luồng có thể xanh ở mọi bài đơn vị mà **không có hình dạng
    giao dịch nào tiêu được nó**, tức nó là mã chết trong khi bộ kiểm vẫn 100% xanh. Lớp này là lý do
-   `handlers.ak` tồn tại ([TECH](./Tech-Spec.md) v3.0 §0). Hai luồng **không** có ca loại này và đó là
-   tính chất của thiết kế: `Use` cấm POOL NFT input, `TopUpPool` cấm account input — với chúng, cực đối
-   xứng là một ca đỏ chứng minh tx ghép đôi bị từ chối.
+   `handlers.ak` tồn tại ([TECH](./Tech-Spec.md) v3.1 §0). Script thứ hai KHÔNG nhất thiết là
+   `faucet_account`: với `TopUpPool` thì `faucet_account` không chạy được (nhánh này cấm account input)
+   nhưng `faucet_nft` CÓ, và cặp `TopUpPool` + `MintAccount` chính là hình dạng mà
+   `[FAUCET-ACCT-MINT-GATE]` đi qua. `Use` là luồng duy nhất không có ca dương loại này (cấm POOL NFT
+   input); cực đối xứng của nó là một ca đỏ chứng minh tx ghép đôi bị từ chối.
+4. **Ca DƯƠNG cho các script KHÁC trên đúng tx của một ca âm hai-validator.** Một ca âm `and {A, B}`
+   chỉ ghim được cổng ở A nếu B **chấp nhận** tx đó; nếu cả hai từ chối thì ca đỏ dù có gỡ cổng ở A, và
+   nó đọc y hệt một ca đang canh. Cặp mẫu: `topuppool_duc_acct_mint_policy_chap_nhan` (dương) đứng cạnh
+   `topuppool_duc_acct_hai_validator` (âm).
 
 **Kỷ luật đột biến — điều kiện để được nói "chốt X đã được ghim".** Một ca đỏ mang đúng tên chốt X
 **không** chứng minh ca đó ghim X: nó có thể trượt xuống chốt kế tiếp và chết ở đó, với đúng màu và
@@ -121,6 +133,13 @@ mọi thay đổi — chỉ cấm phát biểu "đã được ghim" khi chưa ch
 
 Ưu tiên gỡ thử các chốt mà **mất chúng là bất khả hồi**: `C-RATE-0`, `C-RECL-0`, `C-RECL-2`,
 `C-AGAIN-2`, `C-TOP-5`, `C-TOP-DID-1`, `C-MP-6`.
+
+Đã chạy phép đó cho năm chốt của lượt vá `[FAUCET-ACCT-MINT-GATE]` (28/09) — mỗi chốt gỡ riêng một
+lượt, thay đúng một vế `expect` thành `expect True`, chạy TRỌN bộ: `C-MINT-ONLY-OPEN-1` ·
+`C-MINT-ONLY-OPEN-2` · `C-RECL-BURN-2` · `C-TOP-3` · `C-TOP-4`, cả năm đều có ca đỏ. Hai chốt cuối là
+chốt CŨ: trước lượt này, gỡ `C-TOP-3` hay `C-TOP-4` thì bộ kiểm cũ vẫn xanh hết — chúng nằm trong danh
+sách chốt mà `(H-EXIT)` của [MATH](./Math-Spec.md) v3.1 §6a.2 dựa vào, nên "có ca đỏ" ở đó trước đây là
+một câu không ai phát được.
 
 > ⚠ `aiken check` gọi qua công cụ không có TTY có thể trả mã thoát 1 **mà không in lỗi nào** — đọc kết
 > quả ở dòng `Summary`, đừng đọc ở mã thoát của một đường ống. Cần mã thoát đáng tin thì bọc pty.
@@ -134,8 +153,17 @@ cd Faucet/offchain && npx vitest run      # đọc dòng `Tests N passed`
 Phủ: codec round-trip cho `FaucetConfig` / `PoolDatum` / `FaucetAccount` + từng constructor redeemer
 ([`tests/datum.test.ts`](./tests/datum.test.ts)), builder trên tx-builder mock
 ([`tests/builders.test.ts`](./tests/builders.test.ts), [`tests/faucetV2Builders.test.ts`](./tests/faucetV2Builders.test.ts),
-[`tests/faucetV2.test.ts`](./tests/faucetV2.test.ts)), và cửa sổ hiệu lực
-([`tests/epochWindow.test.ts`](./tests/epochWindow.test.ts)).
+[`tests/faucetV2.test.ts`](./tests/faucetV2.test.ts)), cửa sổ hiệu lực
+([`tests/epochWindow.test.ts`](./tests/epochWindow.test.ts)), và sổ `opened_root`
+([`tests/openedLedger.test.ts`](./tests/openedLedger.test.ts)).
+
+**Ca đối chiếu sổ — đo ở CẢ HAI phía, gỡ một phía là mất phép đo.** Một chuỗi 4 DID (chèn từ sổ rỗng,
+bằng chứng sâu 2 bước, bước `Fork`, thu hồi rồi mở lại về đúng gốc cũ) được ghim cùng một bộ gốc +
+bằng chứng ở `tests/openedLedger.test.ts` (`PARITY_STEPS`) và `onchain/validators/ledger_parity.ak`.
+SDK và thư viện MPF on-chain là hai hiện thực độc lập của cùng một cấu trúc; chỉ có phép ghim chéo này
+nói được "bằng chứng SDK sinh ra thì validator nhận". Thêm vào đó: CBOR bằng chứng SDK trùng từng byte
+với `toCBOR()` của thư viện, và `OPENED_ROOT_EMPTY` bằng `mpf.root(mpf.empty)` (bài
+`ledger_parity_empty_root`) — thư viện JS không xuất hằng gốc rỗng (trie rỗng có `hash === null`).
 
 **Ba ca off-chain mà on-chain KHÔNG đo hộ được — cả ba đã có, đừng để ai gỡ:**
 1. `pinnedEpochWindow` **ném** khi phần bucket còn lại ngắn hơn `MIN_PINNED_WINDOW_MS`, và **không** tự
@@ -148,6 +176,11 @@ Phủ: codec round-trip cho `FaucetConfig` / `PoolDatum` / `FaucetAccount` + t�
    **không** làm tx fail — validator nhận cùng con số — nó chỉ làm cooldown và ngưỡng thu hồi dài hoặc
    ngắn đi vài lần mà không ai thấy. Đây là lớp lỗi duy nhất trong module mà on-chain **không có cách
    nào** phát hiện.
+
+Thêm một ca thuộc cùng họ "on-chain không đo hộ": `OpenedLedger` **ném `FAUCET-LEDGER-001`** khi gốc
+dựng lại từ danh sách account sống lệch `opened_root` trên datum. On-chain chỉ thấy bằng chứng hỏng và
+từ chối tx; nó không nói được là chỉ mục account của bên dựng đã cũ hay thiếu. Mã lỗi này là chỗ duy
+nhất nói ra nguyên nhân.
 
 ---
 
@@ -173,9 +206,11 @@ chặn trên của thiệt hại kể cả khi một người điều khiển nh
 ```bash
 cd Faucet/onchain && aiken build                 # sinh plutus.json
 # 1. deploy kèm lượng tLAMP NHỎ (đủ cho vài lượt claim thử)
-#    → buildMintPoolTx: đúc POOL NFT + PoolDatum{claims_in_window: 0, window_epoch: bucket THẬT}
+#    → buildMintPoolTx: đúc POOL NFT + PoolDatum{claims_in_window: 0, window_epoch: bucket THẬT,
+#                                                 opened_root: gốc rỗng}
 # 2. chạy THẬT một ClaimOpen và một ClaimAgain (tức một TopUp) trên pool đó
 # 3. ĐỐI CHIẾU datum on-chain: cfg đúng ba giá trị · window_epoch đúng bucket · claims_in_window đúng số lượt
+#    · opened_root đúng gốc SDK tính cho tập DID đã mở
 # 4. chỉ khi bước 3 khớp mới TopUpPool khối lớn
 ```
 
@@ -186,7 +221,7 @@ datum. Một con số sai ở giây deploy không có cách sửa nào ngoài de
 `max_claims_per_window` hoặc `drip_oildrop` bị gõ thành giá trị khoá chết prelude).
 
 Nạp lượng nhỏ trước biến một sai sót bất khả hồi thành một sai sót **rẻ**: mất một pool rỗng, deploy
-lại. Đây là lý do `C-MP-1..7` tồn tại, và bước đối chiếu datum là phần mà `C-MP-1` **không đo được** —
+lại. Đây là lý do `C-MP-1..8` tồn tại, và bước đối chiếu datum là phần mà `C-MP-1` **không đo được** —
 `faucet_nft` không kiểm được `pool_out` đúng là script `faucet_pool` (kiểm được thì lại là vòng hash),
 nó chỉ kiểm được "có phải một script nào đó". Phần dư đó đóng bằng mắt người, sau deploy, trên chuỗi.
 
@@ -204,12 +239,16 @@ trường đặt **ngay trước lệnh**, không ghi vào tệp nào.
 ### 4.3 Đối chiếu on-chain sau deploy (bắt buộc, trước khi nạp khối lớn)
 
 - Pool UTxO ở địa chỉ `faucet_pool`: có **đúng một** POOL NFT, inline datum decode được thành
-  `PoolDatum`, `claims_in_window == 0`, `window_epoch` == bucket của chính tx deploy.
+  `PoolDatum` 4 trường, `claims_in_window == 0`, `window_epoch` == bucket của chính tx deploy,
+  `opened_root` == 32 byte 0.
 - `cfg` đọc ra đúng ba giá trị ở §4.1 — đọc từ chuỗi, không từ tệp state.
-- Sau một `ClaimOpen` thật: pool giảm đúng `drip`, `claims_in_window` tăng đúng 1; account UTxO xuất
-  hiện ở địa chỉ `faucet_account` với ACCT NFT 32 byte và hai mốc đều bằng bucket hiện tại.
+- Sau một `ClaimOpen` thật: pool giảm đúng `drip`, `claims_in_window` tăng đúng 1, `opened_root` đổi
+  sang gốc có đúng một khoá; account UTxO xuất hiện ở địa chỉ `faucet_account` với ACCT NFT 32 byte
+  và hai mốc đều bằng bucket hiện tại.
+- Thử `ClaimOpen` lần hai cho cùng DID phải bị từ chối (SDK ném trước khi dựng tx; dựng tay bằng
+  chứng giả thì validator từ chối) — đây là phép đo INV-ONE-ACCT trên chuỗi.
 - Sau một `ClaimAgain` thật: account tăng đúng `drip`, cả hai mốc bằng bucket hiện tại; pool giảm đúng
-  `drip` và bộ đếm tăng đúng 1.
+  `drip`, bộ đếm tăng đúng 1, `opened_root` giữ nguyên.
 - Genesis UTxO biến mất ⇒ thử đúc POOL NFT lần hai phải fail.
 
 ---
@@ -218,7 +257,10 @@ trường đặt **ngay trước lệnh**, không ghi vào tệp nào.
 
 | # | Việc | Loại | Ưu tiên |
 |---|---|---|---|
-| G1 | **Deploy Preprod v3** theo §4 (hai bước) — chưa chạy | deploy (cần credential + tLAMP) | cao |
+| G1 | **Deploy Preprod v3.1** theo §4 (hai bước) — chưa chạy | deploy (cần credential + tLAMP) | cao |
+| G1b | **Nguồn danh sách account sống cho `OpenedLedger`.** Mọi `ClaimOpen`/`Reclaim` cần tập ACCT NFT đang sống dưới policy `faucet_nft`; SDK nhận danh sách từ bên gọi, chưa có hàm đọc chỉ mục chuỗi. Sai danh sách thì SDK ném `FAUCET-LEDGER-001`, không dựng tx hỏng | code | cao |
+| G1d | ✅ **ĐÃ ĐÓNG** — `[FAUCET-ACCT-MINT-GATE]`: ACCT NFT từng đúc được trong tx `TopUpPool` (cả `faucet_pool` lẫn `faucet_nft` chấp nhận) và trong tx `ClaimAgain` cho một DID khác. Ba chốt mới trong `faucet_pool.ak`: `C-MINT-ONLY-OPEN-1` (`ClaimAgain`) · `C-MINT-ONLY-OPEN-2` (`TopUpPool`) · `C-RECL-BURN-2` (`Reclaim` đúng một mục mint). PoC dựng lại thành ca âm hai/ba validator, mỗi ca kèm ca dương khẳng định các script khác chấp nhận đúng tx đó. Hash `faucet_pool` đổi `76c27376…` → `05e1d5d3…` (6.213 → 6.288 B) ⇒ **G1 phải dùng hash mới**, xem [`deployed-artifacts.md`](./deployed-artifacts.md) | code on-chain | — |
+| G1c | ✅ **ĐÃ ĐÓNG** — `reclaimBuilder` từng từ chối account 0 tLAMP (`RECLAIM-003`) trong khi on-chain cho phép; từ v3.1 thu hồi là đường duy nhất trả khoá DID về sổ. Nay SDK dựng được thu hồi account rỗng (xoá khoá, đốt ACCT), ngưỡng idle vẫn áp. Ghim hai phía: `tests/faucetV2Builders.test.ts` (ca 72 dựng được · ca 71 bị từ chối) và `faucet_pool.ak` ▸ `reclaim_idle_account_rong_hai_validator` / `reclaim_idle_account_rong_chua_du_72` | code | — |
 | G2 | **Đường đi cho pool v1 đang sống**: cả validator v1 **và** harness `00/01/02` gọi nó đều đã xoá khỏi cây, chỉ còn trong lịch sử git. Cần quyết dứt điểm: dừng pool v1 sau khi v3 chạy, hay giữ song song và lấy lại các tệp đó | quyết định + dọn | cao |
 | G2b | **Chưa có harness deploy v3 có kiểm tra trước.** Bốn bước ở §4.2 hiện phải gọi builder bằng tay; thiếu bước preflight (ví đủ tADA, `plutus.json` có đủ ba validator, `ms_per_epoch` khớp mạng) nên một sai sót bất khả hồi ở giây deploy không có gì chặn trước | code | cao |
 | G3 | **Đo ExUnit trên tx THẬT** — số đo hiện có là trên tx mock của bộ kiểm, không có input phí / output trả lại / witness | đo | trung |
@@ -231,15 +273,16 @@ trường đặt **ngay trước lệnh**, không ghi vào tệp nào.
 
 ## 6. Tiêu chí "xong" (DoD)
 
-- [x] Ba validator v3 + `tlamp_policy` code xong, build sạch (`aiken build` 0 errors).
+- [x] Ba validator v3.1 + `tlamp_policy` code xong, build sạch (`aiken build` 0 errors).
 - [x] Mã v1 (`faucet.ak`, `types.ak`) đã xoá, không còn chỗ nào import.
-- [x] SDK off-chain theo codec v3: 6 builder + codec + `pinnedEpochWindow`.
+- [x] SDK off-chain theo codec v3.1: 6 builder + codec (gồm bằng chứng MPF) + `pinnedEpochWindow` + `OpenedLedger`.
 - [x] Bộ kiểm có cả ba lớp ở §3.1, gồm lớp "hai validator một tx".
+- [x] Sổ `opened_root` đối chiếu chéo JS ↔ Aiken trên cùng một bộ gốc + bằng chứng (§3.2).
 - [ ] Đã gỡ-thử từng chốt bất khả hồi ở §3.1 và xác nhận mỗi lần đều có ca đỏ (G1 phụ thuộc điều này).
 - [ ] Deploy Preprod **bước 1** (lượng nhỏ) + đối chiếu datum on-chain theo §4.3 (G1).
 - [ ] `ClaimOpen` + `ClaimAgain` thật, đối chiếu bộ đếm và hai mốc trên chuỗi (G1).
 - [ ] `TopUpPool` khối lớn — **chỉ sau khi** hai gạch trên xanh.
 - [ ] Quyết dứt điểm đường đi cho pool v1 (G2).
 
-**Hiện trạng:** on-chain và off-chain đã sang v3 và khép kín trong cây mã. Không tuyên bố "live" cho
-v3 tới khi có tx hash thật trên explorer và datum on-chain đã được đối chiếu bằng mắt.
+**Hiện trạng:** on-chain và off-chain đã sang v3.1 và khép kín trong cây mã. Không tuyên bố "live" cho
+v3.1 tới khi có tx hash thật trên explorer và datum on-chain đã được đối chiếu bằng mắt.
