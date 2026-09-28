@@ -45,13 +45,16 @@ use cardano/transaction.{
 use magiclamp/governance/names.{nullifier_name}
 use magiclamp/governance/power.{cap_of}
 use magiclamp/governance/tally.{
-  clamp_consistent, sum_batch_consistent, top_heap_consistent,
+  batch_entries, clamp_consistent, sum_batch_consistent_entries,
+  top_heap_consistent_entries,
 } as tally_lib
 use magiclamp/governance/types.{
   Clamped, Summing, TallyDatum, VoteDatum, WeightParam,
 }
 use magiclamp/governance/util
-use magiclamp/governance/weight_ref.{read_weight_param}
+use magiclamp/governance/weight_ref.{
+  read_weight_param, read_weight_param_skip_d8,
+}
 
 pub type TallyRedeemer {
   /// `insert_proofs` — một chứng minh CHÈN MPF cho MỖI phiếu trong lô, ĐÚNG THỨ TỰ
@@ -224,6 +227,9 @@ fn c_sources_ok(
   wp: WeightParam,
   votes: List<VoteDatum>,
 ) -> Bool {
+  // `cap_of` duyệt trọn bảng knots. Nó KHÔNG phụ thuộc phiếu, nên tính một lần
+  // ngoài vòng lặp thay vì k lần bên trong (bảng 8 mốc, k = 5: 55 000 mem).
+  let cap3 = cap_of(wp.k3)
   list.all(
     votes,
     fn(v) {
@@ -238,7 +244,7 @@ fn c_sources_ok(
         } else {
           and {
             v.c3_capped >= 0,
-            v.c3_capped <= cap_of(wp.k3),
+            v.c3_capped <= cap3,
             attested_c3(
               reference_inputs,
               c3_policy,
@@ -302,8 +308,11 @@ validator tally(
         // cửa sổ gom: TỪ khi đóng phiếu (rời cửa sổ rút) tới khi đóng sổ.
         expect e >= d_in.vote_close_epoch
         expect e < d_in.vote_close_epoch + tally_window_epochs
+        // Cổng D8 KHÔNG chạy ở đường nóng — bảng đã qua cổng lúc ĐÚC và UTxO mang
+        // nó không tiêu lại được, nên nó bất biến. Lập luận đầy đủ + số đo ở đầu
+        // `lib/magiclamp/governance/weight_ref.ak`.
         let wp =
-          read_weight_param(
+          read_weight_param_skip_d8(
             tx.reference_inputs,
             weight_param_policy,
             d_in.weight_param_ref,
@@ -334,6 +343,10 @@ validator tally(
             votes,
             insert_proofs,
           )
+        // Quy đổi VP THÔ của cả lô ĐÚNG MỘT LẦN. Hai bất biến dưới đây đều đọc
+        // `(vp_raw, choice)` của từng phiếu; gọi `top_heap_consistent` và
+        // `sum_batch_consistent` dạng cũ thì mỗi hàm tự quy đổi lại cả lô.
+        let entries = batch_entries(wp, votes)
         and {
           d_out.phase == Summing,
           // cửa sổ GHIM: không lượt gộp nào dời được mốc mở/đóng phiếu.
@@ -341,9 +354,9 @@ validator tally(
           d_out.vote_close_epoch == d_in.vote_close_epoch,
           // heap top-(F−1) canonical ⇒ mọi cá voi buộc có mặt ⇒ Finalize clamp
           // trừ đúng phần vượt ⇒ không DID nào thoát trần.
-          top_heap_consistent(d_in, d_out, wp, votes),
+          top_heap_consistent_entries(d_in, d_out, entries, wp.bft_floor),
           // power_raw + đếm = cũ + DERIVE(phiếu thật) — không nhận delta tuỳ ý.
-          sum_batch_consistent(d_in, d_out, wp, votes),
+          sum_batch_consistent_entries(d_in, d_out, entries),
           nullifiers_burned(tx, nullifier_policy, votes),
           utxo_preserved(own_hash, tally_policy, d_in.proposal_id, tx),
         }

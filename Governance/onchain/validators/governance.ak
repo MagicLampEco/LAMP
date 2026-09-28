@@ -145,22 +145,30 @@ validator governance(
     expect InlineDatum(td) = t_out.datum
     expect ts: TallyDatum = td
 
-    // ── (O6) `weight_param_ref` trỏ đúng một UTxO mang token bảng tham số ──
-    //    `tally` cũng kiểm lại lúc đọc, nhưng kiểm ở đây biến "trỏ sai" từ một
-    //    Tally KHOÁ CỨNG (không lượt gộp nào chạy được) thành một giao dịch Open
-    //    không dựng nổi.
-    expect
-      list.any(
+    // ── (O6) `weight_param_ref` trỏ đúng một UTxO mang token bảng tham số, và
+    //    bảng đó THOẢ CỔNG D8 ──
+    //    Kiểm ở đây biến "trỏ sai" từ một Tally KHOÁ CỨNG (không lượt gộp nào chạy
+    //    được) thành một giao dịch Open không dựng nổi.
+    //
+    //    Đây là chỗ D8 được ép trên đường đi của một PROPOSAL: nhánh này là lần
+    //    ĐẦU TIÊN một proposal chạm vào bảng tham số, tức nhánh mà một cấu hình
+    //    hỏng phải bị chặn — chặn ở nhánh quyết toán thì proposal đã lập xong rồi
+    //    mới khoá cứng. Cổng THẬT vẫn là `weight_param_nft ▸ mint` (nơi bảng sinh
+    //    ra, và là nơi DUY NHẤT ép bộ ngưỡng θ/bft_floor/quorum); `tally ▸ SumBatch`
+    //    cố ý KHÔNG chạy lại D8 — xem `lib/magiclamp/governance/weight_ref.ak`.
+    let wp_open =
+      weight_ref.read_weight_param(
         tx.reference_inputs,
-        fn(i) {
-          and {
-            i.output_reference == weight_param_ref,
-            dict.size(assets.tokens(i.output.value, weight_param_policy)) == 1,
-          }
-        },
+        weight_param_policy,
+        weight_param_ref,
       )
 
     and {
+      // `bft_floor` là MẪU SỐ của trần clamp τ = ΣVP/F ở `tally ▸ Finalize`; F = 0
+      // là chia cho 0, tức một proposal mở được mà không bao giờ chốt sổ được. Vế
+      // này cũng là chỗ `wp_open` được DÙNG, nên phép đọc ở (O6) — và cổng D8 nằm
+      // trong nó — chắc chắn được tính ra.
+      wp_open.bft_floor >= 1,
       // proposal: trạng thái ban đầu
       pr.proposal_id == proposal_id,
       pr.status == Open,
@@ -366,11 +374,6 @@ fn seed_input() -> Input {
   )
 }
 
-fn wp_ref_input() -> Input {
-  let val = assets.from_lovelace(2_000_000) |> assets.add(wp_policy, tag, 1)
-  util.mk_input(wp_ref(), util.mk_output(util.script_address(#"a0"), val, 0))
-}
-
 fn pr_ok() -> ProposalResult {
   ProposalResult {
     proposal_id: prop(),
@@ -462,7 +465,7 @@ fn run(outputs: List<Output>) -> Bool {
   run_with(
     rd(open_e, close_e),
     [seed_input()],
-    [wp_ref_input()],
+    [wp_ref_input_ok()],
     outputs,
     mint_ok(),
     e_now,
@@ -492,7 +495,7 @@ test open_khong_tieu_hat_giong_tu_choi() fail {
           ),
         ),
       ],
-      [wp_ref_input()],
+      [wp_ref_input_ok()],
       outs_ok(),
       mint_ok(),
       e_now,
@@ -510,7 +513,7 @@ test open_khong_duc_token_tally_tu_choi() fail {
     run_with(
       rd(open_e, close_e),
       [seed_input()],
-      [wp_ref_input()],
+      [wp_ref_input_ok()],
       [p_out_of(pr_ok())],
       mint,
       e_now,
@@ -536,7 +539,7 @@ test open_duc_token_tally_ten_khac_tu_choi() fail {
     run_with(
       rd(open_e, close_e),
       [seed_input()],
-      [wp_ref_input()],
+      [wp_ref_input_ok()],
       outs_ok(),
       mint,
       e_now,
@@ -551,7 +554,7 @@ test open_gop_policy_thu_ba_tu_choi() fail {
     run_with(
       rd(open_e, close_e),
       [seed_input()],
-      [wp_ref_input()],
+      [wp_ref_input_ok()],
       outs_ok(),
       mint,
       e_now,
@@ -569,7 +572,7 @@ test open_hai_don_vi_token_proposal_tu_choi() fail {
     run_with(
       rd(open_e, close_e),
       [seed_input()],
-      [wp_ref_input()],
+      [wp_ref_input_ok()],
       outs_ok(),
       mint,
       e_now,
@@ -585,7 +588,7 @@ test open_cua_so_trong_qua_khu_tu_choi() fail {
     run_with(
       rd(e_now - 1, close_e),
       [seed_input()],
-      [wp_ref_input()],
+      [wp_ref_input_ok()],
       [p_out_of(pr_ok()), t_out_of(ts)],
       mint_ok(),
       e_now,
@@ -599,7 +602,7 @@ test open_cua_so_mo_ngay_epoch_nay_qua() {
   run_with(
     rd(e_now, close_e),
     [seed_input()],
-    [wp_ref_input()],
+    [wp_ref_input_ok()],
     [p_out_of(pr_ok()), t_out_of(ts)],
     mint_ok(),
     e_now,
@@ -613,7 +616,7 @@ test open_dong_truoc_khi_mo_tu_choi() fail {
     run_with(
       rd(open_e, open_e),
       [seed_input()],
-      [wp_ref_input()],
+      [wp_ref_input_ok()],
       [p_out_of(pr), t_out_of(ts)],
       mint_ok(),
       e_now,
@@ -630,7 +633,7 @@ test open_cua_so_dai_hon_thoi_han_phuc_hoi_tu_choi() fail {
     run_with(
       rd(open_e, far),
       [seed_input()],
-      [wp_ref_input()],
+      [wp_ref_input_ok()],
       [p_out_of(pr), t_out_of(ts)],
       mint_ok(),
       e_now,
@@ -646,7 +649,7 @@ test open_cua_so_ngan_hon_mot_epoch_qua() {
   run_with(
     rd(open_e, far),
     [seed_input()],
-    [wp_ref_input()],
+    [wp_ref_input_ok()],
     [p_out_of(pr), t_out_of(ts)],
     mint_ok(),
     e_now,
@@ -660,7 +663,7 @@ test open_khoang_hieu_luc_mo_tu_choi() fail {
     Transaction {
       ..placeholder,
       inputs: [seed_input()],
-      reference_inputs: [wp_ref_input()],
+      reference_inputs: [wp_ref_input_ok()],
       outputs: outs_ok(),
       mint: mint_ok(),
       validity_range: interval.after(e_now * ms_ep),
@@ -1250,6 +1253,46 @@ test fin_bang_weight_vi_pham_d8_tu_choi() fail {
       [prop_out_of(result_of(Executed), proposal_value())],
       assets.zero,
       e_fin,
+    )
+  True
+}
+
+/// Bảng weight VI PHẠM D8 ở lượt MỞ proposal — cổng (O6) bác ngay lúc cam kết
+/// `weight_param_ref`, không đợi tới lượt chốt. Đây là ca ghim chỗ D8 được dời tới
+/// (xem `lib/magiclamp/governance/weight_ref.ak`): không có nó thì một proposal cam
+/// kết bảng hỏng vẫn mở được rồi khoá cứng ở `tally ▸ Finalize`.
+test open_bang_weight_vi_pham_d8_tu_choi() fail {
+  let sqrt_knots =
+    [
+      Knot { c: 0, pow: 0 },
+      Knot { c: 250_000_000, pow: 15_811 * scale },
+      Knot { c: 1_000_000_000, pow: 31_623 * scale },
+    ]
+  let bad = WeightParam { ..wp_datum(), k3: sqrt_knots, k4: lin_knots() }
+  expect
+    run_with(
+      rd(open_e, close_e),
+      [seed_input()],
+      [wp_ref_input_with(bad)],
+      outs_ok(),
+      mint_ok(),
+      e_now,
+    )
+  True
+}
+
+/// `bft_floor = 0` ở lượt MỞ: F là mẫu số của τ = ΣVP/F, nên một proposal mở với
+/// F = 0 không bao giờ chốt sổ được. Ca dương của vế `wp_open.bft_floor >= 1`.
+test open_bft_floor_khong_tu_choi() fail {
+  let bad = WeightParam { ..wp_datum(), bft_floor: 0 }
+  expect
+    run_with(
+      rd(open_e, close_e),
+      [seed_input()],
+      [wp_ref_input_with(bad)],
+      outs_ok(),
+      mint_ok(),
+      e_now,
     )
   True
 }

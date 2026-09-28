@@ -31,23 +31,29 @@ pub fn derive_batch(
   wp: WeightParam,
   votes: List<VoteDatum>,
 ) -> (Int, Int, Int, Int, Int) {
+  derive_entries(batch_entries(wp, votes))
+}
+
+/// Cùng phép cộng như `derive_batch`, nhưng nhận `List<TopEntry>` ĐÃ quy đổi.
+///
+/// Vì sao tách: `TopEntry` mang đúng `(vp_raw, choice)` — hai thứ duy nhất phép
+/// cộng cần. Trước lượt này validator gọi `batch_entries` (cho `top_heap_consistent`)
+/// VÀ `derive_batch` (cho `sum_batch_consistent`), tức `vp_raw` của mỗi phiếu được
+/// tính HAI LẦN trên cùng một lô — mỗi lần là bốn phép nội suy trên bảng knots. Đo
+/// 2026-09-29, bảng 8 mốc, C3 bật, k = 5: gộp còn một lần tiết kiệm 1,63 M mem.
+///
+/// Đẳng thức giữ NGUYÊN nghĩa, không phải xấp xỉ: `batch_entries` là `list.map` nên
+/// giữ đúng thứ tự và đúng `vp_raw`/`choice` của từng phiếu, còn `derive_batch` chỉ
+/// đọc hai thứ đó. `derive_batch` nay ĐƯỢC ĐỊNH NGHĨA bằng phép hợp thành, nên không
+/// còn hai bản để trôi khỏi nhau.
+pub fn derive_entries(entries: List<TopEntry>) -> (Int, Int, Int, Int, Int) {
   list.foldl(
-    votes,
+    entries,
     (0, 0, 0, 0, 0),
-    fn(v, acc) {
+    fn(e, acc) {
       let (dy, dn, da, dv, dyv) = acc
-      let p =
-        vp_raw(
-          wp.k1,
-          v.c1_capped,
-          wp.k2,
-          v.c2_capped,
-          wp.k3,
-          v.c3_capped,
-          wp.k4,
-          v.c4_capped,
-        )
-      when v.choice is {
+      let p = e.vp_raw
+      when e.choice is {
         Yes -> (dy + p, dn, da, dv + 1, dyv + 1)
         No -> (dy, dn + p, da, dv + 1, dyv)
         Abstain -> (dy, dn, da + p, dv + 1, dyv)
@@ -150,11 +156,23 @@ pub fn top_heap_consistent(
   wp: WeightParam,
   votes: List<VoteDatum>,
 ) -> Bool {
-  d_out.top_did_vp == merge_top(
-    d_in.top_did_vp,
+  top_heap_consistent_entries(
+    d_in,
+    d_out,
     batch_entries(wp, votes),
-    wp.bft_floor - 1,
+    wp.bft_floor,
   )
+}
+
+/// Như `top_heap_consistent` nhưng nhận entry ĐÃ quy đổi — để validator tính
+/// `batch_entries` ĐÚNG MỘT LẦN rồi dùng cho cả hai bất biến (xem `derive_entries`).
+pub fn top_heap_consistent_entries(
+  d_in: TallyDatum,
+  d_out: TallyDatum,
+  entries: List<TopEntry>,
+  bft_floor: Int,
+) -> Bool {
+  d_out.top_did_vp == merge_top(d_in.top_did_vp, entries, bft_floor - 1)
 }
 
 /// Kiểm d_out == d_in + derived(batch) ở các trường tích lũy (Finding 2). Pha giữ Summing,
@@ -166,7 +184,16 @@ pub fn sum_batch_consistent(
   wp: WeightParam,
   votes: List<VoteDatum>,
 ) -> Bool {
-  let (dy, dn, da, dv, dyv) = derive_batch(wp, votes)
+  sum_batch_consistent_entries(d_in, d_out, batch_entries(wp, votes))
+}
+
+/// Như `sum_batch_consistent` nhưng nhận entry ĐÃ quy đổi (xem `derive_entries`).
+pub fn sum_batch_consistent_entries(
+  d_in: TallyDatum,
+  d_out: TallyDatum,
+  entries: List<TopEntry>,
+) -> Bool {
+  let (dy, dn, da, dv, dyv) = derive_entries(entries)
   and {
     d_out.proposal_id == d_in.proposal_id,
     d_out.weight_param_ref == d_in.weight_param_ref,

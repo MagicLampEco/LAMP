@@ -223,6 +223,14 @@ fn book_mem(b: Book, k: Int) -> List<Proof> {
         fx.s0_mem_k4()
       } else if k == 5 {
         fx.s0_mem_k5()
+      } else if k == 6 {
+        fx.s0_mem_k6()
+      } else if k == 7 {
+        fx.s0_mem_k7()
+      } else if k == 8 {
+        fx.s0_mem_k8()
+      } else if k == 9 {
+        fx.s0_mem_k9()
       } else if k == 10 {
         fx.s0_mem_k10()
       } else if k == 20 {
@@ -243,6 +251,14 @@ fn book_mem(b: Book, k: Int) -> List<Proof> {
         fx.s10k_mem_k4()
       } else if k == 5 {
         fx.s10k_mem_k5()
+      } else if k == 6 {
+        fx.s10k_mem_k6()
+      } else if k == 7 {
+        fx.s10k_mem_k7()
+      } else if k == 8 {
+        fx.s10k_mem_k8()
+      } else if k == 9 {
+        fx.s10k_mem_k9()
       } else if k == 10 {
         fx.s10k_mem_k10()
       } else if k == 20 {
@@ -1009,9 +1025,13 @@ fn lib_force(x: LibIn) -> Bool {
 
 fn lib_run(x: LibIn) -> Bool {
   let wp = wp_of(21)
-  let (dy, _, _, dv, _) = tally_lib.derive_batch(wp, x.votes)
-  let merged =
-    tally_lib.merge_top(x.heap, tally_lib.batch_entries(wp, x.votes), 20)
+  // Y HỆT hình dạng validator từ 2026-09-29: quy đổi lô ĐÚNG MỘT LẦN rồi dùng cho
+  // cả hai bất biến. Bản trước gọi `derive_batch` và `batch_entries` rời nhau, nên
+  // nó đo `vp_raw` HAI LẦN mỗi phiếu — đúng với validator lúc đó, và gấp đôi so với
+  // validator bây giờ.
+  let entries = tally_lib.batch_entries(wp, x.votes)
+  let (dy, _, _, dv, _) = tally_lib.derive_entries(entries)
+  let merged = tally_lib.merge_top(x.heap, entries, 20)
   dy >= 0 && dv >= 0 && list.length(merged) == 20
 }
 
@@ -1547,5 +1567,506 @@ test h0_e05_s0_on_votes() {
 
 test h0_e05_s0_on_nl() {
   let s = scn_h(S0, 5, True, bft, 0)
+  force(s) && run_nl(s)
+}
+
+// ========================================================
+// Bổ sung 2026-09-29 — k ∈ {6..9} (heap đầy) và k ∈ {6..10} (heap RỖNG).
+// Sau lượt tối ưu mem (bỏ D8 ở đường nóng · lát cắt TallyDatum · một lần quy đổi
+// VP), trần lô rơi vào vùng này. Trần ExUnit phải là số ĐO ở LÂN CẬN trần, không
+// phải nghiệm của một đường khớp trên vùng k nhỏ.
+// ========================================================
+
+test e06_s0_off_base() {
+  force(scn_h(S0, 6, False, bft, bft - 1))
+}
+
+test e06_s0_off_tally() {
+  let s = scn_h(S0, 6, False, bft, bft - 1)
+  force(s) && run_tally(s)
+}
+
+test e06_s0_off_votes() {
+  let s = scn_h(S0, 6, False, bft, bft - 1)
+  force(s) && run_votes(s)
+}
+
+test e06_s0_off_nl() {
+  let s = scn_h(S0, 6, False, bft, bft - 1)
+  force(s) && run_nl(s)
+}
+
+test e07_s0_off_base() {
+  force(scn_h(S0, 7, False, bft, bft - 1))
+}
+
+test e07_s0_off_tally() {
+  let s = scn_h(S0, 7, False, bft, bft - 1)
+  force(s) && run_tally(s)
+}
+
+test e07_s0_off_votes() {
+  let s = scn_h(S0, 7, False, bft, bft - 1)
+  force(s) && run_votes(s)
+}
+
+test e07_s0_off_nl() {
+  let s = scn_h(S0, 7, False, bft, bft - 1)
+  force(s) && run_nl(s)
+}
+
+test e08_s0_off_base() {
+  force(scn_h(S0, 8, False, bft, bft - 1))
+}
+
+test e08_s0_off_tally() {
+  let s = scn_h(S0, 8, False, bft, bft - 1)
+  force(s) && run_tally(s)
+}
+
+test e08_s0_off_votes() {
+  let s = scn_h(S0, 8, False, bft, bft - 1)
+  force(s) && run_votes(s)
+}
+
+test e08_s0_off_nl() {
+  let s = scn_h(S0, 8, False, bft, bft - 1)
+  force(s) && run_nl(s)
+}
+
+test e09_s0_off_base() {
+  force(scn_h(S0, 9, False, bft, bft - 1))
+}
+
+test e09_s0_off_tally() {
+  let s = scn_h(S0, 9, False, bft, bft - 1)
+  force(s) && run_tally(s)
+}
+
+test e09_s0_off_votes() {
+  let s = scn_h(S0, 9, False, bft, bft - 1)
+  force(s) && run_votes(s)
+}
+
+test e09_s0_off_nl() {
+  let s = scn_h(S0, 9, False, bft, bft - 1)
+  force(s) && run_nl(s)
+}
+
+test e06_s0_on_base() {
+  force(scn_h(S0, 6, True, bft, bft - 1))
+}
+
+test e06_s0_on_tally() {
+  let s = scn_h(S0, 6, True, bft, bft - 1)
+  force(s) && run_tally(s)
+}
+
+test e06_s0_on_votes() {
+  let s = scn_h(S0, 6, True, bft, bft - 1)
+  force(s) && run_votes(s)
+}
+
+test e06_s0_on_nl() {
+  let s = scn_h(S0, 6, True, bft, bft - 1)
+  force(s) && run_nl(s)
+}
+
+test e07_s0_on_base() {
+  force(scn_h(S0, 7, True, bft, bft - 1))
+}
+
+test e07_s0_on_tally() {
+  let s = scn_h(S0, 7, True, bft, bft - 1)
+  force(s) && run_tally(s)
+}
+
+test e07_s0_on_votes() {
+  let s = scn_h(S0, 7, True, bft, bft - 1)
+  force(s) && run_votes(s)
+}
+
+test e07_s0_on_nl() {
+  let s = scn_h(S0, 7, True, bft, bft - 1)
+  force(s) && run_nl(s)
+}
+
+test e08_s0_on_base() {
+  force(scn_h(S0, 8, True, bft, bft - 1))
+}
+
+test e08_s0_on_tally() {
+  let s = scn_h(S0, 8, True, bft, bft - 1)
+  force(s) && run_tally(s)
+}
+
+test e08_s0_on_votes() {
+  let s = scn_h(S0, 8, True, bft, bft - 1)
+  force(s) && run_votes(s)
+}
+
+test e08_s0_on_nl() {
+  let s = scn_h(S0, 8, True, bft, bft - 1)
+  force(s) && run_nl(s)
+}
+
+test e09_s0_on_base() {
+  force(scn_h(S0, 9, True, bft, bft - 1))
+}
+
+test e09_s0_on_tally() {
+  let s = scn_h(S0, 9, True, bft, bft - 1)
+  force(s) && run_tally(s)
+}
+
+test e09_s0_on_votes() {
+  let s = scn_h(S0, 9, True, bft, bft - 1)
+  force(s) && run_votes(s)
+}
+
+test e09_s0_on_nl() {
+  let s = scn_h(S0, 9, True, bft, bft - 1)
+  force(s) && run_nl(s)
+}
+
+test e06_s10k_off_base() {
+  force(scn_h(S10k, 6, False, bft, bft - 1))
+}
+
+test e06_s10k_off_tally() {
+  let s = scn_h(S10k, 6, False, bft, bft - 1)
+  force(s) && run_tally(s)
+}
+
+test e06_s10k_off_votes() {
+  let s = scn_h(S10k, 6, False, bft, bft - 1)
+  force(s) && run_votes(s)
+}
+
+test e06_s10k_off_nl() {
+  let s = scn_h(S10k, 6, False, bft, bft - 1)
+  force(s) && run_nl(s)
+}
+
+test e07_s10k_off_base() {
+  force(scn_h(S10k, 7, False, bft, bft - 1))
+}
+
+test e07_s10k_off_tally() {
+  let s = scn_h(S10k, 7, False, bft, bft - 1)
+  force(s) && run_tally(s)
+}
+
+test e07_s10k_off_votes() {
+  let s = scn_h(S10k, 7, False, bft, bft - 1)
+  force(s) && run_votes(s)
+}
+
+test e07_s10k_off_nl() {
+  let s = scn_h(S10k, 7, False, bft, bft - 1)
+  force(s) && run_nl(s)
+}
+
+test e08_s10k_off_base() {
+  force(scn_h(S10k, 8, False, bft, bft - 1))
+}
+
+test e08_s10k_off_tally() {
+  let s = scn_h(S10k, 8, False, bft, bft - 1)
+  force(s) && run_tally(s)
+}
+
+test e08_s10k_off_votes() {
+  let s = scn_h(S10k, 8, False, bft, bft - 1)
+  force(s) && run_votes(s)
+}
+
+test e08_s10k_off_nl() {
+  let s = scn_h(S10k, 8, False, bft, bft - 1)
+  force(s) && run_nl(s)
+}
+
+test e09_s10k_off_base() {
+  force(scn_h(S10k, 9, False, bft, bft - 1))
+}
+
+test e09_s10k_off_tally() {
+  let s = scn_h(S10k, 9, False, bft, bft - 1)
+  force(s) && run_tally(s)
+}
+
+test e09_s10k_off_votes() {
+  let s = scn_h(S10k, 9, False, bft, bft - 1)
+  force(s) && run_votes(s)
+}
+
+test e09_s10k_off_nl() {
+  let s = scn_h(S10k, 9, False, bft, bft - 1)
+  force(s) && run_nl(s)
+}
+
+test e06_s10k_on_base() {
+  force(scn_h(S10k, 6, True, bft, bft - 1))
+}
+
+test e06_s10k_on_tally() {
+  let s = scn_h(S10k, 6, True, bft, bft - 1)
+  force(s) && run_tally(s)
+}
+
+test e06_s10k_on_votes() {
+  let s = scn_h(S10k, 6, True, bft, bft - 1)
+  force(s) && run_votes(s)
+}
+
+test e06_s10k_on_nl() {
+  let s = scn_h(S10k, 6, True, bft, bft - 1)
+  force(s) && run_nl(s)
+}
+
+test e07_s10k_on_base() {
+  force(scn_h(S10k, 7, True, bft, bft - 1))
+}
+
+test e07_s10k_on_tally() {
+  let s = scn_h(S10k, 7, True, bft, bft - 1)
+  force(s) && run_tally(s)
+}
+
+test e07_s10k_on_votes() {
+  let s = scn_h(S10k, 7, True, bft, bft - 1)
+  force(s) && run_votes(s)
+}
+
+test e07_s10k_on_nl() {
+  let s = scn_h(S10k, 7, True, bft, bft - 1)
+  force(s) && run_nl(s)
+}
+
+test e08_s10k_on_base() {
+  force(scn_h(S10k, 8, True, bft, bft - 1))
+}
+
+test e08_s10k_on_tally() {
+  let s = scn_h(S10k, 8, True, bft, bft - 1)
+  force(s) && run_tally(s)
+}
+
+test e08_s10k_on_votes() {
+  let s = scn_h(S10k, 8, True, bft, bft - 1)
+  force(s) && run_votes(s)
+}
+
+test e08_s10k_on_nl() {
+  let s = scn_h(S10k, 8, True, bft, bft - 1)
+  force(s) && run_nl(s)
+}
+
+test e09_s10k_on_base() {
+  force(scn_h(S10k, 9, True, bft, bft - 1))
+}
+
+test e09_s10k_on_tally() {
+  let s = scn_h(S10k, 9, True, bft, bft - 1)
+  force(s) && run_tally(s)
+}
+
+test e09_s10k_on_votes() {
+  let s = scn_h(S10k, 9, True, bft, bft - 1)
+  force(s) && run_votes(s)
+}
+
+test e09_s10k_on_nl() {
+  let s = scn_h(S10k, 9, True, bft, bft - 1)
+  force(s) && run_nl(s)
+}
+
+test h0_e06_s0_off_base() {
+  force(scn_h(S0, 6, False, bft, 0))
+}
+
+test h0_e06_s0_off_tally() {
+  let s = scn_h(S0, 6, False, bft, 0)
+  force(s) && run_tally(s)
+}
+
+test h0_e06_s0_off_votes() {
+  let s = scn_h(S0, 6, False, bft, 0)
+  force(s) && run_votes(s)
+}
+
+test h0_e06_s0_off_nl() {
+  let s = scn_h(S0, 6, False, bft, 0)
+  force(s) && run_nl(s)
+}
+
+test h0_e07_s0_off_base() {
+  force(scn_h(S0, 7, False, bft, 0))
+}
+
+test h0_e07_s0_off_tally() {
+  let s = scn_h(S0, 7, False, bft, 0)
+  force(s) && run_tally(s)
+}
+
+test h0_e07_s0_off_votes() {
+  let s = scn_h(S0, 7, False, bft, 0)
+  force(s) && run_votes(s)
+}
+
+test h0_e07_s0_off_nl() {
+  let s = scn_h(S0, 7, False, bft, 0)
+  force(s) && run_nl(s)
+}
+
+test h0_e08_s0_off_base() {
+  force(scn_h(S0, 8, False, bft, 0))
+}
+
+test h0_e08_s0_off_tally() {
+  let s = scn_h(S0, 8, False, bft, 0)
+  force(s) && run_tally(s)
+}
+
+test h0_e08_s0_off_votes() {
+  let s = scn_h(S0, 8, False, bft, 0)
+  force(s) && run_votes(s)
+}
+
+test h0_e08_s0_off_nl() {
+  let s = scn_h(S0, 8, False, bft, 0)
+  force(s) && run_nl(s)
+}
+
+test h0_e09_s0_off_base() {
+  force(scn_h(S0, 9, False, bft, 0))
+}
+
+test h0_e09_s0_off_tally() {
+  let s = scn_h(S0, 9, False, bft, 0)
+  force(s) && run_tally(s)
+}
+
+test h0_e09_s0_off_votes() {
+  let s = scn_h(S0, 9, False, bft, 0)
+  force(s) && run_votes(s)
+}
+
+test h0_e09_s0_off_nl() {
+  let s = scn_h(S0, 9, False, bft, 0)
+  force(s) && run_nl(s)
+}
+
+test h0_e10_s0_off_base() {
+  force(scn_h(S0, 10, False, bft, 0))
+}
+
+test h0_e10_s0_off_tally() {
+  let s = scn_h(S0, 10, False, bft, 0)
+  force(s) && run_tally(s)
+}
+
+test h0_e10_s0_off_votes() {
+  let s = scn_h(S0, 10, False, bft, 0)
+  force(s) && run_votes(s)
+}
+
+test h0_e10_s0_off_nl() {
+  let s = scn_h(S0, 10, False, bft, 0)
+  force(s) && run_nl(s)
+}
+
+test h0_e06_s0_on_base() {
+  force(scn_h(S0, 6, True, bft, 0))
+}
+
+test h0_e06_s0_on_tally() {
+  let s = scn_h(S0, 6, True, bft, 0)
+  force(s) && run_tally(s)
+}
+
+test h0_e06_s0_on_votes() {
+  let s = scn_h(S0, 6, True, bft, 0)
+  force(s) && run_votes(s)
+}
+
+test h0_e06_s0_on_nl() {
+  let s = scn_h(S0, 6, True, bft, 0)
+  force(s) && run_nl(s)
+}
+
+test h0_e07_s0_on_base() {
+  force(scn_h(S0, 7, True, bft, 0))
+}
+
+test h0_e07_s0_on_tally() {
+  let s = scn_h(S0, 7, True, bft, 0)
+  force(s) && run_tally(s)
+}
+
+test h0_e07_s0_on_votes() {
+  let s = scn_h(S0, 7, True, bft, 0)
+  force(s) && run_votes(s)
+}
+
+test h0_e07_s0_on_nl() {
+  let s = scn_h(S0, 7, True, bft, 0)
+  force(s) && run_nl(s)
+}
+
+test h0_e08_s0_on_base() {
+  force(scn_h(S0, 8, True, bft, 0))
+}
+
+test h0_e08_s0_on_tally() {
+  let s = scn_h(S0, 8, True, bft, 0)
+  force(s) && run_tally(s)
+}
+
+test h0_e08_s0_on_votes() {
+  let s = scn_h(S0, 8, True, bft, 0)
+  force(s) && run_votes(s)
+}
+
+test h0_e08_s0_on_nl() {
+  let s = scn_h(S0, 8, True, bft, 0)
+  force(s) && run_nl(s)
+}
+
+test h0_e09_s0_on_base() {
+  force(scn_h(S0, 9, True, bft, 0))
+}
+
+test h0_e09_s0_on_tally() {
+  let s = scn_h(S0, 9, True, bft, 0)
+  force(s) && run_tally(s)
+}
+
+test h0_e09_s0_on_votes() {
+  let s = scn_h(S0, 9, True, bft, 0)
+  force(s) && run_votes(s)
+}
+
+test h0_e09_s0_on_nl() {
+  let s = scn_h(S0, 9, True, bft, 0)
+  force(s) && run_nl(s)
+}
+
+test h0_e10_s0_on_base() {
+  force(scn_h(S0, 10, True, bft, 0))
+}
+
+test h0_e10_s0_on_tally() {
+  let s = scn_h(S0, 10, True, bft, 0)
+  force(s) && run_tally(s)
+}
+
+test h0_e10_s0_on_votes() {
+  let s = scn_h(S0, 10, True, bft, 0)
+  force(s) && run_votes(s)
+}
+
+test h0_e10_s0_on_nl() {
+  let s = scn_h(S0, 10, True, bft, 0)
   force(s) && run_nl(s)
 }

@@ -24,7 +24,9 @@ import { nullifierName } from "../offchain/src/names.js";
 import type { MpfProof, TallyDatum } from "../offchain/src/types.js";
 import { VOTED_ROOT_EMPTY, proofFromLibrary } from "../offchain/src/votedLedger.js";
 
-const KS = [1, 2, 3, 4, 5, 10, 20, 40] as const;
+// k = 6..9 thêm 2026-09-29: sau lượt tối ưu mem, trần lô rơi vào vùng đó, và trần
+// ExUnit phải là số ĐO ở lân cận trần — không phải nghiệm của một đường khớp.
+const KS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 20, 40] as const;
 const K_MAX = 40;
 const SETS = [{ name: "s0", prefill: 0 }, { name: "s10k", prefill: 10_000 }] as const;
 const OUT = resolve(__dirname, "../onchain/validators/exunit_fixtures.ak");
