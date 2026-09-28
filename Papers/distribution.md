@@ -34,8 +34,8 @@ Xem bảng đầy đủ ở `pot-catalog.md §1`. Tóm tắt theo **cơ chế nh
 | **Khoá vĩnh viễn (chưa-mint tới khi lập pháp nhân)** | Foundation | 1.296.000 |
 
 Tổng = 21.707.857 + 1.001.000 + 492.000 + 9.630.000 + 1.873.143 + 1.296.000 = **36.000.000 nghìn** ✓.
-Foundation **không drip** ra lưu hành — minted rồi **khoá gốc vĩnh viễn** sau khi lập pháp nhân; cách khoá,
-và liệu LAMP đó có nằm trong một vault-DID để gen MAGIC hay không, công bố cùng lúc lập pháp nhân (§4).
+Foundation **không drip** ra lưu hành — minted rồi **khoá gốc vĩnh viễn** sau khi lập pháp nhân: LAMP nằm
+trong két của DID Foundation, khoá số dư, nên vẫn gen MAGIC (§4); cơ chế khoá hiện thực cùng lúc lập pháp nhân.
 Pháp nhân Foundation đặt ở **nước ngoài**, do cộng đồng DAO hình thành từ đợt Airdrop lập ra; trạng thái các điểm
 còn mở ở `Papers/pot-catalog.md`, mục "Cổng pháp lý theo pot", dòng `PHAP-NHAN-001`.
 
@@ -99,14 +99,13 @@ Một pot gen MAGIC ⟺ LAMP của nó **đã nằm trong một vault-DID**. Lu�
 
 | Mức | Pot | LAMP nằm ở vault-DID nào |
 |---|---|---|
-| 🏛️ **Tổ chức/Platform** | Aladin, GreenSun, Platform, App, Join LampNet→LampNet, Referrer→AffiSo, PhoenixKey→PhoenixKey-DID, Foundation | vault **OrgDID / Platform-DID** (giữ/khoá ở đó → gen, kể cả phần khoá); **riêng Foundation — áp dụng khi cách khoá công bố lúc lập pháp nhân cho phép LAMP nằm trong vault-DID** |
+| 🏛️ **Tổ chức/Platform** | Aladin, GreenSun, Platform, App, Join LampNet→LampNet, Referrer→AffiSo, PhoenixKey→PhoenixKey-DID, Foundation | vault **OrgDID / Platform-DID** (giữ/khoá ở đó → gen, kể cả phần khoá); **riêng Foundation — khoá số dư trong két DID Foundation, vẫn gen** |
 | 👤 **User** | Development, Partnership | kênh phân phối (KHÔNG phải vault-DID) → CHỈ gen khi **claim về vault DID người dùng** |
 | 👤 **User (Wakeme)** | Wakeme | LAMP đã khoá sẵn trong két theo **PersonDID** ngay từ đầu, không rời két ra ví → tính là nằm trong vault gắn DID cá nhân |
 | ❌ **Không** | Reserve, Treasury, ETD, Airdrop, SRCL, RedBack, Liquidity | không ở vault-DID nào (chưa-mint LAMP / parked / LP / hết sớm) |
 
-**Triết lý tầng tổ chức:** Foundation khoá gốc vĩnh viễn sau khi lập pháp nhân — cách khoá, và việc LAMP
-đó có nằm trong vault-DID để gen MAGIC hay không, công bố cùng lúc lập pháp nhân (xem §3 pot 9,
-`pot-catalog.md`); founder khoá dài hạn cần nguồn thu R&D → LAMP ở OrgDID công ty gen MAGIC về công ty;
+**Triết lý tầng tổ chức:** Foundation khoá gốc vĩnh viễn sau khi lập pháp nhân — LAMP nằm trong két DID
+Foundation, khoá số dư, nên vẫn gen MAGIC (xem §3 pot 9, `pot-catalog.md`); founder khoá dài hạn cần nguồn thu R&D → LAMP ở OrgDID công ty gen MAGIC về công ty;
 Platform/App ở Platform-DID, MAGIC chia cho DID **theo lượng tiêu thụ** (khuyến khích build); Join
 LampNet/Referrer/PhoenixKey uỷ thác toàn bộ vào Platform-DID (LampNet/AffiSo/PhoenixKey).
 

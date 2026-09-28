@@ -101,7 +101,7 @@ Quản trị MagicLamp dựa trên **cá nhân**, không phải số LAMP nắm 
 
 ## 7. Phân bổ — 18 pot (tổng 36 tỷ)
 
-Phân bổ chia 18 "pot" (mục đích). Đặc điểm: pot đội ngũ (Aladin, GreenSun) đi **đúng engine CappedDrop như pot cộng đồng** — cùng công thức trần tích luỹ, cùng phép cắt ngọn, không có nhánh tắt riêng; tham số nhịp của từng pot nằm trên chuỗi, đọc lại được, công bố khi phát hành — không ai xả sạch ngày đầu. Pot Foundation khoá gốc vĩnh viễn sau khi lập pháp nhân; cách khoá công bố cùng lúc lập pháp nhân. Chi tiết con số: xem `Papers/pot-catalog.md` §1.
+Phân bổ chia 18 "pot" (mục đích). Đặc điểm: pot đội ngũ (Aladin, GreenSun) đi **đúng engine CappedDrop như pot cộng đồng** — cùng công thức trần tích luỹ, cùng phép cắt ngọn, không có nhánh tắt riêng; tham số nhịp của từng pot nằm trên chuỗi, đọc lại được, công bố khi phát hành — không ai xả sạch ngày đầu. Pot Foundation khoá gốc vĩnh viễn sau khi lập pháp nhân: LAMP nằm trong két của DID Foundation và bị khoá số dư (không rút gốc), nên vẫn sinh MAGIC như LAMP của các tổ chức khác; cơ chế khoá được hiện thực cùng lúc lập pháp nhân. Chi tiết con số: xem `Papers/pot-catalog.md` §1.
 
 ## 8. Kho & cơ chế chống lạm quyền (A-DEST)
 
@@ -168,7 +168,7 @@ thể bị rút sạch.
   cả hai.
 - Quyền biểu quyết **không theo số token nắm giữ** (xem §6) — nắm nhiều token không mua được quyền lực.
 - MAGIC tiêu-thụ (không chuyển nhượng) củng cố định vị tiện ích.
-- Pháp nhân phát hành: **GreenSun Tech Inc** (Việt Nam).
+- Pháp nhân phát hành: **GreenSun Tech** (Việt Nam).
 
 ## 11. Vì sao bản khởi tạo đúc đủ quota rồi khoá lại, thay vì để lửng
 
@@ -261,7 +261,7 @@ khắc). Mỗi lần mint đều làm tăng `dist_minted`/`reserve_minted` trong
 52. **Đội ngũ giữ bao nhiêu?** 2 cty sáng lập mỗi bên 6 tỷ; chi tiết ở `Papers/pot-catalog.md` §1.
 53. **Đội ngũ có xả token ngay được không?** Không — pot đội ngũ nhỏ giọt on-chain (CappedDrop), ràng buộc theo epoch.
 54. **"Nhỏ giọt ngang cộng đồng" nghĩa là gì?** Đội ngũ đi đúng engine CappedDrop như pot cộng đồng — cùng công thức trần tích luỹ, cùng phép cắt ngọn — không có nhánh tắt hay đặc quyền xả sớm; tham số nhịp riêng của từng pot công bố khi phát hành.
-55. **Pot Foundation là gì?** Quỹ vận hành dài hạn; khoá gốc vĩnh viễn sau khi lập pháp nhân (không rút gốc). Cách khoá — và liệu LAMP đó có sinh MAGIC hay không — công bố cùng lúc lập pháp nhân.
+55. **Pot Foundation là gì?** Quỹ vận hành dài hạn; khoá gốc vĩnh viễn sau khi lập pháp nhân (không rút gốc). Cách khoá: LAMP nằm trong két của DID Foundation và bị khoá số dư, nên vẫn sinh MAGIC; cơ chế khoá được hiện thực cùng lúc lập pháp nhân.
 56. **Có vesting/cliff cho đội ngũ không?** Cơ chế nhỏ giọt theo tham số (tốc độ/cliff) công bố công khai.
 57. **Cộng đồng nhận LAMP bằng cách nào?** Qua các pot cộng đồng (Airdrop, SRCL, delegator…) theo tiêu chí công khai.
 58. **Airdrop cho ai?** Theo danh sách/tiêu chí công bố; nhỏ giọt theo epoch. Mục đích chính của đợt này **không phải phân phối token** mà là **tạo ra cộng đồng DAO** — tập hợp đủ người nhận việc vận hành để lập MagicLamp Foundation (câu 99). Phân phối là phương tiện, không phải đích.
