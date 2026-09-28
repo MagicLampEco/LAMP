@@ -6,38 +6,28 @@
 //   did_nft_policy    : policy id DID NFT (chủ DID phải mang để Use).
 //   lamp_policy       : policy id tLAMP.
 //   lamp_name         : asset name tLAMP.
-//   ms_per_epoch      : ms mỗi epoch.
+//   ms_per_epoch      : ms mỗi cửa sổ.
+// Validator này KHÔNG ôm hash của pool (nhận diện pool bằng POOL NFT) ⇒ nó đứng
+// TRƯỚC `faucet_pool` trong dãy áp tham số, và dãy đó acyclic.
 //
-// Datum: FaucetAccount{did_name, last_epoch}.
+// Datum: FaucetAccount{did_name, last_claim_epoch, last_touch_epoch}.
+// HAI mốc, hai nghĩa — gộp làm một là một lỗ: `Use` gia hạn mốc idle, và nếu đó
+// cũng là mốc cooldown thì ai dùng tLAMP đúng cách lại bị đẩy cooldown ra xa,
+// còn kẻ chỉ claim rồi bỏ đó thì không chịu gì.
 //
-// ─────────────────────────────────────────────────────────────────────────
-// USE (chủ DID dùng tLAMP test):
-//   - tx có input mang DID NFT (did_nft_policy, did_name) qty ≥1 → chứng minh
-//     quyền sở hữu DID (chủ DID nắm NFT). KHÔNG cần khóa riêng → bám DID NFT,
-//     khớp mô hình DID-gated của Claim.
-//   - account output mang ACCT NFT, did_name BẤT BIẾN, last_epoch cập nhật = now
-//     (gia hạn idle → tránh bị reclaim). KHÔNG truy đòi pool (độc lập).
-//   - C-ACCT-ADDR-1 acct_out.address == acct_in.address (ĐỊA CHỈ ĐẦY ĐỦ —
-//     `count/output_at_script` chỉ so payment credential nên stake credential
-//     của account là trường tự do nếu không ghim).
-//   - C-ACCT-REF-1  acct_out.reference_script == None.
-//
-// RECLAIM IDLE (permissionless thu hồi account chết):
-//   - now ≥ last_epoch + reclaim_epochs → ai cũng spend (KHÔNG cần DID NFT).
-//   - TOÀN BỘ tLAMP của account PHẢI về pool (output mang POOL NFT nhận đủ).
-//     → bảo toàn cung: token idle quay lại pool, không bốc hơi, không vào ví keeper.
-//   - C-ACCT-POOLADDR-1 pool_out.address == pool_in.address. `output_with_nft`
-//     định vị pool_out thuần bằng POOL NFT; không ghim thì keeper trả đủ token
-//     nhưng đưa kho sang ví mình. KHÔNG trông vào `faucet_pool` ép hộ: validator
-//     đó chỉ chạy khi pool CÒN ở script pool.
-//   - ACCT NFT có thể burn hoặc gửi đâu tùy (không ràng buộc — pool nhận token là đủ).
+// THÂN của handler nằm ở `lib/magiclamp/faucet/handlers.ak` → `account_spend`
+// (kèm toàn bộ chốt C-USE-* / C-TOP-* / C-BURN-*). Lý do tách: Aiken không xuất
+// handler của validator ra ngoài module, mà lớp ca kiểm "hai validator một tx"
+// bắt buộc phải gọi được nó từ `faucet_pool.ak`. Xem đầu `handlers.ak`.
 
+use aiken/collection/list
 use aiken/interval
 use cardano/assets
-use cardano/transaction.{InlineDatum, Input, Output, OutputReference,
-  Transaction, placeholder}
+use cardano/transaction.{Input, Output, OutputReference, Transaction, placeholder}
+use magiclamp/faucet/handlers
 use magiclamp/faucet/ledger.{
-  AccountRedeemer, FaucetAccount, ReclaimIdle, Use, acct_nft_name, pool_nft_name,
+  AccountRedeemer, FaucetAccount, FaucetConfig, PoolDatum, ReclaimIdle, TopUp,
+  Use, acct_name, pool_nft_name,
 }
 use magiclamp/faucet/util
 
@@ -54,105 +44,17 @@ validator faucet_account(
     own_ref: OutputReference,
     tx: Transaction,
   ) {
-    expect Some(acct) = datum_opt
-    let own_addr = util.own_address(own_ref, tx.inputs)
-    let own_hash = util.own_script_hash(own_addr)
-
-    // Đúng 1 account input + 1 account output (theo SCRIPT HASH) — chống
-    // double-satisfaction qua stake credential.
-    expect util.count_inputs_at_script(tx.inputs, own_hash) == 1
-    let acct_in = util.input_at_script(tx.inputs, own_hash)
-
-    let now = util.get_epoch(tx, ms_per_epoch)
-    let acct_lamp = assets.quantity_of(acct_in.value, lamp_policy, lamp_name)
-
-    when redeemer is {
-      // ── USE (chủ DID gia hạn + dùng tLAMP) ─────────────────────────────
-      Use -> {
-        // đúng 1 account output cùng script.
-        expect util.count_outputs_at_script(tx.outputs, own_hash) == 1
-        let acct_out = util.output_at_script(tx.outputs, own_hash)
-
-        // ── C-ACCT-ADDR-1: acct_out ở ĐÚNG địa chỉ của acct_in ─────────────
-        // `count_outputs_at_script`/`output_at_script` chỉ so PAYMENT credential ⇒
-        // phần stake credential của account là trường TỰ DO mà không dòng nào canh:
-        // cùng script hash + khác stake credential = Address khác nhưng cùng
-        // validator. Hệ quả: phần thưởng uỷ quyền trên ADA của account chảy về khoá
-        // stake kẻ dựng tx, và địa chỉ bech32 của account đổi sau mỗi lượt Use nên
-        // bên index theo địa chỉ mất dấu. Ghim bởi `use_acct_out_stake_hijack`.
-        expect acct_out.address == acct_in.address
-
-        // ── C-ACCT-REF-1: account KHÔNG biến thành script-carrier ──────────
-        // Ghim bởi `use_acct_out_script_carrier`.
-        expect acct_out.reference_script == None
-
-        expect InlineDatum(od) = acct_out.datum
-        expect out_acct: FaucetAccount = od
-
-        // Chủ DID: tx mang DID NFT (did_nft_policy, acct.did_name) qty ≥1.
-        expect
-          util.count_inputs_with_nft(tx.inputs, did_nft_policy, acct.did_name) >= 1
-
-        // did_name bất biến; last_epoch cập nhật = now (gia hạn idle).
-        expect out_acct.did_name == acct.did_name
-        expect out_acct.last_epoch == now
-
-        // ACCT NFT ở lại account; account giữ ≥ tLAMP cũ trừ phần đã tiêu hợp lệ?
-        // CHỐT đơn giản: account KHÔNG được tăng tLAMP một cách lén (chống bơm),
-        // nhưng cho phép GIẢM (chủ DID rút ra dùng). Chỉ ép: ACCT NFT vẫn trên
-        // account_out + tLAMP_out ≤ tLAMP_in (không tự bơm), và ≥ 0.
-        expect util.has_nft(acct_out, faucet_nft_policy, acct_nft_name)
-        let out_lamp = assets.quantity_of(acct_out.value, lamp_policy, lamp_name)
-        expect out_lamp >= 0
-        expect out_lamp <= acct_lamp
-        True
-      }
-
-      // ── RECLAIM IDLE (permissionless) ──────────────────────────────────
-      ReclaimIdle -> {
-        // Idle đủ lâu: now ≥ last_epoch + reclaim_epochs_const. Dùng hằng
-        // compile-time (= FaucetConfig.reclaim_epochs chuẩn 1001) để keeper KHÔNG
-        // phải đọc FaucetConfig của pool khi thu hồi → ít reference input, đơn giản.
-        expect now >= acct.last_epoch + reclaim_epochs_const
-
-        // POOL phải có mặt trong tx (đúng 1 POOL input + 1 POOL output): pool
-        // validator Reclaim chạy cùng tx, ép value bảo toàn (POOL NFT + ADA ở lại).
-        expect
-          util.count_inputs_with_nft(tx.inputs, faucet_nft_policy, pool_nft_name) == 1
-        expect
-          util.count_outputs_with_nft(tx.outputs, faucet_nft_policy, pool_nft_name) == 1
-        let pool_in =
-          util.input_with_nft(tx.inputs, faucet_nft_policy, pool_nft_name)
-        let pool_out =
-          util.output_with_nft(tx.outputs, faucet_nft_policy, pool_nft_name)
-
-        // ── C-ACCT-POOLADDR-1: pool_out ở ĐÚNG địa chỉ của pool_in ─────────
-        // `output_with_nft` định vị pool_out THUẦN bằng POOL NFT — không nói gì về
-        // nơi đến. Đây KHÔNG phải kiểm trùng với `faucet_pool` C-POOL-OUT-1: dòng
-        // bên kia chỉ chạy khi pool CÒN ở script pool. Nếu POOL NFT đã lạc ra ví
-        // (hoặc lạc lúc deploy), `faucet_pool.spend` không được gọi và nhánh này là
-        // cổng DUY NHẤT còn đứng. POOL NFT one-shot (`faucet_nft.ak` MintPool tiêu
-        // genesis_ref, MintAccount cấm đụng POOL NFT) ⇒ mất chỗ là mất vĩnh viễn.
-        // Ghim bởi `reclaim_idle_pool_to_wallet` · `reclaim_idle_pool_stake_hijack`.
-        //
-        // KHÔNG ghim `pool_out.reference_script` ở đây: hình dạng của UTxO pool là
-        // thẩm quyền của `faucet_pool` (C-POOL-OUT-2), chép lại là dựng bản sao sẽ
-        // trôi. Ghim địa chỉ thì khác — nó trả lời đúng câu "validator pool có chạy
-        // hay không", câu mà bên kia theo định nghĩa không tự trả lời được.
-        expect pool_out.address == pool_in.address
-
-        // TOÀN BỘ tLAMP account PHẢI về pool: Δ pool tLAMP ≥ acct_lamp. So sánh
-        // DELTA (out − in) chứ không so tuyệt đối → keeper không thể "đếm sẵn"
-        // tLAMP có sẵn trong pool để né. Bảo toàn cung: token idle → pool, KHÔNG
-        // bốc hơi, KHÔNG vào ví keeper.
-        let pool_lamp_in =
-          assets.quantity_of(pool_in.value, lamp_policy, lamp_name)
-        let pool_lamp_out =
-          assets.quantity_of(pool_out.value, lamp_policy, lamp_name)
-        expect pool_lamp_out - pool_lamp_in >= acct_lamp
-        True
-      }
-    }
+    handlers.account_spend(
+      faucet_nft_policy,
+      did_nft_policy,
+      lamp_policy,
+      lamp_name,
+      ms_per_epoch,
+      datum_opt,
+      redeemer,
+      own_ref,
+      tx,
+    )
   }
 
   else(_) {
@@ -160,10 +62,6 @@ validator faucet_account(
   }
 }
 
-/// Ngưỡng reclaim (epoch) — hằng protocol = 1001. Account dùng hằng compile-time
-/// để keeper KHÔNG phải đọc FaucetConfig của pool khi thu hồi (đơn giản, ít
-/// reference input). Khớp FaucetConfig.reclaim_epochs chuẩn = 1001.
-const reclaim_epochs_const: Int = 1001
 
 // ══════════════════════════════════════════════════════════════
 // Validator tests (mock Transaction)
@@ -185,16 +83,40 @@ const fa_ms_per_epoch: Int = 432_000_000
 
 const fa_drip: Int = 1_001_000_000
 
+const fa_cooldown: Int = 36
+
+const fa_max_claims: Int = 20
+
 const fa_did_name: ByteArray = #"a11ce0"
 
-fn fa_acct_datum(name: ByteArray, ep: Int) -> FaucetAccount {
-  FaucetAccount { did_name: name, last_epoch: ep }
+const fa_other_did: ByteArray = #"b0b0b0"
+
+const fa_thief_pkh: ByteArray = #"a77ac6"
+
+fn fa_acct_datum(name: ByteArray, claim_ep: Int, touch_ep: Int) -> FaucetAccount {
+  FaucetAccount {
+    did_name: name,
+    last_claim_epoch: claim_ep,
+    last_touch_epoch: touch_ep,
+  }
 }
 
-/// account value: lovelace + ACCT NFT + tLAMP.
-fn fa_acct_val(lovelace: Int, tlamp: Int) -> assets.Value {
+fn fa_cfg() -> FaucetConfig {
+  FaucetConfig {
+    drip_oildrop: fa_drip,
+    cooldown_epochs: fa_cooldown,
+    max_claims_per_window: fa_max_claims,
+  }
+}
+
+fn fa_pool_datum(window: Int, claims: Int) -> PoolDatum {
+  PoolDatum { cfg: fa_cfg(), window_epoch: window, claims_in_window: claims }
+}
+
+/// account value: lovelace + ACCT NFT (tên neo vào DID) + tLAMP.
+fn fa_acct_val(name: ByteArray, lovelace: Int, tlamp: Int) -> assets.Value {
   assets.from_lovelace(lovelace)
-    |> assets.add(fa_nft_policy, acct_nft_name, 1)
+    |> assets.add(fa_nft_policy, acct_name(name), 1)
     |> assets.add(fa_lamp_policy, fa_lamp_name, tlamp)
 }
 
@@ -209,76 +131,449 @@ fn fa_did_val(name: ByteArray) -> assets.Value {
   assets.from_lovelace(2_000_000) |> assets.add(fa_did_policy, name, 1)
 }
 
+fn fa_did_input(name: ByteArray) -> Input {
+  util.mk_input(
+    util.mk_ref(7),
+    util.mk_output_no_datum(util.vk_address(#"c1"), fa_did_val(name)),
+  )
+}
+
+/// validity range NEO: cả hai cận trong CÙNG bucket `epoch` (hợp đồng của
+/// `get_epoch_pinned`).
 fn fa_tx_at(epoch: Int, base: Transaction) -> Transaction {
-  let ms = epoch * fa_ms_per_epoch
-  Transaction { ..base, validity_range: interval.entirely_after(ms) }
+  let lo = epoch * fa_ms_per_epoch
+  Transaction {
+    ..base,
+    validity_range: interval.between(lo, lo + fa_ms_per_epoch - 1),
+  }
+}
+
+/// validity range KHÔNG neo (cận trên vô hạn) — chỉ dùng cho ca âm.
+fn fa_tx_open(epoch: Int, base: Transaction) -> Transaction {
+  let lo = epoch * fa_ms_per_epoch
+  Transaction { ..base, validity_range: interval.entirely_after(lo) }
+}
+
+fn fa_mint(name: ByteArray, qty: Int) -> assets.Value {
+  assets.zero |> assets.add(fa_nft_policy, acct_name(name), qty)
 }
 
 // ── USE tests ────────────────────────────────────────────────────
+// Một builder dùng chung cho ca dương và mọi ca âm: hai cực chỉ khác đúng
+// trường đang kiểm.
 
-test use_happy_updates_epoch() {
+fn use_tx(
+  now: Int,
+  in_claim: Int,
+  in_touch: Int,
+  out_claim: Int,
+  out_touch: Int,
+  out_tlamp: Int,
+) -> Transaction {
   let acct_addr = util.script_address(fa_acct_sh)
   let acct_in =
-    util.mk_input(util.mk_ref(0), util.mk_output(acct_addr, fa_acct_val(2_000_000, fa_drip), fa_acct_datum(fa_did_name, 100)))
+    util.mk_input(
+      util.mk_ref(0),
+      util.mk_output(
+        acct_addr,
+        fa_acct_val(fa_did_name, 2_000_000, fa_drip),
+        fa_acct_datum(fa_did_name, in_claim, in_touch),
+      ),
+    )
   let acct_out =
-    util.mk_output(acct_addr, fa_acct_val(2_000_000, fa_drip), fa_acct_datum(fa_did_name, 150))
-  let did_in =
-    util.mk_input(util.mk_ref(7), util.mk_output_no_datum(util.vk_address(#"c1"), fa_did_val(fa_did_name)))
-  let base = Transaction { ..placeholder, inputs: [acct_in, did_in], outputs: [acct_out] }
-  let tx = fa_tx_at(150, base)
-  faucet_account.spend(
-    fa_nft_policy, fa_did_policy, fa_lamp_policy, fa_lamp_name, fa_ms_per_epoch,
-    Some(fa_acct_datum(fa_did_name, 100)), Use, util.mk_ref(0), tx,
+    util.mk_output(
+      acct_addr,
+      fa_acct_val(fa_did_name, 2_000_000, out_tlamp),
+      fa_acct_datum(fa_did_name, out_claim, out_touch),
+    )
+  fa_tx_at(
+    now,
+    Transaction {
+      ..placeholder,
+      inputs: [acct_in, fa_did_input(fa_did_name)],
+      outputs: [acct_out],
+    },
   )
+}
+
+fn use_run(datum: FaucetAccount, tx: Transaction) -> Bool {
+  faucet_account.spend(
+    fa_nft_policy,
+    fa_did_policy,
+    fa_lamp_policy,
+    fa_lamp_name,
+    fa_ms_per_epoch,
+    Some(datum),
+    Use,
+    util.mk_ref(0),
+    tx,
+  )
+}
+
+test use_happy() {
+  let tx = use_tx(150, 100, 100, 100, 150, fa_drip)
+  use_run(fa_acct_datum(fa_did_name, 100, 100), tx)
+}
+
+/// Ca dương song sinh của `use_doi_last_claim_epoch`: gia hạn idle mà KHÔNG đụng
+/// mốc cooldown thì phải xanh.
+test use_gia_han_khong_doi_cooldown() {
+  let tx = use_tx(400, 100, 380, 100, 400, fa_drip - 1)
+  use_run(fa_acct_datum(fa_did_name, 100, 380), tx)
 }
 
 test use_no_did_nft() fail {
-  // Use mà không có DID NFT → reject (chỉ chủ DID mới được dùng).
   let acct_addr = util.script_address(fa_acct_sh)
   let acct_in =
-    util.mk_input(util.mk_ref(0), util.mk_output(acct_addr, fa_acct_val(2_000_000, fa_drip), fa_acct_datum(fa_did_name, 100)))
+    util.mk_input(
+      util.mk_ref(0),
+      util.mk_output(
+        acct_addr,
+        fa_acct_val(fa_did_name, 2_000_000, fa_drip),
+        fa_acct_datum(fa_did_name, 100, 100),
+      ),
+    )
   let acct_out =
-    util.mk_output(acct_addr, fa_acct_val(2_000_000, fa_drip), fa_acct_datum(fa_did_name, 150))
-  let base = Transaction { ..placeholder, inputs: [acct_in], outputs: [acct_out] }
-  let tx = fa_tx_at(150, base)
-  faucet_account.spend(
-    fa_nft_policy, fa_did_policy, fa_lamp_policy, fa_lamp_name, fa_ms_per_epoch,
-    Some(fa_acct_datum(fa_did_name, 100)), Use, util.mk_ref(0), tx,
-  )
+    util.mk_output(
+      acct_addr,
+      fa_acct_val(fa_did_name, 2_000_000, fa_drip),
+      fa_acct_datum(fa_did_name, 100, 150),
+    )
+  let tx =
+    fa_tx_at(
+      150,
+      Transaction { ..placeholder, inputs: [acct_in], outputs: [acct_out] },
+    )
+  use_run(fa_acct_datum(fa_did_name, 100, 100), tx)
 }
 
 test use_epoch_not_now() fail {
-  // last_epoch out ≠ now → reject.
+  // out.last_touch_epoch ≠ now → C-USE-TOUCH-1.
+  let tx = use_tx(150, 100, 100, 100, 999, fa_drip)
+  use_run(fa_acct_datum(fa_did_name, 100, 100), tx)
+}
+
+/// C-USE-MONO-1: mốc idle LÙI về quá khứ. Không có dòng đó, mốc idle tụt và
+/// account bị thu hồi sớm hơn chủ DID tưởng.
+test use_lui_moc_ve_qua_khu() fail {
+  let tx = use_tx(150, 100, 200, 100, 150, fa_drip)
+  use_run(fa_acct_datum(fa_did_name, 100, 200), tx)
+}
+
+/// C-USE-CLAIMFIX-1: `Use` đẩy mốc COOLDOWN lên now ⇒ cooldown bị reset/né.
+test use_doi_last_claim_epoch() fail {
+  let tx = use_tx(150, 100, 100, 150, 150, fa_drip)
+  use_run(fa_acct_datum(fa_did_name, 100, 100), tx)
+}
+
+/// C-USE-EPOCH-1: cận trên vô hạn ⇒ `now` do người dựng tx chọn.
+test use_upper_bound_vo_han() fail {
   let acct_addr = util.script_address(fa_acct_sh)
   let acct_in =
-    util.mk_input(util.mk_ref(0), util.mk_output(acct_addr, fa_acct_val(2_000_000, fa_drip), fa_acct_datum(fa_did_name, 100)))
+    util.mk_input(
+      util.mk_ref(0),
+      util.mk_output(
+        acct_addr,
+        fa_acct_val(fa_did_name, 2_000_000, fa_drip),
+        fa_acct_datum(fa_did_name, 100, 100),
+      ),
+    )
   let acct_out =
-    util.mk_output(acct_addr, fa_acct_val(2_000_000, fa_drip), fa_acct_datum(fa_did_name, 999))
-  let did_in =
-    util.mk_input(util.mk_ref(7), util.mk_output_no_datum(util.vk_address(#"c1"), fa_did_val(fa_did_name)))
-  let base = Transaction { ..placeholder, inputs: [acct_in, did_in], outputs: [acct_out] }
-  let tx = fa_tx_at(150, base)
-  faucet_account.spend(
-    fa_nft_policy, fa_did_policy, fa_lamp_policy, fa_lamp_name, fa_ms_per_epoch,
-    Some(fa_acct_datum(fa_did_name, 100)), Use, util.mk_ref(0), tx,
-  )
+    util.mk_output(
+      acct_addr,
+      fa_acct_val(fa_did_name, 2_000_000, fa_drip),
+      fa_acct_datum(fa_did_name, 100, 150),
+    )
+  let tx =
+    fa_tx_open(
+      150,
+      Transaction {
+        ..placeholder,
+        inputs: [acct_in, fa_did_input(fa_did_name)],
+        outputs: [acct_out],
+      },
+    )
+  use_run(fa_acct_datum(fa_did_name, 100, 100), tx)
 }
 
 test use_self_inflate_tlamp() fail {
   // account_out tLAMP > in → bơm token vào account → reject.
+  let tx = use_tx(150, 100, 100, 100, 150, fa_drip + 1)
+  use_run(fa_acct_datum(fa_did_name, 100, 100), tx)
+}
+
+/// C-USE-NAME-1: acct_out mang ACCT NFT của DID KHÁC (tên không khớp datum).
+test use_acct_out_name_khac_did() fail {
   let acct_addr = util.script_address(fa_acct_sh)
   let acct_in =
-    util.mk_input(util.mk_ref(0), util.mk_output(acct_addr, fa_acct_val(2_000_000, fa_drip), fa_acct_datum(fa_did_name, 100)))
+    util.mk_input(
+      util.mk_ref(0),
+      util.mk_output(
+        acct_addr,
+        fa_acct_val(fa_did_name, 2_000_000, fa_drip),
+        fa_acct_datum(fa_did_name, 100, 100),
+      ),
+    )
   let acct_out =
-    util.mk_output(acct_addr, fa_acct_val(2_000_000, fa_drip + 1), fa_acct_datum(fa_did_name, 150))
-  let did_in =
-    util.mk_input(util.mk_ref(7), util.mk_output_no_datum(util.vk_address(#"c1"), fa_did_val(fa_did_name)))
-  let base = Transaction { ..placeholder, inputs: [acct_in, did_in], outputs: [acct_out] }
-  let tx = fa_tx_at(150, base)
-  faucet_account.spend(
-    fa_nft_policy, fa_did_policy, fa_lamp_policy, fa_lamp_name, fa_ms_per_epoch,
-    Some(fa_acct_datum(fa_did_name, 100)), Use, util.mk_ref(0), tx,
+    util.mk_output(
+      acct_addr,
+      fa_acct_val(fa_other_did, 2_000_000, fa_drip),
+      fa_acct_datum(fa_did_name, 100, 150),
+    )
+  let tx =
+    fa_tx_at(
+      150,
+      Transaction {
+        ..placeholder,
+        inputs: [acct_in, fa_did_input(fa_did_name)],
+        outputs: [acct_out],
+      },
+    )
+  use_run(fa_acct_datum(fa_did_name, 100, 100), tx)
+}
+
+/// C-USE-2: `Use` đúc thêm một ACCT NFT cùng tên.
+test use_mint_them_acct() fail {
+  let tx = use_tx(150, 100, 100, 100, 150, fa_drip)
+  let tx2 = Transaction { ..tx, mint: fa_mint(fa_did_name, 1) }
+  use_run(fa_acct_datum(fa_did_name, 100, 100), tx2)
+}
+
+/// C-USE-2: `Use` đốt ACCT NFT (thoát khỏi script mà không qua ReclaimIdle).
+test use_burn_acct() fail {
+  let tx = use_tx(150, 100, 100, 100, 150, fa_drip)
+  let tx2 = Transaction { ..tx, mint: fa_mint(fa_did_name, -1) }
+  use_run(fa_acct_datum(fa_did_name, 100, 100), tx2)
+}
+
+/// C-USE-NOPOOL-1: tx có POOL NFT input (đường mà A2 đi qua).
+test use_co_pool_input() fail {
+  let acct_addr = util.script_address(fa_acct_sh)
+  let acct_in =
+    util.mk_input(
+      util.mk_ref(0),
+      util.mk_output(
+        acct_addr,
+        fa_acct_val(fa_did_name, 2_000_000, fa_drip),
+        fa_acct_datum(fa_did_name, 100, 100),
+      ),
+    )
+  let acct_out =
+    util.mk_output(
+      acct_addr,
+      fa_acct_val(fa_did_name, 2_000_000, fa_drip),
+      fa_acct_datum(fa_did_name, 100, 150),
+    )
+  let pool_in =
+    util.mk_input(
+      util.mk_ref(1),
+      util.mk_output(
+        util.script_address(fa_pool_sh),
+        fa_pool_val(10_000_000, 5_000_000_000),
+        fa_pool_datum(150, 0),
+      ),
+    )
+  let tx =
+    fa_tx_at(
+      150,
+      Transaction {
+        ..placeholder,
+        inputs: [acct_in, pool_in, fa_did_input(fa_did_name)],
+        outputs: [acct_out],
+      },
+    )
+  use_run(fa_acct_datum(fa_did_name, 100, 100), tx)
+}
+
+/// Use: acct_out CÙNG script hash, KHÁC stake credential.
+test use_acct_out_stake_hijack() fail {
+  let acct_addr = util.script_address(fa_acct_sh)
+  let acct_in =
+    util.mk_input(
+      util.mk_ref(0),
+      util.mk_output(
+        acct_addr,
+        fa_acct_val(fa_did_name, 2_000_000, fa_drip),
+        fa_acct_datum(fa_did_name, 100, 100),
+      ),
+    )
+  let acct_out =
+    util.mk_output(
+      util.script_address_staked(fa_acct_sh, fa_thief_pkh),
+      fa_acct_val(fa_did_name, 2_000_000, fa_drip),
+      fa_acct_datum(fa_did_name, 100, 150),
+    )
+  let tx =
+    fa_tx_at(
+      150,
+      Transaction {
+        ..placeholder,
+        inputs: [acct_in, fa_did_input(fa_did_name)],
+        outputs: [acct_out],
+      },
+    )
+  use_run(fa_acct_datum(fa_did_name, 100, 100), tx)
+}
+
+/// Use: acct_out đúng chỗ, đúng value, nhưng đính reference script.
+test use_acct_out_script_carrier() fail {
+  let acct_addr = util.script_address(fa_acct_sh)
+  let acct_in =
+    util.mk_input(
+      util.mk_ref(0),
+      util.mk_output(
+        acct_addr,
+        fa_acct_val(fa_did_name, 2_000_000, fa_drip),
+        fa_acct_datum(fa_did_name, 100, 100),
+      ),
+    )
+  let acct_out =
+    util.mk_output_with_ref_script(
+      acct_addr,
+      fa_acct_val(fa_did_name, 2_000_000, fa_drip),
+      fa_acct_datum(fa_did_name, 100, 150),
+      #"beef",
+    )
+  let tx =
+    fa_tx_at(
+      150,
+      Transaction {
+        ..placeholder,
+        inputs: [acct_in, fa_did_input(fa_did_name)],
+        outputs: [acct_out],
+      },
+    )
+  use_run(fa_acct_datum(fa_did_name, 100, 100), tx)
+}
+
+// ── TOPUP tests ──────────────────────────────────────────────────
+
+/// Builder chung của mọi ca `TopUp`. `did_inputs` là chỗ DUY NHẤT khác nhau giữa
+/// `topup_happy` và `topup_khong_did_nft` — hai cực dựng bằng cùng một hàm.
+fn topup_tx_did(
+  now: Int,
+  pool_drip: Int,
+  out_tlamp: Int,
+  out_claim: Int,
+  did_inputs: List<Input>,
+) -> Transaction {
+  let acct_addr = util.script_address(fa_acct_sh)
+  let acct_in =
+    util.mk_input(
+      util.mk_ref(0),
+      util.mk_output(
+        acct_addr,
+        fa_acct_val(fa_did_name, 2_000_000, fa_drip),
+        fa_acct_datum(fa_did_name, 100, 100),
+      ),
+    )
+  let acct_out =
+    util.mk_output(
+      acct_addr,
+      fa_acct_val(fa_did_name, 2_000_000, out_tlamp),
+      fa_acct_datum(fa_did_name, out_claim, now),
+    )
+  let pool_cfg =
+    FaucetConfig {
+      drip_oildrop: pool_drip,
+      cooldown_epochs: fa_cooldown,
+      max_claims_per_window: fa_max_claims,
+    }
+  let pool_in =
+    util.mk_input(
+      util.mk_ref(1),
+      util.mk_output(
+        util.script_address(fa_pool_sh),
+        fa_pool_val(10_000_000, 5_000_000_000),
+        PoolDatum { cfg: pool_cfg, window_epoch: now, claims_in_window: 0 },
+      ),
+    )
+  let pool_out =
+    util.mk_output(
+      util.script_address(fa_pool_sh),
+      fa_pool_val(10_000_000, 5_000_000_000 - pool_drip),
+      PoolDatum { cfg: pool_cfg, window_epoch: now, claims_in_window: 1 },
+    )
+  fa_tx_at(
+    now,
+    Transaction {
+      ..placeholder,
+      inputs: list.concat([acct_in, pool_in], did_inputs),
+      outputs: [pool_out, acct_out],
+    },
   )
+}
+
+fn topup_tx(now: Int, pool_drip: Int, out_tlamp: Int, out_claim: Int) -> Transaction {
+  topup_tx_did(now, pool_drip, out_tlamp, out_claim, [fa_did_input(fa_did_name)])
+}
+
+fn topup_run(tx: Transaction) -> Bool {
+  faucet_account.spend(
+    fa_nft_policy,
+    fa_did_policy,
+    fa_lamp_policy,
+    fa_lamp_name,
+    fa_ms_per_epoch,
+    Some(fa_acct_datum(fa_did_name, 100, 100)),
+    TopUp,
+    util.mk_ref(0),
+    tx,
+  )
+}
+
+test topup_happy() {
+  topup_run(topup_tx(150, fa_drip, fa_drip * 2, 150))
+}
+
+/// C-TOP-5: account rút bớt tLAMP trong khi mang danh "nhận thêm drip".
+test topup_rut_bot_tlamp() fail {
+  topup_run(topup_tx(150, fa_drip, 0, 150))
+}
+
+/// C-TOP-5: account nhận nhiều hơn drip mà pool khai.
+test topup_nhan_hon_drip() fail {
+  topup_run(topup_tx(150, fa_drip, fa_drip * 2 + 1, 150))
+}
+
+/// C-TOP-6: mốc cooldown không được đẩy lên now ⇒ claim này "không tính".
+test topup_khong_cap_nhat_cooldown() fail {
+  topup_run(topup_tx(150, fa_drip, fa_drip * 2, 100))
+}
+
+/// C-TOP-DID-1: cùng builder với `topup_happy`, CHỈ bỏ DID NFT khỏi input.
+test topup_khong_did_nft() fail {
+  topup_run(topup_tx_did(150, fa_drip, fa_drip * 2, 150, []))
+}
+
+/// C-TOP-POOL-1: không có POOL input ⇒ không có nguồn nào khai drip.
+test topup_khong_co_pool_input() fail {
+  let acct_addr = util.script_address(fa_acct_sh)
+  let acct_in =
+    util.mk_input(
+      util.mk_ref(0),
+      util.mk_output(
+        acct_addr,
+        fa_acct_val(fa_did_name, 2_000_000, fa_drip),
+        fa_acct_datum(fa_did_name, 100, 100),
+      ),
+    )
+  let acct_out =
+    util.mk_output(
+      acct_addr,
+      fa_acct_val(fa_did_name, 2_000_000, fa_drip * 2),
+      fa_acct_datum(fa_did_name, 150, 150),
+    )
+  let tx =
+    fa_tx_at(
+      150,
+      Transaction {
+        ..placeholder,
+        inputs: [acct_in, fa_did_input(fa_did_name)],
+        outputs: [acct_out],
+      },
+    )
+  topup_run(tx)
 }
 
 // ── RECLAIM IDLE tests ───────────────────────────────────────────
@@ -290,147 +585,110 @@ const fa_pool_base: Int = 5_000_000_000
 fn fa_pool_input() -> Input {
   util.mk_input(
     util.mk_ref(1),
-    util.mk_output(util.script_address(fa_pool_sh), fa_pool_val(10_000_000, fa_pool_base), fa_acct_datum(fa_did_name, 0)),
+    util.mk_output(
+      util.script_address(fa_pool_sh),
+      fa_pool_val(10_000_000, fa_pool_base),
+      fa_pool_datum(50, 7),
+    ),
   )
 }
 
 fn fa_acct_input() -> Input {
   util.mk_input(
     util.mk_ref(0),
-    util.mk_output(util.script_address(fa_acct_sh), fa_acct_val(2_000_000, fa_drip), fa_acct_datum(fa_did_name, 100)),
+    util.mk_output(
+      util.script_address(fa_acct_sh),
+      fa_acct_val(fa_did_name, 2_000_000, fa_drip),
+      fa_acct_datum(fa_did_name, 100, 100),
+    ),
   )
 }
 
 /// pool output với tLAMP = base + delta.
 fn fa_pool_out(delta: Int) -> Output {
-  util.mk_output(util.script_address(fa_pool_sh), fa_pool_val(10_000_000, fa_pool_base + delta), fa_acct_datum(fa_did_name, 0))
+  util.mk_output(
+    util.script_address(fa_pool_sh),
+    fa_pool_val(10_000_000, fa_pool_base + delta),
+    fa_pool_datum(50, 7),
+  )
+}
+
+fn reclaim_idle_run(now: Int, outputs: List<Output>, mint: assets.Value) -> Bool {
+  let tx =
+    fa_tx_at(
+      now,
+      Transaction {
+        ..placeholder,
+        inputs: [fa_acct_input(), fa_pool_input()],
+        outputs: outputs,
+        mint: mint,
+      },
+    )
+  faucet_account.spend(
+    fa_nft_policy,
+    fa_did_policy,
+    fa_lamp_policy,
+    fa_lamp_name,
+    fa_ms_per_epoch,
+    Some(fa_acct_datum(fa_did_name, 100, 100)),
+    ReclaimIdle,
+    util.mk_ref(0),
+    tx,
+  )
 }
 
 test reclaim_idle_happy() {
-  // now=1101 ≥ 100+1001; pool nhận đủ Δ=fa_drip (toàn bộ tLAMP account) → pass.
-  let base = Transaction { ..placeholder, inputs: [fa_acct_input(), fa_pool_input()], outputs: [fa_pool_out(fa_drip)] }
-  let tx = fa_tx_at(1101, base)
-  faucet_account.spend(
-    fa_nft_policy, fa_did_policy, fa_lamp_policy, fa_lamp_name, fa_ms_per_epoch,
-    Some(fa_acct_datum(fa_did_name, 100)), ReclaimIdle, util.mk_ref(0), tx,
-  )
+  // now=1101 ≥ 100+1001; pool nhận đủ Δ=fa_drip; ACCT NFT bị đốt.
+  reclaim_idle_run(1101, [fa_pool_out(fa_drip)], fa_mint(fa_did_name, -1))
 }
 
 test reclaim_idle_too_early() fail {
-  // now=1100 < 100+1001=1101 → reject (chưa đủ idle).
-  let base = Transaction { ..placeholder, inputs: [fa_acct_input(), fa_pool_input()], outputs: [fa_pool_out(fa_drip)] }
-  let tx = fa_tx_at(1100, base)
-  faucet_account.spend(
-    fa_nft_policy, fa_did_policy, fa_lamp_policy, fa_lamp_name, fa_ms_per_epoch,
-    Some(fa_acct_datum(fa_did_name, 100)), ReclaimIdle, util.mk_ref(0), tx,
-  )
+  reclaim_idle_run(1100, [fa_pool_out(fa_drip)], fa_mint(fa_did_name, -1))
 }
 
 test reclaim_idle_token_not_to_pool() fail {
   // pool nhận Δ = fa_drip − 1 < acct_lamp (keeper cuỗm 1 token) → reject.
-  let base = Transaction { ..placeholder, inputs: [fa_acct_input(), fa_pool_input()], outputs: [fa_pool_out(fa_drip - 1)] }
-  let tx = fa_tx_at(1101, base)
-  faucet_account.spend(
-    fa_nft_policy, fa_did_policy, fa_lamp_policy, fa_lamp_name, fa_ms_per_epoch,
-    Some(fa_acct_datum(fa_did_name, 100)), ReclaimIdle, util.mk_ref(0), tx,
-  )
+  reclaim_idle_run(1101, [fa_pool_out(fa_drip - 1)], fa_mint(fa_did_name, -1))
 }
 
 test reclaim_idle_no_pool_output() fail {
-  // không có POOL NFT output → count_outputs_with_nft == 0 → reject (token không về pool).
   let bad_out =
-    util.mk_output_no_datum(util.vk_address(#"ee"), assets.from_lovelace(2_000_000) |> assets.add(fa_lamp_policy, fa_lamp_name, fa_drip))
-  let base = Transaction { ..placeholder, inputs: [fa_acct_input(), fa_pool_input()], outputs: [bad_out] }
-  let tx = fa_tx_at(1101, base)
-  faucet_account.spend(
-    fa_nft_policy, fa_did_policy, fa_lamp_policy, fa_lamp_name, fa_ms_per_epoch,
-    Some(fa_acct_datum(fa_did_name, 100)), ReclaimIdle, util.mk_ref(0), tx,
-  )
-}
-
-// ══════════════════════════════════════════════════════════════
-// ĐÍCH — ca kiểm ĐỔI ĐỊA CHỈ (cùng lớp với faucet_pool)
-// ══════════════════════════════════════════════════════════════
-// Mọi ca phía trên dựng acct_out/pool_out bằng cùng một hằng địa chỉ ở cả hai cực
-// ⇒ không ca nào phân biệt được nơi đến. Bốn ca dưới giữ nguyên value + datum,
-// chỉ đổi ĐỊA CHỈ / reference_script.
-
-const fa_thief_pkh: ByteArray = #"a77ac6"
-
-/// Use: acct_out CÙNG script hash, KHÁC stake credential. `count_outputs_at_script`
-/// chỉ so payment credential nên nó đi lọt — chủ DID (hoặc bất kỳ ai dựng hộ tx có
-/// DID NFT trong input) lái phần thưởng uỷ quyền trên ADA của account đi, và địa chỉ
-/// bech32 của account đổi mỗi lượt Use nên bên index mất dấu.
-test use_acct_out_stake_hijack() fail {
-  let acct_addr = util.script_address(fa_acct_sh)
-  let acct_in =
-    util.mk_input(util.mk_ref(0), util.mk_output(acct_addr, fa_acct_val(2_000_000, fa_drip), fa_acct_datum(fa_did_name, 100)))
-  let acct_out =
-    util.mk_output(
-      util.script_address_staked(fa_acct_sh, fa_thief_pkh),
-      fa_acct_val(2_000_000, fa_drip),
-      fa_acct_datum(fa_did_name, 150),
+    util.mk_output_no_datum(
+      util.vk_address(#"ee"),
+      assets.from_lovelace(2_000_000)
+        |> assets.add(fa_lamp_policy, fa_lamp_name, fa_drip),
     )
-  let did_in =
-    util.mk_input(util.mk_ref(7), util.mk_output_no_datum(util.vk_address(#"c1"), fa_did_val(fa_did_name)))
-  let base = Transaction { ..placeholder, inputs: [acct_in, did_in], outputs: [acct_out] }
-  let tx = fa_tx_at(150, base)
-  faucet_account.spend(
-    fa_nft_policy, fa_did_policy, fa_lamp_policy, fa_lamp_name, fa_ms_per_epoch,
-    Some(fa_acct_datum(fa_did_name, 100)), Use, util.mk_ref(0), tx,
-  )
+  reclaim_idle_run(1101, [bad_out], fa_mint(fa_did_name, -1))
 }
 
-/// Use: acct_out đúng chỗ, đúng value, nhưng đính reference script → min-ADA của
-/// account nhảy vọt, mọi lượt Use/ReclaimIdle sau gánh thêm phí.
-test use_acct_out_script_carrier() fail {
-  let acct_addr = util.script_address(fa_acct_sh)
-  let acct_in =
-    util.mk_input(util.mk_ref(0), util.mk_output(acct_addr, fa_acct_val(2_000_000, fa_drip), fa_acct_datum(fa_did_name, 100)))
-  let acct_out =
-    util.mk_output_with_ref_script(acct_addr, fa_acct_val(2_000_000, fa_drip), fa_acct_datum(fa_did_name, 150), #"beef")
-  let did_in =
-    util.mk_input(util.mk_ref(7), util.mk_output_no_datum(util.vk_address(#"c1"), fa_did_val(fa_did_name)))
-  let base = Transaction { ..placeholder, inputs: [acct_in, did_in], outputs: [acct_out] }
-  let tx = fa_tx_at(150, base)
-  faucet_account.spend(
-    fa_nft_policy, fa_did_policy, fa_lamp_policy, fa_lamp_name, fa_ms_per_epoch,
-    Some(fa_acct_datum(fa_did_name, 100)), Use, util.mk_ref(0), tx,
-  )
+/// C-BURN-1: thu hồi mà KHÔNG đốt ACCT NFT ⇒ nó thành vé tái dùng vĩnh viễn.
+test reclaim_idle_khong_burn_acct() fail {
+  reclaim_idle_run(1101, [fa_pool_out(fa_drip)], assets.zero)
 }
 
-/// ReclaimIdle: pool_out định vị THUẦN bằng POOL NFT. Keeper trả đủ tLAMP nhưng
-/// đưa pool sang VÍ mình → kho ra khỏi script, và POOL NFT one-shot không đúc lại
-/// được. Sau vá, dòng ghim địa chỉ ở faucet_account chặn ngay tại đây — không phải
-/// đợi faucet_pool.Reclaim chạy (nó chỉ chạy khi pool CÒN ở script pool).
+/// C-BURN-1: đốt ACCT NFT của DID KHÁC (giữ lại vé của chính mình).
+test reclaim_idle_burn_name_khac() fail {
+  reclaim_idle_run(1101, [fa_pool_out(fa_drip)], fa_mint(fa_other_did, -1))
+}
+
+/// ReclaimIdle: keeper trả đủ tLAMP nhưng đưa pool sang VÍ mình.
 test reclaim_idle_pool_to_wallet() fail {
   let pool_out =
     util.mk_output(
       util.vk_address(fa_thief_pkh),
       fa_pool_val(10_000_000, fa_pool_base + fa_drip),
-      fa_acct_datum(fa_did_name, 0),
+      fa_pool_datum(50, 7),
     )
-  let base = Transaction { ..placeholder, inputs: [fa_acct_input(), fa_pool_input()], outputs: [pool_out] }
-  let tx = fa_tx_at(1101, base)
-  faucet_account.spend(
-    fa_nft_policy, fa_did_policy, fa_lamp_policy, fa_lamp_name, fa_ms_per_epoch,
-    Some(fa_acct_datum(fa_did_name, 100)), ReclaimIdle, util.mk_ref(0), tx,
-  )
+  reclaim_idle_run(1101, [pool_out], fa_mint(fa_did_name, -1))
 }
 
-/// ReclaimIdle: pool_out cùng script hash, khác stake credential — biến thể mà mọi
-/// phép so theo payment credential đều cho đi qua.
+/// ReclaimIdle: pool_out cùng script hash, khác stake credential.
 test reclaim_idle_pool_stake_hijack() fail {
   let pool_out =
     util.mk_output(
       util.script_address_staked(fa_pool_sh, fa_thief_pkh),
       fa_pool_val(10_000_000, fa_pool_base + fa_drip),
-      fa_acct_datum(fa_did_name, 0),
+      fa_pool_datum(50, 7),
     )
-  let base = Transaction { ..placeholder, inputs: [fa_acct_input(), fa_pool_input()], outputs: [pool_out] }
-  let tx = fa_tx_at(1101, base)
-  faucet_account.spend(
-    fa_nft_policy, fa_did_policy, fa_lamp_policy, fa_lamp_name, fa_ms_per_epoch,
-    Some(fa_acct_datum(fa_did_name, 100)), ReclaimIdle, util.mk_ref(0), tx,
-  )
+  reclaim_idle_run(1101, [pool_out], fa_mint(fa_did_name, -1))
 }
