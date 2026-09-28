@@ -464,13 +464,13 @@ test use_acct_out_script_carrier() fail {
 
 // ── TOPUP tests ──────────────────────────────────────────────────
 
-/// Builder chung của mọi ca `TopUp`. `did_inputs` là chỗ DUY NHẤT khác nhau giữa
-/// `topup_happy` và `topup_khong_did_nft` — hai cực dựng bằng cùng một hàm.
-fn topup_tx_did(
+/// Builder chung của mọi ca `TopUp`. `did_inputs`, `acct_out` và `mint` là ba chỗ
+/// DUY NHẤT khác nhau giữa ca dương và từng ca âm — mọi cực dựng bằng cùng hàm này.
+fn topup_tx_of(
   now: Int,
   pool_drip: Int,
-  out_tlamp: Int,
-  out_claim: Int,
+  acct_out: Output,
+  mint: assets.Value,
   did_inputs: List<Input>,
 ) -> Transaction {
   let acct_addr = util.script_address(fa_acct_sh)
@@ -482,12 +482,6 @@ fn topup_tx_did(
         fa_acct_val(fa_did_name, 2_000_000, fa_drip),
         fa_acct_datum(fa_did_name, 100, 100),
       ),
-    )
-  let acct_out =
-    util.mk_output(
-      acct_addr,
-      fa_acct_val(fa_did_name, 2_000_000, out_tlamp),
-      fa_acct_datum(fa_did_name, out_claim, now),
     )
   let pool_cfg =
     FaucetConfig {
@@ -526,7 +520,34 @@ fn topup_tx_did(
       ..placeholder,
       inputs: list.concat([acct_in, pool_in], did_inputs),
       outputs: [pool_out, acct_out],
+      mint: mint,
     },
+  )
+}
+
+/// account output CHUẨN của một lượt `TopUp`: đúng địa chỉ, mang ACCT NFT của
+/// chính DID, hai mốc về `now` (trừ `out_claim` để ca âm C-TOP-6 dựng được).
+fn topup_acct_out(now: Int, out_tlamp: Int, out_claim: Int) -> Output {
+  util.mk_output(
+    util.script_address(fa_acct_sh),
+    fa_acct_val(fa_did_name, 2_000_000, out_tlamp),
+    fa_acct_datum(fa_did_name, out_claim, now),
+  )
+}
+
+fn topup_tx_did(
+  now: Int,
+  pool_drip: Int,
+  out_tlamp: Int,
+  out_claim: Int,
+  did_inputs: List<Input>,
+) -> Transaction {
+  topup_tx_of(
+    now,
+    pool_drip,
+    topup_acct_out(now, out_tlamp, out_claim),
+    assets.zero,
+    did_inputs,
   )
 }
 
@@ -570,6 +591,60 @@ test topup_khong_cap_nhat_cooldown() fail {
 /// C-TOP-DID-1: cùng builder với `topup_happy`, CHỈ bỏ DID NFT khỏi input.
 test topup_khong_did_nft() fail {
   topup_run(topup_tx_did(150, fa_drip, fa_drip * 2, 150, []))
+}
+
+// ── C-TOP-3 / C-TOP-4: ba cổng mà (H-EXIT) dựa vào, ở nhánh `TopUp` ──────
+// Math-Spec §6a khai (H-EXIT) "ACCT NFT chỉ rời account script bằng cách bị ĐỐT"
+// và dẫn ba chốt: C-USE-NAME-1, C-TOP-3, C-BURN-1. Hai chốt kia có ca ghim từ
+// trước (`use_acct_out_name_khac_did`, `reclaim_idle_khong_burn_acct`); C-TOP-3 và
+// C-TOP-4 thì KHÔNG — mọi builder `TopUp` dựng `acct_out` bằng `fa_acct_val` (luôn
+// có NFT) và không builder nào đặt `mint`, nên hai cực của chúng không phân biệt
+// được. Gỡ hai chốt đó ra, bộ kiểm cũ vẫn xanh. Ba ca dưới đây trả nợ đó.
+
+/// C-TOP-3: `acct_out` KHÔNG mang ACCT NFT ⇒ trong một lượt claim lại hợp lệ ở mọi
+/// chốt khác, ACCT NFT đi ra ví. Sau đó nó là vé dựng một account thứ hai với datum
+/// tự đặt — chính hình dạng mà INV-ONE-ACCT cấm.
+test topup_acct_out_khong_mang_nft() fail {
+  let acct_out =
+    util.mk_output(
+      util.script_address(fa_acct_sh),
+      assets.from_lovelace(2_000_000)
+        |> assets.add(fa_lamp_policy, fa_lamp_name, fa_drip * 2),
+      fa_acct_datum(fa_did_name, 150, 150),
+    )
+  topup_run(
+    topup_tx_of(150, fa_drip, acct_out, assets.zero, [fa_did_input(fa_did_name)]),
+  )
+}
+
+/// C-TOP-4 chiều ĐỐT (H-EXIT): lượt claim lại tiện tay đốt ACCT NFT. Không có chốt
+/// này thì `pool.ClaimAgain` + `account.TopUp` đốt được ACCT NFT mà sổ KHÔNG bị xoá
+/// khoá — vế đối xứng của lỗ `Reclaim`+`TopUp` mà C-RECL-BURN-1 đã đóng.
+test topup_dot_acct() fail {
+  topup_run(
+    topup_tx_of(
+      150,
+      fa_drip,
+      topup_acct_out(150, fa_drip * 2, 150),
+      fa_mint(fa_did_name, -1),
+      [fa_did_input(fa_did_name)],
+    ),
+  )
+}
+
+/// C-TOP-4 chiều ĐÚC (H-MINT): đúc thêm một ACCT NFT cùng tên trong lượt claim lại.
+/// Cực đối xứng ở phía pool là `again_duc_acct_did_khac_ba_validator` (tên KHÁC,
+/// cổng C-MINT-ONLY-OPEN-1) — hai ca đo hai chốt ở hai tệp, không thay nhau được.
+test topup_duc_acct() fail {
+  topup_run(
+    topup_tx_of(
+      150,
+      fa_drip,
+      topup_acct_out(150, fa_drip * 2, 150),
+      fa_mint(fa_did_name, 1),
+      [fa_did_input(fa_did_name)],
+    ),
+  )
 }
 
 /// C-TOP-POOL-1: không có POOL input ⇒ không có nguồn nào khai drip.

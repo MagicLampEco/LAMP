@@ -40,6 +40,40 @@
 //       cooldown ở tầng (b) thành ràng buộc THẬT trên một DID, không chỉ trên một
 //       chuỗi account. Bất biến: INV-ONE-ACCT (xem `ledger.ak`).
 //
+// ─────────────────────────────────────────────────────────────────────────
+// ĐÚC ACCT NFT CHỈ XẢY RA Ở `ClaimOpen` (giả thiết H-MINT của Math-Spec §6a)
+// ─────────────────────────────────────────────────────────────────────────
+// `faucet_nft ▸ MintAccount` chỉ đòi tx có POOL NFT input rồi UỶ QUYỀN phần còn
+// lại cho pool. Nên nếu pool không canh `tx.mint` ở MỌI nhánh thì "uỷ quyền" đó
+// rơi vào khoảng trống: một tx `TopUpPool` (hoặc `ClaimAgain` cho một DID KHÁC)
+// kèm `MintAccount` đúc được ACCT NFT ra ví, và cả hai validator đều chấp nhận.
+// Một ACCT NFT nằm ngoài sổ là đủ để phá INV-ONE-ACCT: đặt nó vào một UTxO ở địa
+// chỉ account script với datum tự đặt (tạo UTxO ở địa chỉ script không cần chữ
+// ký của ai), rồi `pool.Reclaim` + `account.ReclaimIdle` trên UTxO đó — khoá của
+// DID bị XOÁ khỏi sổ trong khi account THẬT còn sống ⇒ `ClaimOpen` lần thứ hai.
+//
+// Ba chốt đóng, tất cả đặt TRONG POOL:
+//   C-MINT-ONLY-OPEN-1  `ClaimAgain`: `tx.mint` dưới `faucet_nft_policy` RỖNG.
+//   C-MINT-ONLY-OPEN-2  `TopUpPool` : cùng thế.
+//   C-RECL-BURN-2       `Reclaim`   : ĐÚNG MỘT mục (và C-RECL-BURN-1 ép mục đó
+//                                     là −1 của ACCT bị thu hồi).
+//
+// VÌ SAO Ở POOL CHỨ KHÔNG Ở MINT POLICY. Đặt ở `faucet_nft ▸ MintAccount` thì
+// policy phải tự đọc redeemer của pool trong `tx.redeemers` để biết nhánh nào
+// đang chạy — tức nó phải ôm codec `PoolRedeemer` (thứ tự constructor là trường
+// load-bearing, xem `ledger.ak`) và trở thành NGUỒN THỨ HAI cho câu hỏi "pool
+// đang ở nhánh nào". Hai nguồn đó trôi khỏi nhau trong im lặng. Pool thì biết
+// nhánh của chính nó MIỄN PHÍ. Không vòng hash ở cả hai phương án (pool đã nhận
+// `faucet_nft_policy` làm param, và `tx.mint` do ledger cấp), nên phương án được
+// chọn theo tiêu chí "một nguồn cho một sự thật", không theo tiêu chí vòng.
+//
+// VÌ SAO CHỈ CANH Ở POOL LÀ ĐỦ: `MintAccount` đòi POOL NFT nằm trong `tx.inputs`
+// (không phải reference input), POOL NFT ở địa chỉ script pool (C-MP-1 lúc đúc +
+// C-POOL-OUT-1 mọi lượt sau), nên mọi tx đúc được ACCT NFT đều CHẠY `faucet_pool.spend`
+// và rơi vào đúng một trong bốn nhánh dưới. Phần dư còn lại là phần C-MP-1 đã
+// ghi: nếu giây deploy đúc POOL NFT vào một script KHÁC thì pool không bao giờ
+// chạy — đó là rủi ro deploy, đối chiếu datum on-chain sau deploy.
+//
 // BỐN REDEEMER:
 //   ClaimOpen  — mở account MỚI: đúc ACCT NFT, 0 account input, CHÈN khoá DID vào
 //                sổ (C-OPEN-UNIQ-1).
@@ -52,6 +86,7 @@
 //                thang quota bằng cách giữ `window_epoch` đứng im.
 //   TopUpPool  — nạp tLAMP vào pool (ops/deploy). Cấm account input, đòi nạp thật.
 
+use aiken/collection/dict
 use aiken/crypto
 use aiken/interval
 use aiken/merkle_patricia_forestry as mpf
@@ -59,9 +94,10 @@ use cardano/assets
 use cardano/transaction.{InlineDatum, Input, Output, OutputReference,
   Transaction, placeholder}
 use magiclamp/faucet/ledger.{
-  AccountRedeemer, ClaimAgain, ClaimOpen, FaucetAccount, FaucetConfig,
-  MintAccount, PoolDatum, PoolRedeemer, Reclaim, ReclaimIdle, TopUp, TopUpPool,
-  Use, acct_name, did_key, did_leaf_value, empty_opened_root, pool_nft_name,
+  AccountRedeemer, BurnAccount, ClaimAgain, ClaimOpen, FaucetAccount,
+  FaucetConfig, FaucetNftRedeemer, MintAccount, PoolDatum, PoolRedeemer, Reclaim,
+  ReclaimIdle, TopUp, TopUpPool, Use, acct_name, did_key, did_leaf_value,
+  empty_opened_root, pool_nft_name,
 }
 use magiclamp/faucet/util
 
@@ -197,8 +233,17 @@ validator faucet_pool(
             ms_per_epoch,
             account_script_hash,
           )
-        // C-AGAIN-1: không đúc thêm ACCT NFT (chuỗi account cũ đi tiếp).
-        expect assets.quantity_of(tx.mint, faucet_nft_policy, ctx.an) == 0
+        // ── C-MINT-ONLY-OPEN-1: `tx.mint` dưới policy này phải RỖNG ─────────
+        // THAY chốt cũ C-AGAIN-1 (`quantity_of(tx.mint, policy, ctx.an) == 0`),
+        // không đứng cạnh nó: vế cũ là hệ quả chặt của vế này, giữ cả hai thì vế
+        // cũ thành BẤT KHẢ GHIM (gỡ nó ra mà không ca nào đỏ) trong khi vẫn đọc
+        // như đang được canh. Vế cũ chỉ so tên của CHÍNH DID trong tx này, nên
+        // đúc `an(d')` của một DID KHÁC đi lọt — chuỗi account cũ của d đi tiếp
+        // đúng luật, và d' có một ACCT NFT ngoài sổ. "RỖNG" chứ không phải "không
+        // dương": nhánh này cũng không có lý do ĐỐT gì (đốt là việc của `Reclaim`),
+        // và một vế rỗng không cần ai đọc lại để biết nó chặn hướng nào.
+        // Ghim bởi `again_mint_them_acct` · `again_duc_acct_did_khac_ba_validator`.
+        expect dict.is_empty(assets.tokens(tx.mint, faucet_nft_policy))
         // ── C-AGAIN-2: đúng 1 account input ────────────────────────────────
         // Đây là chốt làm cooldown có nghĩa. Không có nó, kẻ xấu chỉ cần KHÔNG
         // đưa account cũ vào input là cooldown biến mất.
@@ -302,6 +347,21 @@ validator faucet_pool(
             faucet_nft_policy,
             acct_name(recl_acct.did_name),
           ) == -1
+        // ── C-RECL-BURN-2: ĐÚNG MỘT mục dưới policy này ─────────────────────
+        // C-RECL-BURN-1 nói "mục của ACCT bị thu hồi bằng −1"; nó KHÔNG nói gì về
+        // các mục khác. Cặp hai dòng mới ép được `tx.mint` dưới `faucet_nft_policy`
+        // = đúng `{an(d): −1}`, tức một lượt thu hồi không kèm một lượt ĐÚC.
+        // Hai vế TRỰC GIAO (gỡ vế nào cũng còn một hình dạng lọt), nên cả hai đều
+        // ghim được: `reclaim_dot_acct_did_khac` đỏ ở vế trên, `reclaim_dot_va_duc_them`
+        // đỏ ở vế này.
+        // TRÙNG LẶP có chủ ý, nói thẳng ra để lần dọn sau không gỡ: `faucet_nft`
+        // đã ép `dict.size(own_tokens) == 1` ở CẢ BA nhánh của nó, và nó LUÔN chạy
+        // khi `tx.mint` có mục nào dưới policy này ⇒ hôm nay hình dạng "đốt kèm
+        // đúc" đã bất khả thi. Giữ vế này ở pool vì cùng một lý do đã viết cho
+        // C-RECL-BURN-1: pool là nơi GHI SỔ, nên tiền đề của bút ghi của nó không
+        // được đi vay hình dạng mà một script KHÁC tình cờ đang ép — script kia đổi
+        // được mà pool không đổi một dòng nào.
+        expect dict.size(assets.tokens(tx.mint, faucet_nft_policy)) == 1
         True
       }
 
@@ -327,6 +387,19 @@ validator faucet_pool(
         // C-ROOT-KEEP-1 (nhánh `TopUpPool`): nạp tiền cũng không đổi sổ. Cùng lý
         // do với vế ở `ClaimAgain` — nhánh này permissionless về phía ai nạp.
         expect out_pd.opened_root == pd.opened_root
+        // ── C-MINT-ONLY-OPEN-2: `tx.mint` dưới policy này phải RỖNG ──────────
+        // Nhánh này KHÔNG đọc `tx.mint` ở bản trước, và đó là lỗ đã đo được
+        // (`[FAUCET-ACCT-MINT-GATE]`): `MintAccount` chỉ đòi POOL NFT input, mà một
+        // lượt `TopUpPool` có POOL NFT input — nên một tx nạp tiền đúc kèm được một
+        // ACCT NFT ra ví và CẢ HAI validator đều chấp nhận. Giá cho kẻ tấn công =
+        // một lượt nạp `≥ drip` vào pool, tức nó còn có lãi khi ACCT NFT đó mở ra
+        // một chuỗi cooldown thứ hai.
+        // Vế RỖNG (không phải "không dương") cũng chặn `ReclaimIdle` mượn đường
+        // nạp tiền để đốt: nhánh này đã cấm account input nên hình dạng đó vốn
+        // không dựng được, và một vế rỗng thì không đòi ai đọc lại cổng kia mới
+        // biết nó kín.
+        // Ghim bởi `topuppool_duc_acct_hai_validator` · `topuppool_dot_acct`.
+        expect dict.is_empty(assets.tokens(tx.mint, faucet_nft_policy))
         True
       }
     }
@@ -1318,7 +1391,9 @@ test again_acct_in_khong_mang_nft() fail {
   fp_run(fp_pd_one(136, 0), ClaimAgain, tx)
 }
 
-/// C-AGAIN-1: đúc thêm ACCT NFT ở nhánh `ClaimAgain`.
+/// C-MINT-ONLY-OPEN-1: đúc thêm ACCT NFT (cùng tên) ở nhánh `ClaimAgain`. Ca này
+/// từng ghim chốt cũ C-AGAIN-1; nay nó đỏ ở chốt thay thế, và cực "tên KHÁC" —
+/// hình dạng mà C-AGAIN-1 để lọt — nằm ở `again_duc_acct_did_khac_ba_validator`.
 test again_mint_them_acct() fail {
   let tx =
     again_tx_with(
@@ -1467,15 +1542,26 @@ test reclaim_steal_ada() fail {
 
 // ── TOPUPPOOL ────────────────────────────────────────────────────
 
-fn topuppool_tx(pd: PoolDatum, delta: Int, inputs_extra: List<Input>, pd_out: PoolDatum) -> Transaction {
+fn topuppool_tx_mint(
+  pd: PoolDatum,
+  delta: Int,
+  inputs_extra: List<Input>,
+  pd_out: PoolDatum,
+  mint: assets.Value,
+) -> Transaction {
   fp_tx_at(
     2000,
     Transaction {
       ..placeholder,
       inputs: list_concat([fp_pool_input(pd)], inputs_extra),
       outputs: [fp_pool_output(pd_out, fp_pool_lamp + delta)],
+      mint: mint,
     },
   )
+}
+
+fn topuppool_tx(pd: PoolDatum, delta: Int, inputs_extra: List<Input>, pd_out: PoolDatum) -> Transaction {
+  topuppool_tx_mint(pd, delta, inputs_extra, pd_out, assets.zero)
 }
 
 test topuppool_happy() {
@@ -1604,13 +1690,18 @@ test poc_pool_nft_input_not_at_own_script() fail {
 // lớp lỗi "hai bên đòi trái nhau": một luồng có thể xanh ở mọi bài đơn vị và
 // vẫn KHÔNG có hình dạng giao dịch nào tiêu được.
 //
-// Hai luồng KHÔNG có ca loại này, và đó là tính chất của thiết kế chứ không
-// phải chỗ thiếu:
+// Một luồng KHÔNG có ca DƯƠNG loại này, và đó là tính chất của thiết kế chứ
+// không phải chỗ thiếu:
 //   - `Use`        — C-USE-NOPOOL-1 cấm POOL NFT input ⇒ không tx nào gọi được
 //                    cả hai. Cực đối xứng nằm ở `use_co_pool_input`
 //                    (`faucet_account.ak`) và `again_account_dung_redeemer_Use`.
-//   - `TopUpPool`  — cấm account input và không đúc gì ⇒ chỉ một script chạy.
-//                    Cực đối xứng: `topuppool_co_account_input`.
+//
+// `TopUpPool` thì KHÔNG có ca dương hai-validator (cấm account input ⇒
+// `faucet_account` không chạy; cực đối xứng: `topuppool_co_account_input`) nhưng
+// CÓ ca âm hai-validator với mint policy — `topuppool_duc_acct_hai_validator`.
+// Bản trước bản vá này ghi ở đây rằng `TopUpPool` "không đúc gì", và câu đó là
+// một khẳng định về mã mà mã không ép: nó đọc như một lý do để KHÔNG viết ca,
+// nên nó tự bảo vệ đúng cái lỗ mà nó mô tả sai.
 
 const fp_acct_ref_ix: Int = 3
 
@@ -1635,13 +1726,7 @@ test open_happy_hai_validator() {
   let tx = open_std(100, 100, 0)
   and {
     fp_run(fp_pd(100, 0), fp_open, tx),
-    handlers.nft_mint(
-      OutputReference { transaction_id: #"aa", output_index: 5 },
-      fp_ms_per_epoch,
-      MintAccount,
-      fp_nft_policy,
-      tx,
-    ),
+    fp_nft_run(MintAccount, tx),
   }
 }
 
@@ -1686,6 +1771,51 @@ test reclaim_idle_happy_hai_validator() {
     fp_run(pd, fp_reclaim, tx),
     fp_acct_run(ReclaimIdle, fp_acct_datum(fp_did_name, 100, 100), tx),
   }
+}
+
+/// Account RỖNG (0 tLAMP, chỉ còn ACCT NFT + ADA) — đầu vào của ca thu hồi account rỗng.
+fn fp_reclaim_acct_input_rong(touch_ep: Int) -> Input {
+  util.mk_input(
+    util.mk_ref(fp_acct_ref_ix),
+    util.mk_output(
+      util.script_address(fp_acct_sh),
+      fp_acct_val(fp_did_name, 2_000_000, 0),
+      fp_acct_datum(fp_did_name, touch_ep, touch_ep),
+    ),
+  )
+}
+
+fn reclaim_rong_tx(touch_ep: Int) -> Transaction {
+  fp_tx_at(
+    2000,
+    Transaction {
+      ..placeholder,
+      inputs: [
+        fp_pool_input(fp_pd_one(100, fp_max_claims)),
+        fp_reclaim_acct_input_rong(touch_ep),
+      ],
+      outputs: [fp_pool_output(fp_pd(100, fp_max_claims), fp_pool_lamp)],
+      mint: fp_mint(fp_did_name, -1),
+    },
+  )
+}
+
+/// Thu hồi account 0 tLAMP: pool nhận thêm 0, vẫn xoá khoá DID và đốt ACCT NFT.
+/// Từ v3.1 đây là đường DUY NHẤT trả khoá của một DID đã rút sạch account về sổ,
+/// nên cả hai validator phải CHẤP NHẬN nó (SDK từng từ chối ca này ở RECLAIM-003).
+test reclaim_idle_account_rong_hai_validator() {
+  let tx = reclaim_rong_tx(2000 - 72)
+  and {
+    fp_run(fp_pd_one(100, fp_max_claims), fp_reclaim, tx),
+    fp_acct_run(ReclaimIdle, fp_acct_datum(fp_did_name, 2000 - 72, 2000 - 72), tx),
+  }
+}
+
+/// Song sinh âm: cùng account rỗng, idle 71 cửa sổ ⇒ `faucet_account` ĐỎ ở cổng idle.
+/// Account rỗng không được miễn ngưỡng thu hồi.
+test reclaim_idle_account_rong_chua_du_72() fail {
+  let tx = reclaim_rong_tx(2000 - 71)
+  fp_acct_run(ReclaimIdle, fp_acct_datum(fp_did_name, 2000 - 71, 2000 - 71), tx)
 }
 
 /// Cùng tx thu hồi, nhưng bỏ bước đốt ACCT NFT ⇒ NAY cả hai validator đều ĐỎ:
@@ -1804,6 +1934,133 @@ test reclaim_dot_acct_did_khac() fail {
       fp_pool_output(fp_pd(100, fp_max_claims), fp_pool_lamp + fp_drip),
       [fp_reclaim_acct_input()],
       fp_mint(fp_other_did, -1),
+    ),
+  )
+}
+
+// ══════════════════════════════════════════════════════════════
+// ĐÚC ACCT NFT NGOÀI `ClaimOpen` (H-MINT) — C-MINT-ONLY-OPEN-1/2, C-RECL-BURN-2
+// ══════════════════════════════════════════════════════════════
+// Lớp ca này KHÔNG dựng được bằng một validator: cái làm nên lỗ là `faucet_nft ▸
+// MintAccount` uỷ quyền cho pool trong khi pool không canh `tx.mint` ở nhánh đang
+// chạy. Nên mỗi ca âm dưới đây đi kèm một ca DƯƠNG khẳng định (các) script KHÁC
+// **chấp nhận** đúng tx đó — thiếu cực dương thì ca âm không nói được nó đỏ ở
+// pool hay đỏ ở chỗ khác, và một lần dọn sau có thể gỡ cổng ở pool mà bộ kiểm
+// vẫn đỏ đúng tên ca.
+
+/// Hằng `genesis_ref` cho mọi lượt gọi `nft_mint` ở lớp ca này. Nhánh
+/// `MintAccount`/`BurnAccount` KHÔNG đọc nó (chỉ `MintPool` đọc), nên giá trị là
+/// tuỳ ý — viết ra một chỗ để không ai đọc nó thành một tiền đề.
+const fp_genesis_ref: OutputReference =
+  OutputReference { transaction_id: #"aa", output_index: 5 }
+
+fn fp_nft_run(r: FaucetNftRedeemer, tx: Transaction) -> Bool {
+  handlers.nft_mint(fp_genesis_ref, fp_ms_per_epoch, r, fp_nft_policy, tx)
+}
+
+/// PoC đã đo 2026-09-28: một tx `TopUpPool` hợp lệ kèm đúc ACCT NFT của alice.
+/// Không có account input, không có account output — ACCT NFT đi thẳng ra ví kẻ
+/// dựng tx (mock tx không ràng buộc nơi token đến; trên chuỗi thì đó là một output
+/// ví bất kỳ).
+fn topuppool_duc_acct_tx() -> Transaction {
+  let pd = fp_pd(100, fp_max_claims)
+  topuppool_tx_mint(pd, fp_drip * 1000, [], pd, fp_mint(fp_did_name, 1))
+}
+
+/// Cực DƯƠNG của PoC: mint policy CHẤP NHẬN tx đó. Đây là dòng nói rằng
+/// `faucet_nft` không phải cổng — nó đòi đúng một tên ACCT hình dạng đúng và một
+/// POOL NFT input, cả ba đều có. Nếu ca này thành đỏ thì ca âm bên dưới mất nghĩa
+/// và phải viết lại, đừng đọc nó là "đã kín hơn".
+test topuppool_duc_acct_mint_policy_chap_nhan() {
+  fp_nft_run(MintAccount, topuppool_duc_acct_tx())
+}
+
+/// C-MINT-ONLY-OPEN-2 — PoC dựng lại: hai validator trên MỘT tx. Trước bản vá cả
+/// hai đều XANH (lỗ `[FAUCET-ACCT-MINT-GATE]`); nay `faucet_pool` từ chối.
+test topuppool_duc_acct_hai_validator() fail {
+  let tx = topuppool_duc_acct_tx()
+  and {
+    fp_run(fp_pd(100, fp_max_claims), TopUpPool, tx),
+    fp_nft_run(MintAccount, tx),
+  }
+}
+
+/// C-MINT-ONLY-OPEN-2, chiều ĐỐT (H-EXIT): một lượt nạp tiền tiện tay đốt một ACCT
+/// NFT. Vế "RỖNG" chặn cả chiều này; vế "không dương" thì không. Trên chuỗi hình
+/// dạng này còn cần ACCT NFT có mặt trong input, mà nhánh `TopUpPool` cấm account
+/// input — nên ca đo ĐÚNG cổng ở pool, không đo phép bảo toàn value của ledger.
+test topuppool_dot_acct() fail {
+  let pd = fp_pd(100, fp_max_claims)
+  fp_run(
+    pd,
+    TopUpPool,
+    topuppool_tx_mint(pd, fp_drip * 1000, [], pd, fp_mint(fp_did_name, -1)),
+  )
+}
+
+/// Tx `ClaimAgain` của alice, đúc kèm ACCT NFT của một DID KHÁC (bob). Chốt cũ
+/// C-AGAIN-1 chỉ so tên của alice nên hình dạng này đi lọt.
+fn again_duc_acct_did_khac_tx() -> Transaction {
+  again_tx_with(
+    136,
+    100,
+    fp_drip,
+    fp_acct_output(fp_did_name, 136, 136, fp_drip * 2),
+    fp_mint(fp_other_did, 1),
+    fp_did_name,
+  )
+}
+
+/// Cực DƯƠNG: HAI script kia đều chấp nhận tx đó — `faucet_account ▸ TopUp` (C-TOP-4
+/// chỉ so `an` của alice, bằng 0) và `faucet_nft ▸ MintAccount` (đúng một tên, đúng
+/// hình dạng, có POOL input). Chỉ pool mới là cổng.
+test again_duc_acct_did_khac_hai_script_kia_chap_nhan() {
+  let tx = again_duc_acct_did_khac_tx()
+  and {
+    fp_acct_run(TopUp, fp_acct_datum(fp_did_name, 100, 100), tx),
+    fp_nft_run(MintAccount, tx),
+  }
+}
+
+/// C-MINT-ONLY-OPEN-1: BA script trên một tx. Trước bản vá cả ba XANH ⇒ bob có một
+/// ACCT NFT ngoài sổ trong khi alice claim lại đúng luật.
+test again_duc_acct_did_khac_ba_validator() fail {
+  let tx = again_duc_acct_did_khac_tx()
+  and {
+    fp_run(fp_pd_one(136, 0), ClaimAgain, tx),
+    fp_acct_run(TopUp, fp_acct_datum(fp_did_name, 100, 100), tx),
+    fp_nft_run(MintAccount, tx),
+  }
+}
+
+/// C-RECL-BURN-2: thu hồi account của alice (đốt ACCT của alice, hợp lệ ở
+/// C-RECL-BURN-1) mà tiện tay ĐÚC ACCT của bob. Ca chỉ gọi POOL: `faucet_nft` cũng
+/// từ chối hình dạng này (`dict.size(own_tokens) == 1` ở cả ba nhánh), nên một ca
+/// `and {pool, nft}` sẽ đỏ dù có gỡ cổng ở pool — tức nó không ghim được gì.
+test reclaim_dot_va_duc_them() fail {
+  let pd = fp_pd_one(100, fp_max_claims)
+  fp_run(
+    pd,
+    fp_reclaim,
+    reclaim_tx_mint(
+      pd,
+      fp_pool_output(fp_pd(100, fp_max_claims), fp_pool_lamp + fp_drip),
+      [fp_reclaim_acct_input()],
+      fp_mint(fp_did_name, -1) |> assets.add(fp_nft_policy, acct_name(fp_other_did), 1),
+    ),
+  )
+}
+
+/// Cực đối xứng của ca trên ở phía mint policy — dán nhãn cho câu "nft cũng từ
+/// chối" ở docstring trên, để nó là một phép đo chứ không phải một lời khẳng định.
+test reclaim_dot_va_duc_them_nft_cung_tu_choi() fail {
+  fp_nft_run(
+    BurnAccount,
+    reclaim_tx_mint(
+      fp_pd_one(100, fp_max_claims),
+      fp_pool_output(fp_pd(100, fp_max_claims), fp_pool_lamp + fp_drip),
+      [fp_reclaim_acct_input()],
+      fp_mint(fp_did_name, -1) |> assets.add(fp_nft_policy, acct_name(fp_other_did), 1),
     ),
   )
 }
