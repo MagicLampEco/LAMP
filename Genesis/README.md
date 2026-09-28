@@ -43,8 +43,9 @@ Tầng 3 chỉ biết policy của tầng 2; tầng 2 chỉ biết policy/name c
 thì thành vòng tròn, không deploy nổi — đó là lý do định danh `SupplyState` neo bằng **NFT**,
 không bằng script-hash.
 
-Hai validator còn lại: `dist_treasury.ak` (kho nhận LAMP sau khi mint — xem cảnh báo cuối bài)
-và `lock_vault.ak`.
+Hai validator của đời mồi mainnet — `dist_treasury.ak` (kho 1-pkh nhận LAMP sau khi mint) và
+`lock_vault.ak` (kho khoá vĩnh viễn) — nằm ở `bootstrap-closure/onchain/validators/`, cùng công
+cụ đã dùng để đóng policy mồi. Chúng không thuộc cụm canonical.
 
 ## Hai đường mint
 
@@ -85,7 +86,7 @@ Genesis/
 ├── onchain/
 │   ├── lib/magiclamp/genesis/     # constants · types · util · registry
 │   └── validators/                # thread_nft · lamp_mint · supply_state
-│                                  # dist_treasury · lock_vault
+├── bootstrap-closure/             # đóng policy mồi mainnet: dist_treasury · lock_vault + công cụ
 ├── offchain/src/                  # datum codec · mintBuilder · supplyState · circulating
 ├── scripts/                       # deploy · mint · verify (verify_mainnet_supply.ts là bản đọc-chỉ-đọc)
 ├── CONTRACT.md
@@ -102,14 +103,13 @@ cd Genesis/offchain && npm install && npx vitest run   # 71 pass / 0 fail (đo 2
 
 ## Trạng thái thật — đọc trước khi dùng
 
-- **Kho đang giữ LAMP trên mainnet là ví một-chữ-ký.** `dist_treasury.ak` là script **khởi
-  tạo**, dòng đầu tự khai `BOOTSTRAP: authority = 1 pkh (ví bootstrap)` — một chữ ký chuyển
-  được LAMP ra khỏi kho. Kho đang giữ 1.000.000 LAMP (0,0028% tổng cung, chưa phân phối cho
-  ai). Thiết kế đích là `Treasury/treasury.ak`, nơi LAMP chỉ rời kho qua
-  entitlement → Merkle → claim → redeem. **Phải thay trước khi mint thêm giá trị.** Chi tiết:
-  [`kho-a-dest.md`](./kho-a-dest.md).
-- **Mã script `lamp_mint` đang chạy trên mainnet chưa được đối chiếu từng byte** với mã nguồn
-  trong repo. Việc đó là điều kiện tiên quyết trước khi mint thêm bất kỳ lượng nào có giá trị.
-  Chi tiết: [`mainnet-deploy-plan.md`](./mainnet-deploy-plan.md).
-- Trần 36 tỷ **đã được xác minh trên chuỗi** — đó là phần chắc chắn. Hai điều trên là về **kho
-  nhận** và **đối chiếu mã**, không phải về trần.
+- **Policy mồi mainnet đã đóng (2026-09-27).** Kho A-DEST của nó là `dist_treasury` 1-pkh
+  (`bootstrap-closure/onchain/validators/dist_treasury.ak`). Quota đã cạn, và toàn bộ LAMP của
+  policy mồi đã gom vào `lock_vault` (spend luôn `False`). Số lượng và hai tx nằm ở
+  `offchain/src/deployed.ts` khối `LAMP_MAINNET.closure`; nhật ký đo nằm ở
+  [`bootstrap-closure/REHEARSAL.md`](./bootstrap-closure/REHEARSAL.md). Không còn khoá đơn nào
+  rút được LAMP mainnet.
+- **Policy chính thức chưa phát hành trên mainnet.** Kho A-DEST của nó phải là kho vesting,
+  không được là ví 1-pkh. Lý do và ràng buộc: [`kho-a-dest.md`](./kho-a-dest.md). Điều kiện
+  trước khi phát hành (đối chiếu byte script với mã nguồn, dạng authority của Registry):
+  [`mainnet-deploy-plan.md`](./mainnet-deploy-plan.md).

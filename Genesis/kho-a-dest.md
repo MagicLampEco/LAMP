@@ -9,7 +9,7 @@ Kho A-DEST (nơi `DistributionVest` bắt buộc rót toàn bộ LAMP) = **`Dist
 **KHÔNG dùng làm kho A-DEST:**
 | Ứng viên | Vì sao loại |
 |---|---|
-| `Genesis/onchain/validators/dist_treasury.ak` (1-pkh) | 1 chữ ký rút sạch, không trần; mất khoá = kẹt vĩnh viễn (LAMP no-burn). Tự khai "BOOTSTRAP" (`dist_treasury.ak:6-7`). |
+| `Genesis/bootstrap-closure/onchain/validators/dist_treasury.ak` (1-pkh) | 1 chữ ký rút sạch, không trần; mất khoá = kẹt vĩnh viễn (LAMP no-burn). Tự khai "BOOTSTRAP" (`dist_treasury.ak:6-7`). |
 | native-sig script (keyHash = ví deploy) | Cùng nhược điểm single-key drain; hash phụ thuộc pkh người deploy → không tái dùng chung. |
 | `Distribution/onchain/validators/claim_account.ak` | Ép `value == value` (`claim_account.ak:53`) — không giữ/nhả pool → dùng làm kho sẽ **strand** LAMP. Đây là slot-claim per-owner, KHÔNG phải kho. |
 
