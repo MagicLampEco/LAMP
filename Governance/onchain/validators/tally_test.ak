@@ -19,6 +19,7 @@ use aiken/interval
 use aiken/interval.{Interval}
 use aiken/merkle_patricia_forestry.{Proof}
 use cardano/assets.{PolicyId, Value}
+use cardano/address.{Address}
 use cardano/transaction.{
   Input, Output, OutputReference, Transaction, placeholder,
 }
@@ -44,6 +45,10 @@ const null_policy: PolicyId = #"7777"
 const wp_policy: PolicyId = #"a0a0"
 
 const c3_policy: PolicyId = #"c3c3"
+
+/// Script giữ NFT chứng thực C3 (apply-param `c3_script_hash`). Chứng thực đặt ngoài
+/// địa chỉ này KHÔNG được đọc.
+const c3_sh: ByteArray = #"c3"
 
 /// Bộ `a` của `mpf_fixtures`: proposal_id = #"abcd", did #"11"…#"16".
 const prop_id: ByteArray = #"abcd"
@@ -158,13 +163,15 @@ fn wp_input_d8_violating(bft: Int) -> Input {
   }
 }
 
-// ── NFT chứng thực C3: tên tài sản = did_commit, giá trị trong datum ──
-fn c3_ref(did: ByteArray, value: Int, ix: Int) -> Input {
+// ── NFT chứng thực C3: tên tài sản = did_commit, giá trị trong datum, ĐẶT TẠI
+//    `Script(c3_sh)` — `attested_c3` chỉ đọc chứng thực ở đúng địa chỉ đó ──
+fn c3_ref_at(addr: Address, did: ByteArray, value: Int, ix: Int) -> Input {
   let val = assets.from_lovelace(2_000_000) |> assets.add(c3_policy, did, 1)
-  util.mk_input(
-    util.mk_ref(100 + ix),
-    util.mk_output(util.script_address(#"c3"), val, value),
-  )
+  util.mk_input(util.mk_ref(100 + ix), util.mk_output(addr, val, value))
+}
+
+fn c3_ref(did: ByteArray, value: Int, ix: Int) -> Input {
+  c3_ref_at(util.script_address(c3_sh), did, value, ix)
 }
 
 /// Chứng thực C3 cho MỌI phiếu trong lô, đúng bằng giá trị phiếu khai.
@@ -287,6 +294,12 @@ fn tally_out_staked(d_out: TallyDatum) -> Output {
   )
 }
 
+/// Value acc mang NFT `tally_policy` TÊN KHÁC `prop_id` — dùng cho ca "tên token
+/// không khớp `proposal_id` mà datum khai".
+fn tally_value_named(name: ByteArray) -> Value {
+  assets.from_lovelace(2_000_000) |> assets.add(tally_policy, name, 1)
+}
+
 fn drained_value() -> Value {
   assets.from_lovelace(500_000) |> assets.add(tally_policy, prop_id, 1)
 }
@@ -311,6 +324,7 @@ fn run_finalize(tx: Transaction, d_in: TallyDatum) -> Bool {
     null_policy,
     wp_policy,
     c3_policy,
+    c3_sh,
     window,
     ms_ep,
     Some(d_in),
@@ -327,6 +341,7 @@ fn run_sum(tx: Transaction, d_in: TallyDatum, proofs: List<Proof>) -> Bool {
     null_policy,
     wp_policy,
     c3_policy,
+    c3_sh,
     window,
     ms_ep,
     Some(d_in),
@@ -536,12 +551,30 @@ test sum_derive_happy() {
   run_sum(tx, d_in, [fx.ins_a1()])
 }
 
-/// Bơm power mà KHÔNG có phiếu nào: đỏ ở `list.length(votes) >= 1`.
+/// Bơm bộ đếm mà KHÔNG có phiếu nào. Ca này đỏ ở `sum_batch_consistent`, KHÔNG ở
+/// `list.length(votes) >= 1` — đo bằng đột biến 2026-09-29: gỡ vế `>= 1` thì 343/343
+/// vẫn xanh. Docstring cũ ghi "đỏ ở `list.length(votes) >= 1`" là một lời khai sai;
+/// ca ghim vế đó là `sum_lo_rong_no_op_tu_choi` ngay dưới.
 test sum_no_vote_inflate_reject() fail {
   let d_in = summing(0, 0, 0, 0, 0, [])
   let d_out = summing(v1_vp(), 0, 0, 1, 1, [])
   let tx = sum_tx(d_in, d_out, [], [], assets.zero)
   expect run_sum(tx, d_in, [])
+  True
+}
+
+/// Lô RỖNG mà HỢP LỆ ở mọi vế khác: datum ra Y HỆT datum vào (sổ không đổi, mọi bộ
+/// đếm không đổi, heap không đổi), `tx.mint` rỗng nên `nullifiers_burned` thoả (0 tên
+/// = 0 phiếu), UTxO acc bảo toàn, `e` trong cửa sổ gom, `c_sources_ok` thoả rỗng. Chốt
+/// duy nhất còn bác là `list.length(votes) >= 1`.
+///
+/// Vì sao chốt đó cần: không có nó thì một lượt `SumBatch` rỗng là no-op hợp lệ, lặp
+/// được vô hạn. Hai hại: số lượt gộp không còn bị chặn trên bởi số DID đã bỏ phiếu
+/// (mất cận trên mà chú thích ở `tally.ak` viện dẫn), và một lượt gộp không-làm-gì che
+/// được dấu vết cho bên đọc off-chain đang đếm lượt gộp.
+test sum_lo_rong_no_op_tu_choi() fail {
+  let d = summing(0, 0, 0, 0, 0, [])
+  expect run_sum(sum_tx(d, d, [], [], assets.zero), d, [])
   True
 }
 
@@ -924,6 +957,98 @@ test sum_c3_chung_thuc_cua_did_khac_tu_choi() fail {
   True
 }
 
+// ── NƠI GIỮ chứng thực C3: `Script(c3_script_hash)` ──
+//
+// Ba ca dưới đây khác nhau ĐÚNG MỘT thứ — địa chỉ (và số lượng) của UTxO chứng thực —
+// nên chúng phân định được vế địa chỉ khỏi mọi vế khác của cổng nguồn.
+
+/// Đối chứng DƯƠNG: chứng thực đặt tại `Script(c3_sh)`, dựng bằng cùng khuôn
+/// `reference_inputs` TAY như hai ca âm dưới. Không có ca này thì hai ca âm không
+/// phân biệt được "đỏ vì địa chỉ" với "khuôn dựng tay thiếu một reference input".
+test sum_c3_chung_thuc_dung_script_qua() {
+  let v = vote_datum(Yes, 10, did_of(1))
+  let d_in = summing(0, 0, 0, 0, 0, [])
+  let d_out =
+    summing_r(
+      v1_vp(),
+      0,
+      0,
+      1,
+      1,
+      [TopEntry { vp_raw: v1_vp(), choice: Yes }],
+      fx.root_a1,
+    )
+  let tx =
+    Transaction {
+      ..sum_tx(d_in, d_out, [vote_input(v, 1)], [v], burn_all([v])),
+      reference_inputs: [wp_input(10), c3_ref(did_of(1), 10, 0)],
+    }
+  run_sum(tx, d_in, [fx.ins_a1()])
+}
+
+/// (PoC 4) Chứng thực C3 đặt ở VÍ THƯỜNG. Token `(c3_policy, did)` có thật, qty 1,
+/// giá trị datum ≥ số khai — mọi vế của cổng nguồn thoả, TRỪ nơi giữ.
+///
+/// Vì sao là đòn thật, không phải vệ sinh: datum của một UTxO do người TẠO nó viết.
+/// Người giữ token đem nó về ví mình rồi tự ghi giá trị chứng thực, nên "cap + có
+/// token" vẫn là tự khai. Đây đúng cái `R-C-SOURCE` nói ("cap không phải chứng
+/// thực") — và nó áp cho cả NƠI GIỮ, không chỉ cho sự tồn tại của token.
+test sum_c3_chung_thuc_o_vi_thuong_tu_choi() fail {
+  let v = vote_datum(Yes, 10, did_of(1))
+  let d_in = summing(0, 0, 0, 0, 0, [])
+  let d_out =
+    summing_r(
+      v1_vp(),
+      0,
+      0,
+      1,
+      1,
+      [TopEntry { vp_raw: v1_vp(), choice: Yes }],
+      fx.root_a1,
+    )
+  let tx =
+    Transaction {
+      ..sum_tx(d_in, d_out, [vote_input(v, 1)], [v], burn_all([v])),
+      reference_inputs: [
+        wp_input(10),
+        c3_ref_at(util.vk_address(#"deadbeef"), did_of(1), 10, 0),
+      ],
+    }
+  expect run_sum(tx, d_in, [fx.ins_a1()])
+  True
+}
+
+/// HAI ứng viên tại ĐÚNG địa chỉ script, cùng tên tài sản. `list.filter` trả hai
+/// phần tử ⇒ nhánh `_ -> -1` ⇒ bác. Ca "không cái nào" (`sum_c3_khong_chung_thuc`)
+/// KHÔNG ghim được vế "đúng một": nó chết ở cùng nhánh `_` dù phép đếm có hay không.
+/// Ca hai-cái là ca duy nhất phân biệt được, và nó đặt cái HỢP LỆ ĐỨNG TRƯỚC để một
+/// phép `list.find` (nếu ai đổi sang) cũng không lọt.
+test sum_c3_hai_chung_thuc_tu_choi() fail {
+  let v = vote_datum(Yes, 10, did_of(1))
+  let d_in = summing(0, 0, 0, 0, 0, [])
+  let d_out =
+    summing_r(
+      v1_vp(),
+      0,
+      0,
+      1,
+      1,
+      [TopEntry { vp_raw: v1_vp(), choice: Yes }],
+      fx.root_a1,
+    )
+  let tx =
+    Transaction {
+      ..sum_tx(d_in, d_out, [vote_input(v, 1)], [v], burn_all([v])),
+      reference_inputs: [
+        wp_input(10),
+        c3_ref(did_of(1), 10, 0),
+        c3_ref(did_of(1), 10, 1),
+      ],
+    }
+  expect run_sum(tx, d_in, [fx.ins_a1()])
+  True
+}
+
 /// (T1) — `vd.nullifier` không bằng `H(did‖prop)`. Đốt đúng tên bịa đó để
 /// `nullifiers_burned` vẫn thoả, nên ca đỏ ở (T1).
 test sum_nullifier_bia_tu_choi() fail {
@@ -1089,6 +1214,75 @@ test finalize_rejects_two_outputs_at_script() fail {
     finalize_tx_many(
       [tally_input(d_in)],
       [tally_out(d_out), tally_out(d_out)],
+      10,
+    )
+  expect run_finalize(tx, d_in)
+  True
+}
+
+// ── `reference_script == None` trên acc RA (`R-ADDR-PRESERVE`) ──
+//
+// Hai ca dưới đây dựng lại PoC 2 và PoC 2b của báo cáo audit. Trước vá, cả hai QUA:
+// `utxo_preserved` so value + so địa chỉ đầy đủ nhưng không nhìn ô reference script,
+// nên một lượt đóng sổ đính được một script vào chính UTxO acc. Acc không có nhánh
+// nào thu hồi (`[PROPOSAL-CLOSE]`) ⇒ min-ADA phình theo kích thước script đó bị khoá
+// vĩnh viễn, và người trả là người mở proposal, không phải người dựng giao dịch.
+
+/// (PoC 2) `Finalize` — mọi vế khác y hệt `finalize_clamp_tc1`, chỉ thêm ô script.
+test finalize_dinh_reference_script_tu_choi() fail {
+  let top = [TopEntry { vp_raw: 400, choice: Yes }]
+  let d_in = summing(700, 200, 100, 30, 25, top)
+  let d_out = clamped_of(d_in, 400, 200, 100)
+  let out = Output { ..tally_out(d_out), reference_script: Some(#"aabbccdd") }
+  expect run_finalize(finalize_tx_full(tally_input(d_in), out, 10), d_in)
+  True
+}
+
+/// (PoC 2b) `SumBatch` — mọi vế khác y hệt `sum_derive_happy`, chỉ thêm ô script.
+test sum_dinh_reference_script_tu_choi() fail {
+  let v = vote_datum(Yes, 10, did_of(1))
+  let d_in = summing(0, 0, 0, 0, 0, [])
+  let d_out =
+    summing_r(
+      v1_vp(),
+      0,
+      0,
+      1,
+      1,
+      [TopEntry { vp_raw: v1_vp(), choice: Yes }],
+      fx.root_a1,
+    )
+  let out = Output { ..tally_out(d_out), reference_script: Some(#"aabbccdd") }
+  let tx =
+    sum_tx_full(
+      tally_input(d_in),
+      out,
+      [vote_input(v, 1)],
+      [v],
+      burn_all([v]),
+      10,
+      e_sum,
+    )
+  expect run_sum(tx, d_in, [fx.ins_a1()])
+  True
+}
+
+// ── TÊN token acc phải bằng `proposal_id` mà datum khai ──
+
+/// NFT `tally_policy` tên `#"beef"` ở CẢ hai đầu, datum khai `proposal_id = #"abcd"`.
+/// Vế `qty == 1` thoả (nó đếm số lượng của một tên TUỲ Ý), đẳng thức value thoả,
+/// địa chỉ thoả, không có ô script ⇒ chỉ vế tên bác. Hại nếu thiếu vế này: mọi bên
+/// đọc ngoài định danh tally theo TÊN TOKEN (`tally_ref.find_tally`, `nullifier` cổng
+/// 3, `vote` V4/V5), còn `SumBatch` gom phiếu theo `d_in.proposal_id` — hai định danh
+/// trôi khỏi nhau mà không vế nào kêu.
+test finalize_ten_token_khong_khop_proposal_id_tu_choi() fail {
+  let d_in = summing(700, 200, 100, 30, 25, [])
+  let d_out = clamped_of(d_in, 700, 200, 100)
+  let val = tally_value_named(#"beef")
+  let tx =
+    finalize_tx_full(
+      tally_input_with(d_in, val),
+      tally_out_with(d_out, val),
       10,
     )
   expect run_finalize(tx, d_in)

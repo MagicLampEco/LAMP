@@ -35,6 +35,9 @@ const wp_policy: PolicyId = #"a0a0"
 
 const c3_policy: PolicyId = #"c3c3"
 
+/// Script giữ NFT chứng thực C3 (apply-param `c3_script_hash` của `tally`).
+const c3_sh: ByteArray = #"c3"
+
 const tally_sh: ByteArray = #"7a"
 
 const vote_sh: ByteArray = #"c0"
@@ -103,7 +106,7 @@ fn c3_ref() -> Input {
   let val = assets.from_lovelace(2_000_000) |> assets.add(c3_policy, did1, 1)
   util.mk_input(
     util.mk_ref(101),
-    util.mk_output(util.script_address(#"c3"), val, c3),
+    util.mk_output(util.script_address(c3_sh), val, c3),
   )
 }
 
@@ -201,6 +204,7 @@ fn call_tally(
     nl_policy,
     wp_policy,
     c3_policy,
+    c3_sh,
     window,
     ms,
     Some(d_in),

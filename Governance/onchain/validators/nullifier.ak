@@ -14,7 +14,15 @@
 //
 // asset name = blake2b_256(did_commit ‖ proposal_id).
 //
-// MintNullifier — bốn cổng, ghép AND:
+// MintNullifier — năm cổng, ghép AND:
+//   0. ĐỘ DÀI hai tiền ảnh: `did_commit` và `proposal_id` mỗi cái ĐÚNG 32 byte.
+//      Không có vế này thì `blake2b_256(did_commit ‖ proposal_id)` KHÔNG đơn ánh theo
+//      cặp: `(#"aa", #"bb")` và `(#"aabb", #"")` băm ra cùng một tên token, nên hai
+//      cặp khác nhau tranh CÙNG một nullifier. Hai giá trị này đều là băm 32 byte
+//      theo §v2.5 (`did_commit = blake2b_256(UTF8(did))`, `proposal_id = H(seed)`),
+//      nên vế này không cắt đường trung thực nào — nó chỉ biến một tính chất của
+//      cách sinh dữ liệu thành một cổng, và SDK off-chain đã đòi đúng 32 byte ở
+//      `datum.ts` ▸ `HASH32_BYTES`.
 //   1. hình dạng mint: đúng 1 tên token của policy này, qty +1, và tx KHÔNG đúc
 //      policy nào khác (chống đính kèm một lượt đúc lạ vào cùng chữ ký).
 //   2. tên = blake2b_256(did_commit ‖ proposal_id) — policy tự dựng, không tin tên
@@ -55,6 +63,7 @@ use aiken/builtin
 use aiken/collection/dict
 use aiken/collection/list
 use aiken/interval.{Interval}
+use aiken/primitive/bytearray
 use cardano/assets.{PolicyId, Value}
 use cardano/transaction.{Input, Output, Transaction, placeholder}
 use magiclamp/governance/anchor_view
@@ -110,6 +119,9 @@ validator nullifier(
     let own_tokens = assets.tokens(tx.mint, policy_id)
     when redeemer is {
       MintNullifier { did_commit, proposal_id } -> {
+        // 0. ĐỘ DÀI hai tiền ảnh — điều kiện để `H(a ‖ b)` đơn ánh theo cặp `(a, b)`.
+        expect bytearray.length(did_commit) == 32
+        expect bytearray.length(proposal_id) == 32
         // 1 + 2. hình dạng mint + tên canonical.
         let want_name = nullifier_name(did_commit, proposal_id)
         expect dict.size(own_tokens) == 1
@@ -186,9 +198,23 @@ const open_e: Int = 10
 
 const close_e: Int = 20
 
-const did: ByteArray = #"11"
+/// `did_commit` và `proposal_id` là băm 32 byte trên chuỗi thật (§v2.5:
+/// `did_commit = blake2b_256(UTF8(did))`, `proposal_id = H(seed)`), và cổng 0 của
+/// `MintNullifier` ép đúng độ dài đó. Fixture phải dùng ĐỘ DÀI THẬT — không thì mọi
+/// ca dương ở đây đỏ ở cổng 0 thay vì ở chốt mang tên chúng.
+const did: ByteArray =
+  #"1111111111111111111111111111111111111111111111111111111111111111"
 
-const prop: ByteArray = #"abcd"
+const prop: ByteArray =
+  #"abcdabcdabcdabcdabcdabcdabcdabcdabcdabcdabcdabcdabcdabcdabcdabcd"
+
+/// 31 byte — `did` cắt đúng một byte cuối.
+const did_31: ByteArray =
+  #"11111111111111111111111111111111111111111111111111111111111111"
+
+/// 31 byte — `prop` cắt đúng một byte cuối.
+const prop_31: ByteArray =
+  #"abcdabcdabcdabcdabcdabcdabcdabcdabcdabcdabcdabcdabcdabcdabcdab"
 
 /// Hai khoá chính chủ của anchor dựng bởi `anchor_datum` (khớp `#"c1"`/`#"d1"`).
 const ctrl: ByteArray = #"c1"
@@ -325,16 +351,20 @@ fn one_nl(qty: Int) -> Value {
   assets.zero |> assets.add(nl_policy, name_of(did, prop), qty)
 }
 
-fn run_mint(tx: Transaction) -> Bool {
+fn run_mint_of(d: ByteArray, p: ByteArray, tx: Transaction) -> Bool {
   nullifier.mint(
     tally_policy,
     taad_policy,
     ms_ep,
     window,
-    MintNullifier { did_commit: did, proposal_id: prop },
+    MintNullifier { did_commit: d, proposal_id: p },
     nl_policy,
     tx,
   )
+}
+
+fn run_mint(tx: Transaction) -> Bool {
+  run_mint_of(did, prop, tx)
 }
 
 /// Đốt nullifier của `did` thuộc proposal `p`, khai `did_commits = [did]`.
@@ -375,6 +405,66 @@ test nl_mint_bien_duoi_cua_so() {
 }
 
 // ── Âm: mỗi ca giữ NGUYÊN mọi vế khác, lật ĐÚNG một vế ──
+
+// ── Cổng 0: độ dài hai tiền ảnh của `H(did_commit ‖ proposal_id)` ──
+
+fn one_nl_of(d: ByteArray, p: ByteArray, qty: Int) -> Value {
+  assets.zero |> assets.add(nl_policy, name_of(d, p), qty)
+}
+
+/// Tally ref của một `proposal_id` tuỳ ý, cửa sổ `[open_e, close_e)` như bản dương.
+/// `tally_utxo_of` đặt TÊN token bằng `td.proposal_id`, và `find_tally` còn đòi datum
+/// khai đúng tên đó — nên hai thứ phải đi cùng nhau.
+fn tally_ref_of(p: ByteArray) -> Input {
+  util.mk_input(util.mk_ref(0), tally_utxo_of(tally_datum_of(p, open_e, close_e)))
+}
+
+/// `did_commit` 31 byte. Mọi vế khác dựng ĐÚNG theo giá trị đó — anchor mang
+/// `(taad_policy, did_31)`, token đúc tên `H(did_31 ‖ prop)` qty 1, đủ hai chữ ký,
+/// đúng cửa sổ — nên gỡ cổng 0 thì ca này XANH, tức nó ghim đúng cổng 0.
+test nl_mint_did_commit_31_byte_tu_choi() fail {
+  let a = anchor_input_at(taad_policy, did_31, anchor_datum(0, False, 0))
+  expect
+    run_mint_of(
+      did_31,
+      prop,
+      mint_tx(15, [tally_ref_input(), a], [ctrl, dev], one_nl_of(did_31, prop, 1)),
+    )
+  True
+}
+
+/// `proposal_id` 31 byte. Tally ref dựng theo ĐÚNG `prop_31` (token + datum), token
+/// đúc tên `H(did ‖ prop_31)` qty 1 ⇒ chỉ cổng 0 còn bác.
+test nl_mint_proposal_id_31_byte_tu_choi() fail {
+  expect
+    run_mint_of(
+      did,
+      prop_31,
+      mint_tx(
+        15,
+        [tally_ref_of(prop_31), anchor_person()],
+        [ctrl, dev],
+        one_nl_of(did, prop_31, 1),
+      ),
+    )
+  True
+}
+
+/// Đối chứng DƯƠNG cho hai ca trên: cùng khuôn giao dịch, chỉ đổi độ dài về 32 byte
+/// (ở đây là `prop` thật thay `prop_31`) ⇒ qua. Không có ca này thì hai ca trên
+/// không phân biệt được "đỏ vì độ dài" với "khuôn `tally_ref_of` dựng sai".
+test nl_mint_qua_voi_tally_ref_dung_khuon() {
+  run_mint_of(
+    did,
+    prop,
+    mint_tx(
+      15,
+      [tally_ref_of(prop), anchor_person()],
+      [ctrl, dev],
+      one_nl_of(did, prop, 1),
+    ),
+  )
+}
 
 /// Giữ ref tally, bỏ ĐÚNG anchor ⇒ đỏ ở cổng WHO, không phải ở cổng tally-ref.
 test nl_mint_khong_anchor_tu_choi() fail {

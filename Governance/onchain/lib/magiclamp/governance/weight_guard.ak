@@ -104,6 +104,14 @@ pub fn knots_wellformed(knots: List<Knot>) -> Bool {
         first.c == 0,
         first.pow == 0,
         monotone_from(first, rest),
+        // ĐỘT BIẾN TƯƠNG ĐƯƠNG — BẤT KHẢ GHIM, đo 2026-09-29: gỡ vế này thì 343/343
+        // bài vẫn xanh, và không dựng được đầu vào nào cho nó đỏ. Lý do là một định
+        // lý, không phải "chưa viết bài": nhánh này chỉ nhận bảng ≥ 2 mốc (hai nhánh
+        // `[]`/`[_]` ở trên đã bắt bảng ngắn), nên `rest` khác rỗng; cộng
+        // `first.c == 0` với `c` tăng NGHIÊM NGẶT thì mốc cuối ≥ 1 theo số học. Giữ
+        // lại làm phòng thủ chiều sâu — ai nới `c` về "không giảm" sau này thì vế
+        // này là thứ chặn cap = 0. KHÔNG đọc `g0_last_c_bang_khong_va_bang_bi_bac`
+        // thành bằng chứng rằng vế này đang được canh.
         last_c(knots) >= 1,
       }
   }
@@ -318,12 +326,35 @@ test g0_bac_bang_qua_ngan() {
   !knots_wellformed([]) && !knots_wellformed([Knot { c: 0, pow: 0 }])
 }
 
-/// `last_c = 0` dù `c` tăng — không thể vì `first.c == 0` và `c` tăng nghiêm ngặt
-/// đã kéo theo `last_c >= 1` với bảng ≥ 2 mốc. Ca này ghim rằng vế `last_c >= 1`
-/// KHÔNG dư: gỡ nó thì `k3_cap_0` ở trên chỉ còn bị bắt bởi vế `c` tăng.
-test g0_last_c_va_c_tang_la_hai_ve_khac_nhau() {
+/// Bảng cap-0 bị bác, và `last_c` của nó ĐÚNG là 0 — ca này ghim phép tính `last_c`,
+/// KHÔNG ghim vế `last_c >= 1` của `knots_wellformed`. Bản trước của docstring này
+/// khẳng định ngược lại ("ca này ghim rằng vế `last_c >= 1` KHÔNG dư"); đo đột biến
+/// 2026-09-29 cho thấy khẳng định đó sai: gỡ vế `last_c >= 1` thì 343/343 vẫn xanh,
+/// vì bảng cap-0 đã bị vế `c` tăng nghiêm ngặt bác trước. Xem chú thích tại chính vế
+/// đó trong `knots_wellformed`.
+test g0_last_c_bang_khong_va_bang_bi_bac() {
   let cap_0 = [Knot { c: 0, pow: 0 }, Knot { c: 0, pow: 7 * scale }]
   and { last_c(cap_0) == 0, !knots_wellformed(cap_0) }
+}
+
+/// `c` TRÙNG Ở GIỮA bảng, cap vẫn ≥ 1. Đây là ca DUY NHẤT ghim được vế "c tăng NGHIÊM
+/// NGẶT": `g0_bac_bang_cap_bang_khong` không ghim nó, vì bảng cap-0 của ca đó bị vế
+/// `last_c >= 1` bác song song ⇒ đột biến `k.c > prev.c` → `k.c >= prev.c` cho 343/343
+/// xanh (đo 2026-09-29). Mọi vế khác của ca này thoả: mốc đầu ở `c = 0`, `pow` đầu 0,
+/// `pow` không giảm, cap = 100.
+///
+/// Vì sao vế đó phải sống: hai mốc cùng `c` là một đoạn nội suy độ dài 0, và `interp`
+/// chia cho hiệu hai mốc — lập luận "kiểm tại các knot là ĐỦ" ở đầu tệp tựa vào việc
+/// mỗi đoạn có độ dài dương.
+test g0_bac_c_trung_o_giua_bang() {
+  let dup =
+    [
+      Knot { c: 0, pow: 0 },
+      Knot { c: 50, pow: 10 * scale },
+      Knot { c: 50, pow: 20 * scale },
+      Knot { c: 100, pow: 30 * scale },
+    ]
+  and { last_c(dup) == 100, !knots_wellformed(dup) }
 }
 
 /// Đối chứng PoC 3b, MỘT biến: chỉ đổi cap của `k3` từ 0 sang 10^6 ⇒ D8 vẫn chặn vì

@@ -227,6 +227,51 @@ test release_happy() {
   run(tx, datum(ledger_in), draws)
 }
 
+// ════════════════════════════════════════════════════════════
+// 1-bis. ĐƯỜNG CHI CỦA GOVERNANCE PHA 1/2 ĐANG ĐÓNG — đo, không mô tả.
+//
+// `Governance/SPEC.md` §v2.10 `[GOV-FINALIZE-BRANCH]` khai: Pha 1/2 ép
+// `spend_spec_hash == #""` ở CẢ HAI cửa (`OpenProposal` và `FinalizeProposal`), nên
+// "mọi lượt `Release` bị từ chối". Câu đó tựa vào MỘT tính chất của Treasury —
+// `release.spend_spec_hash` không bao giờ băm ra chuỗi rỗng — và tính chất đó trước
+// nay không có ca nào đo. Thiếu ca này thì lời khẳng định "đường chi đã đóng độc lập"
+// chỉ là một dòng trong tài liệu, và tài liệu không chặn được gì.
+//
+// Ca KHÁC `release_happy` ĐÚNG MỘT trường: `spend_spec_hash` của proposal là `#""`
+// thay vì `spec`. Mọi vế đi TRƯỚC C-REL-3 đều thoả — `draws != []` (C-REL-13),
+// `read_proposal` đọc được beacon (C-REL-1), `status == Executed` (C-REL-2) — nên ca
+// đỏ ở đúng C-REL-3 (`custody.ak` ▸ nhánh `Release`).
+// ════════════════════════════════════════════════════════════
+test release_spec_hash_rong_tu_choi() fail {
+  let ledger_in = [LedgerEntry { bucket_id: bucket_ops, policy: lamp_policy, name: lamp_name, amount: 1000 }]
+  let ledger_out = [LedgerEntry { bucket_id: bucket_ops, policy: lamp_policy, name: lamp_name, amount: 700 }]
+  let draws = happy_draws()
+  let tx =
+    release_tx(
+      lamp_val(5_000_000, 5000),
+      lamp_val(5_000_000, 4700),
+      ledger_in,
+      ledger_out,
+      // proposal Executed, mọi thứ hợp lệ, `spend_spec_hash` = chuỗi RỖNG.
+      [proposal_input(Executed, #"", 4)],
+      [pay(alice, 300)],
+      5 * ms_per_epoch,
+      [],
+      assets.zero,
+    )
+  run(tx, datum(ledger_in), draws)
+}
+
+/// Tiền đề của ca trên, ghim riêng: `release.spend_spec_hash` là `blake2b_256` ⇒ 32
+/// byte ⇒ KHÔNG BAO GIỜ bằng `#""`, kể cả với danh sách chi rỗng. Không có vế này thì
+/// ca trên chỉ nói "một giá trị cụ thể không khớp", không nói "chuỗi rỗng là bất khả".
+test release_spec_hash_khong_bao_gio_rong() {
+  and {
+    release.spend_spec_hash(seed_policy, instance_id, happy_draws()) != #"",
+    release.spend_spec_hash(seed_policy, instance_id, []) != #"",
+  }
+}
+
 // 2 draw khác (to,asset): ops→alice 300 LAMP, community→bob 500 LAMP. custody −800.
 test release_batch_multi() {
   let ledger_in =

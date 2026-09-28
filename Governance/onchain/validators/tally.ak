@@ -27,6 +27,9 @@
 //   weight_param_policy : authenticity token bảng WeightParam (ngưỡng + knots).
 //   c3_policy           : policy NFT chứng thực C3 (uy tín). `#""` = pha chưa dùng
 //                         C3 ⇒ ép `c3_capped == 0`.
+//   c3_script_hash      : NƠI GIỮ NFT chứng thực C3. Chứng thực chỉ được đọc từ
+//                         reference input tại `Script(c3_script_hash)`; token một
+//                         mình KHÔNG đủ (xem `attested_c3`).
 //   tally_window_epochs : độ dài cửa sổ gom.
 //   ms_per_epoch        : quy đổi POSIX ms → epoch.
 
@@ -34,6 +37,7 @@ use aiken/collection/dict
 use aiken/collection/list
 use aiken/merkle_patricia_forestry as mpf
 use aiken/merkle_patricia_forestry.{Proof}
+use cardano/address.{Script}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{
   InlineDatum, Input, Output, OutputReference, Transaction,
@@ -60,10 +64,12 @@ pub type TallyRedeemer {
 pub const cap4_hard: Int = 100_000_000
 
 /// Bảo toàn Tally acc UTxO: đúng 1 input + 1 output tại Tally script hash, output
-/// mang đúng 1 NFT, và TOÀN BỘ value đi qua nguyên vẹn.
+/// mang đúng 1 NFT ĐÚNG TÊN, không đính reference script, và TOÀN BỘ value đi qua
+/// nguyên vẹn.
 fn utxo_preserved(
   own_hash: ByteArray,
   tally_policy: PolicyId,
+  proposal_id: ByteArray,
   tx: Transaction,
 ) -> Bool {
   let n_in = util.count_inputs_at_script(tx.inputs, own_hash)
@@ -77,12 +83,29 @@ fn utxo_preserved(
     n_in == 1,
     n_out == 1,
     qty == 1,
+    // TÊN token BUỘC vào datum: acc vào phải mang đúng `(tally_policy, proposal_id)`
+    // của chính datum nó khai. Vế `qty == 1` ở trên đếm SỐ LƯỢNG của một tên tuỳ ý,
+    // nên không có vế này thì một Tally UTxO mang NFT tên X mà datum khai
+    // `proposal_id = Y` đi qua trọn vòng đời: `collect_votes` gom phiếu của Y, sổ MPF
+    // ghi theo Y, còn mọi bên đọc ngoài (`tally_ref.find_tally`, `nullifier` cổng 3,
+    // `vote` V4/V5) định danh tally đó theo TÊN TOKEN là X. Hai định danh trôi khỏi
+    // nhau trong im lặng. Cộng với `[TALLY-TOKEN-OUTSIDE-OPEN]` (token tally đúc lẻ
+    // không bị kiểm datum khởi tạo) thì hình dạng đó dựng được ngoài giao dịch Open.
+    assets.quantity_of(in_out.value, tally_policy, proposal_id) == 1,
     // value NGUYÊN VẸN: giữ NFT thôi thì người tiêu giữ NFT + datum đúng rồi hút
     // hết ADA của acc ra ví mình, và không ràng buộc cũ nào kêu lên.
     out.value == in_out.value,
     // ĐỊA CHỈ ĐẦY ĐỦ (kể cả stake credential). `util.is_at_script` chỉ so
     // payment_credential — đúng cho việc ĐẾM, không đủ cho việc ÉP ĐÍCH.
     out.address == in_out.address,
+    // KHÔNG đính reference script vào acc ra (`R-ADDR-PRESERVE` §v2.8). Một ô
+    // reference script gắn vào UTxO acc làm min-ADA của acc phình theo kích thước
+    // script gắn kèm — và acc là UTxO KHÔNG có nhánh nào thu hồi được
+    // (`[PROPOSAL-CLOSE]`), nên khoản đó bị khoá vĩnh viễn, do người dựng giao dịch
+    // chọn và người mở proposal trả. Hai nhánh spend còn lại của hệ
+    // (`governance ▸ FinalizeProposal` S4, `vote ▸ RetractVote` R4) đã ép vế này;
+    // tally là chỗ duy nhất còn thiếu (PoC 2 / 2b của báo cáo audit).
+    out.reference_script == None,
   }
 }
 
@@ -133,19 +156,36 @@ fn nullifiers_burned(
   }
 }
 
-/// Giá trị C3 được CHỨNG THỰC cho một DID: đúng một reference input mang
-/// `(c3_policy, did_commit)` với datum inline là một Int. Không tìm được ⟹ `-1`,
-/// và mọi `c3_capped >= 0` sẽ bác — fail-closed, không im lặng cho qua.
+/// Giá trị C3 được CHỨNG THỰC cho một DID: đúng một reference input **tại
+/// `Script(c3_script_hash)`** mang `(c3_policy, did_commit)` với datum inline là một
+/// Int. Không tìm được ⟹ `-1`, và mọi `c3_capped >= 0` sẽ bác — fail-closed, không
+/// im lặng cho qua.
+///
+/// **Vì sao vế địa chỉ là vế QUYẾT ĐỊNH, không phải vệ sinh** (PoC 4 của báo cáo
+/// audit đi lọt đúng ở đây, theo mẫu `anchor_view ▸ find_anchor_view`): datum của một
+/// UTxO do người TẠO ra UTxO đó viết, nên "một reference input mang token X" chỉ nói
+/// token X có thật — nó không nói ai viết con số nằm cạnh token. Người giữ token đem
+/// nó về ví thường rồi tự đặt giá trị chứng thực tuỳ ý; cổng cũ nhận. Ghim địa chỉ là
+/// thứ dời quyền viết con số đó về một script mà bên phát hành C3 gác.
+///
+/// Hệ quả fail-closed phải nói rõ: `c3_policy != #""` mà `c3_script_hash == #""` thì
+/// không địa chỉ thật nào khớp `Script(#"")` ⇒ mọi phiếu khai `c3_capped >= 0` bị bác
+/// ⇒ nhánh `SumBatch` tự khoá. Đó là chiều hỏng ĐÚNG cho một cặp tham số khai lệch,
+/// nên không thêm cổng riêng cho nó.
 fn attested_c3(
   reference_inputs: List<Input>,
   c3_policy: PolicyId,
+  c3_script_hash: ByteArray,
   did_commit: ByteArray,
 ) -> Int {
   when
     list.filter(
       reference_inputs,
       fn(i) {
-        assets.quantity_of(i.output.value, c3_policy, did_commit) == 1
+        and {
+          i.output.address.payment_credential == Script(c3_script_hash),
+          assets.quantity_of(i.output.value, c3_policy, did_commit) == 1,
+        }
       },
     )
   is {
@@ -172,12 +212,14 @@ fn attested_c3(
 ///     tích, một thừa số ở mốc đầu bảng kéo VP xuống mốc đầu, nên pha nào dựa vào
 ///     bốn yếu tố sẽ TỰ KHOÁ cho tới khi có nguồn. Đó là ý định: thà khoá còn hơn
 ///     đếm một con số không ai chứng thực.
-///   • C3 — có nguồn: NFT chứng thực tên tài sản = `did_commit`, giá trị trong
-///     datum. Đòi giá trị chứng thực ≥ giá trị khai, và khai trong `[0, cap_3]`.
-///     `c3_policy == #""` = pha chưa bật C3 ⇒ ép == 0.
+///   • C3 — có nguồn: NFT chứng thực tên tài sản = `did_commit`, ĐẶT TẠI
+///     `Script(c3_script_hash)`, giá trị trong datum. Đòi giá trị chứng thực ≥ giá
+///     trị khai, và khai trong `[0, cap_3]`. `c3_policy == #""` = pha chưa bật C3 ⇒
+///     ép == 0.
 fn c_sources_ok(
   reference_inputs: List<Input>,
   c3_policy: PolicyId,
+  c3_script_hash: ByteArray,
   wp: WeightParam,
   votes: List<VoteDatum>,
 ) -> Bool {
@@ -196,7 +238,12 @@ fn c_sources_ok(
           and {
             v.c3_capped >= 0,
             v.c3_capped <= cap_of(wp.k3),
-            attested_c3(reference_inputs, c3_policy, v.did_commit) >= v.c3_capped,
+            attested_c3(
+              reference_inputs,
+              c3_policy,
+              c3_script_hash,
+              v.did_commit,
+            ) >= v.c3_capped,
           }
         },
       }
@@ -231,6 +278,7 @@ validator tally(
   nullifier_policy: PolicyId,
   weight_param_policy: PolicyId,
   c3_policy: PolicyId,
+  c3_script_hash: ByteArray,
   tally_window_epochs: Int,
   ms_per_epoch: Int,
 ) {
@@ -272,7 +320,14 @@ validator tally(
             },
           )
         // (T1b) NGUỒN của c* — kiểm LẠI ở đây, không tin datum phiếu.
-        expect c_sources_ok(tx.reference_inputs, c3_policy, wp, votes)
+        expect
+          c_sources_ok(
+            tx.reference_inputs,
+            c3_policy,
+            c3_script_hash,
+            wp,
+            votes,
+          )
         // (T2) SỔ DID: gốc ra = kết quả chèn trọn lô vào gốc vào.
         expect
           d_out.voted_root == book_root_after(
@@ -291,7 +346,7 @@ validator tally(
           // power_raw + đếm = cũ + DERIVE(phiếu thật) — không nhận delta tuỳ ý.
           sum_batch_consistent(d_in, d_out, wp, votes),
           nullifiers_burned(tx, nullifier_policy, votes),
-          utxo_preserved(own_hash, tally_policy, tx),
+          utxo_preserved(own_hash, tally_policy, d_in.proposal_id, tx),
         }
       }
 
@@ -325,7 +380,7 @@ validator tally(
           d_out.vote_close_epoch == d_in.vote_close_epoch,
           d_out.voted_root == d_in.voted_root,
           clamp_consistent(d_out, wp.bft_floor),
-          utxo_preserved(own_hash, tally_policy, tx),
+          utxo_preserved(own_hash, tally_policy, d_in.proposal_id, tx),
         }
       }
     }
