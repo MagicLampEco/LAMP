@@ -46,7 +46,8 @@ import { fileURLToPath } from "node:url";
 import { NETWORK, applyPolicy, applyValidator, policyId, rawValidator } from "./config.js";
 import { assertParamCount as assertParamCountGate } from "../offchain/src/applyGate.js";
 import { lampMintParamList } from "../offchain/src/reserveKhoPair.js";
-import { TREASURY_NFT_ASSET_NAME, DROP_ASSET_NAME } from "../../Distribution/offchain/src/constants.js";
+import { TREASURY_NFT_ASSET_NAME } from "../../Distribution/offchain/src/constants.js";
+import { DEFAULT_BEACON_ASSET_NAMES } from "../../Distribution/offchain/src/beaconBuilder.js";
 import type { FloorSource } from "./_floorLabel.js";
 import { waitTimeoutError } from "./_waitTimeout.js";
 // Datum Distribution dựng bằng CHÍNH hàm SDK, không gõ `Constr` tại chỗ: hình dạng datum có
@@ -82,7 +83,7 @@ export const MET_NAME = fromText("MET");
  */
 export const KHO_NAME = TREASURY_NFT_ASSET_NAME;
 /** asset name beacon NFT — "DROP", ép bởi `beacon_nft.ak` (`lampdist/util.ak::beacon_name`). */
-export const DROP_NAME = DROP_ASSET_NAME;
+export const DROP_NAME = DEFAULT_BEACON_ASSET_NAMES.DropParam;
 
 /** token_tag của LAMP trong bảng registry — đã chốt (`Genesis/kho-a-dest.md`). */
 export const TOKEN_TAG = "4c414d50";

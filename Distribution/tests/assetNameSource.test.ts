@@ -13,7 +13,8 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
-import { TREASURY_NFT_ASSET_NAME, DROP_ASSET_NAME } from "../offchain/src/constants.js";
+import { TREASURY_NFT_ASSET_NAME } from "../offchain/src/constants.js";
+import { DEFAULT_BEACON_ASSET_NAMES } from "../offchain/src/beaconBuilder.js";
 
 const UTIL_AK = resolve(process.cwd(), "../onchain/lib/magiclamp/lampdist/util.ak");
 const src = readFileSync(UTIL_AK, "utf8");
@@ -34,8 +35,13 @@ describe("asset name — một nguồn on-chain, off-chain phải khớp", () =>
     expect(TREASURY_NFT_ASSET_NAME).toBe(onchain);
   });
 
-  it("DROP_ASSET_NAME == util.beacon_name(DropParam)", () => {
-    const onchain = hexOf(/DropParam\s*->\s*#"([0-9a-f]+)"/g, "beacon_name(DropParam)");
-    expect(DROP_ASSET_NAME).toBe(onchain);
+  it("DEFAULT_BEACON_ASSET_NAMES.DropParam == util.beacon_name(DropParam)", () => {
+    // Neo theo CHỮ KÝ hàm, không theo cú pháp thân: thân từng là `when … DropParam -> #"…"`, nay
+    // là `let DropParam = kind` rồi literal. Đổi cú pháp thân không được làm bài này mù.
+    const onchain = hexOf(
+      /pub fn beacon_name\([^)]*\)\s*->\s*AssetName\s*\{[^}]*?#"([0-9a-f]+)"/g,
+      "beacon_name(DropParam)",
+    );
+    expect(DEFAULT_BEACON_ASSET_NAMES.DropParam).toBe(onchain);
   });
 });
