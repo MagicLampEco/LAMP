@@ -66,13 +66,16 @@ fn at_epoch(e: Int) -> Interval {
 // ── WeightParam: pow(c) = SCALE·(c+1) ⇒ vp_raw = SCALE·(c3+1) ──
 fn lin_knots() -> List<Knot> {
   [
-    Knot { c: 0, pow: scale },
-    Knot { c: 1_000_000_000, pow: 1_000_000_001 * scale },
+    Knot { c: 0, pow: 0 },
+    Knot { c: 1_000_000_000, pow: 1_000_000_000 * scale },
   ]
 }
 
-fn vp_of(c: Int) -> Int {
-  scale * ( c + 1 )
+/// VP thật ở mức validator = 0 với bảng knots hợp khuôn (`pow(0) = 0`) cộng
+/// `c_sources_ok` ép `c1 = c2 = c4 = 0`: tích nhân có một thừa số 0.
+/// Lý do đầy đủ + hệ quả về độ phủ: xem `vp_of` ở `validators/tally_test.ak`.
+fn vp_of(_c: Int) -> Int {
+  0
 }
 
 fn wp_ref() -> OutputReference {

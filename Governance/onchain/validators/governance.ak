@@ -834,8 +834,8 @@ const e_fin: Int = close_e + delta_min
 // mọi cử tri bằng 0 và ca kiểm ngưỡng xanh ở CẢ HAI cực.
 fn lin_knots() -> List<Knot> {
   [
-    Knot { c: 0, pow: scale },
-    Knot { c: 1_000_000_000, pow: 1_000_000_001 * scale },
+    Knot { c: 0, pow: 0 },
+    Knot { c: 1_000_000_000, pow: 1_000_000_000 * scale },
   ]
 }
 
@@ -1236,7 +1236,7 @@ test fin_weight_param_ref_khac_cam_ket_tu_choi() fail {
 test fin_bang_weight_vi_pham_d8_tu_choi() fail {
   let sqrt_knots =
     [
-      Knot { c: 0, pow: scale },
+      Knot { c: 0, pow: 0 },
       Knot { c: 250_000_000, pow: 15_811 * scale },
       Knot { c: 1_000_000_000, pow: 31_623 * scale },
     ]

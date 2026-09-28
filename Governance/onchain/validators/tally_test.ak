@@ -25,6 +25,7 @@ use cardano/transaction.{
 use magiclamp/governance/mpf_fixtures as fx
 use magiclamp/governance/names.{nullifier_name}
 use magiclamp/governance/power.{Knot, scale}
+use magiclamp/governance/tally as tally_lib
 use magiclamp/governance/types.{
   Abstain, Clamped, No, Summing, TallyDatum, TopEntry, VoteChoice, VoteDatum,
   WeightParam, Yes,
@@ -84,26 +85,30 @@ fn wp_ref_or() -> OutputReference {
 // ── Bảng knots: pow(c) = SCALE·(c+1) trên [0, 10^9] ⇒ interp tuyến tính CHÍNH XÁC ──
 fn lin_knots() -> List<Knot> {
   [
-    Knot { c: 0, pow: scale },
-    Knot { c: 1_000_000_000, pow: 1_000_000_001 * scale },
+    Knot { c: 0, pow: 0 },
+    Knot { c: 1_000_000_000, pow: 1_000_000_000 * scale },
   ]
 }
 
 /// vp_raw của một cử tri khai `c3 = c` (c1 = c2 = c4 = 0).
-fn vp_of(c: Int) -> Int {
-  scale * ( c + 1 )
-}
-
-const whale_c: Int = 30
-
-const small_c: Int = 5
-
-fn whale_vp() -> Int {
-  vp_of(whale_c)
-}
-
-fn small_vp() -> Int {
-  vp_of(small_c)
+/// VP mà `derive_batch` THẬT SỰ trả về ở mức validator, với bảng knots HỢP KHUÔN
+/// (`pow(0) = 0`, cổng G0 của `weight_guard`) và `c_sources_ok` đang ép
+/// `c1 = c2 = c4 = 0` (`[C1-C2-C4-SOURCE]`): công thức là tích NHÂN, một thừa số 0
+/// kéo cả tích về 0 ⇒ **VP của mọi cử tri bằng 0, không phụ thuộc `c`**.
+///
+/// Bản trước của hàm này trả `scale · (c + 1)`, tức nó ngầm giả định một bảng có
+/// `pow(0) = SCALE` — bảng mà cổng G0 phải BÁC. Nói cách khác, mọi con số power
+/// khác 0 trong tệp này trước đây đến từ một bảng không hợp lệ. Giữ tham số `c` để
+/// các ca đọc được, nhưng nó KHÔNG còn ảnh hưởng kết quả — và đó là điều đúng.
+///
+/// Hệ quả về ĐỘ PHỦ, nói thẳng: các ca ở tệp này giờ kiểm ĐƯỜNG ĐI (derive → heap →
+/// đốt nullifier → sổ MPF → chốt thời gian) chứ không kiểm ĐỘ LỚN. Clamp BFT và heap
+/// top-(F−1) — hai chốt chống cá voi — được kiểm ở mức THƯ VIỆN
+/// (`lib/magiclamp/governance/tally.ak`, khối `hypothetical_knots_pow0_scale`), và
+/// PHẢI nối lại ở mức validator khi `[C1-C2-C4-SOURCE]` có nguồn. Xem
+/// `[VP-ZERO-FACTOR]` trong `SPEC.md`.
+fn vp_of(_c: Int) -> Int {
+  0
 }
 
 fn wp_datum(bft: Int) -> WeightParam {
@@ -131,7 +136,7 @@ fn wp_input(bft: Int) -> Input {
 // ── Bảng lõm w≈0.5 — dùng để dựng bảng weight VI PHẠM D8 (`w_4` nặng hơn `w_3`) ──
 fn sqrt_knots() -> List<Knot> {
   [
-    Knot { c: 0, pow: scale },
+    Knot { c: 0, pow: 0 },
     Knot { c: 250_000_000, pow: 15_811 * scale },
     Knot { c: 1_000_000_000, pow: 31_623 * scale },
   ]
@@ -540,25 +545,6 @@ test sum_no_vote_inflate_reject() fail {
   True
 }
 
-/// Có phiếu thật nhưng `d_out` bơm power quá mức DERIVE. Sổ + heap ĐÚNG để cô lập.
-test sum_overcount_reject() fail {
-  let v = vote_datum(Yes, 10, did_of(1))
-  let d_in = summing(0, 0, 0, 0, 0, [])
-  let d_out =
-    summing_r(
-      2 * v1_vp(),
-      0,
-      0,
-      1,
-      1,
-      [TopEntry { vp_raw: v1_vp(), choice: Yes }],
-      fx.root_a1,
-    )
-  let tx = sum_tx(d_in, d_out, [vote_input(v, 1)], [v], burn_all([v]))
-  expect run_sum(tx, d_in, [fx.ins_a1()])
-  True
-}
-
 /// Nullifier KHÔNG bị đốt. Sổ + power + heap ĐÚNG để cô lập.
 test sum_nullifier_not_burned_reject() fail {
   let v = vote_datum(Yes, 10, did_of(1))
@@ -962,265 +948,6 @@ test sum_nullifier_bia_tu_choi() fail {
 // Heap top-(F−1) — cá voi BUỘC vào heap; cấm nhồi entry giả
 // ════════════════════════════════════════════════════════════
 
-/// Cá voi bỏ phiếu nhưng `d_out.top_did_vp` KHÔNG chứa nó. power_raw ĐÚNG để cô lập.
-test sum_whale_missing_from_heap_reject() fail {
-  let vw = vote_datum(Yes, whale_c, did_of(1))
-  let vs = vote_datum(Yes, small_c, did_of(2))
-  let d_in = summing(0, 0, 0, 0, 0, [])
-  let bad_heap = [TopEntry { vp_raw: small_vp(), choice: Yes }]
-  let d_out =
-    summing_r(whale_vp() + small_vp(), 0, 0, 2, 2, bad_heap, fx.root_a2)
-  let tx =
-    sum_tx_bft(
-      d_in,
-      d_out,
-      [vote_input(vw, 1), vote_input(vs, 2)],
-      [vw, vs],
-      burn_all([vw, vs]),
-      3,
-    )
-  expect run_sum(tx, d_in, [fx.ins_a1(), fx.ins_a2()])
-  True
-}
-
-/// Nhồi một entry KHÔNG ứng phiếu nào.
-test sum_forged_heap_entry_reject() fail {
-  let vw = vote_datum(Yes, whale_c, did_of(1))
-  let d_in = summing(0, 0, 0, 0, 0, [])
-  let forged = TopEntry { vp_raw: 999_999 * scale, choice: No }
-  let bad_heap = [TopEntry { vp_raw: whale_vp(), choice: Yes }, forged]
-  let d_out = summing_r(whale_vp(), 0, 0, 1, 1, bad_heap, fx.root_a1)
-  let tx =
-    sum_tx_bft(
-      d_in,
-      d_out,
-      [vote_input(vw, 1)],
-      [vw],
-      burn_all([vw]),
-      3,
-    )
-  expect run_sum(tx, d_in, [fx.ins_a1()])
-  True
-}
-
-/// Hành vi CŨ: heap ra == heap vào (rỗng) dù có cá voi mới bỏ phiếu.
-test sum_old_keep_heap_reject() fail {
-  let vw = vote_datum(Yes, whale_c, did_of(1))
-  let d_in = summing(0, 0, 0, 0, 0, [])
-  let d_out = summing_r(whale_vp(), 0, 0, 1, 1, [], fx.root_a1)
-  let tx =
-    sum_tx_bft(d_in, d_out, [vote_input(vw, 1)], [vw], burn_all([vw]), 3)
-  expect run_sum(tx, d_in, [fx.ins_a1()])
-  True
-}
-
-/// E2E: 2 cá voi (A Yes, B No) + 4 phiếu nhỏ Yes → heap giữ ĐÚNG 2 cá voi →
-/// `Finalize` clamp trừ đúng phần vượt → không DID nào thoát trần.
-test sum_then_finalize_two_whales_e2e() {
-  let a = vote_datum(Yes, whale_c, did_of(1))
-  let b = vote_datum(No, whale_c, did_of(2))
-  let s1 = vote_datum(Yes, small_c, did_of(3))
-  let s2 = vote_datum(Yes, small_c, did_of(4))
-  let s3 = vote_datum(Yes, small_c, did_of(5))
-  let s4 = vote_datum(Yes, small_c, did_of(6))
-  let votes = [a, b, s1, s2, s3, s4]
-  let ins =
-    [
-      vote_input(a, 1), vote_input(b, 2), vote_input(s1, 3), vote_input(s2, 4),
-      vote_input(s3, 5), vote_input(s4, 6),
-    ]
-  let d_in = summing(0, 0, 0, 0, 0, [])
-  let heap =
-    [
-      TopEntry { vp_raw: whale_vp(), choice: Yes },
-      TopEntry { vp_raw: whale_vp(), choice: No },
-    ]
-  let yes_raw = whale_vp() + 4 * small_vp()
-  let no_raw = whale_vp()
-  let d_sum = summing_r(yes_raw, no_raw, 0, 6, 5, heap, fx.root_a6)
-  let tx_sum = sum_tx_bft(d_in, d_sum, ins, votes, burn_all(votes), 3)
-  let ok_sum =
-    run_sum(
-      tx_sum,
-      d_in,
-      [
-        fx.ins_a1(), fx.ins_a2(), fx.ins_a3(), fx.ins_a4(), fx.ins_a5(),
-        fx.ins_a6(),
-      ],
-    )
-
-  let tau = ( whale_vp() * 2 + small_vp() * 4 ) / 3
-  let yes_eff = yes_raw - ( whale_vp() - tau )
-  let no_eff = no_raw - ( whale_vp() - tau )
-  let d_clamped = clamped_of(d_sum, yes_eff, no_eff, 0)
-  let ok_fin = run_finalize(finalize_tx(d_sum, d_clamped, 3), d_sum)
-
-  and {
-    ok_sum,
-    ok_fin,
-    no_eff == tau,
-    yes_eff == 4 * small_vp() + tau,
-    // tiền đề của ca: cá voi PHẢI thực vượt trần, không thì clamp là phép rỗng và
-    // ca này xanh ở cả hai cực đột biến.
-    whale_vp() > tau,
-    small_vp() < tau,
-  }
-}
-
-/// Đa-lô: entry nhỏ trong heap `d_in` bị hai entry lớn hơn đẩy khỏi top-(F−1).
-/// Eviction LÀNH: entry bị đẩy có `vp_raw` thấp hơn F−1 entry giữ lại ⇒ tại τ cuối
-/// nó không phải cá voi.
-test sum_multibatch_evict_small_is_sound() {
-  let w_small = vp_of(10)
-  let vb1 = vote_datum(No, whale_c, did_of(2))
-  let vb2 = vote_datum(No, whale_c, did_of(3))
-  let big = whale_vp()
-  let heap =
-    [TopEntry { vp_raw: big, choice: No }, TopEntry { vp_raw: big, choice: No }]
-  let d_in =
-    summing_r(
-      w_small,
-      0,
-      0,
-      1,
-      1,
-      [TopEntry { vp_raw: w_small, choice: Yes }],
-      fx.root_a1,
-    )
-  let d_out = summing_r(w_small, 2 * big, 0, 3, 1, heap, fx.root_a3)
-  let tx =
-    sum_tx_bft(
-      d_in,
-      d_out,
-      [vote_input(vb1, 1), vote_input(vb2, 2)],
-      [vb1, vb2],
-      burn_all([vb1, vb2]),
-      3,
-    )
-  run_sum(tx, d_in, [fx.ins_a2(), fx.ins_a3()])
-}
-
-/// Cùng kịch bản, `d_out` CỐ GIỮ entry nhỏ và bỏ một entry lớn.
-test sum_multibatch_keep_small_drop_big_reject() fail {
-  let w_small = vp_of(10)
-  let vb1 = vote_datum(No, whale_c, did_of(2))
-  let vb2 = vote_datum(No, whale_c, did_of(3))
-  let big = whale_vp()
-  let bad_heap =
-    [
-      TopEntry { vp_raw: big, choice: No },
-      TopEntry { vp_raw: w_small, choice: Yes },
-    ]
-  let d_in =
-    summing_r(
-      w_small,
-      0,
-      0,
-      1,
-      1,
-      [TopEntry { vp_raw: w_small, choice: Yes }],
-      fx.root_a1,
-    )
-  let d_out = summing_r(w_small, 2 * big, 0, 3, 1, bad_heap, fx.root_a3)
-  let tx =
-    sum_tx_bft(
-      d_in,
-      d_out,
-      [vote_input(vb1, 1), vote_input(vb2, 2)],
-      [vb1, vb2],
-      burn_all([vb1, vb2]),
-      3,
-    )
-  expect run_sum(tx, d_in, [fx.ins_a2(), fx.ins_a3()])
-  True
-}
-
-/// `Finalize` để một cá voi GIỮ nguyên `vp_raw` (không trừ phần vượt) ⇒ thoát trần.
-test finalize_whale_keeps_full_power_reject() fail {
-  let big = whale_vp()
-  let small = small_vp()
-  let heap =
-    [
-      TopEntry { vp_raw: big, choice: Yes },
-      TopEntry { vp_raw: big, choice: No },
-    ]
-  let yes_raw = big + 4 * small
-  let no_raw = big
-  let d_in = summing(yes_raw, no_raw, 0, 6, 5, heap)
-  let tau = ( big * 2 + small * 4 ) / 3
-  let yes_eff = yes_raw - ( big - tau )
-  // SAI: no_eff KHÔNG trừ phần vượt.
-  let d_out = clamped_of(d_in, yes_eff, no_raw, 0)
-  expect run_finalize(finalize_tx(d_in, d_out, 3), d_in)
-  True
-}
-
-/// F=2 ⇒ limit=1. Cá voi DUY NHẤT phải là top-1; `d_out` giữ entry nhỏ.
-test sum_f2_single_whale_must_be_in_heap_reject() fail {
-  let big = whale_vp()
-  let small = small_vp()
-  let vw = vote_datum(Yes, whale_c, did_of(1))
-  let vs = vote_datum(Yes, small_c, did_of(2))
-  let bad_heap = [TopEntry { vp_raw: small, choice: Yes }]
-  let d_in = summing(0, 0, 0, 0, 0, [])
-  let d_out = summing_r(big + small, 0, 0, 2, 2, bad_heap, fx.root_a2)
-  let tx =
-    sum_tx_bft(
-      d_in,
-      d_out,
-      [vote_input(vw, 1), vote_input(vs, 2)],
-      [vw, vs],
-      burn_all([vw, vs]),
-      2,
-    )
-  expect run_sum(tx, d_in, [fx.ins_a1(), fx.ins_a2()])
-  True
-}
-
-/// Mặt thuận của ca trên.
-test sum_f2_single_whale_in_heap_ok() {
-  let big = whale_vp()
-  let small = small_vp()
-  let vw = vote_datum(Yes, whale_c, did_of(1))
-  let vs = vote_datum(Yes, small_c, did_of(2))
-  let heap = [TopEntry { vp_raw: big, choice: Yes }]
-  let d_in = summing(0, 0, 0, 0, 0, [])
-  let d_out = summing_r(big + small, 0, 0, 2, 2, heap, fx.root_a2)
-  let tx =
-    sum_tx_bft(
-      d_in,
-      d_out,
-      [vote_input(vw, 1), vote_input(vs, 2)],
-      [vw, vs],
-      burn_all([vw, vs]),
-      2,
-    )
-  run_sum(tx, d_in, [fx.ins_a1(), fx.ins_a2()])
-}
-
-/// Heap kế thừa `d_in` + chèn đúng entry của lô.
-test sum_merge_inherit_plus_batch() {
-  let w1 = vp_of(10)
-  let w2 = whale_vp()
-  let d_in =
-    summing_r(
-      w1,
-      0,
-      0,
-      1,
-      1,
-      [TopEntry { vp_raw: w1, choice: Yes }],
-      fx.root_a1,
-    )
-  let vb = vote_datum(No, whale_c, did_of(2))
-  let heap =
-    [TopEntry { vp_raw: w2, choice: No }, TopEntry { vp_raw: w1, choice: Yes }]
-  let d_out = summing_r(w1, w2, 0, 2, 1, heap, fx.root_a2)
-  let tx =
-    sum_tx_bft(d_in, d_out, [vote_input(vb, 1)], [vb], burn_all([vb]), 3)
-  run_sum(tx, d_in, [fx.ins_a2()])
-}
-
 // ════════════════════════════════════════════════════════════
 // Cổng D8 ở TẦNG VALIDATOR
 // ════════════════════════════════════════════════════════════
@@ -1366,4 +1093,73 @@ test finalize_rejects_two_outputs_at_script() fail {
     )
   expect run_finalize(tx, d_in)
   True
+}
+
+// ════════════════════════════════════════════════════════════
+// Đã DỜI xuống mức thư viện — đừng dựng lại ở đây khi VP còn bằng 0
+// ════════════════════════════════════════════════════════════
+//
+// Mười một ca dưới đây từng ở tệp này và nay nằm ở
+// `lib/magiclamp/governance/tally.ak`, khối `hypothetical_knots_pow0_scale`:
+//
+//   sum_overcount_reject · sum_then_finalize_two_whales_e2e
+//   sum_multibatch_evict_small_is_sound · sum_multibatch_keep_small_drop_big_reject
+//   finalize_whale_keeps_full_power_reject · sum_f2_single_whale_must_be_in_heap_reject
+//   sum_f2_single_whale_in_heap_ok · sum_whale_missing_from_heap_reject
+//   sum_forged_heap_entry_reject · sum_old_keep_heap_reject
+//   sum_merge_inherit_plus_batch
+//
+// Vì sao KHÔNG giữ ở mức validator: mọi ca trên nói về ĐỘ LỚN của VP (cá voi vượt
+// trần, entry nhỏ bị đẩy khỏi heap, power bị bơm quá mức derive). Ở mức validator,
+// `WeightParam` phải đi qua `read_weight_param` ⇒ cổng G0 ép `pow(0) == 0`; cộng với
+// `c_sources_ok` đang ép `c1 = c2 = c4 = 0` (`[C1-C2-C4-SOURCE]`) thì MỌI VP bằng 0.
+// Với mọi VP bằng 0 thì mọi entry heap bằng nhau và clamp là phép rỗng — ca kiểm
+// XANH ở cả hai cực của đột biến, tức không ghim gì mà vẫn trông như có ghim. Đó là
+// dạng hỏng tệ nhất, nên bỏ hẳn ở đây tốt hơn giữ lại cho đủ số.
+//
+// Các ca CÒN LẠI ở tệp này kiểm ĐƯỜNG ĐI: derive → sổ MPF → đốt nullifier → chốt
+// thời gian → nguồn c* → bảo toàn UTxO. Chúng không phụ thuộc độ lớn VP nên vẫn
+// phân biệt được hai cực.
+//
+// NGHĨA VỤ khi `[C1-C2-C4-SOURCE]` có nguồn on-chain: dựng LẠI mười một ca đó ở đây
+// với bảng hợp khuôn, rồi mới được nói hai chốt chống cá voi đã ghim trên đường
+// thật. Xem `[VP-ZERO-FACTOR]` trong `SPEC.md`.
+
+// ── `[VP-ZERO-FACTOR]` — ghim HÀNH VI, không chỉ mô tả nó ──
+//
+// Hai ca dưới đây dựng lại PoC 1 của audit ở mức validator với bảng HỢP KHUÔN. Có
+// chúng thì câu "Pha 1/2 chỉ ghi được `Rejected`" là một phép đo; thiếu chúng thì nó
+// là một câu trong tài liệu, và tài liệu không chặn được gì.
+
+/// (poc1c) Đường on-chain THẬT chạy được với bảng hợp khuôn, và nó cộng ĐÚNG 0 —
+/// cử tri khai `c3` tối đa vẫn ra VP = 0 vì `c1 = c2 = c4` bị cổng nguồn ép 0 và VP
+/// là tích nhân. Lô KHÔNG bị bác: gộp vẫn là thao tác hợp lệ, chỉ là nó không cộng
+/// power nào. Em CỐ Ý không thêm chốt "lô phải cộng thêm gì đó" — chốt đó mâu thuẫn
+/// với chính `[VP-ZERO-FACTOR]` khi `[C1-C2-C4-SOURCE]` còn treo.
+test vp_zero_sumbatch_chay_duoc_ma_cong_khong() {
+  let v = vote_datum(Yes, 1_000_000_000, did_of(1))
+  let d_in = summing(0, 0, 0, 0, 0, [])
+  let d_out =
+    summing_r(0, 0, 0, 1, 1, [TopEntry { vp_raw: 0, choice: Yes }], fx.root_a1)
+  let tx = sum_tx(d_in, d_out, [vote_input(v, 1)], [v], burn_all([v]))
+  and {
+    run_sum(tx, d_in, [fx.ins_a1()]),
+    // tiền đề: cử tri này khai `c3` TỐI ĐA. Không có vế này thì ca trên chỉ nói
+    // "một phiếu c3 = 0 cộng ra 0", tức không nói gì.
+    v.c3_capped == 1_000_000_000,
+  }
+}
+
+/// (poc1b) Và `pass` canonical KHÔNG BAO GIỜ đúng khi mọi VP bằng 0 — kể cả với 30
+/// cử tri THUẬN và `quorum_vp_threshold` đặt ở giá trị NHỎ NHẤT mà
+/// `weight_param_nft` cho phép (`>= 1`). Nên `FinalizeProposal` chỉ ra `Rejected`.
+test vp_zero_pass_khong_bao_gio_dung() {
+  let d = clamped_of(summing_r(0, 0, 0, 30, 30, [], fx.root_a0), 0, 0, 0)
+  and {
+    !tally_lib.pass(d, 21, 1, 21, 2, 3),
+    // và vế đang bác ĐÚNG là vế quorum VP, không phải một vế khác đi trước:
+    d.voters_acc >= 21,
+    d.yes_voters_acc >= 21,
+    tally_lib.total_vp_eff(d) == 0,
+  }
 }

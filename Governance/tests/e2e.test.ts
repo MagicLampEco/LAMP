@@ -5,7 +5,7 @@
 //
 // Kịch bản: đúc bảng tham số → mở proposal → 3 DID bỏ phiếu (A Yes, B No, C No) + A đúc thêm một
 // nullifier trùng ra ví → B rút phiếu đổi sang Yes → hai lượt SumBatch (A, rồi B; sổ dựng lại từ
-// danh sách lá lô trước) → Finalize tally → FinalizeProposal (Executed) → C thu hồi phiếu chưa
+// danh sách lá lô trước) → Finalize tally → FinalizeProposal (Rejected — VP-ZERO-FACTOR) → C thu hồi phiếu chưa
 // gom → A đốt nullifier trùng bằng đường (b).
 //
 // Anchor TAAD giả lập: policy = native script ký bởi admin, anchor nằm tại Script(policy) với
@@ -87,7 +87,7 @@ function advanceToEpoch(emulator: Emulator, target: bigint) {
 const epochNow = (em: Emulator) => BigInt(Math.floor(em.now() / Number(MS_PER_EPOCH)));
 
 describe("E2E Governance v2 trên Emulator — validator thật", () => {
-  it("mở → bỏ phiếu → rút → gom 2 lô → Finalize → FinalizeProposal=Executed → thu hồi → đốt", async () => {
+  it("mở → bỏ phiếu → rút → gom 2 lô → Finalize → FinalizeProposal=Rejected (VP-ZERO-FACTOR) → thu hồi → đốt", async () => {
     const admin = generateEmulatorAccountFromPrivateKey({ lovelace: 1_000_000_000n });
     const voters = ["A", "B", "C"].map(() => ({
       ctrl: generateEmulatorAccountFromPrivateKey({ lovelace: 100_000_000n }),
@@ -128,7 +128,9 @@ describe("E2E Governance v2 trên Emulator — validator thật", () => {
     });
 
     // ── 1. đúc bảng tham số ──
-    const knots = [{ c: 0n, pow: SCALE }, { c: 100n, pow: 100n * SCALE }];
+    // Bảng HỢP KHUÔN theo cổng G0 (`weight_guard.knots_wellformed`): `pow(0) = 0`.
+    // Bảng cũ dùng `pow(0) = SCALE` và giờ bị `read_weight_param` bác.
+    const knots = [{ c: 0n, pow: 0n }, { c: 100n, pow: 100n * SCALE }];
     const wp: WeightParam = {
       k1: knots, k2: knots, k3: knots, k4: knots, bft_floor: 2n, quorum_vp_threshold: 1n,
       quorum_voter_threshold: 1n, theta_num: 2n, theta_den: 3n,
@@ -303,8 +305,9 @@ describe("E2E Governance v2 trên Emulator — validator thật", () => {
     const td2 = tallyDatumFromCbor((await getTally()).datum!);
     expect(td2).toEqual(b2.tallyDatumOut);
     expect(td2.yes_voters_acc).toBe(2n);
-    expect(td2.yes_power_raw).toBe(2n * SCALE);
-    expect(td2.top_did_vp).toEqual([{ vp_raw: SCALE, choice: "Yes" }]); // F − 1 = 1 entry
+    // `[VP-ZERO-FACTOR]`: bảng hợp khuôn + `c1 = c2 = c4` bị ép 0 ⇒ tích nhân ra 0.
+    expect(td2.yes_power_raw).toBe(0n);
+    expect(td2.top_did_vp).toEqual([{ vp_raw: 0n, choice: "Yes" }]); // F − 1 = 1 entry
 
     // ── 6. Finalize tally + FinalizeProposal ──
     advanceToEpoch(emulator, e0 + 4n);
@@ -316,10 +319,14 @@ describe("E2E Governance v2 trên Emulator — validator thật", () => {
       lucid, config: cfg, proposalUtxo: await getProposal(), tallyUtxo: await getTally(),
       weightParamUtxo: wpUtxo, nowMs: emulator.now(),
     });
-    expect(fp.verdict).toBe("Executed");
+    // `[VP-ZERO-FACTOR]`: bảng knots hợp khuôn (`pow(0) = 0`) cộng `c_sources_ok` ép
+    // `c1 = c2 = c4 = 0` ⇒ mọi VP = 0 ⇒ quorum VP không bao giờ đạt ⇒ verdict là
+    // `Rejected`. Đây là HỆ QUẢ của mô hình tích nhân, không phải lỗi: `Executed` ở
+    // Pha 1/2 đòi có nguồn C1/C2/C4 on-chain trước (`[C1-C2-C4-SOURCE]`).
+    expect(fp.verdict).toBe("Rejected");
     await submit(lucid, emulator, fp.tx);
     const prOut = proposalResultFromCbor((await getProposal()).datum!);
-    expect(prOut.status).toBe("Executed");
+    expect(prOut.status).toBe("Rejected");
     expect(prOut.spend_spec_hash).toBe("");
 
     // ── 7. C thu hồi phiếu chưa gom ──

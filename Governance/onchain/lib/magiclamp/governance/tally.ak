@@ -15,7 +15,8 @@
 
 use aiken/collection/list
 use cardano/transaction.{OutputReference}
-use magiclamp/governance/power.{vp_raw}
+use magiclamp/governance/power.{Knot, vp_raw}
+use magiclamp/governance/weight_guard
 use magiclamp/governance/types.{
   Abstain, Clamped, No, Summing, TallyDatum, TopEntry, VoteChoice, VoteDatum,
   WeightParam, Yes,
@@ -414,4 +415,212 @@ test clamp_consistent_rejects_forged_eff() fail {
     }
   expect clamp_consistent(d, 10)
   True
+}
+
+// ════════════════════════════════════════════════════════════
+// Clamp BFT + heap top-(F−1) trên bảng GIẢ ĐỊNH — hai chốt chống cá voi
+// ════════════════════════════════════════════════════════════
+//
+// ĐỌC ĐOẠN NÀY TRƯỚC KHI DÙNG `hypothetical_knots_pow0_scale` Ở BẤT KỲ ĐÂU KHÁC.
+//
+// Bảng dưới đây có `pow(0) = SCALE`, nên nó **KHÔNG qua nổi `read_weight_param`**:
+// cổng G0 (`weight_guard.knots_wellformed`) ép `first.pow == 0` vì VP là công thức
+// NHÂN và `pow(0) = 0` chính là bất biến "yếu một tham số kéo sụp toàn bộ VP"
+// (`VotingPower/CONTRACT.md` §1). Ca `hypothetical_bang_nay_bi_d8_bac` khẳng định
+// đúng điều đó, và nó nằm ngay dưới đây để không ai đọc bảng này thành một bảng
+// dùng được.
+//
+// Vậy vì sao vẫn giữ nó: với bảng HỢP KHUÔN cộng `[C1-C2-C4-SOURCE]` đang ép
+// `c1 = c2 = c4 = 0`, mọi VP bằng 0 ⇒ mọi entry heap bằng nhau ⇒ clamp là phép rỗng
+// ⇒ ca kiểm nào về cá voi cũng XANH Ở CẢ HAI CỰC của đột biến, tức không ghim gì.
+// Hai chốt chống cá voi là chỗ đắt nhất nếu sai, nên độ phủ của chúng phải sống ở
+// đâu đó. Chỗ đúng là ĐÂY — mức THƯ VIỆN, nơi `WeightParam` là tham số của hàm chứ
+// không phải thứ đọc qua cổng. Đây là ca kiểm của TOÁN, không phải của ĐƯỜNG ĐI.
+//
+// NGHĨA VỤ khi `[C1-C2-C4-SOURCE]` có nguồn: nối lại ở mức validator
+// (`validators/tally_test.ak`) rồi mới được coi hai chốt này là đã ghim trên đường
+// thật. Xem `[VP-ZERO-FACTOR]` trong `SPEC.md`.
+
+/// `pow(c) = SCALE · (c + 1)` — GIẢ ĐỊNH TOÁN, không phải bảng deploy được.
+fn hypothetical_knots_pow0_scale() -> List<Knot> {
+  [Knot { c: 0, pow: scale_c }, Knot { c: 1_000_000, pow: 1_000_001 * scale_c }]
+}
+
+const scale_c: Int = 1_000_000_000
+
+/// VP của một cử tri dưới bảng giả định, với `c1 = c2 = c4 = 0` và `c3 = c`.
+/// `vp_raw` chuẩn hoá bằng `SCALE³`, nên tích `1·1·(c+1)·1` ra `SCALE · (c + 1)`.
+fn hyp_vp(c: Int) -> Int {
+  scale_c * ( c + 1 )
+}
+
+fn hyp_wp(bft: Int) -> WeightParam {
+  WeightParam {
+    k1: hypothetical_knots_pow0_scale(),
+    k2: hypothetical_knots_pow0_scale(),
+    k3: hypothetical_knots_pow0_scale(),
+    k4: hypothetical_knots_pow0_scale(),
+    bft_floor: bft,
+    quorum_vp_threshold: 1,
+    quorum_voter_threshold: 1,
+    theta_num: 2,
+    theta_den: 3,
+  }
+}
+
+fn hyp_vote(choice: VoteChoice, c3: Int, did: ByteArray) -> VoteDatum {
+  VoteDatum {
+    proposal_id: #"de",
+    did_commit: did,
+    nullifier: did,
+    choice,
+    c1_capped: 0,
+    c2_capped: 0,
+    c3_capped: c3,
+    c4_capped: 0,
+  }
+}
+
+const whale_c: Int = 30
+
+const small_c: Int = 5
+
+/// Vế tự-khai: chính bảng giả định trên bị cổng đọc BÁC. Không có ca này thì đoạn
+/// chú thích ở trên là một lời hứa không ai cưỡng chế.
+test hypothetical_bang_nay_bi_d8_bac() {
+  let k = hypothetical_knots_pow0_scale()
+  and { !weight_guard.knots_wellformed(k), !weight_guard.d8_ok(k, k, k, k) }
+}
+
+/// Tiền đề của mọi ca dưới đây: bảng giả định cho VP KHÁC 0 và PHÂN BIỆT được cá voi
+/// với cử tri nhỏ. Thiếu vế này thì các ca sau không nói được chúng đo cái gì.
+test hyp_vp_phan_biet_ca_voi_voi_nho() {
+  let (dy, _, _, _, _) = derive_batch(hyp_wp(3), [hyp_vote(Yes, whale_c, #"01")])
+  and { dy == hyp_vp(whale_c), hyp_vp(whale_c) > hyp_vp(small_c), dy > 0 }
+}
+
+/// (dời từ `sum_derive_happy` / `sum_two_votes_happy` / `sum_abstain_happy`)
+/// `sum_batch_consistent` cộng ĐÚNG theo phe và đếm đúng số cử tri.
+test hyp_sum_batch_cong_dung_theo_phe() {
+  let a = hyp_vote(Yes, 10, #"01")
+  let b = hyp_vote(No, 10, #"02")
+  let c = hyp_vote(Abstain, 10, #"03")
+  let wp = hyp_wp(3)
+  let d_in = td_summing(0, 0, 0, [])
+  let v = hyp_vp(10)
+  let d_out =
+    TallyDatum {
+      ..td_summing(v, v, v, []),
+      voters_acc: 3,
+      yes_voters_acc: 1,
+    }
+  and {
+    sum_batch_consistent(d_in, d_out, wp, [a, b, c]),
+    // và nó BÁC khi power bị bơm quá mức derive (dời từ `sum_overcount_reject`)
+    !sum_batch_consistent(
+      d_in,
+      TallyDatum { ..d_out, yes_power_raw: 2 * v },
+      wp,
+      [a, b, c],
+    ),
+  }
+}
+
+/// (dời từ `sum_f2_single_whale_*`) F = 2 ⇒ heap giữ ĐÚNG 1 entry: cá voi lớn nhất.
+test hyp_heap_f2_giu_dung_ca_voi_lon_nhat() {
+  let a = hyp_vote(Yes, whale_c, #"01")
+  let s = hyp_vote(Yes, small_c, #"02")
+  let wp = hyp_wp(2)
+  let d_in = td_summing(0, 0, 0, [])
+  let raw = hyp_vp(whale_c) + hyp_vp(small_c)
+  let d_ok =
+    td_summing(raw, 0, 0, [TopEntry { vp_raw: hyp_vp(whale_c), choice: Yes }])
+  let d_sai =
+    td_summing(raw, 0, 0, [TopEntry { vp_raw: hyp_vp(small_c), choice: Yes }])
+  and {
+    top_heap_consistent(d_in, d_ok, wp, [a, s]),
+    // giữ cử tri NHỎ thay vì cá voi ⇒ bác
+    !top_heap_consistent(d_in, d_sai, wp, [a, s]),
+    // heap RỖNG khi vẫn còn cá voi ⇒ bác
+    !top_heap_consistent(d_in, td_summing(raw, 0, 0, []), wp, [a, s]),
+  }
+}
+
+/// (dời từ `sum_multibatch_evict_small_is_sound` +
+/// `sum_multibatch_keep_small_drop_big_reject`) Đa-lô: entry nhỏ trong heap cũ bị hai
+/// entry lớn hơn đẩy khỏi top-(F−1). Eviction LÀNH, và `d_out` cố giữ entry nhỏ thì bác.
+test hyp_heap_da_lo_day_entry_nho_ra() {
+  let wp = hyp_wp(3)
+  let b1 = hyp_vote(No, whale_c, #"02")
+  let b2 = hyp_vote(No, whale_c, #"03")
+  let nho = hyp_vp(10)
+  let big = hyp_vp(whale_c)
+  let d_in =
+    TallyDatum {
+      ..td_summing(nho, 0, 0, [TopEntry { vp_raw: nho, choice: Yes }]),
+      voters_acc: 1,
+      yes_voters_acc: 1,
+    }
+  let heap_ok =
+    [TopEntry { vp_raw: big, choice: No }, TopEntry { vp_raw: big, choice: No }]
+  let heap_sai =
+    [
+      TopEntry { vp_raw: big, choice: No },
+      TopEntry { vp_raw: nho, choice: Yes },
+    ]
+  let mk = fn(h) { TallyDatum { ..d_in, no_power_raw: 2 * big, top_did_vp: h } }
+  and {
+    big > nho,
+    top_heap_consistent(d_in, mk(heap_ok), wp, [b1, b2]),
+    !top_heap_consistent(d_in, mk(heap_sai), wp, [b1, b2]),
+  }
+}
+
+/// (dời từ `sum_then_finalize_two_whales_e2e` + `finalize_whale_keeps_full_power_reject`)
+/// 2 cá voi + 4 phiếu nhỏ: heap giữ đúng 2 cá voi, rồi `clamp_consistent` trừ ĐÚNG phần
+/// vượt trần τ = ΣVP/F, và bác khi cá voi giữ nguyên power.
+test hyp_hai_ca_voi_heap_roi_clamp_tru_dung_phan_vuot() {
+  let wp = hyp_wp(3)
+  let a = hyp_vote(Yes, whale_c, #"01")
+  let b = hyp_vote(No, whale_c, #"02")
+  let s = fn(i) { hyp_vote(Yes, small_c, i) }
+  let votes = [a, b, s(#"03"), s(#"04"), s(#"05"), s(#"06")]
+  let big = hyp_vp(whale_c)
+  let nho = hyp_vp(small_c)
+  let yes_raw = big + 4 * nho
+  let no_raw = big
+  let heap =
+    [TopEntry { vp_raw: big, choice: Yes }, TopEntry { vp_raw: big, choice: No }]
+  let d_in = td_summing(0, 0, 0, [])
+  let d_sum =
+    TallyDatum {
+      ..td_summing(yes_raw, no_raw, 0, heap),
+      voters_acc: 6,
+      yes_voters_acc: 5,
+    }
+  let tau = ( big * 2 + nho * 4 ) / 3
+  let d_clamped =
+    TallyDatum {
+      ..d_sum,
+      phase: Clamped,
+      yes_power_eff: yes_raw - ( big - tau ),
+      no_power_eff: no_raw - ( big - tau ),
+      abstain_power_eff: 0,
+    }
+  and {
+    // tiền đề: cá voi PHẢI thực vượt trần, cử tri nhỏ PHẢI không vượt — không thì
+    // clamp là phép rỗng và ca này xanh ở cả hai cực.
+    big > tau,
+    nho < tau,
+    top_heap_consistent(d_in, d_sum, wp, votes),
+    sum_batch_consistent(d_in, d_sum, wp, votes),
+    clamp_consistent(d_clamped, 3),
+    d_clamped.no_power_eff == tau,
+    d_clamped.yes_power_eff == 4 * nho + tau,
+    // cá voi GIỮ NGUYÊN power (không clamp) ⇒ bác
+    !clamp_consistent(
+      TallyDatum { ..d_clamped, yes_power_eff: yes_raw, no_power_eff: no_raw },
+      3,
+    ),
+  }
 }
