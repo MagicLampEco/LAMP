@@ -1,10 +1,21 @@
-// useBuilder — Faucet v2 Use: chủ DID gia hạn account + dùng tLAMP test.
+// useBuilder — Faucet v3 Use: chủ DID gia hạn mốc IDLE + dùng tLAMP test.
+//
+// v3 tách account datum thành HAI mốc (`last_claim_epoch` cooldown, `last_touch_epoch` idle —
+// xem `types.ts`). `Use` CHỈ được đụng `last_touch_epoch`; `last_claim_epoch` bất biến
+// (C-USE-CLAIMFIX-1 on-chain — không có dòng đó thì một lượt `Use` reset được cooldown).
 //
 // FLOW:
-//   1. Spend account UTxO (redeemer AccountRedeemer::Use).
+//   1. Spend account UTxO (AccountRedeemer::Use).
 //   2. Collect 1 UTxO mang DID NFT → chứng minh chủ DID.
-//   3. Output account': ACCT NFT + did_name bất biến + last_epoch = now, tLAMP ≤ cũ
-//      (cho phép rút ra dùng). Cập nhật last_epoch → tránh bị reclaim.
+//   3. Output account': ACCT NFT + did_name + last_claim_epoch bất biến, last_touch_epoch=now
+//      (KHÔNG LÙI — C-USE-MONO-1), tLAMP ≤ cũ (cho phép rút ra dùng, KHÔNG được tăng).
+//
+// Validity range: `Use` dùng `util.get_epoch_pinned` (C-USE-EPOCH-1) — PHẢI qua
+// `pinnedEpochWindow`, không tự đặt `validFrom` tay bằng cận dưới trần (đường né cooldown/idle
+// bằng cách lùi thời gian mà C-RATE-0/C-USE-EPOCH-1 tồn tại để chặn).
+//
+// C-USE-NOPOOL-1 (on-chain): tx KHÔNG được có POOL NFT input — builder này không đụng pool
+// nên tự nhiên thoả, không cần cổng riêng.
 
 import {
   toUnit,
@@ -13,10 +24,11 @@ import {
 } from "@lucid-evolution/lucid";
 import type { Network } from "@magiclamp/utils";
 
-import { TLAMP_ASSET_NAME, ACCT_NFT_NAME } from "./constants.js";
+import { TLAMP_ASSET_NAME, acctName, assertMsPerEpochMatchesNetwork } from "./constants.js";
 import {
   decodeFaucetAccount, faucetAccountToCbor, accountUseRedeemerToCbor,
 } from "./datum.js";
+import { pinnedEpochWindow } from "./epochWindow.js";
 import type { FaucetAccount } from "./types.js";
 import { Data } from "@lucid-evolution/lucid";
 
@@ -40,8 +52,8 @@ export interface UseParams {
   tlampPolicyId: string;
   tlampAssetName?: string;
 
-  /** epoch hiện tại → account'.last_epoch. */
-  currentEpoch: bigint;
+  nowMs: number;
+  msPerEpoch: bigint;
 
   /** tLAMP (oildrop) rút ra khỏi account để dùng (0 = chỉ gia hạn). Mặc định 0. */
   withdrawOildrop?: bigint;
@@ -53,18 +65,22 @@ export interface UseResult {
   tx: TxSignBuilder;
   newAccountDatum: FaucetAccount;
   accountLampAfter: bigint;
+  epoch: bigint;
   summary: string;
 }
 
 export async function buildUseTx(params: UseParams): Promise<UseResult> {
   const {
     lucid, network, accountUtxo, faucetAccountScript, faucetNftPolicyId,
-    didUtxo, didNftPolicyId, didName, tlampPolicyId, currentEpoch,
+    didUtxo, didNftPolicyId, didName, tlampPolicyId, msPerEpoch,
   } = params;
+
+  assertMsPerEpochMatchesNetwork(msPerEpoch, network);
 
   const assetName = params.tlampAssetName ?? TLAMP_ASSET_NAME;
   const tlampUnit = toUnit(tlampPolicyId, assetName);
-  const acctNftUnit = toUnit(faucetNftPolicyId, ACCT_NFT_NAME);
+  const an = acctName(didName);
+  const acctNftUnit = toUnit(faucetNftPolicyId, an);
   const didUnit = toUnit(didNftPolicyId, didName);
   const withdraw = params.withdrawOildrop ?? 0n;
 
@@ -76,18 +92,33 @@ export async function buildUseTx(params: UseParams): Promise<UseResult> {
   if ((didUtxo.assets[didUnit] ?? 0n) < 1n) {
     throw new Error(`USE-003: didUtxo không chứa DID NFT ${didUnit}`);
   }
+  if ((accountUtxo.assets[acctNftUnit] ?? 0n) < 1n) {
+    throw new Error(`USE-006: accountUtxo không mang ACCT NFT ${acctNftUnit}`);
+  }
 
   const acctLamp = accountUtxo.assets[tlampUnit] ?? 0n;
   if (withdraw < 0n) throw new Error("USE-004: withdrawOildrop < 0");
   if (withdraw > acctLamp) throw new Error(`USE-005: withdraw ${withdraw} > account tLAMP ${acctLamp}`);
   const lampAfter = acctLamp - withdraw;
 
-  const accountAddress = credentialToAddress(
-    network, scriptHashToCredential(validatorToScriptHash(faucetAccountScript)),
-  );
+  // ── C-USE-EPOCH-1: mốc neo vào thời gian thật ────────────────────────
+  const { loMs, hiMs, epoch } = pinnedEpochWindow(params.nowMs, Number(msPerEpoch));
+  // ── C-USE-MONO-1: mốc idle KHÔNG LÙI ─────────────────────────────────
+  if (epoch < acct.last_touch_epoch) {
+    throw new Error(
+      `USE-007: epoch hiện tại ${epoch} < last_touch_epoch datum ${acct.last_touch_epoch} — ` +
+      `mốc idle không được lùi (C-USE-MONO-1 sẽ từ chối).`,
+    );
+  }
+
   const accountLovelace = params.accountLovelace ?? (accountUtxo.assets.lovelace ?? 2_000_000n);
 
-  const newDatum: FaucetAccount = { did_name: acct.did_name, last_epoch: currentEpoch };
+  // C-USE-CLAIMFIX-1: last_claim_epoch BẤT BIẾN. C-USE-TOUCH-1: last_touch_epoch = now.
+  const newDatum: FaucetAccount = {
+    did_name: acct.did_name,
+    last_claim_epoch: acct.last_claim_epoch,
+    last_touch_epoch: epoch,
+  };
 
   const accountOutAssets: Record<string, bigint> = {
     lovelace: accountLovelace,
@@ -101,18 +132,21 @@ export async function buildUseTx(params: UseParams): Promise<UseResult> {
     .attach.SpendingValidator(faucetAccountScript)
     .collectFrom([didUtxo])
     .pay.ToAddressWithData(
-      accountAddress,
+      accountUtxo.address,
       { kind: "inline", value: faucetAccountToCbor(newDatum) },
       accountOutAssets,
     )
+    .validFrom(loMs)
+    .validTo(hiMs)
     .complete();
 
   const summary = [
-    `═══ Faucet v2 Use (gia hạn account) ═══`,
-    `DID name:     ${didName}`,
-    `last_epoch:   ${acct.last_epoch} → ${currentEpoch}`,
+    `═══ Faucet v3 Use (gia hạn mốc idle) ═══`,
+    `DID name:      ${didName}`,
+    `last_touch:    ${acct.last_touch_epoch} → ${epoch}`,
+    `last_claim:    ${acct.last_claim_epoch} (bất biến)`,
     `Account tLAMP: ${acctLamp} → ${lampAfter} oildrop (rút ${withdraw})`,
   ].join("\n");
 
-  return { tx, newAccountDatum: newDatum, accountLampAfter: lampAfter, summary };
+  return { tx, newAccountDatum: newDatum, accountLampAfter: lampAfter, epoch, summary };
 }

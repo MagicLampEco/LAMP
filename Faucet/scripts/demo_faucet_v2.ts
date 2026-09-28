@@ -1,35 +1,42 @@
-// demo_faucet_v2.ts — LUỒNG 1 Faucet V2 (DID-gated) trên Preview.
+// demo_faucet_v2.ts — LUỒNG 1 Faucet v3 (DID-gated, rate-limited, tự thu hồi) trên Preview.
 //
 // Các tx:
 //   T0  mint DID test NFT (native sig-policy) → ví (chứng minh DID cho claim/use).
-//   T1  deploy pool: mint POOL NFT one-shot (faucet_nft MintPool) + seed pool UTxO
-//       với tLAMP (lamp_policy/lamp_name) + FaucetConfig{drip,cooldown,reclaim}.
-//   T2  claim: spend pool (Claim) + mint ACCT NFT (MintAccount) + drip 1001 tLAMP →
-//       account UTxO {did_name, last_epoch=now}; mang DID NFT vào tx.
-//   T3  use: spend account (Use) + mang DID NFT → cập last_epoch=now.
+//   T1  deploy pool: mint POOL NFT one-shot (faucet_nft MintPool) + seed pool UTxO với
+//       tLAMP (LAMP_POLICY/LAMP_NAME — token ĐÃ CÓ SẴN, KHÔNG mint ở đây) + PoolDatum
+//       {cfg{drip,cooldown,max_claims_per_window}, window_epoch(pinned), claims_in_window=0}.
+//   T2  ClaimOpen: mở account MỚI cho DID — dùng SDK `buildClaimOpenTx` (spend pool + mint
+//       ACCT NFT + drip → account UTxO {did_name, last_claim_epoch=now, last_touch_epoch=now}).
+//   T3  Use: chủ DID gia hạn mốc idle — dùng SDK `buildUseTx` (last_claim_epoch bất biến,
+//       last_touch_epoch=now).
+//
+// v3 KHÁC v2: pool datum nay là `PoolDatum` bọc `FaucetConfig` (KHÔNG còn `reclaim_epochs` —
+// hằng đó chuyển thành compile-time on-chain), `faucet_pool` nhận THÊM tham số
+// `account_script_hash` (6 tham số, ĐẶT SAU `faucet_account` trong thứ tự apply — xem
+// `onchain/lib/magiclamp/faucet/ledger.ak` đầu tệp), và account datum tách hai mốc
+// `last_claim_epoch`/`last_touch_epoch`. T2 dùng redeemer `ClaimOpen` (KHÔNG còn `Claim` trần).
 //
 // tLAMP dùng: policy b1474a77... name 744c414d50 (genesis DistributionVest, đã mint thêm).
 
 import {
   Lucid, Blockfrost, applyParamsToScript, mintingPolicyToId,
   validatorToScriptHash, credentialToAddress, scriptHashToCredential,
-  Constr, getAddressDetails, toUnit, fromText, Data, scriptFromNative,
-  type MintingPolicy, type Validator,
+  Constr, getAddressDetails, toUnit, fromText, scriptFromNative,
+  type MintingPolicy, type Validator, type UTxO,
 } from "@lucid-evolution/lucid";
 import { assertParamCountFromBlueprint } from "../../Genesis/offchain/src/applyGate.js";
 import { resolve } from "node:path";
 import { readFile, writeFile } from "node:fs/promises";
 
+import { buildClaimOpenTx } from "../offchain/src/claimBuilder.js";
+import { buildUseTx } from "../offchain/src/useBuilder.js";
+import { poolDatumToCbor, mintPoolRedeemerToCbor } from "../offchain/src/datum.js";
 import {
-  faucetConfigToCbor, faucetAccountToCbor,
-  poolClaimRedeemerToCbor, mintPoolRedeemerToCbor, mintAccountRedeemerToCbor,
-  accountUseRedeemerToCbor,
-} from "../offchain/src/datum.js";
-import {
-  DRIP_OILDROP, COOLDOWN, RECLAIM, POOL_NFT_NAME, ACCT_NFT_NAME,
+  DRIP_OILDROP, COOLDOWN, POOL_NFT_NAME, acctName,
   msPerEpoch, assertMsPerEpochMatchesNetwork,
 } from "../offchain/src/constants.js";
-import { windowAt } from "../offchain/src/epochWindow.js";
+import { pinnedEpochWindow } from "../offchain/src/epochWindow.js";
+import type { FaucetConfig, PoolDatum } from "../offchain/src/types.js";
 
 // BÍ MẬT: tệp này nhận GIÁ TRỊ qua biến môi trường, KHÔNG mở kho khoá và KHÔNG biết
 // kho ở đâu. Đường cũ tự đọc biến trỏ tới kho rồi `dotenv.config()` lên tệp đó — thứ
@@ -37,15 +44,17 @@ import { windowAt } from "../offchain/src/epochWindow.js";
 // lặng đúng ở ca đó. Đặt biến ngay trước lệnh, để bí mật sống trong đúng một tiến trình:
 //   NETWORK=… BLOCKFROST_KEY=… WALLET_SEED="…" tsx <tệp>.ts
 
-// tLAMP genesis DistributionVest.
+// tLAMP genesis DistributionVest — token ĐÃ CÓ SẴN, script này KHÔNG mint (khác mintBuilder.ts
+// SDK, vốn mint tLAMP MỚI qua `tlamp_policy` cho một pool deploy độc lập không có sẵn cung).
 const LAMP_POLICY = "b1474a77c8867762efda418adda90ecf7bb5ca35b0be13a7bfbf0ebd";
 const LAMP_NAME = "744c414d50";
 const lampUnit = toUnit(LAMP_POLICY, LAMP_NAME);
 
 const POOL_SEED_OILDROP = BigInt(process.env.POOL_SEED_OILDROP ?? "2500000000"); // 2500 tLAMP
+const MAX_CLAIMS_PER_WINDOW = BigInt(process.env.MAX_CLAIMS_PER_WINDOW ?? "20");
 // ms/epoch lấy theo mạng đích, KHÔNG hardcode: số này vừa nướng vào script hash
-// (poolParams) vừa quyết last_epoch trong datum. Assert = tripwire cho lần ai đó
-// hardcode lại 432_000_000 (số của Preprod/Mainnet, lệch 5× trên Preview).
+// (poolParams) vừa quyết window_epoch/last_*_epoch trong datum. Assert = tripwire cho lần ai
+// đó hardcode lại 432_000_000 (số của Preprod/Mainnet, lệch 5× trên Preview).
 const NETWORK = "Preview" as const;
 const MS_PER_EPOCH = msPerEpoch(NETWORK);
 assertMsPerEpochMatchesNetwork(MS_PER_EPOCH, NETWORK);
@@ -119,126 +128,123 @@ console.log(`[T0] DID policy=${didPolicyId} name=${DID_NAME} unit=${didUnit}`);
 
 // ─────────────────────────────────────────────────────────────────────────
 // Apply validators (genesis_ref = UTxO ví → one-shot POOL NFT).
+// Thứ tự acyclic: faucet_nft(genesis_ref, ms) → faucet_account(faucet_nft_pid, …, ms) →
+// faucet_pool(faucet_nft_pid, …, ms, account_script_hash). `faucet_account` KHÔNG nhận
+// account_script_hash (nó chính là account); `faucet_pool` nhận THÊM tham số đó ở CUỐI.
 // ─────────────────────────────────────────────────────────────────────────
 const utxos0 = await lucid.wallet().getUtxos();
-const genesis = utxos0.reduce((a, b) => (b.assets.lovelace > a.assets.lovelace ? b : a));
+const genesis = utxos0.reduce((a, b) => ((b.assets.lovelace ?? 0n) > (a.assets.lovelace ?? 0n) ? b : a));
 const genesisRef = new Constr(0, [genesis.txHash, BigInt(genesis.outputIndex)]);
 console.log(`[deploy] genesis ref: ${genesis.txHash}#${genesis.outputIndex}`);
 
-const faucetNftPolicy: MintingPolicy = { type: "PlutusV3", script: applyChecked("faucet_nft.faucet_nft.mint", [genesisRef]) };
+const faucetNftPolicy: MintingPolicy = { type: "PlutusV3", script: applyChecked("faucet_nft.faucet_nft.mint", [genesisRef, MS_PER_EPOCH]) };
 const faucetNftPid = mintingPolicyToId(faucetNftPolicy);
 
-const poolParams = [faucetNftPid, didPolicyId, LAMP_POLICY, LAMP_NAME, MS_PER_EPOCH];
+const acctParams = [faucetNftPid, didPolicyId, LAMP_POLICY, LAMP_NAME, MS_PER_EPOCH];
+const faucetAccountScript: Validator = { type: "PlutusV3", script: applyChecked("faucet_account.faucet_account.spend", acctParams) };
+const accountScriptHash = validatorToScriptHash(faucetAccountScript);
+
+const poolParams = [...acctParams, accountScriptHash];
 const faucetPoolScript: Validator = { type: "PlutusV3", script: applyChecked("faucet_pool.faucet_pool.spend", poolParams) };
-const faucetAccountScript: Validator = { type: "PlutusV3", script: applyChecked("faucet_account.faucet_account.spend", poolParams) };
 
 const poolAddr = credentialToAddress("Preview", scriptHashToCredential(validatorToScriptHash(faucetPoolScript)));
 const accountAddr = credentialToAddress("Preview", scriptHashToCredential(validatorToScriptHash(faucetAccountScript)));
 const poolNftUnit = toUnit(faucetNftPid, POOL_NFT_NAME);
-const acctNftUnit = toUnit(faucetNftPid, ACCT_NFT_NAME);
+const acctNftUnit = toUnit(faucetNftPid, acctName(DID_NAME));
 
 console.log(`[deploy] faucetNftPid=${faucetNftPid}`);
+console.log(`[deploy] accountScriptHash=${accountScriptHash}`);
 console.log(`[deploy] poolAddr=${poolAddr}`);
 console.log(`[deploy] accountAddr=${accountAddr}`);
 Object.assign(out, { faucetNftPid, didPolicyId, didName: DID_NAME, poolAddr, accountAddr, lampUnit });
 
 // ─────────────────────────────────────────────────────────────────────────
-// T1 — deploy pool: mint POOL NFT one-shot + seed tLAMP + FaucetConfig.
+// T1 — deploy pool: mint POOL NFT one-shot + seed tLAMP (đã có sẵn trong ví) + PoolDatum.
 // ─────────────────────────────────────────────────────────────────────────
-const cfg = { drip_oildrop: DRIP_OILDROP, cooldown_epochs: COOLDOWN, reclaim_epochs: RECLAIM };
+const cfg: FaucetConfig = { drip_oildrop: DRIP_OILDROP, cooldown_epochs: COOLDOWN, max_claims_per_window: MAX_CLAIMS_PER_WINDOW };
+let poolInitialDatum: PoolDatum;
 {
+  // C-MP-6: window_epoch khởi tạo PHẢI đúng bucket THẬT — pinned, không phải 0 mặc định.
+  const { loMs, hiMs, epoch } = pinnedEpochWindow(Date.now(), Number(MS_PER_EPOCH));
+  poolInitialDatum = { cfg, window_epoch: epoch, claims_in_window: 0n };
+
   const tx = await lucid.newTx()
     .collectFrom([genesis])                                  // consume genesis (one-shot)
     .mintAssets({ [poolNftUnit]: 1n }, mintPoolRedeemerToCbor())
     .attach.MintingPolicy(faucetNftPolicy)
     .pay.ToAddressWithData(
       poolAddr,
-      { kind: "inline", value: faucetConfigToCbor(cfg) },
+      { kind: "inline", value: poolDatumToCbor(poolInitialDatum) },
       { lovelace: 5_000_000n, [poolNftUnit]: 1n, [lampUnit]: POOL_SEED_OILDROP },
     )
+    .validFrom(loMs)
+    .validTo(hiMs)
     .addSignerKey(pkh)
     .complete({ coinSelection: true });
   const h = await (await tx.sign.withWallet().complete()).submit();
-  console.log(`[T1] pool deployed (POOL NFT + ${Number(POOL_SEED_OILDROP) / 1e6} tLAMP) ${link(h)}`);
-  rec({ step: "T1_deploy_pool", hash: h, link: link(h), poolAddr, poolNftUnit, seedOildrop: POOL_SEED_OILDROP.toString() });
+  console.log(`[T1] pool deployed (POOL NFT + ${Number(POOL_SEED_OILDROP) / 1e6} tLAMP, window_epoch=${epoch}) ${link(h)}`);
+  rec({ step: "T1_deploy_pool", hash: h, link: link(h), poolAddr, poolNftUnit, seedOildrop: POOL_SEED_OILDROP.toString(), windowEpoch: epoch.toString() });
   await lucid.awaitTx(h);
   await waitVisible(h, poolAddr);
   await waitVisible(h, myAddr);
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-// T2 — claim: spend pool (Claim) + mint ACCT NFT + drip → account; mang DID NFT.
+// T2 — ClaimOpen: mở account MỚI (SDK `buildClaimOpenTx`) + mint ACCT NFT + drip; mang DID NFT.
 // ─────────────────────────────────────────────────────────────────────────
 let accountRef: { txHash: string; outputIndex: number };
 {
   const poolUtxos = await lucid.utxosAt(poolAddr);
-  const poolUtxo = poolUtxos.find((u) => (u.assets[poolNftUnit] ?? 0n) === 1n)!;
+  const poolUtxo = poolUtxos.find((u) => (u.assets[poolNftUnit] ?? 0n) === 1n);
+  if (!poolUtxo) throw new Error(`[T2] không tìm thấy pool UTxO mang POOL NFT ở ${poolAddr}`);
   const didUtxos = (await lucid.wallet().getUtxos()).filter((u) => (u.assets[didUnit] ?? 0n) >= 1n);
   const didUtxo = didUtxos[0];
+  if (!didUtxo) throw new Error(`[T2] ví không còn UTxO mang DID NFT ${didUnit}`);
 
-  // Nhãn epoch suy từ NOW, không lùi trước khi chia (Issue #76) — `windowAt` tự kẹp `loMs`
-  // trong cửa sổ epoch hiện tại. Nguồn: `Faucet/offchain/src/epochWindow.ts`.
-  const { loMs: validFromMs, t: now } = windowAt(Date.now(), Number(MS_PER_EPOCH));
-  const poolAfter = (poolUtxo.assets[lampUnit] ?? 0n) - DRIP_OILDROP;
-
-  const poolOutAssets: Record<string, bigint> = { ...poolUtxo.assets };
-  if (poolAfter > 0n) poolOutAssets[lampUnit] = poolAfter; else delete poolOutAssets[lampUnit];
-
-  const acctDatum = { did_name: DID_NAME, last_epoch: now };
-
-  const tx = await lucid.newTx()
-    .collectFrom([poolUtxo], poolClaimRedeemerToCbor())
-    .attach.SpendingValidator(faucetPoolScript)
-    .collectFrom([didUtxo])
-    .mintAssets({ [acctNftUnit]: 1n }, mintAccountRedeemerToCbor())
-    .attach.MintingPolicy(faucetNftPolicy)
-    .pay.ToAddressWithData(poolAddr, { kind: "inline", value: faucetConfigToCbor(cfg) }, poolOutAssets)
-    .pay.ToAddressWithData(accountAddr, { kind: "inline", value: faucetAccountToCbor(acctDatum) },
-      { lovelace: 2_000_000n, [acctNftUnit]: 1n, [lampUnit]: DRIP_OILDROP })
-    .pay.ToAddress(myAddr, { [didUnit]: 1n, lovelace: 2_000_000n })  // trả DID NFT về ví
-    .validFrom(validFromMs)
-    .addSignerKey(pkh)
-    .complete({ coinSelection: true });
-  const h = await (await tx.sign.withWallet().complete()).submit();
-  console.log(`[T2] claim 1001 tLAMP → account (epoch=${now}) ${link(h)}`);
-  rec({ step: "T2_claim", hash: h, link: link(h), accountAddr, dripOildrop: DRIP_OILDROP.toString(), epoch: now.toString() });
+  const res = await buildClaimOpenTx({
+    lucid, network: NETWORK,
+    poolUtxo, faucetPoolScript,
+    faucetNftPolicy, faucetNftPolicyId: faucetNftPid,
+    faucetAccountScript,
+    didUtxo, didNftPolicyId: didPolicyId, didName: DID_NAME,
+    tlampPolicyId: LAMP_POLICY, tlampAssetName: LAMP_NAME,
+    nowMs: Date.now(), msPerEpoch: MS_PER_EPOCH,
+  });
+  const h = await (await res.tx.sign.withWallet().complete()).submit();
+  console.log(`[T2] ClaimOpen ${res.drip / 1_000_000n} tLAMP → account (epoch=${res.epoch}) ${link(h)}`);
+  rec({ step: "T2_claim_open", hash: h, link: link(h), accountAddr: res.accountAddress, dripOildrop: res.drip.toString(), epoch: res.epoch.toString() });
   await lucid.awaitTx(h);
   await waitVisible(h, accountAddr);
   await waitVisible(h, myAddr);
 
   const accs = await lucid.utxosAt(accountAddr);
-  const a = accs.find((u) => (u.assets[acctNftUnit] ?? 0n) === 1n)!;
+  const a = accs.find((u) => (u.assets[acctNftUnit] ?? 0n) === 1n);
+  if (!a) throw new Error(`[T2] không tìm thấy account UTxO mang ACCT NFT ${acctNftUnit} sau khi claim`);
   accountRef = { txHash: a.txHash, outputIndex: a.outputIndex };
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-// T3 — use: spend account (Use) + mang DID NFT → cập last_epoch=now.
+// T3 — Use (SDK `buildUseTx`): spend account + mang DID NFT → gia hạn last_touch_epoch=now,
+// last_claim_epoch BẤT BIẾN.
 // ─────────────────────────────────────────────────────────────────────────
 {
   const accs = await lucid.utxosAt(accountAddr);
-  const acctUtxo = accs.find((u) => u.txHash === accountRef.txHash && u.outputIndex === accountRef.outputIndex)!;
-  const didUtxo = (await lucid.wallet().getUtxos()).filter((u) => (u.assets[didUnit] ?? 0n) >= 1n)[0];
+  const acctUtxo = accs.find((u) => u.txHash === accountRef.txHash && u.outputIndex === accountRef.outputIndex);
+  if (!acctUtxo) throw new Error(`[T3] không tìm thấy lại account UTxO ${accountRef.txHash}#${accountRef.outputIndex}`);
+  const didUtxosNow = (await lucid.wallet().getUtxos()).filter((u) => (u.assets[didUnit] ?? 0n) >= 1n);
+  const didUtxo: UTxO | undefined = didUtxosNow[0];
+  if (!didUtxo) throw new Error(`[T3] ví không còn UTxO mang DID NFT ${didUnit}`);
 
-  // Nhãn epoch suy từ NOW, không lùi trước khi chia (Issue #76) — xem chú thích cùng khối ở
-  // khối T2 phía trên.
-  const { loMs: validFromMs, t: now } = windowAt(Date.now(), Number(MS_PER_EPOCH));
-  const acctLamp = acctUtxo.assets[lampUnit] ?? 0n;
-  const newDatum = { did_name: DID_NAME, last_epoch: now };
-  const acctOut: Record<string, bigint> = { lovelace: acctUtxo.assets.lovelace, [acctNftUnit]: 1n };
-  if (acctLamp > 0n) acctOut[lampUnit] = acctLamp;
-
-  const tx = await lucid.newTx()
-    .collectFrom([acctUtxo], accountUseRedeemerToCbor())
-    .attach.SpendingValidator(faucetAccountScript)
-    .collectFrom([didUtxo])
-    .pay.ToAddressWithData(accountAddr, { kind: "inline", value: faucetAccountToCbor(newDatum) }, acctOut)
-    .pay.ToAddress(myAddr, { [didUnit]: 1n, lovelace: 2_000_000n })
-    .validFrom(validFromMs)
-    .addSignerKey(pkh)
-    .complete({ coinSelection: true });
-  const h = await (await tx.sign.withWallet().complete()).submit();
-  console.log(`[T3] account Use (last_epoch=${now}) ${link(h)}`);
-  rec({ step: "T3_use", hash: h, link: link(h), epoch: now.toString() });
+  const res = await buildUseTx({
+    lucid, network: NETWORK,
+    accountUtxo: acctUtxo, faucetAccountScript, faucetNftPolicyId: faucetNftPid,
+    didUtxo, didNftPolicyId: didPolicyId, didName: DID_NAME,
+    tlampPolicyId: LAMP_POLICY, tlampAssetName: LAMP_NAME,
+    nowMs: Date.now(), msPerEpoch: MS_PER_EPOCH,
+  });
+  const h = await (await res.tx.sign.withWallet().complete()).submit();
+  console.log(`[T3] Use (last_touch_epoch=${res.epoch}) ${link(h)}`);
+  rec({ step: "T3_use", hash: h, link: link(h), epoch: res.epoch.toString() });
   await lucid.awaitTx(h);
 }
 
