@@ -77,7 +77,10 @@ describe("deriveWiring — lớp Distribution v3", () => {
     expect(wiring.beaconHash).toMatch(HEX56);
     expect(wiring.accountPid).toMatch(HEX56);
     expect(wiring.markers.beaconPid).toMatch(HEX56);
-  });
+    // `sampleWiring()` áp tham số qua CML wasm cho cả cụm: chạy riêng tệp ~6s, chạy trọn bộ
+    // (26 tệp song song) có lượt vượt 5s mặc định — đo 2026-09-28. Cùng lý do với bài import
+    // động ở cuối tệp; thời hạn riêng từng bài, không nới cả bộ.
+  }, 120_000);
 
   // Phép dựng lại ĐỘC LẬP: áp tham số theo TÊN mà blueprint khai, không theo mảng mà
   // `deriveWiring` gõ. Sai THỨ TỰ hai tham số cùng kiểu (vd hoán `beacon_nft_policy` với
@@ -111,7 +114,7 @@ describe("deriveWiring — lớp Distribution v3", () => {
     expect(rebuild("treasury.treasury.spend")).toBe(wiring.treHash);
     expect(rebuild("claim_account.claim_account.spend")).toBe(wiring.claimHash);
     expect(rebuild("beacon.beacon.spend")).toBe(wiring.beaconHash);
-  });
+  }, 120_000);
 
   it("treasury v3 khai 8 tham số, beacon_nft_policy ở KHE CUỐI", () => {
     requireBlueprints();
@@ -196,7 +199,10 @@ describe("28_beacon_grant_redeem.ts + 20_canonical_genesis.ts — không còn ng
       }
       // Tệp nào cũng import ít nhất một tên — 0 nghĩa là regex hụt, không phải "sạch".
       expect(checked.length).toBeGreaterThan(0);
-    });
+      // `import()` động nạp cả cây Distribution (lucid + CML wasm) lần đầu trong tiến trình
+      // test: đo 2026-09-28 hết 5s mặc định khi chạy trọn bộ, qua khi cho 60s. Thời hạn
+      // riêng cho bài này thay vì nới cả bộ, để một bài treo thật ở chỗ khác vẫn đỏ sớm.
+    }, 120_000);
   }
 
   it("28: mọi lượt buildClaimTx mang beacon làm reference input (C-CLAIM-8)", () => {
