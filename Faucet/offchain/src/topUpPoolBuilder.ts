@@ -61,6 +61,8 @@ export async function buildTopUpPoolTx(params: TopUpPoolParams): Promise<TopUpPo
   const poolAfter = poolLamp + depositOildrop;
   const poolOutAssets: Record<string, bigint> = { ...poolUtxo.assets, [tlampUnit]: poolAfter };
   // C-TUP-2/3: bộ đếm tốc độ BẢO TOÀN — nạp tiền không được đụng window_epoch/claims_in_window.
+  // C-ROOT-KEEP-1: sổ `opened_root` cũng giữ nguyên. Cả datum đi nguyên khối (`pd` đã giải mã
+  // đủ 4 trường) — không dựng lại từng trường để không có chỗ quên trường thứ tư.
   const poolDatumOut: PoolDatum = pd;
 
   const tx = await lucid

@@ -4,9 +4,11 @@
 //   T0  mint DID test NFT (native sig-policy) → ví (chứng minh DID cho claim/use).
 //   T1  deploy pool: mint POOL NFT one-shot (faucet_nft MintPool) + seed pool UTxO với
 //       tLAMP (LAMP_POLICY/LAMP_NAME — token ĐÃ CÓ SẴN, KHÔNG mint ở đây) + PoolDatum
-//       {cfg{drip,cooldown,max_claims_per_window}, window_epoch(pinned), claims_in_window=0}.
+//       {cfg{drip,cooldown,max_claims_per_window}, window_epoch(pinned), claims_in_window=0,
+//       opened_root = gốc sổ RỖNG (C-MP-8, v3.1)}.
 //   T2  ClaimOpen: mở account MỚI cho DID — dùng SDK `buildClaimOpenTx` (spend pool + mint
-//       ACCT NFT + drip → account UTxO {did_name, last_claim_epoch=now, last_touch_epoch=now}).
+//       ACCT NFT + drip → account UTxO {did_name, last_claim_epoch=now, last_touch_epoch=now};
+//       redeemer mang bằng chứng MPF chèn khoá DID vào sổ — pool vừa deploy nên sổ rỗng).
 //   T3  Use: chủ DID gia hạn mốc idle — dùng SDK `buildUseTx` (last_claim_epoch bất biến,
 //       last_touch_epoch=now).
 //
@@ -36,6 +38,7 @@ import {
   msPerEpoch, assertMsPerEpochMatchesNetwork,
 } from "../offchain/src/constants.js";
 import { pinnedEpochWindow } from "../offchain/src/epochWindow.js";
+import { OPENED_ROOT_EMPTY } from "../offchain/src/openedLedger.js";
 import type { FaucetConfig, PoolDatum } from "../offchain/src/types.js";
 
 // BÍ MẬT: tệp này nhận GIÁ TRỊ qua biến môi trường, KHÔNG mở kho khoá và KHÔNG biết
@@ -166,7 +169,8 @@ let poolInitialDatum: PoolDatum;
 {
   // C-MP-6: window_epoch khởi tạo PHẢI đúng bucket THẬT — pinned, không phải 0 mặc định.
   const { loMs, hiMs, epoch } = pinnedEpochWindow(Date.now(), Number(MS_PER_EPOCH));
-  poolInitialDatum = { cfg, window_epoch: epoch, claims_in_window: 0n };
+  // C-MP-8: sổ `opened_root` khởi tạo RỖNG.
+  poolInitialDatum = { cfg, window_epoch: epoch, claims_in_window: 0n, opened_root: OPENED_ROOT_EMPTY };
 
   const tx = await lucid.newTx()
     .collectFrom([genesis])                                  // consume genesis (one-shot)
@@ -207,6 +211,9 @@ let accountRef: { txHash: string; outputIndex: number };
     faucetNftPolicy, faucetNftPolicyId: faucetNftPid,
     faucetAccountScript,
     didUtxo, didNftPolicyId: didPolicyId, didName: DID_NAME,
+    // Pool vừa deploy ở T1 ⇒ chưa account nào sống. Builder vẫn đối chiếu gốc rỗng với datum
+    // thật (FAUCET-LEDGER-001 nếu lệch) chứ không tin danh sách này suông.
+    openedLedger: [],
     tlampPolicyId: LAMP_POLICY, tlampAssetName: LAMP_NAME,
     nowMs: Date.now(), msPerEpoch: MS_PER_EPOCH,
   });

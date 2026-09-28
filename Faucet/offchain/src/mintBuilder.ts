@@ -4,8 +4,8 @@
 // LỊCH SỬ: tệp này trước đây gọi `buildMintPoolTx` (v1) — mint tLAMP rồi gửi THẲNG vào một
 // UTxO ở validator `faucet.ak` (đã XOÁ) với `FaucetDatum{claim_amount}` trần, KHÔNG NFT. v3
 // đổi hẳn: pool nay là một UTxO ĐỊNH DANH bằng POOL NFT (`faucet_nft` policy, redeemer
-// `MintPool`), datum là `PoolDatum{cfg, window_epoch, claims_in_window}` — mọi ràng buộc khởi
-// tạo (C-MP-1..7) bị ép NGAY LÚC ĐÚC vì sau tx này `faucet_pool` C-CFG-1 đóng băng `cfg` vĩnh
+// `MintPool`), datum là `PoolDatum{cfg, window_epoch, claims_in_window, opened_root}` — mọi ràng
+// buộc khởi tạo (C-MP-1..8; C-MP-8 = sổ `opened_root` RỖNG) bị ép NGAY LÚC ĐÚC vì sau tx này `faucet_pool` C-CFG-1 đóng băng `cfg` vĩnh
 // viễn và POOL NFT one-shot nên không đúc lại datum được.
 //
 // MỘT genesis UTxO DÙNG CHUNG cho CẢ HAI policy (`tlamp_policy` lẫn `faucet_nft`) — một UTxO
@@ -30,6 +30,7 @@ import {
 } from "./constants.js";
 import { poolDatumToCbor, mintGenesisRedeemerToCbor, mintPoolRedeemerToCbor } from "./datum.js";
 import { pinnedEpochWindow } from "./epochWindow.js";
+import { OPENED_ROOT_EMPTY } from "./openedLedger.js";
 import type { FaucetConfig, PoolDatum } from "./types.js";
 
 export interface MintPoolParams {
@@ -123,7 +124,8 @@ export async function buildMintPoolTx(params: MintPoolParams): Promise<MintPoolR
   );
 
   const cfg: FaucetConfig = { drip_oildrop: drip, cooldown_epochs: cooldown, max_claims_per_window: maxClaims };
-  const poolDatum: PoolDatum = { cfg, window_epoch: epoch, claims_in_window: 0n };
+  // C-MP-8: sổ `opened_root` khởi tạo RỖNG — chưa DID nào có account.
+  const poolDatum: PoolDatum = { cfg, window_epoch: epoch, claims_in_window: 0n, opened_root: OPENED_ROOT_EMPTY };
 
   const poolAssets: Record<string, bigint> = {
     lovelace: poolLovelace,

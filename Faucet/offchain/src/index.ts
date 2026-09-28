@@ -12,3 +12,6 @@ export * from "./useBuilder.js";
 export * from "./reclaimBuilder.js";
 export * from "./topUpPoolBuilder.js";
 export * from "./epochWindow.js";
+
+// Faucet v3.1 — sổ `opened_root` (mỗi DID tối đa một account).
+export * from "./openedLedger.js";

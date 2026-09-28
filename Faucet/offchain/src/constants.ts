@@ -24,7 +24,7 @@ export function lampToOildrop(lamp: bigint): bigint {
 }
 
 // ══════════════════════════════════════════════════════════════════════════
-// FAUCET v2 — self-serve, DID-gated, rate-limited, tự thu hồi.
+// FAUCET v3.1 — self-serve, DID-gated, rate-limited, tự thu hồi, mỗi DID một account.
 // Khớp onchain ledger.ak. 1 tLAMP = 10^6 oildrop.
 // ══════════════════════════════════════════════════════════════════════════
 
@@ -37,13 +37,14 @@ export const DRIP_OILDROP = DRIP_LAMP * OILDROP_PER_LAMP;
 /** Cooldown = 36 epoch giữa 2 claim của cùng 1 chuỗi account. Khớp FaucetConfig.cooldown_epochs. */
 export const COOLDOWN = 36n;
 
-/** Reclaim = 1001 epoch idle → account bị thu hồi (đọc mốc `last_touch_epoch`, KHÔNG phải
- * `last_claim_epoch`). v3: đây KHÔNG còn là trường của `FaucetConfig` — trần này nay là hằng
- * COMPILE-TIME on-chain DUY NHẤT (`handlers.reclaim_epochs_const`, `Faucet/onchain/lib/magiclamp/
- * faucet/handlers.ak`). Hằng ở đây là BẢN CHÉP CÓ NHÃN để offchain tự tính "đã đủ idle chưa"
- * TRƯỚC khi dựng tx (reclaimBuilder) — sai giá trị không làm tx pass/fail khác on-chain, chỉ
- * làm phép tính "đã đủ điều kiện chưa" ở tầng offchain sai. */
-export const RECLAIM = 1001n;
+/** Reclaim = 72 cửa sổ idle → account bị thu hồi (đọc mốc `last_touch_epoch`, KHÔNG phải
+ * `last_claim_epoch`). Không phải trường của `FaucetConfig` — trần này là hằng COMPILE-TIME
+ * on-chain DUY NHẤT (`reclaim_epochs_const` trong `Faucet/onchain/lib/magiclamp/faucet/
+ * handlers.ak`, v3.1, commit 75323b4: 1001 → 72). Hằng ở đây là BẢN CHÉP CÓ NHÃN để offchain
+ * tự tính "đã đủ idle chưa" TRƯỚC khi dựng tx (reclaimBuilder): lệch nguồn thì builder chặn
+ * nhầm hoặc cho dựng một tx chắc chắn bị từ chối (mất phí), không đổi được luật on-chain.
+ * Ca kiểm `faucetV2.test.ts` đọc `handlers.ak` và so với hằng này — lệch là đỏ. */
+export const RECLAIM = 72n;
 
 /** Asset name POOL NFT = "POOL" (504f4f4c). Khớp ledger.pool_nft_name. */
 export const POOL_NFT_NAME = "504f4f4c";
@@ -88,7 +89,7 @@ export function acctName(didName: string): string {
  *
  *  Lệch này KHÔNG làm tx fail — off-chain và validator nạp CÙNG một số sai nên mọi check
  *  vẫn pass, chỉ mốc thời gian sai im lặng: trên Preview `COOLDOWN = 36 epoch` hoá 180 ngày
- *  thay vì 36, `RECLAIM = 1001 epoch` hoá 13,7 năm thay vì 2,7. Bỏ hẳn nơi khai thứ hai thì
+ *  thay vì 36, `RECLAIM = 72 epoch` hoá 360 ngày thay vì 72. Bỏ hẳn nơi khai thứ hai thì
  *  không còn gì để lệch. */
 export { msPerEpoch, MS_PER_EPOCH_BY_NETWORK } from "@magiclamp/utils";
 

@@ -5,6 +5,8 @@
 // math (không phải codec, xem `Forall §Một tài liệu = MỘT file nguồn`).
 
 import { describe, it, expect } from "vitest";
+import { readFile } from "node:fs/promises";
+import { resolve } from "node:path";
 import {
   DRIP_OILDROP, DRIP_LAMP, COOLDOWN, RECLAIM, OILDROP_PER_LAMP,
   POOL_NFT_NAME, ACCT_NFT_NAME, MAX_CLAIMS_CEILING, acctName,
@@ -17,7 +19,7 @@ function hexToAscii(hex: string): string {
   return s;
 }
 
-describe("constants — drip 1001, cooldown 36, reclaim 1001, max_claims ceiling 100", () => {
+describe("constants — drip 1001, cooldown 36, reclaim 72, max_claims ceiling 100", () => {
   it("DRIP = 1001 LAMP = 1_001_000_000 oildrop", () => {
     expect(DRIP_LAMP).toBe(1001n);
     expect(DRIP_OILDROP).toBe(1_001_000_000n);
@@ -26,8 +28,16 @@ describe("constants — drip 1001, cooldown 36, reclaim 1001, max_claims ceiling
   it("COOLDOWN = 36 cửa sổ", () => {
     expect(COOLDOWN).toBe(36n);
   });
-  it("RECLAIM = 1001 cửa sổ (hằng compile-time on-chain, không còn trường datum)", () => {
-    expect(RECLAIM).toBe(1001n);
+  it("RECLAIM = 72 cửa sổ (hằng compile-time on-chain, không còn trường datum)", () => {
+    expect(RECLAIM).toBe(72n);
+  });
+  // Bản chép có nhãn phải khớp NGUỒN: đọc thẳng `reclaim_epochs_const` trong `handlers.ak`.
+  // Không tìm thấy dòng khai ⇒ ĐỎ (không đo được thì không được xanh).
+  it("RECLAIM khớp `reclaim_epochs_const` trong onchain/lib/magiclamp/faucet/handlers.ak", async () => {
+    const src = await readFile(resolve(process.cwd(), "../onchain/lib/magiclamp/faucet/handlers.ak"), "utf8");
+    const m = src.match(/^\s*(?:pub\s+)?const\s+reclaim_epochs_const\s*:\s*Int\s*=\s*([0-9_]+)\s*$/m);
+    expect(m, "không tìm thấy dòng khai reclaim_epochs_const trong handlers.ak").not.toBeNull();
+    expect(BigInt(m![1]!.replace(/_/g, ""))).toBe(RECLAIM);
   });
   it("MAX_CLAIMS_CEILING = 100 (trần compile-time C-MP-7)", () => {
     expect(MAX_CLAIMS_CEILING).toBe(100n);
@@ -58,7 +68,7 @@ describe("constants — drip 1001, cooldown 36, reclaim 1001, max_claims ceiling
   it("cooldown/reclaim quy ra ngày thật trên Preview (36 epoch = 36 ngày, không phải 180)", () => {
     const day = 86_400_000n;
     expect(COOLDOWN * msPerEpoch("Preview") / day).toBe(36n);
-    expect(RECLAIM * msPerEpoch("Preview") / day).toBe(1001n);
+    expect(RECLAIM * msPerEpoch("Preview") / day).toBe(72n);
   });
 });
 
@@ -99,6 +109,6 @@ describe("rate-limit math (cooldown / reclaim epoch arithmetic — offchain mirr
   });
   it("reclaim hợp lệ khi now ≥ last_touch_epoch + reclaim", () => {
     const last = 100n;
-    expect(last + RECLAIM).toBe(1101n);  // thu hồi sớm nhất epoch 1101
+    expect(last + RECLAIM).toBe(172n);  // thu hồi sớm nhất epoch 172 (khớp biên `faucet_account.ak`)
   });
 });

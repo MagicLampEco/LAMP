@@ -10,7 +10,8 @@ import {
   encodePoolDatum, decodePoolDatum, poolDatumToCbor, poolDatumFromCbor,
   encodeFaucetAccount, decodeFaucetAccount, faucetAccountToCbor, faucetAccountFromCbor,
   poolClaimOpenRedeemerToCbor, poolClaimAgainRedeemerToCbor, poolReclaimRedeemerToCbor,
-  poolTopUpPoolRedeemerToCbor,
+  poolTopUpPoolRedeemerToCbor, poolRedeemerFromCbor, decodePoolRedeemer,
+  encodeMpfProof, decodeMpfProof,
   accountUseRedeemerToCbor, accountTopUpRedeemerToCbor, accountReclaimIdleRedeemerToCbor,
   mintPoolRedeemerToCbor, mintAccountRedeemerToCbor, burnAccountRedeemerToCbor,
   mintGenesisRedeemerToCbor,
@@ -52,14 +53,69 @@ function recordFields(typeName: string): string[] {
   return ctor.fields.map((f) => f.title ?? "");
 }
 
+/** Tên field (thứ tự) của một constructor cụ thể trong enum `magiclamp/faucet/ledger/<Name>`. */
+function ctorFields(typeName: string, ctorTitle: string): string[] {
+  const def = defs[`magiclamp/faucet/ledger/${typeName}`];
+  const ctor = def?.anyOf?.find((c) => c.title === ctorTitle);
+  if (!ctor) throw new Error(`'${typeName}' không có constructor '${ctorTitle}'`);
+  return ctor.fields.map((f) => f.title ?? "");
+}
+
+/** Index + tên field của một constructor trong `aiken/merkle_patricia_forestry/<Name>`. */
+function mpfCtor(typeName: string, ctorTitle: string): { index: number; fields: string[] } {
+  const def = defs[`aiken/merkle_patricia_forestry/${typeName}`];
+  const ctor = def?.anyOf?.find((c) => c.title === ctorTitle);
+  if (!ctor) throw new Error(`blueprint thiếu 'aiken/merkle_patricia_forestry/${typeName}.${ctorTitle}'`);
+  return { index: ctor.index, fields: ctor.fields.map((f) => f.title ?? "") };
+}
+
+// Một bằng chứng đủ ba loại bước (giá trị hợp lệ về độ dài; đúng/sai toán học không phải việc
+// của codec — bài parity ở `openedLedger.test.ts` lo phần đó).
+const PROOF_SAMPLE = [
+  { kind: "Branch" as const, skip: 0n, neighbors: "11".repeat(128) },
+  { kind: "Fork" as const, skip: 2n, neighbor: { nibble: 13n, prefix: "00", root: "22".repeat(32) } },
+  { kind: "Leaf" as const, skip: 1n, key: "33".repeat(32), value: "44".repeat(32) },
+];
+
 describe("PoolRedeemer / AccountRedeemer / FaucetNftRedeemer — index KHỚP blueprint", () => {
-  it("PoolRedeemer: ClaimOpen/ClaimAgain/Reclaim/TopUpPool", () => {
-    expect(poolClaimOpenRedeemerToCbor()).toBe(Data.to(new Constr(ctorIndex("PoolRedeemer", "ClaimOpen"), [])));
+  it("PoolRedeemer: ClaimOpen{proof}/ClaimAgain/Reclaim{proof}/TopUpPool", () => {
+    expect(poolClaimOpenRedeemerToCbor([])).toBe(Data.to(new Constr(ctorIndex("PoolRedeemer", "ClaimOpen"), [[]])));
     expect(poolClaimAgainRedeemerToCbor()).toBe(Data.to(new Constr(ctorIndex("PoolRedeemer", "ClaimAgain"), [])));
-    expect(poolReclaimRedeemerToCbor()).toBe(Data.to(new Constr(ctorIndex("PoolRedeemer", "Reclaim"), [])));
+    expect(poolReclaimRedeemerToCbor([])).toBe(Data.to(new Constr(ctorIndex("PoolRedeemer", "Reclaim"), [[]])));
     expect(poolTopUpPoolRedeemerToCbor()).toBe(Data.to(new Constr(ctorIndex("PoolRedeemer", "TopUpPool"), [])));
     // Reclaim DỊCH 1→2 so với v2 — khoá cứng bằng số, không chỉ bằng tên hàm.
     expect(ctorIndex("PoolRedeemer", "Reclaim")).toBe(2);
+    // v3.1: hai nhánh đổi sổ mang ĐÚNG một field `proof`; hai nhánh còn lại rỗng.
+    expect(ctorFields("PoolRedeemer", "ClaimOpen")).toEqual(["proof"]);
+    expect(ctorFields("PoolRedeemer", "Reclaim")).toEqual(["proof"]);
+    expect(ctorFields("PoolRedeemer", "ClaimAgain")).toEqual([]);
+    expect(ctorFields("PoolRedeemer", "TopUpPool")).toEqual([]);
+  });
+
+  it("ProofStep/Neighbor: index + thứ tự field KHỚP blueprint của thư viện MPF", () => {
+    expect(mpfCtor("ProofStep", "Branch")).toEqual({ index: 0, fields: ["skip", "neighbors"] });
+    expect(mpfCtor("ProofStep", "Fork")).toEqual({ index: 1, fields: ["skip", "neighbor"] });
+    expect(mpfCtor("ProofStep", "Leaf")).toEqual({ index: 2, fields: ["skip", "key", "value"] });
+    expect(mpfCtor("Neighbor", "Neighbor")).toEqual({ index: 0, fields: ["nibble", "prefix", "root"] });
+  });
+
+  it("PoolRedeemer có proof round-trip (ClaimOpen + Reclaim, đủ Branch/Fork/Leaf)", () => {
+    expect(poolRedeemerFromCbor(poolClaimOpenRedeemerToCbor(PROOF_SAMPLE))).toEqual({ kind: "ClaimOpen", proof: PROOF_SAMPLE });
+    expect(poolRedeemerFromCbor(poolReclaimRedeemerToCbor(PROOF_SAMPLE))).toEqual({ kind: "Reclaim", proof: PROOF_SAMPLE });
+    expect(poolRedeemerFromCbor(poolClaimAgainRedeemerToCbor())).toEqual({ kind: "ClaimAgain" });
+    expect(poolRedeemerFromCbor(poolTopUpPoolRedeemerToCbor())).toEqual({ kind: "TopUpPool" });
+    expect(decodeMpfProof(encodeMpfProof(PROOF_SAMPLE))).toEqual(PROOF_SAMPLE);
+  });
+
+  it("proof hình dạng lạ → NÉM (neighbors sai độ dài, ClaimOpen thiếu proof, step index lạ)", () => {
+    expect(() => poolClaimOpenRedeemerToCbor([{ kind: "Branch", skip: 0n, neighbors: "11".repeat(127) }]))
+      .toThrow(/FAUCET-DATUM-005/);
+    expect(() => poolReclaimRedeemerToCbor([{ kind: "Leaf", skip: -1n, key: "33".repeat(32), value: "44".repeat(32) }]))
+      .toThrow(/FAUCET-DATUM-006/);
+    expect(() => decodePoolRedeemer(new Constr(0, []))).toThrow(/FAUCET-DATUM-062/);
+    expect(() => decodePoolRedeemer(new Constr(1, [[]]))).toThrow(/FAUCET-DATUM-062/);
+    expect(() => decodePoolRedeemer(new Constr(0, [[new Constr(3, [0n])]]))).toThrow(/FAUCET-DATUM-071/);
+    expect(() => decodePoolRedeemer(new Constr(4, []))).toThrow(/FAUCET-DATUM-061/);
   });
 
   it("AccountRedeemer: Use/TopUp/ReclaimIdle — TopUp XEN GIỮA, ReclaimIdle dịch 1→2", () => {
@@ -105,12 +161,32 @@ describe("FaucetConfig codec — 3 trường, thứ tự KHỚP blueprint", () =
   });
 });
 
-describe("PoolDatum codec — Constr(0, [FaucetConfig, window_epoch, claims_in_window])", () => {
+describe("PoolDatum codec — Constr(0, [FaucetConfig, window_epoch, claims_in_window, opened_root])", () => {
   const cfg = { drip_oildrop: DRIP_OILDROP, cooldown_epochs: COOLDOWN, max_claims_per_window: 20n };
-  const pd = { cfg, window_epoch: 100n, claims_in_window: 3n };
+  const pd = { cfg, window_epoch: 100n, claims_in_window: 3n, opened_root: "ab".repeat(32) };
 
-  it("field order khớp blueprint (cfg, window_epoch, claims_in_window)", () => {
-    expect(recordFields("PoolDatum")).toEqual(["cfg", "window_epoch", "claims_in_window"]);
+  it("field order khớp blueprint (cfg, window_epoch, claims_in_window, opened_root)", () => {
+    expect(recordFields("PoolDatum")).toEqual(["cfg", "window_epoch", "claims_in_window", "opened_root"]);
+  });
+
+  it("opened_root là trường THỨ TƯ, mã hoá dạng bytes (không bị gộp/đổi chỗ)", () => {
+    const enc = encodePoolDatum(pd);
+    expect(enc.fields).toHaveLength(4);
+    expect(enc.fields[3]).toBe("ab".repeat(32));
+    expect(poolDatumFromCbor(poolDatumToCbor(pd)).opened_root).toBe("ab".repeat(32));
+  });
+
+  it("rejects opened_root không đúng 32 byte — cả chiều mã hoá lẫn giải mã", () => {
+    expect(() => poolDatumToCbor({ ...pd, opened_root: "ab".repeat(31) })).toThrow(/FAUCET-DATUM-005/);
+    const short = Data.to(new Constr(0, [encodeFaucetConfig(cfg), 100n, 3n, "ab".repeat(28)]));
+    expect(() => poolDatumFromCbor(short)).toThrow(/FAUCET-DATUM-005/);
+    const notBytes = Data.to(new Constr(0, [encodeFaucetConfig(cfg), 100n, 3n, 7n]));
+    expect(() => poolDatumFromCbor(notBytes)).toThrow(/FAUCET-DATUM-003/);
+  });
+
+  it("rejects datum 3 trường (hình dạng v3 trước sổ) — không đệm gốc rỗng", () => {
+    const threeField = Data.to(new Constr(0, [encodeFaucetConfig(cfg), 100n, 3n]));
+    expect(() => poolDatumFromCbor(threeField)).toThrow(/4 field/);
   });
 
   it("round-trips (nested Constr)", () => {
@@ -125,7 +201,7 @@ describe("PoolDatum codec — Constr(0, [FaucetConfig, window_epoch, claims_in_w
   });
 
   it("rejects wrong field count", () => {
-    expect(() => decodePoolDatum(Data.from("d8799f01ff"))).toThrow(/3 field/);
+    expect(() => decodePoolDatum(Data.from("d8799f01ff"))).toThrow(/4 field/);
   });
 
   it("out_pd.cfg == cfg (C-CFG-1 offchain mirror): datum bảo toàn qua roundtrip", () => {
@@ -174,7 +250,7 @@ describe("Hình dạng lạ → NÉM, không đệm", () => {
   it("decodePoolDatum từ chối sai constructor index", () => {
     const wrongIndex = Data.to(new Constr(1, [encodeFaucetConfig({
       drip_oildrop: 1n, cooldown_epochs: 1n, max_claims_per_window: 1n,
-    }), 0n, 0n]));
+    }), 0n, 0n, "00".repeat(32)]));
     expect(() => decodePoolDatum(Data.from(wrongIndex))).toThrow(/Constr 0/);
   });
 });

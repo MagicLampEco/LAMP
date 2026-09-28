@@ -8,14 +8,17 @@
 //
 // FLOW:
 //   1. Spend POOL UTxO (PoolRedeemer::ClaimAgain).
-//   2. Spend account CŨ cùng DID (AccountRedeemer::TopUp) — KHÔNG mint gì (C-AGAIN-1).
+//   2. Spend account CŨ cùng DID (AccountRedeemer::TopUp) — KHÔNG mint gì. Hai chốt on-chain,
+//      không phải một: pool đòi `tx.mint` dưới `faucet_nft_policy` RỖNG (C-MINT-ONLY-OPEN-1) và
+//      account đòi mint của CHÍNH tên đó bằng 0 (C-TOP-4).
 //   3. Collect 1 UTxO mang DID NFT của chủ account. BẮT BUỘC ở CẢ HAI lớp chốt on-chain:
 //      pool (C-DID-1, chung với ClaimOpen) VÀ account (C-TOP-DID-1, thêm 2026-09-28 — chặn
 //      griefing "ai cũng TopUp được account người khác, đẩy cooldown của họ ra xa" — xem
 //      `handlers.ak` đầu mục TOPUP). Builder ném lỗi có mã NGAY khi không tìm thấy DID NFT,
 //      không dựng tx thiếu nó (thiếu thì on-chain reject, nhưng phí đã mất).
 //   4. Output:
-//      - pool' = pool − drip tLAMP; cfg + POOL NFT + ADA bảo toàn; window/claims tiến 1 bước.
+//      - pool' = pool − drip tLAMP; cfg + POOL NFT + ADA bảo toàn; window/claims tiến 1 bước;
+//        `opened_root` GIỮ NGUYÊN (C-ROOT-KEEP-1) — nhánh này không cần bằng chứng sổ.
 //      - account' = account cũ + drip tLAMP; ACCT NFT giữ nguyên (KHÔNG đúc lại); datum
 //        {did_name bất biến, last_claim_epoch=now, last_touch_epoch=now}.
 //
@@ -150,9 +153,12 @@ export async function buildClaimAgainTx(params: ClaimAgainParams): Promise<Claim
   const poolAfter = poolLamp - cfg.drip_oildrop;
   if (poolAfter > 0n) poolOutAssets[tlampUnit] = poolAfter;
   else delete poolOutAssets[tlampUnit];
-  const poolDatumOut: PoolDatum = { cfg, window_epoch: epoch, claims_in_window: used + 1n };
+  // C-ROOT-KEEP-1: `ClaimAgain` không mở/đóng account nào ⇒ sổ `opened_root` giữ NGUYÊN.
+  const poolDatumOut: PoolDatum = {
+    cfg, window_epoch: epoch, claims_in_window: used + 1n, opened_root: pd.opened_root,
+  };
 
-  // ── account output: CỘNG THÊM drip, ACCT NFT giữ nguyên, KHÔNG đúc lại (C-AGAIN-1) ──
+  // ── account output: CỘNG THÊM drip, ACCT NFT giữ nguyên, KHÔNG đúc lại (C-MINT-ONLY-OPEN-1) ──
   // Địa chỉ TÁI TẠO lấy TỪ CHÍNH `oldAccountUtxo.address`, không tự tính lại qua
   // validatorToScriptHash — cùng lý do C-ACCT-ADDR-1/C-TOP-ADDR-1 on-chain ép "đúng địa chỉ
   // input kể cả stake credential": hai nguồn cùng tả một địa chỉ là chỗ dễ trôi nhau.
