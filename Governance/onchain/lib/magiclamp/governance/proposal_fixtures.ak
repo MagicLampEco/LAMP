@@ -137,6 +137,9 @@ pub fn tally_ref(
       yes_power_eff: yes_eff,
       no_power_eff: no_eff,
       abstain_power_eff: 0,
+      vote_open_epoch: 0,
+      vote_close_epoch: 1,
+      voted_root: #"0000000000000000000000000000000000000000000000000000000000000000",
     }
   tally_ref_custom(td, tally_sh())
 }

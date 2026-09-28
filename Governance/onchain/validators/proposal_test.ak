@@ -138,6 +138,9 @@ test execute_summing_phase_reject() fail {
       yes_power_eff: 400,
       no_power_eff: 0,
       abstain_power_eff: 0,
+      vote_open_epoch: 0,
+      vote_close_epoch: 1,
+      voted_root: #"0000000000000000000000000000000000000000000000000000000000000000",
     }
   let tin = tally_ref_custom(td, tally_sh())
   let tx = exec_tx(d_in, d_out, tin, 25 * ms_per_epoch)
@@ -166,6 +169,9 @@ test execute_inconsistent_clamp_reject() fail {
       yes_power_eff: 400,
       no_power_eff: 100,
       abstain_power_eff: 0,
+      vote_open_epoch: 0,
+      vote_close_epoch: 1,
+      voted_root: #"0000000000000000000000000000000000000000000000000000000000000000",
     }
   let tin = tally_ref_custom(td, tally_sh())
   let tx = exec_tx(d_in, d_out, tin, 25 * ms_per_epoch)
@@ -192,6 +198,9 @@ test execute_forged_tally_wrong_script_reject() fail {
       yes_power_eff: 200,
       no_power_eff: 100,
       abstain_power_eff: 0,
+      vote_open_epoch: 0,
+      vote_close_epoch: 1,
+      voted_root: #"0000000000000000000000000000000000000000000000000000000000000000",
     }
   // NFT thật, datum hợp lệ, NHƯNG đặt tại script hash kẻ tấn công #"dead" ≠ tally_sh().
   let tin = tally_ref_custom(td, #"dead")

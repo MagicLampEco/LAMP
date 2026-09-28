@@ -1,10 +1,18 @@
-name    = "magiclamp/governance"
+name = "magiclamp/governance"
 version = "0.0.1"
-plutus  = "v3"
 compiler = "v1.1.21"
+plutus = "v3"
 license = "Apache-2.0"
+description = ""
 
 [[dependencies]]
-name    = "aiken-lang/stdlib"
+name = "aiken-lang/stdlib"
 version = "7d5cee54b2bb4eea211ae3bd806c7c39e5fd899d"
-source  = "github"
+source = "github"
+
+[[dependencies]]
+name = "aiken-lang/merkle-patricia-forestry"
+version = "2.1.0"
+source = "github"
+
+[config]

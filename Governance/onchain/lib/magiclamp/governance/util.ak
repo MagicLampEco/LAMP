@@ -91,6 +91,23 @@ pub fn get_epoch_upper(tx: Transaction, ms_per_epoch: Int) -> Int {
   s / ms_per_epoch
 }
 
+/// Epoch CỦA GIAO DỊCH (`e`) — khuôn bị chặn HAI ĐẦU: cả hai biên của
+/// validity_range phải hữu hạn VÀ rơi vào cùng một epoch. Một biên mở, hoặc hai
+/// biên khác epoch ⇒ giao dịch bị từ chối.
+///
+/// Vì sao dùng khuôn này ở MỌI chốt thời gian thay vì ghép `get_epoch` (biên
+/// dưới) với `get_epoch_upper` (biên trên): hai biên riêng cho hai bất đẳng thức
+/// ngược chiều vẫn ĐÚNG, nhưng nó để lại một câu hỏi "biên nào cho dấu nào" ở
+/// từng chỗ gọi — và câu đó bị trả lời sai ở lượt sửa sau mà không phép đo nào
+/// kêu. Với khuôn hai-đầu thì `e` là MỘT số, nên tính rời nhau của hai cửa sổ
+/// (`e < close` so với `e >= close`) là hiển nhiên theo số học.
+/// Mirror `Distribution/onchain/lib/magiclamp/lampdist/util.ak` ▸ `get_epoch_strict`.
+pub fn get_epoch_bounded(tx: Transaction, ms_per_epoch: Int) -> Int {
+  let lo = get_epoch(tx, ms_per_epoch)
+  expect get_epoch_upper(tx, ms_per_epoch) == lo
+  lo
+}
+
 // ── Test-support builders (mock UTxO/tx) ──
 
 pub fn script_address(hash: ByteArray) -> Address {

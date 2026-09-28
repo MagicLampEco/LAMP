@@ -286,6 +286,9 @@ fn td_clamped(
     yes_power_eff: yes_eff,
     no_power_eff: no_eff,
     abstain_power_eff: abstain_eff,
+    vote_open_epoch: 0,
+    vote_close_epoch: 1,
+    voted_root: #"0000000000000000000000000000000000000000000000000000000000000000",
   }
 }
 
@@ -351,6 +354,9 @@ fn td_summing(
     yes_power_eff: 0,
     no_power_eff: 0,
     abstain_power_eff: 0,
+    vote_open_epoch: 0,
+    vote_close_epoch: 1,
+    voted_root: #"0000000000000000000000000000000000000000000000000000000000000000",
   }
 }
 
@@ -384,6 +390,9 @@ test clamp_consistent_check() {
       yes_power_eff: 400,
       no_power_eff: 200,
       abstain_power_eff: 100,
+      vote_open_epoch: 0,
+      vote_close_epoch: 1,
+      voted_root: #"0000000000000000000000000000000000000000000000000000000000000000",
     }
   clamp_consistent(d, 10)
 }
@@ -399,6 +408,9 @@ test clamp_consistent_rejects_forged_eff() fail {
       yes_power_eff: 450,
       no_power_eff: 200,
       abstain_power_eff: 100,
+      vote_open_epoch: 0,
+      vote_close_epoch: 1,
+      voted_root: #"0000000000000000000000000000000000000000000000000000000000000000",
     }
   expect clamp_consistent(d, 10)
   True

@@ -105,6 +105,9 @@ fn summing(
     yes_power_eff: 0,
     no_power_eff: 0,
     abstain_power_eff: 0,
+    vote_open_epoch: 0,
+    vote_close_epoch: 1,
+    voted_root: #"0000000000000000000000000000000000000000000000000000000000000000",
   }
 }
 
@@ -263,6 +266,9 @@ test finalize_clamp_tc1() {
       yes_power_eff: 400,
       no_power_eff: 200,
       abstain_power_eff: 100,
+      vote_open_epoch: 0,
+      vote_close_epoch: 1,
+      voted_root: #"0000000000000000000000000000000000000000000000000000000000000000",
     }
   let tx = finalize_tx(d_in, d_out, 10)
   run_finalize(tx, d_in)
@@ -279,6 +285,9 @@ test finalize_wrong_denominator_reject() fail {
       yes_power_eff: 370,
       no_power_eff: 200,
       abstain_power_eff: 100,
+      vote_open_epoch: 0,
+      vote_close_epoch: 1,
+      voted_root: #"0000000000000000000000000000000000000000000000000000000000000000",
     }
   let tx = finalize_tx(d_in, d_out, 10)
   expect run_finalize(tx, d_in)
@@ -296,6 +305,9 @@ test finalize_forged_eff_reject() fail {
       yes_power_eff: 450,
       no_power_eff: 200,
       abstain_power_eff: 100,
+      vote_open_epoch: 0,
+      vote_close_epoch: 1,
+      voted_root: #"0000000000000000000000000000000000000000000000000000000000000000",
     }
   let tx = finalize_tx(d_in, d_out, 10)
   expect run_finalize(tx, d_in)
@@ -313,6 +325,9 @@ test finalize_no_clamp_needed() {
       yes_power_eff: 700,
       no_power_eff: 200,
       abstain_power_eff: 100,
+      vote_open_epoch: 0,
+      vote_close_epoch: 1,
+      voted_root: #"0000000000000000000000000000000000000000000000000000000000000000",
     }
   let tx = finalize_tx(d_in, d_out, 10)
   run_finalize(tx, d_in)
@@ -328,6 +343,9 @@ test finalize_wrong_phase_reject() fail {
       yes_power_eff: 700,
       no_power_eff: 200,
       abstain_power_eff: 100,
+      vote_open_epoch: 0,
+      vote_close_epoch: 1,
+      voted_root: #"0000000000000000000000000000000000000000000000000000000000000000",
     }
   let tx = finalize_tx(d_in, d_out, 10)
   expect run_finalize(tx, d_in)
@@ -344,6 +362,9 @@ test finalize_bft_zero_reject() fail {
       yes_power_eff: 700,
       no_power_eff: 200,
       abstain_power_eff: 100,
+      vote_open_epoch: 0,
+      vote_close_epoch: 1,
+      voted_root: #"0000000000000000000000000000000000000000000000000000000000000000",
     }
   let tx = finalize_tx(d_in, d_out, 0)
   expect run_finalize(tx, d_in)
@@ -646,6 +667,9 @@ test sum_then_finalize_two_whales_e2e() {
       yes_power_eff: yes_eff,
       no_power_eff: no_eff,
       abstain_power_eff: 0,
+      vote_open_epoch: 0,
+      vote_close_epoch: 1,
+      voted_root: #"0000000000000000000000000000000000000000000000000000000000000000",
     }
   let tx_fin =
     Transaction {
@@ -743,6 +767,9 @@ test finalize_whale_keeps_full_power_reject() fail {
       yes_power_eff: yes_eff,
       no_power_eff: no_raw,
       abstain_power_eff: 0,
+      vote_open_epoch: 0,
+      vote_close_epoch: 1,
+      voted_root: #"0000000000000000000000000000000000000000000000000000000000000000",
     }
   let tx =
     Transaction {
@@ -828,6 +855,9 @@ test finalize_rejects_d8_violating_weight_table() fail {
       yes_power_eff: 400,
       no_power_eff: 200,
       abstain_power_eff: 100,
+      vote_open_epoch: 0,
+      vote_close_epoch: 1,
+      voted_root: #"0000000000000000000000000000000000000000000000000000000000000000",
     }
   let tx =
     Transaction {
@@ -858,6 +888,9 @@ test finalize_rejects_value_drain() fail {
       yes_power_eff: 400,
       no_power_eff: 200,
       abstain_power_eff: 100,
+      vote_open_epoch: 0,
+      vote_close_epoch: 1,
+      voted_root: #"0000000000000000000000000000000000000000000000000000000000000000",
     }
   let tx =
     finalize_tx_full(tally_input(d_in), tally_out_with(d_out, drained_value()), 10)
@@ -900,6 +933,9 @@ test finalize_rejects_stake_credential_swap() fail {
       yes_power_eff: 400,
       no_power_eff: 200,
       abstain_power_eff: 100,
+      vote_open_epoch: 0,
+      vote_close_epoch: 1,
+      voted_root: #"0000000000000000000000000000000000000000000000000000000000000000",
     }
   let tx = finalize_tx_full(tally_input(d_in), tally_out_staked(d_out), 10)
   expect run_finalize(tx, d_in)
@@ -935,6 +971,9 @@ test finalize_rejects_duplicated_nft() fail {
       yes_power_eff: 700,
       no_power_eff: 200,
       abstain_power_eff: 100,
+      vote_open_epoch: 0,
+      vote_close_epoch: 1,
+      voted_root: #"0000000000000000000000000000000000000000000000000000000000000000",
     }
   let tx =
     finalize_tx_full(
@@ -959,6 +998,9 @@ test finalize_rejects_two_inputs_at_script() fail {
       yes_power_eff: 700,
       no_power_eff: 200,
       abstain_power_eff: 100,
+      vote_open_epoch: 0,
+      vote_close_epoch: 1,
+      voted_root: #"0000000000000000000000000000000000000000000000000000000000000000",
     }
   let tx =
     finalize_tx_many(
@@ -979,6 +1021,9 @@ test finalize_rejects_two_outputs_at_script() fail {
       yes_power_eff: 700,
       no_power_eff: 200,
       abstain_power_eff: 100,
+      vote_open_epoch: 0,
+      vote_close_epoch: 1,
+      voted_root: #"0000000000000000000000000000000000000000000000000000000000000000",
     }
   let tx =
     finalize_tx_many([tally_input(d_in)], [tally_out(d_out), tally_out(d_out)], 10)
