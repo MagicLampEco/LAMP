@@ -53,15 +53,10 @@
 - **Faucet pool address (cả 2 mạng):** `addr_test1wq5kway3ng4amxt47l2ugk7h0cvr7zyfp706uacqqmqcg7sg80hqc`
 - Faucet hash: `296774919a2bdd9975f7d5c45bd77e183f08890f9fae770006c1847a`
 - claim_amount: **100 tLAMP/claim**, permissionless on-chain — pool đang sống là **bản v1**
-  (`faucet.ak`, datum chỉ có `claim_amount`, không POOL NFT). Đường dựng tx đúng cho nó là
-  **`offchain/src/claimBuilder.ts`**.
-  > ⚠️ **KHÔNG phải `claimDidBuilder.ts`.** Tệp đó là **Faucet v2**: drip **1001** tLAMP và bắt
-  > buộc claimer mang một UTxO chứa **DID NFT** (`claimDidBuilder.ts:1,7`). Pool v1 đang sống
-  > không có POOL NFT và datum chỉ có một trường ⇒ `buildClaimDidTx` **chết ngay ở offchain,
-  > trước khi dựng nổi tx**: `decodeFaucetConfig` ném `FAUCET-DATUM-031: FaucetConfig expects
-  > 3 fields, got 1` (`offchain/src/datum.ts:64`, gọi từ `claimDidBuilder.ts:103`). Lỗi này
-  > may là lỗi kêu thành tiếng — nhưng nó không nói "bạn đang dùng nhầm bản", nên vẫn tốn một
-  > vòng dò. Dòng này trước đây gộp hai thiết kế vào một câu, nên người đọc đi thẳng vào v2 và tắc.
+  (`faucet.ak`, datum chỉ có `claim_amount`, không POOL NFT). Mã v1 (validator lẫn builder) đã
+  xoá khỏi cây làm việc; builder của nó tra bằng `git show 8d8f93d:Faucet/offchain/src/claimBuilder.ts`.
+  Các builder trong `offchain/src/` hiện nay là của **v3**: chúng không dựng được tx cho pool v1
+  (codec `PoolDatum` ném lỗi ngay khi đọc datum một trường của v1).
 
 ## Preprod
 - Seed pool tx: `51f8944d795f874791fd11375fe8441f5e12894f75053fae7718af36d153a4c7` (9.000 tLAMP)
@@ -86,13 +81,16 @@
 ## Nạp lại pool (refill) khi cạn
 Pool nhả 100/claim, cạn dần. Refill = mint canonical thêm vào kho → release qua claim_account
 → FOUNDATION → nạp tiếp vào pool. Script minh hoạ bước nạp này (`Faucet/scripts/seed_canonical_pool.ts`)
-đã xoá khỏi kho (tra `git show 9b14688:Faucet/scripts/seed_canonical_pool.ts`). HIỆN CHƯA có
-script thay thế cho việc nạp pool từ canonical mint — `Faucet/scripts/01_mint_pool.ts` đang sống
-chỉ làm one-shot fixed-supply (mục DEPRECATED ở trên), không phải refill từ FOUNDATION.
+đã xoá khỏi kho (tra `git show 9b14688:Faucet/scripts/seed_canonical_pool.ts`). Ba script
+one-shot v1 (`00_preflight.ts`, `01_mint_pool.ts`, `02_claim.ts`) gọi validator `faucet.ak` đã
+xoá, nên cũng đã xoá (tra `git show 8d8f93d:Faucet/scripts/01_mint_pool.ts`). Ở v3, nạp pool đi
+qua redeemer `TopUpPool` (builder `buildTopUpPoolTx` trong `offchain/src/topUpPoolBuilder.ts`).
 KHÔNG có đường "rút bụng" (faucet.ak anti-drain).
 Đường trích tLAMP khỏi kho BẮT BUỘC qua claim_account redeem (đúng thiết kế treasury.ak).
 
 ## Faucet v2 (faucet_pool / faucet_account) — CHƯA deploy canonical
+
+> Soát lại 2026-09-28: bản **v3** (ba validator `faucet_nft` / `faucet_account` / `faucet_pool`, datum `PoolDatum` mang bộ đếm trần tốc độ) cũng **CHƯA deploy trên mạng nào**; và mã v1 `validators/faucet.ak` nhắc dưới đây **đã bị xoá khỏi cây làm việc** — dựng tx cho pool đang sống phải lấy lại tệp đó từ lịch sử git.
 
 Bản đang sống ở trên là **v1 `faucet.ak`**, param `(tlamp_policy, tlamp_name)` — **KHÔNG có
 `ms_per_epoch`**. Pool/account của v2 chỉ tồn tại trong các run demo (`scripts/demo_faucet_v2.ts`
@@ -102,8 +100,30 @@ KHÔNG có state file canonical.
 ⇒ Sửa `ms_per_epoch` về đúng per-network (Preview 86_400_000, không phải 432_000_000) **không
 mồ côi deployment nào đang sống**. Trước đây off-chain nạp 432_000_000 cho Preview (số của
 Preprod/Mainnet): lệch 5× nhưng tx vẫn pass vì validator nhận cùng số ⇒ `COOLDOWN = 36 epoch`
-chạy thành 180 ngày, `RECLAIM = 1001 epoch` thành ~13,7 năm. Cổng gác
+chạy thành 180 ngày, `RECLAIM = 1001 epoch` (giá trị v3.0; v3.1 là 72) thành ~13,7 năm. Cổng gác
 `assertMsPerEpochMatchesNetwork` (`FAUCET-EPOCH-001`) chặn lần nạp sai kế tiếp.
+
+## Faucet v3.1 — CHƯA deploy, không có địa chỉ hay tx
+
+> Soát 2026-09-28. v3.1 thêm sổ một-DID-một-account (`PoolDatum.opened_root`, bất biến
+> INV-ONE-ACCT — [`CONTRACT.md`](./CONTRACT.md) v3.1 §3.3a) và hạ ngưỡng thu hồi 1001 → 72 cửa sổ.
+> **Không có pool, địa chỉ hay tx hash nào của v3.1 trên bất kỳ mạng nào.** Mọi địa chỉ ở các mục
+> trên là của v1.
+
+Hash dưới đây là **hash CHƯA áp tham số** (bản compiled trong blueprint) — dùng để nhận ra đúng bản
+mã, **KHÔNG** phải script hash hay địa chỉ sẽ có sau deploy: cả ba validator faucet nhận tham số
+compile-time (`ms_per_epoch`, policy, `account_script_hash`…), áp xong thì hash đổi. Nguồn:
+`onchain/plutus.json` sinh từ commit `75323b4`; đo lại bằng `aiken build` rồi đọc trường `hash`
+của từng validator.
+
+| Validator | Hash chưa áp tham số | Compiled | Mã nguồn đổi ở `75323b4`? |
+|---|---|---|---|
+| `faucet_nft` | `1b2adb0cf862eea048cfd944306d3329c55f7b6050a929acf3f075c3` | 1.598 B | có (C-MP-8) |
+| `faucet_account` | `298c9fcaceac0bd11fa14b572724e93017c91e78bbdc85125368fff2` | 2.387 B | có (`reclaim_epochs_const` = 72) |
+| `faucet_pool` | `05e1d5d350b25b2bac1866477dbe8e7a902c9e5ad33713e0e1287d2b` | 6.288 B (≈ 6,3 KB) | có (sổ MPF + bằng chứng trong redeemer; cộng ba chốt cổng đúc `C-MINT-ONLY-OPEN-1/2` + `C-RECL-BURN-2`, +75 B so với bản 28/09 sớm hơn) |
+| `tlamp_policy` | `4d0b5eb484dfd2ccce18ed688d7ece2c15ccd54e3f91162b7d53ebba` | 423 B | **không** — tệp không đổi, chỉ import stdlib ⇒ hash như v3.0 |
+
+`validators/ledger_parity.ak` chỉ chứa ca kiểm, không vào blueprint, không đổi hash nào.
 
 ## Reserve-Treasury (ngoài phạm vi faucet)
 - Faucet cho dev token canonical để test **downstream**: transfer, claim Distribution, **nạp Treasury custody**, vote.

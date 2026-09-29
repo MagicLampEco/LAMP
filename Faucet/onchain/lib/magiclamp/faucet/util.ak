@@ -46,12 +46,24 @@ pub fn output_at_script(outputs: List<Output>, script_hash: ByteArray) -> Output
   o
 }
 
-// ── Epoch (validity_range lower_bound, POSIX ms) ──────────────────
-// CHỐT THIẾT KẾ: "now" lấy từ lower_bound (cận DƯỚI). Cooldown ép
-// now ≥ last + cooldown → dùng cận dưới khiến claimer KHÔNG thể giả "now" lớn
-// hơn thực (validator chỉ tin khoảng [lower, upper] node đã xác thực). Reclaim
-// ép now ≥ last + reclaim → cũng cận dưới: account chỉ bị thu hồi khi CHẮC CHẮN
-// đã quá hạn (an toàn cho chủ DID).
+// ── Epoch (validity_range, POSIX ms) ──────────────────────────────
+// HAI hàm, KHÔNG thay thế cho nhau. Chọn sai hàm là một lỗ, không phải một
+// chi tiết phong cách:
+//
+//   get_epoch        — chỉ đọc cận DƯỚI. Cận dưới do người dựng tx đặt và ledger
+//                      chỉ đòi `lower_bound ≤ slot hiện tại` ⇒ giá trị trả về
+//                      LUÔN ≤ bucket thật, đặt nhỏ tuỳ ý. Chỉ dùng được cho chốt
+//                      mà "nói nhỏ hơn thật" là bất lợi cho chính người dựng tx
+//                      (ReclaimIdle: lùi thời gian thì tự mình không thu hồi được).
+//   get_epoch_pinned — neo vào thời gian THẬT. Ép cả hai cận hữu hạn và cùng một
+//                      bucket ⇒ slot hiện tại ∈ [lo, hi] ⊂ bucket ⇒ giá trị trả
+//                      về là bucket THẬT. Mọi chốt tốc độ, cooldown, mọi lần ghi
+//                      `last_*` và datum khởi tạo đều PHẢI dùng hàm này.
+//
+// Vì sao phải viết ra: chốt cooldown và chốt trần-tốc-độ NGƯỢC DẤU nhau.
+// Cooldown cần "không nói now lớn hơn thật"; `window_epoch` cần "không nói now
+// NHỎ hơn thật". Cận dưới chỉ trả lời vế đầu, và dùng chung một hàm cho cả hai
+// là cách trần tốc độ bị leo thang theo bậc thang mà mọi ca kiểm vẫn xanh.
 
 pub fn get_finite(bt: IntervalBoundType) -> Option<Int> {
   when bt is {
@@ -60,10 +72,22 @@ pub fn get_finite(bt: IntervalBoundType) -> Option<Int> {
   }
 }
 
-/// Epoch hiện tại = lower_bound (POSIX ms) / ms_per_epoch.
+/// Bucket suy từ cận DƯỚI. ĐỌC CHÚ THÍCH TRÊN trước khi dùng.
 pub fn get_epoch(tx: Transaction, ms_per_epoch: Int) -> Int {
   expect Some(s) = tx.validity_range.lower_bound.bound_type |> get_finite
   s / ms_per_epoch
+}
+
+/// Bucket của tx, ĐƯỢC NEO VÀO THỜI GIAN THẬT: cả hai cận hữu hạn và cùng bucket.
+/// Nghĩa vụ off-chain đi kèm: builder đặt `lo = now_ms`,
+/// `hi = min(now_ms + ttl, (lo / ms_per_epoch + 1) × ms_per_epoch − 1)`; nếu phần
+/// còn lại của bucket ngắn hơn ttl tối thiểu thì CHỜ sang bucket sau, không nới `hi`.
+pub fn get_epoch_pinned(tx: Transaction, ms_per_epoch: Int) -> Int {
+  expect Some(lo) = tx.validity_range.lower_bound.bound_type |> get_finite
+  expect Some(hi) = tx.validity_range.upper_bound.bound_type |> get_finite
+  let e = lo / ms_per_epoch
+  expect hi / ms_per_epoch == e
+  e
 }
 
 // ── NFT-beacon helpers ────────────────────────────────────────────
@@ -119,11 +143,14 @@ pub fn is_owned_by(addr: Address, pkh: ByteArray) -> Bool {
   }
 }
 
-// ── Test-support builders (mock UTxO/tx) ──────────────────────────
-
+/// Địa chỉ enterprise (KHÔNG stake credential) của một script hash. Dùng trong
+/// mã sản xuất để so ĐỊA CHỈ ĐẦY ĐỦ: `count/output_at_script` chỉ so payment
+/// credential nên stake credential là trường tự do nếu không ghim.
 pub fn script_address(hash: ByteArray) -> Address {
   Address { payment_credential: Script(hash), stake_credential: None }
 }
+
+// ── Test-support builders (mock UTxO/tx) ──────────────────────────
 
 /// Cùng script hash, khác stake cred → address khác (test double-sat C-FAU-1).
 pub fn script_address_staked(hash: ByteArray, stake_pkh: ByteArray) -> Address {
