@@ -132,7 +132,8 @@ fn utxo_preserved(
   // `out.value == in_out.value` chỉ nói hai bên BẰNG NHAU, không nói số lượng TUYỆT
   // ĐỐI là 1. Một UTxO đã mang sẵn 2 đơn vị (chỉ xảy ra nếu tham số deploy
   // proposal_policy trỏ vào một policy không one-shot) đi qua đẳng thức đó êm ru.
-  expect [Pair(_, qty)] = dict.to_pairs(assets.tokens(out.value, proposal_policy))
+  expect [Pair(_, qty)] =
+    dict.to_pairs(assets.tokens(out.value, proposal_policy))
   and {
     n_in == 1,
     n_out == 1,

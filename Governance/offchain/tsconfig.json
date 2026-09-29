@@ -1,0 +1,26 @@
+{
+  "compilerOptions": {
+    "target":           "ES2022",
+    "module":           "NodeNext",
+    "moduleResolution": "NodeNext",
+    "lib":              ["ES2022"],
+    "strict":           true,
+    "exactOptionalPropertyTypes": true,
+    "noUncheckedIndexedAccess":   true,
+    "skipLibCheck":     true,
+    "outDir":           "./dist",
+    "rootDir":          "..",
+    "declaration":      true,
+    "declarationMap":   true,
+    "sourceMap":        true,
+
+    // `../tests/**` nằm NGOÀI package này nhưng `node_modules` lại ở TRONG ⇒ phân giải kiểu
+    // Node đi ngược từ `<module>/tests/` không bao giờ chạm tới nó, và tsc ngập TS2307 — đỏ
+    // tới mức không ai đọc nữa, tức mất luôn tác dụng cổng gác. Trỏ specifier trần về
+    // node_modules của chính package để tests được typecheck THẬT.
+    "baseUrl":          ".",
+    "paths":            { "*": ["node_modules/*"] }
+  },
+  "include": ["src/**/*", "../tests/**/*"],
+  "exclude": ["node_modules", "dist"]
+}

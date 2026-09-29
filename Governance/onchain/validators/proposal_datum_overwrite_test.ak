@@ -27,7 +27,11 @@ use magiclamp/governance/types.{Executed, Open, ProposalDatum, Tallied}
 use magiclamp/governance/util
 use proposal
 
-fn run(tx: Transaction, d_in: ProposalDatum, r: proposal.ProposalRedeemer) -> Bool {
+fn run(
+  tx: Transaction,
+  d_in: ProposalDatum,
+  r: proposal.ProposalRedeemer,
+) -> Bool {
   proposal.proposal.spend(
     prop_policy,
     tally_policy,
@@ -65,7 +69,12 @@ fn drained_value() -> assets.Value {
 test open_proposal_rejects_value_drain() fail {
   let d = open_datum()
   let tx =
-    lifecycle_tx_out(d, prop_output_with(d, drained_value()), [], 12 * ms_per_epoch)
+    lifecycle_tx_out(
+      d,
+      prop_output_with(d, drained_value()),
+      [],
+      12 * ms_per_epoch,
+    )
   expect run(tx, d, proposal.OpenProposal)
   True
 }
@@ -73,7 +82,12 @@ test open_proposal_rejects_value_drain() fail {
 test close_voting_rejects_value_drain() fail {
   let d = open_datum()
   let tx =
-    lifecycle_tx_out(d, prop_output_with(d, drained_value()), [], 25 * ms_per_epoch)
+    lifecycle_tx_out(
+      d,
+      prop_output_with(d, drained_value()),
+      [],
+      25 * ms_per_epoch,
+    )
   expect run(tx, d, proposal.CloseVoting)
   True
 }
@@ -336,7 +350,10 @@ test record_tally_rejects_spec_tamper() fail {
 test record_tally_rejects_timelock_tamper() fail {
   let d_in = open_datum()
   let d_out =
-    ProposalDatum { ..prop_datum(Tallied, 200, 100, 30), execute_after_epoch: 0 }
+    ProposalDatum {
+      ..prop_datum(Tallied, 200, 100, 30),
+      execute_after_epoch: 0,
+    }
   let tx = lifecycle_tx(d_in, d_out, [tally_in()], 25 * ms_per_epoch)
   expect run(tx, d_in, proposal.RecordTally)
   True
@@ -346,7 +363,8 @@ test record_tally_rejects_timelock_tamper() fail {
 // `status == Open`) còn nhận phiếu cho một proposal đã có kết quả.
 test record_tally_rejects_status_stays_open() fail {
   let d_in = open_datum()
-  let d_out = ProposalDatum { ..prop_datum(Tallied, 200, 100, 30), status: Open }
+  let d_out =
+    ProposalDatum { ..prop_datum(Tallied, 200, 100, 30), status: Open }
   let tx = lifecycle_tx(d_in, d_out, [tally_in()], 25 * ms_per_epoch)
   expect run(tx, d_in, proposal.RecordTally)
   True
@@ -400,8 +418,7 @@ test record_tally_rejects_voter_count_inflate() fail {
 
 // released_cumulative lùi về 0 ⇒ xoá lịch sử đã giải ngân, Treasury cho chi lại từ đầu.
 test record_tally_rejects_released_cumulative_reset() fail {
-  let d_in =
-    ProposalDatum { ..open_datum(), released_cumulative: 5_000_000 }
+  let d_in = ProposalDatum { ..open_datum(), released_cumulative: 5_000_000 }
   let d_out = prop_datum(Tallied, 200, 100, 30)
   let tx = lifecycle_tx(d_in, d_out, [tally_in()], 25 * ms_per_epoch)
   expect run(tx, d_in, proposal.RecordTally)
