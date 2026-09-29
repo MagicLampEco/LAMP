@@ -217,7 +217,7 @@ phía tiêu thụ** của LAMP — thứ LAMP phải tự làm, để về sau k
 > **kỷ luật vận hành**: nó chặn **sai sót và lạm quyền của người CÓ khoá**, không chặn kẻ **chiếm được**
 > khoá.
 
-Lý do đo được: `Genesis/onchain/validators/dist_treasury.ak:14-22` là authority-sig thuần —
+Lý do đo được: `Genesis/bootstrap-closure/onchain/validators/dist_treasury.ak:14-22` là authority-sig thuần —
 `list.has(self.extra_signatories, authority)`, một chữ ký rút sạch. **Validator không đọc Grant.** Nên
 mọi thứ Grant làm đều nằm ngoài chuỗi.
 

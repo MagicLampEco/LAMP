@@ -155,7 +155,7 @@ export interface MintParamsCommon {
    *  qua datum của input không mang NFT kho — nên `outstanding = total_redeemed = 0` là đủ.
    *
    *  Nhánh 8 tham số — kho mainnet là `dist_treasury`, nhận `_datum: Option<Data>`
-   *  (`Genesis/onchain/validators/dist_treasury.ak:16`) nên KHÔNG đòi datum và cũng KHÔNG
+   *  (`Genesis/bootstrap-closure/onchain/validators/dist_treasury.ak:16`) nên KHÔNG đòi datum và cũng KHÔNG
    *  từ chối datum. Vẫn giữ BẮT BUỘC: một luật cho cả hai nhánh, và đường mặc định không
    *  bao giờ là đường mất tiền. Ở nhánh này datum đơn vị `"d87980"` được nhận. */
   recipientDatum: string;

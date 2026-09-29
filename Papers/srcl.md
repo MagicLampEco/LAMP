@@ -110,7 +110,7 @@ SRCL chạy **nhiều đợt**, mỗi đợt một pot riêng. Tuy cùng một c
   > đúng, nói cả hai chiều: chừng nào quản trị chưa dựng được giao dịch thì ADA trong kho
   > **không ra được** — an toàn theo chiều đóng, nhưng đó là *kẹt*, không phải *được canh*. Và
   > câu "không tồn tại đường rút bằng một chữ ký" **chỉ đúng cho `custody.ak`**; một kho khác
-  > trong hệ (`Genesis/onchain/validators/dist_treasury.ak`) đúng là rút được bằng một chữ ký
+  > trong hệ (`Genesis/bootstrap-closure/onchain/validators/dist_treasury.ak`) đúng là rút được bằng một chữ ký
   > (`list.has(self.extra_signatories, authority)`). Hai kho khác nhau, đừng đọc gộp.
 - **Chi tiêu theo biểu quyết.** ADA trong kho chỉ ra khỏi kho qua một đề xuất đã kiểm phiếu; không
   có hạn mức chi tự động, không có khoản chi định kỳ nào chạy mà không qua phiếu. Mục đích chi
