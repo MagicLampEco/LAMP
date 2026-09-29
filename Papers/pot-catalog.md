@@ -36,8 +36,7 @@
    3 mức = LAMP nằm ở **vault-DID nào**:
    - **TỔ CHỨC/PLATFORM** 🏛️ — LAMP được giữ/khoá **trong vault của OrgDID / Platform-DID** (OrgDID
      Aladin/GreenSun, Platform-DID LampNet/AffiSo/PhoenixKey) → vault đó gen MAGIC (tính cả phần khoá).
-     Pot Foundation cũng xếp ở mức này, **áp dụng khi** cách khoá công bố lúc lập pháp nhân cho phép LAMP
-     nằm trong một vault-DID — xem §3 pot 9.
+     Pot Foundation cũng xếp ở mức này: LAMP của nó nằm trong két của DID Foundation, khoá số dư — xem §3 pot 9.
    - **USER** 👤 — hai đường: **(a)** LAMP nằm ở **kênh phân phối (KHÔNG phải vault-DID)** → chỉ gen khi
      **claim về vault DID người dùng** (Development, Partnership); **(b)** LAMP đã khoá sẵn trong két theo
      **PersonDID** ngay từ đầu, không rời két ra ví người dùng (Wakeme) — được tính là nằm trong vault gắn
@@ -76,7 +75,7 @@
 | 6 | **Wakeme** | 1.001.000 | 2,78% | **Cho mượn để TIÊU dịch vụ, KHÔNG tặng, KHÔNG để mua-bán**: mỗi PersonDID mượn tối đa 1001 LAMP, khoá 1001 đêm, trong đó mở dần 1 LAMP mỗi đêm | Vault-vesting do PhoenixKey vận hành + thu hồi đêm không dùng | 👤 vault khoá theo PersonDID |
 | 7 | **Referrer** | 343.000 | 0,95% | Thưởng giới thiệu | Nhỏ-giọt | 🏛️ uỷ thác Platform **AffiSo** DID |
 | 8 | **PhoenixKey (Phoenix Treasury)** | 142.857 | 0,40% | Quỹ **Phoenix Treasury** — nguồn tài sản cho **Feecover** (trả phí hộ user). Cấp nguồn cho **Feecover** qua **1 đợt SRCL 7 epoch**: phần thưởng staking do người tham gia định tuyến về pot được dùng trả phí mạng, đóng góp đó được **ghi nhận** bằng 7 triệu LAMP (1 triệu/epoch). Quản lý số dư ADA của Feecover là nghiệp vụ vận hành nội bộ, không phải dịch vụ giao dịch cho bên thứ ba | Nhỏ-giọt + đợt SRCL 7 epoch | 🏛️ uỷ thác Platform **PhoenixKey** DID |
-| 9 | **MagicLamp Foundation** | 1.296.000 | 3,60% | Quỹ dài hạn của pháp nhân đại diện, giữ ở dạng khoá gốc | **Chưa-mint→khoá VĨNH VIỄN** sau khi lập pháp nhân | 🏛️ *(áp dụng khi cách khoá cho phép — xem §3)* |
+| 9 | **MagicLamp Foundation** | 1.296.000 | 3,60% | Quỹ dài hạn của pháp nhân đại diện, giữ ở dạng khoá gốc | **Chưa-mint→khoá VĨNH VIỄN** sau khi lập pháp nhân | 🏛️ khoá số dư trong két **DID Foundation** |
 | 10 | **Aladin Contract** | 6.000.000 | 16,67% | Pháp nhân sáng lập (1/6 cung) | Nhỏ-giọt **ngang cộng đồng** | 🏛️ gen → **OrgDID Aladin** |
 | 11 | **GreenSun Tech** | 6.000.000 | 16,67% | Pháp nhân sáng lập (1/6 cung) | Nhỏ-giọt **ngang cộng đồng** | 🏛️ gen → **OrgDID GreenSun** |
 | 12 | **Partnership** | 284.000 | 0,79% | Đối tác chiến lược | Nhỏ-giọt | 👤 khi partner claim về DID |
@@ -112,8 +111,7 @@ khâu claim**, không chỉ trong quy chế.
 ## 2. Ba mức gen-MAGIC (tổng theo nghìn LAMP)
 
 - **🏛️ Tổ chức/Platform — LAMP nằm trong vault OrgDID/Platform-DID, gen kể cả khi khoá (~20.001.857 ≈
-  20 tỷ, gồm Foundation — áp dụng khi cách khoá công bố lúc lập pháp nhân cho phép LAMP nằm trong
-  vault-DID):** Aladin, GreenSun, Platform, App, Join LampNet→LampNet, Referrer→AffiSo,
+  20 tỷ, gồm Foundation — LAMP khoá số dư trong két của DID Foundation):** Aladin, GreenSun, Platform, App, Join LampNet→LampNet, Referrer→AffiSo,
   PhoenixKey→PhoenixKey-DID, Foundation.
 - **👤 User (~4.003.000 ≈ 4 tỷ):** hai đường — Development, Partnership gen **sau khi claim** về vault DID
   người dùng; Wakeme gen vì LAMP đã nằm sẵn trong két theo **PersonDID** (không rời két ra ví).
@@ -178,11 +176,11 @@ khâu claim**, không chỉ trong quy chế.
 - **9. MagicLamp Foundation (1.296.000)** — **quỹ dài hạn của pháp nhân đại diện**. Pháp nhân này **đặt ở nước ngoài** và
   do **cộng đồng DAO hình thành từ đợt Airdrop** lập ra, không do hai công ty sáng lập lập ra — vai của nó là
   **đại diện pháp lý** cho hệ (trạng thái: `PHAP-NHAN-001`, mục "Cổng pháp lý theo pot" ở §1).
-  LAMP của Foundation **khoá gốc vĩnh viễn** sau khi lập pháp nhân; cách khoá — và việc cách khoá đó có để
-  LAMP nằm trong một vault-DID hay không — công bố **cùng lúc lập pháp nhân**. Mọi hình thức định đoạt tài
+  LAMP của Foundation **khoá gốc vĩnh viễn** sau khi lập pháp nhân, theo cách: LAMP nằm trong két của DID
+  Foundation và bị **khoá số dư** (không rút gốc); cơ chế khoá được hiện thực **cùng lúc lập pháp nhân**. Mọi hình thức định đoạt tài
   sản của Foundation ra ngoài hệ do quy chế Foundation quyết định **sau khi lập pháp nhân** — chưa nằm trong
-  phạm vi tài liệu này. Phần LAMP này không nhả ra lưu hành. Việc nó có tạo nguồn vận hành cho DAO hay
-  không phụ thuộc cách khoá, công bố cùng lúc lập pháp nhân.
+  phạm vi tài liệu này. Phần LAMP này không nhả ra lưu hành. Vì nằm trong két DID, nó vẫn sinh MAGIC
+  cho Foundation như LAMP của các tổ chức khác.
 - **12. Partnership (284.000)** — **đối tác chiến lược**, theo thoả thuận; claim về **DID của partner**.
 
 **Nhóm phân phối sớm (snapshot, hết trong thời gian đầu)**
