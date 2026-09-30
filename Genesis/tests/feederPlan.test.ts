@@ -1,4 +1,4 @@
-// Phần thuần của `30_feeder_accounts.ts`: dải khoá, sức chứa kho, chọn lượt rút, đích gom.
+// Phần thuần của `30_feeder_accounts.ts`: dải khoá, sức chứa kho, chọn lượt rút, đích gom, kế hoạch rót pot.
 //
 // Ca đáng giữ nhất là `pickNextRedeem` ở trạng thái "mọi tài khoản cùng bị cắt ngọn về một số":
 // đó là trạng thái THƯỜNG của dốc đầu (trần sàn 1.000 LAMP áp cho mọi lượt), và một bộ chọn
@@ -9,7 +9,7 @@ import { credentialToAddress, keyHashToCredential } from "@lucid-evolution/lucid
 
 import {
   feederIndices, grantsThatFit, pickNextRedeem, chunk, assertSweepTarget, trancheCost,
-  type FeederAccount,
+  planPotFunding, type FeederAccount, type FeederUtxo,
 } from "../scripts/_feederPlan.js";
 import { TRIM_FLOOR } from "../../Distribution/offchain/src/constants.js";
 import type {
@@ -155,5 +155,88 @@ describe("trancheCost — chi phí một đợt grant", () => {
     expect(c.entitlementTotal).toBe(1_001_000_000n * LAMP);
     expect(c.lockedLovelace).toBe(4_000_000_000n);
     expect(c.grantFeeLovelace).toBe(1_000_000_000n);
+  });
+});
+
+describe("planPotFunding — chọn UTxO LAMP ở feeder để rót thẳng vào pot", () => {
+  const U = "ab".repeat(28) + "744c414d50";
+  const X = "cd".repeat(28) + "58";
+  const fu = (index: number, lampAmt: bigint, extra: Record<string, bigint> = {}, ref = `${index}#0`): FeederUtxo => ({
+    index, pkh: `pkh${index}`, address: `addr_feeder_${index}`, ref,
+    assets: { lovelace: 1_200_000n, [U]: lampAmt, ...extra },
+  });
+  const base = { lampUnit: U, batchSize: 2, maxTx: 10, allowPartial: false };
+
+  it("đủ ⇒ chọn lớn trước, lô ≤ batchSize, output pot ĐÚNG số, thừa về feeder ĐẦU lô cuối", () => {
+    const xs = [fu(1, 10n), fu(2, 50n), fu(3, 30n), fu(4, 40n)];
+    const p = planPotFunding(xs, { ...base, amount: 100n });
+    // lớn trước: 50 (#2), 40 (#4), 30 (#3) ⇒ đủ 100 sau 3 UTxO; #1 không bị tiêu.
+    expect(p.batches.map((b) => b.inputs.map((i) => i.index))).toEqual([[2, 4], [3]]);
+    expect(p.batches.map((b) => b.potAmount)).toEqual([90n, 10n]);
+    expect(p.batches.map((b) => b.change)).toEqual([0n, 20n]);
+    expect(p.batches[1]!.changeAddress).toBe("addr_feeder_3");
+    expect(p.total).toBe(100n);
+    expect(p.available).toBe(130n);
+    expect(p.partial).toBe(false);
+  });
+
+  it("thừa trong lô nhiều feeder ⇒ về feeder ĐẦU lô, không về ví khác", () => {
+    const p = planPotFunding([fu(7, 30n), fu(5, 40n)], { ...base, amount: 50n });
+    expect(p.batches).toHaveLength(1);
+    expect(p.batches[0]).toMatchObject({ potAmount: 50n, change: 20n, lampIn: 70n, changeAddress: "addr_feeder_5" });
+  });
+
+  it("đúng khít ⇒ không thừa", () => {
+    const p = planPotFunding([fu(1, 60n), fu(2, 40n)], { ...base, amount: 100n });
+    expect(p.batches.map((b) => b.change)).toEqual([0n]);
+    expect(p.total).toBe(100n);
+  });
+
+  it("thứ tự trả về của nhà cung cấp không đổi kế hoạch (hoà: chỉ số nhỏ, rồi ref nhỏ)", () => {
+    const xs = [fu(3, 20n), fu(1, 20n, {}, "bb#1"), fu(1, 20n, {}, "aa#0"), fu(2, 20n)];
+    const a = planPotFunding(xs, { ...base, amount: 40n });
+    const b = planPotFunding([...xs].reverse(), { ...base, amount: 40n });
+    expect(a).toEqual(b);
+    expect(a.batches[0]!.inputs.map((i) => i.ref)).toEqual(["aa#0", "bb#1"]);
+  });
+
+  it("không đủ ⇒ FEED-POT-003, nói có bao nhiêu, thiếu bao nhiêu", () => {
+    expect(() => planPotFunding([fu(1, 30n), fu(2, 40n)], { ...base, amount: 100n }))
+      .toThrow(/FEED-POT-003: feeder có 70 oildrop LAMP, cần 100, thiếu 30/);
+  });
+
+  it("không đủ + ALLOW_PARTIAL ⇒ rót phần đang có, đánh dấu partial", () => {
+    const p = planPotFunding([fu(1, 30n), fu(2, 40n)], { ...base, amount: 100n, allowPartial: true });
+    expect(p.total).toBe(70n);
+    expect(p.partial).toBe(true);
+    expect(p.batches.map((b) => b.change)).toEqual([0n]);
+  });
+
+  it("không có LAMP nào ⇒ FEED-POT-003 kể cả khi ALLOW_PARTIAL", () => {
+    expect(() => planPotFunding([], { ...base, amount: 1n, allowPartial: true })).toThrow(/FEED-POT-003/);
+  });
+
+  it("UTxO mang asset lạ ⇒ bị LOẠI và ĐẾM, không tính vào phần đủ", () => {
+    const xs = [fu(1, 60n, { [X]: 1n }), fu(2, 40n)];
+    expect(() => planPotFunding(xs, { ...base, amount: 100n })).toThrow(/FEED-POT-003: feeder có 40/);
+    const p = planPotFunding(xs, { ...base, amount: 40n });
+    expect(p.excluded).toEqual([{ ref: "1#0", index: 1, reason: `mang asset khác: ${X}` }]);
+    expect(p.batches[0]!.inputs.map((i) => i.index)).toEqual([2]);
+  });
+
+  it("cần nhiều giao dịch hơn MAX_TX ⇒ FEED-POT-004; ALLOW_PARTIAL ⇒ cắt ở MAX_TX", () => {
+    const xs = [fu(1, 10n), fu(2, 10n), fu(3, 10n)];
+    const o = { ...base, batchSize: 1, maxTx: 2, amount: 30n };
+    expect(() => planPotFunding(xs, o)).toThrow(/FEED-POT-004: cần 3 giao dịch/);
+    const p = planPotFunding(xs, { ...o, allowPartial: true });
+    expect(p.batches).toHaveLength(2);
+    expect(p.total).toBe(20n);
+    expect(p.partial).toBe(true);
+  });
+
+  it("AMOUNT ≤ 0 ⇒ FEED-POT-001; cỡ lô / MAX_TX không hợp lệ ⇒ FEED-POT-002", () => {
+    expect(() => planPotFunding([fu(1, 1n)], { ...base, amount: 0n })).toThrow(/FEED-POT-001/);
+    expect(() => planPotFunding([fu(1, 1n)], { ...base, amount: 1n, batchSize: 0 })).toThrow(/FEED-POT-002/);
+    expect(() => planPotFunding([fu(1, 1n)], { ...base, amount: 1n, maxTx: 0 })).toThrow(/FEED-POT-002/);
   });
 });

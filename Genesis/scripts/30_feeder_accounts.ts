@@ -18,6 +18,13 @@
 //   sweep  — gom LAMP từ địa chỉ feeder về một ví payment-key (mặc định: ví vận hành). Không
 //            validator nào chạy; ký bằng khoá các feeder trong lô, ví vận hành trả phí và nhận
 //            lại min-ADA của các UTxO feeder qua tiền thối.
+//   fundpot — rót LAMP từ địa chỉ feeder THẲNG vào kho script của một pot, không đi qua ví vận
+//            hành. Không validator nào chạy lúc tạo output, nên runner đòi khai hình dạng UTxO kho
+//            nhận (POT_ADDRESS + POT_SCRIPT_HASH + POT_DATUM_CBOR, không mặc định) và soát bằng
+//            đúng các cổng của `29_fund_script_pot.ts` (`_potShape.ts`). Output pot = đúng phần
+//            LAMP của lượt + POT_LOVELACE, InlineDatum; LAMP thừa về địa chỉ feeder ĐẦU lô; ký
+//            bằng khoá các feeder trong lô; ví vận hành trả phí + min-ADA, nhận tiền thối ADA.
+//            Không đủ LAMP ⇒ dừng, in có/thiếu; rót một phần chỉ khi ALLOW_PARTIAL=true.
 //
 // TÍNH LẶP LẠI ĐƯỢC. Mọi bước đọc lại chuỗi trước MỖI giao dịch và chờ giao dịch vào block
 // rồi mới dựng giao dịch kế: kho TRSY là singleton, mọi grant/redeem đều tiêu nó, nên hai giao
@@ -29,22 +36,31 @@
 //   NETWORK=Preprod FEEDER_COUNT=1000 STEP=grant  MAX_TX=500 SUBMIT=true tsx 30_feeder_accounts.ts
 //   NETWORK=Preprod FEEDER_COUNT=1000 STEP=redeem MAX_TX=200 SUBMIT=true tsx 30_feeder_accounts.ts
 //   NETWORK=Preprod FEEDER_COUNT=1000 STEP=sweep  SUBMIT=true tsx 30_feeder_accounts.ts
+//   NETWORK=Preprod FEEDER_COUNT=1000 STEP=fundpot AMOUNT_OILDROP=<n> \
+//     POT_ADDRESS=<addr_test1w…> POT_SCRIPT_HASH=<hex28> POT_DATUM_CBOR=<cbor> \
+//     [POT_LOVELACE=2000000] [POT_BATCH=40] [MAX_TX=25] [ALLOW_PARTIAL=true] tsx 30_feeder_accounts.ts
+//     (SUBMIT=false mặc định: dựng + soát giao dịch đầu tiên rồi dừng; thêm SUBMIT=true để ký, gửi.)
 import {
   Data, credentialToAddress, scriptHashToCredential, toUnit, getAddressDetails, walletFromSeed,
+  coreToTxOutput,
   type LucidEvolution, type TxSignBuilder, type UTxO,
 } from "@lucid-evolution/lucid";
 
 import { NETWORK, SUBMIT, WALLET_SEED, makeLucid, walletPkh, explorerTx } from "./config.js";
 import {
   rehydrate, canonicalCommittee, CANONICAL_COMMITTEE_THRESHOLD, MS_PER_EPOCH, DROP_NAME,
+  waitFor, isWaitTimeout,
 } from "./_canonical_v2.js";
 import {
   claimScripts, assertClaimScriptsMatch, pickTreasury, refKey,
 } from "./_distributionScripts.js";
 import {
   feederIndices, grantsThatFit, pickNextRedeem, chunk, assertSweepTarget, trancheCost,
-  type FeederAccount,
+  planPotFunding, type FeederAccount, type FeederUtxo,
 } from "./_feederPlan.js";
+import {
+  requireField, positiveBig, potTargetFromEnv, potOutputAssets, assertPotOutputs, unitAt, type OutputShape,
+} from "./_potShape.js";
 import { buildClaimTx } from "../../Distribution/offchain/src/claimBuilder.js";
 import { buildRedeemTx } from "../../Distribution/offchain/src/redeemBuilder.js";
 import {
@@ -369,7 +385,102 @@ async function main(): Promise<void> {
     return;
   }
 
-  throw new Error(`STEP='${STEP}' không hợp lệ. Chọn: plan | grant | redeem | sweep.`);
+  // ── fundpot ───────────────────────────────────────────────────────────────
+  if (STEP === "fundpot") {
+    // Mọi lời khai của pot bắt buộc, không mặc định; soát bằng cổng chung với 29 (`_potShape.ts`).
+    // Mainnet đã bị chặn ở đầu main() ⇒ networkId luôn 0.
+    const pot = potTargetFromEnv(process.env, 0);
+    const amount = positiveBig("AMOUNT_OILDROP", requireField("AMOUNT_OILDROP", process.env.AMOUNT_OILDROP));
+    const potLovelace = positiveBig("POT_LOVELACE", process.env.POT_LOVELACE ?? "2000000");
+    const batchSize = envInt("POT_BATCH", "40");
+    const partialRaw = (process.env.ALLOW_PARTIAL ?? "false").trim().toLowerCase();
+    if (partialRaw !== "true" && partialRaw !== "false") {
+      throw new Error(`FEED-ENV-001: ALLOW_PARTIAL='${process.env.ALLOW_PARTIAL}' — chỉ nhận true|false.`);
+    }
+    const allowPartial = partialRaw === "true";
+    const lampUnit = wiring.lampUnit;
+
+    const held: FeederUtxo[] = [];
+    const utxoByRef = new Map<string, UTxO>();
+    for (const f of feeders) {
+      for (const u of await lucid.utxosAt(f.address)) {
+        if ((u.assets[lampUnit] ?? 0n) <= 0n) continue;
+        const ref = refKey(u);
+        utxoByRef.set(ref, u);
+        held.push({ index: f.index, pkh: f.pkh, address: f.address, ref, assets: u.assets });
+      }
+    }
+    const byIndex = new Map(feeders.map((f) => [f.index, f]));
+
+    console.log(`Pot đích        : ${pot.address}`);
+    console.log(`Script hash     : ${pot.scriptHash}  (khớp địa chỉ)`);
+    console.log(`Datum           : InlineDatum ${pot.datumCbor}`);
+    console.log(`Cần rót         : ${amount} oildrop (${lamp(amount)}) · lovelace/output ${potLovelace}`);
+    const plan = planPotFunding(held, { lampUnit, amount, batchSize, maxTx: MAX_TX, allowPartial });
+    console.log(`Đang ở feeder   : ${held.length} UTxO mang LAMP · dùng được ${plan.available} oildrop · loại ${plan.excluded.length}`);
+    for (const x of plan.excluded) console.log(`  loại ${x.ref} (feeder #${x.index}): ${x.reason}`);
+    console.log(`Kế hoạch        : ${plan.batches.length} giao dịch · rót ${plan.total} oildrop` +
+      (plan.partial ? ` — MỘT PHẦN (ALLOW_PARTIAL=true), thiếu ${amount - plan.total}` : ""));
+
+    let funded = 0n;
+    for (const [i, b] of plan.batches.entries()) {
+      const owners = [...new Map(b.inputs.map((x) => [x.pkh, byIndex.get(x.index)!])).values()];
+      let txb = lucid.newTx()
+        .collectFrom(b.inputs.map((x) => utxoByRef.get(x.ref)!))
+        .pay.ToContract(pot.address, { kind: "inline", value: pot.datumCbor },
+                        potOutputAssets(potLovelace, lampUnit, b.potAmount));
+      if (b.change > 0n) txb = txb.pay.ToAddress(b.changeAddress, { [lampUnit]: b.change });
+      // Khai người ký bắt buộc để phép ước phí đếm đủ chữ ký feeder — ví chỉ biết khoá của nó.
+      for (const o of owners) txb = txb.addSignerKey(o.pkh);
+      const tx = await txb.complete();
+
+      // Soát giao dịch ĐÃ DỰNG, không tin value đã khai: đúng 1 output ở pot, đúng hình dạng;
+      // LAMP thừa nằm đúng ở feeder đầu lô.
+      const outs = tx.toTransaction().body().outputs();
+      const built: OutputShape[] = [];
+      for (let k = 0; k < outs.len(); k++) built.push(coreToTxOutput(outs.get(k)));
+      const expect = { lampUnit, amount: b.potAmount, datumCbor: pot.datumCbor };
+      assertPotOutputs(built, pot.address, expect, "FEED-POT-010");
+      const changeBuilt = unitAt(built, b.changeAddress, lampUnit);
+      if (changeBuilt !== b.change) {
+        throw new Error(`FEED-POT-011: LAMP thừa ở feeder đầu lô ${changeBuilt} ≠ kế hoạch ${b.change}. Dừng.`);
+      }
+
+      const h = tx.toHash();   // id giao dịch = hash thân, ký không đổi nó
+      const label = `Rót pot ${i + 1}/${plan.batches.length} · ${b.inputs.length} UTxO · ${b.potAmount} oildrop` +
+        (b.change > 0n ? ` · thừa ${b.change} về feeder #${b.inputs[0]!.index}` : "");
+      if (!(await finish(lucid, tx, label, owners.map((o) => o.key)))) return;
+      funded += b.potAmount;
+
+      // Đối chiếu trên chuỗi. Giao dịch ĐÃ vào block (`finish` chờ rồi); chỉ mục theo địa chỉ có
+      // thể trễ ⇒ chờ bằng `waitFor`. Hết giờ = CHƯA ĐO ĐƯỢC (mã 2), khác HỎNG THẬT (mã 1).
+      try {
+        const made = await waitFor(
+          `UTxO của ${h} ở địa chỉ pot`,
+          async () => (await lucid.utxosAt(pot.address)).filter((u) => u.txHash === h),
+          (us) => us.length > 0,
+        );
+        assertPotOutputs(made, pot.address, expect, "FEED-POT-VERIFY-001");
+        console.log(`  ✅ Đối chiếu trên chuỗi: 1 UTxO · ${b.potAmount} oildrop LAMP · chỉ {ada, LAMP} · datum inline đúng.`);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        if (isWaitTimeout(e)) {
+          process.exitCode = 2;
+          console.log(`\n⚠ CHƯA ĐO ĐƯỢC (không phải "hỏng"): ${msg}\n  Đo lại bằng: ${explorerTx(h)}`);
+        } else {
+          process.exitCode = 1;
+          console.error(`\n❌ HỎNG khi đối chiếu pot — giao dịch ĐÃ gửi (${h}): ${msg}`);
+        }
+        console.log(`Đã rót ${funded} oildrop. Chạy lại thì đặt AMOUNT_OILDROP=${amount - funded}, đừng dùng lại ${amount}.`);
+        return;
+      }
+    }
+    console.log(`\nXong ${plan.batches.length} lượt rót, tổng ${funded} oildrop (${lamp(funded)}) vào pot.`);
+    if (funded < amount) console.log(`Còn thiếu ${amount - funded} oildrop. Chạy lại thì đặt AMOUNT_OILDROP=${amount - funded}.`);
+    return;
+  }
+
+  throw new Error(`STEP='${STEP}' không hợp lệ. Chọn: plan | grant | redeem | sweep | fundpot.`);
 }
 
 main().catch((e) => { console.error(`\n❌ ${e instanceof Error ? e.message : String(e)}`); process.exit(1); });

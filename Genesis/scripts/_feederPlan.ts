@@ -151,3 +151,120 @@ export function trancheCost(grants: number, perFeeder: bigint,
     grantFeeLovelace: g * feePerGrant,
   };
 }
+
+// ── fundpot: rót LAMP từ địa chỉ feeder THẲNG vào kho script của pot ─────────
+
+/** Một UTxO đang nằm ở địa chỉ enterprise của một feeder. */
+export interface FeederUtxo {
+  index:   number;                    // chỉ số khoá feeder
+  pkh:     string;
+  address: string;                    // địa chỉ enterprise của feeder
+  ref:     string;                    // `txHash#index`
+  assets:  Record<string, bigint>;
+}
+
+/** Một giao dịch rót: các input feeder, phần vào pot, phần LAMP thừa về feeder đầu lô. */
+export interface PotBatch {
+  inputs:        FeederUtxo[];
+  lampIn:        bigint;
+  potAmount:     bigint;
+  change:        bigint;              // LAMP thừa, = lampIn − potAmount
+  changeAddress: string;              // địa chỉ feeder ĐẦU lô
+}
+
+export interface PotFundPlan {
+  batches:   PotBatch[];
+  /** Tổng LAMP sẽ vào pot theo kế hoạch (≤ amount; < amount chỉ khi ALLOW_PARTIAL). */
+  total:     bigint;
+  /** LAMP dùng được ở các feeder (chỉ UTxO thuần {lovelace, LAMP}). */
+  available: bigint;
+  /** UTxO mang LAMP nhưng bị loại, kèm lý do — ĐẾM, không im. */
+  excluded:  { ref: string; index: number; reason: string }[];
+  partial:   boolean;
+}
+
+/**
+ * FEED-POT: chọn UTxO LAMP ở địa chỉ các feeder cho đủ `amount`, chia thành lô ≤ `batchSize`
+ * input mỗi giao dịch (mỗi input kèm một chữ ký feeder — giữ giao dịch dưới trần kích thước).
+ *
+ * Chọn LỚN TRƯỚC (hoà: chỉ số feeder nhỏ hơn, rồi `ref` nhỏ hơn) — ít input nhất, và hai lần chạy
+ * trên cùng trạng thái chọn cùng một tập. Dừng ngay khi đủ, nên chỉ lô CUỐI có LAMP thừa; phần
+ * thừa về địa chỉ feeder ĐẦU lô đó, không về ví nào khác.
+ *
+ * Loại (và đếm) UTxO mang asset khác ngoài {lovelace, LAMP}: tiêu nó thì asset lạ chảy theo
+ * tiền thối về ví vận hành — lượt rót pot không được lặng lẽ dời tài sản khác.
+ *
+ * Không đủ LAMP, hoặc cần nhiều giao dịch hơn `maxTx` ⇒ NÉM (không rót một phần), trừ khi
+ * `allowPartial`: lúc đó rót tối đa những gì có trong ≤ `maxTx` giao dịch.
+ */
+export function planPotFunding(utxos: FeederUtxo[], o: {
+  lampUnit: string; amount: bigint; batchSize: number; maxTx: number; allowPartial: boolean;
+}): PotFundPlan {
+  if (o.amount <= 0n) throw new Error(`FEED-POT-001: AMOUNT_OILDROP phải > 0 (đang ${o.amount}).`);
+  if (!Number.isInteger(o.batchSize) || o.batchSize < 1) {
+    throw new Error(`FEED-POT-002: cỡ lô ${o.batchSize} không hợp lệ.`);
+  }
+  if (!Number.isInteger(o.maxTx) || o.maxTx < 1) throw new Error(`FEED-POT-002: MAX_TX ${o.maxTx} không hợp lệ.`);
+
+  const usable: FeederUtxo[] = [];
+  const excluded: PotFundPlan["excluded"] = [];
+  for (const u of utxos) {
+    const lamp = u.assets[o.lampUnit] ?? 0n;
+    if (lamp <= 0n) continue;
+    const others = Object.keys(u.assets).filter((k) => k !== "lovelace" && k !== o.lampUnit);
+    if (others.length > 0) {
+      excluded.push({ ref: u.ref, index: u.index, reason: `mang asset khác: ${others.join(",")}` });
+      continue;
+    }
+    usable.push(u);
+  }
+  const lampOf = (u: FeederUtxo): bigint => u.assets[o.lampUnit]!;
+  usable.sort((a, b) => {
+    const d = lampOf(b) - lampOf(a);
+    if (d !== 0n) return d > 0n ? 1 : -1;
+    if (a.index !== b.index) return a.index - b.index;
+    return a.ref < b.ref ? -1 : a.ref > b.ref ? 1 : 0;
+  });
+  const available = usable.reduce((s, u) => s + lampOf(u), 0n);
+
+  if (available === 0n) {
+    throw new Error(`FEED-POT-003: các feeder không có LAMP nào dùng được (loại ${excluded.length} UTxO). Cần ${o.amount}.`);
+  }
+  if (available < o.amount && !o.allowPartial) {
+    throw new Error(
+      `FEED-POT-003: feeder có ${available} oildrop LAMP, cần ${o.amount}, thiếu ${o.amount - available}. ` +
+      `Không rót một phần — đặt ALLOW_PARTIAL=true nếu muốn rót phần đang có.`,
+    );
+  }
+  const target = available < o.amount ? available : o.amount;
+
+  // Lấy lớn trước tới khi đủ.
+  const picked: FeederUtxo[] = [];
+  let sum = 0n;
+  for (const u of usable) {
+    if (sum >= target) break;
+    picked.push(u);
+    sum += lampOf(u);
+  }
+
+  let batches: PotBatch[] = [];
+  let remaining = target;
+  for (let i = 0; i < picked.length; i += o.batchSize) {
+    const inputs = picked.slice(i, i + o.batchSize);
+    const lampIn = inputs.reduce((s, u) => s + lampOf(u), 0n);
+    const potAmount = lampIn < remaining ? lampIn : remaining;
+    remaining -= potAmount;
+    batches.push({ inputs, lampIn, potAmount, change: lampIn - potAmount, changeAddress: inputs[0]!.address });
+  }
+  if (batches.length > o.maxTx) {
+    if (!o.allowPartial) {
+      throw new Error(
+        `FEED-POT-004: cần ${batches.length} giao dịch để rót ${target}, MAX_TX=${o.maxTx}. ` +
+        `Tăng MAX_TX (hoặc POT_BATCH), hoặc đặt ALLOW_PARTIAL=true để rót phần vừa ${o.maxTx} giao dịch.`,
+      );
+    }
+    batches = batches.slice(0, o.maxTx);
+  }
+  const total = batches.reduce((s, b) => s + b.potAmount, 0n);
+  return { batches, total, available, excluded, partial: total < o.amount };
+}
