@@ -202,6 +202,12 @@ function redeemOutlook(a: ClaimAccountDatum, b: BeaconDatum, t: TreasuryDatum, e
 
 async function main(): Promise<void> {
   if (NETWORK === "Mainnet") throw new Error("CHẶN: script diễn tập, không chạy trên Mainnet.");
+  // Builder Distribution nhận `Network` của `@magiclamp/utils` (Preview|Preprod|Mainnet, không có
+  // "Custom"). Thu hẹp tường minh ở đây thay vì ép kiểu ở từng chỗ gọi: "Custom" không có
+  // Blockfrost nào để chạy (`config.ts` ▸ BLOCKFROST_URL), nên dừng sớm là dừng đúng chỗ.
+  if (NETWORK !== "Preprod" && NETWORK !== "Preview") {
+    throw new Error(`CHẶN: NETWORK='${NETWORK}' — script diễn tập chỉ chạy Preprod|Preview.`);
+  }
 
   const lucid = await makeLucid();
   const pkh = await walletPkh(lucid);
@@ -436,7 +442,7 @@ async function main(): Promise<void> {
     if (!SEND_TO) throw new Error(`SEND-000: đặt SEND_TO = địa chỉ nhận.`);
     if (SEND_AMOUNT <= 0n) throw new Error(`SEND-001: đặt SEND_OILDROP > 0 (đang ${SEND_AMOUNT}).`);
     const det = getAddressDetails(SEND_TO);
-    if (det.networkId !== (NETWORK === "Mainnet" ? 1 : 0)) {
+    if (det.networkId !== 0) {   // Mainnet đã bị chặn ở đầu main() ⇒ networkId luôn 0
       throw new Error(`SEND-002: ${SEND_TO} thuộc networkId ${det.networkId}, không phải ${NETWORK}.`);
     }
     if (det.paymentCredential?.type !== "Key") {

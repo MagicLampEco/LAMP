@@ -64,13 +64,13 @@ export interface FeederAccount {
   pkh:   string;
   datum: ClaimAccountDatum;
   /** `txHash#index` của UTxO tài khoản. Một feeder có thể có hơn một tài khoản (xem đầu tệp). */
-  ref?:  string;
+  ref?:  string | undefined;
 }
 
 export interface RedeemPick {
   pkh:    string;
   amount: bigint;
-  ref?:   string;
+  ref?:   string | undefined;
 }
 
 /**
@@ -196,15 +196,27 @@ export interface PotFundPlan {
  *
  * Không đủ LAMP, hoặc cần nhiều giao dịch hơn `maxTx` ⇒ NÉM (không rót một phần), trừ khi
  * `allowPartial`: lúc đó rót tối đa những gì có trong ≤ `maxTx` giao dịch.
+ *
+ * `minPotAmount` (D — một suất của pot): MỌI output pot phải mang ≥ D. Dịch vụ phát của Wakeme
+ * (`PotUtxoSelector.selectPotUtxo`) chỉ chọn MỘT UTxO kho mang ≥ D và không có bộ dựng `Collect`,
+ * nên một UTxO kho < D là LAMP nằm trong sân kho mà không bao giờ được phát — không gì báo.
+ * Có lô nào rót < D (thường là lô cuối: nó chỉ rót phần còn lại) ⇒ NÉM FEED-POT-005, không rót.
+ * Cố ý TỪ CHỐI chứ không GỘP lô cuối vào lô trước: mọi lô trừ lô cuối là một lát ĐẦY `batchSize`
+ * input, nên gộp luôn vượt trần kích thước mà `batchSize` canh — nhánh gộp sẽ là mã chết. Người
+ * chạy chỉnh AMOUNT_OILDROP (phần dư ≥ D) hoặc POT_BATCH là đủ, và cả hai đều thấy trước khi gửi.
  */
 export function planPotFunding(utxos: FeederUtxo[], o: {
   lampUnit: string; amount: bigint; batchSize: number; maxTx: number; allowPartial: boolean;
+  minPotAmount: bigint;
 }): PotFundPlan {
   if (o.amount <= 0n) throw new Error(`FEED-POT-001: AMOUNT_OILDROP phải > 0 (đang ${o.amount}).`);
   if (!Number.isInteger(o.batchSize) || o.batchSize < 1) {
     throw new Error(`FEED-POT-002: cỡ lô ${o.batchSize} không hợp lệ.`);
   }
   if (!Number.isInteger(o.maxTx) || o.maxTx < 1) throw new Error(`FEED-POT-002: MAX_TX ${o.maxTx} không hợp lệ.`);
+  if (o.minPotAmount < 1n) {
+    throw new Error(`FEED-POT-002: suất tối thiểu mỗi output pot phải ≥ 1 (đang ${o.minPotAmount}).`);
+  }
 
   const usable: FeederUtxo[] = [];
   const excluded: PotFundPlan["excluded"] = [];
@@ -265,6 +277,110 @@ export function planPotFunding(utxos: FeederUtxo[], o: {
     }
     batches = batches.slice(0, o.maxTx);
   }
+  // Soát SAU phép cắt MAX_TX, trên đúng tập lô sẽ gửi: không output pot nào < D.
+  const small = batches.findIndex((b) => b.potAmount < o.minPotAmount);
+  if (small >= 0) {
+    throw new Error(
+      `FEED-POT-005: lô ${small + 1}/${batches.length} rót ${batches[small]!.potAmount} < suất pot ${o.minPotAmount} — ` +
+      `UTxO kho dưới một suất không bao giờ được phát (dịch vụ chỉ chọn MỘT UTxO ≥ suất). ` +
+      `Đổi AMOUNT_OILDROP (hoặc POT_BATCH) để phần rót của mọi lô ≥ suất.`,
+    );
+  }
   const total = batches.reduce((s, b) => s + b.potAmount, 0n);
   return { batches, total, available, excluded, partial: total < o.amount };
+}
+
+// ── chạy khô ở một thời điểm khác + hạn giờ chờ giao dịch ─────────────────────
+
+/**
+ * FEED-ENV-003/004: `DRY_RUN_AT_MS` — dựng giao dịch như thể đồng hồ đang ở mốc này (posix ms),
+ * để chạy khô Redeem ở cửa sổ SAU trước giờ: Lucid đánh giá pha 2 cục bộ, nên validator thấy
+ * đúng cửa sổ của khoảng hiệu lực dựng ra. Trống ⇒ `undefined` (dùng giờ thật).
+ *   · đặt cùng SUBMIT=true ⇒ NÉM: giao dịch dựng cho một thời điểm khác mà gửi đi thì hoặc bị
+ *     từ chối, hoặc — tệ hơn — lọt vào đúng lúc mà người chạy không định;
+ *   · STEP khác plan|redeem ⇒ NÉM: các bước khác không đọc mốc này, im lặng bỏ qua nó là để
+ *     người chạy tin rằng mình đã thử ở cửa sổ kia.
+ */
+export function dryRunAtFromEnv(raw: string | undefined, submit: boolean, step: string): bigint | undefined {
+  const v = (raw ?? "").trim();
+  if (!v) return undefined;
+  if (!/^[0-9]+$/.test(v)) throw new Error(`FEED-ENV-001: DRY_RUN_AT_MS='${raw}' không phải số nguyên không âm.`);
+  if (submit) {
+    throw new Error(`FEED-ENV-003: DRY_RUN_AT_MS chỉ hợp lệ khi SUBMIT=false — không gửi giao dịch dựng cho một thời điểm khác.`);
+  }
+  if (step !== "plan" && step !== "redeem") {
+    throw new Error(`FEED-ENV-004: DRY_RUN_AT_MS chỉ áp cho STEP=plan|redeem (đang STEP=${step}).`);
+  }
+  return BigInt(v);
+}
+
+/**
+ * Chờ `p` tối đa `ms` mili-giây; quá hạn ⇒ ném lỗi do `onTimeout` dựng. Không huỷ được `p` (nhà
+ * cung cấp vẫn thăm dò ở nền) — người gọi phải để ngoại lệ đi lên tới chỗ thoát tiến trình.
+ * Đồng hồ lấy qua `globalThis` có kiểu tường minh: tệp này lọt vào chương trình tsc không có
+ * @types/node (xem `_guards.ts`, đoạn cuối phần đầu tệp).
+ */
+export async function withDeadline<T>(p: Promise<T>, ms: number, onTimeout: () => Error): Promise<T> {
+  if (!Number.isInteger(ms) || ms < 1) throw new Error(`FEED-ENV-001: hạn giờ ${ms} ms không hợp lệ (phải ≥ 1).`);
+  const timers = globalThis as unknown as {
+    setTimeout(f: () => void, ms: number): unknown; clearTimeout(h: unknown): void;
+  };
+  let handle: unknown;
+  const deadline = new Promise<never>((_, reject) => {
+    handle = timers.setTimeout(() => reject(onTimeout()), ms);
+  });
+  try {
+    return await Promise.race([p, deadline]);
+  } finally {
+    timers.clearTimeout(handle);
+  }
+}
+
+// ── sweep: gom ĐÚNG một lượng LAMP từ địa chỉ feeder về một ví payment-key ────
+
+/**
+ * FEED-SWEEP-004: lượng gom BẮT BUỘC, không mặc định. Thiếu ⇒ ném, không quay về "gom tất".
+ * Chuỗi rỗng, không phải số nguyên, hoặc ≤ 0 đều ném cùng mã.
+ */
+export function sweepAmountFromEnv(raw: string | undefined): bigint {
+  const v = (raw ?? "").trim();
+  if (!v) {
+    throw new Error(
+      `FEED-SWEEP-004: STEP=sweep đòi AMOUNT_OILDROP (gom ĐÚNG bao nhiêu). Không có mặc định "gom tất" — ` +
+      `bản cũ gom mọi UTxO LAMP ở cả dải.`,
+    );
+  }
+  if (!/^[0-9]+$/.test(v) || BigInt(v) <= 0n) {
+    throw new Error(`FEED-SWEEP-004: AMOUNT_OILDROP='${raw}' phải là số nguyên dương.`);
+  }
+  return BigInt(v);
+}
+
+/**
+ * FEED-SWEEP: kế hoạch gom ĐÚNG `amount` oildrop LAMP. Dùng lại trọn phép chọn của
+ * `planPotFunding` (lớn trước, loại UTxO mang asset lạ, phần thừa về feeder ĐẦU lô cuối) — một
+ * phép chọn, hai đích, không có bản thứ hai để trôi. Khác fundpot ở hai chỗ:
+ *   · đích là ví thường, không có ràng buộc suất ⇒ `minPotAmount = 1`;
+ *   · KHÔNG có chế độ rót một phần: thiếu LAMP, hoặc cần nhiều giao dịch hơn `maxTx` ⇒ NÉM.
+ * Bản cũ gom MỌI UTxO LAMP ở cả dải (tới SWEEP_BATCH × MAX_TX), nên "gom 100.000 cho X" khi
+ * feeder đang giữ phần dành cho pot là gửi cả phần đó cho X — sang nhà khác thì không rút lại được.
+ */
+export function planSweep(utxos: FeederUtxo[], o: {
+  lampUnit: string; amount: bigint; batchSize: number; maxTx: number;
+}): PotFundPlan {
+  if (o.amount <= 0n) throw new Error(`FEED-SWEEP-004: AMOUNT_OILDROP phải > 0 (đang ${o.amount}).`);
+  if (!Number.isInteger(o.batchSize) || o.batchSize < 1) {
+    throw new Error(`FEED-SWEEP-001: cỡ lô ${o.batchSize} không hợp lệ.`);
+  }
+  // allowPartial=true CHỈ để đọc được `available`/`total` thay vì câu lỗi của fundpot (câu đó gợi ý
+  // ALLOW_PARTIAL, mà sweep không có); kế hoạch thiếu thì ném ngay dưới đây.
+  const p = planPotFunding(utxos, { ...o, allowPartial: true, minPotAmount: 1n });
+  if (p.partial) {
+    throw new Error(
+      `FEED-SWEEP-005: cần gom ${o.amount} oildrop LAMP, feeder dùng được ${p.available} ` +
+      `(loại ${p.excluded.length} UTxO mang asset lạ), kế hoạch ≤ MAX_TX=${o.maxTx} giao dịch gom được ${p.total}. ` +
+      `Không gửi thiếu — tăng MAX_TX/SWEEP_BATCH hoặc rút thêm về feeder.`,
+    );
+  }
+  return p;
 }
