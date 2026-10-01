@@ -30,6 +30,13 @@ import type { BeaconDatum } from "../offchain/src/types.js";
 import { beaconIndexAt } from "../offchain/src/vested.js";
 import { applyValidator } from "../scripts/blueprint.js";
 import { lampOildrop } from "./helpers.js";
+import { windowOriginMs as windowOriginOf } from "@magiclamp/utils";
+
+// ── Gốc cửa sổ của bộ kiểm (Specs/Window/CONTRACT.md v1.0) ─────────────────
+// Gốc Mainnet THẬT: 1_506_203_091_000 không chia hết cho 432_000_000 lẫn 86_400_000. Gốc 0
+// (hay một bội của ms_per_epoch) sẽ xanh ở cả bản có trừ gốc lẫn bản quên trừ — xem spec §3.
+// Mọi mốc thời gian dưới đây là `ORIGIN + e × mspe + dịch`, KHÔNG còn là `e × mspe + dịch`.
+const ORIGIN = windowOriginOf("Mainnet");
 
 // ── Mock Lucid tx-builder ──────────────────────────────────────────────
 interface Recorded {
@@ -101,9 +108,9 @@ const REDEEM_MSPE = 86_400_000n;
  * một bản suy cửa sổ bằng làm tròn lên, hay bằng đầu trên, ra số KHÁC và đỏ; đầu trên cách
  * đầu dưới 1 giờ, cùng cửa sổ.
  */
-function redeemAt(t: bigint): { msPerEpoch: bigint; validFromMs: bigint; validToMs: bigint } {
-  const lo = t * REDEEM_MSPE + 3_600_000n;
-  return { msPerEpoch: REDEEM_MSPE, validFromMs: lo, validToMs: lo + 3_600_000n };
+function redeemAt(t: bigint): { msPerEpoch: bigint; windowOriginMs: bigint; validFromMs: bigint; validToMs: bigint } {
+  const lo = ORIGIN + t * REDEEM_MSPE + 3_600_000n;
+  return { msPerEpoch: REDEEM_MSPE, windowOriginMs: ORIGIN, validFromMs: lo, validToMs: lo + 3_600_000n };
 }
 const LAMP_POLICY = "ff".repeat(28);
 const LAMP_UNIT   = toUnit(LAMP_POLICY, "744c414d50"); // tLAMP canonical
@@ -141,13 +148,15 @@ function bcnUtxo(d: BeaconDatum): UTxO {
   };
 }
 
-/** ms mỗi cửa sổ cho các ca `buildClaimTx` — builder SUY `start_epoch` từ `validFromMs / msPerEpoch`. */
+/** ms mỗi cửa sổ cho các ca `buildClaimTx` — builder SUY `start_epoch` từ `(validFromMs − ORIGIN) / msPerEpoch`. */
 const CLAIM_MSPE = 432_000_000n;
 /** Cặp lo/hi CÙNG cửa sổ `e` (giữa cửa sổ, qua `epochWindow`) + `msPerEpoch` — thay cho `currentEpoch` rời. */
-function claimAt(e: bigint): { msPerEpoch: bigint; validFromMs: bigint; validToMs: bigint } {
-  const w = epochWindow(CLAIM_MSPE, e * CLAIM_MSPE + CLAIM_MSPE / 2n);
-  return { msPerEpoch: CLAIM_MSPE, validFromMs: w.loMs, validToMs: w.hiMs };
+function claimAt(e: bigint): { msPerEpoch: bigint; windowOriginMs: bigint; validFromMs: bigint; validToMs: bigint } {
+  const w = epochWindow(CLAIM_MSPE, ORIGIN, cw(e) + CLAIM_MSPE / 2n);
+  return { msPerEpoch: CLAIM_MSPE, windowOriginMs: ORIGIN, validFromMs: w.loMs, validToMs: w.hiMs };
 }
+/** Đầu cửa sổ `e` của các ca claim: `ORIGIN + e × CLAIM_MSPE`. */
+function cw(e: bigint): bigint { return ORIGIN + e * CLAIM_MSPE; }
 
 /** Tham số `beacon` mà `buildClaimTx` v3 đòi — BẮT BUỘC ở cả CREATE lẫn UPDATE. */
 function bcnParam(d: BeaconDatum = bcnDatum()) {
@@ -339,10 +348,10 @@ describe("buildClaimTx — CREATE path", () => {
     const { lucid } = mockLucid("addr_wallet");
     await expect(buildClaimTx({
       lucid, claimScript: FAKE_CLAIM, network: NETWORK,
-      ownerPkh: OWNER, amount: lampOildrop(250n), msPerEpoch: CLAIM_MSPE,
+      ownerPkh: OWNER, amount: lampOildrop(250n), msPerEpoch: CLAIM_MSPE, windowOriginMs: ORIGIN,
       committeeKeyHashes: COMMITTEE, treasury: trsyParam(0n), accountNft: accNft,
       beacon: bcnParam(),
-      validFromMs: 5n * 432_000_000n,
+      validFromMs: cw(5n),
       // Kiểu nay bắt buộc `validToMs`; ca này giả lập bên gọi JavaScript không kiểu bỏ trống nó.
       validToMs: undefined as unknown as bigint,
     })).rejects.toThrow(/CREATE-002/);
@@ -350,10 +359,10 @@ describe("buildClaimTx — CREATE path", () => {
 
   it("CREATE-002: đủ cả hai đầu thì qua, và tx mang đúng cặp lo/hi", async () => {
     const { lucid, rec } = mockLucid("addr_wallet");
-    const w = epochWindow(432_000_000n, 5n * 432_000_000n + 432_000_000n / 2n);
+    const w = epochWindow(432_000_000n, ORIGIN, cw(5n) + 432_000_000n / 2n);
     const res = await buildClaimTx({
       lucid, claimScript: FAKE_CLAIM, network: NETWORK,
-      ownerPkh: OWNER, amount: lampOildrop(250n), msPerEpoch: CLAIM_MSPE,
+      ownerPkh: OWNER, amount: lampOildrop(250n), msPerEpoch: CLAIM_MSPE, windowOriginMs: ORIGIN,
       committeeKeyHashes: COMMITTEE, treasury: trsyParam(0n), accountNft: accNft,
       beacon: bcnParam(),
       validFromMs: w.loMs, validToMs: w.hiMs,
@@ -408,10 +417,10 @@ describe("buildClaimTx — cửa sổ suy từ validity (get_epoch_strict)", () 
     committeeKeyHashes: COMMITTEE, treasury: trsyParam(0n), accountNft: accNft,
     beacon: bcnParam(),
   });
-  const at = (lo: bigint, hi: bigint) => ({ msPerEpoch: CLAIM_MSPE, validFromMs: lo, validToMs: hi });
+  const at = (lo: bigint, hi: bigint) => ({ msPerEpoch: CLAIM_MSPE, windowOriginMs: ORIGIN, validFromMs: lo, validToMs: hi });
 
-  it("start_epoch = validFromMs / msPerEpoch, và a₀ tính ở CÙNG cửa sổ đó", async () => {
-    const res = await buildClaimTx({ ...create(), ...at(7n * CLAIM_MSPE + 10n, 7n * CLAIM_MSPE + 20n) });
+  it("start_epoch = (validFromMs − windowOriginMs) / msPerEpoch, và a₀ tính ở CÙNG cửa sổ đó", async () => {
+    const res = await buildClaimTx({ ...create(), ...at(cw(7n) + 10n, cw(7n) + 20n) });
     expect(res.currentEpoch).toBe(7n);
     expect(res.newDatum.start_epoch).toBe(7n);
     // Số tính tay: A(7) = 1.000.000 + 100.000·(7 − 3) = 1.400.000.
@@ -419,13 +428,13 @@ describe("buildClaimTx — cửa sổ suy từ validity (get_epoch_strict)", () 
   });
 
   it("lo và hi ở ms CUỐI cùng cửa sổ ⇒ vẫn cửa sổ đó (chia SÀN, không làm tròn)", async () => {
-    const end = 8n * CLAIM_MSPE - 1n;
+    const end = cw(8n) - 1n;
     const res = await buildClaimTx({ ...create(), ...at(end - 1n, end) });
     expect(res.newDatum.start_epoch).toBe(7n);
   });
 
   it("CLAIM-043: hi chạm biên cửa sổ sau ⇒ từ chối (cực đối của ca trên: hi lớn hơn 1 ms)", async () => {
-    await expect(buildClaimTx({ ...create(), ...at(8n * CLAIM_MSPE - 2n, 8n * CLAIM_MSPE) }))
+    await expect(buildClaimTx({ ...create(), ...at(cw(8n) - 2n, cw(8n)) }))
       .rejects.toThrow(/CLAIM-043/);
   });
 
@@ -435,26 +444,49 @@ describe("buildClaimTx — cửa sổ suy từ validity (get_epoch_strict)", () 
       .rejects.toThrow(/CLAIM-040/);
   });
 
-  it("CLAIM-041: validFromMs âm hoặc thiếu; 0 thì qua", async () => {
+  it("CLAIM-041: validFromMs âm hoặc thiếu; đúng đầu cửa sổ 0 (= gốc) thì qua", async () => {
     await expect(buildClaimTx({ ...create(), ...at(-1n, 20n) })).rejects.toThrow(/CLAIM-041/);
     await expect(buildClaimTx({ ...create(), ...at(undefined as unknown as bigint, 20n) }))
       .rejects.toThrow(/CLAIM-041/);
-    const ok = await buildClaimTx({ ...create(), ...at(0n, 20n) });
+    const ok = await buildClaimTx({ ...create(), ...at(ORIGIN, ORIGIN + 20n) });
     expect(ok.newDatum.start_epoch).toBe(0n);
   });
 
+  // ── Specs/Window/CONTRACT.md v1.0 — gốc cửa sổ ──────────────────────────────────
+  it("CLAIM-044: thiếu / âm windowOriginMs ⇒ từ chối, không âm thầm chia từ gốc Unix", async () => {
+    await expect(buildClaimTx({ ...create(), ...at(cw(7n) + 10n, cw(7n) + 20n), windowOriginMs: undefined as unknown as bigint }))
+      .rejects.toThrow(/CLAIM-044/);
+    await expect(buildClaimTx({ ...create(), ...at(cw(7n) + 10n, cw(7n) + 20n), windowOriginMs: -1n }))
+      .rejects.toThrow(/CLAIM-044/);
+  });
+
+  it("CLAIM-045: validFromMs trước gốc cửa sổ ⇒ từ chối (không rơi vào cửa sổ nào)", async () => {
+    await expect(buildClaimTx({ ...create(), ...at(ORIGIN - 1n, ORIGIN + 20n) })).rejects.toThrow(/CLAIM-045/);
+  });
+
+  it("gốc THẬT phân biệt được bản quên trừ gốc: cùng mốc, gốc 0 ⇒ nhãn khác hẳn", async () => {
+    const lo = cw(7n) + 10n;
+    const withOrigin = await buildClaimTx({ ...create(), ...at(lo, lo + 10n) });
+    expect(withOrigin.newDatum.start_epoch).toBe(7n);
+    // Cùng mốc nhưng khai gốc 0 (lưới 1970 cũ): nhãn là `lo / mspe`, một số lớn ~3 490 — và hai đầu
+    // vẫn rơi cùng cửa sổ nên builder KHÔNG ném; chỉ validator (đã nướng gốc thật) mới bác.
+    const legacy = await buildClaimTx({ ...create(), ...at(lo, lo + 10n), windowOriginMs: 0n });
+    expect(legacy.newDatum.start_epoch).toBe(lo / CLAIM_MSPE);
+    expect(legacy.newDatum.start_epoch).not.toBe(7n);
+  });
+
   it("CLAIM-042: validToMs ≤ validFromMs; lớn hơn 1 ms thì qua", async () => {
-    await expect(buildClaimTx({ ...create(), ...at(7n * CLAIM_MSPE + 5n, 7n * CLAIM_MSPE + 5n) }))
+    await expect(buildClaimTx({ ...create(), ...at(cw(7n) + 5n, cw(7n) + 5n) }))
       .rejects.toThrow(/CLAIM-042/);
-    const ok = await buildClaimTx({ ...create(), ...at(7n * CLAIM_MSPE + 5n, 7n * CLAIM_MSPE + 6n) });
+    const ok = await buildClaimTx({ ...create(), ...at(cw(7n) + 5n, cw(7n) + 6n) });
     expect(ok.newDatum.start_epoch).toBe(7n);
   });
 
   it("tx mang ĐÚNG cặp lo/hi đã truyền", async () => {
     const { lucid, rec } = mockLucid("addr_wallet");
-    await buildClaimTx({ ...create(), lucid, ...at(7n * CLAIM_MSPE + 10n, 7n * CLAIM_MSPE + 20n) });
-    expect(rec.validFrom).toEqual([Number(7n * CLAIM_MSPE + 10n)]);
-    expect(rec.validTo).toEqual([Number(7n * CLAIM_MSPE + 20n)]);
+    await buildClaimTx({ ...create(), lucid, ...at(cw(7n) + 10n, cw(7n) + 20n) });
+    expect(rec.validFrom).toEqual([Number(cw(7n) + 10n)]);
+    expect(rec.validTo).toEqual([Number(cw(7n) + 20n)]);
   });
 });
 
@@ -514,11 +546,11 @@ describe("buildClaimTx — UPDATE path", () => {
     };
     await expect(buildClaimTx({
       lucid, claimScript: FAKE_CLAIM, network: NETWORK,
-      ownerPkh: OWNER, amount: lampOildrop(60n), msPerEpoch: CLAIM_MSPE,
+      ownerPkh: OWNER, amount: lampOildrop(60n), msPerEpoch: CLAIM_MSPE, windowOriginMs: ORIGIN,
       claimAccountUtxo: claimUtxo(prev),
       committeeKeyHashes: COMMITTEE, treasury: trsyParam(0n),
       beacon: bcnParam(),
-      validFromMs: 9n * 432_000_000n,
+      validFromMs: cw(9n),
       validToMs: undefined as unknown as bigint,   // bên gọi JavaScript không kiểu bỏ trống
     })).rejects.toThrow(/CREATE-002: đường UPDATE/);
   });
@@ -919,7 +951,7 @@ describe("buildPostBeaconTx — DropParam (chỉ số cộng dồn)", () => {
   it("BEACON-006: từ chối nhãn epoch không khớp cửa sổ hiện tại", async () => {
     const { lucid } = mockLucid("addr_wallet");
     const msPerEpoch = 432_000_000n;
-    const wrongLabel = epochWindow(msPerEpoch).epoch + 2n;
+    const wrongLabel = epochWindow(msPerEpoch, ORIGIN).epoch + 2n;
     const cur = onChain({ epoch: wrongLabel - 1n });
     await expect(buildPostBeaconTx({
       lucid, beaconScript: FAKE_BEACON, network: NETWORK,
@@ -927,8 +959,22 @@ describe("buildPostBeaconTx — DropParam (chỉ số cộng dồn)", () => {
       beaconUtxo: beaconUtxo(cur, { lovelace: 2_000_000n, [NFT_UNIT]: 1n }),
       newBeacon: nextBeacon(cur, wrongLabel),
       committeeKeyHashes: COMMITTEE,
-      msPerEpoch,
+      msPerEpoch, windowOriginMs: ORIGIN,
     })).rejects.toThrow(/BEACON-006/);
+  });
+
+  it("BEACON-015: có msPerEpoch mà thiếu windowOriginMs ⇒ từ chối, không kiểm nhãn theo lưới 1970", async () => {
+    const { lucid } = mockLucid("addr_wallet");
+    const msPerEpoch = 432_000_000n;
+    const cur = onChain({ epoch: 1n });
+    await expect(buildPostBeaconTx({
+      lucid, beaconScript: FAKE_BEACON, network: NETWORK,
+      beaconNftPolicy: NFT_POLICY,
+      beaconUtxo: beaconUtxo(cur, { lovelace: 2_000_000n, [NFT_UNIT]: 1n }),
+      newBeacon: nextBeacon(cur, 2n),
+      committeeKeyHashes: COMMITTEE,
+      msPerEpoch,
+    })).rejects.toThrow(/BEACON-015/);
   });
 
   it("BEACON-006: nhãn == cửa sổ hiện tại đi qua, và tx mang CẢ HAI đầu validity range", async () => {
@@ -939,7 +985,7 @@ describe("buildPostBeaconTx — DropParam (chỉ số cộng dồn)", () => {
     onTestFinished(() => { vi.useRealTimers(); });
     const { lucid, rec } = mockLucid("addr_wallet");
     const msPerEpoch = 432_000_000n;
-    const w = epochWindow(msPerEpoch);
+    const w = epochWindow(msPerEpoch, ORIGIN);
     const cur = onChain({ epoch: w.epoch - 1n });
     const res = await buildPostBeaconTx({
       lucid, beaconScript: FAKE_BEACON, network: NETWORK,
@@ -947,7 +993,7 @@ describe("buildPostBeaconTx — DropParam (chỉ số cộng dồn)", () => {
       beaconUtxo: beaconUtxo(cur, { lovelace: 2_000_000n, [NFT_UNIT]: 1n }),
       newBeacon: nextBeacon(cur, w.epoch),
       committeeKeyHashes: COMMITTEE,
-      msPerEpoch,
+      msPerEpoch, windowOriginMs: ORIGIN,
     });
     expect(res.newBeacon.epoch).toBe(w.epoch);
     // Đầu TRÊN là phần mới, và là phần duy nhất chứng minh được nhãn không bị dán lùi.
@@ -969,9 +1015,9 @@ describe("epochWindow — cả hai đầu rơi cùng một cửa sổ", () => {
   // (1)+(2) xanh trọn vẹn trên bản cũ trong khi (3) đỏ ở 60 giây đầu mỗi cửa sổ: khoảng
   // hợp lệ, không rỗng, cùng epoch — và đã hết hạn.
   function assertWindow(nowMs: bigint) {
-    const w = epochWindow(MSPE, nowMs);
-    expect(w.loMs / MSPE).toBe(w.epoch);
-    expect(w.hiMs / MSPE).toBe(w.epoch);
+    const w = epochWindow(MSPE, ORIGIN, nowMs);
+    expect((w.loMs - ORIGIN) / MSPE).toBe(w.epoch);
+    expect((w.hiMs - ORIGIN) / MSPE).toBe(w.epoch);
     expect(w.hiMs).toBeGreaterThan(w.loMs);
     expect(w.loMs).toBeLessThanOrEqual(nowMs);
     expect(w.hiMs).toBeGreaterThanOrEqual(nowMs);
@@ -983,36 +1029,51 @@ describe("epochWindow — cả hai đầu rơi cùng một cửa sổ", () => {
   // Bốn mốc đầu là bốn mốc ĐỎ đo được trên bản cũ, giữ nguyên số. Chúng phân biệt được hai
   // cực: mốc giữa cửa sổ xanh ở cả bản cũ lẫn bản mới nên một mình nó không kiểm gì.
   it.each([
-    ["ngay lúc cửa sổ mở", 100n * MSPE],
-    ["+1 ms", 100n * MSPE + 1n],
-    ["+30 s — giữa dải hỏng cũ", 100n * MSPE + 30_000n],
-    ["+59.999 s — mốc từng cho khoảng ÂM", 100n * MSPE + 59_999n],
-    ["+60 s — mốc đầu tiên bản cũ đúng", 100n * MSPE + 60_000n],
-    ["giữa cửa sổ", 100n * MSPE + MSPE / 2n],
-    ["1 s trước biên — vùng chết cũ", 101n * MSPE - 1_000n],
-    ["ms cuối cùng của cửa sổ", 101n * MSPE - 1n],
+    ["ngay lúc cửa sổ mở", (ORIGIN + 100n * MSPE)],
+    ["+1 ms", (ORIGIN + 100n * MSPE) + 1n],
+    ["+30 s — giữa dải hỏng cũ", (ORIGIN + 100n * MSPE) + 30_000n],
+    ["+59.999 s — mốc từng cho khoảng ÂM", (ORIGIN + 100n * MSPE) + 59_999n],
+    ["+60 s — mốc đầu tiên bản cũ đúng", (ORIGIN + 100n * MSPE) + 60_000n],
+    ["giữa cửa sổ", (ORIGIN + 100n * MSPE) + MSPE / 2n],
+    ["1 s trước biên — vùng chết cũ", (ORIGIN + 101n * MSPE) - 1_000n],
+    ["ms cuối cùng của cửa sổ", (ORIGIN + 101n * MSPE) - 1n],
   ])("%s: lo ≤ now ≤ hi và hai đầu cùng cửa sổ", (_ten, nowMs) => {
     const w = assertWindow(nowMs as bigint);
     expect(w.epoch).toBe(100n);
   });
 
   it("nhãn epoch là cửa sổ đang chạy, không phải cửa sổ mà cái đệm 60 s rơi vào", () => {
-    expect(epochWindow(MSPE, 100n * MSPE).epoch).toBe(100n);
-    expect(epochWindow(MSPE, 100n * MSPE - 1n).epoch).toBe(99n);
+    expect(epochWindow(MSPE, ORIGIN, (ORIGIN + 100n * MSPE)).epoch).toBe(100n);
+    expect(epochWindow(MSPE, ORIGIN, (ORIGIN + 100n * MSPE) - 1n).epoch).toBe(99n);
   });
 
   it("hi = now + TTL khi cuối cửa sổ còn xa — mốc đỏ trên bản đặt hi ở cuối cửa sổ", () => {
-    expect(epochWindow(MSPE, 100n * MSPE).hiMs).toBe(100n * MSPE + WINDOW_TTL_MS);
+    expect(epochWindow(MSPE, ORIGIN, (ORIGIN + 100n * MSPE)).hiMs).toBe((ORIGIN + 100n * MSPE) + WINDOW_TTL_MS);
   });
 
   it("hi sát cuối cửa sổ khi cửa sổ hết trước TTL — không vắt sang cửa sổ sau", () => {
-    expect(epochWindow(MSPE, 101n * MSPE - 1_000n).hiMs).toBe(101n * MSPE - 1n);
-    expect(epochWindow(MSPE, 101n * MSPE - WINDOW_TTL_MS).hiMs).toBe(101n * MSPE - 1n);
+    expect(epochWindow(MSPE, ORIGIN, (ORIGIN + 101n * MSPE) - 1_000n).hiMs).toBe((ORIGIN + 101n * MSPE) - 1n);
+    expect(epochWindow(MSPE, ORIGIN, (ORIGIN + 101n * MSPE) - WINDOW_TTL_MS).hiMs).toBe((ORIGIN + 101n * MSPE) - 1n);
+  });
+
+  it("biên cửa sổ trùng biên epoch Cardano: dùng gốc THẬT của Preprod và Mainnet (spec §3)", () => {
+    // Vector chung §3: 1_790_553_600_000 là đầu epoch Preprod 316; trừ 1 ms là epoch 315.
+    const preprod = windowOriginOf("Preprod");
+    expect(epochWindow(432_000_000n, preprod, 1_790_553_600_000n).epoch).toBe(316n);
+    expect(epochWindow(432_000_000n, preprod, 1_790_553_599_999n).epoch).toBe(315n);
+    expect(epochWindow(432_000_000n, ORIGIN, 1_790_459_091_000n).epoch).toBe(658n);
+    expect(epochWindow(432_000_000n, ORIGIN, 1_790_459_090_999n).epoch).toBe(657n);
+    // Bản quên trừ gốc (lưới 1970) ra số khác hẳn — đúng thứ ca gốc 0 không bắt được.
+    expect(1_790_553_600_000n / 432_000_000n).not.toBe(316n);
+  });
+
+  it("nhãn trước gốc ⇒ NÉM, không trả một cửa sổ âm", () => {
+    expect(() => epochWindow(MSPE, ORIGIN, ORIGIN - 1n)).toThrow();
   });
 
   it("msPerEpoch ≤ 0 thì NÉM, không trả về một cửa sổ vô nghĩa", () => {
-    expect(() => epochWindow(0n, 1n)).toThrow();
-    expect(() => epochWindow(-1n, 1n)).toThrow();
+    expect(() => epochWindow(0n, ORIGIN, ORIGIN + 1n)).toThrow();
+    expect(() => epochWindow(-1n, ORIGIN, ORIGIN + 1n)).toThrow();
   });
 });
 
@@ -1180,7 +1241,9 @@ describe("buildRedeemTx — vested = min(E, isqrt(dpe²·E·A_span²))", () => {
   // ── Cửa sổ t SUY từ đầu dưới validity (C-RDM-EPOCH, `util.get_epoch`) ──────────────
   // Bản trước nhận `currentEpoch` và `validFromMs` RỜI nhau (đầu dưới còn tuỳ chọn): hai số
   // lệch nhau thì builder tính `amount` theo một cửa sổ, validator ép theo cửa sổ khác.
-  const at = (lo: bigint, hi: bigint) => ({ msPerEpoch: REDEEM_MSPE, validFromMs: lo, validToMs: hi });
+  const at = (lo: bigint, hi: bigint) => ({ msPerEpoch: REDEEM_MSPE, windowOriginMs: ORIGIN, validFromMs: lo, validToMs: hi });
+  /** Đầu cửa sổ `t` của các ca redeem: `ORIGIN + t × REDEEM_MSPE`. */
+  const rw = (t: bigint): bigint => ORIGIN + t * REDEEM_MSPE;
   const drip = {
     claimAccountUtxo: claimUtxo(0n, E, MARK, 1n, {}, WIDE),
     treasuryUtxo: treasuryUtxo(lampOildrop(1_000_000n)),
@@ -1199,7 +1262,7 @@ describe("buildRedeemTx — vested = min(E, isqrt(dpe²·E·A_span²))", () => {
 
   it("đầu dưới ở ms CUỐI của cửa sổ t ⇒ vẫn là t (chia SÀN như get_epoch, không làm tròn)", async () => {
     const { lucid } = mockLucid(OWNER_ADDR);
-    const lo = (MARK + 3n) * REDEEM_MSPE - 1n;
+    const lo = rw(MARK + 3n) - 1n;
     const res = await buildRedeemTx({ ...base, lucid, ...at(lo, lo + 1_000n), ...drip });
     expect(res.currentEpoch).toBe(MARK + 2n);
     expect(res.vested).toBe(2n * PER_WINDOW);
@@ -1207,8 +1270,8 @@ describe("buildRedeemTx — vested = min(E, isqrt(dpe²·E·A_span²))", () => {
 
   it("đầu TRÊN không vào phép tính — hi ở cửa sổ sau vẫn tính theo cửa sổ của lo", async () => {
     const { lucid } = mockLucid(OWNER_ADDR);
-    const lo = (MARK + 1n) * REDEEM_MSPE + 5n;
-    const res = await buildRedeemTx({ ...base, lucid, ...at(lo, (MARK + 4n) * REDEEM_MSPE), ...drip });
+    const lo = rw(MARK + 1n) + 5n;
+    const res = await buildRedeemTx({ ...base, lucid, ...at(lo, rw(MARK + 4n)), ...drip });
     expect(res.currentEpoch).toBe(MARK + 1n);
     expect(res.vested).toBe(PER_WINDOW);
   });
@@ -1225,9 +1288,25 @@ describe("buildRedeemTx — vested = min(E, isqrt(dpe²·E·A_span²))", () => {
       .rejects.toThrow(/REDEEM-016/);
   });
 
+  it("REDEEM-020/021: thiếu windowOriginMs hoặc validFromMs trước gốc ⇒ từ chối", async () => {
+    const { lucid } = mockLucid(OWNER_ADDR);
+    await expect(buildRedeemTx({ ...base, lucid, ...redeemAt(MARK + 1n), windowOriginMs: undefined as unknown as bigint, ...drip }))
+      .rejects.toThrow(/REDEEM-020/);
+    await expect(buildRedeemTx({ ...base, lucid, ...at(ORIGIN - 1n, ORIGIN + 1_000n), ...drip }))
+      .rejects.toThrow(/REDEEM-021/);
+  });
+
+  it("gốc THẬT phân biệt được bản quên trừ gốc: cùng mốc, gốc 0 ⇒ cửa sổ khác hẳn", async () => {
+    const { lucid } = mockLucid(OWNER_ADDR);
+    const p = redeemAt(MARK + 2n);
+    const res = await buildRedeemTx({ ...base, lucid, ...p, ...drip });
+    expect(res.currentEpoch).toBe(MARK + 2n);
+    expect(p.validFromMs / REDEEM_MSPE).not.toBe(MARK + 2n);   // lưới 1970 cũ cho số khác
+  });
+
   it("REDEEM-017: validToMs == validFromMs (khoảng rỗng) — và biên +1 ms thì qua", async () => {
     const { lucid } = mockLucid(OWNER_ADDR);
-    const lo = (MARK + 1n) * REDEEM_MSPE;
+    const lo = rw(MARK + 1n);
     await expect(buildRedeemTx({ ...base, lucid, ...at(lo, lo), ...drip }))
       .rejects.toThrow(/REDEEM-017/);
     await expect(buildRedeemTx({ ...base, lucid, ...at(lo, lo + 1n), ...drip }))

@@ -21,7 +21,7 @@
 
 import { Data } from "@lucid-evolution/lucid";
 import {
-  NETWORK, DROP_ASSET_NAME, TREASURY_NFT_ASSET_NAME, MS_PER_EPOCH,
+  NETWORK, DROP_ASSET_NAME, TREASURY_NFT_ASSET_NAME, MS_PER_EPOCH, windowOrigin,
   makeLucid, walletPkh, loadDeployed, reapplyValidators,
   toUnit, explorerTx, awaitTx,
 } from "./config.js";
@@ -177,7 +177,7 @@ async function grantFor(args: {
 
   // `exactOptionalPropertyTypes`: thêm khoá bằng spread có điều kiện, không gán undefined.
   const treasuryUtxo = await findTreasury(lucid, args.treasuryAddress, args.trsyUnit);
-  const w = windowNow(MS_PER_EPOCH, e);
+  const w = windowNow(MS_PER_EPOCH, windowOrigin(), e);
   const res = await buildClaimTx({
     lucid, claimScript: args.claimScript, network: NETWORK,
     ownerPkh, amount,
@@ -193,7 +193,7 @@ async function grantFor(args: {
       datum: args.beacon,
     },
     committeeKeyHashes: args.committee, threshold: args.threshold,
-    ...grantTimeParams(w, MS_PER_EPOCH),   // Luật 2b: hai đầu cùng cửa sổ (CREATE-002 áp cả UPDATE)
+    ...grantTimeParams(w, MS_PER_EPOCH, windowOrigin()),   // Luật 2b: hai đầu cùng cửa sổ (CREATE-002 áp cả UPDATE)
   });
   console.log(res.summary);
   await submit(lucid, res.tx, `grant ${label}`);
@@ -229,7 +229,7 @@ async function main(): Promise<void> {
 
   // Cửa sổ của CẢ lượt chạy. Mọi bước dựng tx lấy lại cặp lo/hi qua `windowNow`, ném
   // WINDOW-001 nếu cửa sổ đã sang trang — kế hoạch tính ở đây sẽ không còn đúng nữa.
-  const e = epochWindow(MS_PER_EPOCH).epoch;
+  const e = epochWindow(MS_PER_EPOCH, windowOrigin()).epoch;
   console.log(`Network: ${NETWORK}   cửa sổ epoch validator: ${e}`);
   console.log(`Committee: ${committee.length} keys (threshold ${threshold}, source ${state.committee.source})`);
 
@@ -271,8 +271,8 @@ async function main(): Promise<void> {
   // ════════════════════════════════════════════════════════════
   console.log("\n── b. Post DropParam beacon (chỉ số cộng dồn) ──");
   const beaconPlan = planBeacon({
-    onChain: beaconBefore, window: windowNow(MS_PER_EPOCH, e),
-    rateRoot: RATE_ROOT, msPerEpoch: MS_PER_EPOCH,
+    onChain: beaconBefore, window: windowNow(MS_PER_EPOCH, windowOrigin(), e),
+    rateRoot: RATE_ROOT, msPerEpoch: MS_PER_EPOCH, windowOriginMs: windowOrigin(),
   });
   if (beaconPlan.action === "skip") {
     console.log(`   BỎ QUA — cửa sổ ${e} đã có lượt post (C-BCN-2/3: một lượt mỗi cửa sổ).`);
@@ -282,7 +282,7 @@ async function main(): Promise<void> {
       beaconScript, network: NETWORK,
       beaconNftPolicy: state.beaconNftPolicy,
       committeeKeyHashes: committee, threshold,
-      ...beaconPlan.params,   // newBeacon + msPerEpoch + currentBeacon
+      ...beaconPlan.params,   // newBeacon + msPerEpoch + windowOriginMs + currentBeacon
     });
     console.log(postD.summary);
     await submit(lucid, postD.tx, "post DropParam");
@@ -342,7 +342,7 @@ async function main(): Promise<void> {
     claimAccountUtxo: accA1, claimScript,
     treasuryUtxo: treasuryU, treasuryScript,
     dropBeaconUtxo: dropBeacon,
-    ...redeemTimeParams(windowNow(MS_PER_EPOCH, e), MS_PER_EPOCH),
+    ...redeemTimeParams(windowNow(MS_PER_EPOCH, windowOrigin(), e), MS_PER_EPOCH, windowOrigin()),
     lampPolicyId: state.testLamp.policyId, lampAssetName: state.testLamp.assetName,
     treasuryNftPolicy,
   });

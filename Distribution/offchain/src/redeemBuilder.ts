@@ -41,7 +41,7 @@ import {
   credentialToAddress, scriptHashToCredential, validatorToScriptHash, getAddressDetails,
   type LucidEvolution, type UTxO, type Validator, type TxSignBuilder,
 } from "@lucid-evolution/lucid";
-import type { Network } from "@magiclamp/utils";
+import { windowIndex, type Network } from "@magiclamp/utils";
 
 import type { ClaimAccountDatum, TreasuryDatum } from "./types.js";
 import {
@@ -82,14 +82,21 @@ export interface RedeemParams {
    * ms mỗi cửa sổ — PHẢI khớp `ms_per_epoch` đã apply vào `claim_account` (Preview/Preprod
    * canonical: xem `MS_PER_EPOCH` của runner đang dùng). Builder KHÔNG đo được giá trị đã
    * nướng trong `claimScript` (tham số đã apply nằm trong CBOR) — truyền lệch thì cửa sổ
-   * suy ra lệch, và giao dịch bị từ chối. `epochWindow(msPerEpoch)` trong `constants.ts`
+   * suy ra lệch, và giao dịch bị từ chối. `epochWindow(msPerEpoch, windowOriginMs)` trong `constants.ts`
    * trả cặp `validFromMs`/`validToMs` dùng thẳng được.
    */
   msPerEpoch:       bigint;
 
   /**
+   * `window_origin_ms` đã apply vào `claim_account` (Specs/Window/CONTRACT.md v1.0): cửa sổ t
+   * = `(validFromMs − windowOriginMs) / msPerEpoch`. Lấy từ `windowOriginMs(network)` của
+   * `@magiclamp/utils` (Preview ném lỗi). Lệch ⇒ `A(t)` tính ở cửa sổ khác validator ⇒ từ chối.
+   */
+  windowOriginMs:   bigint;
+
+  /**
    * POSIX ms đầu DƯỚI của validity_range — BẮT BUỘC. Cửa sổ t mà builder dùng để tính
-   * `A(t)` được SUY TỪ ĐÂY (`validFromMs / msPerEpoch`, chia sàn), đúng như validator:
+   * `A(t)` được SUY TỪ ĐÂY (`(validFromMs − windowOriginMs) / msPerEpoch`, chia sàn), đúng như validator:
    * `claim_account.ak` nhánh `Redeem` gọi `util.get_epoch` = `lower_bound / ms_per_epoch`.
    *
    * Vì sao không nhận `currentEpoch` rời nữa: hai giá trị rời nhau thì lệch được, và lệch
@@ -146,7 +153,7 @@ export interface RedeemParams {
 
 export interface RedeemResult {
   tx:            TxSignBuilder;
-  /** Cửa sổ t đã dùng để tính `A(t)` — suy từ `validFromMs / msPerEpoch`, không nhận từ caller. */
+  /** Cửa sổ t đã dùng để tính `A(t)` — suy từ `(validFromMs − windowOriginMs) / msPerEpoch`, không nhận từ caller. */
   currentEpoch:  bigint;
   /** Địa chỉ nhận LAMP thật sự được đặt vào giao dịch (đã soát thuộc owner). */
   destination:   string;
@@ -167,17 +174,23 @@ export async function buildRedeemTx(params: RedeemParams): Promise<RedeemResult>
   const {
     lucid, network, claimAccountUtxo, claimScript,
     treasuryUtxo, treasuryScript, dropBeaconUtxo,
-    msPerEpoch, validFromMs, validToMs, lampPolicyId,
+    msPerEpoch, windowOriginMs, validFromMs, validToMs, lampPolicyId,
   } = params;
   const lampAssetName = params.lampAssetName ?? DEFAULT_LAMP_ASSET_NAME;
   const lampUnit = toUnit(lampPolicyId, lampAssetName);
 
   // ── Cửa sổ t: SUY từ đầu dưới validity, không nhận rời ──────────────
-  // Mirror `util.get_epoch` (`lower_bound / ms_per_epoch`, chia sàn trên số không âm) mà
+  // Mirror `util.get_epoch` (`(lower_bound − window_origin_ms) / ms_per_epoch`, chia sàn) mà
   // `claim_account.ak` nhánh `Redeem` dùng (C-RDM-EPOCH). Cùng khuôn với
   // `Allocation/offchain/src/redeemBuilder.ts` (F1+F2).
   if (msPerEpoch <= 0n) {
     throw new Error(`REDEEM-015: msPerEpoch phải > 0, nhận ${msPerEpoch}.`);
+  }
+  if (typeof windowOriginMs !== "bigint" || windowOriginMs < 0n) {
+    throw new Error(
+      `REDEEM-020: windowOriginMs phải là bigint ≥ 0, nhận ${String(windowOriginMs)}. Lấy từ ` +
+      `\`windowOriginMs(network)\` của @magiclamp/utils (Specs/Window/CONTRACT.md v1.0, WIN-ORIGIN-3/4).`,
+    );
   }
   if (validFromMs < 0n) {
     throw new Error(
@@ -191,7 +204,14 @@ export async function buildRedeemTx(params: RedeemParams): Promise<RedeemResult>
       `hiệu lực rỗng không chứa slot nào — sổ cái không bao giờ nhận giao dịch này.`,
     );
   }
-  const currentEpoch = validFromMs / msPerEpoch;   // BigInt chia sàn — mirror get_epoch
+  if (validFromMs < windowOriginMs) {
+    throw new Error(
+      `REDEEM-021: validFromMs (${validFromMs}) trước windowOriginMs (${windowOriginMs}) — không rơi ` +
+      `vào cửa sổ nào (WIN-ORIGIN-1).`,
+    );
+  }
+  // Phép tính cửa sổ nằm ở Utils (`windowIndex`) — mirror get_epoch: (t − o) / m, chia sàn.
+  const currentEpoch = windowIndex(validFromMs, windowOriginMs, msPerEpoch);
 
   // ── Decode ClaimAccount datum ──────────────────────────────────────
   if (!claimAccountUtxo.datum) throw new Error("REDEEM-001: claimAccountUtxo has no inline datum");
@@ -394,7 +414,7 @@ export async function buildRedeemTx(params: RedeemParams): Promise<RedeemResult>
     `Beacon:         index=${beacon.index} rate_root=${beacon.rate_root} epoch=${beacon.epoch}`,
     `A(t):           ${beacon.index + beacon.rate_root * (currentEpoch - beacon.epoch)}` +
       `  −  a₀=${claim.index_at_start}  ⟹  A_span=${span}`,
-    `Cửa sổ:         t=${currentEpoch} = ${validFromMs} / ${msPerEpoch} ` +
+    `Cửa sổ:         t=${currentEpoch} = (${validFromMs} − ${windowOriginMs}) / ${msPerEpoch} ` +
       `(start_epoch=${claim.start_epoch}, KHÔNG vào phép tính)`,
     `Vested(t):      ${vestedNow} oildrop`,
     `Trần một lượt:  ${cap} oildrop (κ=${beacon.trim_num}/${beacon.trim_den}, ` +

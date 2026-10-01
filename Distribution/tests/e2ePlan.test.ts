@@ -24,6 +24,11 @@ import {
   planGrant, planBeacon, planRedeem, accountDatumMismatches,
 } from "../scripts/e2ePlan.js";
 import { lampOildrop, TRIM_FLOOR } from "./helpers.js";
+import { windowOriginMs as windowOriginOf } from "@magiclamp/utils";
+
+// Gốc cửa sổ của bộ kiểm: gốc Mainnet THẬT (Specs/Window/CONTRACT.md v1.0) — không chia hết cho
+// MSPE nên bản quên trừ gốc ra nhãn khác hẳn. Mọi mốc là `ORIGIN + e × MSPE + dịch`.
+const ORIGIN = windowOriginOf("Mainnet");
 
 const MSPE = 432_000_000n;
 const NETWORK = "Preview" as const;
@@ -119,20 +124,20 @@ function accountUtxo(d: ClaimAccountDatum): UTxO {
 // ── Điểm 2: cửa sổ lấy từ epochWindow, lăn qua giữa các bước thì NÉM ──────────
 describe("windowNow — một lượt chạy, một cửa sổ", () => {
   it("cùng cửa sổ: trả đúng epochWindow", () => {
-    const now = 100n * MSPE + MSPE / 2n;
-    expect(windowNow(MSPE, 100n, now)).toEqual(epochWindow(MSPE, now));
+    const now = (ORIGIN + 100n * MSPE) + MSPE / 2n;
+    expect(windowNow(MSPE, ORIGIN, 100n, now)).toEqual(epochWindow(MSPE, ORIGIN, now));
   });
 
   it("ms cuối cùng của cửa sổ vẫn qua; ms kế tiếp NÉM WINDOW-001", () => {
-    expect(windowNow(MSPE, 100n, 101n * MSPE - 1n).epoch).toBe(100n);
-    expect(() => windowNow(MSPE, 100n, 101n * MSPE)).toThrow(/WINDOW-001/);
+    expect(windowNow(MSPE, ORIGIN, 100n, (ORIGIN + 101n * MSPE) - 1n).epoch).toBe(100n);
+    expect(() => windowNow(MSPE, ORIGIN, 100n, (ORIGIN + 101n * MSPE))).toThrow(/WINDOW-001/);
   });
 });
 
 // ── Điểm 1: grant truyền CẢ HAI đầu — nối thẳng vào buildClaimTx ──────────────
 describe("grantTimeParams — builder nhận được, tx mang cặp lo/hi cùng cửa sổ", () => {
   // Giữa cửa sổ: lo = now − 60 s ≠ biên cửa sổ, nên phân biệt được với `epoch · mspe` cũ.
-  const w = epochWindow(MSPE, 100n * MSPE + MSPE / 2n);
+  const w = epochWindow(MSPE, ORIGIN, (ORIGIN + 100n * MSPE) + MSPE / 2n);
 
   it("CREATE: không ném CREATE-002, start_epoch = cửa sổ, validTo = hi", async () => {
     const { lucid, rec } = mockLucid();
@@ -140,7 +145,7 @@ describe("grantTimeParams — builder nhận được, tx mang cặp lo/hi cùng
       lucid, claimScript: FAKE_CLAIM, network: NETWORK, ownerPkh: OWNER, amount: E,
       accountNft: { script: FAKE_ACC_NFT }, treasury: treasury(0n), committeeKeyHashes: COMMITTEE,
       beacon: beaconParam(bcnDatum()),
-      ...grantTimeParams(w, MSPE),
+      ...grantTimeParams(w, MSPE, ORIGIN),
     });
     expect(rec.validFrom).toEqual([Number(w.loMs)]);
     expect(rec.validTo).toEqual([Number(w.hiMs)]);
@@ -156,7 +161,7 @@ describe("grantTimeParams — builder nhận được, tx mang cặp lo/hi cùng
       lucid, claimScript: FAKE_CLAIM, network: NETWORK, ownerPkh: OWNER, amount: E,
       accountNft: { script: FAKE_ACC_NFT }, treasury: treasury(0n), committeeKeyHashes: COMMITTEE,
       beacon: beaconParam(b),
-      ...grantTimeParams(w, MSPE),
+      ...grantTimeParams(w, MSPE, ORIGIN),
     });
     expect(res.newDatum.index_at_start).toBe(beaconIndexAt(b, w.epoch));
     expect(res.newDatum.index_at_start).not.toBe(b.index);
@@ -169,27 +174,28 @@ describe("grantTimeParams — builder nhận được, tx mang cặp lo/hi cùng
       lucid, claimScript: FAKE_CLAIM, network: NETWORK, ownerPkh: OWNER, amount: E,
       claimAccountUtxo: accountUtxo(prev), treasury: treasury(prev.entitlement),
       committeeKeyHashes: COMMITTEE, beacon: beaconParam(bcnDatum()),
-      ...grantTimeParams(w, MSPE),
+      ...grantTimeParams(w, MSPE, ORIGIN),
     });
     expect(rec.validTo).toEqual([Number(w.hiMs)]);
   });
 
   it("redeemTimeParams: đầu dưới nằm TRONG cửa sổ (≥ biên), không phải epoch·mspe cố định", () => {
-    const r = redeemTimeParams(w, MSPE);
+    const r = redeemTimeParams(w, MSPE, ORIGIN);
     expect(r.validFromMs).toBe(w.loMs);
     expect(r.validToMs).toBe(w.hiMs);
     expect(r.msPerEpoch).toBe(MSPE);
     // Cửa sổ builder sẽ suy ra từ đầu dưới PHẢI là cửa sổ của kế hoạch.
-    expect(r.validFromMs / r.msPerEpoch).toBe(w.epoch);
+    expect((r.validFromMs - r.windowOriginMs) / r.msPerEpoch).toBe(w.epoch);
+    expect(r.windowOriginMs).toBe(ORIGIN);
   });
 });
 
 // ── Điểm 4: beacon mang msPerEpoch + beacon cũ ───────────────────────────────
 describe("planBeacon — nhãn = cửa sổ, chỉ số mới SINH RA từ beacon cũ", () => {
   it("cửa sổ chưa post: kế hoạch post, builder đặt lo/hi (msPerEpoch đã truyền)", async () => {
-    const w = epochWindow(MSPE);
+    const w = epochWindow(MSPE, ORIGIN);
     const onChain = bcnDatum({ epoch: w.epoch - 1n });
-    const plan = planBeacon({ onChain, window: w, rateRoot: RATE, msPerEpoch: MSPE });
+    const plan = planBeacon({ onChain, window: w, rateRoot: RATE, msPerEpoch: MSPE, windowOriginMs: ORIGIN });
     expect(plan.action).toBe("post");
     if (plan.action !== "post") return;
     expect(plan.params.currentBeacon).toEqual(onChain);
@@ -203,18 +209,18 @@ describe("planBeacon — nhãn = cửa sổ, chỉ số mới SINH RA từ beaco
 
   it("C-BCN-6: `index` mới = index cũ + rate_root CŨ · số cửa sổ trôi qua", () => {
     // Quá khứ được định giá bằng tốc độ CŨ, kể cả khi lượt post này nâng tốc độ.
-    const w = epochWindow(MSPE);
+    const w = epochWindow(MSPE, ORIGIN);
     const onChain = bcnDatum({ epoch: w.epoch - 3n, index: 42n, rate_root: 1_000n });
-    const plan = planBeacon({ onChain, window: w, rateRoot: 1_100n, msPerEpoch: MSPE });
+    const plan = planBeacon({ onChain, window: w, rateRoot: 1_100n, msPerEpoch: MSPE, windowOriginMs: ORIGIN });
     if (plan.action !== "post") throw new Error("kỳ vọng post");
     expect(plan.params.newBeacon.index).toBe(42n + 1_000n * 3n);   // KHÔNG dùng 1.100
     expect(plan.params.newBeacon.rate_root).toBe(1_100n);
   });
 
   it("κ mặc định MANG THEO từ beacon cũ — lượt post thường không được đổi trần", () => {
-    const w = epochWindow(MSPE);
+    const w = epochWindow(MSPE, ORIGIN);
     const onChain = bcnDatum({ epoch: w.epoch - 1n, trim_num: 3n, trim_den: 7n });
-    const plan = planBeacon({ onChain, window: w, rateRoot: RATE, msPerEpoch: MSPE });
+    const plan = planBeacon({ onChain, window: w, rateRoot: RATE, msPerEpoch: MSPE, windowOriginMs: ORIGIN });
     if (plan.action !== "post") throw new Error("kỳ vọng post");
     expect(plan.params.newBeacon.trim_num).toBe(3n);
     expect(plan.params.newBeacon.trim_den).toBe(7n);
@@ -222,9 +228,9 @@ describe("planBeacon — nhãn = cửa sổ, chỉ số mới SINH RA từ beaco
 
   // Ca phủ định: lỗi luật C-BCN-5a phải ĐI RA, không bị kế hoạch nuốt hay né.
   it("rate_root lệch > 10% so với trên chuỗi: builder ném BEACON-005", async () => {
-    const w = epochWindow(MSPE);
+    const w = epochWindow(MSPE, ORIGIN);
     const onChain = bcnDatum({ epoch: w.epoch - 1n });
-    const plan = planBeacon({ onChain, window: w, rateRoot: RATE * 12n / 10n, msPerEpoch: MSPE });
+    const plan = planBeacon({ onChain, window: w, rateRoot: RATE * 12n / 10n, msPerEpoch: MSPE, windowOriginMs: ORIGIN });
     if (plan.action !== "post") throw new Error("kỳ vọng post");
     const { lucid } = mockLucid();
     await expect(buildPostBeaconTx({
@@ -236,9 +242,9 @@ describe("planBeacon — nhãn = cửa sổ, chỉ số mới SINH RA từ beaco
   it("rate_root HẠ: builder ném BEACON-008 (C-BCN-5' một chiều)", async () => {
     // Chiều này mới là chiều viết lại quá khứ, và nó KHÔNG bị ±10% bắt — `abs_diff` của v2
     // đối xứng nên nó cho phép hạ 10% mỗi lượt. Đây là ca ghim chỗ đó.
-    const w = epochWindow(MSPE);
+    const w = epochWindow(MSPE, ORIGIN);
     const onChain = bcnDatum({ epoch: w.epoch - 1n });
-    const plan = planBeacon({ onChain, window: w, rateRoot: RATE * 95n / 100n, msPerEpoch: MSPE });
+    const plan = planBeacon({ onChain, window: w, rateRoot: RATE * 95n / 100n, msPerEpoch: MSPE, windowOriginMs: ORIGIN });
     if (plan.action !== "post") throw new Error("kỳ vọng post");
     const { lucid } = mockLucid();
     await expect(buildPostBeaconTx({
@@ -248,15 +254,15 @@ describe("planBeacon — nhãn = cửa sổ, chỉ số mới SINH RA từ beaco
   });
 
   it("cửa sổ này đã post: bỏ qua (C-BCN-2/3 chỉ cho một lượt mỗi cửa sổ)", () => {
-    const w = epochWindow(MSPE, 100n * MSPE + 1n);
-    const plan = planBeacon({ onChain: bcnDatum({ epoch: 100n }), window: w, rateRoot: RATE, msPerEpoch: MSPE });
+    const w = epochWindow(MSPE, ORIGIN, (ORIGIN + 100n * MSPE) + 1n);
+    const plan = planBeacon({ onChain: bcnDatum({ epoch: 100n }), window: w, rateRoot: RATE, msPerEpoch: MSPE, windowOriginMs: ORIGIN });
     expect(plan.action).toBe("skip");
   });
 
   it("nhãn trên chuỗi ở TƯƠNG LAI: ném E2E-BCN-001, không bỏ qua im lặng", () => {
-    const w = epochWindow(MSPE, 100n * MSPE + 1n);
+    const w = epochWindow(MSPE, ORIGIN, (ORIGIN + 100n * MSPE) + 1n);
     expect(() => planBeacon({
-      onChain: bcnDatum({ epoch: 101n }), window: w, rateRoot: RATE, msPerEpoch: MSPE,
+      onChain: bcnDatum({ epoch: 101n }), window: w, rateRoot: RATE, msPerEpoch: MSPE, windowOriginMs: ORIGIN,
     })).toThrow(/E2E-BCN-001/);
   });
 });
@@ -266,7 +272,7 @@ describe("planGrant — CREATE / TOPUP rebase / bỏ qua khi còn phần rút đ
   const B = bcnDatum({ epoch: 97n });      // beacon cũ hơn cửa sổ ⇒ A(t) ≠ index
 
   it("chưa có tài khoản: CREATE, datum kỳ vọng = builder", async () => {
-    const w = epochWindow(MSPE, 100n * MSPE + 5_000n);
+    const w = epochWindow(MSPE, ORIGIN, (ORIGIN + 100n * MSPE) + 5_000n);
     const plan = planGrant({
       account: null, ownerPkh: OWNER.toUpperCase(), amount: E,
       beacon: B, treasury: treDatum(0n), windowEpoch: w.epoch,
@@ -278,7 +284,7 @@ describe("planGrant — CREATE / TOPUP rebase / bỏ qua khi còn phần rút đ
       lucid, claimScript: FAKE_CLAIM, network: NETWORK, ownerPkh: OWNER, amount: E,
       accountNft: { script: FAKE_ACC_NFT }, treasury: treasury(0n), committeeKeyHashes: COMMITTEE,
       beacon: beaconParam(B),
-      ...grantTimeParams(w, MSPE),
+      ...grantTimeParams(w, MSPE, ORIGIN),
     });
     // `accountDatumMismatches` nay so CẢ `index_at_start` — nếu kế hoạch và builder tính mốc
     // chỉ số ở hai chỗ khác nhau thì chính ca này đỏ.
@@ -307,7 +313,7 @@ describe("planGrant — CREATE / TOPUP rebase / bỏ qua khi còn phần rút đ
   });
 
   it("đã rút TRỌN (E == redeemed): TOPUP mở lô mới từ cửa sổ này, datum kỳ vọng = builder", async () => {
-    const w = epochWindow(MSPE, 100n * MSPE + 5_000n);
+    const w = epochWindow(MSPE, ORIGIN, (ORIGIN + 100n * MSPE) + 5_000n);
     const prev = account({ index_at_start: beaconIndexAt(B, 90n), redeemed: E });
     const plan = planGrant({
       account: prev, ownerPkh: OWNER, amount: E,
@@ -324,7 +330,7 @@ describe("planGrant — CREATE / TOPUP rebase / bỏ qua khi còn phần rút đ
       lucid, claimScript: FAKE_CLAIM, network: NETWORK, ownerPkh: OWNER, amount: E,
       claimAccountUtxo: accountUtxo(prev), treasury: treasury(prev.entitlement - prev.redeemed),
       committeeKeyHashes: COMMITTEE, beacon: beaconParam(B),
-      ...grantTimeParams(w, MSPE),
+      ...grantTimeParams(w, MSPE, ORIGIN),
     });
     expect(accountDatumMismatches(plan.expected, res.newDatum)).toEqual([]);
   });

@@ -1,6 +1,8 @@
 // LampDistribution constants — CONTRACT v2 "Capped Drop".
 // ALL arithmetic BigInt. Đơn vị oildrop. 1 LAMP = 10^6 oildrop.
 
+import { windowBounds } from "@magiclamp/utils";
+
 /** oildrop mỗi LAMP. */
 export const OILDROP_PER_LAMP = 1_000_000n;
 
@@ -90,9 +92,15 @@ export const DROPS_PER_EPOCH_PINNED = 1n;
  *
  * Cùng khuôn với `drawWindow` bên Genesis (`scripts/_reserve_layer2.ts`) — ở đó gọi là
  * "Luật 2b" của `reserve_draw`. Hai nơi, một luật; đây là bản của Distribution.
+ *
+ * Phép tính cửa sổ (`(t − windowOriginMs) / msPerEpoch`, biên đầu/cuối) KHÔNG viết ở đây — nó
+ * nằm ở MỘT nơi, `Utils/src/index.ts` ▸ `windowBounds` (Specs/Window/CONTRACT.md v1.0,
+ * WIN-ORIGIN-1/2). Hàm này chỉ thêm phần riêng của giao dịch: lùi `lo` cho lệch đồng hồ và kẹp
+ * `hi` bằng TTL. `windowOriginMs` lấy từ `windowOriginMs(network)` của Utils (Preview ném lỗi).
  */
 export function epochWindow(
   msPerEpoch: bigint,
+  windowOriginMs: bigint,
   nowMs: bigint = BigInt(Date.now()),
 ): { loMs: bigint; hiMs: bigint; epoch: bigint } {
   // Bản trước suy cửa sổ từ `lo = now − 60s` chứ không từ `now`, và nó hỏng ở hai dải,
@@ -112,14 +120,13 @@ export function epochWindow(
   }
   // Cửa sổ suy từ `now`. Đây là đại lượng đúng: nhãn phải nói về cửa sổ mà giao dịch
   // THẬT SỰ chạy trong, không về cửa sổ mà cái đệm đồng hồ rơi vào.
-  const epoch = nowMs / msPerEpoch;
-  const windowStart = epoch * msPerEpoch;
+  const { epoch, startMs: windowStart, endMs: windowEnd } = windowBounds(nowMs, windowOriginMs, msPerEpoch);
   // Lùi 60 s cho lệch đồng hồ node/máy dựng — nhưng KẸP trong cửa sổ, không để nó đẩy
   // `lo` sang cửa sổ trước.
   const backdated = nowMs - 60_000n;
   const loMs = backdated > windowStart ? backdated : windowStart;
-  // Hết cửa sổ, trừ 1 ms: `get_epoch_strict` ép `hi / mspe == lo / mspe`, mà
-  // `(e+1)·mspe` chia ra `e+1`. Bản trước trừ 1000 ms và đó là nguồn của vùng chết ~1 s
+  // `windowEnd` = hết cửa sổ, trừ 1 ms: `get_epoch_strict` ép `(hi − o) / mspe == (lo − o) / mspe`,
+  // mà `o + (e+1)·mspe` chia ra `e+1`. Bản trước trừ 1000 ms và đó là nguồn của vùng chết ~1 s
   // ở cuối mỗi cửa sổ.
   //
   //
@@ -128,7 +135,6 @@ export function epochWindow(
   // thật một lần (`Faucet/scripts/demo_reserve_draw_resume.ts`, dòng đầu tệp). Bản trước đặt
   // đầu trên ở cuối cửa sổ, tức tới gần 5 ngày sau `now` với cửa sổ 5 ngày. TTL 1 giờ thay vì
   // 90 s như `drawWindow` cũ: giao dịch ở đây cần đủ chữ ký committee mới gửi được.
-  const windowEnd = (epoch + 1n) * msPerEpoch - 1n;
   const ttlEnd = nowMs + WINDOW_TTL_MS;
   const hiMs = windowEnd < ttlEnd ? windowEnd : ttlEnd;
   return { loMs, hiMs, epoch };

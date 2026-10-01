@@ -4,7 +4,7 @@ import {
   getTipSlot, getCurrentEpoch, ChainTimeError, CHAIN_TIME_ERRORS,
   GENESIS_UNIX, SHELLEY_START_BY_NETWORK,
   slotToEpoch, slotToPosixMs, slotToProtocolEpoch, estimateSlotFromClock,
-  posixMsToEpoch, MS_PER_SLOT,
+  windowOf, MS_PER_SLOT,
 } from "../src/index.js";
 import type { Network } from "../src/index.js";
 
@@ -96,17 +96,27 @@ describe("slot conversions", () => {
     expectCode(() => slotToEpoch(-1n, "Preview"), CHAIN_TIME_ERRORS.PRE_SHELLEY);
   });
 
-  it("slotToProtocolEpoch is the validator's system (posixMs / ms_per_epoch), not the chain epoch", () => {
-    // A Preprod slot in late 2026-09.
+  it("slotToProtocolEpoch = windowOf(time) = the CHAIN epoch on Preprod/Mainnet (Specs/Window v1.0)", () => {
+    // A Preprod slot in late 2026-09: the old 1970-origin system said 4_144; the window index
+    // is now the epoch number the explorers show.
     const nowMs = 1_790_467_200_000n;
     const slot = estimateSlotFromClock(nowMs, "Preprod");
-    expect(slotToProtocolEpoch(slot, "Preprod")).toBe(posixMsToEpoch(nowMs, "Preprod"));
-    expect(slotToProtocolEpoch(slot, "Preprod")).toBe(4_144n);
+    expect(slotToProtocolEpoch(slot, "Preprod")).toBe(windowOf(nowMs, "Preprod"));
+    expect(slotToProtocolEpoch(slot, "Preprod")).toBe(315n);
     expect(slotToEpoch(slot, "Preprod")).toBe(315n);
-    // Mainnet at the same instant: chain epoch 658 (explorer), protocol epoch 4_144.
+    // Mainnet at the same instant: chain epoch 658 (explorer) = window index.
     const mSlot = estimateSlotFromClock(nowMs, "Mainnet");
     expect(slotToEpoch(mSlot, "Mainnet")).toBe(658n);
-    expect(slotToProtocolEpoch(mSlot, "Mainnet")).toBe(4_144n);
+    expect(slotToProtocolEpoch(mSlot, "Mainnet")).toBe(658n);
+  });
+
+  it("slotToProtocolEpoch === slotToEpoch for every Shelley slot sampled (both networks)", () => {
+    for (const n of ["Preprod", "Mainnet"] as const) {
+      const s = SHELLEY_START_BY_NETWORK[n];
+      for (const k of [0n, 1n, 431_999n, 432_000n, 432_001n, 123_456_789n]) {
+        expect(slotToProtocolEpoch(s.slot + k, n)).toBe(slotToEpoch(s.slot + k, n));
+      }
+    }
   });
 });
 

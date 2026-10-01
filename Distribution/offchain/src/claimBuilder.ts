@@ -32,7 +32,7 @@ import {
   credentialToAddress, scriptHashToCredential, validatorToScriptHash,
   type LucidEvolution, type UTxO, type Validator, type MintingPolicy, type TxSignBuilder,
 } from "@lucid-evolution/lucid";
-import type { Network } from "@magiclamp/utils";
+import { windowIndex, type Network } from "@magiclamp/utils";
 
 import type { BeaconDatum, ClaimAccountDatum, TreasuryDatum } from "./types.js";
 import {
@@ -61,6 +61,14 @@ export interface ClaimParams {
    * `start_epoch` suy ra lệch, và giao dịch bị từ chối (C-CLAIM-6 / C-ACC-2).
    */
   msPerEpoch:   bigint;
+
+  /**
+   * `window_origin_ms` đã apply vào `claim_account`/`treasury` (Specs/Window/CONTRACT.md v1.0):
+   * cửa sổ = `(t − windowOriginMs) / msPerEpoch`. Lấy từ `windowOriginMs(network)` của
+   * `@magiclamp/utils` — Preview ném lỗi, không có giá trị. Truyền lệch thì `start_epoch`
+   * suy ra lệch và giao dịch bị từ chối (hoặc, tệ hơn, ghi một nhãn cửa sổ khác thật).
+   */
+  windowOriginMs: bigint;
 
   /**
    * ClaimAccount UTxO hiện tại của owner (UPDATE path). Bỏ trống → CREATE path
@@ -164,7 +172,7 @@ export interface ClaimParams {
 
   /**
    * POSIX ms đầu DƯỚI của validity_range — BẮT BUỘC. Cửa sổ ghi vào `start_epoch` và cửa sổ
-   * dùng để tính `index_at_start = A(cửa sổ)` đều SUY từ đây (`validFromMs / msPerEpoch`),
+   * dùng để tính `index_at_start = A(cửa sổ)` đều SUY từ đây (`(validFromMs − windowOriginMs) / msPerEpoch`),
    * đúng như `util.get_epoch_strict` mà `claim_account.ak` (C-CLAIM-6) và `treasury.ak`
    * (C-ACC-2/3) dùng.
    *
@@ -177,13 +185,13 @@ export interface ClaimParams {
 
   /**
    * POSIX ms cho upper_bound validity_range — BẮT BUỘC, và phải rơi CÙNG cửa sổ với
-   * `validFromMs` (`validToMs / msPerEpoch == validFromMs / msPerEpoch`, CLAIM-043).
+   * `validFromMs` (`(validToMs − o) / msPerEpoch == (validFromMs − o) / msPerEpoch`, CLAIM-043).
    *
    * Trước bản vá Issue #72 chỉ có đầu dưới, và đầu dưới MỘT MÌNH không chứng minh được
    * `start_epoch` là cửa sổ thật: sổ cái nhận tx khi `lower ≤ now`, nên `lower` đặt lùi
    * bao xa cũng hợp lệ. Validator nay ép CẢ HAI đầu rơi cùng cửa sổ ("Luật 2b").
    *
-   * Lấy cặp lo/hi bằng `epochWindow(msPerEpoch)` trong `constants.ts` — nó kéo `hi` về sát
+   * Lấy cặp lo/hi bằng `epochWindow(msPerEpoch, windowOriginMs)` trong `constants.ts` — nó kéo `hi` về sát
    * cuối cửa sổ khi khoảng mặc định vắt qua biên epoch. Tự đặt tay thì mấy lần mỗi chu kỳ
    * sẽ có một tx bị từ chối mà không có gì nói vì sao.
    */
@@ -195,7 +203,7 @@ export interface ClaimResult {
   claimAddress:     string;
   newDatum:         ClaimAccountDatum;
   mode:             "create" | "update";
-  /** Cửa sổ đã ghi vào `start_epoch` — suy từ `validFromMs / msPerEpoch`, không nhận từ caller. */
+  /** Cửa sổ đã ghi vào `start_epoch` — suy từ `(validFromMs − windowOriginMs) / msPerEpoch`, không nhận từ caller. */
   currentEpoch:     bigint;
   /** Treasury datum mới (outstanding_entitlement += amount). Luôn có — treasury co-spend
    *  là BẮT BUỘC, xem `ClaimParams.treasury`. */
@@ -235,7 +243,7 @@ export function assertClaimSolvency(
 
 export async function buildClaimTx(params: ClaimParams): Promise<ClaimResult> {
   const {
-    lucid, claimScript, network, ownerPkh, amount, msPerEpoch, validFromMs, validToMs,
+    lucid, claimScript, network, ownerPkh, amount, msPerEpoch, windowOriginMs, validFromMs, validToMs,
     claimAccountUtxo, committeeKeyHashes, beacon,
   } = params;
 
@@ -244,6 +252,13 @@ export async function buildClaimTx(params: ClaimParams): Promise<ClaimResult> {
   // `undefined < 0n` trả false — chốt chỉ so dấu sẽ cho qua đúng ca thiếu.
   if (typeof msPerEpoch !== "bigint" || msPerEpoch <= 0n) {
     throw new Error(`CLAIM-040: msPerEpoch phải là bigint > 0, nhận ${String(msPerEpoch)}.`);
+  }
+  if (typeof windowOriginMs !== "bigint" || windowOriginMs < 0n) {
+    throw new Error(
+      `CLAIM-044: windowOriginMs phải là bigint ≥ 0, nhận ${String(windowOriginMs)}. Thiếu nó thì ` +
+      "cửa sổ bị chia từ gốc Unix — lưới cũ mà mọi validator có tham số `window_origin_ms` đã bỏ " +
+      "(Specs/Window/CONTRACT.md v1.0). Lấy từ `windowOriginMs(network)` của `@magiclamp/utils`.",
+    );
   }
   if (typeof validFromMs !== "bigint" || validFromMs < 0n) {
     throw new Error(
@@ -257,7 +272,7 @@ export async function buildClaimTx(params: ClaimParams): Promise<ClaimResult> {
       `CREATE-002: đường ${claimAccountUtxo ? "UPDATE" : "CREATE"} thiếu \`validToMs\`. C-ACC-2/C-ACC-3 (treasury.ak) ép cả hai đầu ` +
         "validity_range rơi cùng một cửa sổ epoch — đầu dưới một mình đặt lùi bao xa cũng " +
         "hợp lệ với sổ cái, nên nó không ghim được `start_epoch`. Lấy cặp lo/hi bằng " +
-        "`epochWindow(msPerEpoch)` trong `constants.ts`.",
+        "`epochWindow(msPerEpoch, windowOriginMs)` trong `constants.ts`.",
     );
   }
   if (validToMs <= validFromMs) {
@@ -266,12 +281,20 @@ export async function buildClaimTx(params: ClaimParams): Promise<ClaimResult> {
       "hiệu lực rỗng không chứa slot nào — sổ cái không bao giờ nhận giao dịch này.",
     );
   }
-  const currentEpoch = validFromMs / msPerEpoch;   // BigInt chia sàn — mirror get_epoch_strict
-  if (validToMs / msPerEpoch !== currentEpoch) {
+  if (validFromMs < windowOriginMs) {
+    throw new Error(
+      `CLAIM-045: validFromMs (${validFromMs}) trước windowOriginMs (${windowOriginMs}) — không rơi vào ` +
+      "cửa sổ nào (WIN-ORIGIN-1). Thường là đưa giờ giả/giờ nhỏ vào một mạng có gốc cửa sổ thật.",
+    );
+  }
+  // Phép tính cửa sổ nằm ở Utils (`windowIndex`) — mirror get_epoch_strict: (t − o) / m, chia sàn.
+  const currentEpoch = windowIndex(validFromMs, windowOriginMs, msPerEpoch);
+  const hiEpoch = validToMs >= windowOriginMs ? windowIndex(validToMs, windowOriginMs, msPerEpoch) : -1n;
+  if (hiEpoch !== currentEpoch) {
     throw new Error(
       `CLAIM-043: hai đầu validity rơi hai cửa sổ khác nhau (lo ⇒ ${currentEpoch}, hi ⇒ ` +
-      `${validToMs / msPerEpoch}). \`util.get_epoch_strict\` ép chúng bằng nhau ("Luật 2b") ` +
-      "— kéo `hi` về trước biên cửa sổ, hoặc dùng `epochWindow(msPerEpoch)`.",
+      `${hiEpoch}). \`util.get_epoch_strict\` ép chúng bằng nhau ("Luật 2b") ` +
+      "— kéo `hi` về trước biên cửa sổ, hoặc dùng `epochWindow(msPerEpoch, windowOriginMs)`.",
     );
   }
 
@@ -519,7 +542,7 @@ export async function buildClaimTx(params: ClaimParams): Promise<ClaimResult> {
     `Amount:       ${amount / 1_000_000n} LAMP (${amount} oildrop)`,
     `Entitlement:  ${newDatum.entitlement} oildrop`,
     `Redeemed:     ${newDatum.redeemed} oildrop`,
-    `Start epoch:  ${newDatum.start_epoch} = ${validFromMs} / ${msPerEpoch}  · drops/epoch ${newDatum.drops_per_epoch}`,
+    `Start epoch:  ${newDatum.start_epoch} = (${validFromMs} − ${windowOriginMs}) / ${msPerEpoch}  · drops/epoch ${newDatum.drops_per_epoch}`,
     `Committee:    ${signers.length}/${committeeKeyHashes.length} signers (need ${threshold})`,
     `Outstanding:  ${newTreasuryDatum.outstanding_entitlement} oildrop (sổ cái nợ sau Claim)`,
     `Claim addr:   ${claimAddress}`,
