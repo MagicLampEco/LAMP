@@ -81,20 +81,25 @@ pub fn get_finite(bt: IntervalBoundType) -> Option<Int> {
   }
 }
 
-pub fn get_epoch(tx: Transaction, ms_per_epoch: Int) -> Int {
+/// `(t − window_origin_ms) / ms_per_epoch` — WIN-ORIGIN-1 (Specs/Window/CONTRACT.md v1.0).
+pub fn get_epoch(tx: Transaction, ms_per_epoch: Int, window_origin_ms: Int) -> Int {
   let IntervalBound { bound_type, .. } = tx.validity_range.lower_bound
   expect Some(s) = get_finite(bound_type)
-  s / ms_per_epoch
+  ( s - window_origin_ms ) / ms_per_epoch
 }
 
 /// Epoch suy từ UPPER bound của validity_range (mirror get_epoch nhưng biên trên).
 /// Dùng cho ràng buộc dạng "tx xảy ra TRƯỚC khi đóng" (epoch < close): phải lấy biên
 /// TRÊN của khoảng để đảm bảo TOÀN BỘ khoảng nằm trước mốc đóng (audit Finding 4 —
 /// lower_bound sai hướng cho '<', lọt vote tại epoch đóng). Bound trên hữu hạn bắt buộc.
-pub fn get_epoch_upper(tx: Transaction, ms_per_epoch: Int) -> Int {
+pub fn get_epoch_upper(
+  tx: Transaction,
+  ms_per_epoch: Int,
+  window_origin_ms: Int,
+) -> Int {
   let IntervalBound { bound_type, .. } = tx.validity_range.upper_bound
   expect Some(s) = get_finite(bound_type)
-  s / ms_per_epoch
+  ( s - window_origin_ms ) / ms_per_epoch
 }
 
 /// Epoch CỦA GIAO DỊCH (`e`) — khuôn bị chặn HAI ĐẦU: cả hai biên của
@@ -108,9 +113,13 @@ pub fn get_epoch_upper(tx: Transaction, ms_per_epoch: Int) -> Int {
 /// kêu. Với khuôn hai-đầu thì `e` là MỘT số, nên tính rời nhau của hai cửa sổ
 /// (`e < close` so với `e >= close`) là hiển nhiên theo số học.
 /// Mirror `Distribution/onchain/lib/magiclamp/lampdist/util.ak` ▸ `get_epoch_strict`.
-pub fn get_epoch_bounded(tx: Transaction, ms_per_epoch: Int) -> Int {
-  let lo = get_epoch(tx, ms_per_epoch)
-  expect get_epoch_upper(tx, ms_per_epoch) == lo
+pub fn get_epoch_bounded(
+  tx: Transaction,
+  ms_per_epoch: Int,
+  window_origin_ms: Int,
+) -> Int {
+  let lo = get_epoch(tx, ms_per_epoch, window_origin_ms)
+  expect get_epoch_upper(tx, ms_per_epoch, window_origin_ms) == lo
   lo
 }
 

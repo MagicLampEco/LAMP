@@ -36,6 +36,7 @@ use magiclamp/lampdist/types.{
   ReleaseForRedeem, TreasuryDatum, TreasuryRedeemer,
 }
 use magiclamp/lampdist/util
+use magiclamp/lampdist/window_origin_fixtures
 
 validator treasury(
   claim_account_hash : ByteArray,
@@ -66,6 +67,10 @@ validator treasury(
   // mọi cổng đo ARITY bên offchain đỏ; (b) MỌI giao dịch `GrantEntitlement` từ nay phải
   // mang beacon ở `reference_inputs` — đó là một đổi HÌNH DẠNG TX, không chỉ đổi tham số.
   beacon_nft_policy  : ByteArray,
+  // THÊM 2026-10-02 (Specs/Window/CONTRACT.md v1.0, WIN-ORIGIN-3) — ĐẶT CUỐI theo khuôn các
+  // tham số đã thêm trước. Gốc lưới cửa sổ: cửa sổ = (t − window_origin_ms) / ms_per_epoch,
+  // nên chỉ số cửa sổ = số epoch Cardano của mạng. Đổi hash validator này.
+  window_origin_ms: Int,
 ) {
   spend(
     datum_opt : Option<TreasuryDatum>,
@@ -160,7 +165,7 @@ validator treasury(
         //
         // Đây là ca mẫu của một lớp lỗi phải canh mỗi lần thêm trường: một bản vá cũ chỉ
         // bịt đúng cái cửa nó nhìn thấy.
-        let grant_window = util.get_epoch_strict(tx, ms_per_epoch)
+        let grant_window = util.get_epoch_strict(tx, ms_per_epoch, window_origin_ms)
         let a_now =
           util.beacon_index_at(
             util.find_beacon(tx.reference_inputs, beacon_nft_policy),
@@ -253,7 +258,7 @@ validator treasury(
             // khoản nợ đã vào `outstanding_entitlement` mà KHÔNG CÓ ĐƯỜNG LÙI (sổ chỉ
             // giảm qua `ReleaseForRedeem`, vốn cần một tài khoản rút được). Đúng cái bẫy
             // một-chiều mà C-ACC-1 ngay dưới đây sinh ra để chặn, chỉ khác lối vào.
-            expect ca_out.start_epoch == util.get_epoch_strict(tx, ms_per_epoch)
+            expect ca_out.start_epoch == util.get_epoch_strict(tx, ms_per_epoch, window_origin_ms)
 
             // ── C-CLAIM-8 ở CREATE: mốc CHỈ SỐ, song hành với mốc CỬA SỔ ngay trên ──
             // Dòng trên ghim `start_epoch`, nhưng ở v3 `start_epoch` KHÔNG còn đi vào
@@ -773,6 +778,7 @@ fn release(cum_in: Int, tx: Transaction) -> Bool {
     tt_acct_nft_policy,
     tt_mspe,
     tt_bcn_policy,
+    0,
     Some(tt_tre_d(cum_in)), ReleaseForRedeem, util.mk_ref(0), tx,
   )
 }
@@ -929,9 +935,26 @@ fn grant(cum_in: Int, tx: Transaction) -> Bool {
     tt_acct_nft_policy,
     tt_mspe,
     tt_bcn_policy,
+    0,
     Some(tt_tre_d(cum_in)), GrantEntitlement, util.mk_ref(0), tx,
   )
 }
+
+// ── Gốc cửa sổ (Specs/Window/CONTRACT.md v1.0, WIN-ORIGIN-1..3) ─────────────────
+// Bản của `grant` nhận gốc `origin` và dời mọi biên hữu hạn của validity range đi
+// `shift`. `(o, o)`: cùng kịch bản dời sang lưới có gốc ⇒ kết quả phải y như bản gốc 0.
+// `(0, o)`: validator QUÊN gốc trên tx đã dời ⇒ phải bị chặn.
+fn grant_at(origin: Int, shift: Int, cum_in: Int, tx: Transaction) -> Bool {
+  treasury.spend(
+    tt_ca_sh, tt_lamp_policy, tt_lamp_name, tt_committee, tt_threshold,
+    tt_acct_nft_policy,
+    tt_mspe,
+    tt_bcn_policy,
+    origin,
+    Some(tt_tre_d(cum_in)), GrantEntitlement, util.mk_ref(0), window_origin_fixtures.shift_tx(tx, shift),
+  )
+}
+
 
 test grant_create_happy() {
   // CREATE: cấp E=1000, cum 0→1000 ≤ pool 5000, pool bất biến.
@@ -1310,6 +1333,7 @@ fn grant_tr(tr_in: Int, tr_out: Int) -> Bool {
     tt_acct_nft_policy,
     tt_mspe,
     tt_bcn_policy,
+    0,
     Some(tt_tre_d_tr(0, tr_in)), GrantEntitlement, util.mk_ref(0),
     Transaction { ..base, inputs: [tre_in], outputs: [tre_out, ca_out] },
   )
@@ -1511,6 +1535,7 @@ fn refill(own_ix: Int, datum_opt: Option<TreasuryDatum>, tx: Transaction) -> Boo
     tt_acct_nft_policy,
     tt_mspe,
     tt_bcn_policy,
+    0,
     datum_opt, Refill, util.mk_ref(own_ix), tx,
   )
 }
@@ -1873,4 +1898,28 @@ test refill_creating_claim_account_output_rejected() fail {
   let b = tre_in_d(1, 2_000_000, 500, 200, False)
   let o = tre_out_d(7_000_000, 1900, 300, True)
   refill(0, Some(tt_tre_d(300)), refill_tx([a, b], [o, tt_ca_utxo()], [#"c1", #"c2"]))
+}
+
+/// `treasury_grant_after_full_redeem_ok` dời sang gốc Mainnet: phải xanh như bản gốc 0.
+test treasury_grant_after_full_redeem_ok_origin_mainnet() {
+  // HỒI QUY điểm 1 review: đã cấp 5000, người dùng rút HẾT (nợ 0), quỹ còn/nạp lại 5000.
+  // Cấp thêm 1000 cho account MỚI phải PASS. Bản đầu TỪ CHỐI ca này (5000+1000 > 5000)
+  // dù quỹ không nợ ai — chính là bế tắc.
+  grant_at(window_origin_fixtures.mainnet_origin_ms, window_origin_fixtures.mainnet_origin_ms, 0, grant_tx(5000, 0, 1000, None, 1000, 0, [#"c1", #"c2"]))
+}
+
+/// `treasury_grant_after_full_redeem_ok` dời sang gốc Preprod: phải xanh như bản gốc 0.
+test treasury_grant_after_full_redeem_ok_origin_preprod() {
+  // HỒI QUY điểm 1 review: đã cấp 5000, người dùng rút HẾT (nợ 0), quỹ còn/nạp lại 5000.
+  // Cấp thêm 1000 cho account MỚI phải PASS. Bản đầu TỪ CHỐI ca này (5000+1000 > 5000)
+  // dù quỹ không nợ ai — chính là bế tắc.
+  grant_at(window_origin_fixtures.preprod_origin_ms, window_origin_fixtures.preprod_origin_ms, 0, grant_tx(5000, 0, 1000, None, 1000, 0, [#"c1", #"c2"]))
+}
+
+/// Ca âm: tx đã dời sang lưới Mainnet nhưng validator nhận gốc 0 (quên trừ gốc) ⇒ phải bị chặn.
+test treasury_grant_after_full_redeem_ok_origin_forgotten() fail {
+  // HỒI QUY điểm 1 review: đã cấp 5000, người dùng rút HẾT (nợ 0), quỹ còn/nạp lại 5000.
+  // Cấp thêm 1000 cho account MỚI phải PASS. Bản đầu TỪ CHỐI ca này (5000+1000 > 5000)
+  // dù quỹ không nợ ai — chính là bế tắc.
+  grant_at(0, window_origin_fixtures.mainnet_origin_ms, 0, grant_tx(5000, 0, 1000, None, 1000, 0, [#"c1", #"c2"]))
 }

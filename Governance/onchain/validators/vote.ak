@@ -53,6 +53,10 @@ validator vote(
   taad_policy: PolicyId,
   ms_per_epoch: Int,
   tally_window_epochs: Int,
+  // THÊM 2026-10-02 (Specs/Window/CONTRACT.md v1.0, WIN-ORIGIN-3) — ĐẶT CUỐI theo khuôn các
+  // tham số đã thêm trước. Gốc lưới cửa sổ: cửa sổ = (t − window_origin_ms) / ms_per_epoch,
+  // nên chỉ số cửa sổ = số epoch Cardano của mạng. Đổi hash validator này.
+  window_origin_ms: Int,
 ) {
   spend(
     datum_opt: Option<VoteDatum>,
@@ -123,7 +127,7 @@ validator vote(
             tally_policy,
             vd.proposal_id,
           )
-        expect util.get_epoch_bounded(tx, ms_per_epoch) < td.vote_close_epoch
+        expect util.get_epoch_bounded(tx, ms_per_epoch, window_origin_ms) < td.vote_close_epoch
         // (R3) chứng thực CHỦ phiếu: anchor TAAD của `did_commit`, Active, Person
         //      gốc, hai chữ ký. v1 KHÔNG có vế này — ai cũng đổi được lựa chọn
         //      của người khác.
@@ -173,7 +177,7 @@ validator vote(
             vd.proposal_id,
           )
         expect
-          util.get_epoch_bounded(tx, ms_per_epoch) >= td.vote_close_epoch + tally_window_epochs
+          util.get_epoch_bounded(tx, ms_per_epoch, window_origin_ms) >= td.vote_close_epoch + tally_window_epochs
         // (C3) CHỈ chủ phiếu thu hồi.
         expect
           anchor_view.person_owner_signed_ref(

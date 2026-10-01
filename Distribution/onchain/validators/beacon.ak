@@ -17,6 +17,7 @@ use magiclamp/lampdist/types.{
   BeaconDatum, BeaconKind, BeaconRedeemer, DropParam, PostBeacon,
 }
 use magiclamp/lampdist/util
+use magiclamp/lampdist/window_origin_fixtures
 
 validator beacon(
   committee         : List<ByteArray>,
@@ -39,6 +40,10 @@ validator beacon(
   // phải một. Đây là chi phí thật của mỗi lần thêm tham số vào tệp này, và nó không hiện
   // ra ở phép so hash.
   ms_per_epoch      : Int,
+  // THÊM 2026-10-02 (Specs/Window/CONTRACT.md v1.0, WIN-ORIGIN-3) — ĐẶT CUỐI theo khuôn các
+  // tham số đã thêm trước. Gốc lưới cửa sổ: cửa sổ = (t − window_origin_ms) / ms_per_epoch,
+  // nên chỉ số cửa sổ = số epoch Cardano của mạng. Đổi hash validator này.
+  window_origin_ms: Int,
 ) {
   spend(
     datum_opt : Option<BeaconDatum>,
@@ -85,7 +90,7 @@ validator beacon(
     // Đo bằng `get_epoch_strict` chứ KHÔNG phải `get_epoch`: đầu dưới đặt lùi bao xa cũng
     // hợp lệ với sổ cái, nên `get_epoch` một mình cho phép dán nhãn quá khứ. Xem lý lẽ
     // đầy đủ ở `util.ak`, hàm `get_epoch_strict` ("Luật 2b").
-    let window = util.get_epoch_strict(tx, ms_per_epoch)
+    let window = util.get_epoch_strict(tx, ms_per_epoch, window_origin_ms)
     expect out_datum.epoch == window
 
     // C-BCN-2 + C-BCN-3 đi CẶP, và cặp ấy mới là thứ có giá trị: mỗi cửa sổ post được
@@ -335,9 +340,23 @@ fn bt_run(in_epoch: Int, tx: Transaction) -> Bool {
 fn bt_run_w(in_epoch: Int, in_w: Int, in_index: Int, tx: Transaction) -> Bool {
   beacon.spend(
     bt_committee, bt_threshold, bt_nft_policy, bt_mspe,
+      0,
     Some(bt_datum(in_epoch, DropParam, in_index, in_w)), PostBeacon, util.mk_ref(0), tx,
   )
 }
+
+// ── Gốc cửa sổ (Specs/Window/CONTRACT.md v1.0, WIN-ORIGIN-1..3) ─────────────────
+// Bản của `bt_run_w` nhận gốc `origin` và dời mọi biên hữu hạn của validity range đi
+// `shift`. `(o, o)`: cùng kịch bản dời sang lưới có gốc ⇒ kết quả phải y như bản gốc 0.
+// `(0, o)`: validator QUÊN gốc trên tx đã dời ⇒ phải bị chặn.
+fn bt_run_w_at(origin: Int, shift: Int, in_epoch: Int, in_w: Int, in_index: Int, tx: Transaction) -> Bool {
+  beacon.spend(
+    bt_committee, bt_threshold, bt_nft_policy, bt_mspe,
+      origin,
+    Some(bt_datum(in_epoch, DropParam, in_index, in_w)), PostBeacon, util.mk_ref(0), window_origin_fixtures.shift_tx(tx, shift),
+  )
+}
+
 
 test beacon_happy() {
   // post ở cửa sổ 6, nhãn 6, w 100.000 → 105.000 (+5%: một điểm THUẦN BÊN TRONG mọi biên).
@@ -623,6 +642,42 @@ test beacon_output_restaked_rejected() fail {
       5, 6, [#"c1", #"c2"], bt_w_in, 105_000, bt_index_ok(5, 6, bt_index_in, bt_w_in),
       bt_trim_num, bt_trim_den, util.script_address_staked(bt_sh, #"5a5e"),
       interval.between(6 * bt_mspe, 6 * bt_mspe + 1000),
+    ),
+  )
+}
+
+/// `beacon_at_ceiling_staying_put_ok` dời sang gốc Mainnet: phải xanh như bản gốc 0.
+test beacon_at_ceiling_staying_put_ok_origin_mainnet() {
+  let w_in = constants.rate_root_max
+  bt_run_w_at(window_origin_fixtures.mainnet_origin_ms, window_origin_fixtures.mainnet_origin_ms, 
+    5, w_in, bt_index_in,
+    beacon_tx_full(
+      5, 6, [#"c1", #"c2"], w_in, w_in, bt_index_ok(5, 6, bt_index_in, w_in),
+      bt_trim_den, interval.between(6 * bt_mspe, 6 * bt_mspe + 1000),
+    ),
+  )
+}
+
+/// `beacon_at_ceiling_staying_put_ok` dời sang gốc Preprod: phải xanh như bản gốc 0.
+test beacon_at_ceiling_staying_put_ok_origin_preprod() {
+  let w_in = constants.rate_root_max
+  bt_run_w_at(window_origin_fixtures.preprod_origin_ms, window_origin_fixtures.preprod_origin_ms, 
+    5, w_in, bt_index_in,
+    beacon_tx_full(
+      5, 6, [#"c1", #"c2"], w_in, w_in, bt_index_ok(5, 6, bt_index_in, w_in),
+      bt_trim_den, interval.between(6 * bt_mspe, 6 * bt_mspe + 1000),
+    ),
+  )
+}
+
+/// Ca âm: tx đã dời sang lưới Mainnet nhưng validator nhận gốc 0 (quên trừ gốc) ⇒ phải bị chặn.
+test beacon_at_ceiling_staying_put_ok_origin_forgotten() fail {
+  let w_in = constants.rate_root_max
+  bt_run_w_at(0, window_origin_fixtures.mainnet_origin_ms, 
+    5, w_in, bt_index_in,
+    beacon_tx_full(
+      5, 6, [#"c1", #"c2"], w_in, w_in, bt_index_ok(5, 6, bt_index_in, w_in),
+      bt_trim_den, interval.between(6 * bt_mspe, 6 * bt_mspe + 1000),
     ),
   )
 }

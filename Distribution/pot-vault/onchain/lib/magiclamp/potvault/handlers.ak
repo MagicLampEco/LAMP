@@ -51,6 +51,7 @@ pub fn pot_spend(
   lamp_policy: PolicyId,
   lamp_name: AssetName,
   ms_per_epoch: Int,
+  window_origin_ms: Int,
   window_cap: Int,
   total_cap: Int,
   datum_opt: Option<Data>,
@@ -94,7 +95,7 @@ pub fn pot_spend(
 
         // F-1: cửa sổ neo vào thời gian thật, và TĂNG NGẶT.
         // Ghim bởi `feed_hai_lan_mot_cua_so`.
-        let now = util.get_epoch_pinned(tx, ms_per_epoch, max_range_ms)
+        let now = util.get_epoch_pinned(tx, ms_per_epoch, window_origin_ms, max_range_ms)
         expect now > pot.last_window
 
         // F-2: đúng 1 output tiếp nối, ở ĐÚNG địa chỉ pot, không script-carrier.

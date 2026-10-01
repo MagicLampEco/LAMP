@@ -31,6 +31,7 @@ use magiclamp/faucet/ledger.{
   Use, acct_name, did_key, did_leaf_value, pool_nft_name,
 }
 use magiclamp/faucet/util
+use magiclamp/faucet/window_origin_fixtures
 
 validator faucet_account(
   faucet_nft_policy: ByteArray,
@@ -38,6 +39,10 @@ validator faucet_account(
   lamp_policy: ByteArray,
   lamp_name: ByteArray,
   ms_per_epoch: Int,
+  // THÊM 2026-10-02 (Specs/Window/CONTRACT.md v1.0, WIN-ORIGIN-3) — ĐẶT CUỐI theo khuôn các
+  // tham số đã thêm trước. Gốc lưới cửa sổ: cửa sổ = (t − window_origin_ms) / ms_per_epoch,
+  // nên chỉ số cửa sổ = số epoch Cardano của mạng. Đổi hash validator này.
+  window_origin_ms: Int,
 ) {
   spend(
     datum_opt: Option<FaucetAccount>,
@@ -51,6 +56,7 @@ validator faucet_account(
       lamp_policy,
       lamp_name,
       ms_per_epoch,
+      window_origin_ms,
       datum_opt,
       redeemer,
       own_ref,
@@ -219,12 +225,33 @@ fn use_run(datum: FaucetAccount, tx: Transaction) -> Bool {
     fa_lamp_policy,
     fa_lamp_name,
     fa_ms_per_epoch,
+    0,
     Some(datum),
     Use,
     util.mk_ref(0),
     tx,
   )
 }
+
+// ── Gốc cửa sổ (Specs/Window/CONTRACT.md v1.0, WIN-ORIGIN-1..3) ─────────────────
+// Bản của `use_run` nhận gốc `origin` và dời mọi biên hữu hạn của validity range đi
+// `shift`. `(o, o)`: cùng kịch bản dời sang lưới có gốc ⇒ kết quả phải y như bản gốc 0.
+// `(0, o)`: validator QUÊN gốc trên tx đã dời ⇒ phải bị chặn.
+fn use_run_at(origin: Int, shift: Int, datum: FaucetAccount, tx: Transaction) -> Bool {
+  faucet_account.spend(
+    fa_nft_policy,
+    fa_did_policy,
+    fa_lamp_policy,
+    fa_lamp_name,
+    fa_ms_per_epoch,
+    origin,
+    Some(datum),
+    Use,
+    util.mk_ref(0),
+    window_origin_fixtures.shift_tx(tx, shift),
+  )
+}
+
 
 test use_happy() {
   let tx = use_tx(150, 100, 100, 100, 150, fa_drip)
@@ -562,6 +589,7 @@ fn topup_run(tx: Transaction) -> Bool {
     fa_lamp_policy,
     fa_lamp_name,
     fa_ms_per_epoch,
+    0,
     Some(fa_acct_datum(fa_did_name, 100, 100)),
     TopUp,
     util.mk_ref(0),
@@ -731,6 +759,7 @@ fn reclaim_idle_run(now: Int, outputs: List<Output>, mint: assets.Value) -> Bool
     fa_lamp_policy,
     fa_lamp_name,
     fa_ms_per_epoch,
+    0,
     Some(fa_acct_datum(fa_did_name, 100, 100)),
     ReclaimIdle,
     util.mk_ref(0),
@@ -796,4 +825,22 @@ test reclaim_idle_pool_stake_hijack() fail {
       fa_pool_datum(50, 7),
     )
   reclaim_idle_run(172, [pool_out], fa_mint(fa_did_name, -1))
+}
+
+/// `use_happy` dời sang gốc Mainnet: phải xanh như bản gốc 0.
+test use_happy_origin_mainnet() {
+  let tx = use_tx(150, 100, 100, 100, 150, fa_drip)
+  use_run_at(window_origin_fixtures.mainnet_origin_ms, window_origin_fixtures.mainnet_origin_ms, fa_acct_datum(fa_did_name, 100, 100), tx)
+}
+
+/// `use_happy` dời sang gốc Preprod: phải xanh như bản gốc 0.
+test use_happy_origin_preprod() {
+  let tx = use_tx(150, 100, 100, 100, 150, fa_drip)
+  use_run_at(window_origin_fixtures.preprod_origin_ms, window_origin_fixtures.preprod_origin_ms, fa_acct_datum(fa_did_name, 100, 100), tx)
+}
+
+/// Ca âm: tx đã dời sang lưới Mainnet nhưng validator nhận gốc 0 (quên trừ gốc) ⇒ phải bị chặn.
+test use_happy_origin_forgotten() fail {
+  let tx = use_tx(150, 100, 100, 100, 150, fa_drip)
+  use_run_at(0, window_origin_fixtures.mainnet_origin_ms, fa_acct_datum(fa_did_name, 100, 100), tx)
 }

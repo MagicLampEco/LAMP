@@ -82,7 +82,8 @@ pub fn output_with_token(
 }
 
 // ── Epoch từ validity_range (time-lock C-REL-8 — mirror Distribution util.get_epoch) ──
-// Ledger ép validity_range; lower_bound Finite(posix_ms) chia ms_per_epoch ⇒ epoch
+// Ledger ép validity_range; lower_bound Finite(posix_ms) trừ gốc rồi chia ms_per_epoch ⇒ epoch
+// (WIN-ORIGIN-1, Specs/Window/CONTRACT.md v1.0)
 // hiện tại tin cậy (không cần oracle). Release dùng để so execute_after_epoch.
 
 pub fn get_finite(bt: IntervalBoundType) -> Option<Int> {
@@ -92,24 +93,28 @@ pub fn get_finite(bt: IntervalBoundType) -> Option<Int> {
   }
 }
 
-pub fn get_epoch(tx: Transaction, ms_per_epoch: Int) -> Int {
+pub fn get_epoch(tx: Transaction, ms_per_epoch: Int, window_origin_ms: Int) -> Int {
   let IntervalBound { bound_type, .. } = tx.validity_range.lower_bound
   expect Some(s) = get_finite(bound_type)
-  s / ms_per_epoch
+  ( s - window_origin_ms ) / ms_per_epoch
 }
 
 /// F4: epoch CÓ CHẶN — ép validity_range nằm GỌN trong 1 epoch (lower & upper hữu hạn,
 /// cùng epoch). Chống "đóng băng" epoch field: nếu range trải nhiều epoch, kẻ đặt lower
 /// ở epoch cũ rồi submit muộn → epoch sổ tụt hậu thời gian thật. Ép upper hữu hạn + cùng
 /// epoch ⇒ tx chỉ hợp lệ TRONG đúng epoch đó ⇒ get_epoch == epoch submit thật (audit thật).
-pub fn get_epoch_bounded(tx: Transaction, ms_per_epoch: Int) -> Int {
+pub fn get_epoch_bounded(
+  tx: Transaction,
+  ms_per_epoch: Int,
+  window_origin_ms: Int,
+) -> Int {
   let IntervalBound { bound_type: lo, .. } = tx.validity_range.lower_bound
   let IntervalBound { bound_type: hi, .. } = tx.validity_range.upper_bound
   expect Some(lo_ms) = get_finite(lo)
   expect Some(hi_ms) = get_finite(hi)
-  let e = lo_ms / ms_per_epoch
+  let e = ( lo_ms - window_origin_ms ) / ms_per_epoch
   // upper PHẢI cùng epoch với lower (range không trải qua biên epoch).
-  expect hi_ms / ms_per_epoch == e
+  expect ( hi_ms - window_origin_ms ) / ms_per_epoch == e
   e
 }
 

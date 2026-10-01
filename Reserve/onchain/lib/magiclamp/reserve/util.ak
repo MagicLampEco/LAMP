@@ -12,11 +12,16 @@ use cardano/transaction.{InlineDatum, Input, NoDatum, Output, OutputReference}
 
 // ── Epoch ────────────────────────────────────────────────────
 
-/// Epoch từ validity_range lower_bound (POSIX ms). ms_per_epoch network-specific (param).
+/// Epoch từ validity_range lower_bound (POSIX ms): `(t − window_origin_ms) / ms_per_epoch`
+/// (WIN-ORIGIN-1, Specs/Window/CONTRACT.md v1.0). Cả hai là tham số validator theo mạng.
 /// Dùng lower_bound: cận DƯỚI bảo thủ — không cho tx "tua tới tương lai" để nhả sớm.
-pub fn get_epoch(lower: IntervalBoundType, ms_per_epoch: Int) -> Int {
+pub fn get_epoch(
+  lower: IntervalBoundType,
+  ms_per_epoch: Int,
+  window_origin_ms: Int,
+) -> Int {
   expect Some(ms) = get_finite(lower)
-  ms / ms_per_epoch
+  ( ms - window_origin_ms ) / ms_per_epoch
 }
 
 pub fn get_finite(bt: IntervalBoundType) -> Option<Int> {

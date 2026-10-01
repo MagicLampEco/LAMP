@@ -71,6 +71,7 @@ use magiclamp/governance/names.{nullifier_name}
 use magiclamp/governance/tally_ref
 use magiclamp/governance/types.{Summing, TallyDatum}
 use magiclamp/governance/util
+use magiclamp/governance/window_origin_fixtures
 
 pub type NullifierRedeemer {
   MintNullifier { did_commit: ByteArray, proposal_id: ByteArray }
@@ -114,6 +115,10 @@ validator nullifier(
   taad_policy: PolicyId,
   ms_per_epoch: Int,
   tally_window_epochs: Int,
+  // THÊM 2026-10-02 (Specs/Window/CONTRACT.md v1.0, WIN-ORIGIN-3) — ĐẶT CUỐI theo khuôn các
+  // tham số đã thêm trước. Gốc lưới cửa sổ: cửa sổ = (t − window_origin_ms) / ms_per_epoch,
+  // nên chỉ số cửa sổ = số epoch Cardano của mạng. Đổi hash validator này.
+  window_origin_ms: Int,
 ) {
   mint(redeemer: NullifierRedeemer, policy_id: PolicyId, tx: Transaction) {
     let own_tokens = assets.tokens(tx.mint, policy_id)
@@ -130,7 +135,7 @@ validator nullifier(
         // 3. cửa sổ bỏ phiếu đọc từ Tally UTxO (reference input, theo token).
         let td =
           tally_ref.expect_tally(tx.reference_inputs, tally_policy, proposal_id)
-        let e = util.get_epoch_bounded(tx, ms_per_epoch)
+        let e = util.get_epoch_bounded(tx, ms_per_epoch, window_origin_ms)
         expect td.vote_open_epoch <= e
         expect e < td.vote_close_epoch
         // 4. WHO — A-PERSON + hai chữ ký chính chủ.
@@ -158,7 +163,7 @@ validator nullifier(
         expect own_tokens == assets.tokens(want, policy_id)
         // (B2) căn cứ thời gian đọc từ Tally của ĐÚNG `proposal_id` trên — không
         //      phải "một tally bất kỳ". Đây là vế làm hai cửa sổ thật sự rời nhau.
-        let e = util.get_epoch_bounded(tx, ms_per_epoch)
+        let e = util.get_epoch_bounded(tx, ms_per_epoch, window_origin_ms)
         or {
           burn_with_tally_spent(tx, tally_policy, proposal_id, e),
           burn_after_tally_window(
@@ -363,11 +368,30 @@ fn run_mint_of(d: ByteArray, p: ByteArray, tx: Transaction) -> Bool {
     taad_policy,
     ms_ep,
     window,
+    0,
     MintNullifier { did_commit: d, proposal_id: p },
     nl_policy,
     tx,
   )
 }
+
+// ── Gốc cửa sổ (Specs/Window/CONTRACT.md v1.0, WIN-ORIGIN-1..3) ─────────────────
+// Bản của `run_mint_of` nhận gốc `origin` và dời mọi biên hữu hạn của validity range đi
+// `shift`. `(o, o)`: cùng kịch bản dời sang lưới có gốc ⇒ kết quả phải y như bản gốc 0.
+// `(0, o)`: validator QUÊN gốc trên tx đã dời ⇒ phải bị chặn.
+fn run_mint_of_at(origin: Int, shift: Int, d: ByteArray, p: ByteArray, tx: Transaction) -> Bool {
+  nullifier.mint(
+    tally_policy,
+    taad_policy,
+    ms_ep,
+    window,
+    origin,
+    MintNullifier { did_commit: d, proposal_id: p },
+    nl_policy,
+    window_origin_fixtures.shift_tx(tx, shift),
+  )
+}
+
 
 fn run_mint(tx: Transaction) -> Bool {
   run_mint_of(did, prop, tx)
@@ -380,6 +404,7 @@ fn run_burn_of(p: ByteArray, dids: List<ByteArray>, tx: Transaction) -> Bool {
     taad_policy,
     ms_ep,
     window,
+    0,
     BurnNullifier { proposal_id: p, did_commits: dids },
     nl_policy,
     tx,
@@ -773,4 +798,46 @@ test nl_burn_len_duc_tu_choi() fail {
     }
   expect run_burn(tx)
   True
+}
+
+/// `nl_mint_qua_voi_tally_ref_dung_khuon` dời sang gốc Mainnet: phải xanh như bản gốc 0.
+test nl_mint_qua_voi_tally_ref_dung_khuon_origin_mainnet() {
+  run_mint_of_at(window_origin_fixtures.mainnet_origin_ms, window_origin_fixtures.mainnet_origin_ms, 
+    did,
+    prop,
+    mint_tx(
+      15,
+      [tally_ref_of(prop), anchor_person()],
+      [ctrl, dev],
+      one_nl_of(did, prop, 1),
+    ),
+  )
+}
+
+/// `nl_mint_qua_voi_tally_ref_dung_khuon` dời sang gốc Preprod: phải xanh như bản gốc 0.
+test nl_mint_qua_voi_tally_ref_dung_khuon_origin_preprod() {
+  run_mint_of_at(window_origin_fixtures.preprod_origin_ms, window_origin_fixtures.preprod_origin_ms, 
+    did,
+    prop,
+    mint_tx(
+      15,
+      [tally_ref_of(prop), anchor_person()],
+      [ctrl, dev],
+      one_nl_of(did, prop, 1),
+    ),
+  )
+}
+
+/// Ca âm: tx đã dời sang lưới Mainnet nhưng validator nhận gốc 0 (quên trừ gốc) ⇒ phải bị chặn.
+test nl_mint_qua_voi_tally_ref_dung_khuon_origin_forgotten() fail {
+  run_mint_of_at(0, window_origin_fixtures.mainnet_origin_ms, 
+    did,
+    prop,
+    mint_tx(
+      15,
+      [tally_ref_of(prop), anchor_person()],
+      [ctrl, dev],
+      one_nl_of(did, prop, 1),
+    ),
+  )
 }

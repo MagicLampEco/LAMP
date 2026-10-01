@@ -17,6 +17,7 @@ use magiclamp/governance/types.{
 }
 use magiclamp/governance/util
 use proposal
+use magiclamp/governance/window_origin_fixtures
 
 // exec_tx mặc định: dựng WeightParam ref ngưỡng 2/3, bft=21, quorum=0.
 fn exec_tx(
@@ -46,12 +47,33 @@ fn run_exec(tx: Transaction, d_in: ProposalDatum) -> Bool {
     tally_sh(),
     wp_policy,
     ms_per_epoch,
+    0,
     Some(d_in),
     proposal.ExecuteProposal,
     util.mk_ref(0),
     tx,
   )
 }
+
+// ── Gốc cửa sổ (Specs/Window/CONTRACT.md v1.0, WIN-ORIGIN-1..3) ─────────────────
+// Bản của `run_exec` nhận gốc `origin` và dời mọi biên hữu hạn của validity range đi
+// `shift`. `(o, o)`: cùng kịch bản dời sang lưới có gốc ⇒ kết quả phải y như bản gốc 0.
+// `(0, o)`: validator QUÊN gốc trên tx đã dời ⇒ phải bị chặn.
+fn run_exec_at(origin: Int, shift: Int, tx: Transaction, d_in: ProposalDatum) -> Bool {
+  proposal.proposal.spend(
+    prop_policy,
+    tally_policy,
+    tally_sh(),
+    wp_policy,
+    ms_per_epoch,
+    origin,
+    Some(d_in),
+    proposal.ExecuteProposal,
+    util.mk_ref(0),
+    window_origin_fixtures.shift_tx(tx, shift),
+  )
+}
+
 
 // ── 1. HAPPY: Tallied → Executed, pass đạt (yes=200 no=100, 2/3, 21 DID thuận) ──
 test execute_happy() {
@@ -264,4 +286,48 @@ test execute_wp_controls_threshold() {
   let wp = wp_ref(21, 0, 0, 1, 2)
   let tx = exec_tx_wp(d_in, d_out, tin, 25 * ms_per_epoch, wp)
   run_exec(tx, d_in)
+}
+
+/// `execute_happy` dời sang gốc Mainnet: phải xanh như bản gốc 0.
+test execute_happy_origin_mainnet() {
+  let d_in = prop_datum(Tallied, 200, 100, 30)
+  let d_out = prop_datum(Executed, 200, 100, 30)
+  let tin = tally_ref(200, 100, 21, 30)
+  // epoch = 25·ms ≥ execute_after 22.
+  let tx = exec_tx(d_in, d_out, tin, 25 * ms_per_epoch)
+  run_exec_at(window_origin_fixtures.mainnet_origin_ms, window_origin_fixtures.mainnet_origin_ms, tx, d_in)
+}
+
+/// `execute_happy` dời sang gốc Preprod: phải xanh như bản gốc 0.
+test execute_happy_origin_preprod() {
+  let d_in = prop_datum(Tallied, 200, 100, 30)
+  let d_out = prop_datum(Executed, 200, 100, 30)
+  let tin = tally_ref(200, 100, 21, 30)
+  // epoch = 25·ms ≥ execute_after 22.
+  let tx = exec_tx(d_in, d_out, tin, 25 * ms_per_epoch)
+  run_exec_at(window_origin_fixtures.preprod_origin_ms, window_origin_fixtures.preprod_origin_ms, tx, d_in)
+}
+
+
+/// Ca âm theo CHIỀU NGƯỢC: chốt thời gian ở đây chỉ chặn "quá sớm" (cận dưới), nên quên gốc
+/// làm epoch LỚN thêm ~3_486 cửa sổ và tx được thả. Bài phân biệt được bản quên gốc là bài
+/// "quá sớm" `execute_timelock_reject` dời sang lưới có gốc: mã đúng vẫn chặn; mã quên gốc sẽ thả.
+test execute_timelock_reject_origin_mainnet() fail {
+  let d_in = prop_datum(Tallied, 200, 100, 30)
+  let d_out = prop_datum(Executed, 200, 100, 30)
+  let tin = tally_ref(200, 100, 21, 30)
+  // epoch = 21·ms < execute_after 22.
+  let tx = exec_tx(d_in, d_out, tin, 21 * ms_per_epoch)
+  expect run_exec_at(window_origin_fixtures.mainnet_origin_ms, window_origin_fixtures.mainnet_origin_ms, tx, d_in)
+  True
+}
+
+test execute_timelock_reject_origin_preprod() fail {
+  let d_in = prop_datum(Tallied, 200, 100, 30)
+  let d_out = prop_datum(Executed, 200, 100, 30)
+  let tin = tally_ref(200, 100, 21, 30)
+  // epoch = 21·ms < execute_after 22.
+  let tx = exec_tx(d_in, d_out, tin, 21 * ms_per_epoch)
+  expect run_exec_at(window_origin_fixtures.preprod_origin_ms, window_origin_fixtures.preprod_origin_ms, tx, d_in)
+  True
 }

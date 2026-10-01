@@ -52,6 +52,7 @@ use magiclamp/governance/types.{
 }
 use magiclamp/governance/util
 use magiclamp/governance/weight_ref
+use magiclamp/governance/window_origin_fixtures
 
 /// Redeemer của nhánh `mint`. Tách khỏi redeemer của nhánh `spend` thành HAI kiểu
 /// vì hai nhánh không bao giờ nhận redeemer của nhau: gộp một kiểu thì mỗi nhánh
@@ -96,6 +97,10 @@ validator governance(
   delta_min_epochs: Int,
   recovery_timelock_epochs: Int,
   _phase_tag: ByteArray,
+  // THÊM 2026-10-02 (Specs/Window/CONTRACT.md v1.0, WIN-ORIGIN-3) — ĐẶT CUỐI theo khuôn các
+  // tham số đã thêm trước. Gốc lưới cửa sổ: cửa sổ = (t − window_origin_ms) / ms_per_epoch,
+  // nên chỉ số cửa sổ = số epoch Cardano của mạng. Đổi hash validator này.
+  window_origin_ms: Int,
 ) {
   mint(redeemer: GovernanceRedeemer, policy_id: PolicyId, tx: Transaction) {
     let OpenProposal {
@@ -104,7 +109,7 @@ validator governance(
       vote_close_epoch,
       weight_param_ref,
     } = redeemer
-    let e = util.get_epoch_bounded(tx, ms_per_epoch)
+    let e = util.get_epoch_bounded(tx, ms_per_epoch, window_origin_ms)
     let proposal_id = proposal_id_of(seed)
 
     // ── (O1) danh tính: tiêu hạt giống ⇒ `proposal_id` đúc được đúng một lần ──
@@ -225,7 +230,7 @@ validator governance(
     // apply-param tự khai (apply-param thì người deploy đặt sai được, `own_hash` thì
     // không).
     let own_hash = util.own_script_hash(inp.address)
-    let e = util.get_epoch_bounded(tx, ms_per_epoch)
+    let e = util.get_epoch_bounded(tx, ms_per_epoch, window_origin_ms)
 
     // ── (S1) chỉ đi từ `Open` ──
     //    Vế này cũng là thứ làm proposal đã kết thúc KHÔNG tiêu lại được: một
@@ -446,11 +451,51 @@ fn run_with(
     delta_min,
     recovery_epochs,
     tag,
+    0,
     redeemer,
     gov_policy,
     tx,
   )
 }
+
+// ── Gốc cửa sổ (Specs/Window/CONTRACT.md v1.0, WIN-ORIGIN-1..3) ─────────────────
+// Bản của `run_with` nhận gốc `origin` và dời mọi biên hữu hạn của validity range đi
+// `shift`. `(o, o)`: cùng kịch bản dời sang lưới có gốc ⇒ kết quả phải y như bản gốc 0.
+// `(0, o)`: validator QUÊN gốc trên tx đã dời ⇒ phải bị chặn.
+fn run_with_at(
+  origin: Int,
+  shift: Int,
+  redeemer: GovernanceRedeemer,
+  inputs: List<Input>,
+  refs: List<Input>,
+  outputs: List<Output>,
+  mint: Value,
+  e: Int,
+) -> Bool {
+  let tx =
+    Transaction {
+      ..placeholder,
+      inputs,
+      reference_inputs: refs,
+      outputs,
+      mint,
+      validity_range: interval.between(e * ms_ep, e * ms_ep + 1000),
+    }
+  governance.mint(
+    tally_policy,
+    tally_sh,
+    wp_policy,
+    ms_ep,
+    delta_min,
+    recovery_epochs,
+    tag,
+    origin,
+    redeemer,
+    gov_policy,
+    window_origin_fixtures.shift_tx(tx, shift),
+  )
+}
+
 
 fn rd(open_ep: Int, close_ep: Int) -> GovernanceRedeemer {
   OpenProposal {
@@ -677,6 +722,7 @@ test open_khoang_hieu_luc_mo_tu_choi() fail {
       delta_min,
       recovery_epochs,
       tag,
+      0,
       rd(open_e, close_e),
       gov_policy,
       tx,
@@ -965,6 +1011,7 @@ fn run_fin_full(
     delta_min,
     recovery_epochs,
     tag,
+    0,
     Some(pr_in),
     FinalizeProposal,
     util.mk_ref(0),
@@ -1109,6 +1156,7 @@ test fin_khoang_hieu_luc_mo_tu_choi() fail {
       delta_min,
       recovery_epochs,
       tag,
+      0,
       Some(pr_ok()),
       FinalizeProposal,
       util.mk_ref(0),
@@ -1568,4 +1616,43 @@ test open_tally_weight_param_ref_lech_redeemer_tu_choi() fail {
     }
   expect run([p_out_of(pr_ok()), t_out_of(ts)])
   True
+}
+
+/// `open_cua_so_mo_ngay_epoch_nay_qua` dời sang gốc Mainnet: phải xanh như bản gốc 0.
+test open_cua_so_mo_ngay_epoch_nay_qua_origin_mainnet() {
+  let ts = TallyDatum { ..ts_ok(), vote_open_epoch: e_now }
+  run_with_at(window_origin_fixtures.mainnet_origin_ms, window_origin_fixtures.mainnet_origin_ms, 
+    rd(e_now, close_e),
+    [seed_input()],
+    [wp_ref_input_ok()],
+    [p_out_of(pr_ok()), t_out_of(ts)],
+    mint_ok(),
+    e_now,
+  )
+}
+
+/// `open_cua_so_mo_ngay_epoch_nay_qua` dời sang gốc Preprod: phải xanh như bản gốc 0.
+test open_cua_so_mo_ngay_epoch_nay_qua_origin_preprod() {
+  let ts = TallyDatum { ..ts_ok(), vote_open_epoch: e_now }
+  run_with_at(window_origin_fixtures.preprod_origin_ms, window_origin_fixtures.preprod_origin_ms, 
+    rd(e_now, close_e),
+    [seed_input()],
+    [wp_ref_input_ok()],
+    [p_out_of(pr_ok()), t_out_of(ts)],
+    mint_ok(),
+    e_now,
+  )
+}
+
+/// Ca âm: tx đã dời sang lưới Mainnet nhưng validator nhận gốc 0 (quên trừ gốc) ⇒ phải bị chặn.
+test open_cua_so_mo_ngay_epoch_nay_qua_origin_forgotten() fail {
+  let ts = TallyDatum { ..ts_ok(), vote_open_epoch: e_now }
+  run_with_at(0, window_origin_fixtures.mainnet_origin_ms, 
+    rd(e_now, close_e),
+    [seed_input()],
+    [wp_ref_input_ok()],
+    [p_out_of(pr_ok()), t_out_of(ts)],
+    mint_ok(),
+    e_now,
+  )
 }

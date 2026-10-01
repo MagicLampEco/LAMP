@@ -31,6 +31,7 @@ use magiclamp/treasury/types.{
   Release, ReleaseDraw, Tallied,
 }
 use magiclamp/treasury/util
+use magiclamp/treasury/window_origin_fixtures
 
 // ── Hằng số ──
 const cust_sh: ByteArray = #"c0c0c0c0"
@@ -186,12 +187,36 @@ fn run(tx: Transaction, d_in: CustodyDatum, draws: List<ReleaseDraw>) -> Bool {
     ms_per_epoch,
     lamp_policy,
     lamp_name,
+    0,
     Some(d_in),
     Release { proposal_ref: prop_ref(), draws },
     util.mk_ref(0),
     tx,
   )
 }
+
+// ── Gốc cửa sổ (Specs/Window/CONTRACT.md v1.0, WIN-ORIGIN-1..3) ─────────────────
+// Bản của `run` nhận gốc `origin` và dời mọi biên hữu hạn của validity range đi
+// `shift`. `(o, o)`: cùng kịch bản dời sang lưới có gốc ⇒ kết quả phải y như bản gốc 0.
+// `(0, o)`: validator QUÊN gốc trên tx đã dời ⇒ phải bị chặn.
+fn run_at(origin: Int, shift: Int, tx: Transaction, d_in: CustodyDatum, draws: List<ReleaseDraw>) -> Bool {
+  // Interface: spend(proposal_policy, seed_policy, ms_per_epoch, lamp_policy, token_name,
+  //                  datum, redeemer, ref, tx). Release KHÔNG đụng 2 param cuối (chỉ
+  //                  MigrateIn dùng) — truyền giá trị thật cho nhất quán fixture.
+  custody.custody.spend(
+    prop_policy,
+    seed_policy,
+    ms_per_epoch,
+    lamp_policy,
+    lamp_name,
+    origin,
+    Some(d_in),
+    Release { proposal_ref: prop_ref(), draws },
+    util.mk_ref(0),
+    window_origin_fixtures.shift_tx(tx, shift),
+  )
+}
+
 
 // recipient output gửi LAMP tới ví `to`.
 fn pay(to: ByteArray, lamp: Int) -> Output {
@@ -682,7 +707,7 @@ test release_missing_datum() fail {
       [pay(alice, 300)], 5 * ms_per_epoch, [], assets.zero,
     )
   custody.custody.spend(
-    prop_policy, seed_policy, ms_per_epoch, lamp_policy, lamp_name, None,
+    prop_policy, seed_policy, ms_per_epoch, lamp_policy, lamp_name, 0, None,
     Release { proposal_ref: prop_ref(), draws }, util.mk_ref(0), tx,
   )
 }
@@ -1403,6 +1428,7 @@ test release_two_custody_same_instance_id_owner_accepts() {
     ms_per_epoch,
     lamp_policy,
     lamp_name,
+    0,
     Some(datum(two_custody_ledger_in())),
     Release { proposal_ref: prop_ref(), draws: happy_draws() },
     util.mk_ref(0),
@@ -1419,6 +1445,7 @@ test release_two_custody_same_instance_id_other_rejects() fail {
     ms_per_epoch,
     lamp_policy,
     lamp_name,
+    0,
     Some(datum(two_custody_ledger_in())),
     Release { proposal_ref: prop_ref(), draws: happy_draws() },
     util.mk_ref(1),
@@ -1454,4 +1481,67 @@ test spend_spec_hash_vector_multi() {
     instance_id,
     [draw_lamp(bucket_ops, 300, alice), draw_lamp(bucket_community, 500, bob)],
   ) == #"da4718206f096865962155c98d4876f561bb9f285a391882b71866a8d7d46b22"
+}
+
+/// `release_happy` dời sang gốc Mainnet: phải xanh như bản gốc 0.
+test release_happy_origin_mainnet() {
+  let ledger_in = [LedgerEntry { bucket_id: bucket_ops, policy: lamp_policy, name: lamp_name, amount: 1000 }]
+  let ledger_out = [LedgerEntry { bucket_id: bucket_ops, policy: lamp_policy, name: lamp_name, amount: 700 }]
+  let draws = happy_draws()
+  let spec = release.spend_spec_hash(seed_policy, instance_id, draws)
+  let tx =
+    release_tx(
+      lamp_val(5_000_000, 5000),
+      lamp_val(5_000_000, 4700),
+      ledger_in,
+      ledger_out,
+      [proposal_input(Executed, spec, 4)],
+      [pay(alice, 300)],
+      5 * ms_per_epoch,
+      [],
+      assets.zero,
+    )
+  run_at(window_origin_fixtures.mainnet_origin_ms, window_origin_fixtures.mainnet_origin_ms, tx, datum(ledger_in), draws)
+}
+
+/// `release_happy` dời sang gốc Preprod: phải xanh như bản gốc 0.
+test release_happy_origin_preprod() {
+  let ledger_in = [LedgerEntry { bucket_id: bucket_ops, policy: lamp_policy, name: lamp_name, amount: 1000 }]
+  let ledger_out = [LedgerEntry { bucket_id: bucket_ops, policy: lamp_policy, name: lamp_name, amount: 700 }]
+  let draws = happy_draws()
+  let spec = release.spend_spec_hash(seed_policy, instance_id, draws)
+  let tx =
+    release_tx(
+      lamp_val(5_000_000, 5000),
+      lamp_val(5_000_000, 4700),
+      ledger_in,
+      ledger_out,
+      [proposal_input(Executed, spec, 4)],
+      [pay(alice, 300)],
+      5 * ms_per_epoch,
+      [],
+      assets.zero,
+    )
+  run_at(window_origin_fixtures.preprod_origin_ms, window_origin_fixtures.preprod_origin_ms, tx, datum(ledger_in), draws)
+}
+
+/// Ca âm: tx đã dời sang lưới Mainnet nhưng validator nhận gốc 0 (quên trừ gốc) ⇒ phải bị chặn.
+test release_happy_origin_forgotten() fail {
+  let ledger_in = [LedgerEntry { bucket_id: bucket_ops, policy: lamp_policy, name: lamp_name, amount: 1000 }]
+  let ledger_out = [LedgerEntry { bucket_id: bucket_ops, policy: lamp_policy, name: lamp_name, amount: 700 }]
+  let draws = happy_draws()
+  let spec = release.spend_spec_hash(seed_policy, instance_id, draws)
+  let tx =
+    release_tx(
+      lamp_val(5_000_000, 5000),
+      lamp_val(5_000_000, 4700),
+      ledger_in,
+      ledger_out,
+      [proposal_input(Executed, spec, 4)],
+      [pay(alice, 300)],
+      5 * ms_per_epoch,
+      [],
+      assets.zero,
+    )
+  run_at(0, window_origin_fixtures.mainnet_origin_ms, tx, datum(ledger_in), draws)
 }

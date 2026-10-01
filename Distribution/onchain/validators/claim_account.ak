@@ -30,6 +30,7 @@ use magiclamp/lampdist/types.{
   TreasuryDatum,
 }
 use magiclamp/lampdist/util
+use magiclamp/lampdist/window_origin_fixtures
 
 validator claim_account(
   committee           : List<ByteArray>,
@@ -43,6 +44,10 @@ validator claim_account(
   // tham số cũ trong chuỗi apply-param offchain. Policy của NFT tài khoản; xem
   // `validators/claim_account_nft.ak` cho toàn bộ lý do tồn tại.
   account_nft_policy  : ByteArray,
+  // THÊM 2026-10-02 (Specs/Window/CONTRACT.md v1.0, WIN-ORIGIN-3) — ĐẶT CUỐI theo khuôn các
+  // tham số đã thêm trước. Gốc lưới cửa sổ: cửa sổ = (t − window_origin_ms) / ms_per_epoch,
+  // nên chỉ số cửa sổ = số epoch Cardano của mạng. Đổi hash validator này.
+  window_origin_ms: Int,
 ) {
   spend(
     datum_opt : Option<ClaimAccountDatum>,
@@ -123,7 +128,7 @@ validator claim_account(
         expect out_datum.owner == datum.owner
         expect out_datum.entitlement == datum.entitlement - datum.redeemed + amount
         expect out_datum.redeemed == 0
-        expect out_datum.start_epoch == util.get_epoch_strict(tx, ms_per_epoch)
+        expect out_datum.start_epoch == util.get_epoch_strict(tx, ms_per_epoch, window_origin_ms)
         // C-CLAIM-7
         expect out_datum.drops_per_epoch == datum.drops_per_epoch
 
@@ -167,7 +172,7 @@ validator claim_account(
         // C-RDM-EPOCH: `get_epoch` (chỉ đầu dưới) là ĐỦ ở nhánh này — cửa sổ nhỏ đi thì
         // `A_span` nhỏ đi, tức chính người dựng tx thiệt. Mọi chỗ GHI một mốc thời gian
         // thì phải là `get_epoch_strict` (xem `util.ak` "Luật 2b").
-        let current_epoch = util.get_epoch(tx, ms_per_epoch)
+        let current_epoch = util.get_epoch(tx, ms_per_epoch, window_origin_ms)
 
         // C-RDM-A + C-RDM-SPAN: chỉ số cộng dồn, dạng đóng.
         let a_now = util.beacon_index_at(bcn, current_epoch)
@@ -455,10 +460,25 @@ fn claim_run(in_d: ClaimAccountDatum, tx: Transaction) -> Bool {
 fn claim_run_amount(in_d: ClaimAccountDatum, tx: Transaction, amount: Int) -> Bool {
   claim_account.spend(
     t_committee, t_threshold, t_mspe, t_lamp_policy, t_lamp_name, t_beacon_policy,
-    t_treasury_nft_policy, t_acct_nft_policy, Some(in_d), Claim { amount: amount },
+    t_treasury_nft_policy, t_acct_nft_policy, 0, Some(in_d), Claim { amount: amount },
     util.mk_ref(0), tx,
   )
 }
+
+// ── Gốc cửa sổ (Specs/Window/CONTRACT.md v1.0, WIN-ORIGIN-1..3) ─────────────────
+// Bản của `claim_run_amount`/`claim_run` nhận gốc `origin` và dời validity range đi `shift`.
+fn claim_run_amount_at(origin: Int, shift: Int, in_d: ClaimAccountDatum, tx: Transaction, amount: Int) -> Bool {
+  claim_account.spend(
+    t_committee, t_threshold, t_mspe, t_lamp_policy, t_lamp_name, t_beacon_policy,
+    t_treasury_nft_policy, t_acct_nft_policy, origin, Some(in_d), Claim { amount: amount },
+    util.mk_ref(0), window_origin_fixtures.shift_tx(tx, shift),
+  )
+}
+
+fn claim_run_at(origin: Int, shift: Int, in_d: ClaimAccountDatum, tx: Transaction) -> Bool {
+  claim_run_amount_at(origin, shift, in_d, tx, 1000)
+}
+
 
 test claim_happy_path() {
   // cấp E: 0 → 1000; sổ nợ kho 0 → 1000 ≤ pool 5000.
@@ -683,10 +703,23 @@ fn redeem_tx(f: RedeemFx) -> Transaction {
 fn redeem_run(f: RedeemFx, requested: Int) -> Bool {
   claim_account.spend(
     t_committee, t_threshold, t_mspe, t_lamp_policy, t_lamp_name, t_beacon_policy,
-    t_treasury_nft_policy, t_acct_nft_policy, Some(f.in_d), Redeem { amount: requested },
+    t_treasury_nft_policy, t_acct_nft_policy, 0, Some(f.in_d), Redeem { amount: requested },
     util.mk_ref(0), redeem_tx(f),
   )
 }
+
+// ── Gốc cửa sổ (Specs/Window/CONTRACT.md v1.0, WIN-ORIGIN-1..3) ─────────────────
+// Bản của `redeem_run` nhận gốc `origin` và dời mọi biên hữu hạn của validity range đi
+// `shift`. `(o, o)`: cùng kịch bản dời sang lưới có gốc ⇒ kết quả phải y như bản gốc 0.
+// `(0, o)`: validator QUÊN gốc trên tx đã dời ⇒ phải bị chặn.
+fn redeem_run_at(origin: Int, shift: Int, f: RedeemFx, requested: Int) -> Bool {
+  claim_account.spend(
+    t_committee, t_threshold, t_mspe, t_lamp_policy, t_lamp_name, t_beacon_policy,
+    t_treasury_nft_policy, t_acct_nft_policy, origin, Some(f.in_d), Redeem { amount: requested },
+    util.mk_ref(0), window_origin_fixtures.shift_tx(redeem_tx(f), shift),
+  )
+}
+
 
 // ── Trần tích luỹ dạng bình phương (C-RDM-VEST) ──────────────────────────────
 // E = 10.000, rate_root = 1, index_at_start = 0 ⇒ A_span = cửa sổ. Trần là
@@ -788,7 +821,7 @@ test redeem_mint_rejected() fail {
   let tx = Transaction { ..base, mint: assets.add(assets.zero, #"dead", #"beef", 1) }
   claim_account.spend(
     t_committee, t_threshold, t_mspe, t_lamp_policy, t_lamp_name, t_beacon_policy,
-    t_treasury_nft_policy, t_acct_nft_policy, Some(in_d), Redeem { amount: 200 },
+    t_treasury_nft_policy, t_acct_nft_policy, 0, Some(in_d), Redeem { amount: 200 },
     util.mk_ref(0), tx,
   )
 }
@@ -1118,7 +1151,7 @@ test redeem_fake_treasury_no_trsy_rejected() fail {
   let tx = Transaction { ..base, inputs: no_trsy, outputs: outs_no_trsy }
   claim_account.spend(
     t_committee, t_threshold, t_mspe, t_lamp_policy, t_lamp_name, t_beacon_policy,
-    t_treasury_nft_policy, t_acct_nft_policy, Some(in_d), Redeem { amount: 200 },
+    t_treasury_nft_policy, t_acct_nft_policy, 0, Some(in_d), Redeem { amount: 200 },
     util.mk_ref(0), tx,
   )
 }
@@ -1185,4 +1218,58 @@ test claim_trsy_moved_to_other_script_rejected() fail {
       mint: assets.zero,
     }
   claim_run(in_d, tx)
+}
+
+/// `claim_happy_path` dời sang gốc Mainnet: phải xanh như bản gốc 0.
+test claim_happy_path_origin_mainnet() {
+  // cấp E: 0 → 1000; sổ nợ kho 0 → 1000 ≤ pool 5000.
+  let in_d = ca_datum(0, 0, 5, 1, 0)
+  let out_d = ca_datum(1000, 0, 5, 1, 0)
+  claim_run_at(window_origin_fixtures.mainnet_origin_ms, window_origin_fixtures.mainnet_origin_ms, in_d, claim_tx(in_d, out_d, [#"c1", #"c2"], acc_value(), 0, 1000, 5000))
+}
+
+/// `claim_happy_path` dời sang gốc Preprod: phải xanh như bản gốc 0.
+test claim_happy_path_origin_preprod() {
+  // cấp E: 0 → 1000; sổ nợ kho 0 → 1000 ≤ pool 5000.
+  let in_d = ca_datum(0, 0, 5, 1, 0)
+  let out_d = ca_datum(1000, 0, 5, 1, 0)
+  claim_run_at(window_origin_fixtures.preprod_origin_ms, window_origin_fixtures.preprod_origin_ms, in_d, claim_tx(in_d, out_d, [#"c1", #"c2"], acc_value(), 0, 1000, 5000))
+}
+
+/// Ca âm: tx đã dời sang lưới Mainnet nhưng validator nhận gốc 0 ⇒ phải bị chặn.
+test claim_happy_path_origin_forgotten() fail {
+  // cấp E: 0 → 1000; sổ nợ kho 0 → 1000 ≤ pool 5000.
+  let in_d = ca_datum(0, 0, 5, 1, 0)
+  let out_d = ca_datum(1000, 0, 5, 1, 0)
+  claim_run_at(0, window_origin_fixtures.mainnet_origin_ms, in_d, claim_tx(in_d, out_d, [#"c1", #"c2"], acc_value(), 0, 1000, 5000))
+}
+
+/// `redeem_happy` dời sang gốc Mainnet: phải xanh như bản gốc 0.
+test redeem_happy_origin_mainnet() {
+  let in_d = ca_datum(10_000, 0, 0, 1, 0)
+  let out_d = ca_datum(10_000, 200, 0, 1, 0)
+  redeem_run_at(window_origin_fixtures.mainnet_origin_ms, window_origin_fixtures.mainnet_origin_ms, fx(in_d, out_d, 200, 3), 200)
+}
+
+/// `redeem_happy` dời sang gốc Preprod: phải xanh như bản gốc 0.
+test redeem_happy_origin_preprod() {
+  let in_d = ca_datum(10_000, 0, 0, 1, 0)
+  let out_d = ca_datum(10_000, 200, 0, 1, 0)
+  redeem_run_at(window_origin_fixtures.preprod_origin_ms, window_origin_fixtures.preprod_origin_ms, fx(in_d, out_d, 200, 3), 200)
+}
+
+
+/// Ca âm theo CHIỀU NGƯỢC: chốt thời gian ở đây chỉ chặn "quá sớm" (cận dưới), nên quên gốc
+/// làm epoch LỚN thêm ~3_486 cửa sổ và tx được thả. Bài phân biệt được bản quên gốc là bài
+/// "quá sớm" `redeem_vest_one_over_cap_rejected` dời sang lưới có gốc: mã đúng vẫn chặn; mã quên gốc sẽ thả.
+test redeem_vest_one_over_cap_rejected_origin_mainnet() fail {
+  let in_d = ca_datum(10_000, 0, 0, 1, 0)
+  let out_d = ca_datum(10_000, 301, 0, 1, 0)
+  redeem_run_at(window_origin_fixtures.mainnet_origin_ms, window_origin_fixtures.mainnet_origin_ms, fx(in_d, out_d, 301, 3), 301)
+}
+
+test redeem_vest_one_over_cap_rejected_origin_preprod() fail {
+  let in_d = ca_datum(10_000, 0, 0, 1, 0)
+  let out_d = ca_datum(10_000, 301, 0, 1, 0)
+  redeem_run_at(window_origin_fixtures.preprod_origin_ms, window_origin_fixtures.preprod_origin_ms, fx(in_d, out_d, 301, 3), 301)
 }

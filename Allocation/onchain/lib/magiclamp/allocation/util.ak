@@ -16,10 +16,11 @@ pub fn account_nft_name(owner: ByteArray, channel: ByteArray) -> ByteArray {
   blake2b_256(bytearray.concat(owner, channel))
 }
 
-/// Epoch từ validity_range lower_bound (POSIX ms). ms_per_epoch network-specific.
-pub fn get_epoch(tx: Transaction, ms_per_epoch: Int) -> Int {
+/// Epoch từ validity_range lower_bound (POSIX ms): `(t − window_origin_ms) / ms_per_epoch`
+/// (WIN-ORIGIN-1, Specs/Window/CONTRACT.md v1.0).
+pub fn get_epoch(tx: Transaction, ms_per_epoch: Int, window_origin_ms: Int) -> Int {
   expect Some(s) = tx.validity_range.lower_bound.bound_type |> get_finite
-  s / ms_per_epoch
+  ( s - window_origin_ms ) / ms_per_epoch
 }
 
 pub fn get_finite(bt: IntervalBoundType) -> Option<Int> {
