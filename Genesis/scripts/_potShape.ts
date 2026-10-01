@@ -84,7 +84,7 @@ export function assertPotDatum(raw: string | undefined): string {
 }
 
 /** Ba lời khai của đích pot → một `PotTarget` đã soát. Mọi trường bắt buộc, không mặc định. */
-export function potTarget(env: { address?: string; scriptHash?: string; datumCbor?: string },
+export function potTarget(env: { address?: string | undefined; scriptHash?: string | undefined; datumCbor?: string | undefined },
                           networkId: 0 | 1): PotTarget {
   const address = requireField("POT_ADDRESS", env.address);
   const scriptHash = hexField("POT_SCRIPT_HASH", requireField("POT_SCRIPT_HASH", env.scriptHash), 28);
@@ -121,8 +121,8 @@ export function potOutputAssets(lovelace: bigint, lampUnit: string, amount: bigi
 export interface OutputShape {
   address:    string;
   assets:     Record<string, bigint>;
-  datum?:     string | null;
-  datumHash?: string | null;
+  datum?:     string | null | undefined;
+  datumHash?: string | null | undefined;
   scriptRef?: unknown;
 }
 

@@ -85,7 +85,8 @@ export interface RefillParams {
    * CÁC UTxO kho phải gộp — caller CHỈ ĐỊNH TỪNG CÁI, không quét.
    * Mọi phần tử phải ở CÙNG một địa chỉ (xem RFL-002): `treasury.ak` nhánh `Refill` ép value ra
    * bằng TỔNG value vào, và địa chỉ ra được mang theo từ input chứ không dựng lại từ script hash.
-   * Phần tử mang tài sản tên "TRSY" dưới policy KHÁC bị loại khỏi tập gộp (xem `excluded`).
+   * Phần tử mang tài sản tên "TRSY" dưới policy KHÁC, hoặc (trừ carrier) mang asset ngoài
+   * {lovelace, LAMP, TRSY thật}, bị loại khỏi tập gộp (xem `excluded`).
    */
   treasuryUtxos:  UTxO[];
   treasuryScript: Validator;
@@ -203,7 +204,9 @@ export async function buildRefillTx(params: RefillParams): Promise<RefillResult>
   // ── Phân loại input: carrier · loại bỏ · gộp thường ─────────────────────
   // carrier  = mang ĐÚNG 1 NFT TRSY của policy THẬT (mirror `bears_treasury_nft` qty == 1).
   // loại bỏ  = không phải carrier và mang tài sản tên TRSY dưới policy KHÁC — gộp vào thì chuỗi
-  //            thấy 2 carrier ⇒ `carrier_ledger` từ chối ⇒ người lạ chặn được Refill.
+  //            thấy 2 carrier ⇒ `carrier_ledger` từ chối ⇒ người lạ chặn được Refill;
+  //            HOẶC không phải carrier và mang asset ngoài {lovelace, LAMP, TRSY thật} — gộp vào
+  //            thì kho sống mang rác vĩnh viễn (lý do ngay tại vòng lặp).
   // còn lại  = gộp value, BỎ QUA datum (inline, datum-hash, rác, khống — không số nào đi vào sổ).
   //
   // Vì sao KHÔNG lọc/ném UTxO lạc mang datum rác (đo 2026-09-27, compiler aiken v1.1.21,
@@ -228,6 +231,26 @@ export async function buildRefillTx(params: RefillParams): Promise<RefillResult>
           `chuỗi nhận carrier theo TÊN nên gộp vào là 2 carrier ⇒ từ chối`,
       });
       continue;
+    }
+    // Asset lạ (ngoài lovelace · LAMP đúng policy+tên · TRSY đúng policy+tên) ⇒ KHÔNG gộp.
+    // `treasury.ak` bảo toàn MỌI asset ở cả ba nhánh (Refill `value_in + deposited`, Release
+    // `tre_in.value − released`, Grant `tre_out.value == tre_in.value`) và không nhánh nào thải
+    // được tài sản ngoài LAMP ⇒ gộp một UTxO mang token rác là để kho sống mang nó VĨNH VIỄN:
+    // mỗi Redeem/Grant sau đó chở thêm bytes, và đủ rác thì vượt maxValueSize ⇒ Refill chết pha 1.
+    // Ai cũng đỗ được UTxO như vậy ở địa chỉ kho (Cardano không chạy validator lúc TẠO).
+    // Carrier KHÔNG bị loại theo luật này: nó bắt buộc phải có (RFL-003), rác đã nằm trong nó thì
+    // đã nằm trong kho rồi — loại carrier chỉ biến "kho mang rác" thành "kho không Refill được".
+    if (!isCarrier) {
+      const allowed = new Set(["lovelace", lampUnit.toLowerCase(), nftUnit.toLowerCase()]);
+      const foreign = Object.keys(u.assets).filter((unit) => !allowed.has(unit.toLowerCase()));
+      if (foreign.length > 0) {
+        excluded.push({
+          ref: refOf(u),
+          reason: `mang ${foreign.length} asset ngoài {lovelace, LAMP, TRSY} (${foreign.slice(0, 3).join(", ")}` +
+            `${foreign.length > 3 ? ", …" : ""}) — gộp vào là kho mang rác vĩnh viễn`,
+        });
+        continue;
+      }
     }
     if (isCarrier) carriers.push(u);
     collected.push(u);

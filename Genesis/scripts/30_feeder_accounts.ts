@@ -15,9 +15,11 @@
 //   redeem — `Redeem` của tài khoản feeder. C-RDM-6 đòi OWNER ký ⇒ ký thêm bằng khoá feeder.
 //            LAMP phải về địa chỉ có payment credential = VK(owner) (`util.lamp_to_owner`), nên
 //            đích là địa chỉ enterprise của chính feeder. Ví vận hành trả phí + collateral.
-//   sweep  — gom LAMP từ địa chỉ feeder về một ví payment-key (mặc định: ví vận hành). Không
-//            validator nào chạy; ký bằng khoá các feeder trong lô, ví vận hành trả phí và nhận
-//            lại min-ADA của các UTxO feeder qua tiền thối.
+//   sweep  — gom ĐÚNG AMOUNT_OILDROP LAMP (bắt buộc) từ địa chỉ feeder về một ví payment-key
+//            (mặc định: ví vận hành). Chọn UTxO như fundpot (lớn trước, loại UTxO mang asset lạ),
+//            LAMP thừa về feeder ĐẦU lô cuối; không đủ ⇒ dừng, không gửi thiếu. Không validator
+//            nào chạy; ký bằng khoá các feeder trong lô, ví vận hành trả phí và nhận lại min-ADA
+//            của các UTxO feeder qua tiền thối.
 //   fundpot — rót LAMP từ địa chỉ feeder THẲNG vào kho script của một pot, không đi qua ví vận
 //            hành. Không validator nào chạy lúc tạo output, nên runner đòi khai hình dạng UTxO kho
 //            nhận (POT_ADDRESS + POT_SCRIPT_HASH + POT_DATUM_CBOR, không mặc định) và soát bằng
@@ -35,11 +37,15 @@
 //   NETWORK=Preprod FEEDER_COUNT=1000 tsx 30_feeder_accounts.ts
 //   NETWORK=Preprod FEEDER_COUNT=1000 STEP=grant  MAX_TX=500 SUBMIT=true tsx 30_feeder_accounts.ts
 //   NETWORK=Preprod FEEDER_COUNT=1000 STEP=redeem MAX_TX=200 SUBMIT=true tsx 30_feeder_accounts.ts
-//   NETWORK=Preprod FEEDER_COUNT=1000 STEP=sweep  SUBMIT=true tsx 30_feeder_accounts.ts
+//   NETWORK=Preprod FEEDER_COUNT=1000 STEP=redeem DRY_RUN_AT_MS=<posix ms> tsx 30_feeder_accounts.ts
+//     (chạy khô ở cửa sổ của mốc đó — chỉ plan|redeem, chỉ khi SUBMIT=false)
+//   NETWORK=Preprod FEEDER_COUNT=1000 STEP=sweep  AMOUNT_OILDROP=<n> [SWEEP_TO=<addr>] SUBMIT=true tsx 30_feeder_accounts.ts
 //   NETWORK=Preprod FEEDER_COUNT=1000 STEP=fundpot AMOUNT_OILDROP=<n> \
-//     POT_ADDRESS=<addr_test1w…> POT_SCRIPT_HASH=<hex28> POT_DATUM_CBOR=<cbor> \
+//     POT_ADDRESS=<addr_test1w…> POT_SCRIPT_HASH=<hex28> POT_DATUM_CBOR=<cbor> POT_SHARE_OILDROP=<D> \
 //     [POT_LOVELACE=2000000] [POT_BATCH=40] [MAX_TX=25] [ALLOW_PARTIAL=true] tsx 30_feeder_accounts.ts
 //     (SUBMIT=false mặc định: dựng + soát giao dịch đầu tiên rồi dừng; thêm SUBMIT=true để ký, gửi.)
+//   Mọi bước gửi: AWAIT_TX_TIMEOUT_MS (mặc định 1200000 = 20 phút) — quá hạn chờ vào block ⇒
+//   FEED-AWAIT-001, thoát mã 1, câu lỗi mang hash giao dịch đã gửi.
 import {
   Data, credentialToAddress, scriptHashToCredential, toUnit, getAddressDetails, walletFromSeed,
   coreToTxOutput,
@@ -55,8 +61,9 @@ import {
   claimScripts, assertClaimScriptsMatch, pickTreasury, refKey,
 } from "./_distributionScripts.js";
 import {
-  feederIndices, grantsThatFit, pickNextRedeem, chunk, assertSweepTarget, trancheCost,
-  planPotFunding, type FeederAccount, type FeederUtxo,
+  feederIndices, grantsThatFit, pickNextRedeem, assertSweepTarget, trancheCost,
+  planPotFunding, planSweep, sweepAmountFromEnv, dryRunAtFromEnv, withDeadline,
+  type FeederAccount, type FeederUtxo,
 } from "./_feederPlan.js";
 import {
   requireField, positiveBig, potTargetFromEnv, potOutputAssets, assertPotOutputs, unitAt, type OutputShape,
@@ -104,6 +111,12 @@ const REDEEM_MIN = envBig("REDEEM_MIN_OILDROP", TRIM_FLOOR.toString());
 const SWEEP_TO = (process.env.SWEEP_TO ?? "").trim();
 /** Số UTxO feeder mỗi lượt gom — mỗi input kèm một chữ ký, giữ giao dịch dưới trần kích thước. */
 const SWEEP_BATCH = envInt("SWEEP_BATCH", "40");
+/**
+ * Hạn giờ chờ MỘT giao dịch đã gửi vào block (ms). Mặc định 20 phút. `awaitTx` của nhà cung cấp
+ * không có hạn giờ: giao dịch bị rớt khỏi mempool sau khi đã nhận thì tiến trình treo mãi, và job
+ * gọi nó treo theo mà không có dòng log nào.
+ */
+const AWAIT_TX_TIMEOUT_MS = envInt("AWAIT_TX_TIMEOUT_MS", "1200000");
 
 const lamp = (o: bigint) => `${o / OILDROP_PER_LAMP} LAMP`;
 const ada = (l: bigint) => `${l / 1_000_000n},${(l % 1_000_000n).toString().padStart(6, "0").slice(0, 2)} ADA`;
@@ -227,13 +240,29 @@ async function finish(lucid: LucidEvolution, tx: TxSignBuilder, label: string,
   for (const k of feederKeys) s = s.sign.withPrivateKey(k);
   const hash = await (await s.complete()).submit();
   console.log(`  📤 ${label}: ${hash}  ${explorerTx(hash)}`);
-  await lucid.awaitTx(hash);
+  // Quá hạn ⇒ ném lên `main().catch` ⇒ thoát mã 1 (giết luôn vòng thăm dò của nhà cung cấp).
+  // Giao dịch ĐÃ GỬI: câu lỗi mang hash để người chạy tra trước khi chạy lại.
+  await withDeadline(lucid.awaitTx(hash), AWAIT_TX_TIMEOUT_MS, () => new Error(
+    `FEED-AWAIT-001: quá ${AWAIT_TX_TIMEOUT_MS} ms (AWAIT_TX_TIMEOUT_MS) chờ ${label} vào block. ` +
+    `Giao dịch ĐÃ GỬI: ${hash} — tra ${explorerTx(hash)} trước khi chạy lại (có thể đã vào block, ` +
+    `có thể đã rớt khỏi mempool).`,
+  ));
   return true;
 }
 
 async function main(): Promise<void> {
   if (NETWORK === "Mainnet") throw new Error("CHẶN: script diễn tập, không chạy trên Mainnet.");
+  // Builder Distribution nhận `Network` của `@magiclamp/utils` (không có "Custom") — thu hẹp
+  // tường minh, cùng lý do ở `28_beacon_grant_redeem.ts` ▸ main.
+  if (NETWORK !== "Preprod" && NETWORK !== "Preview") {
+    throw new Error(`CHẶN: NETWORK='${NETWORK}' — script diễn tập chỉ chạy Preprod|Preview.`);
+  }
   if (FEEDER_COUNT <= 0) throw new Error(`FEED-ENV-002: đặt FEEDER_COUNT > 0 (số feeder của dải).`);
+  // Soát TRƯỚC khi gửi gì: hạn giờ sai mà chỉ lộ ra trong `finish` là lộ ra SAU một lần gửi.
+  if (AWAIT_TX_TIMEOUT_MS < 1) throw new Error(`FEED-ENV-002: AWAIT_TX_TIMEOUT_MS phải ≥ 1 (đang ${AWAIT_TX_TIMEOUT_MS}).`);
+  const dryRunAt = dryRunAtFromEnv(process.env.DRY_RUN_AT_MS, SUBMIT, STEP);
+  // Cửa sổ hiệu lực cho plan/redeem: giờ thật, hoặc mốc DRY_RUN_AT_MS (chỉ khi SUBMIT=false).
+  const windowNow = () => epochWindow(MS_PER_EPOCH, dryRunAt ?? BigInt(Date.now()));
 
   const lucid = await makeLucid();
   const pkh = await walletPkh(lucid);
@@ -252,6 +281,10 @@ async function main(): Promise<void> {
   console.log(`═══ Feeder pot Wakeme (${NETWORK}) · STEP=${STEP} ═══`);
   console.log(`Dải khoá        : #${FEEDER_BASE}..#${FEEDER_BASE + FEEDER_COUNT - 1} (${FEEDER_COUNT} feeder)`);
   console.log(`E mỗi feeder    : ${lamp(FEEDER_E)}`);
+  if (dryRunAt !== undefined) {
+    console.log(`⚠ CHẠY KHÔ ở mốc DRY_RUN_AT_MS=${dryRunAt} (cửa sổ ${windowNow().epoch}), KHÔNG phải giờ thật. ` +
+      `Pha 2 đánh giá cục bộ; pha 1 (khoảng hiệu lực so với tip) KHÔNG được thử.`);
+  }
 
   // ── plan ──────────────────────────────────────────────────────────────────
   if (STEP === "plan") {
@@ -262,7 +295,7 @@ async function main(): Promise<void> {
     const cost = trancheCost(fit, FEEDER_E);
     const walletLovelace = (await lucid.wallet().getUtxos()).reduce((s, u) => s + u.assets.lovelace, 0n);
     const perWindow = isqrt(FEEDER_E) * st.beacon.rate_root;
-    const e = epochWindow(MS_PER_EPOCH).epoch;
+    const e = windowNow().epoch;
     console.log(`\nKho             : pool ${lamp(st.pool)} · còn nợ ${lamp(st.treasury.outstanding_entitlement)} · đã phát ${lamp(st.treasury.total_redeemed)}`);
     console.log(`Beacon          : cửa sổ ${st.beacon.epoch} · w=${st.beacon.rate_root} · κ=${st.beacon.trim_num}/${st.beacon.trim_den}`);
     console.log(`Đã có tài khoản : ${accs.owners.size}/${feeders.length} feeder (${accs.accounts.length} UTxO tài khoản)`);
@@ -322,7 +355,7 @@ async function main(): Promise<void> {
     for (let i = 0; i < MAX_TX; i++) {
       const st = await readState(lucid, wiring);
       const accs = await readAccounts(lucid, claimAddr, cs.accountPid, feeders);
-      const w = epochWindow(MS_PER_EPOCH);
+      const w = windowNow();
       const pick = pickNextRedeem(accs.accounts, st.beacon, st.treasury, w.epoch, TRIM_FLOOR, REDEEM_MIN);
       if (!pick) { console.log(`Không tài khoản nào đạt ngưỡng ${lamp(REDEEM_MIN)} ở cửa sổ ${w.epoch}.`); break; }
       const f = byPkh.get(pick.pkh)!;
@@ -356,32 +389,74 @@ async function main(): Promise<void> {
 
   // ── sweep ─────────────────────────────────────────────────────────────────
   if (STEP === "sweep") {
-    const target = SWEEP_TO || await lucid.wallet().address();
+    // Lượng gom BẮT BUỘC (FEED-SWEEP-004): gom ĐÚNG số này, không gom tất. Phép chọn dùng chung
+    // với fundpot (`planSweep` → `planPotFunding`): lớn trước, loại UTxO mang asset lạ, LAMP thừa
+    // về feeder ĐẦU lô cuối. Không đủ ⇒ ném, không gửi thiếu.
+    const amount = sweepAmountFromEnv(process.env.AMOUNT_OILDROP);
+    const lampUnit = wiring.lampUnit;
+    const walletAddr = await lucid.wallet().address();
+    const target = SWEEP_TO || walletAddr;
     assertSweepTarget(target, 0);   // Mainnet đã bị chặn ở đầu main() ⇒ networkId luôn 0
-    const held: { f: Feeder; u: UTxO }[] = [];
+    // Đích trùng một feeder: gom về chính dải (vô nghĩa) và làm phép đối chiếu theo địa chỉ ở dưới
+    // cộng lẫn phần thừa với phần gom.
+    const self = feeders.find((f) => f.address === target);
+    if (self) throw new Error(`FEED-SWEEP-006: SWEEP_TO là địa chỉ của chính feeder #${self.index}. Dừng.`);
+
+    const held: FeederUtxo[] = [];
+    const utxoByRef = new Map<string, UTxO>();
     for (const f of feeders) {
       for (const u of await lucid.utxosAt(f.address)) {
-        if ((u.assets[wiring.lampUnit] ?? 0n) > 0n) held.push({ f, u });
+        if ((u.assets[lampUnit] ?? 0n) <= 0n) continue;
+        const ref = refKey(u);
+        utxoByRef.set(ref, u);
+        held.push({ index: f.index, pkh: f.pkh, address: f.address, ref, assets: u.assets });
       }
     }
-    const sum = held.reduce((s, h) => s + h.u.assets[wiring.lampUnit]!, 0n);
+    const byIndex = new Map(feeders.map((f) => [f.index, f]));
+    const sum = held.reduce((s, h) => s + h.assets[lampUnit]!, 0n);
     console.log(`Đích gom        : ${target}`);
+    console.log(`Cần gom         : ${amount} oildrop (${lamp(amount)})`);
     console.log(`Đang nằm ở feeder: ${held.length} UTxO · ${lamp(sum)}`);
-    let done = 0;
-    for (const batch of chunk(held, SWEEP_BATCH).slice(0, MAX_TX)) {
-      const amount = batch.reduce((s, h) => s + h.u.assets[wiring.lampUnit]!, 0n);
-      const owners = [...new Map(batch.map((h) => [h.f.pkh, h.f])).values()];
+    const plan = planSweep(held, { lampUnit, amount, batchSize: SWEEP_BATCH, maxTx: MAX_TX });
+    for (const x of plan.excluded) console.log(`  loại ${x.ref} (feeder #${x.index}): ${x.reason}`);
+    console.log(`Kế hoạch        : ${plan.batches.length} giao dịch · gom ${plan.total} oildrop · loại ${plan.excluded.length}`);
+
+    let swept = 0n;
+    for (const [i, b] of plan.batches.entries()) {
+      const owners = [...new Map(b.inputs.map((x) => [x.pkh, byIndex.get(x.index)!])).values()];
       // Khai người ký bắt buộc để phép ước phí đếm đủ chữ ký feeder — ví chỉ biết khoá của nó.
       let txb = lucid.newTx()
-        .collectFrom(batch.map((h) => h.u))
-        .pay.ToAddress(target, { [wiring.lampUnit]: amount });
+        .collectFrom(b.inputs.map((x) => utxoByRef.get(x.ref)!))
+        .pay.ToAddress(target, { [lampUnit]: b.potAmount });
+      if (b.change > 0n) txb = txb.pay.ToAddress(b.changeAddress, { [lampUnit]: b.change });
       for (const o of owners) txb = txb.addSignerKey(o.pkh);
       const tx = await txb.complete();
-      const keys = owners.map((o) => o.key);
-      if (!(await finish(lucid, tx, `Gom ${batch.length} UTxO · ${lamp(amount)}`, keys))) return;
-      done++;
+
+      // Soát giao dịch ĐÃ DỰNG, không tin value đã khai: đích nhận ĐÚNG phần của lô, LAMP thừa
+      // nằm đúng ở feeder đầu lô, không LAMP nào đi địa chỉ thứ tư. Ngoại lệ duy nhất: ví vận hành
+      // có thể bị chọn input trả phí mang LAMP của CHÍNH nó, phần đó về lại ví qua tiền thối — nên
+      // khi đích = ví vận hành, đích được nhận ≥ (không =) phần của lô.
+      const outs = tx.toTransaction().body().outputs();
+      const built: OutputShape[] = [];
+      for (let k = 0; k < outs.len(); k++) built.push(coreToTxOutput(outs.get(k)));
+      const toTarget = unitAt(built, target, lampUnit);
+      const toChange = unitAt(built, b.changeAddress, lampUnit);
+      const elsewhere = built
+        .filter((o) => o.address !== target && o.address !== b.changeAddress && o.address !== walletAddr)
+        .reduce((s, o) => s + (o.assets[lampUnit] ?? 0n), 0n);
+      const targetOk = target === walletAddr ? toTarget >= b.potAmount : toTarget === b.potAmount;
+      if (!targetOk || toChange !== b.change || elsewhere !== 0n) {
+        throw new Error(
+          `FEED-SWEEP-007: giao dịch dựng ra lệch kế hoạch — đích ${toTarget}/${b.potAmount}, ` +
+          `thừa ở feeder ${toChange}/${b.change}, LAMP đi địa chỉ khác ${elsewhere}. Dừng.`,
+        );
+      }
+      const label = `Gom ${i + 1}/${plan.batches.length} · ${b.inputs.length} UTxO · ${lamp(b.potAmount)}` +
+        (b.change > 0n ? ` · thừa ${b.change} oildrop về feeder #${b.inputs[0]!.index}` : "");
+      if (!(await finish(lucid, tx, label, owners.map((o) => o.key)))) return;
+      swept += b.potAmount;
     }
-    console.log(`\nXong ${done} lượt gom.`);
+    console.log(`\nXong ${plan.batches.length} lượt gom, tổng ${swept} oildrop (${lamp(swept)}) về ${target}.`);
     return;
   }
 
@@ -392,6 +467,9 @@ async function main(): Promise<void> {
     const pot = potTargetFromEnv(process.env, 0);
     const amount = positiveBig("AMOUNT_OILDROP", requireField("AMOUNT_OILDROP", process.env.AMOUNT_OILDROP));
     const potLovelace = positiveBig("POT_LOVELACE", process.env.POT_LOVELACE ?? "2000000");
+    // D — một suất của pot (tham số cap của validator pot). BẮT BUỘC như mọi lời khai pot khác:
+    // mọi output pot phải ≥ D, vì dịch vụ phát chỉ chọn MỘT UTxO kho ≥ D (`planPotFunding`).
+    const potShare = positiveBig("POT_SHARE_OILDROP", requireField("POT_SHARE_OILDROP", process.env.POT_SHARE_OILDROP));
     const batchSize = envInt("POT_BATCH", "40");
     const partialRaw = (process.env.ALLOW_PARTIAL ?? "false").trim().toLowerCase();
     if (partialRaw !== "true" && partialRaw !== "false") {
@@ -416,7 +494,8 @@ async function main(): Promise<void> {
     console.log(`Script hash     : ${pot.scriptHash}  (khớp địa chỉ)`);
     console.log(`Datum           : InlineDatum ${pot.datumCbor}`);
     console.log(`Cần rót         : ${amount} oildrop (${lamp(amount)}) · lovelace/output ${potLovelace}`);
-    const plan = planPotFunding(held, { lampUnit, amount, batchSize, maxTx: MAX_TX, allowPartial });
+    console.log(`Suất pot (D)    : ${potShare} oildrop (${lamp(potShare)}) — mọi output pot ≥ D`);
+    const plan = planPotFunding(held, { lampUnit, amount, batchSize, maxTx: MAX_TX, allowPartial, minPotAmount: potShare });
     console.log(`Đang ở feeder   : ${held.length} UTxO mang LAMP · dùng được ${plan.available} oildrop · loại ${plan.excluded.length}`);
     for (const x of plan.excluded) console.log(`  loại ${x.ref} (feeder #${x.index}): ${x.reason}`);
     console.log(`Kế hoạch        : ${plan.batches.length} giao dịch · rót ${plan.total} oildrop` +

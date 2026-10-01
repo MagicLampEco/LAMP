@@ -281,6 +281,46 @@ describe("buildRefillTx — UTxO lạ ở địa chỉ kho (griefing)", () => {
     await expect(buildRefillTx(baseParams(lucid, [gia]))).rejects.toThrow(/RFL-003/);
   });
 
+  // Token rác: `treasury.ak` bảo toàn mọi asset ở Refill/Release/Grant và không nhánh nào thải
+  // được tài sản ngoài LAMP ⇒ gộp vào là kho sống mang nó vĩnh viễn.
+  it("UTxO mang TOKEN RÁC (asset ngoài {lovelace, LAMP, TRSY}) ⇒ KHÔNG gộp, báo trong `excluded`, output không mang rác", async () => {
+    const { lucid, rec } = mockLucid("addr_op");
+    const JUNK_A = toUnit("ee".repeat(28), "4a554e4b");
+    const JUNK_B = toUnit("ef".repeat(28), "");
+    const rac = utxo({ ix: 7, lamp: 40n, datum: null, extra: { [JUNK_A]: 1_000n, [JUNK_B]: 1n } });
+    const sach = utxo({ ix: 8, lamp: 60n, datum: null });
+    const r = await buildRefillTx(baseParams(lucid, [carrier(), rac, sach]));
+    const collected = rec.collectFrom[0]!.utxos;
+    expect(collected.map((u) => u.outputIndex).sort()).toEqual([2, 8]);
+    expect(rec.payData[0]!.assets[JUNK_A]).toBeUndefined();
+    expect(rec.payData[0]!.assets[JUNK_B]).toBeUndefined();
+    expect(rec.payData[0]!.assets[LAMP_UNIT]).toBe(1_060n);   // 1000 carrier + 60 UTxO sạch; 40 của UTxO rác nằm lại
+    expect(r.merged).toBe(2);
+    expect(r.excluded).toHaveLength(1);
+    expect(r.excluded[0]!.ref).toBe(`${"44".repeat(32)}#7`);
+    expect(r.excluded[0]!.reason).toMatch(/2 asset ngoài \{lovelace, LAMP, TRSY\}/);
+    expect(r.summary).toMatch(/KHÔNG gộp/);
+  });
+
+  it("LAMP dưới policy KHÁC cùng tên cũng là rác ⇒ bị loại (so policy+tên, không so tên)", async () => {
+    const { lucid, rec } = mockLucid("addr_op");
+    const fakeLamp = utxo({ ix: 6, datum: null, extra: { [toUnit("ab".repeat(28), "744c414d50")]: 9n } });
+    const r = await buildRefillTx(baseParams(lucid, [carrier(), fakeLamp]));
+    expect(rec.collectFrom[0]!.utxos).toHaveLength(1);
+    expect(r.excluded).toHaveLength(1);
+  });
+
+  it("carrier ĐÃ mang rác ⇒ vẫn là carrier (không loại), không nhận THÊM rác từ UTxO khác", async () => {
+    const { lucid, rec } = mockLucid("addr_op");
+    const JUNK = toUnit("ee".repeat(28), "4a554e4b");
+    const c = utxo({ ix: 2, trsy: 1n, lamp: 1_000n, datum: treDatum(300n, FAKE_CH, 50n), extra: { [JUNK]: 5n } });
+    const rac = utxo({ ix: 9, datum: null, extra: { [JUNK]: 7n } });
+    const r = await buildRefillTx(baseParams(lucid, [c, rac]));
+    expect(rec.collectFrom[0]!.utxos.map((u) => u.outputIndex)).toEqual([2]);
+    expect(rec.payData[0]!.assets[JUNK]).toBe(5n);   // bảo toàn phần đã có, không cộng 7
+    expect(r.excluded.map((x) => x.ref)).toEqual([`${"44".repeat(32)}#9`]);
+  });
+
   it("bearsForeignTreasuryName: TRSY thật ⇒ false, TRSY policy khác ⇒ true, tên khác ⇒ false", () => {
     expect(bearsForeignTreasuryName(carrier(), FAKE_TRSY_POLICY)).toBe(false);
     expect(bearsForeignTreasuryName(
