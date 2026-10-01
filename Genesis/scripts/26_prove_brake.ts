@@ -22,7 +22,8 @@ import { NETWORK, makeLucid, walletPkh } from "./config.js";
 import {
   supplyStateToCbor, supplyStateFromCbor, supplyStateRedeemerToCbor, mintRouteToCbor,
 } from "../offchain/src/datum.js";
-import { rehydrate, writeState } from "./_canonical_v2.js";
+import { rehydrate, writeState, canonicalWindowOrigin, MS_PER_EPOCH } from "./_canonical_v2.js";
+import { windowStartMs } from "../../Utils/src/index.js";
 import {
   deriveReserveWiring, reserveStateDatum, drawWindow, resolveDelegationAdmin,
 } from "./_reserve_layer2.js";
@@ -57,6 +58,7 @@ async function main(): Promise<void> {
   const pkh = await walletPkh(lucid);
   const walletAddr = await lucid.wallet().address();
   const { state, wiring, scripts } = await rehydrate();
+  const originMs = canonicalWindowOrigin(wiring.network);
   if (pkh !== wiring.pkh) throw new Error(`SAI VÍ: state ghi pkh=${wiring.pkh}, ví hiện tại ${pkh}.`);
   if (!state.reserve?.custodyRef || (state.reserve.authRef?.outputIndex ?? -1) < 0) {
     throw new Error("chưa dựng Lớp 2 — chạy 'tsx 24_reserve_layer2_init.ts' trước.");
@@ -185,10 +187,11 @@ async function main(): Promise<void> {
    * hai vế tự mâu thuẫn. Nay NÉM rõ khi epoch kế còn xa hơn `NEXT_EPOCH_MAX_AHEAD_MS`.
    */
   function windowAfterLastDraw(): { loMs: number; hiMs: number; t: bigint } {
-    const w = drawWindow();
+    const w = drawWindow(originMs);
     if (w.t > r0.last_epoch) return w;
     const t = r0.last_epoch + 1n;
-    const loMs = Number(t * 432_000_000n) + 60_000;
+    // Đầu cửa sổ `t` theo gốc (Specs/Window v1.0): `origin + t × ms_per_epoch`, KHÔNG phải `t × ms_per_epoch`.
+    const loMs = Number(windowStartMs(t, originMs, MS_PER_EPOCH)) + 60_000;
     const aheadMs = loMs - Date.now();
     if (aheadMs > NEXT_EPOCH_MAX_AHEAD_MS) {
       throw new Error(
@@ -243,7 +246,7 @@ async function main(): Promise<void> {
   // ── P2: rút lượt hai trong CÙNG epoch ───────────────────────────────────
   // Chỉ có nghĩa khi `25_gated_draw.ts` đã chạy trong epoch hiện tại (last_epoch == t).
   {
-    const w = drawWindow();
+    const w = drawWindow(originMs);
     if (w.t > r0.last_epoch) {
       console.log(`── P2 — rút lượt hai cùng epoch`);
       console.log(`   ↷ BỎ QUA: epoch hiện tại t=${w.t} > last_epoch=${r0.last_epoch}, tức epoch này CHƯA rút.`);

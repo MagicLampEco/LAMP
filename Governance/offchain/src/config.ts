@@ -2,12 +2,14 @@
 //
 // Nguồn thứ tự: `SPEC.md` §v2.4 + đầu tệp `onchain/validators/governance.ak`:
 //   tally_nft, weight_param_nft  (không phụ thuộc gì)
-//     → nullifier(tally_policy, taad_policy, ms_per_epoch, tally_window_epochs)
-//     → vote(tally_policy, nullifier_policy, taad_policy, ms_per_epoch, tally_window_epochs)
+//     → nullifier(tally_policy, taad_policy, ms_per_epoch, tally_window_epochs, window_origin_ms)
+//     → vote(tally_policy, nullifier_policy, taad_policy, ms_per_epoch, tally_window_epochs, window_origin_ms)
 //     → tally(tally_policy, vote_script_hash, nullifier_policy, weight_param_policy, c3_policy,
-//             c3_script_hash, tally_window_epochs, ms_per_epoch)
+//             c3_script_hash, tally_window_epochs, ms_per_epoch, window_origin_ms)
 //     → governance(tally_policy, tally_script_hash, weight_param_policy, ms_per_epoch,
-//                  delta_min_epochs, recovery_timelock_epochs, _phase_tag)
+//                  delta_min_epochs, recovery_timelock_epochs, _phase_tag, window_origin_ms)
+// `window_origin_ms` là tham số CUỐI của cả bốn (Specs/Window/CONTRACT.md v1.0); `tally_nft` và
+// `weight_param_nft` không có (không tính cửa sổ).
 // Danh sách tham số trên được KIỂM với `parameters` của blueprint lúc apply (tên VÀ số lượng) —
 // lệch ⇒ `GOV-APPLY-001`. Apply thiếu tham số KHÔNG báo lỗi ở Lucid: nó sinh hash khác, im lặng
 // (bài học `Distribution/scripts/blueprint.ts ▸ assertParamCount`).
@@ -52,6 +54,14 @@ export interface GovernanceDeployParams {
    */
   c3ScriptHash: string;
   msPerEpoch: bigint;
+  /**
+   * `window_origin_ms` (Specs/Window/CONTRACT.md v1.0) — gốc của cửa sổ `(t − o) / ms_per_epoch`,
+   * apply làm tham số CUỐI của nullifier/vote/tally/governance. Giá trị của mạng đích:
+   * `windowOriginMs(network)` của `@magiclamp/utils` (Preview ném lỗi — mạng không có gốc). Gói
+   * này không import Utils được (`rootDir`), nên nhận từ người gọi. Truyền lệch ⇒ hash script lệch
+   * và nhãn cửa sổ builder tính khác nhãn validator suy ra.
+   */
+  windowOriginMs: bigint;
   tallyWindowEpochs: bigint;
   deltaMinEpochs: bigint;
   recoveryTimelockEpochs: bigint;
@@ -62,6 +72,8 @@ export interface GovernanceDeployParams {
 /** Mọi thứ builder cần: script đã apply + hash + tham số thời gian. */
 export interface GovernanceConfig {
   msPerEpoch: bigint;
+  /** `window_origin_ms` đã nướng vào nullifier/vote/tally/governance — builder tính cửa sổ từ đây. */
+  windowOriginMs: bigint;
   tallyWindowEpochs: bigint;
   deltaMinEpochs: bigint;
   recoveryTimelockEpochs: bigint;
@@ -140,13 +152,16 @@ const T = {
 export const EXPECTED_PARAMS: Record<keyof typeof T, string[]> = {
   tallyNft: ["_phase_tag"],
   weightParamNft: ["seed_ref", "phase_tag", "bft_floor_min", "bft_floor_max", "quorum_voters_min"],
-  nullifier: ["tally_policy", "taad_policy", "ms_per_epoch", "tally_window_epochs"],
-  vote: ["tally_policy", "nullifier_policy", "taad_policy", "ms_per_epoch", "tally_window_epochs"],
+  nullifier: ["tally_policy", "taad_policy", "ms_per_epoch", "tally_window_epochs", "window_origin_ms"],
+  vote: ["tally_policy", "nullifier_policy", "taad_policy", "ms_per_epoch", "tally_window_epochs", "window_origin_ms"],
   tally: [
     "tally_policy", "vote_script_hash", "nullifier_policy", "weight_param_policy", "c3_policy", "c3_script_hash",
-    "tally_window_epochs", "ms_per_epoch",
+    "tally_window_epochs", "ms_per_epoch", "window_origin_ms",
   ],
-  governance: ["tally_policy", "tally_script_hash", "weight_param_policy", "ms_per_epoch", "delta_min_epochs", "recovery_timelock_epochs", "_phase_tag"],
+  governance: [
+    "tally_policy", "tally_script_hash", "weight_param_policy", "ms_per_epoch", "delta_min_epochs",
+    "recovery_timelock_epochs", "_phase_tag", "window_origin_ms",
+  ],
 };
 
 function applyChecked(bp: Blueprint, key: keyof typeof T, params: Data[]): Validator {
@@ -173,6 +188,17 @@ function assertPos(v: bigint, ctx: string): bigint {
   return v;
 }
 
+function assertOrigin(v: bigint): bigint {
+  if (typeof v !== "bigint" || v < 0n) {
+    throw new Error(
+      `GOV-APPLY-005: windowOriginMs phải là bigint ≥ 0, nhận ${String(v)}. Thiếu nó thì validator được apply với ` +
+      "tham số cuối sai chỗ và cửa sổ bị chia từ gốc Unix (Specs/Window/CONTRACT.md v1.0). Lấy từ " +
+      "`windowOriginMs(network)` của `@magiclamp/utils`.",
+    );
+  }
+  return v;
+}
+
 /** Apply toàn bộ bộ validator theo thứ tự phụ thuộc hash. */
 export function applyGovernanceBlueprint(bp: Blueprint, p: GovernanceDeployParams): GovernanceConfig {
   const phaseTag = assertHex(p.phaseTag, null, "phaseTag");
@@ -194,6 +220,7 @@ export function applyGovernanceBlueprint(bp: Blueprint, p: GovernanceDeployParam
     );
   }
   const msPerEpoch = assertPos(p.msPerEpoch, "msPerEpoch");
+  const windowOriginMs = assertOrigin(p.windowOriginMs);
   const tallyWindow = assertPos(p.tallyWindowEpochs, "tallyWindowEpochs");
   // R-DELAY: Δ_min > 0 (SPEC §v2.8) — on-chain không tự kiểm apply-param, nên kiểm ở đây.
   const deltaMin = assertPos(p.deltaMinEpochs, "deltaMinEpochs");
@@ -217,21 +244,21 @@ export function applyGovernanceBlueprint(bp: Blueprint, p: GovernanceDeployParam
     weightParamNft = { policy, params: w };
   }
 
-  const nullifierPolicy = applyChecked(bp, "nullifier", [tallyPolicyId, taad, msPerEpoch, tallyWindow]);
+  const nullifierPolicy = applyChecked(bp, "nullifier", [tallyPolicyId, taad, msPerEpoch, tallyWindow, windowOriginMs]);
   const nullifierPolicyId = validatorToScriptHash(nullifierPolicy);
-  const voteScript = applyChecked(bp, "vote", [tallyPolicyId, nullifierPolicyId, taad, msPerEpoch, tallyWindow]);
+  const voteScript = applyChecked(bp, "vote", [tallyPolicyId, nullifierPolicyId, taad, msPerEpoch, tallyWindow, windowOriginMs]);
   const voteScriptHash = validatorToScriptHash(voteScript);
   const tallyScript = applyChecked(bp, "tally", [
-    tallyPolicyId, voteScriptHash, nullifierPolicyId, weightParamPolicyId, c3, c3Sh, tallyWindow, msPerEpoch,
+    tallyPolicyId, voteScriptHash, nullifierPolicyId, weightParamPolicyId, c3, c3Sh, tallyWindow, msPerEpoch, windowOriginMs,
   ]);
   const tallyScriptHash = validatorToScriptHash(tallyScript);
   const governanceScript = applyChecked(bp, "governance", [
-    tallyPolicyId, tallyScriptHash, weightParamPolicyId, msPerEpoch, deltaMin, recovery, phaseTag,
+    tallyPolicyId, tallyScriptHash, weightParamPolicyId, msPerEpoch, deltaMin, recovery, phaseTag, windowOriginMs,
   ]);
   const governancePolicyId = validatorToScriptHash(governanceScript);
 
   return {
-    msPerEpoch, tallyWindowEpochs: tallyWindow, deltaMinEpochs: deltaMin, recoveryTimelockEpochs: recovery,
+    msPerEpoch, windowOriginMs, tallyWindowEpochs: tallyWindow, deltaMinEpochs: deltaMin, recoveryTimelockEpochs: recovery,
     taadPolicyId: taad, c3PolicyId: c3, c3ScriptHash: c3Sh,
     tallyNftPolicy, tallyPolicyId,
     weightParamPolicyId, ...(weightParamNft ? { weightParamNft } : {}),

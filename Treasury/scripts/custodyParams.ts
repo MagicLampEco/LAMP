@@ -1,8 +1,9 @@
 // custodyParams — NƠI DUY NHẤT dựng danh sách apply-param của validator `custody`.
 //
-// VÌ SAO CÓ TỆP NÀY: `custody.custody.spend` khai FIVE khe theo đúng thứ tự
-//   [proposal_policy, seed_policy, ms_per_epoch, lamp_policy, token_name]
-// (`Treasury/onchain/validators/custody.ak:89-95`). Hai khe cuối được thêm cùng nhánh
+// VÌ SAO CÓ TỆP NÀY: `custody.custody.spend` khai SIX khe theo đúng thứ tự
+//   [proposal_policy, seed_policy, ms_per_epoch, lamp_policy, token_name, window_origin_ms]
+// (`Treasury/onchain/validators/custody.ak` ▸ chữ ký `validator custody(`; khe cuối
+// `window_origin_ms` từ Specs/Window/CONTRACT.md v1.0). Hai khe cuối được thêm cùng nhánh
 // MigrateIn; `Treasury/scripts/config.ts` và `PlatformKit/scripts/03_onboard_platform.ts`
 // đều còn áp BA khe cũ. Hai chỗ gọi ở hai kho con khác nhau, cùng một danh sách — nên danh
 // sách phải sống ở MỘT nơi, không thì lần thêm khe sau lại lệch đúng kiểu này.
@@ -124,6 +125,12 @@ export interface CustodyParams {
   msPerEpoch: bigint;
   lampPolicy: string;
   tokenName: string;
+  /**
+   * `window_origin_ms` — khe CUỐI (#6), Specs/Window/CONTRACT.md v1.0. BẮT BUỘC, không mặc định:
+   * nó nướng vào script hash của két ⇒ vào ĐỊA CHỈ két, và một mặc định ở đây là một gốc đoán.
+   * Lấy từ `windowOriginMs(network)` của `@magiclamp/utils` (Preview NÉM).
+   */
+  windowOriginMs: bigint;
 }
 
 /**
@@ -135,11 +142,20 @@ export interface CustodyParams {
  * lúc nào không ai biết.
  */
 export function custodyParamList(p: CustodyParams): unknown[] {
+  // Khe #6 là một con số, không phải hash — đi lọt mọi phép kiểm hình dạng hex, và thiếu nó thì
+  // `applyParamsToScript` áp MỘT PHẦN rồi trả về một địa chỉ két khác, im lặng.
+  if (typeof p.windowOriginMs !== "bigint" || p.windowOriginMs < 0n) {
+    throw new Error(
+      `WINDOW-ORIGIN-001: custody.window_origin_ms (#6) = ${String(p.windowOriginMs)} — cần bigint ` +
+      `>= 0 từ \`windowOriginMs(network)\` của @magiclamp/utils (Specs/Window/CONTRACT.md v1.0).`,
+    );
+  }
   return [
     p.proposalPolicy, p.seedPolicy, p.msPerEpoch,
     // Khe #4 chở policy id của LAMP ⇒ đi qua cổng hàng nhái. `resolveLampPolicy` nhận
     // `LAMP_POLICY_ID` từ env chỉ sau phép kiểm HÌNH DẠNG, mà policy nhái thì đúng hình dạng.
     assertNotLookalike(p.lampPolicy, "custody #4 lamp_policy"),
     p.tokenName,
+    p.windowOriginMs,   // #6 — tham số CUỐI
   ];
 }

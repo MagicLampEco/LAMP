@@ -12,7 +12,7 @@ const opts = {
   lampPolicy: "ab".repeat(28),
   magicPolicy: "cd".repeat(28),
   registryAuthority: "ef".repeat(28),
-  msPerEpoch: 86_400_000n,
+  msPerEpoch: 86_400_000n, windowOriginMs: 1_506_203_091_000n,
   reservedMinAda: 2_000_000n,
   genesisRef: { transaction_id: "ff".repeat(32), output_index: 0n },
 };

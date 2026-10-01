@@ -28,6 +28,12 @@ import {
 import {
   decodeTreasuryDatum, decodeBeaconDatum, treasuryDatumToCbor,
 } from "../../Distribution/offchain/src/datum.js";
+import { WINDOW_ORIGIN_MS_BY_NETWORK, CHAIN_TIME_ERRORS } from "../../Utils/src/index.js";
+
+// `window_origin_ms` (Specs/Window/CONTRACT.md v1.0) — tham số CUỐI của claim_account · treasury ·
+// beacon. `sampleWiring()` chạy trên Preprod nên gốc đúng là gốc Preprod THẬT, khác 0 và khác Mainnet.
+const PREPROD_ORIGIN = WINDOW_ORIGIN_MS_BY_NETWORK.Preprod!;
+const MAINNET_ORIGIN = WINDOW_ORIGIN_MS_BY_NETWORK.Mainnet!;
 import {
   RATE_ROOT_GENESIS, RATE_ROOT_MIN, RATE_ROOT_MAX, TRIM_NUM_GENESIS, TRIM_DEN_GENESIS,
 } from "../../Distribution/offchain/src/constants.js";
@@ -98,6 +104,7 @@ describe("deriveWiring — lớp Distribution v3", () => {
       treasury_nft_policy: wiring.markers.khoPid,
       account_nft_policy: wiring.accountPid,
       claim_account_hash: wiring.claimHash,
+      window_origin_ms: PREPROD_ORIGIN,
     };
     const vs = distValidators();
     const rebuild = (title: string): string => {
@@ -116,13 +123,48 @@ describe("deriveWiring — lớp Distribution v3", () => {
     expect(rebuild("beacon.beacon.spend")).toBe(wiring.beaconHash);
   }, 120_000);
 
-  it("treasury v3 khai 8 tham số, beacon_nft_policy ở KHE CUỐI", () => {
+  it("treasury khai 9 tham số: beacon_nft_policy ở khe #8, window_origin_ms ở KHE CUỐI", () => {
     requireBlueprints();
     const t = distValidators().find((x) => x.title === "treasury.treasury.spend");
     const names = (t?.parameters ?? []).map((p) => p.title);
-    expect(names).toHaveLength(8);
+    expect(names).toHaveLength(9);
     expect(names[7]).toBe("beacon_nft_policy");
+    expect(names[8]).toBe("window_origin_ms");
   });
+
+  // Gốc đi vào script hash của BA validator và KHÔNG đi vào marker nào. Ca xanh ở cả hai cực
+  // là ca vô dụng: nếu `deriveWiring` bỏ quên gốc (hoặc áp gốc 0) thì ba hash này vẫn ra hash hợp
+  // lệch — chỉ phép SO với gốc khác mới lộ ra.
+  it("gốc cửa sổ NƯỚNG vào claim_account / treasury / beacon, không vào marker", async () => {
+    requireBlueprints();
+    const a = (await sampleWiring()).wiring;
+    const b = (await deriveWiring({
+      genesisTxHash: SAMPLE_TX, genesisIndex: 0, pkh: SAMPLE_PKH, tokenName: TOKEN_NAME,
+      reserveKhoPid: SAMPLE_RESERVE_KHO_PID, reserveKhoName: RESERVE_KHO_NAME,
+      network: "Preprod", windowOriginMs: MAINNET_ORIGIN,
+    })).wiring;
+    expect(b.claimHash).not.toBe(a.claimHash);
+    expect(b.treHash).not.toBe(a.treHash);
+    expect(b.beaconHash).not.toBe(a.beaconHash);
+    expect(b.markers).toEqual(a.markers);     // marker one-shot không phụ thuộc gốc
+    expect(b.lampPid).toBe(a.lampPid);
+  }, 120_000);
+
+  it("không truyền gốc ⇒ lấy từ MẠNG; Preview NÉM (WIN-PREVIEW), không có giá trị đệm", async () => {
+    requireBlueprints();
+    const mac = (await sampleWiring()).wiring;                  // Preprod, không truyền gốc
+    const tuong = (await deriveWiring({
+      genesisTxHash: SAMPLE_TX, genesisIndex: 0, pkh: SAMPLE_PKH, tokenName: TOKEN_NAME,
+      reserveKhoPid: SAMPLE_RESERVE_KHO_PID, reserveKhoName: RESERVE_KHO_NAME,
+      network: "Preprod", windowOriginMs: PREPROD_ORIGIN,
+    })).wiring;
+    expect(tuong.treHash).toBe(mac.treHash);                    // mặc định ≡ gốc Preprod của Utils
+    await expect(deriveWiring({
+      genesisTxHash: SAMPLE_TX, genesisIndex: 0, pkh: SAMPLE_PKH, tokenName: TOKEN_NAME,
+      reserveKhoPid: SAMPLE_RESERVE_KHO_PID, reserveKhoName: RESERVE_KHO_NAME,
+      network: "Preview",
+    })).rejects.toThrow(CHAIN_TIME_ERRORS.WINDOW_ORIGIN_UNDEFINED);
+  }, 120_000);
 });
 
 describe("treasuryDatum — TreasuryDatum v3 (3 trường)", () => {
@@ -158,6 +200,8 @@ describe("genesisBeaconDatum — BeaconDatum v3 lúc sinh", () => {
     const plan = planBeacon({
       onChain: b, window: { loMs: 0n, hiMs: 0n, epoch: EPOCH + 1n },
       rateRoot: RATE_ROOT_GENESIS, msPerEpoch: MS_PER_EPOCH,
+      // Ca này chỉ đo chỉ số beacon theo Δepoch; cửa sổ truyền thẳng nên gốc 0 là đủ.
+      windowOriginMs: 0n,
     });
     expect(plan.action).toBe("post");
     if (plan.action === "post") expect(plan.params.newBeacon.index).toBe(RATE_ROOT_GENESIS);

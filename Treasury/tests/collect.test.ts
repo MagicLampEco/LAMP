@@ -493,41 +493,53 @@ describe("planCollect — orchestration thuần (khớp validator)", () => {
 // ════════════════════════════════════════════════════════════════════════
 // F4: validity_range HỮU HẠN + lower&upper CÙNG epoch (mirror get_epoch_bounded)
 // ════════════════════════════════════════════════════════════════════════
-describe("F4: sameEpochValidToMs — validTo cùng epoch với validFrom", () => {
+describe("F4: sameEpochValidToMs — validTo cùng epoch với validFrom (theo GỐC cửa sổ)", () => {
   const MS = 432_000_000n;                   // Cardano epoch = 5 ngày
+  // Gốc Mainnet THẬT (Utils ▸ WINDOW_ORIGIN_MS_BY_NETWORK.Mainnet; Specs/Window v1.0), KHÔNG phải 0:
+  // gốc 0 không phân biệt được bản trừ gốc với bản quên trừ. `windowOrigin.test.ts` đối chiếu
+  // hằng này với Utils. Cửa sổ e = [O + e·MS, O + (e+1)·MS − 1]; ⌊(t − O)/MS⌋ là nhãn.
+  const O = 1_506_203_091_000n;
+  const win = (t: bigint) => (t - O) / MS;
 
-  it("⌊validTo/ms⌋ == ⌊validFrom/ms⌋ (cùng epoch)", () => {
-    const validFrom = 12n * MS + 123_456n;   // epoch 12
-    const validTo = sameEpochValidToMs(validFrom, MS);
-    expect(validFrom / MS).toBe(12n);
-    expect(validTo / MS).toBe(12n);          // ⌊validTo/ms⌋ == ⌊validFrom/ms⌋
+  it("⌊(validTo−O)/ms⌋ == ⌊(validFrom−O)/ms⌋ (cùng cửa sổ)", () => {
+    const validFrom = O + 12n * MS + 123_456n;   // cửa sổ 12
+    const validTo = sameEpochValidToMs(validFrom, MS, O);
+    expect(win(validFrom)).toBe(12n);
+    expect(win(validTo)).toBe(12n);          // cùng nhãn
     expect(validTo).toBeGreaterThan(validFrom);
   });
 
-  // Đầu epoch 5 ngày: bản cũ trả cuối epoch, tức gần 5 ngày sau ⇒ PastHorizon. Mốc đỏ trên bản cũ.
-  it("cuối epoch còn xa: validTo = validFrom + TTL, không phải cuối epoch", () => {
-    const validFrom = 7n * MS;               // đầu epoch 7
-    const validTo = sameEpochValidToMs(validFrom, MS);
+  // Đầu cửa sổ 5 ngày: bản cũ trả cuối cửa sổ, tức gần 5 ngày sau ⇒ PastHorizon. Mốc đỏ trên bản cũ.
+  it("cuối cửa sổ còn xa: validTo = validFrom + TTL, không phải cuối cửa sổ", () => {
+    const validFrom = O + 7n * MS;           // đầu cửa sổ 7
+    const validTo = sameEpochValidToMs(validFrom, MS, O);
     expect(validTo).toBe(validFrom + VALID_TTL_MS);
-    expect(validTo / MS).toBe(7n);
+    expect(win(validTo)).toBe(7n);
   });
 
-  it("epoch hết trước TTL: validTo = ms cuối CÙNG epoch (không tràn sang sau)", () => {
-    const validFrom = 8n * MS - 1_000n;      // 1 s trước cuối epoch 7
-    const validTo = sameEpochValidToMs(validFrom, MS);
-    expect(validTo).toBe(8n * MS - 1n);
-    expect(validTo / MS).toBe(7n);
+  it("cửa sổ hết trước TTL: validTo = ms cuối CÙNG cửa sổ (không tràn sang sau)", () => {
+    const validFrom = O + 8n * MS - 1_000n;  // 1 s trước cuối cửa sổ 7
+    const validTo = sameEpochValidToMs(validFrom, MS, O);
+    expect(validTo).toBe(O + 8n * MS - 1n);
+    expect(win(validTo)).toBe(7n);
   });
 
   it("mọi mốc: validTo − validFrom ≤ TTL", () => {
-    for (const validFrom of [0n, 1n, MS / 2n, MS - VALID_TTL_MS, MS - 1n]) {
-      const validTo = sameEpochValidToMs(validFrom, MS);
+    for (const k of [0n, 1n, MS / 2n, MS - VALID_TTL_MS, MS - 1n]) {
+      const validFrom = O + k;
+      const validTo = sameEpochValidToMs(validFrom, MS, O);
       expect(validTo - validFrom).toBeLessThanOrEqual(VALID_TTL_MS);
-      expect(validTo / MS).toBe(validFrom / MS);
+      expect(win(validTo)).toBe(win(validFrom));
     }
   });
 
   it("reject msPerEpoch ≤ 0", () => {
-    expect(() => sameEpochValidToMs(100n, 0n)).toThrow(/EPOCH-000/);
+    expect(() => sameEpochValidToMs(100n, 0n, 0n)).toThrow(/EPOCH-000/);
+  });
+
+  it("reject gốc thiếu/âm và mốc TRƯỚC gốc — không đoán một nhãn", () => {
+    expect(() => sameEpochValidToMs(O, MS, undefined as unknown as bigint)).toThrow(/WINDOW-ORIGIN-001/);
+    expect(() => sameEpochValidToMs(O, MS, -1n)).toThrow(/WINDOW-ORIGIN-001/);
+    expect(() => sameEpochValidToMs(O - 1n, MS, O)).toThrow(/WINDOW-ORIGIN-002/);
   });
 });

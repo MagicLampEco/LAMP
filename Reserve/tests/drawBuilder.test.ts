@@ -49,7 +49,12 @@ const otherAddr = credentialToAddress("Preview", scriptHashToCredential(OTHER_HA
 const gateAddr = credentialToAddress("Preview", scriptHashToCredential(GATE_HASH));
 
 const MS_PER_EPOCH = 432_000_000;
+// Gốc cửa sổ THẬT của Mainnet (Specs/Window/CONTRACT.md v1.0 §3), không phải 0 và không chia hết
+// MS_PER_EPOCH (dư 251_091_000): bản quên trừ gốc cho epoch lệch hàng nghìn chứ không lệch 0.
+const ORIGIN_MS = 1_506_203_091_000n;
 const EPOCH = 100n;
+/** Đầu cửa sổ `EPOCH` = gốc + EPOCH × ms. */
+const WINDOW_START = Number(ORIGIN_MS) + Number(EPOCH) * MS_PER_EPOCH;
 const TOTAL = 9_630_000_000_000_000n;
 const DELTA = TOTAL / 1000n;                  // = trần epoch, mặc định của builder
 
@@ -122,8 +127,10 @@ function params(over: Partial<DrawParams> = {}): DrawParams {
     },
 
     epoch: EPOCH,
-    validFromUnixMs: Number(EPOCH) * MS_PER_EPOCH + 1000,
-    validToUnixMs: Number(EPOCH) * MS_PER_EPOCH + 90_000,
+    msPerEpoch: BigInt(MS_PER_EPOCH),
+    windowOriginMs: ORIGIN_MS,
+    validFromUnixMs: WINDOW_START + 1000,
+    validToUnixMs: WINDOW_START + 90_000,
     ...over,
   };
 }
@@ -416,5 +423,37 @@ describe("RDB-009 — parked của kho < sàn (G-FLOOR-1)", () => {
   });
   it("XANH: parked = sàn − 1 → dựng được", async () => {
     await expect(buildDrawTx(withParked(FLOOR - 1n))).resolves.toBeDefined();
+  });
+});
+
+describe("RDB-010/011 — validity_range thuộc ĐÚNG cửa sổ `epoch` tính từ gốc (Specs/Window v1.0)", () => {
+  it("XANH ở cổng này: [đầu cửa sổ, cuối cửa sổ − 1ms] của epoch 100 → KHÔNG ném RDB-010/011", async () => {
+    // lucid giả không có `newTx` nên builder dừng SAU các cổng; cái cần khẳng định là cổng cửa sổ cho qua.
+    let msg = "";
+    try {
+      await buildDrawTx(params({ validFromUnixMs: WINDOW_START, validToUnixMs: WINDOW_START + MS_PER_EPOCH - 1 }));
+    } catch (e) { msg = (e as Error).message; }
+    expect(msg).not.toMatch(/RDB-01[01]/);
+  });
+  it("ĐỎ: lưới Unix cũ — validity chia từ gốc 1970 cho nhãn khác epoch ⇒ RDB-011", async () => {
+    // Cùng epoch=100 nhưng caller vẫn dựng validity theo `epoch × MS` từ gốc Unix: lệch ~17k cửa sổ.
+    await expect(buildDrawTx(params({
+      validFromUnixMs: Number(EPOCH) * MS_PER_EPOCH + 1000, validToUnixMs: Number(EPOCH) * MS_PER_EPOCH + 90_000,
+    }))).rejects.toThrow(/RDB-011.*trước gốc/);
+  });
+  it("ĐỎ: hi sang cửa sổ kế (một ms quá biên) ⇒ RDB-011", async () => {
+    await expect(buildDrawTx(params({
+      validFromUnixMs: WINDOW_START + 1000, validToUnixMs: WINDOW_START + MS_PER_EPOCH,
+    }))).rejects.toThrow(/RDB-011/);
+  });
+  it("ĐỎ: lo ở cửa sổ trước (một ms trước đầu cửa sổ) ⇒ RDB-011", async () => {
+    await expect(buildDrawTx(params({
+      validFromUnixMs: WINDOW_START - 1, validToUnixMs: WINDOW_START + 90_000,
+    }))).rejects.toThrow(/RDB-011/);
+  });
+  it("ĐỎ: thiếu / âm gốc ⇒ RDB-010", async () => {
+    await expect(buildDrawTx(params({ windowOriginMs: undefined as never }))).rejects.toThrow(/RDB-010/);
+    await expect(buildDrawTx(params({ windowOriginMs: -1n }))).rejects.toThrow(/RDB-010/);
+    await expect(buildDrawTx(params({ msPerEpoch: 0n }))).rejects.toThrow(/RDB-010/);
   });
 });

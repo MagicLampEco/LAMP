@@ -71,6 +71,7 @@ export function exampleConfig(opts: {
   registryAuthority: string;     // ĐIỀN: payment key-hash (28-byte hex) authority ký đăng ký.
                                  //   PRODUCTION: PHẢI là multisig/committee (xem onboarding.md).
   msPerEpoch: bigint;            // ĐIỀN: POSIX ms ↔ epoch của mạng (Preview/Mainnet khác nhau).
+  windowOriginMs: bigint;       // ĐIỀN: `windowOriginMs(network)` của @magiclamp/utils (Specs/Window v1.0) — Preview không có.
   reservedMinAda: bigint;        // ĐIỀN: lovelace giữ min-UTxO cho seed (≥ 0, KHÔNG ghi sổ).
   genesisRef: { transaction_id: string; output_index: bigint };  // UTxO one-shot tiêu khi seed.
   /** seed_policy custody nếu biết trước (hex). Trống → suy từ custody_seed đã apply genesisRef. */
@@ -99,6 +100,7 @@ export function exampleConfig(opts: {
     governanceRef: opts.governanceRef ?? padHash28(asciiToHex("example-committee")),
     ...(opts.seedPolicy !== undefined ? { seedPolicy: opts.seedPolicy } : {}),
     msPerEpoch: opts.msPerEpoch,
+    windowOriginMs: opts.windowOriginMs,
     reservedMinAda: opts.reservedMinAda,
     registryAuthority: opts.registryAuthority.toLowerCase(),
     genesisRef: opts.genesisRef,
@@ -111,6 +113,7 @@ export function exampleConfig(opts: {
 export const exampleTemplateConfig: PlatformConfig = exampleConfig({
   registryAuthority: "00".repeat(28),                              // placeholder.
   msPerEpoch: 86_400_000n,                                         // 1 ngày (Preview ví dụ).
+  windowOriginMs: 1_506_203_091_000n,                           // gốc Mainnet làm MẪU; thật: windowOriginMs(network).
   reservedMinAda: 2_000_000n,                                      // 2 ADA min-UTxO.
   genesisRef: { transaction_id: "00".repeat(32), output_index: 0n },
 });

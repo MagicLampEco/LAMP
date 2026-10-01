@@ -68,8 +68,8 @@ import {
 
 import { NETWORK, SUBMIT, WALLET_SEED, makeLucid, walletPkh, explorerTx } from "./config.js";
 import {
-  rehydrate, canonicalCommittee, CANONICAL_COMMITTEE_THRESHOLD, MS_PER_EPOCH, DROP_NAME,
-  waitFor, isWaitTimeout,
+  rehydrate, canonicalWindowOrigin, canonicalCommittee, CANONICAL_COMMITTEE_THRESHOLD, MS_PER_EPOCH,
+  DROP_NAME, waitFor, isWaitTimeout,
 } from "./_canonical_v2.js";
 import {
   claimScripts, assertClaimScriptsMatch, pickTreasury, refKey,
@@ -322,6 +322,7 @@ class Chain {
     private readonly khoUnit: string,
     private readonly windowNow: () => EpochWindow,
     private readonly nowMs: () => bigint,
+    private readonly windowOriginMs: bigint,
   ) {}
 
   async source(): Promise<UtxoSource> {
@@ -338,7 +339,7 @@ class Chain {
   async window(): Promise<EpochWindow | null> {
     if (CHAIN_DEPTH === 1) return this.windowNow();
     if (!this.view) await this.open();
-    const why = chainWindowBlock(this.w!, MS_PER_EPOCH, this.nowMs(), CHAIN_WINDOW_MARGIN_MS);
+    const why = chainWindowBlock(this.w!, MS_PER_EPOCH, this.windowOriginMs, this.nowMs(), CHAIN_WINDOW_MARGIN_MS);
     if (why) { console.log(`Chuỗi dừng dựng: ${why}.`); return null; }
     return this.w!;
   }
@@ -452,7 +453,10 @@ async function main(): Promise<void> {
   if (AWAIT_TX_TIMEOUT_MS < 1) throw new Error(`FEED-ENV-002: AWAIT_TX_TIMEOUT_MS phải ≥ 1 (đang ${AWAIT_TX_TIMEOUT_MS}).`);
   const dryRunAt = dryRunAtFromEnv(process.env.DRY_RUN_AT_MS, SUBMIT, STEP);
   // Cửa sổ hiệu lực cho plan/redeem: giờ thật, hoặc mốc DRY_RUN_AT_MS (chỉ khi SUBMIT=false).
-  const windowNow = () => epochWindow(MS_PER_EPOCH, dryRunAt ?? BigInt(Date.now()));
+  // Gốc cửa sổ lấy từ MẠNG đang chạy (`NETWORK`), cùng nguồn với `deriveWiring` ở `rehydrate()` bên dưới
+  // (`wiring.network` được đối chiếu khi dựng lại); Preview NÉM ngay ở đây — fail-closed.
+  const originMs = canonicalWindowOrigin(NETWORK);
+  const windowNow = () => epochWindow(MS_PER_EPOCH, originMs, dryRunAt ?? BigInt(Date.now()));
   // Nối chuỗi chỉ hiện thực cho hai bước tiêu carrier. Bước khác nhận CHAIN_DEPTH>1 mà im lặng
   // chạy kiểu cũ là để người chạy tin rằng mình đang chạy nhanh.
   if (CHAIN_DEPTH > 1 && STEP !== "grant" && STEP !== "redeem") {
@@ -463,8 +467,10 @@ async function main(): Promise<void> {
   const pkh = await walletPkh(lucid);
   const { wiring, scripts } = await rehydrate();
   if (pkh !== wiring.pkh) throw new Error(`SAI VÍ: state ghi pkh=${wiring.pkh}, ví hiện tại ${pkh}.`);
+  // `assertClaimScriptsMatch` bên dưới là cổng nếu gốc của NETWORK lệch gốc đã nướng trong state:
+  // `claimHash` chứa gốc, nên lệch ⇒ APPLY-003, không phải một cửa sổ lệch im lặng.
   const cs = await claimScripts(pkh, wiring.markers.khoPid, wiring.lampPid,
-                                wiring.tokenName, wiring.markers.beaconPid);
+                                wiring.tokenName, wiring.markers.beaconPid, originMs);
   assertClaimScriptsMatch(cs, wiring);
   const claimAddr = credentialToAddress(NETWORK, scriptHashToCredential(cs.claimHash));
   const feeders = deriveFeeders(pkh);
@@ -475,7 +481,7 @@ async function main(): Promise<void> {
   const chain = new Chain(
     lucid,
     { beacon: wiring.beaconAddr, treasury: wiring.treAddr, claim: claimAddr, wallet: await lucid.wallet().address() },
-    wiring.khoUnit, windowNow, () => dryRunAt ?? BigInt(Date.now()),
+    wiring.khoUnit, windowNow, () => dryRunAt ?? BigInt(Date.now()), originMs,
   );
 
   console.log(`═══ Feeder pot Wakeme (${NETWORK}) · STEP=${STEP} ═══`);
@@ -529,13 +535,13 @@ async function main(): Promise<void> {
         console.log(`Kho hết chỗ (pool ${lamp(st.pool)}, nợ ${lamp(st.treasury.outstanding_entitlement)}). Dừng — vest + Refill rồi chạy lại.`);
         break;
       }
-      // CHAIN_DEPTH=1: `epochWindow(MS_PER_EPOCH)` mỗi lượt như cũ (grant không nhận DRY_RUN_AT_MS).
+      // CHAIN_DEPTH=1: `epochWindow(MS_PER_EPOCH, originMs)` mỗi lượt như cũ (grant không nhận DRY_RUN_AT_MS).
       const w = await chain.window();
       if (!w) break;
       const r = await buildClaimTx({
         lucid, claimScript: cs.claim, network: NETWORK,
         ownerPkh: f.pkh, amount: FEEDER_E,
-        msPerEpoch: MS_PER_EPOCH,                  // C-ACC-2: builder suy start_epoch từ validFromMs
+        msPerEpoch: MS_PER_EPOCH, windowOriginMs: originMs,   // C-ACC-2: builder suy start_epoch từ validFromMs
         accountNft: { script: cs.accountNft, policyId: cs.accountPid },
         treasury: { utxo: st.treasuryUtxo, ...treasuryCommon },
         beacon: { utxo: st.beaconUtxo, datum: st.beacon },   // C-CLAIM-8
@@ -575,9 +581,9 @@ async function main(): Promise<void> {
         claimAccountUtxo: acc.utxo, claimScript: cs.claim,
         treasuryUtxo: st.treasuryUtxo, treasuryScript: scripts.treasury,
         dropBeaconUtxo: st.beaconUtxo,
-        // Builder SUY cửa sổ từ đầu dưới (`validFromMs / msPerEpoch`) — cùng `w` mà kế hoạch
-        // `pickNextRedeem` vừa dùng, nên `r.amount` so được với `pick.amount` bên dưới.
-        msPerEpoch: MS_PER_EPOCH,
+        // Builder SUY cửa sổ từ đầu dưới (`(validFromMs − windowOriginMs) / msPerEpoch`) — cùng `w`
+        // mà kế hoạch `pickNextRedeem` vừa dùng, nên `r.amount` so được với `pick.amount` bên dưới.
+        msPerEpoch: MS_PER_EPOCH, windowOriginMs: originMs,
         validFromMs: w.loMs,
         validToMs: w.hiMs,
         treasuryNftPolicy: wiring.markers.khoPid, treasuryNftAssetName: "54525359",

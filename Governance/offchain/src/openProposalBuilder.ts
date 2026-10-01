@@ -55,7 +55,7 @@ export interface OpenProposalResult {
 export async function buildOpenProposalTx(p: OpenProposalParams): Promise<OpenProposalResult> {
   const cfg = p.config;
   const network = networkOf(p.lucid);
-  const { loMs, hiMs, epoch } = boundedEpochWindow(p.nowMs, cfg.msPerEpoch, slotConfigOf(p.lucid, p.slotConfig));
+  const { loMs, hiMs, epoch } = boundedEpochWindow(p.nowMs, cfg.msPerEpoch, cfg.windowOriginMs, slotConfigOf(p.lucid, p.slotConfig));
 
   // O3 — cửa sổ bỏ phiếu.
   if (p.voteOpenEpoch < epoch) {

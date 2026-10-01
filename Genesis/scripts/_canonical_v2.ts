@@ -50,6 +50,7 @@ import { TREASURY_NFT_ASSET_NAME } from "../../Distribution/offchain/src/constan
 import { DEFAULT_BEACON_ASSET_NAMES } from "../../Distribution/offchain/src/beaconBuilder.js";
 import type { FloorSource } from "./_floorLabel.js";
 import { waitTimeoutError } from "./_waitTimeout.js";
+import { canonicalWindowOrigin } from "./_epochWindow.js";
 // Datum Distribution dựng bằng CHÍNH hàm SDK, không gõ `Constr` tại chỗ: hình dạng datum có
 // đúng một nguồn (`Distribution/offchain/src/datum.ts`, soi theo `lampdist/types.ak`). Bản gõ
 // tay trước đây đứng yên ở v2 (2 trường) trong khi validator lên v3 (3 trường), và không gì
@@ -95,6 +96,16 @@ export const RESERVE_CAP = 9_630_000_000_000_000n;
 
 /** ms mỗi epoch trên Preprod/Preview (432000 slot × 1000 ms). */
 export const MS_PER_EPOCH = 432_000_000n;
+
+/**
+ * `window_origin_ms` của mạng — tham số CUỐI của claim_account · treasury · beacon (Distribution)
+ * và của custody · reserve_draw (Lớp 2), Specs/Window/CONTRACT.md v1.0. KHÔNG khai hằng ở đây:
+ * giá trị sống ở MỘT nơi (`Utils/src/index.ts` ▸ `WINDOW_ORIGIN_MS_BY_NETWORK`) và đi qua
+ * `canonicalWindowOrigin(network)` — Preview/Custom NÉM (WIN-PREVIEW), không có giá trị đệm.
+ * Gốc nằm trong script hash của ba validator trên ⇒ đổi gốc là đổi địa chỉ kho, nên nó là một
+ * phần của cái "một hạt giống ⇒ một bộ địa chỉ" mà `rehydrate()` đối chiếu.
+ */
+export { canonicalWindowOrigin };
 
 /** DID quản bảng registry trong màn diễn tập. Mainnet dùng OrgDID thật (mục D12). */
 export const GOV_DID = "did:phoenix:org:magiclamp";
@@ -257,6 +268,13 @@ export interface DeriveOptions {
   reserveKhoName: string;
 
   network?: Network;
+
+  /**
+   * `window_origin_ms` nướng vào claim_account / treasury / beacon. Bỏ trống ⇒ lấy từ `network`
+   * qua `canonicalWindowOrigin` (Preview NÉM). Chỉ truyền tường minh khi cần đo một gốc khác
+   * (bài kiểm); mọi script thật để trống để gốc có đúng một nguồn.
+   */
+  windowOriginMs?: bigint;
 }
 
 /**
@@ -274,6 +292,7 @@ export async function deriveWiring(
   o: DeriveOptions,
 ): Promise<{ wiring: CanonicalWiring; scripts: CanonicalScripts }> {
   const network = o.network ?? NETWORK;
+  const originMs = o.windowOriginMs ?? canonicalWindowOrigin(network);
   const genesisRef = encodeOutputRef(o.genesisTxHash, o.genesisIndex);
 
   // ── Tầng 1: bốn marker one-shot + beacon, cùng một hạt giống ──────────────
@@ -348,18 +367,20 @@ export async function deriveWiring(
       [committee, threshold, khoPid])).script });
   const claimHash = hashOf(await applyDist("claim_account.claim_account.spend", [
     committee, threshold, MS_PER_EPOCH, lampPid, o.tokenName, beaconPid, khoPid, accountPid,
+    originMs,                                       // #9 window_origin_ms — tham số CUỐI
   ]));
-  // `treasury` v3 nhận 8 tham số; `beacon_nft_policy` ở KHE CUỐI (C-CLAIM-8: nhánh
+  // `treasury` v3 nhận 9 tham số (8 + `window_origin_ms` ở khe cuối); `beacon_nft_policy` ở khe #8 (C-CLAIM-8: nhánh
   // `GrantEntitlement` đọc beacon làm reference input để ghim `index_at_start`). Thứ tự khớp
   // chữ ký `validator treasury(` và anh em đã chạy thật `Distribution/scripts/01_deploy.ts`.
   const treasury = { type: "PlutusV3" as const,
     script: (await applyDist("treasury.treasury.spend", [
       claimHash, lampPid, o.tokenName, committee, threshold, accountPid, MS_PER_EPOCH, beaconPid,
+      originMs,                                     // #9 window_origin_ms — tham số CUỐI
     ])).script };
   const treHash = hashOf(treasury);
   const beacon = { type: "PlutusV3" as const,
     script: (await applyDist("beacon.beacon.spend",
-      [committee, threshold, beaconPid, MS_PER_EPOCH])).script };
+      [committee, threshold, beaconPid, MS_PER_EPOCH, originMs])).script };
   const beaconHash = hashOf(beacon);
 
   return {

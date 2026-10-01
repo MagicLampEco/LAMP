@@ -54,6 +54,13 @@ export interface UseParams {
 
   nowMs: number;
   msPerEpoch: bigint;
+  /**
+   * `window_origin_ms` đã apply vào faucet_nft/faucet_pool/faucet_account (tham số CUỐI,
+   * Specs/Window/CONTRACT.md v1.0): cửa sổ = `(nowMs − windowOriginMs) / msPerEpoch`. Lấy từ
+   * `windowOriginMs(network)` của `@magiclamp/utils` (Preview ném lỗi, không có giá trị). Truyền
+   * lệch thì nhãn cửa sổ trong datum lệch với cái validator suy ra và giao dịch bị từ chối.
+   */
+  windowOriginMs: bigint;
 
   /** tLAMP (oildrop) rút ra khỏi account để dùng (0 = chỉ gia hạn). Mặc định 0. */
   withdrawOildrop?: bigint;
@@ -72,7 +79,7 @@ export interface UseResult {
 export async function buildUseTx(params: UseParams): Promise<UseResult> {
   const {
     lucid, network, accountUtxo, faucetAccountScript, faucetNftPolicyId,
-    didUtxo, didNftPolicyId, didName, tlampPolicyId, msPerEpoch,
+    didUtxo, didNftPolicyId, didName, tlampPolicyId, msPerEpoch, windowOriginMs,
   } = params;
 
   assertMsPerEpochMatchesNetwork(msPerEpoch, network);
@@ -102,7 +109,7 @@ export async function buildUseTx(params: UseParams): Promise<UseResult> {
   const lampAfter = acctLamp - withdraw;
 
   // ── C-USE-EPOCH-1: mốc neo vào thời gian thật ────────────────────────
-  const { loMs, hiMs, epoch } = pinnedEpochWindow(params.nowMs, Number(msPerEpoch));
+  const { loMs, hiMs, epoch } = pinnedEpochWindow(params.nowMs, Number(msPerEpoch), Number(windowOriginMs));
   // ── C-USE-MONO-1: mốc idle KHÔNG LÙI ─────────────────────────────────
   if (epoch < acct.last_touch_epoch) {
     throw new Error(

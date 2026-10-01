@@ -88,6 +88,7 @@ export function phoenixKeyConfig(opts: {
   magicPolicy: string;
   registryAuthority: string;     // key-hash committee→DAO (ký RegisterPlatform/UpdateEntry).
   msPerEpoch: bigint;
+  windowOriginMs: bigint;       // ĐIỀN: `windowOriginMs(network)` của @magiclamp/utils (Specs/Window v1.0) — Preview không có.
   reservedMinAda: bigint;
   genesisRef: { transaction_id: string; output_index: bigint };
   /** seed_policy custody (custody_seed đã apply) nếu biết trước. */
@@ -113,6 +114,7 @@ export function phoenixKeyConfig(opts: {
     governanceRef: opts.governanceRef ?? padHash28(asciiToHex("phoenixkey-committee")),
     ...(opts.seedPolicy !== undefined ? { seedPolicy: opts.seedPolicy } : {}),
     msPerEpoch: opts.msPerEpoch,
+    windowOriginMs: opts.windowOriginMs,
     reservedMinAda: opts.reservedMinAda,
     registryAuthority: opts.registryAuthority.toLowerCase(),
     genesisRef: opts.genesisRef,

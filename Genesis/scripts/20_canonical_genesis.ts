@@ -38,8 +38,9 @@ import { Constr, Data, mintingPolicyToId, scriptFromNative, type UTxO } from "@l
 import { NETWORK, SUBMIT, TOKEN_NAME, makeLucid, walletPkh, explorerTx } from "./config.js";
 import { assertOneShotMarkers } from "./_guards.js";
 import { supplyStateToCbor } from "../offchain/src/datum.js";
+import { windowIndex } from "../../Utils/src/index.js";
 import {
-  deriveWiring, printWiring, registryDatum, treasuryDatum, genesisBeaconDatum,
+  deriveWiring, printWiring, registryDatum, treasuryDatum, genesisBeaconDatum, canonicalWindowOrigin,
   DIST_CAP, RESERVE_CAP, MS_PER_EPOCH, STATE_PATH, writeState, type CanonicalState,
 } from "./_canonical_v2.js";
 import {
@@ -173,7 +174,11 @@ async function main(): Promise<void> {
     dist_minted: 0n, reserve_minted: 0n, dist_cap: DIST_CAP, reserve_cap: RESERVE_CAP,
   });
 
-  const beaconEpoch = (BigInt(Date.now()) - BEACON_LABEL_BACKDATE_MS) / MS_PER_EPOCH;
+  // Nhãn cửa sổ = `(t − window_origin_ms) / ms_per_epoch` (Specs/Window v1.0), cùng gốc đã nướng vào
+  // `beacon` bởi `deriveWiring` (cả hai lấy từ `canonicalWindowOrigin(wiring.network)`).
+  const beaconEpoch = windowIndex(
+    BigInt(Date.now()) - BEACON_LABEL_BACKDATE_MS, canonicalWindowOrigin(wiring.network), MS_PER_EPOCH,
+  );
   console.log(`Beacon genesis: nhãn cửa sổ ${beaconEpoch}, index 0 (gốc chỉ số cộng dồn).`);
 
   const tx = await lucid.newTx()

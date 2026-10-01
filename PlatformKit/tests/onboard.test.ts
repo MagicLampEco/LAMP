@@ -24,7 +24,7 @@ describe("onboardPlatform — 2 bước plan", () => {
     lampPolicy: "ab".repeat(28),
     magicPolicy: "cd".repeat(28),
     registryAuthority: "ef".repeat(28),
-    msPerEpoch: 86_400_000n,
+    msPerEpoch: 86_400_000n, windowOriginMs: 1_506_203_091_000n,
     reservedMinAda: 2_000_000n,
     genesisRef: { transaction_id: "ff".repeat(32), output_index: 0n },
   });
@@ -69,6 +69,16 @@ describe("onboardPlatform — 2 bước plan", () => {
     expect(ref.outputIndex).toBe(2);
   });
 
+  it("gốc cửa sổ: config mang windowOriginMs (gốc Mainnet thật, không phải 0); thiếu/âm ⇒ ONBOARD-ORIGIN", () => {
+    expect(cfg.windowOriginMs).toBe(1_506_203_091_000n);
+    // Gốc này đủ phân biệt bản quên trừ gốc: 1_506_203_091_000 % 86_400_000 = 78_291_000 ≠ 0.
+    expect(cfg.windowOriginMs % cfg.msPerEpoch).not.toBe(0n);
+    expect(() => onboardPlatform(onboardArgs({ ...cfg, windowOriginMs: undefined as never }))).toThrow(/ONBOARD-ORIGIN/);
+    expect(() => onboardPlatform(onboardArgs({ ...cfg, windowOriginMs: -1n }))).toThrow(/ONBOARD-ORIGIN/);
+    expect(() => onboardPlatform(onboardArgs({ ...cfg, msPerEpoch: 0n }))).toThrow(/ONBOARD-ORIGIN/);
+    expect(() => onboardPlatform(onboardArgs(cfg))).not.toThrow();
+  });
+
   it("summary nêu rõ thứ tự BƯỚC 1 trước BƯỚC 2 + R-BIND", () => {
     const plan = onboardPlatform(onboardArgs(cfg));
     expect(plan.summary).toMatch(/BƯỚC 1 PHẢI SUBMIT trước BƯỚC 2/);
@@ -79,7 +89,7 @@ describe("onboardPlatform — 2 bước plan", () => {
     const ori = oriLifeConfig({
       lampPolicy: "ab".repeat(28),
       registryAuthority: "ef".repeat(28),
-      msPerEpoch: 86_400_000n,
+      msPerEpoch: 86_400_000n, windowOriginMs: 1_506_203_091_000n,
       reservedMinAda: 2_000_000n,
       genesisRef: { transaction_id: "ee".repeat(32), output_index: 1n },
     });
@@ -98,7 +108,7 @@ describe("onboardPlatform — 2 bước plan", () => {
   it("_template: exampleConfig dựng onboard plan hợp lệ + PriceFn sinh CollectItem", () => {
     const cfg = exampleConfig({
       registryAuthority: "ef".repeat(28),
-      msPerEpoch: 86_400_000n,
+      msPerEpoch: 86_400_000n, windowOriginMs: 1_506_203_091_000n,
       reservedMinAda: 2_000_000n,
       genesisRef: { transaction_id: "dd".repeat(32), output_index: 0n },
     });

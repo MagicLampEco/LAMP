@@ -13,6 +13,7 @@ import {
   type FeederAccount, type FeederUtxo,
 } from "../scripts/_feederPlan.js";
 import { TRIM_FLOOR, epochWindow } from "../../Distribution/offchain/src/constants.js";
+import { WINDOW_ORIGIN_MS_BY_NETWORK } from "../../Utils/src/index.js";
 import type {
   BeaconDatum, ClaimAccountDatum, TreasuryDatum,
 } from "../../Distribution/offchain/src/types.js";
@@ -369,12 +370,16 @@ describe("dryRunAtFromEnv — DRY_RUN_AT_MS chỉ cho chạy khô plan|redeem", 
     expect(dryRunAtFromEnv(undefined, true, "redeem")).toBeUndefined();
     expect(dryRunAtFromEnv("", false, "grant")).toBeUndefined();
   });
-  it("mốc 04/10 07:02 (+07) ⇒ cửa sổ 4146 qua epochWindow", () => {
+  it("mốc 04/10 07:02 (+07) ⇒ cửa sổ 317 (gốc Preprod) qua epochWindow", () => {
     const at = dryRunAtFromEnv("1791072120000", false, "redeem")!;
     expect(at).toBe(1_791_072_120_000n);
-    const w = epochWindow(432_000_000n, at);
-    expect(w.epoch).toBe(4146n);
-    expect(w.loMs).toBe(1_791_072_060_000n);   // lùi 60 s, vẫn trong 4146 (mốc 1791072000000)
+    // Specs/Window v1.0: cửa sổ = (t − gốc) / ms_per_epoch. Nhãn cũ 4146 là phép chia thô `t / mspe`;
+    // chạy trên Preprod nên đo theo gốc Preprod thật ⇒ 317. Đầu cửa sổ 317 = gốc + 317·mspe =
+    // 1_790_985_600_000 (2026-10-03 00:00 UTC), mốc `at` cách đó ~24 h nên `lo` lùi 60 s vẫn trong cửa sổ.
+    const w = epochWindow(432_000_000n, WINDOW_ORIGIN_MS_BY_NETWORK.Preprod!, at);
+    expect(w.epoch).toBe(317n);
+    expect(at / 432_000_000n).toBe(4146n);     // đối chứng: bản quên trừ gốc ra nhãn cũ
+    expect(w.loMs).toBe(1_791_072_060_000n);   // lùi 60 s, vẫn trong cửa sổ (đầu 1_790_985_600_000)
   });
   it("đặt cùng SUBMIT=true ⇒ FEED-ENV-003", () => {
     expect(() => dryRunAtFromEnv("1791072120000", true, "redeem")).toThrow(/FEED-ENV-003/);

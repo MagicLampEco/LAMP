@@ -67,6 +67,13 @@ export interface ClaimAgainParams {
 
   nowMs: number;
   msPerEpoch: bigint;
+  /**
+   * `window_origin_ms` đã apply vào faucet_nft/faucet_pool/faucet_account (tham số CUỐI,
+   * Specs/Window/CONTRACT.md v1.0): cửa sổ = `(nowMs − windowOriginMs) / msPerEpoch`. Lấy từ
+   * `windowOriginMs(network)` của `@magiclamp/utils` (Preview ném lỗi, không có giá trị). Truyền
+   * lệch thì nhãn cửa sổ trong datum lệch với cái validator suy ra và giao dịch bị từ chối.
+   */
+  windowOriginMs: bigint;
 
   accountLovelace?: bigint;
 }
@@ -84,7 +91,7 @@ export interface ClaimAgainResult {
 export async function buildClaimAgainTx(params: ClaimAgainParams): Promise<ClaimAgainResult> {
   const {
     lucid, network, poolUtxo, faucetPoolScript, oldAccountUtxo, faucetAccountScript,
-    didUtxo, didNftPolicyId, didName, faucetNftPolicyId, tlampPolicyId, msPerEpoch,
+    didUtxo, didNftPolicyId, didName, faucetNftPolicyId, tlampPolicyId, msPerEpoch, windowOriginMs,
   } = params;
 
   assertMsPerEpochMatchesNetwork(msPerEpoch, network);
@@ -125,7 +132,7 @@ export async function buildClaimAgainTx(params: ClaimAgainParams): Promise<Claim
   }
 
   // ── Cửa sổ pinned + trần tốc độ (mirror C-RATE-0..4) ─────────────────
-  const { loMs, hiMs, epoch } = pinnedEpochWindow(params.nowMs, Number(msPerEpoch));
+  const { loMs, hiMs, epoch } = pinnedEpochWindow(params.nowMs, Number(msPerEpoch), Number(windowOriginMs));
   if (epoch < pd.window_epoch) {
     throw new Error(`CLAIM-AGAIN-007: epoch hiện tại ${epoch} < window_epoch datum pool ${pd.window_epoch}.`);
   }

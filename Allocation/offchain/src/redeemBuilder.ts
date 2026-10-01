@@ -14,8 +14,9 @@
 // D (drop_value) là COMPILE-TIME param của claim_account (KHÔNG beacon ref input).
 // Caller PHẢI truyền đúng D đã bake vào validator (`dropValue`).
 //
-// EPOCH TỰ SUY (F1+F2): caller truyền `validFromMs` (lower_bound POSIX ms) + `msPerEpoch`
-//   (= ms_per_epoch đã bake vào claim_account). current_epoch = floor(validFromMs/msPerEpoch)
+// EPOCH TỰ SUY (F1+F2): caller truyền `validFromMs` (lower_bound POSIX ms) + `msPerEpoch` +
+//   `windowOriginMs` (= ms_per_epoch / window_origin_ms đã bake vào claim_account).
+//   current_epoch = floor((validFromMs − windowOriginMs)/msPerEpoch) (Specs/Window/CONTRACT.md v1.0)
 //   — ĐÚNG byte-perfect get_epoch on-chain → out.redeemed LUÔN khớp, KHÔNG thể lệch epoch.
 //   validFromMs BẮT BUỘC + .validFrom() LUÔN set (lower_bound Finite) → get_epoch không fail cứng.
 //
@@ -66,14 +67,23 @@ export interface RedeemParams {
 
   /**
    * ms mỗi epoch — PHẢI KHỚP `ms_per_epoch` đã bake vào claim_account validator.
-   * On-chain: get_epoch = lower_bound / ms_per_epoch (floor). Dùng để TỰ SUY currentEpoch.
+   * On-chain: get_epoch = (lower_bound − window_origin_ms) / ms_per_epoch (floor). Dùng để TỰ SUY currentEpoch.
    */
   msPerEpoch:       bigint;
 
   /**
+   * `window_origin_ms` đã bake vào claim_account (tham số CUỐI, Specs/Window/CONTRACT.md v1.0):
+   * cửa sổ = `(lower_bound − windowOriginMs) / msPerEpoch`. Lấy từ `windowOriginMs(network)` của
+   * `@magiclamp/utils` (Preview ném lỗi — mạng không có gốc). Gói này không import Utils được
+   * (`tsconfig.json` ép `rootDir: ".."`), nên nhận từ người gọi.
+   */
+  windowOriginMs:   bigint;
+
+  /**
    * POSIX ms cho lower_bound validity_range — BẮT BUỘC.
    * On-chain get_epoch đọc lower_bound (Finite); nếu vô hạn → fail cứng.
-   * currentEpoch TỰ SUY = floor(validFromMs / msPerEpoch) → loại lệch epoch off↔on-chain (F1+F2).
+   * currentEpoch TỰ SUY = floor((validFromMs − windowOriginMs) / msPerEpoch) → loại lệch epoch
+   * off↔on-chain (F1+F2).
    */
   validFromMs:      bigint;
 
@@ -97,17 +107,33 @@ export interface RedeemResult {
 export async function buildRedeemTx(params: RedeemParams): Promise<RedeemResult> {
   const {
     lucid, network, claimAccountUtxo, claimScript,
-    treasuryUtxo, treasuryScript, dropValue, msPerEpoch, validFromMs, lampPolicyId,
+    treasuryUtxo, treasuryScript, dropValue, msPerEpoch, windowOriginMs, validFromMs, lampPolicyId,
   } = params;
   const lampAssetName = params.lampAssetName ?? LAMP_NAME;
   const lampUnit = toUnit(lampPolicyId, lampAssetName);
 
   // ── F1+F2: epoch TỰ SUY từ validFromMs — ĐÚNG byte-perfect get_epoch on-chain ──
-  // On-chain: current_epoch = get_epoch(tx, ms_per_epoch) = lower_bound / ms_per_epoch (floor).
+  // On-chain: current_epoch = get_epoch(tx, ms_per_epoch, window_origin_ms)
+  //                         = (lower_bound − window_origin_ms) / ms_per_epoch (floor).
   // Tự suy ở đây (thay vì nhận currentEpoch rời) → out.redeemed LUÔN khớp on-chain.
   if (msPerEpoch <= 0n) throw new Error(`REDEEM-003: msPerEpoch must be > 0 (got ${msPerEpoch})`);
   if (validFromMs < 0n) throw new Error(`REDEEM-004: validFromMs must be ≥ 0 (got ${validFromMs})`);
-  const currentEpoch = validFromMs / msPerEpoch;   // BigInt floor (mirror get_epoch)
+  if (typeof windowOriginMs !== "bigint" || windowOriginMs < 0n) {
+    throw new Error(
+      `REDEEM-005: windowOriginMs phải là bigint ≥ 0, nhận ${String(windowOriginMs)}. Thiếu nó thì epoch bị ` +
+      "chia từ gốc Unix — lưới cũ mà validator có tham số `window_origin_ms` đã bỏ (Specs/Window/CONTRACT.md v1.0). " +
+      "Lấy từ `windowOriginMs(network)` của `@magiclamp/utils`.",
+    );
+  }
+  if (validFromMs < windowOriginMs) {
+    throw new Error(
+      `REDEEM-006: validFromMs (${validFromMs}) trước windowOriginMs (${windowOriginMs}) — không rơi vào cửa sổ nào ` +
+      "(WIN-ORIGIN-1); Aiken chia cắt về 0 nên on-chain sẽ ra nhãn sai trông hợp lệ.",
+    );
+  }
+  // BẢN CHÉP CÓ NHÃN của `Utils/src/index.ts ▸ windowIndex` (chép 2026-10-02): `(t − o) / m`, chia sàn.
+  // Không import được Utils (rootDir). Bài kiểm của gói dùng gốc Mainnet thật nên bản quên trừ gốc đỏ.
+  const currentEpoch = (validFromMs - windowOriginMs) / msPerEpoch;   // BigInt floor (mirror get_epoch)
 
   // ── Decode ClaimAccount ────────────────────────────────────────────
   if (!claimAccountUtxo.datum) throw new Error("REDEEM-001: claimAccountUtxo has no inline datum");

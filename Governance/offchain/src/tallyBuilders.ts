@@ -158,7 +158,7 @@ export interface SumBatchResult {
 export async function buildSumBatchTx(p: SumBatchParams): Promise<SumBatchResult> {
   const cfg = p.config;
   const td = assertTallyUtxo(p.tallyUtxo, cfg);
-  const { loMs, hiMs, epoch } = boundedEpochWindow(p.nowMs, cfg.msPerEpoch, slotConfigOf(p.lucid, p.slotConfig));
+  const { loMs, hiMs, epoch } = boundedEpochWindow(p.nowMs, cfg.msPerEpoch, cfg.windowOriginMs, slotConfigOf(p.lucid, p.slotConfig));
   const closeAt = td.vote_close_epoch;
   const endAt = td.vote_close_epoch + cfg.tallyWindowEpochs;
   if (epoch < closeAt || epoch >= endAt) {
@@ -236,7 +236,7 @@ export interface FinalizeTallyParams {
 export async function buildFinalizeTallyTx(p: FinalizeTallyParams): Promise<{ tx: TxSignBuilder; epoch: bigint; tallyDatumOut: TallyDatum }> {
   const cfg = p.config;
   const td = assertTallyUtxo(p.tallyUtxo, cfg);
-  const { loMs, hiMs, epoch } = boundedEpochWindow(p.nowMs, cfg.msPerEpoch, slotConfigOf(p.lucid, p.slotConfig));
+  const { loMs, hiMs, epoch } = boundedEpochWindow(p.nowMs, cfg.msPerEpoch, cfg.windowOriginMs, slotConfigOf(p.lucid, p.slotConfig));
   const endAt = td.vote_close_epoch + cfg.tallyWindowEpochs;
   if (epoch < endAt) {
     throw new Error(`GOV-TALLY-020: epoch ${epoch} < vote_close + tally_window = ${endAt} — cửa sổ gom chưa hết (F0)`);

@@ -35,11 +35,12 @@
 //
 // THỨ TỰ PHỤ THUỘC — TUYẾN TÍNH, KHÔNG VÒNG
 //   custodyRef → custody_seed → custodySeedPid
-//              → custody(proposal_policy, custodySeedPid, ms_per_epoch) → custodyAddr
+//              → custody(proposal_policy, custodySeedPid, ms_per_epoch, lamp_policy, token_name,
+//                        window_origin_ms) → custodyAddr
 //   authRef    → reserve_auth(authRef, AUTH_NAME, FLOOR_OILDROP) → authPid
 //   custodySeedPid + lampPid + authPid + FLOOR_OILDROP → reserve_gate(7 tham số) → gateHash
 //   lampPid + metPid + custodySeedPid + authPid + gateHash + custodyHash + RESERVE_TOTAL
-//                                                → reserve_draw(12 tham số) → drawAddr
+//                                                → reserve_draw(13 tham số, cuối = window_origin_ms) → drawAddr
 //
 //   ⚠ SÀN ĐI VÀO HAI SCRIPT, VÀ CHUỖI KHÔNG KHÉP ĐƯỢC VÒNG ĐÓ. `reserve_gate` nướng
 //   `auth_policy`, nên `reserve_auth` KHÔNG nướng ngược `gate_script_hash` được — vòng
@@ -76,7 +77,7 @@ import {
   MET_NAME, MS_PER_EPOCH, RESERVE_CAP, encodeOutputRef, type CanonicalWiring,
 } from "./_canonical_v2.js";
 import type { FloorSource } from "./_floorLabel.js";
-import { epochAt, windowAt } from "./_epochWindow.js";
+import { canonicalWindowOrigin, epochAt, windowAt } from "./_epochWindow.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -286,6 +287,13 @@ export interface DeriveCustodyOptions {
   tokenName: string;
   network?: Network;
   /**
+   * `window_origin_ms` nướng vào `custody` (tham số CUỐI, Specs/Window/CONTRACT.md v1.0). Bỏ trống
+   * ⇒ lấy từ `network` qua `canonicalWindowOrigin` (Preview/Custom NÉM). Gốc đi vào script hash
+   * của két ⇒ vào ĐỊA CHỈ két: đổi gốc là đổi chỗ tài sản nằm, nên không có giá trị mặc định
+   * nào ngoài giá trị của mạng.
+   */
+  windowOriginMs?: bigint;
+  /**
    * pkh 28 byte được phép đăng ký / uỷ quyền / huỷ-uỷ-quyền phần stake của kho
    * (`treasury_stake`, nhánh `publish`).
    *
@@ -348,6 +356,7 @@ export async function deriveCustody(
   treasuryStake: Validator; treasuryStakeHash: string;
 }> {
   const network = o.network ?? NETWORK;
+  const originMs = o.windowOriginMs ?? canonicalWindowOrigin(network);
   // CỔNG POISON-002, fail-closed trên mạng thật.
   //
   // Vì sao phải đặt Ở ĐÂY chứ không dựa vào cổng đã có: `_guards.ts::isPoison` bắt đúng lớp lỗi
@@ -379,6 +388,7 @@ export async function deriveCustody(
     // chỗ đầu tiên của lượt dẫn xuất nhận `lampPid`, và nó được dẫn xuất RIÊNG, trước Lớp 2 —
     // nên không cổng nào ở hai hàm dựng kia gác hộ nó được.
     assertNotLookalike(o.lampPid, "custody #4 lamp_policy"), o.tokenName,
+    originMs,                     // #6 window_origin_ms — tham số CUỐI (Specs/Window v1.0)
   ]) as Validator;
   const custodyHash = hashOf(custody);
 
@@ -436,6 +446,12 @@ export interface ReserveDeriveOptions {
   authTxHash: string;
   authIndex: number;
   network?: Network;
+  /**
+   * `window_origin_ms` cho `custody` (#6) và `reserve_draw` (#13). Bỏ trống ⇒ từ `network` qua
+   * `canonicalWindowOrigin`. MỘT giá trị cho cả hai: `reserve_draw` suy cửa sổ theo gốc này
+   * còn `custody` ghi `epoch` theo cùng gốc — hai gốc lệch nhau là hai nhãn lệch nhau.
+   */
+  windowOriginMs?: bigint;
   /** Xem `DeriveCustodyOptions.delegationAdminPkh` — nướng vào phần stake của địa chỉ kho. */
   delegationAdminPkh: string;
 }
@@ -453,6 +469,7 @@ export async function deriveReserveWiring(
   o: ReserveDeriveOptions,
 ): Promise<{ reserve: ReserveWiring; scripts: ReserveScripts }> {
   const network = o.network ?? NETWORK;
+  const originMs = o.windowOriginMs ?? canonicalWindowOrigin(network);
   const custodyRef = encodeOutputRef(o.custodyTxHash, o.custodyIndex);
   const authRef = encodeOutputRef(o.authTxHash, o.authIndex);
 
@@ -466,7 +483,7 @@ export async function deriveReserveWiring(
   // ── custody: seed one-shot → két ────────────────────────────────────────────
   const { custodySeed, custody, custodySeedPid, custodyHash, custodyAddr, treasuryStakeHash } =
     await deriveCustody(o.custodyTxHash, o.custodyIndex, {
-      lampPid: w.lampPid, tokenName: w.tokenName, network,
+      lampPid: w.lampPid, tokenName: w.tokenName, network, windowOriginMs: originMs,
       delegationAdminPkh: o.delegationAdminPkh,
     });
 
@@ -536,6 +553,8 @@ export async function deriveReserveWiring(
       // từ cùng một hằng; cổng RESERVE-CAP-001 đo lại nó với SupplyState TRÊN CHUỖI trước khi
       // ghi `total_oildrop` (`24_reserve_layer2_init.ts`).
       reserveCap: RESERVE_TOTAL,
+      // #13 Specs/Window v1.0 — CÙNG gốc đã nướng vào `custody` #6 ở trên (một biến `originMs`).
+      windowOriginMs: originMs,
       // Vế đối chiếu, KHÔNG vào danh sách tham số: cặp đã nướng vào `lamp_mint` khe #13-14.
       lampMintReserveKhoNft: { policy: w.reserveKhoPid, name: w.reserveKhoName },
     }),
@@ -681,16 +700,18 @@ export function custodySeedDatum(
  * epoch TRƯỚC — vào `start_epoch`, trường mà Luật 7 (`reserve_draw.ak:206`) ép bất biến, tức
  * sai ở đó là sai vĩnh viễn.
  */
-export function epochNow(msPerEpoch = MS_PER_EPOCH): bigint {
-  return epochAt(Date.now(), Number(msPerEpoch));
+export function epochNow(windowOriginMs: bigint, msPerEpoch = MS_PER_EPOCH): bigint {
+  return epochAt(Date.now(), Number(msPerEpoch), windowOriginMs);
 }
 
 /**
  * Cửa sổ hiệu lực cho một lượt rút: `lo` và `hi` PHẢI rơi cùng một epoch, VÀ khoảng phải chứa
  * thời điểm gửi. Phần tính ở `_epochWindow.ts` ▸ `windowAt` — lỗ cũ và số đo ghi ở đó.
  */
-export function drawWindow(msPerEpoch = MS_PER_EPOCH): { loMs: number; hiMs: number; t: bigint } {
-  return windowAt(Date.now(), Number(msPerEpoch));
+export function drawWindow(
+  windowOriginMs: bigint, msPerEpoch = MS_PER_EPOCH,
+): { loMs: number; hiMs: number; t: bigint } {
+  return windowAt(Date.now(), Number(msPerEpoch), windowOriginMs);
 }
 
 export function printReserveWiring(r: ReserveWiring): void {

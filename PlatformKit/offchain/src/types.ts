@@ -74,6 +74,13 @@ export interface PlatformConfig {
 
   /** POSIX ms ↔ epoch (mirror onchain ms_per_epoch). */
   msPerEpoch: bigint;
+  /**
+   * `window_origin_ms` đã nướng vào custody (tham số CUỐI, Specs/Window/CONTRACT.md v1.0): epoch =
+   * `(t − windowOriginMs) / msPerEpoch`. Lấy từ `windowOriginMs(network)` của `@magiclamp/utils`
+   * (Preview ném lỗi — mạng không có gốc). Gói này không import Utils được (`rootDir`), nên nhận từ
+   * người gọi; `onboardPlatform` kiểm hình dạng (ONBOARD-ORIGIN) chứ không đoán giá trị.
+   */
+  windowOriginMs: bigint;
   /** lovelace giữ cho min-UTxO seed (≥ 0, KHÔNG ghi sổ). */
   reservedMinAda: bigint;
 

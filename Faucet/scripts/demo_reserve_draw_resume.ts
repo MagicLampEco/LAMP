@@ -20,6 +20,7 @@ import { planMigrateDatum } from "../../Treasury/offchain/src/migrate.js";
 import { attachGateSpend } from "../../Treasury/offchain/src/reserveGateBuilder.js";
 import { msPerEpoch, assertMsPerEpochMatchesNetwork } from "../offchain/src/constants.js";
 import { windowAt } from "../offchain/src/epochWindow.js";
+import { windowOriginMs as windowOriginMsOf } from "@magiclamp/utils";
 import { assertParamCount } from "../../Genesis/offchain/src/applyGate.js";
 
 // BÍ MẬT: tệp này nhận GIÁ TRỊ qua biến môi trường, KHÔNG mở kho khoá và KHÔNG biết
@@ -41,6 +42,10 @@ const INSTANCE_ID = "747265732d7265736576";
 const NETWORK = "Preview" as const;
 const MS_PER_EPOCH = msPerEpoch(NETWORK);
 assertMsPerEpochMatchesNetwork(MS_PER_EPOCH, NETWORK);
+// `window_origin_ms` (Specs/Window/CONTRACT.md v1.0): tham số CUỐI của faucet_nft/faucet_pool/
+// faucet_account/custody/reserve_draw. Lấy từ Utils; Preview KHÔNG có gốc (WIN-PREVIEW) nên dòng
+// này NÉM trên Preview — script chỉ chạy được khi NETWORK là Preprod/Mainnet.
+const WINDOW_ORIGIN_MS = windowOriginMsOf(NETWORK);
 const PROPOSAL_POLICY = "00".repeat(28);
 const FLOOR_OILDROP = 1_000_000n;
 const DRAW_OILDROP = 1_000_000n;
@@ -114,6 +119,7 @@ const threadUnit = toUnit(threadPid, SUPPLY_NAME);
 // người gửi đặt.
 const custodyScript: Validator = { type: "PlutusV3", script: apT("custody.custody.spend", [
   PROPOSAL_POLICY, custodySeedPid, MS_PER_EPOCH, tlampPid, TOKEN_NAME,
+  WINDOW_ORIGIN_MS,   // window_origin_ms — tham số CUỐI
 ]) };
 const custodyHash = validatorToScriptHash(custodyScript);
 const custodyAddr = credentialToAddress("Preview", scriptHashToCredential(custodyHash));
@@ -134,6 +140,9 @@ const reserveDrawScript: Validator = { type: "PlutusV3", script: apR("reserve_dr
   authPid, AUTH_NAME,                          // #8-9  auth NFT Treasury-pull
   gateHash,                                    // #10   auth PHẢI tiêu TỪ gate này
   custodyHash,                                 // #11   Luật 10 — kho NFT ở ĐÚNG script custody
+  // GHI CHÚ: blueprint Reserve còn khe `reserve_cap` (#12) mà demo này chưa nạp — đã lệch từ trước
+  // đợt gốc cửa sổ; cổng APPLY-001 sẽ ném tới khi bổ sung. `window_origin_ms` là khe CUỐI (#13).
+  WINDOW_ORIGIN_MS,
 ]) };
 const reserveDrawAddr = credentialToAddress("Preview", scriptHashToCredential(validatorToScriptHash(reserveDrawScript)));
 const reserveThreadUnit = toUnit(reserveThreadPid, RESERVE_THREAD_NAME);
@@ -152,7 +161,7 @@ const rIn = Data.from(reserveUtxo.datum!) as Constr<Data>;
 const start = rIn.fields[0] as bigint, total = rIn.fields[1] as bigint, drawn = rIn.fields[2] as bigint, lastEpoch = rIn.fields[3] as bigint;
 // Nhãn t suy từ NOW, không lùi trước khi chia (Issue #76) — xem chú thích cùng khối ở
 // `demo_reserve_e2e.ts`. Nguồn: `Faucet/offchain/src/epochWindow.ts`.
-const { loMs, hiMs, t } = windowAt(Date.now(), Number(MS_PER_EPOCH));
+const { loMs, hiMs, t } = windowAt(Date.now(), Number(MS_PER_EPOCH), Number(WINDOW_ORIGIN_MS));
 if (!(t > lastEpoch)) throw new Error(`t=${t} ≤ last_epoch=${lastEpoch}`);
 console.log(`draw epoch t=${t} (last=${lastEpoch}) lo=${loMs} hi=${hiMs}`);
 const rOut = { start_epoch: start, total_oildrop: total, drawn_oildrop: drawn + DRAW_OILDROP, last_epoch: t };

@@ -1,7 +1,7 @@
 // Cổng APPLY-003 — ép `reserve_draw.kho_nft_*` (#6-7) TRÙNG `lamp_mint.reserve_kho_nft_*` (#13-14).
 //
 // VÌ SAO BÀI NÀY TỒN TẠI, VÀ VÌ SAO APPLY-001 KHÔNG THAY ĐƯỢC NÓ:
-// `assertParamCount` (APPLY-001) chỉ ĐẾM. Ca hỏng ở đây có ĐỦ tham số — 12 cho `reserve_draw`,
+// `assertParamCount` (APPLY-001) chỉ ĐẾM. Ca hỏng ở đây có ĐỦ tham số — 13 cho `reserve_draw`,
 // 14 cho `lamp_mint` — chỉ GIÁ TRỊ ở hai khe kho là trỏ hai instance custody khác nhau. Cổng
 // đếm im lặng, `applyParamsToScript` trả về một script hash hoàn toàn hợp lệ, và trên chuỗi
 // thì `lamp_mint` cho Δ rót vào kho A trong khi `reserve_draw` đòi tiêu NFT của kho B. Không
@@ -28,6 +28,11 @@ import {
   type KhoNftPair,
 } from "../offchain/src/reserveKhoPair.js";
 import { assertParamCount } from "../offchain/src/applyGate.js";
+import { WINDOW_ORIGIN_MS_BY_NETWORK } from "../../Utils/src/index.js";
+
+// `window_origin_ms` (khe #13 của reserve_draw, Specs/Window/CONTRACT.md v1.0): gốc Mainnet THẬT chứ
+// không phải 0 — gốc 0 áp được và ra hash, nhưng không phân biệt được "đã truyền gốc" với "quên truyền".
+const ORIGIN = WINDOW_ORIGIN_MS_BY_NETWORK.Mainnet!;
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const bpPath = (mod: string) => resolve(__dirname, `../../${mod}/onchain/plutus.json`);
@@ -96,6 +101,7 @@ function reserveDrawArgs(khoNft: KhoNftPair, lampMintReserveKhoNft: KhoNftPair) 
     gateScriptHash: GATE_HASH,
     custodyScriptHash: CUSTODY_HASH,
     reserveCap: RESERVE_CAP,
+    windowOriginMs: ORIGIN,
     lampMintReserveKhoNft,
   };
 }
@@ -168,15 +174,28 @@ describe("lampMintParamList — 14 khe, cặp #13-14 ở ĐÚNG chỗ", () => {
   });
 });
 
-describe("reserveDrawParamList — 12 khe, cổng chạy TRƯỚC khi mảng tồn tại", () => {
-  it("XANH: cặp khớp ⇒ 12 tham số, kho ở khe #6-7", () => {
+describe("reserveDrawParamList — 13 khe, cổng chạy TRƯỚC khi mảng tồn tại", () => {
+  it("XANH: cặp khớp ⇒ 13 tham số, kho ở khe #6-7, gốc cửa sổ ở khe CUỐI", () => {
     const l = reserveDrawParamList(reserveDrawArgs(KHO_DUNG, { ...KHO_DUNG }));
-    expect(l).toHaveLength(12);
+    expect(l).toHaveLength(13);
     expect(l[5]).toBe(CUSTODY_SEED_PID); // #6
     expect(l[6]).toBe(INSTANCE_ID);      // #7
     expect(l[9]).toBe(GATE_HASH);        // #10
     expect(l[10]).toBe(CUSTODY_HASH);    // #11
     expect(l[11]).toBe(RESERVE_CAP);     // #12
+    expect(l[12]).toBe(ORIGIN);          // #13 window_origin_ms — tham số CUỐI
+  });
+
+  // Khe #13 cũng là một con số: thiếu/âm không hỏng lúc apply mà ra một script hash KHÁC (áp một
+  // phần), nên cổng WINDOW-ORIGIN-001 phải chặn ở chỗ dựng danh sách.
+  it("ĐỎ: window_origin_ms (#13) thiếu hoặc âm ⇒ WINDOW-ORIGIN-001, không dựng được danh sách", () => {
+    const base = reserveDrawArgs(KHO_DUNG, { ...KHO_DUNG });
+    expect(() => reserveDrawParamList({ ...base, windowOriginMs: undefined as unknown as bigint }))
+      .toThrow(/WINDOW-ORIGIN-001/);
+    expect(() => reserveDrawParamList({ ...base, windowOriginMs: -1n })).toThrow(/WINDOW-ORIGIN-001/);
+    // `number` thay vì `bigint` cũng bị chặn: Constr/apply nhận lẫn kiểu là chỗ hash lệch im lặng.
+    expect(() => reserveDrawParamList({ ...base, windowOriginMs: 1_506_203_091_000 as unknown as bigint }))
+      .toThrow(/WINDOW-ORIGIN-001/);
   });
 
   // Khe #12 là một con số, không phải một hash — nên nó đi lọt mọi phép kiểm hình dạng hex.
@@ -198,14 +217,14 @@ describe("reserveDrawParamList — 12 khe, cổng chạy TRƯỚC khi mảng t�
   });
 
   it("APPLY-001 KHÔNG bắt được ca nhầm cặp — đó là lý do APPLY-003 tồn tại", () => {
-    // Dựng mảng 12 phần tử BẰNG TAY với cặp lệch: đủ số, nên cổng đếm im lặng.
+    // Dựng mảng 13 phần tử BẰNG TAY với cặp lệch: đủ số, nên cổng đếm im lặng.
     const lech = [
       LAMP_PID, TOKEN_NAME, MET_PID, MET_NAME, MS_PER_EPOCH,
       KHAC_PID, INSTANCE_ID,                 // ← kho của một instance custody KHÁC
-      AUTH_PID, AUTH_NAME, GATE_HASH, CUSTODY_HASH, RESERVE_CAP,
+      AUTH_PID, AUTH_NAME, GATE_HASH, CUSTODY_HASH, RESERVE_CAP, ORIGIN,
     ];
-    expect(lech).toHaveLength(12);
-    expect(() => assertParamCount("reserve_draw.reserve_draw.spend", 12, lech.length)).not.toThrow();
+    expect(lech).toHaveLength(13);
+    expect(() => assertParamCount("reserve_draw.reserve_draw.spend", 13, lech.length)).not.toThrow();
   });
 });
 
@@ -213,9 +232,11 @@ describe.skipIf(!haveBlueprints)("apply-param THẬT — danh sách dựng ra ph
   const genesis = load(GENESIS_BP);
   const reserve = load(RESERVE_BP);
 
-  it("blueprint khai đúng 14 / 12 tham số như chữ ký on-chain", () => {
+  it("blueprint khai đúng 14 / 13 tham số như chữ ký on-chain (reserve_draw: khe cuối window_origin_ms)", () => {
     expect((findBp(genesis, "lamp_mint.lamp_mint.mint").parameters ?? []).length).toBe(14);
-    expect((findBp(reserve, "reserve_draw.reserve_draw.spend").parameters ?? []).length).toBe(12);
+    const draw = findBp(reserve, "reserve_draw.reserve_draw.spend").parameters ?? [];
+    expect(draw.length).toBe(13);
+    expect((draw[12] as { title?: string }).title).toBe("window_origin_ms");
   });
 
   it("lampMintParamList áp được ⇒ ra policy-id thật (đủ tham số, không còn hàm chờ đối số)", () => {
@@ -276,6 +297,12 @@ describe("chỗ gọi apply-param đi qua bộ dựng tham số, không gõ mả
     // vẫn dựng mảng 11 phần tử, và "ép hai chỗ khớp nhau" quay về một lời hứa bằng chữ.
     expect(s).toContain("lampMintReserveKhoNft:");
   });
+
+  it("_reserve_layer2.ts truyền window_origin_ms vào CẢ custody (#6) lẫn reserve_draw (#13), từ MỘT biến", () => {
+    const s = doc("../scripts/_reserve_layer2.ts");
+    expect(s).toContain("windowOriginMs: originMs");       // reserveDrawParamList + deriveCustody
+    expect(s).toContain("canonicalWindowOrigin(network)"); // nguồn gốc: Utils qua mạng, không gõ tay
+  });
 });
 
 // Không có blueprint thì KÊU, đừng để trạng thái mù lẫn vào màu xanh.
@@ -301,9 +328,9 @@ describe.skipIf(haveBlueprints)("apply-param THẬT — KHÔNG ĐO ĐƯỢC", ()
 describe("LOOKALIKE-001 tại điểm nghẽn apply-param của reserve_draw", () => {
   const HANG_NHAI = "28e916b097be13ed955330f00710bd93e2ea74bbc89aa5f5cd0f12b4";
 
-  it("XANH: lamp_policy sạch ⇒ dựng đủ 12 tham số, khe #1 mang đúng policy id", () => {
+  it("XANH: lamp_policy sạch ⇒ dựng đủ 13 tham số, khe #1 mang đúng policy id", () => {
     const list = reserveDrawParamList(reserveDrawArgs(KHO_DUNG, KHO_DUNG));
-    expect(list.length).toBe(12);
+    expect(list.length).toBe(13);
     expect(list[0]).toBe(LAMP_PID);
   });
 

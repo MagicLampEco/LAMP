@@ -110,7 +110,7 @@ export async function buildCastVoteTx(p: CastVoteParams): Promise<CastVoteResult
   if (td.phase !== "Summing") {
     throw new Error(`GOV-VOTE-001: Tally của proposal ${td.proposal_id} đã ${td.phase} — không còn nhận phiếu`);
   }
-  const { loMs, hiMs, epoch } = boundedEpochWindow(p.nowMs, cfg.msPerEpoch, slotConfigOf(p.lucid, p.slotConfig));
+  const { loMs, hiMs, epoch } = boundedEpochWindow(p.nowMs, cfg.msPerEpoch, cfg.windowOriginMs, slotConfigOf(p.lucid, p.slotConfig));
   // cổng 3 của MintNullifier: vote_open ≤ e < vote_close.
   if (epoch < td.vote_open_epoch || epoch >= td.vote_close_epoch) {
     throw new Error(
@@ -162,7 +162,7 @@ export async function buildRetractVoteTx(p: RetractVoteParams): Promise<{ tx: Tx
   const cfg = p.config;
   const vd = readVote(p.voteUtxo, cfg);
   const td = readTally(p.tallyUtxo, cfg.tallyPolicyId, vd.proposal_id, null);
-  const { loMs, hiMs, epoch } = boundedEpochWindow(p.nowMs, cfg.msPerEpoch, slotConfigOf(p.lucid, p.slotConfig));
+  const { loMs, hiMs, epoch } = boundedEpochWindow(p.nowMs, cfg.msPerEpoch, cfg.windowOriginMs, slotConfigOf(p.lucid, p.slotConfig));
   if (epoch >= td.vote_close_epoch) {
     throw new Error(`GOV-VOTE-010: epoch ${epoch} ≥ vote_close ${td.vote_close_epoch} — hết cửa sổ rút phiếu (R2)`);
   }
@@ -202,7 +202,7 @@ export async function buildReclaimVoteTx(p: ReclaimVoteParams): Promise<{ tx: Tx
   const cfg = p.config;
   const vd = readVote(p.voteUtxo, cfg);
   const td = readTally(p.tallyUtxo, cfg.tallyPolicyId, vd.proposal_id, null);
-  const { loMs, hiMs, epoch } = boundedEpochWindow(p.nowMs, cfg.msPerEpoch, slotConfigOf(p.lucid, p.slotConfig));
+  const { loMs, hiMs, epoch } = boundedEpochWindow(p.nowMs, cfg.msPerEpoch, cfg.windowOriginMs, slotConfigOf(p.lucid, p.slotConfig));
   const open = td.vote_close_epoch + cfg.tallyWindowEpochs;
   if (epoch < open) {
     throw new Error(`GOV-VOTE-030: epoch ${epoch} < vote_close + tally_window = ${open} — chưa được thu hồi phiếu (C2, nullifier (b))`);
@@ -263,7 +263,7 @@ export async function buildBurnNullifierTx(p: BurnNullifierParams): Promise<{ tx
     throw new Error("GOV-BURN-002: did_commit trùng — on-chain dựng tập tên bằng cộng dồn nên bản trùng thành −2 và đẳng thức B1 bác");
   }
   const td = readTally(p.tallyUtxo, cfg.tallyPolicyId, null, null);
-  const { loMs, hiMs, epoch } = boundedEpochWindow(p.nowMs, cfg.msPerEpoch, slotConfigOf(p.lucid, p.slotConfig));
+  const { loMs, hiMs, epoch } = boundedEpochWindow(p.nowMs, cfg.msPerEpoch, cfg.windowOriginMs, slotConfigOf(p.lucid, p.slotConfig));
   const open = td.vote_close_epoch + cfg.tallyWindowEpochs;
   if (epoch < open) {
     throw new Error(`GOV-BURN-003: epoch ${epoch} < vote_close + tally_window = ${open} — đường (b) chưa mở`);

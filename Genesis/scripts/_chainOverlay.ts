@@ -191,13 +191,21 @@ export function spentByChain(effects: readonly TxEffects[]): string[] {
  * Trả lý do (chuỗi) khi KHÔNG được dựng, `null` khi được.
  */
 export function chainWindowBlock(w: { loMs: bigint; hiMs: bigint; epoch: bigint }, msPerEpoch: bigint,
-                                 nowMs: bigint, marginMs: bigint): string | null {
+                                 windowOriginMs: bigint, nowMs: bigint, marginMs: bigint): string | null {
   if (msPerEpoch <= 0n) throw new Error(`FEED-CHAIN-004: msPerEpoch phải > 0 (đang ${msPerEpoch}).`);
+  // Cửa sổ = `(t − window_origin_ms) / ms_per_epoch` (Specs/Window/CONTRACT.md v1.0). Mốc TRƯỚC gốc
+  // phải chặn riêng: chia BigInt cắt về 0 nên `(t − o) / m` trả 0 cho cả dải `(o − m, o)` — một
+  // nhãn "cửa sổ 0" giả cho thời điểm chưa thuộc cửa sổ nào.
+  if (w.loMs < windowOriginMs || w.hiMs < windowOriginMs) {
+    return `khoảng [${w.loMs}, ${w.hiMs}] nằm TRƯỚC gốc cửa sổ ${windowOriginMs}`;
+  }
+  if (nowMs < windowOriginMs) return `đồng hồ ${nowMs} nằm TRƯỚC gốc cửa sổ ${windowOriginMs}`;
   if (w.loMs > w.hiMs) return `khoảng hiệu lực âm [${w.loMs}, ${w.hiMs}]`;
-  if (w.loMs / msPerEpoch !== w.epoch || w.hiMs / msPerEpoch !== w.epoch) {
+  const nowWindow = (nowMs - windowOriginMs) / msPerEpoch;
+  if ((w.loMs - windowOriginMs) / msPerEpoch !== w.epoch || (w.hiMs - windowOriginMs) / msPerEpoch !== w.epoch) {
     return `khoảng [${w.loMs}, ${w.hiMs}] vắt ra ngoài cửa sổ ${w.epoch}`;
   }
-  if (nowMs / msPerEpoch !== w.epoch) return `đồng hồ đã sang cửa sổ ${nowMs / msPerEpoch}, chuỗi mở ở ${w.epoch}`;
+  if (nowWindow !== w.epoch) return `đồng hồ đã sang cửa sổ ${nowWindow}, chuỗi mở ở ${w.epoch}`;
   if (nowMs < w.loMs) return `đồng hồ ${nowMs} trước đầu dưới ${w.loMs}`;
   if (nowMs + marginMs > w.hiMs) return `còn < ${marginMs} ms tới đầu trên ${w.hiMs}`;
   return null;

@@ -43,8 +43,10 @@
 // delta tính qua applyDraw(state, epoch, requested) — kẹp trần/pot, fail-fast nếu
 // t ≤ last_epoch (đã draw trong/sau epoch này) hoặc pot cạn.
 //
-// LƯU Ý: epoch phải khớp validity_range.lower_bound onchain (get_epoch lower_bound). Caller
-// truyền `validFromUnixMs`/`epoch` nhất quán; builder set validFrom để lower_bound = epoch.
+// LƯU Ý: epoch phải khớp validity_range.lower_bound onchain (get_epoch lower_bound) — TÍNH TỪ
+// GỐC CỬA SỔ: epoch = (lower_bound − window_origin_ms) / ms_per_epoch (Specs/Window/CONTRACT.md
+// v1.0). Caller truyền `validFromUnixMs`/`epoch` + `msPerEpoch`/`windowOriginMs` nhất quán;
+// builder KIỂM (RDB-010/011) rồi set validFrom để lower_bound = epoch.
 
 import {
   Constr, Data, toUnit, getAddressDetails, validatorToScriptHash,
@@ -187,8 +189,17 @@ export interface DrawParams {
    */
   custodyOutValue: Assets;
 
-  /** Epoch hiện tại (khớp validity_range.lower_bound onchain). */
+  /** Epoch hiện tại (khớp validity_range.lower_bound onchain, tính từ `windowOriginMs`). */
   epoch: bigint;
+  /** ms mỗi epoch — PHẢI khớp `ms_per_epoch` đã apply vào reserve_draw. */
+  msPerEpoch: bigint;
+  /**
+   * `window_origin_ms` đã apply vào reserve_draw (tham số CUỐI, Specs/Window/CONTRACT.md v1.0).
+   * Lấy từ `windowOriginMs(network)` của `@magiclamp/utils` (Preview ném lỗi — không có gốc). Gói
+   * này không import Utils được (`rootDir`), nên nhận từ người gọi và dùng để KIỂM validity range
+   * thuộc ĐÚNG cửa sổ `epoch` — builder không tự tính lại `epoch` vì `epoch` còn đi vào datum.
+   */
+  windowOriginMs: bigint;
   /** Unix-time (ms) cận DƯỚI validity_range — phải nằm trong epoch trên (caller bảo đảm). */
   validFromUnixMs: number;
   /** Unix-time (ms) cận TRÊN validity_range — phải CÙNG epoch lower (Luật 2b ghim t). */
@@ -293,6 +304,38 @@ function assertCustodyValueOk(
 }
 
 /**
+ * Kiểm `validFromUnixMs`/`validToUnixMs` cùng thuộc cửa sổ `p.epoch` = `(t − windowOriginMs) / msPerEpoch`.
+ * BẢN CHÉP CÓ NHÃN của `Utils/src/index.ts ▸ windowIndex` (chép 2026-10-02) — không import được
+ * Utils (`tsconfig.json` ép `rootDir: ".."`); bài kiểm của gói dùng gốc Mainnet thật.
+ */
+function assertValidityInWindow(p: DrawParams): void {
+  const { msPerEpoch: m, windowOriginMs: o } = p;
+  if (typeof m !== "bigint" || m <= 0n) {
+    throw new Error(`RDB-010: msPerEpoch phải là bigint > 0, nhận ${String(m)}.`);
+  }
+  if (typeof o !== "bigint" || o < 0n) {
+    throw new Error(
+      `RDB-010: windowOriginMs phải là bigint ≥ 0, nhận ${String(o)}. Thiếu nó thì epoch bị chia từ gốc Unix — ` +
+      "lưới cũ mà reserve_draw có tham số `window_origin_ms` đã bỏ (Specs/Window/CONTRACT.md v1.0). " +
+      "Lấy từ `windowOriginMs(network)` của `@magiclamp/utils`.",
+    );
+  }
+  const idx = (ms: number): bigint | undefined => {
+    const t = BigInt(Math.floor(ms));
+    return t < o ? undefined : (t - o) / m;   // trước gốc ⇒ không thuộc cửa sổ nào (Aiken sẽ chia cắt về 0)
+  };
+  const lo = idx(p.validFromUnixMs);
+  const hi = idx(p.validToUnixMs);
+  if (lo !== p.epoch || hi !== p.epoch) {
+    throw new Error(
+      `RDB-011: validity_range [${p.validFromUnixMs}, ${p.validToUnixMs}] thuộc cửa sổ ` +
+      `[${lo ?? "trước gốc"}, ${hi ?? "trước gốc"}] tính từ windowOriginMs=${o}, msPerEpoch=${m} — khác epoch=${p.epoch}. ` +
+      "reserve_draw ép (lo − o)/m == (hi − o)/m == t (Luật 2b) và sẽ bác.",
+    );
+  }
+}
+
+/**
  * Dựng tx draw. Tính ReserveState' + delta qua applyDraw (kẹp trần/pot; fail-fast nếu
  * t ≤ last_epoch hoặc pot cạn), rồi build: spend ReserveState (Draw) + spend SupplyState
  * (Advance) + spend Treasury auth (reserve_gate, Void) + spend KHO custody (MigrateIn)
@@ -372,6 +415,11 @@ export async function buildDrawTx(p: DrawParams): Promise<{
   const requested = p.requestedOildrop ?? maxPerEpoch(sIn.total_oildrop);
   // Fail-fast offchain: ép t>last_epoch + delta>0 (≤trần & ≤pot) + transition đúng.
   const { next: sOut, drawn } = applyDraw(sIn, p.epoch, requested);
+
+  // Cửa sổ: cả hai biên validity_range PHẢI rơi vào cửa sổ `epoch` TÍNH TỪ GỐC (Luật 2b +
+  // WIN-ORIGIN-1/2). Không có vế này thì một caller vẫn chia từ gốc Unix dựng ra tx mà
+  // `reserve_draw` bác không lời giải thích (nhãn lệch hàng nghìn cửa sổ).
+  assertValidityInWindow(p);
 
   const mintAssets: Assets = { [lampUnit]: drawn };
 

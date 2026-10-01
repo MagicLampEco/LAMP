@@ -37,7 +37,7 @@ import {
 } from "./datum.js";
 import type { OutputReference } from "./types.js";
 import {
-  assetsToMap, custodyOutputAddress, mapToAssets, sameEpochValidToMs,
+  assetsToMap, custodyOutputAddress, mapToAssets, sameEpochValidToMs, windowIndexOf,
 } from "./collectBuilder.js";
 import { type AssetMap, assetKey } from "./collect.js";
 import {
@@ -237,10 +237,12 @@ export interface ReleaseParams {
   draws: ReleaseDraw[];
 
   /** validity_range lower bound (POSIX ms). out_datum.epoch suy TRỰC TIẾP từ đây:
-   *  epoch = ⌊validFromMs / msPerEpoch⌋ (C-EPOCH — neo chain, không để epoch tùy ý). */
+   *  epoch = ⌊(validFromMs − windowOriginMs) / msPerEpoch⌋ (C-EPOCH — neo chain, không để epoch tùy ý). */
   validFromMs: bigint;
   /** POSIX ms ↔ epoch (mirror onchain ms_per_epoch). */
   msPerEpoch:  bigint;
+  /** `window_origin_ms` đã nướng vào `custody` (khe CUỐI) — Specs/Window/CONTRACT.md v1.0. BẮT BUỘC. */
+  windowOriginMs: bigint;
 
   /** seed_policy (PolicyId NFT authenticity) — BẮT BUỘC: ÉP cust_in mang NFT
    *  (seed_policy, instance_id) VÀ là thành phần của spend_spec_hash (C-REL-3-SEED). */
@@ -259,7 +261,7 @@ export interface ReleaseResult {
 export async function buildReleaseTx(params: ReleaseParams): Promise<ReleaseResult> {
   const {
     lucid, network, custodyUtxo, custodyScript, proposalUtxo, proposal, proposalRef,
-    draws, validFromMs, msPerEpoch, seedPolicy,
+    draws, validFromMs, msPerEpoch, windowOriginMs, seedPolicy,
   } = params;
 
   if (!custodyUtxo.datum) throw new Error("RELEASE-000: custodyUtxo has no inline datum");
@@ -268,8 +270,8 @@ export async function buildReleaseTx(params: ReleaseParams): Promise<ReleaseResu
   const custodyHash = validatorToScriptHash(custodyScript);
   const valueIn = assetsToMap(custodyUtxo.assets);
 
-  // C-EPOCH: epoch neo TRỰC TIẾP từ validity_range lower bound (⌊validFromMs/msPerEpoch⌋).
-  const currentEpoch = validFromMs / msPerEpoch;
+  // C-EPOCH: epoch neo TRỰC TIẾP từ validity_range lower bound (⌊(validFromMs − gốc)/msPerEpoch⌋).
+  const currentEpoch = windowIndexOf(validFromMs, windowOriginMs, msPerEpoch);
 
   // C-REL-1 (#1A): lấy payment script hash của proposal reference UTxO để so governance_ref.
   const proposalCred = getAddressDetails(proposalUtxo.address).paymentCredential;
@@ -295,7 +297,7 @@ export async function buildReleaseTx(params: ReleaseParams): Promise<ReleaseResu
   // C-REL-8 / C-EPOCH / F4: validity_range HỮU HẠN + lower&upper CÙNG epoch
   // (mirror get_epoch_bounded). validFrom = validFromMs; validTo = ms cuối CÙNG epoch.
   const validFrom = Number(validFromMs);
-  const validTo = Number(sameEpochValidToMs(validFromMs, msPerEpoch));
+  const validTo = Number(sameEpochValidToMs(validFromMs, msPerEpoch, windowOriginMs));
 
   let txb = lucid
     .newTx()

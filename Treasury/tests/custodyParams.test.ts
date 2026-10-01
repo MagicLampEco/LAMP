@@ -6,8 +6,8 @@
 // tham số — nó áp một phần rồi trả về một script hash hợp lệ và SAI, tức một địa chỉ kho
 // khác. LAMP rót vào đó không rút ra được, và LAMP KHÔNG burn (`Treasury/CONTRACT.md §5`).
 //
-// Bài kiểm đọc số khe TỪ blueprint thật, không gõ tay con số 5: gõ tay thì lúc validator lên
-// sáu khe, bài kiểm vẫn xanh trong khi nó đang canh một con số đã chết.
+// Bài kiểm đọc số khe TỪ blueprint thật: gõ tay thì lúc validator đổi số khe, bài kiểm vẫn xanh
+// trong khi nó đang canh một con số đã chết. (Specs/Window v1.0 đưa custody từ 5 lên 6 khe.)
 
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
@@ -29,11 +29,13 @@ const SAMPLE = {
   msPerEpoch: 432_000_000n,
   lampPolicy: "33".repeat(28),
   tokenName: TLAMP_NAME,
+  // Gốc Mainnet THẬT, không phải 0 — gốc 0 áp được nhưng không phân biệt "đã truyền" với "quên truyền".
+  windowOriginMs: 1_506_203_091_000n,
 };
 
 describe("custodyParamList — khớp ĐÚNG số khe blueprint khai", () => {
-  it("blueprint khai đúng 5 khe cho custody (đọc từ plutus.json, không gõ tay)", () => {
-    expect(declaredParamCount(BLUEPRINT, CUSTODY_TITLE, "Treasury", 5)).toBe(5);
+  it("blueprint khai đúng 6 khe cho custody (đọc từ plutus.json, không gõ tay)", () => {
+    expect(declaredParamCount(BLUEPRINT, CUSTODY_TITLE, "Treasury", 6)).toBe(6);
   });
 
   it("danh sách dựng ra đi qua cổng đếm khe mà không ném", () => {
@@ -46,11 +48,20 @@ describe("custodyParamList — khớp ĐÚNG số khe blueprint khai", () => {
     const declared = (BLUEPRINT.validators as { title: string; parameters?: { title?: string }[] }[])
       .find((v) => v.title === CUSTODY_TITLE)!.parameters!.map((p) => p.title);
     expect(declared).toEqual([
-      "proposal_policy", "seed_policy", "ms_per_epoch", "lamp_policy", "token_name",
+      "proposal_policy", "seed_policy", "ms_per_epoch", "lamp_policy", "token_name", "window_origin_ms",
     ]);
     expect(custodyParamList(SAMPLE)).toEqual([
       SAMPLE.proposalPolicy, SAMPLE.seedPolicy, SAMPLE.msPerEpoch, SAMPLE.lampPolicy, SAMPLE.tokenName,
+      SAMPLE.windowOriginMs,
     ]);
+  });
+
+  // Khe #6 là một con số: thiếu nó thì `applyParamsToScript` áp MỘT PHẦN và ra địa chỉ két khác.
+  it("ĐỎ: window_origin_ms thiếu / âm / sai kiểu ⇒ WINDOW-ORIGIN-001", () => {
+    for (const hong of [undefined, -1n, 1_506_203_091_000 /* number, không phải bigint */]) {
+      expect(() => custodyParamList({ ...SAMPLE, windowOriginMs: hong as unknown as bigint }))
+        .toThrow(/WINDOW-ORIGIN-001/);
+    }
   });
 
   it("custody_seed vẫn đúng MỘT khe (genesis_ref)", () => {
@@ -84,7 +95,12 @@ describe("custodyParamList — khe #4 đi qua cổng hàng nhái", () => {
 
 describe("ca ÂM TÍNH — danh sách BA khe cũ phải bị chặn", () => {
   // Đây chính là hình dạng mã trước bản vá. Nếu ca này xanh thì cổng không canh gì.
-  it("áp 3 tham số vào custody (khai 5) → APPLY-001", () => {
+  it("áp 5 tham số CŨ (thiếu window_origin_ms) vào custody (khai 6) → APPLY-001", () => {
+    expect(() => assertParamCountFromBlueprint(BLUEPRINT, CUSTODY_TITLE, "Treasury", 5))
+      .toThrow(/APPLY-001/);
+  });
+
+  it("áp 3 tham số vào custody (khai 6) → APPLY-001", () => {
     expect(() => assertParamCountFromBlueprint(BLUEPRINT, CUSTODY_TITLE, "Treasury", 3))
       .toThrow(/APPLY-001/);
   });

@@ -42,6 +42,10 @@ import { buildMintWeightParamTx } from "../offchain/src/weightParamBuilder.js";
 import { VOTED_ROOT_EMPTY } from "../offchain/src/votedLedger.js";
 
 const MS_PER_EPOCH = 3_600_000n;
+// Gốc cửa sổ THẬT của Mainnet (Specs/Window/CONTRACT.md v1.0 §3), không phải 0: gốc 0 không phân
+// biệt được bản có trừ gốc với bản quên trừ. Emulator chạy ở giờ thật (> gốc này) nên mọi mốc
+// `now` đều ở sau gốc.
+const ORIGIN_MS = 1_506_203_091_000n;
 const blueprint = JSON.parse(readFileSync(resolve(__dirname, "../onchain/plutus.json"), "utf8"));
 
 const pkhOf = (a: EmulatorAccount) => paymentCredentialOf(a.address).hash;
@@ -78,13 +82,13 @@ async function submit(lucid: LucidEvolution, emulator: Emulator, tx: { sign: any
 
 /** Tiến tới đầu epoch `target` + 10 s. */
 function advanceToEpoch(emulator: Emulator, target: bigint) {
-  const t = Number(target * MS_PER_EPOCH) + 10_000;
+  const t = Number(ORIGIN_MS + target * MS_PER_EPOCH) + 10_000;
   const now = emulator.now();
   if (t <= now) throw new Error(`advanceToEpoch: ${t} ≤ now ${now}`);
   emulator.awaitSlot(Math.ceil((t - now) / 1000));
 }
 
-const epochNow = (em: Emulator) => BigInt(Math.floor(em.now() / Number(MS_PER_EPOCH)));
+const epochNow = (em: Emulator) => (BigInt(em.now()) - ORIGIN_MS) / MS_PER_EPOCH;
 
 describe("E2E Governance v2 trên Emulator — validator thật", () => {
   it("mở → bỏ phiếu → rút → gom 2 lô → Finalize → FinalizeProposal=Rejected (VP-ZERO-FACTOR) → thu hồi → đốt", async () => {
@@ -120,7 +124,7 @@ describe("E2E Governance v2 trên Emulator — validator thật", () => {
     const wpSeed = adminUtxos[0]!;
     let cfg: GovernanceConfig = applyGovernanceBlueprint(blueprint, {
       phaseTag: "5031", taadPolicyId, c3PolicyId: "", c3ScriptHash: "",
-      msPerEpoch: MS_PER_EPOCH, tallyWindowEpochs: 2n, deltaMinEpochs: 1n, recoveryTimelockEpochs: 10n,
+      msPerEpoch: MS_PER_EPOCH, windowOriginMs: ORIGIN_MS, tallyWindowEpochs: 2n, deltaMinEpochs: 1n, recoveryTimelockEpochs: 10n,
       weightParam: {
         seedRef: { transaction_id: wpSeed.txHash, output_index: BigInt(wpSeed.outputIndex) },
         phaseTag: "5031", bftFloorMin: 1n, bftFloorMax: 64n, quorumVotersMin: 1n,
@@ -201,7 +205,7 @@ describe("E2E Governance v2 trên Emulator — validator thật", () => {
     })).rejects.toThrow("GOV-VOTE-004");
     await expect(buildCastVoteTx({
       lucid, config: cfg, tallyUtxo: await getTally(), anchorUtxo: await anchorOf(dids[0]!),
-      didCommit: dids[0]!, choice: "Yes", nowMs: Number((e0 + 1n) * MS_PER_EPOCH) - 30_000,
+      didCommit: dids[0]!, choice: "Yes", nowMs: Number(ORIGIN_MS + (e0 + 1n) * MS_PER_EPOCH) - 30_000,
     })).rejects.toThrow("GOV-WINDOW-001");
 
     // ── 3. bỏ phiếu ──
@@ -229,7 +233,7 @@ describe("E2E Governance v2 trên Emulator — validator thật", () => {
       lucid.selectWallet.fromPrivateKey(v.ctrl.privateKey);
       const { boundedEpochWindow } = await import("../offchain/src/epochWindow.js");
       const { slotConfigOf } = await import("../offchain/src/chainRead.js");
-      const w = boundedEpochWindow(emulator.now(), MS_PER_EPOCH, slotConfigOf(lucid));
+      const w = boundedEpochWindow(emulator.now(), MS_PER_EPOCH, ORIGIN_MS, slotConfigOf(lucid));
       const tx = await lucid.newTx()
         .readFrom([await getTally(), await anchorOf(dids[0]!)])
         .mintAssets({ [toUnit(cfg.nullifierPolicyId, nullifierName(dids[0]!, pid))]: 1n },
@@ -269,7 +273,7 @@ describe("E2E Governance v2 trên Emulator — validator thật", () => {
       const vU = await voteOf(dids[0]!);
       const { boundedEpochWindow } = await import("../offchain/src/epochWindow.js");
       const { slotConfigOf } = await import("../offchain/src/chainRead.js");
-      const w = boundedEpochWindow(emulator.now(), MS_PER_EPOCH, slotConfigOf(lucid));
+      const w = boundedEpochWindow(emulator.now(), MS_PER_EPOCH, ORIGIN_MS, slotConfigOf(lucid));
       const badOut = { ...b1.tallyDatumOut, voted_root: b1.plan.rootBefore };
       const bad = lucid.newTx()
         .collectFrom([tU], tallyRedeemerToCbor({ kind: "SumBatch", insert_proofs: b1.plan.insertProofs }))
@@ -415,7 +419,7 @@ describe("E2E Governance v2 trên Emulator — validator thật", () => {
     const wpSeed = adminUtxos[0]!;
     let cfg: GovernanceConfig = applyGovernanceBlueprint(blueprint, {
       phaseTag: "5032", taadPolicyId, c3PolicyId, c3ScriptHash,
-      msPerEpoch: MS_PER_EPOCH, tallyWindowEpochs: 2n, deltaMinEpochs: 1n, recoveryTimelockEpochs: 10n,
+      msPerEpoch: MS_PER_EPOCH, windowOriginMs: ORIGIN_MS, tallyWindowEpochs: 2n, deltaMinEpochs: 1n, recoveryTimelockEpochs: 10n,
       weightParam: {
         seedRef: { transaction_id: wpSeed.txHash, output_index: BigInt(wpSeed.outputIndex) },
         phaseTag: "5032", bftFloorMin: 1n, bftFloorMax: 64n, quorumVotersMin: 1n,
@@ -495,7 +499,7 @@ describe("E2E Governance v2 trên Emulator — validator thật", () => {
       const out = sumBatchNext(tallyDatumFromCbor(tU.datum!), wp, [vB], plan.rootAfter);
       const { boundedEpochWindow } = await import("../offchain/src/epochWindow.js");
       const { slotConfigOf } = await import("../offchain/src/chainRead.js");
-      const w = boundedEpochWindow(emulator.now(), MS_PER_EPOCH, slotConfigOf(lucid));
+      const w = boundedEpochWindow(emulator.now(), MS_PER_EPOCH, ORIGIN_MS, slotConfigOf(lucid));
       const mk = (attest: UTxO) => lucid.newTx()
         .collectFrom([tU], tallyRedeemerToCbor({ kind: "SumBatch", insert_proofs: plan.insertProofs }))
         .collectFrom([vU], voteRedeemerToCbor({ kind: "ConsumeForTally", book_proof: plan.membershipProofs[0]! }))

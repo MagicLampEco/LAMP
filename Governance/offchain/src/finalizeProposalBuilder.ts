@@ -60,7 +60,7 @@ export async function buildFinalizeProposalTx(p: FinalizeProposalParams): Promis
   if (td.phase !== "Clamped") {
     throw new Error(`GOV-FINP-003: Tally của proposal ${pr.proposal_id} đang '${td.phase}', chưa Clamped — chạy finalizeTally trước (S7, GAME-1)`);
   }
-  const { loMs, hiMs, epoch } = boundedEpochWindow(p.nowMs, cfg.msPerEpoch, slotConfigOf(p.lucid, p.slotConfig));
+  const { loMs, hiMs, epoch } = boundedEpochWindow(p.nowMs, cfg.msPerEpoch, cfg.windowOriginMs, slotConfigOf(p.lucid, p.slotConfig));
   if (epoch < pr.execute_after_epoch) {
     throw new Error(`GOV-FINP-006: epoch ${epoch} < execute_after_epoch ${pr.execute_after_epoch} (S6)`);
   }

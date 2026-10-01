@@ -9,14 +9,14 @@
 //   BƯỚC 1 PHẢI confirm trước BƯỚC 2 (entry.seed_policy/instance_id trỏ instance đã seed).
 //
 // Apply-params (offline) cho cả custody (Treasury) lẫn registry (đã có ở registry.json):
-//   custody_seed(genesis_ref) → seed_policy ; custody(proposal_policy, seed_policy, ms_per_epoch)
+//   custody_seed(genesis_ref) → seed_policy ; custody(proposal_policy, seed_policy, ms_per_epoch, lamp_policy, token_name, window_origin_ms)
 //   → custody_hash. beacon_policy lấy từ registry.json (deploy-registry).
 //
 // onboardPlatform tự kiểm 2 gương validator (seedDatumOk + entryWellFormed) fail-fast.
 // KHÔNG submit thật (không credential). CÓ cred → build 2 tx dry-run (.complete()).
 
 import {
-  NETWORK, MS_PER_EPOCH,
+  NETWORK, MS_PER_EPOCH, windowOrigin,
   makeLucidOrNull, walletPkh,
   resolveProposalPolicy,
   resolveLampPolicy, custodyTokenName, custodyParamList,
@@ -86,6 +86,7 @@ function buildConfig(
     lampPolicy:     DEV_LAMP_POLICY,
     registryAuthority: opts.registryAuthority,
     msPerEpoch:     MS_PER_EPOCH,
+    windowOriginMs: windowOrigin(),
     reservedMinAda: 2_000_000n,
     genesisRef:     opts.genesisRef,
     seedPolicy:     opts.seedPolicy,
@@ -140,7 +141,7 @@ async function main(): Promise<void> {
   const custodySeed = applyCustodySeed(rawSeed.compiledCode, genesisRef);
   const seedPolicy = seedPolicyId(custodySeed);
 
-  // custody khai NĂM khe (custody.ak:89-95). Danh sách dựng bằng `custodyParamList` — thứ
+  // custody khai SÁU khe (custody.ak, `window_origin_ms` là khe cuối). Danh sách dựng bằng `custodyParamList` — thứ
   // tự khe chỉ sống ở `Treasury/scripts/custodyParams.ts`, không viết lại ở đây.
   const rawCustody = await rawValidator(CUSTODY_TITLE);
   const custodyScript = applyValidator(
@@ -151,6 +152,7 @@ async function main(): Promise<void> {
       msPerEpoch: MS_PER_EPOCH,
       lampPolicy: lampPolicy.policy,
       tokenName,
+      windowOriginMs: windowOrigin(),   // #6 — tham số CUỐI (Specs/Window v1.0)
     }),
   );
   const custodyHash = scriptHash(custodyScript);

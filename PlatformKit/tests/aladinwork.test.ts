@@ -86,7 +86,7 @@ describe("aladinWorkConfig", () => {
     const cfg = aladinWorkConfig({
       lampPolicy: "ab".repeat(28),
       registryAuthority: "cd".repeat(28),
-      msPerEpoch: 86_400_000n,
+      msPerEpoch: 86_400_000n, windowOriginMs: 1_506_203_091_000n,
       reservedMinAda: 2_000_000n,
       genesisRef: { transaction_id: "ff".repeat(32), output_index: 0n },
     });
@@ -98,7 +98,7 @@ describe("aladinWorkConfig", () => {
   it("cutBps override được (Aladin/DAO chốt)", () => {
     const cfg = aladinWorkConfig({
       lampPolicy: "ab".repeat(28), registryAuthority: "cd".repeat(28),
-      msPerEpoch: 86_400_000n, reservedMinAda: 2_000_000n,
+      msPerEpoch: 86_400_000n, windowOriginMs: 1_506_203_091_000n, reservedMinAda: 2_000_000n,
       genesisRef: { transaction_id: "ff".repeat(32), output_index: 0n },
       cutBps: 800n,
     });
