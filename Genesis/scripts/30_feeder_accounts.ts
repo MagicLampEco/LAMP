@@ -28,10 +28,22 @@
 //            bằng khoá các feeder trong lô; ví vận hành trả phí + min-ADA, nhận tiền thối ADA.
 //            Không đủ LAMP ⇒ dừng, in có/thiếu; rót một phần chỉ khi ALLOW_PARTIAL=true.
 //
-// TÍNH LẶP LẠI ĐƯỢC. Mọi bước đọc lại chuỗi trước MỖI giao dịch và chờ giao dịch vào block
-// rồi mới dựng giao dịch kế: kho TRSY là singleton, mọi grant/redeem đều tiêu nó, nên hai giao
-// dịch dựng trên cùng một bản đọc thì giao dịch sau chắc chắn hỏng. `grant` bỏ qua feeder đã
-// có tài khoản; chạy lại sau khi đứt giữa chừng là chạy tiếp, không cấp trùng.
+// TÍNH LẶP LẠI ĐƯỢC. Mặc định (CHAIN_DEPTH=1) mọi bước đọc lại chuỗi trước MỖI giao dịch và chờ
+// giao dịch vào block rồi mới dựng giao dịch kế: kho TRSY là singleton, mọi grant/redeem đều tiêu
+// nó, nên hai giao dịch dựng trên cùng một bản đọc thì giao dịch sau chắc chắn hỏng. `grant` bỏ
+// qua feeder đã có tài khoản; chạy lại sau khi đứt giữa chừng là chạy tiếp, không cấp trùng.
+//
+// NỐI CHUỖI (CHAIN_DEPTH=n>1, chỉ STEP=grant|redeem). Mempool node nhận giao dịch tiêu output của
+// giao dịch còn trong mempool ⇒ không phải đợi block cho từng giao dịch. Mở chuỗi = chụp chuỗi
+// một lần (beacon, kho, tài khoản, ví vận hành) thành LỚP PHỦ (`_chainOverlay.ts`); mỗi giao dịch
+// dựng xong thì chồng hiệu ứng của nó (input tiêu, output tạo — trích từ chính thân giao dịch)
+// lên lớp phủ, ví vận hành đọc qua `overrideUTxOs`. Gửi tối đa n giao dịch chưa xác nhận, chờ
+// giao dịch CUỐI vào block (AWAIT_TX_TIMEOUT_MS), chờ chỉ mục thấy carrier mới nhất và không
+// còn thấy input chuỗi đã tiêu, rồi mới chụp lại cho chuỗi kế. Cả chuỗi dùng MỘT cửa sổ
+// (`windowNow()` lúc mở chuỗi); sắp hết cửa sổ (< CHAIN_WINDOW_MARGIN_MS) ⇒ không dựng thêm.
+// Một giao dịch bị từ chối khi gửi ⇒ FEED-CHAIN-001 kèm mọi hash đã gửi, KHÔNG gửi tiếp; chạy
+// lại đọc chuỗi thật từ đầu. SUBMIT=false + CHAIN_DEPTH=n ⇒ dựng khô n giao dịch nối nhau trên
+// lớp phủ (đánh giá script cục bộ của Lucid chạy cho từng cái), không ký, không gửi.
 //
 // Chạy (mặc định STEP=plan, CHỈ ĐỌC; SUBMIT=false thì dựng giao dịch đầu tiên rồi dừng):
 //   NETWORK=Preprod FEEDER_COUNT=1000 tsx 30_feeder_accounts.ts
@@ -44,6 +56,8 @@
 //     POT_ADDRESS=<addr_test1w…> POT_SCRIPT_HASH=<hex28> POT_DATUM_CBOR=<cbor> POT_SHARE_OILDROP=<D> \
 //     [POT_LOVELACE=2000000] [POT_BATCH=40] [MAX_TX=25] [ALLOW_PARTIAL=true] tsx 30_feeder_accounts.ts
 //     (SUBMIT=false mặc định: dựng + soát giao dịch đầu tiên rồi dừng; thêm SUBMIT=true để ký, gửi.)
+//   NETWORK=Preprod FEEDER_COUNT=1000 STEP=redeem MAX_TX=200 CHAIN_DEPTH=8 SUBMIT=true tsx 30_feeder_accounts.ts
+//     (nối chuỗi tối đa 8 giao dịch chưa xác nhận; mặc định 1 = chờ từng giao dịch)
 //   Mọi bước gửi: AWAIT_TX_TIMEOUT_MS (mặc định 1200000 = 20 phút) — quá hạn chờ vào block ⇒
 //   FEED-AWAIT-001, thoát mã 1, câu lỗi mang hash giao dịch đã gửi.
 import {
@@ -65,6 +79,10 @@ import {
   planPotFunding, planSweep, sweepAmountFromEnv, dryRunAtFromEnv, withDeadline,
   type FeederAccount, type FeederUtxo,
 } from "./_feederPlan.js";
+import {
+  chainDepthFromEnv, makeView, applyTx, viewUtxosAt, viewUtxosAtWithUnit, viewCarrier,
+  providerCaughtUp, spentByChain, chainWindowBlock, outRef, txEffects, type ChainView, type TxEffects,
+} from "./_chainOverlay.js";
 import {
   requireField, positiveBig, potTargetFromEnv, potOutputAssets, assertPotOutputs, unitAt, type OutputShape,
 } from "./_potShape.js";
@@ -117,6 +135,13 @@ const SWEEP_BATCH = envInt("SWEEP_BATCH", "40");
  * gọi nó treo theo mà không có dòng log nào.
  */
 const AWAIT_TX_TIMEOUT_MS = envInt("AWAIT_TX_TIMEOUT_MS", "1200000");
+/**
+ * Số giao dịch chưa xác nhận tối đa trong một chuỗi (STEP=grant|redeem). 1 = hành vi cũ y nguyên.
+ * Trần: `CHAIN_DEPTH_MAX` (`_chainOverlay.ts`).
+ */
+const CHAIN_DEPTH = chainDepthFromEnv(process.env.CHAIN_DEPTH);
+/** Không dựng thêm giao dịch của chuỗi khi còn ít hơn chừng này tới đầu trên cửa sổ (ms). */
+const CHAIN_WINDOW_MARGIN_MS = envBig("CHAIN_WINDOW_MARGIN_MS", "600000");
 
 const lamp = (o: bigint) => `${o / OILDROP_PER_LAMP} LAMP`;
 const ada = (l: bigint) => `${l / 1_000_000n},${(l % 1_000_000n).toString().padStart(6, "0").slice(0, 2)} ADA`;
@@ -164,7 +189,17 @@ interface ChainState {
   pool:         bigint;
 }
 
-async function readState(lucid: LucidEvolution, wiring: Wiring): Promise<ChainState> {
+/**
+ * Nguồn đọc UTxO: nhà cung cấp (`lucid`, CHAIN_DEPTH=1 và mọi bước khác) hoặc lớp phủ của chuỗi
+ * đang mở (`Chain.source`). Hai hàm đọc dưới đây không biết mình đang đọc cái nào — cố ý, để
+ * đường chuỗi và đường cũ đi qua CÙNG phép giải mã + cùng cổng (BCN-001, TRSY-001, FEED-ACC-*).
+ */
+interface UtxoSource {
+  utxosAt(addr: string): Promise<UTxO[]>;
+  utxosAtWithUnit(addr: string, unit: string): Promise<UTxO[]>;
+}
+
+async function readState(lucid: UtxoSource, wiring: Wiring): Promise<ChainState> {
   const beaconUnit = toUnit(wiring.markers.beaconPid, DROP_NAME);
   const bs = (await lucid.utxosAt(wiring.beaconAddr)).filter((u) => (u.assets[beaconUnit] ?? 0n) === 1n);
   if (bs.length !== 1) throw new Error(`BCN-001: cần ĐÚNG 1 UTxO mang NFT "DROP", đếm ${bs.length}.`);
@@ -194,7 +229,7 @@ function toAccount(u: UTxO, f: Feeder): Account {
  * xem đầu `_feederPlan.ts`) thì KHÔNG dừng cả dải: báo FEED-ACC-003, giữ mọi tài khoản, vì tài
  * khoản thứ hai vẫn rút được và phần E của nó vẫn nằm trong sổ nợ của kho.
  */
-async function readAccounts(lucid: LucidEvolution, claimAddr: string, accountPid: string,
+async function readAccounts(lucid: UtxoSource, claimAddr: string, accountPid: string,
                             feeders: Feeder[]): Promise<{ accounts: Account[]; owners: Set<string> }> {
   const byUnit = new Map(feeders.map((f) => [toUnit(accountPid, accountNftName(f.pkh)), f]));
   const accounts: Account[] = [];
@@ -215,7 +250,7 @@ async function readAccounts(lucid: LucidEvolution, claimAddr: string, accountPid
 }
 
 /** Tài khoản của MỘT feeder, đọc thẳng theo unit NFT — rẻ, dùng ngay trước mỗi grant. */
-async function accountsOf(lucid: LucidEvolution, claimAddr: string, accountPid: string,
+async function accountsOf(lucid: UtxoSource, claimAddr: string, accountPid: string,
                           f: Feeder): Promise<Account[]> {
   const unit = toUnit(accountPid, accountNftName(f.pkh));
   return (await lucid.utxosAtWithUnit(claimAddr, unit))
@@ -236,18 +271,173 @@ async function finish(lucid: LucidEvolution, tx: TxSignBuilder, label: string,
     console.log(`  (SUBMIT=false) ${label} dựng xong, hash thân ${tx.toHash()}. Không ký, không gửi.`);
     return false;
   }
+  const hash = await signSubmit(tx, label, feederKeys);
+  await awaitConfirmed(lucid, hash, label);
+  return true;
+}
+
+/** Ký (ví vận hành + khoá feeder) và gửi. Dòng `📤 <label>: <hash>` là thứ job đếm — giữ khuôn. */
+async function signSubmit(tx: TxSignBuilder, label: string, feederKeys: string[]): Promise<string> {
   let s = tx.sign.withWallet();
   for (const k of feederKeys) s = s.sign.withPrivateKey(k);
   const hash = await (await s.complete()).submit();
   console.log(`  📤 ${label}: ${hash}  ${explorerTx(hash)}`);
-  // Quá hạn ⇒ ném lên `main().catch` ⇒ thoát mã 1 (giết luôn vòng thăm dò của nhà cung cấp).
-  // Giao dịch ĐÃ GỬI: câu lỗi mang hash để người chạy tra trước khi chạy lại.
+  return hash;
+}
+
+/**
+ * Chờ `hash` vào block, có hạn giờ. Quá hạn ⇒ ném lên `main().catch` ⇒ thoát mã 1 (giết luôn vòng
+ * thăm dò của nhà cung cấp). Giao dịch ĐÃ GỬI: câu lỗi mang hash để người chạy tra trước khi chạy lại.
+ */
+async function awaitConfirmed(lucid: LucidEvolution, hash: string, label: string, alsoSent: string[] = []): Promise<void> {
+  const others = alsoSent.filter((h) => h !== hash);
   await withDeadline(lucid.awaitTx(hash), AWAIT_TX_TIMEOUT_MS, () => new Error(
     `FEED-AWAIT-001: quá ${AWAIT_TX_TIMEOUT_MS} ms (AWAIT_TX_TIMEOUT_MS) chờ ${label} vào block. ` +
     `Giao dịch ĐÃ GỬI: ${hash} — tra ${explorerTx(hash)} trước khi chạy lại (có thể đã vào block, ` +
-    `có thể đã rớt khỏi mempool).`,
+    `có thể đã rớt khỏi mempool).` +
+    (others.length > 0 ? ` Cùng chuỗi, gửi trước nó: ${others.join(", ")}.` : ""),
   ));
-  return true;
+}
+
+type EpochWindow = ReturnType<typeof epochWindow>;
+
+/**
+ * Một chuỗi giao dịch nối nhau (CHAIN_DEPTH > 1). Với CHAIN_DEPTH = 1 mọi phương thức quay về
+ * đúng đường cũ: `source()` = nhà cung cấp, `window()` = `windowNow()` mỗi lần, `send()` = `finish`.
+ *
+ * Vòng đời: `source()` lần đầu ⇒ chụp chuỗi (mở chuỗi, chốt MỘT cửa sổ). `send()` ⇒ chồng hiệu ứng
+ * lên lớp phủ TRƯỚC khi gửi (lớp phủ không nhất quán ⇒ ném trước khi có gì lên mạng), gửi, và đủ
+ * CHAIN_DEPTH thì `settle()`. `settle()` ⇒ chờ giao dịch cuối vào block, chờ chỉ mục bắt kịp, bỏ
+ * lớp phủ, trả ví về nhà cung cấp. Người gọi PHẢI gọi `settle()` khi rời vòng lặp.
+ */
+class Chain {
+  private view: ChainView | null = null;
+  private w: EpochWindow | null = null;
+  private effects: TxEffects[] = [];
+  private sent: string[] = [];
+
+  constructor(
+    private readonly lucid: LucidEvolution,
+    private readonly addrs: { beacon: string; treasury: string; claim: string; wallet: string },
+    private readonly khoUnit: string,
+    private readonly windowNow: () => EpochWindow,
+    private readonly nowMs: () => bigint,
+  ) {}
+
+  async source(): Promise<UtxoSource> {
+    if (CHAIN_DEPTH === 1) return this.lucid;
+    if (!this.view) await this.open();
+    const v = this.view!;
+    return {
+      utxosAt: async (a) => viewUtxosAt(v, a),
+      utxosAtWithUnit: async (a, u) => viewUtxosAtWithUnit(v, a, u),
+    };
+  }
+
+  /** Cửa sổ cho giao dịch kế; `null` = không được dựng thêm (đã in lý do). */
+  async window(): Promise<EpochWindow | null> {
+    if (CHAIN_DEPTH === 1) return this.windowNow();
+    if (!this.view) await this.open();
+    const why = chainWindowBlock(this.w!, MS_PER_EPOCH, this.nowMs(), CHAIN_WINDOW_MARGIN_MS);
+    if (why) { console.log(`Chuỗi dừng dựng: ${why}.`); return null; }
+    return this.w!;
+  }
+
+  private async open(): Promise<void> {
+    this.lucid.overrideUTxOs([]);   // ảnh chụp ví phải đến từ nhà cung cấp, không từ lớp phủ cũ
+    const snap = new Map<string, UTxO[]>();
+    for (const a of [this.addrs.beacon, this.addrs.treasury, this.addrs.claim]) snap.set(a, await this.lucid.utxosAt(a));
+    snap.set(this.addrs.wallet, await this.lucid.wallet().getUtxos());
+    this.view = makeView(snap);
+    this.w = this.windowNow();
+    this.effects = [];
+    this.sent = [];
+    viewCarrier(this.view, this.addrs.treasury, this.khoUnit);   // singleton ngay từ ảnh chụp
+    this.overrideWallet();
+    console.log(`── mở chuỗi (tối đa ${CHAIN_DEPTH} giao dịch) · cửa sổ ${this.w.epoch} · carrier ` +
+      `${outRef(viewCarrier(this.view, this.addrs.treasury, this.khoUnit))}`);
+  }
+
+  /** Ví vận hành đọc qua lớp phủ. Rỗng ⇒ ném: `overrideUTxOs([])` của Lucid = quay về nhà cung cấp, im lặng. */
+  private overrideWallet(): void {
+    const ws = viewUtxosAt(this.view!, this.addrs.wallet);
+    if (ws.length === 0) {
+      throw new Error(`FEED-CHAIN-006: lớp phủ không còn UTxO nào của ví vận hành — Lucid sẽ lặng lẽ đọc ` +
+        `ví từ nhà cung cấp (trạng thái cũ). Dừng chuỗi.`);
+    }
+    this.lucid.overrideUTxOs(ws);
+  }
+
+  /** Gửi (hoặc dựng khô) một giao dịch của chuỗi. Trả `false` khi vòng lặp phải dừng (như `finish`). */
+  async send(tx: TxSignBuilder, label: string, feederKeys: string[] = []): Promise<boolean> {
+    if (CHAIN_DEPTH === 1) return finish(this.lucid, tx, label, feederKeys);
+    if (!this.view) throw new Error(`FEED-CHAIN-002: gửi ${label} khi chưa mở chuỗi (thiếu source()/window()).`);
+    const eff = txEffects(tx);
+    const next = applyTx(this.view!, eff);
+    const carrier = viewCarrier(next, this.addrs.treasury, this.khoUnit);
+    if (!SUBMIT) {
+      console.log(`  (SUBMIT=false) ${label} dựng xong trên lớp phủ, hash thân ${eff.txHash} · carrier kế ` +
+        `${outRef(carrier)} · ${this.effects.length + 1}/${CHAIN_DEPTH}. Không ký, không gửi.`);
+      this.commit(next, eff);
+      return this.effects.length < CHAIN_DEPTH;
+    }
+    // THỨ TỰ: ký khi ví còn đọc lớp phủ TRƯỚC giao dịch này. `signTx` của ví Lucid chọn khoá theo
+    // UTxO ví đang thấy; ghi đè bằng lớp phủ SAU giao dịch trước khi ký thì input ví của chính nó
+    // biến mất ⇒ ví không ký ⇒ thiếu chữ ký (ghim: `chainOverlay.test.ts`, ca "ghi đè ví … TRƯỚC khi ký").
+    let hash: string;
+    try {
+      hash = await signSubmit(tx, label, feederKeys);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      throw new Error(`FEED-CHAIN-001: ${label} bị từ chối khi gửi (giao dịch thứ ${this.sent.length + 1} của chuỗi). ` +
+        `KHÔNG gửi tiếp. Đã gửi trong chuỗi: ${this.sent.length > 0 ? this.sent.join(", ") : "(chưa có)"}. ` +
+        (this.sent.length > 0 ? `Chờ ${this.sent[this.sent.length - 1]} vào block rồi chạy lại (lần chạy sau đọc lại chuỗi thật). ` : "") +
+        `Lỗi gốc: ${msg}`);
+    }
+    if (hash !== eff.txHash) {
+      throw new Error(`FEED-CHAIN-001: nhà cung cấp trả hash ${hash} ≠ hash thân ${eff.txHash} mà lớp phủ đã ghi. ` +
+        `KHÔNG gửi tiếp. Đã gửi trong chuỗi: ${[...this.sent, hash].join(", ")}.`);
+    }
+    this.sent.push(hash);
+    this.commit(next, eff);
+    if (this.sent.length >= CHAIN_DEPTH) await this.settle();
+    return true;
+  }
+
+  private commit(next: ChainView, eff: TxEffects): void {
+    this.view = next;
+    this.effects.push(eff);
+    this.overrideWallet();
+  }
+
+  /** Đóng chuỗi đang mở: chờ giao dịch cuối vào block + chỉ mục bắt kịp, rồi bỏ lớp phủ. */
+  async settle(): Promise<void> {
+    if (CHAIN_DEPTH === 1 || !this.view) return;
+    const view = this.view;
+    const sent = this.sent;
+    const spent = spentByChain(this.effects);
+    this.view = null; this.w = null; this.effects = []; this.sent = [];
+    this.lucid.overrideUTxOs([]);
+    if (sent.length === 0) return;
+    const last = sent[sent.length - 1]!;
+    await awaitConfirmed(this.lucid, last, `giao dịch cuối của chuỗi (${sent.length} giao dịch)`, sent);
+    const carrierRef = outRef(viewCarrier(view, this.addrs.treasury, this.khoUnit));
+    // Giao dịch cuối vào block kéo theo mọi giao dịch trước nó (nó tiêu output của chúng). Chỉ mục
+    // theo địa chỉ có thể trễ ⇒ chờ tới khi thấy carrier mới nhất VÀ không còn thấy input đã tiêu
+    // ở kho + ví. Hết giờ ⇒ ném: chuỗi kế dựng trên chỉ mục cũ là dựng trên carrier đã chết.
+    try {
+      await waitFor(
+        `chỉ mục thấy carrier ${carrierRef}`,
+        async () => [...await this.lucid.utxosAt(this.addrs.treasury), ...await this.lucid.wallet().getUtxos()],
+        (us) => providerCaughtUp(us, [carrierRef], spent),
+      );
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      throw new Error(`FEED-CHAIN-007: chuỗi ĐÃ vào block (${last}) nhưng chỉ mục chưa bắt kịp — dừng, ` +
+        `không mở chuỗi kế trên dữ liệu cũ. Chạy lại là chạy tiếp. (${msg})`);
+    }
+    console.log(`── chuỗi ${sent.length} giao dịch đã vào block; chỉ mục thấy carrier ${carrierRef}.`);
+  }
 }
 
 async function main(): Promise<void> {
@@ -263,6 +453,11 @@ async function main(): Promise<void> {
   const dryRunAt = dryRunAtFromEnv(process.env.DRY_RUN_AT_MS, SUBMIT, STEP);
   // Cửa sổ hiệu lực cho plan/redeem: giờ thật, hoặc mốc DRY_RUN_AT_MS (chỉ khi SUBMIT=false).
   const windowNow = () => epochWindow(MS_PER_EPOCH, dryRunAt ?? BigInt(Date.now()));
+  // Nối chuỗi chỉ hiện thực cho hai bước tiêu carrier. Bước khác nhận CHAIN_DEPTH>1 mà im lặng
+  // chạy kiểu cũ là để người chạy tin rằng mình đang chạy nhanh.
+  if (CHAIN_DEPTH > 1 && STEP !== "grant" && STEP !== "redeem") {
+    throw new Error(`FEED-CHAIN-004: CHAIN_DEPTH=${CHAIN_DEPTH} chỉ áp cho STEP=grant|redeem (đang STEP=${STEP}).`);
+  }
 
   const lucid = await makeLucid();
   const pkh = await walletPkh(lucid);
@@ -277,6 +472,11 @@ async function main(): Promise<void> {
   const treasuryCommon = {
     script: scripts.treasury, nftPolicy: wiring.markers.khoPid, nftAssetName: "54525359",
   };
+  const chain = new Chain(
+    lucid,
+    { beacon: wiring.beaconAddr, treasury: wiring.treAddr, claim: claimAddr, wallet: await lucid.wallet().address() },
+    wiring.khoUnit, windowNow, () => dryRunAt ?? BigInt(Date.now()),
+  );
 
   console.log(`═══ Feeder pot Wakeme (${NETWORK}) · STEP=${STEP} ═══`);
   console.log(`Dải khoá        : #${FEEDER_BASE}..#${FEEDER_BASE + FEEDER_COUNT - 1} (${FEEDER_COUNT} feeder)`);
@@ -317,17 +517,21 @@ async function main(): Promise<void> {
     for (const f of todo.slice(0, MAX_TX)) {
       // Đọc lại NGAY trước khi dựng: danh sách đầu lượt có thể cũ (chỉ mục trễ, lượt chạy song
       // song, lượt trước đứt sau khi gửi). Chuỗi không chặn đúc trùng tên — chỗ chặn là ở đây.
-      const already = await accountsOf(lucid, claimAddr, cs.accountPid, f);
+      // CHAIN_DEPTH>1: "đọc lại" = đọc lớp phủ, nơi đã có tài khoản của các grant vừa gửi.
+      const src = await chain.source();
+      const already = await accountsOf(src, claimAddr, cs.accountPid, f);
       if (already.length > 0) {
         console.log(`Bỏ qua feeder #${f.index}: đã có tài khoản ${already.map((a) => a.ref).join(", ")}.`);
         continue;
       }
-      const st = await readState(lucid, wiring);
+      const st = await readState(src, wiring);
       if (grantsThatFit(st.pool, st.treasury.outstanding_entitlement, FEEDER_E, 1) < 1) {
         console.log(`Kho hết chỗ (pool ${lamp(st.pool)}, nợ ${lamp(st.treasury.outstanding_entitlement)}). Dừng — vest + Refill rồi chạy lại.`);
         break;
       }
-      const w = epochWindow(MS_PER_EPOCH);
+      // CHAIN_DEPTH=1: `epochWindow(MS_PER_EPOCH)` mỗi lượt như cũ (grant không nhận DRY_RUN_AT_MS).
+      const w = await chain.window();
+      if (!w) break;
       const r = await buildClaimTx({
         lucid, claimScript: cs.claim, network: NETWORK,
         ownerPkh: f.pkh, amount: FEEDER_E,
@@ -341,9 +545,10 @@ async function main(): Promise<void> {
         validFromMs: w.loMs, validToMs: w.hiMs,
       });
       if (r.mode !== "create") throw new Error(`FEED-GRANT-002: builder trả mode='${r.mode}', chờ 'create'.`);
-      if (!(await finish(lucid, r.tx, `Grant feeder #${f.index}`))) return;
+      if (!(await chain.send(r.tx, `Grant feeder #${f.index}`))) { await chain.settle(); return; }
       done++;
     }
+    await chain.settle();
     console.log(`\nXong ${done} grant. Tài khoản mở ở cửa sổ e rút được từ cửa sổ e+1.`);
     return;
   }
@@ -353,9 +558,13 @@ async function main(): Promise<void> {
     let done = 0;
     let total = 0n;
     for (let i = 0; i < MAX_TX; i++) {
-      const st = await readState(lucid, wiring);
-      const accs = await readAccounts(lucid, claimAddr, cs.accountPid, feeders);
-      const w = windowNow();
+      // CHAIN_DEPTH>1: trạng thái + tài khoản đọc qua lớp phủ (carrier và tài khoản do các
+      // Redeem vừa gửi tạo ra), cửa sổ là MỘT giá trị cho cả chuỗi.
+      const src = await chain.source();
+      const st = await readState(src, wiring);
+      const accs = await readAccounts(src, claimAddr, cs.accountPid, feeders);
+      const w = await chain.window();
+      if (!w) break;
       const pick = pickNextRedeem(accs.accounts, st.beacon, st.treasury, w.epoch, TRIM_FLOOR, REDEEM_MIN);
       if (!pick) { console.log(`Không tài khoản nào đạt ngưỡng ${lamp(REDEEM_MIN)} ở cửa sổ ${w.epoch}.`); break; }
       const f = byPkh.get(pick.pkh)!;
@@ -379,10 +588,14 @@ async function main(): Promise<void> {
       if (r.amount !== pick.amount) {
         throw new Error(`FEED-RDM-001: kế hoạch ${pick.amount}, builder ${r.amount} cho feeder #${f.index}. Dừng.`);
       }
-      if (!(await finish(lucid, r.tx, `Redeem feeder #${f.index} · ${lamp(r.amount)}`, [f.key]))) return;
+      if (!(await chain.send(r.tx, `Redeem feeder #${f.index} · ${lamp(r.amount)}`, [f.key]))) {
+        await chain.settle();
+        return;
+      }
       done++;
       total += r.amount;
     }
+    await chain.settle();
     console.log(`\nXong ${done} lượt rút, tổng ${lamp(total)}.`);
     return;
   }
