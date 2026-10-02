@@ -5,7 +5,7 @@
 // MAINNET-BLOCK (solvency): Committee cấp entitlement E qua Claim ĐỘC LẬP với số dư
 // treasury. Nếu Σ(E − redeemed) > treasury LAMP → quỹ under-collateralized → người
 // redeem sau bị kẹt vốn (first-come-first-served). On-chain ĐÃ ép bất biến này
-// (treasury.ak C-SOLV-2): sổ cái singleton `outstanding_entitlement` (NFT "TRSY") tăng
+// (treasury.ak C-SOLV-2): sổ cái singleton `outstanding_entitlement` (NFT "TREASURY") tăng
 // += granted mỗi grant, giảm −= released mỗi redeem, và LUÔN bị ép ≤ treasury pool LAMP.
 // Sổ cái ĐÚNG BẰNG Σ(E − redeemed) nên script này và on-chain nói CÙNG một con số —
 // đó là điểm của bản vá 2026-08-12: trước đó on-chain đếm TỔNG CẤP lịch sử còn script

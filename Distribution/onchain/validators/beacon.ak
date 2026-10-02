@@ -178,7 +178,7 @@ validator beacon(
     // audit C1 dựng ra: xem `util.ak` ▸ `script_count_catches_stake_cred_double`). Nên
     // trước dòng này một lượt post dời được beacon sang stake credential của người dựng tx,
     // và toàn bộ phần thưởng uỷ quyền của min-ADA beacon đi theo — vĩnh viễn, vì C-BCN-1
-    // không bao giờ đòi ai trả lại. Đối xứng với C-SOLV-5 của TRSY ("ra đúng địa chỉ đã
+    // không bao giờ đòi ai trả lại. Đối xứng với C-SOLV-5 của TREASURY ("ra đúng địa chỉ đã
     // vào"); ở đây rẻ hơn hẳn vì cả hai đầu đã nằm trong tay.
     expect beacon_out.address == beacon_in.address
 

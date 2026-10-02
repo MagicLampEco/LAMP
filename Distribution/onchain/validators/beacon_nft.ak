@@ -63,7 +63,7 @@ validator beacon_nft(genesis_ref: OutputReference) {
 
     // ── ĐÍCH ĐẾN: NFT phải hạ cánh ở MỘT SCRIPT, mang `BeaconDatum` HỢP LỆ ────────────
     // Thêm 2026-09-26. Trước bản vá policy này chỉ ép "đúc đúng một lần", KHÔNG một chữ
-    // nào về nơi NFT hạ cánh — y hệt lỗ mà `treasury_nft.ak` đã vá cho TRSY ngày
+    // nào về nơi NFT hạ cánh — y hệt lỗ mà `treasury_nft.ak` đã vá cho TREASURY ngày
     // 2026-08-12, chỉ khác tên tài sản.
     //
     // Vì sao nó vô hiệu HẲN Capped Drop v3 nếu thiếu: `util.find_beacon` tìm beacon THUẦN
@@ -76,7 +76,7 @@ validator beacon_nft(genesis_ref: OutputReference) {
     // thận thừa: `beacon(committee, threshold, beacon_nft_policy, ms_per_epoch)` ⇒ hash
     // beacon cần policy DROP, còn `beacon_nft(genesis_ref)` mà nhận hash beacon thì policy
     // DROP lại cần hash beacon. Khép kín, không bake được — cùng hình dạng vòng mà C-SOLV-5
-    // (`claim_account.ak`) đã ghi cho TRSY. Nên phòng thủ chia hai tầng:
+    // (`claim_account.ak`) đã ghi cho TREASURY. Nên phòng thủ chia hai tầng:
     //   (a) GENESIS — ở đây: phải là Script + datum hợp lệ.
     //   (b) VÒNG ĐỜI — `util.find_beacon` ép beacon tham chiếu ngụ tại Script, và
     //       `beacon.ak` ép output về ĐÚNG địa chỉ input. DROP không đổi nhà được nữa.

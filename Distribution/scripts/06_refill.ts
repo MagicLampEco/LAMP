@@ -10,7 +10,7 @@
 // kho. `Refill` là nhánh duy nhất đưa nó vào sổ. Bước `loose` dựng đúng hình dạng đó bằng một lượt
 // chuyển thường, để nhánh gộp được kiểm trên đúng thứ nó sinh ra để xử lý.
 //
-// Sau `refill`, runner đọc lại kho trên chuỗi và đối chiếu: đúng MỘT UTxO mang TRSY, sổ nợ và
+// Sau `refill`, runner đọc lại kho trên chuỗi và đối chiếu: đúng MỘT UTxO mang TREASURY, sổ nợ và
 // `total_redeemed` KHÔNG đổi (C-REF-TOTAL), LAMP tăng đúng bằng phần gộp + phần nạp.
 
 import { Data } from "@lucid-evolution/lucid";
@@ -54,7 +54,7 @@ async function main(): Promise<void> {
 
   const treAddr  = state.treasury.address;
   const lampUnit = toUnit(state.testLamp.policyId, state.testLamp.assetName);
-  const trsyUnit = toUnit(state.params.treasuryNftPolicy, TREASURY_NFT_ASSET_NAME);
+  const treasuryUnit = toUnit(state.params.treasuryNftPolicy, TREASURY_NFT_ASSET_NAME);
 
   if (STEP === "loose") {
     const n = oildropEnv("LOOSE_OILDROP", true);
@@ -71,19 +71,19 @@ async function main(): Promise<void> {
     return;
   }
 
-  // STEP=refill — singleton mang TRSY + mọi UTxO KHÔNG datum ở địa chỉ kho. Diễn tập cố ý giữ tập
+  // STEP=refill — singleton mang TREASURY + mọi UTxO KHÔNG datum ở địa chỉ kho. Diễn tập cố ý giữ tập
   // gộp HẸP hơn chuỗi cho phép: `treasury.ak` ▸ `carrier_ledger` bỏ qua datum của mọi input không
   // phải carrier nên gộp được cả UTxO mang datum lạ, nhưng runner này chỉ lấy đúng hình dạng A-DEST
   // (không datum) để phép đối chiếu LAMP bên dưới biết chính xác phần nào đã gộp. UTxO mang tài sản
-  // tên TRSY dưới policy KHÁC thì loại — chuỗi nhận carrier theo TÊN, gộp vào là 2 carrier ⇒ từ
+  // tên TREASURY dưới policy KHÁC thì loại — chuỗi nhận carrier theo TÊN, gộp vào là 2 carrier ⇒ từ
   // chối (builder cũng loại, `bearsForeignTreasuryName`; loại ở đây để `loose` khớp tập đã gộp).
   const all = await lucid.utxosAt(treAddr);
-  const single = all.filter((u) => (u.assets[trsyUnit] ?? 0n) === 1n);
+  const single = all.filter((u) => (u.assets[treasuryUnit] ?? 0n) === 1n);
   if (single.length !== 1) {
-    throw new Error(`REFILL-RUN-005: cần đúng 1 UTxO mang TRSY ở kho, thấy ${single.length}.`);
+    throw new Error(`REFILL-RUN-005: cần đúng 1 UTxO mang TREASURY ở kho, thấy ${single.length}.`);
   }
   const loose = all.filter((u) =>
-    (u.assets[trsyUnit] ?? 0n) === 0n && !u.datum && !u.datumHash &&
+    (u.assets[treasuryUnit] ?? 0n) === 0n && !u.datum && !u.datumHash &&
     !bearsForeignTreasuryName(u, state.params.treasuryNftPolicy));
   const skipped = all.length - 1 - loose.length;
   const inputs: UTxO[] = [single[0]!, ...loose];
@@ -92,7 +92,7 @@ async function main(): Promise<void> {
   const deposit = oildropEnv("DEPOSIT_OILDROP", false);
 
   console.log(`UTxO ở kho: ${all.length} · gộp ${inputs.length} (singleton + ${loose.length} không datum)` +
-    ` · bỏ qua ${skipped} (có datum hoặc mang TRSY policy khác)`);
+    ` · bỏ qua ${skipped} (có datum hoặc mang TREASURY policy khác)`);
 
   const res = await buildRefillTx({
     lucid, treasuryUtxos: inputs, treasuryScript,
@@ -111,8 +111,8 @@ async function main(): Promise<void> {
 
   // ── Đối chiếu trên chuỗi ────────────────────────────────────────────────
   const after = await lucid.utxosAt(treAddr);
-  const singles = after.filter((u) => (u.assets[trsyUnit] ?? 0n) === 1n);
-  if (singles.length !== 1) throw new Error(`REFILL-VERIFY-001: sau refill có ${singles.length} UTxO mang TRSY.`);
+  const singles = after.filter((u) => (u.assets[treasuryUnit] ?? 0n) === 1n);
+  if (singles.length !== 1) throw new Error(`REFILL-VERIFY-001: sau refill có ${singles.length} UTxO mang TREASURY.`);
   const d = decodeTreasuryDatum(Data.from(singles[0]!.datum!));
   const lampSingle = singles[0]!.assets[lampUnit] ?? 0n;
   const lampLoose = loose.reduce((s, u) => s + (u.assets[lampUnit] ?? 0n), 0n);
@@ -129,7 +129,7 @@ async function main(): Promise<void> {
   if (fails.length > 0) throw new Error(`REFILL-VERIFY-002: ${fails.join("; ")}`);
 
   console.log(
-    `\n✅ Refill đối chiếu xong trên chuỗi: 1 UTxO mang TRSY · sổ nợ ${d.outstanding_entitlement} · ` +
+    `\n✅ Refill đối chiếu xong trên chuỗi: 1 UTxO mang TREASURY · sổ nợ ${d.outstanding_entitlement} · ` +
     `total_redeemed ${d.total_redeemed} (không đổi) · LAMP singleton ${lampSingle} ` +
     `(= ${expectSingle}) · LAMP cả địa chỉ ${lampBefore} → ${await lampAt(lucid, treAddr, lampUnit)}.`,
   );

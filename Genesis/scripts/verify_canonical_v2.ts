@@ -41,12 +41,12 @@ async function main(): Promise<void> {
     us.reduce((s, x) => s + (x.assets[u] ?? 0n), 0n);
 
   check(count(atSs,  wiring.threadUnit) === 1n, `SUPPLY NFT: 1 bản tại supply_state`);
-  check(count(atTre, wiring.khoUnit)    === 1n, `TRSY NFT:   1 bản tại KHO (treasury.ak)`);
+  check(count(atTre, wiring.khoUnit)    === 1n, `TREASURY NFT: 1 bản tại KHO (treasury.ak)`);
   check(count(atBcn, wiring.markers.beaconPid + "44524f50") === 1n, `DROP NFT:   1 bản tại beacon`);
-  // REG phải ở `Script(regPid)`, không phải ở ví: `registry.ak::find_registry_datum` lọc theo
+  // REGISTRY phải ở `Script(regPid)`, không phải ở ví: `registry.ak::find_registry_datum` lọc theo
   // NFT **và** theo `payment_credential == Script(policy)`. Ở ví thì cổng WHO đóng câm.
   const atReg = await lucid.utxosAt(wiring.regAddr);
-  check(count(atReg, wiring.regUnit)    === 1n, `REG NFT:    1 bản tại Script(regPid) — cổng WHO đọc được`);
+  check(count(atReg, wiring.regUnit)    === 1n, `REGISTRY NFT: 1 bản tại Script(regPid) — cổng WHO đọc được`);
 
   // ── Lớp 2: meter NFT ở ĐÂU quyết định nhánh Reserve có phanh hay không ────
   // Ở ví: tiêu nó KHÔNG kích validator nào ⇒ ai giữ khoá ví rút trọn 9,63 tỷ trong một giao
@@ -65,15 +65,15 @@ async function main(): Promise<void> {
   }
   if (!rw) {
     check(false,
-      `MET NFT:    Lớp 2 CHƯA dựng — meter còn ở ví, nhánh Reserve KHÔNG CÓ PHANH ` +
+      `METER NFT:  Lớp 2 CHƯA dựng — meter còn ở ví, nhánh Reserve KHÔNG CÓ PHANH ` +
       `(chạy 24_reserve_layer2_init.ts). Ở trạng thái này, người giữ khoá ví rút trọn ` +
       `${vn(9_630_000_000n)} LAMP trong MỘT giao dịch.`);
   } else {
     const atDraw = await lucid.utxosAt(rw.reserve.drawAddr);
     check(count(atDraw, wiring.metUnit) === 1n,
-      `MET NFT:    1 bản tại reserve_draw — nhánh Reserve CÓ PHANH`);
+      `METER NFT:  1 bản tại reserve_draw — nhánh Reserve CÓ PHANH`);
     check(count(atWlt, wiring.metUnit) === 0n,
-      `MET NFT:    KHÔNG còn bản nào ở ví (ở ví = đường vòng qua mọi luật)`);
+      `METER NFT:  KHÔNG còn bản nào ở ví (ở ví = đường vòng qua mọi luật)`);
   }
 
   // ── SupplyState ──────────────────────────────────────────────────────────

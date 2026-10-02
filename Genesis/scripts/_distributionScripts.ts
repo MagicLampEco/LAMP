@@ -86,16 +86,16 @@ export function assertClaimScriptsMatch(cs: ClaimScripts,
   }
 }
 
-/** UTxO kho canonical = cái mang ĐÚNG 1 NFT "TRSY". Địa chỉ kho công khai, ai cũng đỗ được vào. */
+/** UTxO kho canonical = cái mang ĐÚNG 1 NFT "TREASURY". Địa chỉ kho công khai, ai cũng đỗ được vào. */
 export function pickTreasury(all: UTxO[], khoUnit: string): UTxO {
   const carriers = all.filter((u) => (u.assets[khoUnit] ?? 0n) === 1n);
   if (carriers.length !== 1) {
     throw new Error(
-      `TRSY-001: cần ĐÚNG 1 UTxO mang NFT "TRSY" ở địa chỉ kho, đếm ${carriers.length}. ` +
+      `TREASURY-001: cần ĐÚNG 1 UTxO mang NFT "TREASURY" ở địa chỉ kho, đếm ${carriers.length}. ` +
       `Nhiều hơn 1 hoặc 0 ⇒ dừng; gộp bằng 27_refill_treasury.ts trước.`,
     );
   }
   const u = carriers[0]!;
-  if (!u.datum) throw new Error(`TRSY-002: UTxO kho ${refKey(u)} không có inline datum.`);
+  if (!u.datum) throw new Error(`TREASURY-002: UTxO kho ${refKey(u)} không có inline datum.`);
   return u;
 }

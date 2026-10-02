@@ -810,7 +810,7 @@ Không lượt nào trong ba việc đó là "cấu hình một đợt ISPO".
 > (chỉ pay-to-address) nếu committee tạo UTxO chứa datum inline"*. Cardano **không chạy validator
 > lúc TẠO output**, nên một tài khoản dựng kiểu đó mang datum do người tạo tự viết mà kho chưa từng
 > ghi khoản nợ ấy vào sổ. Đó đúng là lỗ C-ACC-0 và mã đã vá: `claim_account.ak:79-82` đòi NFT tài
-> khoản, mà lối vào duy nhất của NFT đó là một tx có committee ký VÀ có input TRSY — tức khoản nợ
+> khoản, mà lối vào duy nhất của NFT đó là một tx có committee ký VÀ có input TREASURY — tức khoản nợ
 > ĐÃ VÀO SỔ. Làm theo câu cũ thì tài khoản dựng ra **không tiêu được**, và điều đó chỉ lộ ra ở lượt
 > redeem đầu tiên.
 
@@ -859,7 +859,7 @@ Ràng buộc per-TX:
 | ID | Giới hạn | Ảnh hưởng | Workaround |
 |---|---|---|---|
 | KL-1 | 1 Claim TX = 1 account (`claim_account.ak:51-52`) | ISPO 1000 delegator = 1000 TX cấp E | Batch off-chain: submit liên tục. Giới hạn thật là KL-9, không phải tốc độ submit. |
-| KL-2 | **Kho là SINGLETON TOÀN CỤC** — 1 UTxO mang NFT "TRSY" | Xem KL-9. | **Không có workaround.** Bản v2 ghi "operator tách nhiều treasury UTxO" — cách đó ĐÃ BỊ ĐÓNG, xem ghi chú dưới bảng. |
+| KL-2 | **Kho là SINGLETON TOÀN CỤC** — 1 UTxO mang NFT "TREASURY" | Xem KL-9. | **Không có workaround.** Bản v2 ghi "operator tách nhiều treasury UTxO" — cách đó ĐÃ BỊ ĐÓNG, xem ghi chú dưới bảng. |
 | KL-3 | `start_epoch` do validator ép == cửa sổ chạy tx, operator không đặt được | Không delay được vesting bằng một tham số | Mở tài khoản đúng lúc muốn bắt đầu (§3.5). |
 | KL-4 | `rate_root` là hằng thang TOÀN CỤC, không per-account, không per-đợt | Không có "chiến lược nhỏ giọt" theo đợt ISPO | Lịch vesting đặt bằng **cỡ pot** (§3.3). |
 | KL-5 | `drops_per_epoch` GHIM == 1 cho mọi tài khoản (C-ACC-DPE, CONTRACT v3 §1b) | Núm `dpe` per-account đã đóng. Núm per-account còn lại chạm kênh tốc độ là cấp thêm (rebase đặt lại mốc chỉ số, chỉ cần committee ký — CONTRACT v3 §9, CD-TOPUP-OWNER-SIG, chưa vá) | Cố ý, không phải hạn chế tạm. Mở lại đòi một cơ sở đo được trên chuỗi để phân biệt tài khoản; hôm nay không có cơ sở nào như thế. |
@@ -871,7 +871,7 @@ Ràng buộc per-TX:
 
 > **KL-2 đã ĐẢO NGHĨA so với bản v2 — đọc nhầm chỗ này là dựng sai cả kiến trúc vận hành.** Bản v2
 > ghi workaround *"operator tách nhiều treasury UTxO (mỗi UTxO 1 lô delegator); `treasury.ak` không
-> giới hạn số UTxO"*. Ở v3 **không còn làm thế được**: kho mang NFT authenticity "TRSY" một-bản
+> giới hạn số UTxO"*. Ở v3 **không còn làm thế được**: kho mang NFT authenticity "TREASURY" một-bản
 > tuyệt đối và hàm tra kho ép `expect [i]` — đúng MỘT UTxO kho trong inputs
 > (`claim_account.ak` ▸ `find_treasury_in`, :231-246). Chính tính singleton đó là thứ làm
 > `total_redeemed` đo được **chính xác tuyệt đối không cần quét chuỗi**, tức là thứ làm phép cắt
@@ -880,7 +880,7 @@ Ràng buộc per-TX:
 ### 4.1 KL-9 — thông lượng `Redeem`, đại lượng CHƯA ĐO
 
 **Kho là singleton toàn cục ⟹ toàn hệ tối đa MỘT `Redeem` mỗi block.** Hàm tra kho ép `expect [i]`
-(`claim_account.ak:231-246`), và chỉ có một UTxO mang NFT "TRSY". Mọi `Redeem` của mọi tài khoản
+(`claim_account.ak:231-246`), và chỉ có một UTxO mang NFT "TREASURY". Mọi `Redeem` của mọi tài khoản
 thuộc mọi pot đều co-spend đúng UTxO đó, nên chúng **nối tiếp tuyệt đối**. Cùng thế với `Claim`
 (C-SOLV-1). Đây **không phải lỗi mới của v3** — nó là cái giá của việc có một sổ cái solvency ép
 được per-tx, và v3 nhận nó có ý thức (CONTRACT v3 §4).

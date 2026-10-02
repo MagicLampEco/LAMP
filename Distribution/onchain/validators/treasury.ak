@@ -368,7 +368,7 @@ validator treasury(
         // quấy chiếm nó liên tục (churn UTxO, đua chèn tx) mà không tốn gì ngoài phí.
         expect util.committee_approved(committee, threshold, tx.extra_signatories)
 
-        // Refill KHÔNG có lý do đụng mint (không tạo tài khoản, không đúc TRSY).
+        // Refill KHÔNG có lý do đụng mint (không tạo tài khoản, không đúc TREASURY).
         expect assets.is_zero(tx.mint)
 
         // C-REF-ACC (2026-09-17): Refill KHÔNG chạm tài khoản nào. `claim_account` nhánh
@@ -436,7 +436,7 @@ validator treasury(
         expect out_datum.total_redeemed == carrier.total_redeemed
 
         // Giá trị: mọi asset khác bảo toàn TUYỆT ĐỐI (chống rút ADA và chống đánh cắp
-        // NFT "TRSY" ra ngoài), CHỈ LAMP được phép TĂNG một lượng `deposited >= 0`.
+        // NFT "TREASURY" ra ngoài), CHỈ LAMP được phép TĂNG một lượng `deposited >= 0`.
         let lamp_in = assets.quantity_of(value_in, lamp_policy, lamp_name)
         let lamp_out = assets.quantity_of(tre_out.value, lamp_policy, lamp_name)
         let deposited = lamp_out - lamp_in
@@ -509,7 +509,7 @@ fn singleton_io(
 }
 
 /// C-REF-PROV (2026-09-26) — `TreasuryDatum` của **carrier**, tức UTxO ở địa chỉ kho mang
-/// NFT kho "TRSY". Đây là vật DUY NHẤT trong tập input mà sổ cái của nó có gốc tích:
+/// NFT kho "TREASURY". Đây là vật DUY NHẤT trong tập input mà sổ cái của nó có gốc tích:
 /// `treasury_nft` là policy ONE-SHOT, nó ra đời đúng một lần ở genesis với sổ mở `0/0`
 /// (`treasury_nft.ak` ▸ `td.outstanding_entitlement == 0`, `td.total_redeemed == 0`), và
 /// từ đó mọi lần nó đổi tay đều đi qua một nhánh của chính tệp này.
@@ -543,11 +543,11 @@ fn singleton_io(
 ///
 /// GIỚI HẠN CÒN LẠI, nói thẳng: `treasury` KHÔNG nhận `treasury_nft_policy` làm tham số
 /// (8 khe hiện có đã bake vào đường apply-param của off-chain), nên phép nhận diện ở đây
-/// đi theo TÊN tài sản `"TRSY"`, không theo policy id. Hệ quả: đúc một tài sản trùng tên
+/// đi theo TÊN tài sản `"TREASURY"`, không theo policy id. Hệ quả: đúc một tài sản trùng tên
 /// dưới policy khác rồi đỗ ở địa chỉ kho thì tập carrier có 2 phần tử ⇒ giao dịch gộp đó
 /// bị từ chối. Đó là quấy rối (committee chỉ cần không chọn UTxO ấy vào input), KHÔNG
 /// phải đường chiếm sổ: một `Refill` không có carrier THẬT tạo ra UTxO không mang NFT
-/// "TRSY" của policy thật, mà `claim_account` tìm kho THUẦN THEO policy đó
+/// "TREASURY" của policy thật, mà `claim_account` tìm kho THUẦN THEO policy đó
 /// (`find_treasury_in`/`find_treasury_out`) ⇒ vật ấy trơ, và không bao giờ gộp ngược lại
 /// được vào kho thật (2 carrier). Muốn khoá nốt khe quấy rối thì phải thêm tham số
 /// `treasury_nft_policy` — một đổi ARITY, tức một lượt deploy có phối hợp với off-chain.
@@ -569,7 +569,7 @@ fn carrier_ledger(ins: List<Input>) -> TreasuryDatum {
   td
 }
 
-/// Value có mang đúng MỘT đơn vị tài sản tên `"TRSY"` (policy bất kỳ) không.
+/// Value có mang đúng MỘT đơn vị tài sản tên `"TREASURY"` (policy bất kỳ) không.
 /// Xem docstring `carrier_ledger` cho lý do phép so đi theo TÊN chứ không theo policy id.
 fn bears_treasury_nft(v: assets.Value, trsy: ByteArray) -> Bool {
   list.any(
@@ -1452,7 +1452,7 @@ test grant_with_mixed_mint_rejected() fail {
 test release_with_mint_rejected() fail {
   // (i) ReleaseForRedeem GIỮ NGUYÊN C-MINT-0: tx trả nợ mà có mint → reject. Nhờ đó,
   // tx mở tài khoản (bắt buộc có mint) KHÔNG thể mượn nhánh này để thoả điều kiện
-  // "có input TRSY" của `claim_account_nft` mà né đường ghi sổ.
+  // "có input TREASURY" của `claim_account_nft` mà né đường ghi sổ.
   let base =
     release_tx(tt_lamp_val(5_000_000, 1000), tt_lamp_val(5_000_000, 900), 500, 400, 0, 100, [])
   let tx =
@@ -1467,7 +1467,7 @@ test release_with_mint_rejected() fail {
 // VÁ 2026-08-12 — điểm 2: REFILL (gộp + nạp thêm LAMP)
 // ══════════════════════════════════════════════════════════════
 
-/// Value của một UTxO kho: ADA + LAMP (+ NFT "TRSY" nếu là carrier canonical).
+/// Value của một UTxO kho: ADA + LAMP (+ NFT "TREASURY" nếu là carrier canonical).
 fn tt_val(lovelace: Int, lamp: Int, trsy: Bool) -> assets.Value {
   let v = tt_lamp_val(lovelace, lamp)
   if trsy {
@@ -1542,13 +1542,13 @@ fn refill(own_ix: Int, datum_opt: Option<TreasuryDatum>, tx: Transaction) -> Boo
 
 // ⚠ NGỮ NGHĨA ĐỔI 2026-09-26 (C-REF-PROV). Trước lượt này, Refill ép sổ ra = Σ sổ của MỌI
 // input có datum, nên các ca dưới đây khai nợ ra 500 = 300 + 200. Nay sổ ra = sổ CỦA
-// CARRIER (UTxO mang NFT "TRSY") và datum của mọi input khác bị BỎ QUA — nên con số đúng
+// CARRIER (UTxO mang NFT "TREASURY") và datum của mọi input khác bị BỎ QUA — nên con số đúng
 // là 300, còn "200" của input thứ hai là một lời khai mà ai cũng viết được.
 
 test refill_merge_two_and_deposit_ok() {
   // (j) Gộp 2 UTxO kho + nạp thêm 400 LAMP từ ví.
-  //   vào: A(TRSY, 5 ADA, 1000 LAMP, nợ 300) + B(2 ADA, 500 LAMP, nợ khai 200 — BỎ QUA)
-  //   ra : 1 UTxO (TRSY, 7 ADA, 1900 LAMP, nợ 300 = sổ của carrier)
+  //   vào: A(TREASURY, 5 ADA, 1000 LAMP, nợ 300) + B(2 ADA, 500 LAMP, nợ khai 200 — BỎ QUA)
+  //   ra : 1 UTxO (TREASURY, 7 ADA, 1900 LAMP, nợ 300 = sổ của carrier)
   // Đây đồng thời là bài dương của C-REF-PROV: value của B vẫn được hút vào pool (đó là
   // lý do Refill tồn tại), chỉ SỔ của B là không đi vào mệnh đề nào.
   let a = tre_in_d(0, 5_000_000, 1000, 300, True)
@@ -1623,13 +1623,13 @@ test refill_without_carrier_rejected() fail {
   refill(0, Some(tt_tre_d_tr(300, 7000)), refill_tx([p1, p2], [o], [#"c1", #"c2"]))
 }
 
-/// Hai UTxO cùng mang một tài sản tên "TRSY" ⇒ nhập nhằng ⇒ từ chối. One-shot policy nói
+/// Hai UTxO cùng mang một tài sản tên "TREASURY" ⇒ nhập nhằng ⇒ từ chối. One-shot policy nói
 /// trạng thái này không tồn tại với policy THẬT; nó dựng được bằng một policy khác trùng
 /// tên, và khi đó fail-closed là câu trả lời đúng (xem giới hạn ghi ở `carrier_ledger`).
 test refill_two_carriers_rejected() fail {
   let a = tre_in_d_tr(0, 5_000_000, 1000, 300, 7000, True)
   let b = tre_in_d_tr(1, 2_000_000, 500, 200, 3000, True)
-  // Output mang CẢ HAI đơn vị "TRSY" ⇒ bảo toàn value vẫn đúng ⇒ ca này đỏ ở
+  // Output mang CẢ HAI đơn vị "TREASURY" ⇒ bảo toàn value vẫn đúng ⇒ ca này đỏ ở
   // `expect [carrier]` chứ không đỏ ké ở mệnh đề value.
   let o =
     util.mk_output(
@@ -1642,8 +1642,8 @@ test refill_two_carriers_rejected() fail {
 
 test refill_absorb_no_datum_utxo_ok() {
   // (k) Hút một UTxO KHÔNG datum (LAMP rót về kho qua A-DEST) vào carrier canonical.
-  //   vào: A(TRSY, 5 ADA, 1000 LAMP, nợ 300) + bare(2 ADA, 700 LAMP, KHÔNG datum)
-  //   ra : 1 UTxO (TRSY, 7 ADA, 1700 LAMP, nợ 300 — sổ cái của bare bị bỏ qua)
+  //   vào: A(TREASURY, 5 ADA, 1000 LAMP, nợ 300) + bare(2 ADA, 700 LAMP, KHÔNG datum)
+  //   ra : 1 UTxO (TREASURY, 7 ADA, 1700 LAMP, nợ 300 — sổ cái của bare bị bỏ qua)
   let a = tre_in_d(0, 5_000_000, 1000, 300, True)
   let bare = tre_in_bare(1, 2_000_000, 700)
   let o = tre_out_d(7_000_000, 1700, 300, True)
@@ -1680,7 +1680,7 @@ test refill_lamp_decrease_rejected() fail {
 }
 
 test refill_trsy_stolen_rejected() fail {
-  // Cùng họ với (l): bỏ NFT "TRSY" khỏi output (đem ra ví) → value ra ≠ Σ vào → reject.
+  // Cùng họ với (l): bỏ NFT "TREASURY" khỏi output (đem ra ví) → value ra ≠ Σ vào → reject.
   let a = tre_in_d(0, 5_000_000, 1000, 300, True)
   let b = tre_in_d(1, 2_000_000, 500, 200, False)
   let o = tre_out_d(7_000_000, 1500, 300, False)

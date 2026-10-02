@@ -1,7 +1,7 @@
 // refillBuilder — gộp N UTxO kho về singleton. KHÔNG submit thật (mock tx-builder).
 //
 // Ca số 1 dựng ĐÚNG hình dạng đang kẹt trên Preprod (đo 2026-09-15 qua Koios): hai UTxO, một
-// mang TRSY và 0 oildrop, một mang 10.000.000.000 oildrop và không TRSY. Nếu ca đó đỏ thì giao
+// mang TREASURY và 0 oildrop, một mang 10.000.000.000 oildrop và không TREASURY. Nếu ca đó đỏ thì giao
 // dịch cứu kho không dựng được. (Địa chỉ/policy id dùng trong bài này đều là FAKE_* dựng riêng
 // cho bài kiểm — Issue #78: PR #75 đổi script hash `treasury`, địa chỉ kho thật gõ cứng trước
 // đây từng làm bài xanh giả qua lần đổi đó dù không đối chiếu gì với chuỗi thật.)
@@ -62,7 +62,7 @@ const TRE_ADDR = credentialToAddress(
   NETWORK, scriptHashToCredential(validatorToScriptHash(FAKE_TREASURY)),
 );
 
-// FAKE_LAMP_POLICY / FAKE_TRSY_POLICY / FAKE_CH — `buildRefillTx` nhận cả ba qua tham số
+// FAKE_LAMP_POLICY / FAKE_TREASURY_POLICY / FAKE_CH — `buildRefillTx` nhận cả ba qua tham số
 // (`lampPolicyId`, `treasuryNftPolicy`, `committeeSigners`) và chỉ so khớp NỘI BỘ giữa các
 // fixture trong chính bài kiểm này; không đối chiếu với blueprint hay committee thật nào. Chỉ
 // cần đúng HÌNH DẠNG (56 hex = 28 byte, như policy id / pkh thật). Trước đây ba hằng này gõ
@@ -70,8 +70,8 @@ const TRE_ADDR = credentialToAddress(
 // nào ảnh hưởng tới việc bài kiểm đúng hay sai.
 const FAKE_LAMP_POLICY = "aa".repeat(28);
 const LAMP_UNIT         = toUnit(FAKE_LAMP_POLICY, "744c414d50");
-const FAKE_TRSY_POLICY = "bb".repeat(28);
-const TRSY_UNIT         = toUnit(FAKE_TRSY_POLICY, TREASURY_NFT_ASSET_NAME);
+const FAKE_TREASURY_POLICY = "bb".repeat(28);
+const TREASURY_UNIT         = toUnit(FAKE_TREASURY_POLICY, TREASURY_NFT_ASSET_NAME);
 
 /** pkh giả cho committee 1-of-1 trong bài kiểm — chỉ cần đúng hình dạng 56 hex. */
 const FAKE_CH = "cc".repeat(28);
@@ -85,11 +85,11 @@ function treDatum(outstanding: bigint, ch = FAKE_CH, totalRedeemed = 0n): string
 }
 
 /**
- * Policy GIẢ đúc tài sản TRÙNG TÊN "TRSY". `treasury.ak` ▸ `bears_treasury_nft` nhận carrier theo
+ * Policy GIẢ đúc tài sản TRÙNG TÊN "TREASURY". `treasury.ak` ▸ `bears_treasury_nft` nhận carrier theo
  * TÊN, nên một UTxO mang nó ở địa chỉ kho là carrier thứ hai trong mắt chuỗi.
  */
-const FAKE_OTHER_TRSY_POLICY = "dd".repeat(28);
-const FOREIGN_TRSY_UNIT      = toUnit(FAKE_OTHER_TRSY_POLICY, TREASURY_NFT_ASSET_NAME);
+const FAKE_OTHER_TREASURY_POLICY = "dd".repeat(28);
+const FOREIGN_TREASURY_UNIT      = toUnit(FAKE_OTHER_TREASURY_POLICY, TREASURY_NFT_ASSET_NAME);
 
 /** UTxO ở địa chỉ kho. `datum: null` = hình dạng A-DEST hạ cánh. */
 function utxo(opts: {
@@ -99,7 +99,7 @@ function utxo(opts: {
 }): UTxO {
   const assets: Record<string, bigint> = { lovelace: opts.lovelace ?? 2_000_000n };
   if (opts.lamp) assets[LAMP_UNIT] = opts.lamp;
-  if (opts.trsy) assets[TRSY_UNIT] = opts.trsy;
+  if (opts.trsy) assets[TREASURY_UNIT] = opts.trsy;
   Object.assign(assets, opts.extra ?? {});
   const u: any = {
     txHash: "44".repeat(32), outputIndex: opts.ix,
@@ -119,15 +119,15 @@ function baseParams(lucid: any, utxos: UTxO[], over: Record<string, unknown> = {
     committeeSigners: [FAKE_CH],
     committeeThreshold: 1,
     lampPolicyId: FAKE_LAMP_POLICY,
-    treasuryNftPolicy: FAKE_TRSY_POLICY,
+    treasuryNftPolicy: FAKE_TREASURY_POLICY,
     ...over,
   } as any;
 }
 
 // ── Ca gốc: đúng hình dạng Preprod đang kẹt ────────────────────────────
 describe("buildRefillTx — gộp hai UTxO đúng hình dạng Preprod", () => {
-  const carrier = () => utxo({ ix: 2, trsy: 1n, datum: treDatum(0n) });          // TRSY, 0 LAMP
-  const pool    = () => utxo({ ix: 1, lamp: 10_000_000_000n, datum: treDatum(0n) }); // LAMP, không TRSY
+  const carrier = () => utxo({ ix: 2, trsy: 1n, datum: treDatum(0n) });          // TREASURY, 0 LAMP
+  const pool    = () => utxo({ ix: 1, lamp: 10_000_000_000n, datum: treDatum(0n) }); // LAMP, không TREASURY
 
   it("dựng đúng 1 output, gộp đủ value, redeemer Refill = Constr 2", async () => {
     const { lucid, rec } = mockLucid("addr_op");
@@ -146,7 +146,7 @@ describe("buildRefillTx — gộp hai UTxO đúng hình dạng Preprod", () => {
 
     // `tre_out.value == value_in + deposited` — value ra = Σ value vào (deposited = 0).
     expect(rec.payData[0]!.assets).toEqual({
-      lovelace: 4_000_000n, [TRSY_UNIT]: 1n, [LAMP_UNIT]: 10_000_000_000n,
+      lovelace: 4_000_000n, [TREASURY_UNIT]: 1n, [LAMP_UNIT]: 10_000_000_000n,
     });
 
     // `assets.is_zero(tx.mint)` — Refill không đụng mint.
@@ -249,17 +249,17 @@ describe("buildRefillTx — UTxO lạ ở địa chỉ kho (griefing)", () => {
   });
 
   // Chuỗi nhận carrier theo TÊN ⇒ gộp UTxO này là 2 carrier ⇒ `carrier_ledger` từ chối.
-  it("UTxO mang 'TRSY' dưới policy GIẢ ⇒ KHÔNG bị collect, báo trong `excluded`, tx vẫn dựng", async () => {
+  it("UTxO mang 'TREASURY' dưới policy GIẢ ⇒ KHÔNG bị collect, báo trong `excluded`, tx vẫn dựng", async () => {
     const { lucid, rec } = mockLucid("addr_op");
     const gia = utxo({
       ix: 5, lamp: 70n, datum: treDatum(10n ** 20n, FAKE_CH, 10n ** 24n),
-      extra: { [FOREIGN_TRSY_UNIT]: 1n },
+      extra: { [FOREIGN_TREASURY_UNIT]: 1n },
     });
     const r = await buildRefillTx(baseParams(lucid, [carrier(), gia]));
     const collected = rec.collectFrom[0]!.utxos;
     expect(collected).toHaveLength(1);
     expect(collected.some((u) => u.outputIndex === 5)).toBe(false);
-    expect(rec.payData[0]!.assets[FOREIGN_TRSY_UNIT]).toBeUndefined();
+    expect(rec.payData[0]!.assets[FOREIGN_TREASURY_UNIT]).toBeUndefined();
     expect(rec.payData[0]!.assets[LAMP_UNIT]).toBe(1_000n);
     expect(r.merged).toBe(1);
     expect(r.excluded).toHaveLength(1);
@@ -267,23 +267,23 @@ describe("buildRefillTx — UTxO lạ ở địa chỉ kho (griefing)", () => {
     expect(r.summary).toMatch(/KHÔNG gộp/);
   });
 
-  it("UTxO mang 'TRSY' policy giả với qty ≠ 1 cũng bị loại", async () => {
+  it("UTxO mang 'TREASURY' policy giả với qty ≠ 1 cũng bị loại", async () => {
     const { lucid, rec } = mockLucid("addr_op");
-    const gia = utxo({ ix: 5, datum: null, extra: { [FOREIGN_TRSY_UNIT]: 3n } });
+    const gia = utxo({ ix: 5, datum: null, extra: { [FOREIGN_TREASURY_UNIT]: 3n } });
     const r = await buildRefillTx(baseParams(lucid, [carrier(), gia]));
     expect(rec.collectFrom[0]!.utxos).toHaveLength(1);
     expect(r.excluded).toHaveLength(1);
   });
 
-  it("CHỈ có 'TRSY' policy giả, không carrier thật ⇒ RFL-003 (không nhận nhầm làm carrier)", async () => {
+  it("CHỈ có 'TREASURY' policy giả, không carrier thật ⇒ RFL-003 (không nhận nhầm làm carrier)", async () => {
     const { lucid } = mockLucid("addr_op");
-    const gia = utxo({ ix: 5, lamp: 70n, datum: treDatum(0n), extra: { [FOREIGN_TRSY_UNIT]: 1n } });
+    const gia = utxo({ ix: 5, lamp: 70n, datum: treDatum(0n), extra: { [FOREIGN_TREASURY_UNIT]: 1n } });
     await expect(buildRefillTx(baseParams(lucid, [gia]))).rejects.toThrow(/RFL-003/);
   });
 
   // Token rác: `treasury.ak` bảo toàn mọi asset ở Refill/Release/Grant và không nhánh nào thải
   // được tài sản ngoài LAMP ⇒ gộp vào là kho sống mang nó vĩnh viễn.
-  it("UTxO mang TOKEN RÁC (asset ngoài {lovelace, LAMP, TRSY}) ⇒ KHÔNG gộp, báo trong `excluded`, output không mang rác", async () => {
+  it("UTxO mang TOKEN RÁC (asset ngoài {lovelace, LAMP, TREASURY}) ⇒ KHÔNG gộp, báo trong `excluded`, output không mang rác", async () => {
     const { lucid, rec } = mockLucid("addr_op");
     const JUNK_A = toUnit("ee".repeat(28), "4a554e4b");
     const JUNK_B = toUnit("ef".repeat(28), "");
@@ -298,7 +298,7 @@ describe("buildRefillTx — UTxO lạ ở địa chỉ kho (griefing)", () => {
     expect(r.merged).toBe(2);
     expect(r.excluded).toHaveLength(1);
     expect(r.excluded[0]!.ref).toBe(`${"44".repeat(32)}#7`);
-    expect(r.excluded[0]!.reason).toMatch(/2 asset ngoài \{lovelace, LAMP, TRSY\}/);
+    expect(r.excluded[0]!.reason).toMatch(/2 asset ngoài \{lovelace, LAMP, TREASURY\}/);
     expect(r.summary).toMatch(/KHÔNG gộp/);
   });
 
@@ -321,13 +321,13 @@ describe("buildRefillTx — UTxO lạ ở địa chỉ kho (griefing)", () => {
     expect(r.excluded.map((x) => x.ref)).toEqual([`${"44".repeat(32)}#9`]);
   });
 
-  it("bearsForeignTreasuryName: TRSY thật ⇒ false, TRSY policy khác ⇒ true, tên khác ⇒ false", () => {
-    expect(bearsForeignTreasuryName(carrier(), FAKE_TRSY_POLICY)).toBe(false);
+  it("bearsForeignTreasuryName: TREASURY thật ⇒ false, TREASURY policy khác ⇒ true, tên khác ⇒ false", () => {
+    expect(bearsForeignTreasuryName(carrier(), FAKE_TREASURY_POLICY)).toBe(false);
     expect(bearsForeignTreasuryName(
-      utxo({ ix: 1, extra: { [FOREIGN_TRSY_UNIT]: 1n } }), FAKE_TRSY_POLICY,
+      utxo({ ix: 1, extra: { [FOREIGN_TREASURY_UNIT]: 1n } }), FAKE_TREASURY_POLICY,
     )).toBe(true);
     expect(bearsForeignTreasuryName(
-      utxo({ ix: 1, extra: { [toUnit(FAKE_OTHER_TRSY_POLICY, "54525358")]: 1n } }), FAKE_TRSY_POLICY,
+      utxo({ ix: 1, extra: { [toUnit(FAKE_OTHER_TREASURY_POLICY, "54525358")]: 1n } }), FAKE_TREASURY_POLICY,
     )).toBe(false);
   });
 });
@@ -363,7 +363,7 @@ describe("buildRefillTx — cổng chặn trước khi mất collateral", () => 
       .rejects.toThrow(/RFL-002/);
   });
 
-  it("RFL-003: không input nào mang TRSY thật (kể cả khi mọi input đều có datum hợp lệ)", async () => {
+  it("RFL-003: không input nào mang TREASURY thật (kể cả khi mọi input đều có datum hợp lệ)", async () => {
     const { lucid } = mockLucid("addr_op");
     const a = utxo({ ix: 1, lamp: 10n, datum: treDatum(0n) });
     const b = utxo({ ix: 2, lamp: 20n, datum: treDatum(0n) });
@@ -371,16 +371,16 @@ describe("buildRefillTx — cổng chặn trước khi mất collateral", () => 
   });
 
   // One-shot policy nói ca này không thể có — nhưng state lỗi thì builder phải NÉM, không chọn đại.
-  it("RFL-004: hai carrier TRSY thật ⇒ ném (carrier_ledger đòi đúng một)", async () => {
+  it("RFL-004: hai carrier TREASURY thật ⇒ ném (carrier_ledger đòi đúng một)", async () => {
     const { lucid } = mockLucid("addr_op");
     await expect(buildRefillTx(baseParams(lucid, [
       carrier(), utxo({ ix: 3, trsy: 1n, datum: treDatum(0n) }),
     ]))).rejects.toThrow(/RFL-004/);
   });
 
-  // Input mang TRSY thật với qty ≠ 1 không phải carrier (chuỗi đòi qty == 1) nhưng làm output
-  // mang ≠ 1 TRSY ⇒ `claim_account` không đọc được kho.
-  it("RFL-005: output sẽ mang ≠ 1 TRSY thật", async () => {
+  // Input mang TREASURY thật với qty ≠ 1 không phải carrier (chuỗi đòi qty == 1) nhưng làm output
+  // mang ≠ 1 TREASURY ⇒ `claim_account` không đọc được kho.
+  it("RFL-005: output sẽ mang ≠ 1 TREASURY thật", async () => {
     const { lucid } = mockLucid("addr_op");
     await expect(buildRefillTx(baseParams(lucid, [carrier(), utxo({ ix: 3, trsy: 2n })])))
       .rejects.toThrow(/RFL-005/);

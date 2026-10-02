@@ -24,7 +24,7 @@ const TRE = "addr_test1_treasury";
 const CLAIM = "addr_test1_claim";
 const BEACON = "addr_test1_beacon";
 const FEEDER = "addr_test1_feeder";   // KHÔNG theo dõi
-const TRSY = "cc".repeat(28) + "54525359";
+const TREASURY = "cc".repeat(28) + "5452454153555259";
 const ACC = "dd".repeat(28) + "01";
 const LAMPU = "ee".repeat(28) + "744c414d50";
 
@@ -35,7 +35,7 @@ const u = (txHash: string, outputIndex: number, address: string, assets: Record<
 function genesisView(): ChainView {
   return makeView(new Map<string, UTxO[]>([
     [WALLET, [u(H("1"), 0, WALLET, { lovelace: 100_000_000n }), u(H("1"), 1, WALLET, { lovelace: 7_000_000n })]],
-    [TRE,    [u(H("2"), 1, TRE, { lovelace: 6_000_000n, [TRSY]: 1n, [LAMPU]: 1_000n }, "d0")]],
+    [TRE,    [u(H("2"), 1, TRE, { lovelace: 6_000_000n, [TREASURY]: 1n, [LAMPU]: 1_000n }, "d0")]],
     [CLAIM,  [u(H("3"), 0, CLAIM, { lovelace: 2_000_000n, [ACC]: 1n }, "a0")]],
     [BEACON, [u(H("4"), 4, BEACON, { lovelace: 2_000_000n }, "b0")]],
   ]));
@@ -48,7 +48,7 @@ function redeemEffects(txHash: string, walletIn: string, carrierIn: string, acco
     spent: [walletIn, carrierIn, accountIn],
     created: [
       u(txHash, 0, CLAIM, { lovelace: 2_000_000n, [ACC]: 1n }, `a${n}`),
-      u(txHash, 1, TRE, { lovelace: 6_000_000n, [TRSY]: 1n, [LAMPU]: 1_000n - BigInt(n) }, `d${n}`),
+      u(txHash, 1, TRE, { lovelace: 6_000_000n, [TREASURY]: 1n, [LAMPU]: 1_000n - BigInt(n) }, `d${n}`),
       u(txHash, 2, FEEDER, { lovelace: 1_200_000n, [LAMPU]: 1n }),
       u(txHash, 3, WALLET, { lovelace: 90_000_000n - BigInt(n) }),
     ],
@@ -98,16 +98,16 @@ describe("applyTx — một Redeem", () => {
     expect(v1.applied).toEqual([H("a")]);
   });
   it("carrier mới mang datum mới; tài khoản mới mang datum mới", () => {
-    expect(outRef(viewCarrier(v1, TRE, TRSY))).toBe(`${H("a")}#1`);
-    expect(viewCarrier(v1, TRE, TRSY).datum).toBe("d1");
+    expect(outRef(viewCarrier(v1, TRE, TREASURY))).toBe(`${H("a")}#1`);
+    expect(viewCarrier(v1, TRE, TREASURY).datum).toBe("d1");
     expect(viewUtxosAtWithUnit(v1, CLAIM, ACC).map((x) => x.datum)).toEqual(["a1"]);
   });
   it("lớp phủ cũ KHÔNG đổi (bất biến)", () => {
-    expect(outRef(viewCarrier(v0, TRE, TRSY))).toBe(`${H("2")}#1`);
+    expect(outRef(viewCarrier(v0, TRE, TREASURY))).toBe(`${H("2")}#1`);
     expect(v0.applied).toEqual([]);
   });
-  it("pickTreasury (TRSY-001) chạy trên lớp phủ chọn đúng carrier mới", () => {
-    expect(outRef(pickTreasury(viewUtxosAt(v1, TRE), TRSY))).toBe(`${H("a")}#1`);
+  it("pickTreasury (TREASURY-001) chạy trên lớp phủ chọn đúng carrier mới", () => {
+    expect(outRef(pickTreasury(viewUtxosAt(v1, TRE), TREASURY))).toBe(`${H("a")}#1`);
   });
 });
 
@@ -123,8 +123,8 @@ describe("applyTx — chuỗi ba Redeem", () => {
       v = applyTx(v, e);
       walletIn = `${h}#3`; carrierIn = `${h}#1`; accountIn = `${h}#0`;
     });
-    expect(outRef(viewCarrier(v, TRE, TRSY))).toBe(`${H("c")}#1`);
-    expect(viewCarrier(v, TRE, TRSY).datum).toBe("d3");
+    expect(outRef(viewCarrier(v, TRE, TREASURY))).toBe(`${H("c")}#1`);
+    expect(viewCarrier(v, TRE, TREASURY).datum).toBe("d3");
     expect(v.applied).toEqual(hs);
     expect(viewUtxosAt(v, WALLET).map(outRef).sort()).toEqual([`${H("1")}#1`, `${H("c")}#3`].sort());
     expect(spentByChain(effs)).toEqual([
@@ -178,11 +178,11 @@ describe("đọc lớp phủ", () => {
   });
   it("viewCarrier: 0 hoặc 2 carrier ⇒ FEED-CHAIN-005", () => {
     const none = makeView(new Map<string, UTxO[]>([[TRE, []]]));
-    expect(() => viewCarrier(none, TRE, TRSY)).toThrow(/FEED-CHAIN-005.*thấy 0/);
+    expect(() => viewCarrier(none, TRE, TREASURY)).toThrow(/FEED-CHAIN-005.*thấy 0/);
     const two = makeView(new Map<string, UTxO[]>([[TRE, [
-      u(H("2"), 0, TRE, { lovelace: 1n, [TRSY]: 1n }), u(H("2"), 1, TRE, { lovelace: 1n, [TRSY]: 1n }),
+      u(H("2"), 0, TRE, { lovelace: 1n, [TREASURY]: 1n }), u(H("2"), 1, TRE, { lovelace: 1n, [TREASURY]: 1n }),
     ]]]));
-    expect(() => viewCarrier(two, TRE, TRSY)).toThrow(/FEED-CHAIN-005.*thấy 2/);
+    expect(() => viewCarrier(two, TRE, TREASURY)).toThrow(/FEED-CHAIN-005.*thấy 2/);
   });
 });
 

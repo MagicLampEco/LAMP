@@ -202,7 +202,7 @@ pub fn beacon_name(kind: BeaconKind) -> AssetName {
 ///
 /// ── C-BCN-GEN-6 (2026-09-26): BEACON PHẢI NGỤ TẠI MỘT SCRIPT ─────────────────────────
 /// Trước bản vá hàm này lọc THUẦN THEO NFT, không một chữ nào về địa chỉ — y hệt lỗ mà
-/// `find_treasury_in`/`find_treasury_out` đã vá cho TRSY (C-SOLV-5, `claim_account.ak`).
+/// `find_treasury_in`/`find_treasury_out` đã vá cho TREASURY (C-SOLV-5, `claim_account.ak`).
 /// Nếu DROP NFT từng ngụ ở VÍ (chỉ cần `03_genesis` dựng sai MỘT lần, hoặc `beacon_nft`
 /// thiếu cổng đích đến), thì `beacon.ak` — nơi giữ TRỌN BỘ C-BCN-* — **không bao giờ chạy**:
 /// người giữ ví viết lại `index` · `rate_root` · `trim_*` ở mỗi lần tiêu, và cả hai bên gọi
@@ -244,9 +244,9 @@ pub fn beacon_index_at(bd: BeaconDatum, window: Int) -> Int {
 }
 
 /// Asset name treasury authenticity NFT — singleton sổ cái solvency.
-/// "TRSY". claim_account đọc treasury (cum_entitlement) qua NFT này → chống treasury giả.
+/// "TREASURY". claim_account đọc treasury (cum_entitlement) qua NFT này → chống treasury giả.
 pub fn treasury_nft_name() -> AssetName {
-  #"54525359"  // "TRSY"
+  #"5452454153555259"  // "TREASURY"
 }
 
 // ── Tests cho helper thuần ────────────────────────────────────

@@ -1,19 +1,19 @@
 // 27_refill_treasury.ts — gộp các UTxO ở địa chỉ KHO về MỘT singleton (nhánh `Refill`).
 //
 // VÌ SAO CÓ BƯỚC NÀY. `21_vest_to_kho.ts` rót LAMP vào kho qua A-DEST. LAMP hạ cánh thành một
-// UTxO RIÊNG, không mang NFT "TRSY". Kể từ lúc đó địa chỉ kho có HAI UTxO: một mang TRSY và
-// không có LAMP, một mang LAMP và không có TRSY. `claim_account.ak:210-223` đòi đúng MỘT input
-// kho MANG TRSY ⇒ nhánh Redeem buộc tiêu cái vỏ rỗng ⇒ giải ngân bằng 0. Tài sản nằm TRONG SÂN
+// UTxO RIÊNG, không mang NFT "TREASURY". Kể từ lúc đó địa chỉ kho có HAI UTxO: một mang TREASURY và
+// không có LAMP, một mang LAMP và không có TREASURY. `claim_account.ak:210-223` đòi đúng MỘT input
+// kho MANG TREASURY ⇒ nhánh Redeem buộc tiêu cái vỏ rỗng ⇒ giải ngân bằng 0. Tài sản nằm TRONG SÂN
 // kho và NGOÀI SỔ kho.
 //
 // Đo trên Preprod 2026-09-15 (Koios `address_utxos`, `addr_test1wqcnq8kk…`): đúng hình dạng đó,
-// 10.000.000.000 oildrop ở UTxO không TRSY. `Refill` là nhánh DUY NHẤT gộp lại được.
+// 10.000.000.000 oildrop ở UTxO không TREASURY. `Refill` là nhánh DUY NHẤT gộp lại được.
 //
 // KHÔNG TỰ CHỌN INPUT. Script này LIỆT KÊ những gì đang ở địa chỉ kho rồi DỪNG, trừ khi người
 // vận hành nêu đích danh từng UTxO qua `REFILL_INPUTS`. Cố ý: ai cũng đỗ được một UTxO ở địa
 // chỉ script (Cardano không chạy validator lúc TẠO). Từ 2026-09-26 `treasury.ak` ▸ `carrier_ledger`
 // lấy sổ CHỈ từ carrier và bỏ qua datum mọi input khác, nên datum lạ không còn chặn được Refill;
-// nhưng hai hình dạng người lạ đỗ được vẫn làm hỏng một tx quét-tất-cả: tài sản trùng TÊN "TRSY"
+// nhưng hai hình dạng người lạ đỗ được vẫn làm hỏng một tx quét-tất-cả: tài sản trùng TÊN "TREASURY"
 // dưới policy khác (chuỗi thấy 2 carrier ⇒ từ chối; builder loại nó) và UTxO datum-hash mà
 // provider không có preimage (Lucid không lập được witness). Soát tay vẫn rẻ hơn.
 //
@@ -66,7 +66,7 @@ function describe(u: UTxO, lampUnit: string, khoUnit: string): string {
       : led === null ? "inline datum LẠ (không giải mã được TreasuryDatum)"
       : `inline datum, outstanding_entitlement=${led}`;
   }
-  return `${refKey(u)}  ${lovelace} lovelace · ${lamp} oildrop · TRSY×${trsy} · ${shape}`;
+  return `${refKey(u)}  ${lovelace} lovelace · ${lamp} oildrop · TREASURY×${trsy} · ${shape}`;
 }
 
 async function main(): Promise<void> {
@@ -101,7 +101,7 @@ async function main(): Promise<void> {
       for (const u of bo) console.log(`  · ${refKey(u)}`);
     }
     if (boGia.length) {
-      console.log(`\n⚠️  ${boGia.length} UTxO mang tài sản tên TRSY dưới policy KHÁC — chuỗi nhận carrier theo TÊN, gộp vào là 2 carrier ⇒ từ chối; đã loại khỏi gợi ý (builder cũng loại):`);
+      console.log(`\n⚠️  ${boGia.length} UTxO mang tài sản tên TREASURY dưới policy KHÁC — chuỗi nhận carrier theo TÊN, gộp vào là 2 carrier ⇒ từ chối; đã loại khỏi gợi ý (builder cũng loại):`);
       for (const u of boGia) console.log(`  · ${describe(u, wiring.lampUnit, wiring.khoUnit)}`);
     }
     console.log(
@@ -173,7 +173,7 @@ async function main(): Promise<void> {
 
   // Đối chiếu bằng CHÍNH chuỗi, không tin vào việc tx đã gửi. BA trạng thái, không phải hai —
   // và "không đo được" phải kêu KHÁC "hỏng", to hơn "hỏng" (Forall §Cổng gác): đúng singleton
-  // mang đủ TRSY + LAMP · còn nhiều UTxO (gộp thiếu, THẬT sự hỏng) · đọc không ra gì (chỉ mục
+  // mang đủ TREASURY + LAMP · còn nhiều UTxO (gộp thiếu, THẬT sự hỏng) · đọc không ra gì (chỉ mục
   // provider trễ sau `awaitTx` — KHÔNG phải "gộp hỏng", tx đã vào block).
   const after = await lucid.utxosAt(wiring.treAddr);
   if (after.length === 0) {
@@ -192,7 +192,7 @@ async function main(): Promise<void> {
   if (carrier.length !== 1) {
     process.exitCode = 1;
     console.error(
-      `\n❌ Không còn đúng 1 UTxO mang TRSY (đếm ${carrier.length}). ĐỪNG chạy bước kế.`,
+      `\n❌ Không còn đúng 1 UTxO mang TREASURY (đếm ${carrier.length}). ĐỪNG chạy bước kế.`,
     );
     return;
   }
@@ -200,12 +200,12 @@ async function main(): Promise<void> {
   if (lamp !== result.lampAfter) {
     process.exitCode = 1;
     console.error(
-      `\n❌ UTxO mang TRSY giữ ${lamp} oildrop, dựng ra là ${result.lampAfter}. Lệch ⇒ dừng.`,
+      `\n❌ UTxO mang TREASURY giữ ${lamp} oildrop, dựng ra là ${result.lampAfter}. Lệch ⇒ dừng.`,
     );
     return;
   }
   console.log(
-    `\n✅ Kho về singleton: 1 UTxO mang TRSY và ${lamp} oildrop.\n` +
+    `\n✅ Kho về singleton: 1 UTxO mang TREASURY và ${lamp} oildrop.\n` +
     `   Nhánh Redeem nay đọc được đúng UTxO này (claim_account.ak:210-223).`,
   );
 }

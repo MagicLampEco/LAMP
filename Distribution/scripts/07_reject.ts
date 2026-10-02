@@ -84,9 +84,9 @@ async function main(): Promise<void> {
   const w = epochWindow(MS_PER_EPOCH, windowOrigin());
   const e = w.epoch;
   const lampUnit = toUnit(state.testLamp.policyId, state.testLamp.assetName);
-  const trsyUnit = toUnit(state.params.treasuryNftPolicy, TREASURY_NFT_ASSET_NAME);
+  const treasuryUnit = toUnit(state.params.treasuryNftPolicy, TREASURY_NFT_ASSET_NAME);
   const dropUnit = toUnit(state.beaconNftPolicy, DROP_ASSET_NAME);
-  const treU = await find(lucid, state.treasury.address, trsyUnit);
+  const treU = await find(lucid, state.treasury.address, treasuryUnit);
   const bcnU = await find(lucid, state.beacon.address, dropUnit);
   const tre = decodeTreasuryDatum(Data.from(treU.datum!));
   const bcn = decodeBeaconDatum(Data.from(bcnU.datum!));
@@ -142,7 +142,7 @@ async function main(): Promise<void> {
   if (FAMILY === "refill" || FAMILY === "all") {
     const dep = 1_000_000n;
     const muts = [
-      "sổ-nợ+1", "total_redeemed+1", "committee_hash-khác", "TRSY-rời-kho",
+      "sổ-nợ+1", "total_redeemed+1", "committee_hash-khác", "TREASURY-rời-kho",
       "rút-1-LAMP-thay-vì-nạp", "hai-output-tại-kho", "thiếu-chữ-ký-committee",
     ] as const;
     await family("refill", muts, (m) => {
@@ -153,12 +153,12 @@ async function main(): Promise<void> {
       };
       const lampIn = treU.assets[lampUnit] ?? 0n;
       const v: Record<string, bigint> = { ...treU.assets, [lampUnit]: lampIn + (m === "rút-1-LAMP-thay-vì-nạp" ? -1n : dep) };
-      if (m === "TRSY-rời-kho") delete v[trsyUnit];
+      if (m === "TREASURY-rời-kho") delete v[treasuryUnit];
       let t = lucid.newTx()
         .collectFrom([treU], refillRedeemerToCbor())
         .attach.SpendingValidator(treasuryScript)
         .pay.ToAddressWithData(treU.address, { kind: "inline", value: treasuryDatumToCbor(out) }, v);
-      if (m === "TRSY-rời-kho") t = t.pay.ToAddress(keyAddr(aPkh), { lovelace: 2_000_000n, [trsyUnit]: 1n });
+      if (m === "TREASURY-rời-kho") t = t.pay.ToAddress(keyAddr(aPkh), { lovelace: 2_000_000n, [treasuryUnit]: 1n });
       if (m === "hai-output-tại-kho") {
         t = t.pay.ToAddressWithData(treU.address, { kind: "inline", value: treasuryDatumToCbor(out) }, { lovelace: 2_000_000n });
       }

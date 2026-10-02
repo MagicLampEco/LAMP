@@ -38,8 +38,8 @@ const FAKE_CLAIM:    Validator = { type: "PlutusV3", script: "494801000022212001
 const FAKE_TREASURY: Validator = { type: "PlutusV3", script: "49480100002221200102" };
 const FAKE_BEACON:   Validator = { type: "PlutusV3", script: "49480100002221200103" };
 const FAKE_ACC_NFT:  Validator = { type: "PlutusV3", script: "49480100002221200104" };
-const TRSY_POLICY = "ab".repeat(28);
-const TRSY_UNIT = toUnit(TRSY_POLICY, TREASURY_NFT_ASSET_NAME);
+const TREASURY_POLICY = "ab".repeat(28);
+const TREASURY_UNIT = toUnit(TREASURY_POLICY, TREASURY_NFT_ASSET_NAME);
 const BEACON_POLICY = "cd".repeat(28);
 const BEACON_UNIT = toUnit(BEACON_POLICY, "44524f50");
 
@@ -99,10 +99,10 @@ function treDatum(outstanding: bigint, totalRedeemed = 0n): TreasuryDatum {
 function treasury(outstanding: bigint, totalRedeemed = 0n) {
   const utxo: UTxO = {
     txHash: "33".repeat(32), outputIndex: 0, address: addr(FAKE_TREASURY),
-    assets: { lovelace: 5_000_000n, [TRSY_UNIT]: 1n },
+    assets: { lovelace: 5_000_000n, [TREASURY_UNIT]: 1n },
     datum: treasuryDatumToCbor(treDatum(outstanding, totalRedeemed)),
   };
-  return { utxo, script: FAKE_TREASURY, nftPolicy: TRSY_POLICY };
+  return { utxo, script: FAKE_TREASURY, nftPolicy: TREASURY_POLICY };
 }
 
 function account(over: Partial<ClaimAccountDatum> = {}): ClaimAccountDatum {
