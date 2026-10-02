@@ -20,7 +20,7 @@ import {
   scriptHashToCredential, validatorToScriptHash, mintingPolicyToId,
   type LucidEvolution, type Validator,
 } from "@lucid-evolution/lucid";
-import { msPerEpoch, type Network } from "@magiclamp/utils";
+import { msPerEpoch, windowOriginMs, type Network } from "@magiclamp/utils";
 // Cổng đếm khe apply-param — số khe ĐỌC từ blueprint Treasury (PlatformKit dùng chung
 // blueprint đó), không nhận số gõ tay. Lý do đầy đủ:
 // `Genesis/offchain/src/blueprintSource.ts`.
@@ -51,6 +51,15 @@ export const PRIVATE_KEY    = process.env.PRIVATE_KEY ?? "";
 export const WALLET_SEED    = (process.env.WALLET_SEED ?? "").trim().replace(/\s+/g, " ");
 
 export const MS_PER_EPOCH = msPerEpoch(NETWORK);
+
+/**
+ * `window_origin_ms` của mạng đang chạy (Specs/Window/CONTRACT.md v1.0) — HÀM, không phải hằng
+ * toàn cục: Preview không có gốc (WIN-PREVIEW, `windowOriginMs` ném lỗi) và một hằng ở đầu tệp sẽ
+ * làm mọi `import` config chết trước khi script kịp nói mình cần gì.
+ */
+export function windowOrigin(): bigint {
+  return windowOriginMs(NETWORK);
+}
 
 export function hasCredentials(): boolean {
   return Boolean(BLOCKFROST_KEY && (PRIVATE_KEY || WALLET_SEED));

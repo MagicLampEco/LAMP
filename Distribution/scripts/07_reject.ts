@@ -17,7 +17,7 @@
 import { Data, toUnit, credentialToAddress, keyHashToCredential } from "@lucid-evolution/lucid";
 import type { LucidEvolution, UTxO, TxBuilder } from "@lucid-evolution/lucid";
 import {
-  NETWORK, DROP_ASSET_NAME, TREASURY_NFT_ASSET_NAME, MS_PER_EPOCH,
+  NETWORK, DROP_ASSET_NAME, TREASURY_NFT_ASSET_NAME, MS_PER_EPOCH, windowOrigin,
   makeLucid, walletPkh, loadDeployed, reapplyValidators,
 } from "./config.js";
 import {
@@ -81,7 +81,7 @@ async function main(): Promise<void> {
   const { claimScript, beaconScript, treasuryScript, accountNftScript } = await reapplyValidators(state);
   const committee = state.committee.keyHashes;
 
-  const w = epochWindow(MS_PER_EPOCH);
+  const w = epochWindow(MS_PER_EPOCH, windowOrigin());
   const e = w.epoch;
   const lampUnit = toUnit(state.testLamp.policyId, state.testLamp.assetName);
   const trsyUnit = toUnit(state.params.treasuryNftPolicy, TREASURY_NFT_ASSET_NAME);

@@ -36,10 +36,18 @@ use magiclamp/faucet/ledger.{
   did_key, did_leaf_value, empty_opened_root, max_claims_ceiling, pool_nft_name,
 }
 use magiclamp/faucet/util
+use magiclamp/faucet/window_origin_fixtures
 
-validator faucet_nft(genesis_ref: OutputReference, ms_per_epoch: Int) {
+validator faucet_nft(
+  genesis_ref: OutputReference,
+  ms_per_epoch: Int,
+  // THÊM 2026-10-02 (Specs/Window/CONTRACT.md v1.0, WIN-ORIGIN-3) — ĐẶT CUỐI theo khuôn các
+  // tham số đã thêm trước. Gốc lưới cửa sổ: cửa sổ = (t − window_origin_ms) / ms_per_epoch,
+  // nên chỉ số cửa sổ = số epoch Cardano của mạng. Đổi hash validator này.
+  window_origin_ms: Int,
+) {
   mint(redeemer: FaucetNftRedeemer, policy_id: PolicyId, tx: Transaction) {
-    handlers.nft_mint(genesis_ref, ms_per_epoch, redeemer, policy_id, tx)
+    handlers.nft_mint(genesis_ref, ms_per_epoch, window_origin_ms, redeemer, policy_id, tx)
   }
 
   else(_) {
@@ -157,6 +165,7 @@ test mint_pool_happy() {
   faucet_nft.mint(
     fn_genesis_ref(),
     fn_ms_per_epoch,
+    0,
     MintPool,
     fn_policy,
     fn_mintpool_tx(fn_pool_out_ok()),
@@ -175,7 +184,7 @@ test mint_pool_without_genesis() fail {
         mint: fn_mint(pool_nft_name, 1),
       },
     )
-  faucet_nft.mint(fn_genesis_ref(), fn_ms_per_epoch, MintPool, fn_policy, tx)
+  faucet_nft.mint(fn_genesis_ref(), fn_ms_per_epoch, 0, MintPool, fn_policy, tx)
 }
 
 test mint_pool_wrong_qty() fail {
@@ -190,7 +199,7 @@ test mint_pool_wrong_qty() fail {
         mint: fn_mint(pool_nft_name, 2),
       },
     )
-  faucet_nft.mint(fn_genesis_ref(), fn_ms_per_epoch, MintPool, fn_policy, tx)
+  faucet_nft.mint(fn_genesis_ref(), fn_ms_per_epoch, 0, MintPool, fn_policy, tx)
 }
 
 test mint_pool_with_extra_acct() fail {
@@ -209,7 +218,7 @@ test mint_pool_with_extra_acct() fail {
         mint: mint,
       },
     )
-  faucet_nft.mint(fn_genesis_ref(), fn_ms_per_epoch, MintPool, fn_policy, tx)
+  faucet_nft.mint(fn_genesis_ref(), fn_ms_per_epoch, 0, MintPool, fn_policy, tx)
 }
 
 /// C-MP-1: POOL NFT đúc thẳng vào VÍ ⇒ `faucet_pool.spend` không bao giờ chạy.
@@ -223,6 +232,7 @@ test mintpool_nft_vao_vi() fail {
   faucet_nft.mint(
     fn_genesis_ref(),
     fn_ms_per_epoch,
+    0,
     MintPool,
     fn_policy,
     fn_mintpool_tx(pool_out),
@@ -240,6 +250,7 @@ test mintpool_stake_credential() fail {
   faucet_nft.mint(
     fn_genesis_ref(),
     fn_ms_per_epoch,
+    0,
     MintPool,
     fn_policy,
     fn_mintpool_tx(pool_out),
@@ -258,6 +269,7 @@ test mintpool_script_carrier() fail {
   faucet_nft.mint(
     fn_genesis_ref(),
     fn_ms_per_epoch,
+    0,
     MintPool,
     fn_policy,
     fn_mintpool_tx(pool_out),
@@ -271,6 +283,7 @@ test mintpool_khong_datum() fail {
   faucet_nft.mint(
     fn_genesis_ref(),
     fn_ms_per_epoch,
+    0,
     MintPool,
     fn_policy,
     fn_mintpool_tx(pool_out),
@@ -288,6 +301,7 @@ test mintpool_claims_khac_0() fail {
   faucet_nft.mint(
     fn_genesis_ref(),
     fn_ms_per_epoch,
+    0,
     MintPool,
     fn_policy,
     fn_mintpool_tx(pool_out),
@@ -306,6 +320,7 @@ test mintpool_window_khong_phai_now() fail {
   faucet_nft.mint(
     fn_genesis_ref(),
     fn_ms_per_epoch,
+    0,
     MintPool,
     fn_policy,
     fn_mintpool_tx(pool_out),
@@ -323,6 +338,7 @@ test mintpool_max_vuot_tran() fail {
   faucet_nft.mint(
     fn_genesis_ref(),
     fn_ms_per_epoch,
+    0,
     MintPool,
     fn_policy,
     fn_mintpool_tx(pool_out),
@@ -340,6 +356,7 @@ test mintpool_max_bang_tran() {
   faucet_nft.mint(
     fn_genesis_ref(),
     fn_ms_per_epoch,
+    0,
     MintPool,
     fn_policy,
     fn_mintpool_tx(pool_out),
@@ -358,6 +375,7 @@ test mintpool_max_bang_0() fail {
   faucet_nft.mint(
     fn_genesis_ref(),
     fn_ms_per_epoch,
+    0,
     MintPool,
     fn_policy,
     fn_mintpool_tx(pool_out),
@@ -373,7 +391,7 @@ test mint_account_name_dung_32b() {
       inputs: [fn_pool_input()],
       mint: fn_mint(fn_acct_name, 1),
     }
-  faucet_nft.mint(fn_genesis_ref(), fn_ms_per_epoch, MintAccount, fn_policy, tx)
+  faucet_nft.mint(fn_genesis_ref(), fn_ms_per_epoch, 0, MintAccount, fn_policy, tx)
 }
 
 test mint_account_no_pool_input() fail {
@@ -384,7 +402,7 @@ test mint_account_no_pool_input() fail {
       inputs: [fn_other_input()],
       mint: fn_mint(fn_acct_name, 1),
     }
-  faucet_nft.mint(fn_genesis_ref(), fn_ms_per_epoch, MintAccount, fn_policy, tx)
+  faucet_nft.mint(fn_genesis_ref(), fn_ms_per_epoch, 0, MintAccount, fn_policy, tx)
 }
 
 test mint_account_touches_pool_nft() fail {
@@ -394,21 +412,21 @@ test mint_account_touches_pool_nft() fail {
       |> assets.add(fn_policy, fn_acct_name, 1)
       |> assets.add(fn_policy, pool_nft_name, 1)
   let tx = Transaction { ..placeholder, inputs: [fn_pool_input()], mint: mint }
-  faucet_nft.mint(fn_genesis_ref(), fn_ms_per_epoch, MintAccount, fn_policy, tx)
+  faucet_nft.mint(fn_genesis_ref(), fn_ms_per_epoch, 0, MintAccount, fn_policy, tx)
 }
 
 test mint_account_name_thieu_prefix() fail {
   let bad = #"deadbeefaabbccddeeff00112233445566778899aabbccddeeff001122334455"
   let tx =
     Transaction { ..placeholder, inputs: [fn_pool_input()], mint: fn_mint(bad, 1) }
-  faucet_nft.mint(fn_genesis_ref(), fn_ms_per_epoch, MintAccount, fn_policy, tx)
+  faucet_nft.mint(fn_genesis_ref(), fn_ms_per_epoch, 0, MintAccount, fn_policy, tx)
 }
 
 test mint_account_name_31b() fail {
   let bad = #"41434354aabbccddeeff00112233445566778899aabbccddeeff0011223344"
   let tx =
     Transaction { ..placeholder, inputs: [fn_pool_input()], mint: fn_mint(bad, 1) }
-  faucet_nft.mint(fn_genesis_ref(), fn_ms_per_epoch, MintAccount, fn_policy, tx)
+  faucet_nft.mint(fn_genesis_ref(), fn_ms_per_epoch, 0, MintAccount, fn_policy, tx)
 }
 
 test mint_account_qty_2() fail {
@@ -418,7 +436,7 @@ test mint_account_qty_2() fail {
       inputs: [fn_pool_input()],
       mint: fn_mint(fn_acct_name, 2),
     }
-  faucet_nft.mint(fn_genesis_ref(), fn_ms_per_epoch, MintAccount, fn_policy, tx)
+  faucet_nft.mint(fn_genesis_ref(), fn_ms_per_epoch, 0, MintAccount, fn_policy, tx)
 }
 
 test mint_account_hai_name() fail {
@@ -429,32 +447,32 @@ test mint_account_hai_name() fail {
       |> assets.add(fn_policy, fn_acct_name, 1)
       |> assets.add(fn_policy, other, 1)
   let tx = Transaction { ..placeholder, inputs: [fn_pool_input()], mint: mint }
-  faucet_nft.mint(fn_genesis_ref(), fn_ms_per_epoch, MintAccount, fn_policy, tx)
+  faucet_nft.mint(fn_genesis_ref(), fn_ms_per_epoch, 0, MintAccount, fn_policy, tx)
 }
 
 // ── BurnAccount ──────────────────────────────────────────────────
 
 test burn_account_happy() {
   let tx = Transaction { ..placeholder, mint: fn_mint(fn_acct_name, -1) }
-  faucet_nft.mint(fn_genesis_ref(), fn_ms_per_epoch, BurnAccount, fn_policy, tx)
+  faucet_nft.mint(fn_genesis_ref(), fn_ms_per_epoch, 0, BurnAccount, fn_policy, tx)
 }
 
 test burn_account_qty_minus_2() fail {
   let tx = Transaction { ..placeholder, mint: fn_mint(fn_acct_name, -2) }
-  faucet_nft.mint(fn_genesis_ref(), fn_ms_per_epoch, BurnAccount, fn_policy, tx)
+  faucet_nft.mint(fn_genesis_ref(), fn_ms_per_epoch, 0, BurnAccount, fn_policy, tx)
 }
 
 /// Đốt POOL NFT trá hình qua nhánh BurnAccount: POOL name dài 4 byte ⇒ gãy ở
 /// prefix + độ dài.
 test burn_account_lan_prefix_pool() fail {
   let tx = Transaction { ..placeholder, mint: fn_mint(pool_nft_name, -1) }
-  faucet_nft.mint(fn_genesis_ref(), fn_ms_per_epoch, BurnAccount, fn_policy, tx)
+  faucet_nft.mint(fn_genesis_ref(), fn_ms_per_epoch, 0, BurnAccount, fn_policy, tx)
 }
 
 /// Đúc (qty +1) qua nhánh BurnAccount → C-MB-1.
 test burn_account_qty_duong() fail {
   let tx = Transaction { ..placeholder, mint: fn_mint(fn_acct_name, 1) }
-  faucet_nft.mint(fn_genesis_ref(), fn_ms_per_epoch, BurnAccount, fn_policy, tx)
+  faucet_nft.mint(fn_genesis_ref(), fn_ms_per_epoch, 0, BurnAccount, fn_policy, tx)
 }
 
 // ── C-MP-8: sổ `opened_root` khởi tạo phải RỖNG ──────────────────
@@ -477,6 +495,7 @@ test mintpool_goc_khong_rong() fail {
   faucet_nft.mint(
     fn_genesis_ref(),
     fn_ms_per_epoch,
+    0,
     MintPool,
     fn_policy,
     fn_mintpool_tx(pool_out),
@@ -501,8 +520,46 @@ test mintpool_goc_rac() fail {
   faucet_nft.mint(
     fn_genesis_ref(),
     fn_ms_per_epoch,
+    0,
     MintPool,
     fn_policy,
     fn_mintpool_tx(pool_out),
+  )
+}
+
+// ── Gốc cửa sổ (Specs/Window/CONTRACT.md v1.0, WIN-ORIGIN-1..3) ─────────────────
+/// `mint_pool_happy` dời sang gốc Mainnet: phải xanh như bản gốc 0.
+test mint_pool_happy_origin_mainnet() {
+  faucet_nft.mint(
+    fn_genesis_ref(),
+    fn_ms_per_epoch,
+    window_origin_fixtures.mainnet_origin_ms,
+    MintPool,
+    fn_policy,
+    window_origin_fixtures.shift_tx(fn_mintpool_tx(fn_pool_out_ok()), window_origin_fixtures.mainnet_origin_ms),
+  )
+}
+
+/// `mint_pool_happy` dời sang gốc Preprod: phải xanh như bản gốc 0.
+test mint_pool_happy_origin_preprod() {
+  faucet_nft.mint(
+    fn_genesis_ref(),
+    fn_ms_per_epoch,
+    window_origin_fixtures.preprod_origin_ms,
+    MintPool,
+    fn_policy,
+    window_origin_fixtures.shift_tx(fn_mintpool_tx(fn_pool_out_ok()), window_origin_fixtures.preprod_origin_ms),
+  )
+}
+
+/// Ca âm: tx đã dời sang lưới Mainnet nhưng validator nhận gốc 0 ⇒ phải bị chặn.
+test mint_pool_happy_origin_forgotten() fail {
+  faucet_nft.mint(
+    fn_genesis_ref(),
+    fn_ms_per_epoch,
+    0,
+    MintPool,
+    fn_policy,
+    window_origin_fixtures.shift_tx(fn_mintpool_tx(fn_pool_out_ok()), window_origin_fixtures.mainnet_origin_ms),
   )
 }

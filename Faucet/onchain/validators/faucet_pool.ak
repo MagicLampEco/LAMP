@@ -107,6 +107,7 @@ use magiclamp/faucet/util
 // tên nó. `handlers` giữ THÂN của `faucet_account.spend` và `faucet_nft.mint`
 // vì Aiken không xuất handler của validator ra ngoài module — xem `handlers.ak`.
 use magiclamp/faucet/handlers
+use magiclamp/faucet/window_origin_fixtures
 
 validator faucet_pool(
   faucet_nft_policy: ByteArray,
@@ -115,6 +116,10 @@ validator faucet_pool(
   lamp_name: ByteArray,
   ms_per_epoch: Int,
   account_script_hash: ByteArray,
+  // THÊM 2026-10-02 (Specs/Window/CONTRACT.md v1.0, WIN-ORIGIN-3) — ĐẶT CUỐI theo khuôn các
+  // tham số đã thêm trước. Gốc lưới cửa sổ: cửa sổ = (t − window_origin_ms) / ms_per_epoch,
+  // nên chỉ số cửa sổ = số epoch Cardano của mạng. Đổi hash validator này.
+  window_origin_ms: Int,
 ) {
   spend(
     datum_opt: Option<PoolDatum>,
@@ -182,6 +187,7 @@ validator faucet_pool(
             lamp_policy,
             lamp_name,
             ms_per_epoch,
+            window_origin_ms,
             account_script_hash,
           )
         // C-OPEN-1: đúc đúng ACCT NFT của DID này.
@@ -231,6 +237,7 @@ validator faucet_pool(
             lamp_policy,
             lamp_name,
             ms_per_epoch,
+            window_origin_ms,
             account_script_hash,
           )
         // ── C-MINT-ONLY-OPEN-1: `tx.mint` dưới policy này phải RỖNG ─────────
@@ -430,6 +437,7 @@ fn check_claim(
   lamp_policy: ByteArray,
   lamp_name: ByteArray,
   ms_per_epoch: Int,
+  window_origin_ms: Int,
   account_script_hash: ByteArray,
 ) -> ClaimCtx {
   let cfg = pd.cfg
@@ -441,7 +449,7 @@ fn check_claim(
   // CÙNG một cửa sổ thật leo thang theo bậc thang và vượt trần tuyệt đối. Cùng
   // một trường đó cũng vô hiệu cooldown, vì account sinh ra đã mang mốc quá khứ.
   // Ghim bởi `rate_upper_bound_vo_han` · `rate_leo_thang_bac_thang`.
-  let now = util.get_epoch_pinned(tx, ms_per_epoch)
+  let now = util.get_epoch_pinned(tx, ms_per_epoch, window_origin_ms)
 
   // C-RATE-1: cửa sổ đơn điệu (chỉ chặn chiều lùi SO VỚI DATUM; chiều lùi so
   // với thời gian thật do C-RATE-0 chặn).
@@ -719,12 +727,34 @@ fn fp_run(pd: PoolDatum, r: PoolRedeemer, tx: Transaction) -> Bool {
     fp_lamp_name,
     fp_ms_per_epoch,
     fp_acct_sh,
+    0,
     Some(pd),
     r,
     util.mk_ref(0),
     tx,
   )
 }
+
+// ── Gốc cửa sổ (Specs/Window/CONTRACT.md v1.0, WIN-ORIGIN-1..3) ─────────────────
+// Bản của `fp_run` nhận gốc `origin` và dời mọi biên hữu hạn của validity range đi
+// `shift`. `(o, o)`: cùng kịch bản dời sang lưới có gốc ⇒ kết quả phải y như bản gốc 0.
+// `(0, o)`: validator QUÊN gốc trên tx đã dời ⇒ phải bị chặn.
+fn fp_run_at(origin: Int, shift: Int, pd: PoolDatum, r: PoolRedeemer, tx: Transaction) -> Bool {
+  faucet_pool.spend(
+    fp_nft_policy,
+    fp_did_policy,
+    fp_lamp_policy,
+    fp_lamp_name,
+    fp_ms_per_epoch,
+    fp_acct_sh,
+    origin,
+    Some(pd),
+    r,
+    util.mk_ref(0),
+    window_origin_fixtures.shift_tx(tx, shift),
+  )
+}
+
 
 // ── CLAIM OPEN ───────────────────────────────────────────────────
 // Một builder dùng chung cho ca dương và mọi ca âm; hai cực chỉ khác đúng phần
@@ -1712,6 +1742,7 @@ fn fp_acct_run(r: AccountRedeemer, datum: FaucetAccount, tx: Transaction) -> Boo
     fp_lamp_policy,
     fp_lamp_name,
     fp_ms_per_epoch,
+    0,
     Some(datum),
     r,
     util.mk_ref(fp_acct_ref_ix),
@@ -1955,7 +1986,7 @@ const fp_genesis_ref: OutputReference =
   OutputReference { transaction_id: #"aa", output_index: 5 }
 
 fn fp_nft_run(r: FaucetNftRedeemer, tx: Transaction) -> Bool {
-  handlers.nft_mint(fp_genesis_ref, fp_ms_per_epoch, r, fp_nft_policy, tx)
+  handlers.nft_mint(fp_genesis_ref, fp_ms_per_epoch, 0, r, fp_nft_policy, tx)
 }
 
 /// PoC đã đo 2026-09-28: một tx `TopUpPool` hợp lệ kèm đúc ACCT NFT của alice.
@@ -2407,4 +2438,19 @@ test budget_proof_5_buoc() {
     did_key(fp_did_name),
     fp_branch_steps(5),
   ) == False
+}
+
+/// `open_happy` dời sang gốc Mainnet: phải xanh như bản gốc 0.
+test open_happy_origin_mainnet() {
+  fp_run_at(window_origin_fixtures.mainnet_origin_ms, window_origin_fixtures.mainnet_origin_ms, fp_pd(100, 0), fp_open, open_std(100, 100, 0))
+}
+
+/// `open_happy` dời sang gốc Preprod: phải xanh như bản gốc 0.
+test open_happy_origin_preprod() {
+  fp_run_at(window_origin_fixtures.preprod_origin_ms, window_origin_fixtures.preprod_origin_ms, fp_pd(100, 0), fp_open, open_std(100, 100, 0))
+}
+
+/// Ca âm: tx đã dời sang lưới Mainnet nhưng validator nhận gốc 0 (quên trừ gốc) ⇒ phải bị chặn.
+test open_happy_origin_forgotten() fail {
+  fp_run_at(0, window_origin_fixtures.mainnet_origin_ms, fp_pd(100, 0), fp_open, open_std(100, 100, 0))
 }

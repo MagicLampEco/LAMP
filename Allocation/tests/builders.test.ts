@@ -78,8 +78,14 @@ const NFT_POLICY  = "cd".repeat(28);
 const D = lampOildrop(100n);
 /** ms mỗi epoch (Preview demo) — phải khớp ms_per_epoch bake vào claim_account. */
 const MS_PER_EPOCH = 86_400_000n;
-/** lower_bound ms cho epoch t (đầu epoch) — get_epoch = floor(ms/MS_PER_EPOCH). */
-function epochMs(t: bigint): bigint { return t * MS_PER_EPOCH; }
+/**
+ * `window_origin_ms` truyền tường minh (Specs/Window/CONTRACT.md v1.0). Gốc Mainnet THẬT, không phải
+ * 0 và không chia hết MS_PER_EPOCH (dư 78_291_000): bản quên trừ gốc cho epoch lệch hàng nghìn chứ
+ * không lệch 0. (Preview không có gốc — builder nhận số này từ người gọi, không suy từ `network`.)
+ */
+const ORIGIN_MS = 1_506_203_091_000n;
+/** lower_bound ms cho epoch t (đầu cửa sổ) — get_epoch = floor((ms − ORIGIN_MS)/MS_PER_EPOCH). */
+function epochMs(t: bigint): bigint { return ORIGIN_MS + t * MS_PER_EPOCH; }
 
 // committee 3 keys, threshold 2 (⌈2·3/3⌉)
 const COMMITTEE = ["11".repeat(28), "22".repeat(28), "33".repeat(28)];
@@ -231,7 +237,7 @@ describe("buildClaimTx — cấp entitlement + trừ remaining (khoá chéo)", (
 describe("buildRedeemTx — vested = min(E, D·dpe·Δ), rút treasury cùng kênh", () => {
   const base = {
     network: NETWORK, claimScript: FAKE_CLAIM, treasuryScript: FAKE_TREASURY,
-    lampPolicyId: LAMP_POLICY, dropValue: D, msPerEpoch: MS_PER_EPOCH,
+    lampPolicyId: LAMP_POLICY, dropValue: D, msPerEpoch: MS_PER_EPOCH, windowOriginMs: ORIGIN_MS,
   };
 
   it("releases vested−redeemed, treasury LAMP -= amount, datum+dust bảo toàn, redeemed+=amount", async () => {
@@ -311,7 +317,7 @@ describe("buildRedeemTx — vested = min(E, D·dpe·Δ), rút treasury cùng kê
     // E=250, D=100, dpe=1, t0=0 → vested=min(250, 100·3)=250; redeemed=0 → amount=250.
     // Nếu off-chain dùng 3.7 (làm tròn lên 4) → vested=250 vẫn, nhưng chứng minh floor:
     // dùng t=2.9 epoch để raw khác hẳn giữa floor(2)=200 và round(3)=300.
-    const validFromMs = (29n * MS_PER_EPOCH) / 10n;   // 2.9 epoch
+    const validFromMs = ORIGIN_MS + (29n * MS_PER_EPOCH) / 10n;   // 2.9 epoch
     const res = await buildRedeemTx({
       ...base, lucid, validFromMs,
       claimAccountUtxo: claimUtxo({ entitlement: lampOildrop(1000n), redeemed: 0n }),
@@ -378,6 +384,29 @@ describe("buildRedeemTx — vested = min(E, D·dpe·Δ), rút treasury cùng kê
       claimAccountUtxo: claimUtxo({ entitlement: lampOildrop(250n), redeemed: 0n }),
       treasuryUtxo: treasuryUtxo(lampOildrop(1000n)),
     })).rejects.toThrow(/msPerEpoch must be > 0/);
+  });
+
+  it("gốc cửa sổ: epoch = (validFromMs − origin)/ms, KHÔNG phải validFromMs/ms (lưới Unix cũ)", async () => {
+    const { lucid } = mockLucid("addr_user");
+    const res = await buildRedeemTx({
+      ...base, lucid, validFromMs: epochMs(3n),
+      claimAccountUtxo: claimUtxo({ entitlement: lampOildrop(1000n), redeemed: 0n }),
+      treasuryUtxo: treasuryUtxo(lampOildrop(5000n)),
+    });
+    // epoch 3 ⇒ vested = 100·3. Bản quên trừ gốc sẽ ra epoch ≈ 17_433 ⇒ vested = min(E, …) = 1000.
+    expect(res.vested).toBe(lampOildrop(300n));
+  });
+
+  it("thiếu / sai gốc ⇒ REDEEM-005; validFromMs trước gốc ⇒ REDEEM-006", async () => {
+    const { lucid } = mockLucid("addr_user");
+    const args = {
+      ...base, lucid, validFromMs: epochMs(3n),
+      claimAccountUtxo: claimUtxo({ entitlement: lampOildrop(250n), redeemed: 0n }),
+      treasuryUtxo: treasuryUtxo(lampOildrop(1000n)),
+    };
+    await expect(buildRedeemTx({ ...args, windowOriginMs: undefined as never })).rejects.toThrow(/REDEEM-005/);
+    await expect(buildRedeemTx({ ...args, windowOriginMs: -1n })).rejects.toThrow(/REDEEM-005/);
+    await expect(buildRedeemTx({ ...args, validFromMs: ORIGIN_MS - 1n })).rejects.toThrow(/REDEEM-006/);
   });
 });
 

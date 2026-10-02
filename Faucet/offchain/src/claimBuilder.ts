@@ -76,6 +76,13 @@ export interface ClaimOpenParams {
   nowMs: number;
   /** ms mỗi cửa sổ — PHẢI khớp param đã nạp cho faucetPoolScript/faucetAccountScript. */
   msPerEpoch: bigint;
+  /**
+   * `window_origin_ms` đã apply vào faucet_nft/faucet_pool/faucet_account (tham số CUỐI,
+   * Specs/Window/CONTRACT.md v1.0): cửa sổ = `(nowMs − windowOriginMs) / msPerEpoch`. Lấy từ
+   * `windowOriginMs(network)` của `@magiclamp/utils` (Preview ném lỗi, không có giá trị). Truyền
+   * lệch thì nhãn cửa sổ trong datum lệch với cái validator suy ra và giao dịch bị từ chối.
+   */
+  windowOriginMs: bigint;
 
   /** Sổ `opened_root` hiện tại: `OpenedLedger` đã dựng, HOẶC danh sách account đang sống
    *  (`{didName}` / `{acctAssetName}`) để builder tự dựng. Gốc phải khớp datum pool input. */
@@ -104,7 +111,7 @@ export interface ClaimOpenResult {
 export async function buildClaimOpenTx(params: ClaimOpenParams): Promise<ClaimOpenResult> {
   const {
     lucid, network, poolUtxo, faucetPoolScript, faucetNftPolicy, faucetNftPolicyId,
-    faucetAccountScript, didUtxo, didNftPolicyId, didName, tlampPolicyId, msPerEpoch,
+    faucetAccountScript, didUtxo, didNftPolicyId, didName, tlampPolicyId, msPerEpoch, windowOriginMs,
   } = params;
 
   // Cổng gác trước khi ký: ms/epoch dùng để tính cửa sổ (và đã nướng vào param pool/account)
@@ -136,7 +143,7 @@ export async function buildClaimOpenTx(params: ClaimOpenParams): Promise<ClaimOp
   }
 
   // ── Cửa sổ pinned + trần tốc độ (mirror C-RATE-0..4 offchain, fail-fast) ────
-  const { loMs, hiMs, epoch } = pinnedEpochWindow(params.nowMs, Number(msPerEpoch));
+  const { loMs, hiMs, epoch } = pinnedEpochWindow(params.nowMs, Number(msPerEpoch), Number(windowOriginMs));
   if (epoch < pd.window_epoch) {
     throw new Error(
       `CLAIM-OPEN-005: epoch hiện tại ${epoch} < window_epoch trong datum pool ${pd.window_epoch} — ` +

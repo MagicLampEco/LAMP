@@ -72,6 +72,7 @@ use cardano/transaction.{Input, Output, OutputReference, Transaction, placeholde
 use magiclamp/reserve/math
 use magiclamp/reserve/types.{Draw, ReserveRedeemer, ReserveState}
 use magiclamp/reserve/util
+use magiclamp/reserve/window_origin_fixtures
 
 validator reserve_draw(
   lamp_policy           : PolicyId,
@@ -86,6 +87,10 @@ validator reserve_draw(
   gate_script_hash      : ByteArray,
   custody_script_hash   : ByteArray,
   reserve_cap           : Int,
+  // THÊM 2026-10-02 (Specs/Window/CONTRACT.md v1.0, WIN-ORIGIN-3) — ĐẶT CUỐI theo khuôn các
+  // tham số đã thêm trước. Gốc lưới cửa sổ: cửa sổ = (t − window_origin_ms) / ms_per_epoch,
+  // nên chỉ số cửa sổ = số epoch Cardano của mạng. Đổi hash validator này.
+  window_origin_ms: Int,
 ) {
   spend(
     _datum: Option<ReserveState>,
@@ -145,14 +150,15 @@ validator reserve_draw(
     expect s.total_oildrop == reserve_cap
 
     // ── Luật 2: epoch t từ validity_range lower_bound (bảo thủ, chống tua tương lai) ──
-    let t = util.get_epoch(tx.validity_range.lower_bound.bound_type, ms_per_epoch)
+    let t = util.get_epoch(tx.validity_range.lower_bound.bound_type, ms_per_epoch, window_origin_ms)
 
     // ── Luật 2b (Vector 2 — defense-in-depth): ghim t bằng upper_bound ──────
     // reserve_draw chỉ đọc lower_bound để tính t → lệ thuộc NGẦM vào ttl node.
     // Ép upper_bound LÀ Finite VÀ cùng epoch với lower_bound: t bị ghim chính
     // xác, KHÔNG trôi qua biên epoch (chống tx phủ nhiều epoch để chọn nhịp nhả).
     expect Some(hi) = util.get_finite(tx.validity_range.upper_bound.bound_type)
-    expect hi / ms_per_epoch == t
+    // WIN-ORIGIN-1: đầu trên cũng trừ gốc trước khi chia, cùng lưới với `t`.
+    expect ( hi - window_origin_ms ) / ms_per_epoch == t
 
     // ── Luật 3: ≤1 draw/epoch — t > last_epoch ────────────────────────────
     // Chống rút nhiều lần trong CÙNG epoch để vượt trần (mỗi epoch tối đa 1 draw
@@ -412,9 +418,21 @@ fn run(s_in: ReserveState, tx: Transaction) -> Bool {
 fn run_with_cap(cap_param: Int, s_in: ReserveState, tx: Transaction) -> Bool {
   reserve_draw.spend(
     lamp_pol, lamp_nm, thr_pol, thr_nm, ms_epoch, kho_pol, kho_nm, tre_pol, tre_nm,
-    gate_hash, kho_hash, cap_param, Some(s_in), Draw, own_ref(), tx,
+    gate_hash, kho_hash, cap_param, 0, Some(s_in), Draw, own_ref(), tx,
   )
 }
+
+// ── Gốc cửa sổ (Specs/Window/CONTRACT.md v1.0, WIN-ORIGIN-1..3) ─────────────────
+// Bản của `run_with_cap` nhận gốc `origin` và dời mọi biên hữu hạn của validity range đi
+// `shift`. `(o, o)`: cùng kịch bản dời sang lưới có gốc ⇒ kết quả phải y như bản gốc 0.
+// `(0, o)`: validator QUÊN gốc trên tx đã dời ⇒ phải bị chặn.
+fn run_with_cap_at(origin: Int, shift: Int, cap_param: Int, s_in: ReserveState, tx: Transaction) -> Bool {
+  reserve_draw.spend(
+    lamp_pol, lamp_nm, thr_pol, thr_nm, ms_epoch, kho_pol, kho_nm, tre_pol, tre_nm,
+    gate_hash, kho_hash, cap_param, origin, Some(s_in), Draw, own_ref(), window_origin_fixtures.shift_tx(tx, shift),
+  )
+}
+
 
 /// Dựng tx draw chuẩn (happy): input s + Treasury auth, mint=delta, dest=delta, output s2.
 fn build_tx(s: ReserveState, s2: ReserveState, mint_qty: Int, dest_qty: Int, ep: Int) -> Transaction {
@@ -964,4 +982,61 @@ test draw_full_drain_three_epochs_chain() {
   let sc2 = ReserveState { ..sb2, drawn_oildrop: 3 * cap, last_epoch: start + 3 }
   let ok_c = run(sb2, build_tx(sb2, sc2, cap, cap, start + 3))
   ok_a && ok_b && ok_c
+}
+
+/// `total_ten_times_cap_passes_when_param_matches` dời sang gốc Mainnet: phải xanh như bản gốc 0.
+test total_ten_times_cap_passes_when_param_matches_origin_mainnet() {
+  // ĐỐI CHỨNG DƯƠNG CHO THAM SỐ: CÙNG datum của ca âm thứ nhất, chỉ đổi `reserve_cap` nướng
+  // vào hash thành `10 × e` → PASS. Cặp này chứng minh Luật 1b so với THAM SỐ (thứ nướng vào
+  // script hash, người vận hành chọn lúc deploy) chứ không so với một hằng nào trong mã —
+  // và chứng minh được điều đó mà không cần đột biến mã.
+  let bad_total = 10 * e
+  let s =
+    ReserveState {
+      start_epoch: start,
+      total_oildrop: bad_total,
+      drawn_oildrop: 0,
+      last_epoch: start,
+    }
+  let d = bad_total / 1000
+  let s2 = ReserveState { ..s, drawn_oildrop: d, last_epoch: start + 1 }
+  run_with_cap_at(window_origin_fixtures.mainnet_origin_ms, window_origin_fixtures.mainnet_origin_ms, bad_total, s, build_tx(s, s2, d, d, start + 1))
+}
+
+/// `total_ten_times_cap_passes_when_param_matches` dời sang gốc Preprod: phải xanh như bản gốc 0.
+test total_ten_times_cap_passes_when_param_matches_origin_preprod() {
+  // ĐỐI CHỨNG DƯƠNG CHO THAM SỐ: CÙNG datum của ca âm thứ nhất, chỉ đổi `reserve_cap` nướng
+  // vào hash thành `10 × e` → PASS. Cặp này chứng minh Luật 1b so với THAM SỐ (thứ nướng vào
+  // script hash, người vận hành chọn lúc deploy) chứ không so với một hằng nào trong mã —
+  // và chứng minh được điều đó mà không cần đột biến mã.
+  let bad_total = 10 * e
+  let s =
+    ReserveState {
+      start_epoch: start,
+      total_oildrop: bad_total,
+      drawn_oildrop: 0,
+      last_epoch: start,
+    }
+  let d = bad_total / 1000
+  let s2 = ReserveState { ..s, drawn_oildrop: d, last_epoch: start + 1 }
+  run_with_cap_at(window_origin_fixtures.preprod_origin_ms, window_origin_fixtures.preprod_origin_ms, bad_total, s, build_tx(s, s2, d, d, start + 1))
+}
+
+/// Ca âm: tx đã dời sang lưới Mainnet nhưng validator nhận gốc 0 (quên trừ gốc) ⇒ phải bị chặn.
+test total_ten_times_cap_passes_when_param_matches_origin_forgotten() fail {
+  // ĐỐI CHỨNG DƯƠNG CHO THAM SỐ: CÙNG datum của ca âm thứ nhất, chỉ đổi `reserve_cap` nướng
+  // vào hash thành `10 × e` → PASS. Cặp này chứng minh Luật 1b so với THAM SỐ (thứ nướng vào
+  // script hash, người vận hành chọn lúc deploy) chứ không so với một hằng nào trong mã —
+  // và chứng minh được điều đó mà không cần đột biến mã.
+  let bad_total = 10 * e
+  let s =
+    ReserveState {
+      start_epoch: start,
+      total_oildrop: bad_total,
+      drawn_oildrop: 0,
+      last_epoch: start,
+    }
+  let d = bad_total / 1000
+  let s2 = ReserveState { ..s, drawn_oildrop: d, last_epoch: start + 1 }
+  run_with_cap_at(0, window_origin_fixtures.mainnet_origin_ms, bad_total, s, build_tx(s, s2, d, d, start + 1))
 }

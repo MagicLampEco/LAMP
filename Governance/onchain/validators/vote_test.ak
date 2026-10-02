@@ -18,6 +18,7 @@ use magiclamp/governance/types.{
 }
 use magiclamp/governance/util
 use vote
+use magiclamp/governance/window_origin_fixtures
 
 const tally_policy: PolicyId = #"7a11"
 
@@ -193,12 +194,40 @@ fn run(
     taad_policy,
     ms_ep,
     window,
+    0,
     Some(vd),
     redeemer,
     own_ref,
     tx,
   )
 }
+
+// ── Gốc cửa sổ (Specs/Window/CONTRACT.md v1.0, WIN-ORIGIN-1..3) ─────────────────
+// Bản của `run` nhận gốc `origin` và dời mọi biên hữu hạn của validity range đi
+// `shift`. `(o, o)`: cùng kịch bản dời sang lưới có gốc ⇒ kết quả phải y như bản gốc 0.
+// `(0, o)`: validator QUÊN gốc trên tx đã dời ⇒ phải bị chặn.
+fn run_at(
+  origin: Int,
+  shift: Int,
+  vd: VoteDatum,
+  redeemer: vote.VoteRedeemer,
+  own_ref: OutputReference,
+  tx: Transaction,
+) -> Bool {
+  vote.vote.spend(
+    tally_policy,
+    nl_policy,
+    taad_policy,
+    ms_ep,
+    window,
+    origin,
+    Some(vd),
+    redeemer,
+    own_ref,
+    window_origin_fixtures.shift_tx(tx, shift),
+  )
+}
+
 
 // ════════════════════════════════════════════════════════════
 // ConsumeForTally
@@ -690,4 +719,69 @@ test roi_nhau_retract_do_tren_cung_tx() fail {
   expect
     run(vd_of(did1, Yes), vote.RetractVote, util.mk_ref(1), tx_sau_cua_so_gom())
   True
+}
+
+/// `consume_happy_mot_phieu` dời sang gốc Mainnet: phải xanh như bản gốc 0.
+test consume_happy_mot_phieu_origin_mainnet() {
+  run_at(window_origin_fixtures.mainnet_origin_ms, window_origin_fixtures.mainnet_origin_ms, 
+    vd_of(did1, Yes),
+    vote.ConsumeForTally { book_proof: fx.mem_b1_1() },
+    util.mk_ref(1),
+    consume_tx_one(),
+  )
+}
+
+/// `consume_happy_mot_phieu` dời sang gốc Preprod: phải xanh như bản gốc 0.
+test consume_happy_mot_phieu_origin_preprod() {
+  run_at(window_origin_fixtures.preprod_origin_ms, window_origin_fixtures.preprod_origin_ms, 
+    vd_of(did1, Yes),
+    vote.ConsumeForTally { book_proof: fx.mem_b1_1() },
+    util.mk_ref(1),
+    consume_tx_one(),
+  )
+}
+
+
+/// Ca âm theo CHIỀU NGƯỢC: chốt thời gian ở đây chỉ chặn "quá sớm" (cận dưới), nên quên gốc
+/// làm epoch LỚN thêm ~3_486 cửa sổ và tx được thả. Bài phân biệt được bản quên gốc là bài
+/// "quá sớm" `reclaim_truoc_han_tu_choi` dời sang lưới có gốc: mã đúng vẫn chặn; mã quên gốc sẽ thả.
+test reclaim_truoc_han_tu_choi_origin_mainnet() fail {
+  expect
+    run_at(window_origin_fixtures.mainnet_origin_ms, window_origin_fixtures.mainnet_origin_ms, 
+      vd_of(did1, Yes),
+      vote.ReclaimVote,
+      util.mk_ref(1),
+      reclaim_tx(close_e + window - 1, refs_ok(), [ctrl, dev]),
+    )
+  True
+}
+
+test reclaim_truoc_han_tu_choi_origin_preprod() fail {
+  expect
+    run_at(window_origin_fixtures.preprod_origin_ms, window_origin_fixtures.preprod_origin_ms, 
+      vd_of(did1, Yes),
+      vote.ReclaimVote,
+      util.mk_ref(1),
+      reclaim_tx(close_e + window - 1, refs_ok(), [ctrl, dev]),
+    )
+  True
+}
+
+/// `reclaim_happy` (nhánh reclaim — ĐỌC cửa sổ) dời sang gốc Mainnet/Preprod: phải xanh như bản gốc 0.
+test reclaim_happy_origin_mainnet() {
+  run_at(window_origin_fixtures.mainnet_origin_ms, window_origin_fixtures.mainnet_origin_ms, 
+    vd_of(did1, Yes),
+    vote.ReclaimVote,
+    util.mk_ref(1),
+    reclaim_tx(close_e + window, refs_ok(), [ctrl, dev]),
+  )
+}
+
+test reclaim_happy_origin_preprod() {
+  run_at(window_origin_fixtures.preprod_origin_ms, window_origin_fixtures.preprod_origin_ms, 
+    vd_of(did1, Yes),
+    vote.ReclaimVote,
+    util.mk_ref(1),
+    reclaim_tx(close_e + window, refs_ok(), [ctrl, dev]),
+  )
 }

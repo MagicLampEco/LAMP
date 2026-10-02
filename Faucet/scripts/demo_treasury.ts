@@ -22,6 +22,7 @@ import { custodyDatumToCbor } from "../../Treasury/offchain/src/datum.js";
 import { buildCollectTx } from "../../Treasury/offchain/src/collectBuilder.js";
 import type { CustodyDatum, CollectItem } from "../../Treasury/offchain/src/types.js";
 import { msPerEpoch, assertMsPerEpochMatchesNetwork } from "../offchain/src/constants.js";
+import { windowOriginMs as windowOriginMsOf } from "@magiclamp/utils";
 import { assertParamCount } from "../../Genesis/offchain/src/applyGate.js";
 
 // BÍ MẬT: tệp này nhận GIÁ TRỊ qua biến môi trường, KHÔNG mở kho khoá và KHÔNG biết
@@ -40,6 +41,10 @@ const PROPOSAL_POLICY = "00".repeat(28);   // placeholder (Collect KHÔNG đọc
 const NETWORK = "Preview" as const;
 const MS_PER_EPOCH = msPerEpoch(NETWORK);
 assertMsPerEpochMatchesNetwork(MS_PER_EPOCH, NETWORK);
+// `window_origin_ms` (Specs/Window/CONTRACT.md v1.0): tham số CUỐI của faucet_nft/faucet_pool/
+// faucet_account/custody/reserve_draw. Lấy từ Utils; Preview KHÔNG có gốc (WIN-PREVIEW) nên dòng
+// này NÉM trên Preview — script chỉ chạy được khi NETWORK là Preprod/Mainnet.
+const WINDOW_ORIGIN_MS = windowOriginMsOf(NETWORK);
 const INSTANCE_ID = "74726561737572792d6c616d70"; // "treasury-lamp" hex
 const RESERVED_MIN_ADA = 3_000_000n;       // ADA giữ cho min-UTxO (không ghi sổ)
 const SEED_LEDGER_OILDROP = 100_000_000n;      // 100 tLAMP seed vào bucket 0
@@ -96,11 +101,12 @@ const custodySeedPolicy: MintingPolicy = { type: "PlutusV3", script: apT("custod
 const custodySeedPid = mintingPolicyToId(custodySeedPolicy);
 
 // ── custody validator → script hash ─────────────────────────────────────────
-// Năm tham số: proposal_policy, seed_policy, ms_per_epoch, lamp_policy, token_name.
+// Sáu tham số: proposal_policy, seed_policy, ms_per_epoch, lamp_policy, token_name, window_origin_ms.
 // Hai khe LAMP (#4-5) là để nhánh `MigrateIn` đo Δ — không đọc "token nào là LAMP" từ datum
 // được, vì datum do người gửi đặt ⇒ phải nướng vào script hash.
 const custodyScript: Validator = { type: "PlutusV3", script: apT("custody.custody.spend", [
   PROPOSAL_POLICY, custodySeedPid, MS_PER_EPOCH, LAMP_POLICY, LAMP_NAME,
+  WINDOW_ORIGIN_MS,   // #6 window_origin_ms — tham số CUỐI
 ]) };
 const custodyHash = validatorToScriptHash(custodyScript);
 const custodyAddr = credentialToAddress("Preview", scriptHashToCredential(custodyHash));

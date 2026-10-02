@@ -61,6 +61,7 @@ pub fn account_spend(
   lamp_policy: ByteArray,
   lamp_name: ByteArray,
   ms_per_epoch: Int,
+  window_origin_ms: Int,
   datum_opt: Option<FaucetAccount>,
   redeemer: AccountRedeemer,
   own_ref: OutputReference,
@@ -89,7 +90,7 @@ pub fn account_spend(
       // ── C-USE-EPOCH-1: mốc neo vào thời gian thật ────────────────────────
       // Với cận dưới, chủ DID viết `last_*` về một bucket rất xa rồi thoả
       // cooldown ngay tx sau — né cooldown trên chính đường hợp lệ.
-      let now = util.get_epoch_pinned(tx, ms_per_epoch)
+      let now = util.get_epoch_pinned(tx, ms_per_epoch, window_origin_ms)
 
       // đúng 1 account output cùng script.
       expect util.count_outputs_at_script(tx.outputs, own_hash) == 1
@@ -139,7 +140,7 @@ pub fn account_spend(
 
     // ── TOPUP (account nhận thêm drip trong tx pool.ClaimAgain) ───────────
     TopUp -> {
-      let now = util.get_epoch_pinned(tx, ms_per_epoch)
+      let now = util.get_epoch_pinned(tx, ms_per_epoch, window_origin_ms)
 
       expect util.count_outputs_at_script(tx.outputs, own_hash) == 1
       let acct_out = util.output_at_script(tx.outputs, own_hash)
@@ -193,7 +194,7 @@ pub fn account_spend(
     ReclaimIdle -> {
       // CỐ Ý dùng cận dưới ở nhánh này: người thu hồi lùi thời gian thì chỉ tự
       // mình không đủ điều kiện. Mọi nhánh khác dùng `get_epoch_pinned`.
-      let now = util.get_epoch(tx, ms_per_epoch)
+      let now = util.get_epoch(tx, ms_per_epoch, window_origin_ms)
 
       // Idle đủ lâu, đọc mốc IDLE (không phải mốc cooldown).
       expect now >= acct.last_touch_epoch + reclaim_epochs_const
@@ -241,6 +242,7 @@ pub fn account_spend(
 pub fn nft_mint(
   genesis_ref: OutputReference,
   ms_per_epoch: Int,
+  window_origin_ms: Int,
   redeemer: FaucetNftRedeemer,
   policy_id: PolicyId,
   tx: Transaction,
@@ -283,7 +285,7 @@ pub fn nft_mint(
       // C-MP-6: cửa sổ khởi tạo = bucket THẬT. Không có dòng này thì
       // `window_epoch = 0` (giá trị mặc định tự nhiên nhất khi viết builder)
       // cho sẵn hàng nghìn bậc thang quota dùng được ngay sau deploy.
-      expect pd.window_epoch == util.get_epoch_pinned(tx, ms_per_epoch)
+      expect pd.window_epoch == util.get_epoch_pinned(tx, ms_per_epoch, window_origin_ms)
       expect pd.cfg.drip_oildrop > 0
       expect pd.cfg.cooldown_epochs >= 0
       expect pd.cfg.max_claims_per_window > 0

@@ -114,14 +114,39 @@ export function custodySeedAddress(
     : credentialToAddress(network, payment, stakeCredential);
 }
 
-export function sameEpochValidToMs(validFromMs: bigint, msPerEpoch: bigint): bigint {
+/**
+ * Cửa sổ của một mốc POSIX ms: `(tMs − windowOriginMs) / msPerEpoch` (Specs/Window/CONTRACT.md v1.0,
+ * WIN-ORIGIN-1) — khớp `util.get_epoch` on-chain. BẢN CHÉP CÓ NHÃN của `Utils/src/index.ts` ▸
+ * `windowIndex` (nguồn; chép 2026-10-02): gói `Treasury/offchain` không có phụ thuộc `@magiclamp/utils`
+ * (không được thêm vào package.json) và `rootDir: ".."` chặn import tương đối xuyên `Utils/` (TS6059),
+ * nên phép chia nằm ở đây — bài `Treasury/tests/windowOrigin.test.ts` ghim vector spec §3.
+ *
+ * `windowOriginMs` BẮT BUỘC (bigint ≥ 0), mốc TRƯỚC gốc NÉM: BigInt chia cắt về 0 nên `(t − o) / m`
+ * trả 0 cho cả dải `(o − m, o)` — một nhãn "cửa sổ 0" giả cho thời điểm chưa thuộc cửa sổ nào.
+ */
+export function windowIndexOf(tMs: bigint, windowOriginMs: bigint, msPerEpoch: bigint): bigint {
   if (msPerEpoch <= 0n) throw new Error("EPOCH-000: msPerEpoch phải > 0");
-  const epoch = validFromMs / msPerEpoch;
+  if (typeof windowOriginMs !== "bigint" || windowOriginMs < 0n) {
+    throw new Error(
+      `WINDOW-ORIGIN-001: windowOriginMs phải là bigint ≥ 0, nhận ${String(windowOriginMs)}. Thiếu nó ` +
+      `thì cửa sổ bị chia từ gốc Unix — lưới cũ (Specs/Window/CONTRACT.md v1.0). Lấy từ ` +
+      `\`windowOriginMs(network)\` của @magiclamp/utils.`,
+    );
+  }
+  if (tMs < windowOriginMs) {
+    throw new Error(`WINDOW-ORIGIN-002: mốc ${tMs} ms trước windowOriginMs ${windowOriginMs} — không rơi vào cửa sổ nào.`);
+  }
+  return (tMs - windowOriginMs) / msPerEpoch;
+}
+
+export function sameEpochValidToMs(validFromMs: bigint, msPerEpoch: bigint, windowOriginMs: bigint): bigint {
+  const epoch = windowIndexOf(validFromMs, windowOriginMs, msPerEpoch);
   // KẸP bởi `validFrom + VALID_TTL_MS`: epoch Preprod/Mainnet dài 5 ngày, đầu trên ở cuối epoch
   // có thể vượt chân trời dự báo của node (~1,5 ngày) ⇒ giao dịch có script bị từ chối với
   // PastHorizon (đã gặp thật: `Faucet/scripts/demo_reserve_draw_resume.ts`, dòng đầu tệp).
   // Trên Preview epoch 1 ngày nên bản trước không lộ lỗi.
-  const epochEnd = (epoch + 1n) * msPerEpoch - 1n;
+  // Cuối cửa sổ = `origin + (epoch + 1)·mspe − 1` (Utils ▸ `windowEndMs`).
+  const epochEnd = windowOriginMs + (epoch + 1n) * msPerEpoch - 1n;
   const ttlEnd = validFromMs + VALID_TTL_MS;
   return epochEnd < ttlEnd ? epochEnd : ttlEnd;
 }
@@ -153,10 +178,12 @@ export interface CollectParams {
   items: CollectItem[];
 
   /** validity_range lower bound (POSIX ms). out_datum.epoch suy TRỰC TIẾP từ đây:
-   *  epoch = ⌊validFromMs / msPerEpoch⌋ (C-EPOCH — neo chain). */
+   *  epoch = ⌊(validFromMs − windowOriginMs) / msPerEpoch⌋ (C-EPOCH — neo chain). */
   validFromMs: bigint;
   /** POSIX ms ↔ epoch (mirror onchain ms_per_epoch). */
   msPerEpoch:  bigint;
+  /** `window_origin_ms` đã nướng vào `custody` (khe CUỐI) — Specs/Window/CONTRACT.md v1.0. BẮT BUỘC. */
+  windowOriginMs: bigint;
 
   /** seed_policy (PolicyId NFT authenticity). ÉP cust_in mang NFT (seed_policy, instance_id). */
   seedPolicy?: string;
@@ -241,14 +268,16 @@ export function planCollect(
 }
 
 export async function buildCollectTx(params: CollectParams): Promise<CollectResult> {
-  const { lucid, network, custodyUtxo, custodyScript, items, validFromMs, msPerEpoch, seedPolicy } = params;
+  const {
+    lucid, network, custodyUtxo, custodyScript, items, validFromMs, msPerEpoch, windowOriginMs, seedPolicy,
+  } = params;
 
   if (!custodyUtxo.datum) throw new Error("COLLECT-000: custodyUtxo has no inline datum");
   const datum = decodeCustodyDatum(Data.from(custodyUtxo.datum));
 
   const valueIn = assetsToMap(custodyUtxo.assets);
-  // C-EPOCH: epoch neo TRỰC TIẾP từ validity_range lower bound (⌊validFromMs/msPerEpoch⌋).
-  const newEpoch = validFromMs / msPerEpoch;
+  // C-EPOCH: epoch neo TRỰC TIẾP từ validity_range lower bound (⌊(validFromMs − gốc)/msPerEpoch⌋).
+  const newEpoch = windowIndexOf(validFromMs, windowOriginMs, msPerEpoch);
   const { newDatum, custodyAfter, cut } = planCollect(datum, valueIn, items, newEpoch, seedPolicy);
 
   // C-COL-ADDR: địa chỉ kho MANG THEO từ input (kể cả stake credential), không dựng lại.
@@ -259,7 +288,7 @@ export async function buildCollectTx(params: CollectParams): Promise<CollectResu
 
   // F4: validity_range HỮU HẠN + lower&upper CÙNG epoch (mirror get_epoch_bounded).
   // validFrom = validFromMs; validTo = ms cuối CÙNG epoch ⇒ ⌊validTo/ms⌋ == newEpoch.
-  const validToMs = sameEpochValidToMs(validFromMs, msPerEpoch);
+  const validToMs = sameEpochValidToMs(validFromMs, msPerEpoch, windowOriginMs);
 
   // Custody output: value = value_in ⊕ cut (caller phải cấp đủ cut từ provider fund).
   // validFrom/validTo neo epoch GỌN 1 epoch → on-chain get_epoch_bounded(tx) == newEpoch.

@@ -18,6 +18,7 @@ import {
   toUnit, Data, type Network, type Validator, type UTxO,
 } from "@lucid-evolution/lucid";
 import { assertParamCountFromBlueprint } from "../../Genesis/offchain/src/applyGate.js";
+import { windowOriginMs as windowOriginMsOf, type Network as UtilsNetwork } from "../../Utils/src/index.js";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
@@ -48,6 +49,10 @@ const LAMP_NAME = process.env.LAMP_NAME ?? "744c414d50"; // tLAMP
 
 const ZERO28 = "00".repeat(28);
 const MS_PER_EPOCH = 86_400_000n;       // 1 ngày/epoch
+// `window_origin_ms` (Specs/Window/CONTRACT.md v1.0) — tham số CUỐI của claim_account. Preview
+// KHÔNG có gốc (WIN-PREVIEW) nên dòng này NÉM khi NETWORK=Preview: demo này chỉ chạy được sau khi
+// chuyển sang Preprod/Mainnet (và `MS_PER_EPOCH` sang `msPerEpoch(NETWORK)` của Utils).
+const WINDOW_ORIGIN_MS = windowOriginMsOf(NETWORK as UtilsNetwork);   // `Network` của Lucid có thêm "Custom"
 const DROP_VALUE = 1_000_000n;          // D = 1 LAMP / drop·epoch
 const CHANNEL_ID = Buffer.from("DEMO").toString("hex"); // "DEMO" hex
 const ENTITLEMENT = 5_000_000n;         // 5 LAMP
@@ -79,10 +84,12 @@ async function main() {
 
   // ── Apply params ────────────────────────────────────────────────────
   // claim_account(committee, threshold, ms_per_epoch, lamp_policy, lamp_name, drop_value,
-  //               budget_nft_policy) — phá vòng: BỎ channel_budget_hash. budget_nft_policy
+  //               budget_nft_policy, …, window_origin_ms) — phá vòng: BỎ channel_budget_hash. budget_nft_policy
   //   = placeholder 0×28 (Redeem KHÔNG đọc nó; chỉ Claim dùng để khoá chéo budget beacon).
   const claimScript: Validator = await applyChecked("claim_account.claim_account.spend", [
-    [pkh], 1n, MS_PER_EPOCH, LAMP_POLICY, LAMP_NAME, DROP_VALUE, ZERO28,
+    // GHI CHÚ: blueprint còn khe `account_nft_policy` (#8) mà demo này chưa nạp — lệch từ trước đợt
+    // gốc cửa sổ; cổng APPLY-001 sẽ ném tới khi bổ sung. `window_origin_ms` là khe CUỐI (#9).
+    [pkh], 1n, MS_PER_EPOCH, LAMP_POLICY, LAMP_NAME, DROP_VALUE, ZERO28, WINDOW_ORIGIN_MS,
   ]);
   const claimHash = validatorToScriptHash(claimScript);
   const claimAddr = credentialToAddress(NETWORK, scriptHashToCredential(claimHash));
@@ -137,7 +144,7 @@ async function main() {
     lucid, network: NETWORK,
     claimAccountUtxo: claimUtxo, claimScript,
     treasuryUtxo: treUtxo, treasuryScript,
-    dropValue: DROP_VALUE, msPerEpoch: MS_PER_EPOCH, validFromMs,
+    dropValue: DROP_VALUE, msPerEpoch: MS_PER_EPOCH, windowOriginMs: WINDOW_ORIGIN_MS, validFromMs,
     lampPolicyId: LAMP_POLICY, lampAssetName: LAMP_NAME,
   });
   console.log(redeem.summary);

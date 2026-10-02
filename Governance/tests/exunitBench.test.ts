@@ -31,6 +31,10 @@ import { buildCastVoteTx } from "../offchain/src/voteBuilders.js";
 import { buildMintWeightParamTx } from "../offchain/src/weightParamBuilder.js";
 
 const MS_PER_EPOCH = 3_600_000n;
+// Gốc cửa sổ THẬT của Mainnet (Specs/Window/CONTRACT.md v1.0 §3), không phải 0: gốc 0 không phân
+// biệt được bản có trừ gốc với bản quên trừ. Emulator chạy ở giờ thật (> gốc này) nên mọi mốc
+// `now` đều ở sau gốc.
+const ORIGIN_MS = 1_506_203_091_000n;
 const blueprint = JSON.parse(readFileSync(resolve(__dirname, "../onchain/plutus.json"), "utf8"));
 const pkhOf = (a: EmulatorAccount) => paymentCredentialOf(a.address).hash;
 
@@ -51,10 +55,10 @@ async function submit(emulator: Emulator, tx: TxSignBuilder, extraKeys: string[]
 }
 
 function advanceToEpoch(emulator: Emulator, target: bigint) {
-  const t = Number(target * MS_PER_EPOCH) + 10_000;
+  const t = Number(ORIGIN_MS + target * MS_PER_EPOCH) + 10_000;
   emulator.awaitSlot(Math.ceil((t - emulator.now()) / 1000));
 }
-const epochNow = (em: Emulator) => BigInt(Math.floor(em.now() / Number(MS_PER_EPOCH)));
+const epochNow = (em: Emulator) => (BigInt(em.now()) - ORIGIN_MS) / MS_PER_EPOCH;
 
 const k = (c: bigint, pow: bigint): Knot => ({ c, pow });
 const LIN2 = [k(0n, 0n), k(100n, 100n * SCALE)];
@@ -105,7 +109,7 @@ async function runScenario(label: string, tables: { k1: Knot[]; k2: Knot[]; k3: 
   const wpSeed = (await lucid.wallet().getUtxos())[0]!;
   let cfg: GovernanceConfig = applyGovernanceBlueprint(blueprint, {
     phaseTag: "5031", taadPolicyId, c3PolicyId, c3ScriptHash,
-    msPerEpoch: MS_PER_EPOCH, tallyWindowEpochs: 2n, deltaMinEpochs: 1n, recoveryTimelockEpochs: 10n,
+    msPerEpoch: MS_PER_EPOCH, windowOriginMs: ORIGIN_MS, tallyWindowEpochs: 2n, deltaMinEpochs: 1n, recoveryTimelockEpochs: 10n,
     weightParam: {
       seedRef: { transaction_id: wpSeed.txHash, output_index: BigInt(wpSeed.outputIndex) },
       phaseTag: "5031", bftFloorMin: 1n, bftFloorMax: 64n, quorumVotersMin: 1n,

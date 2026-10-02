@@ -19,7 +19,7 @@ import {
   credentialToAddress, getAddressDetails, scriptHashToCredential, validatorToScriptHash,
 } from "@lucid-evolution/lucid";
 import {
-  NETWORK, MS_PER_EPOCH,
+  NETWORK, MS_PER_EPOCH, windowOrigin,
   makeLucidOrNull, walletPkh,
   applyCustodyInstance, applyTreasuryStakeInstance, resolveProposalPolicy,
   resolveLampPolicy, custodyTokenName,
@@ -133,6 +133,7 @@ async function main(): Promise<void> {
 
   console.log(`Network:         ${NETWORK}`);
   console.log(`ms_per_epoch:    ${MS_PER_EPOCH}`);
+  console.log(`window_origin_ms:${windowOrigin()}  (Specs/Window v1.0 — Utils ▸ WINDOW_ORIGIN_MS_BY_NETWORK)`);
   console.log(`Mode:            ${dry ? "DRY (apply-params + plan tĩnh)" : "LIVE (build tx dry-run, KHÔNG submit)"}`);
   warnLiveBlocked(guard);                // in cảnh báo nếu LIVE bị chặn vì placeholder
   console.log(`genesis_ref:     ${genesisRef.transaction_id}#${genesisRef.output_index}  (${genSource})`);
@@ -249,6 +250,7 @@ async function main(): Promise<void> {
   const state: SeededInstance = {
     network:        NETWORK,
     msPerEpoch:     MS_PER_EPOCH.toString(),
+    windowOriginMs: applied.windowOriginMs.toString(),
     instanceId:     INSTANCE_ID,
     custodyHash:    applied.custodyHash,
     // Địa chỉ GHI VÀO SỔ là địa chỉ BASE — chính là địa chỉ tx rót vào. Ghi bản enterprise

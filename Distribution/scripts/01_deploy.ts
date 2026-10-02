@@ -29,7 +29,7 @@
 
 import { createHash } from "node:crypto";
 import {
-  NETWORK, MS_PER_EPOCH, LAMP_ASSET_NAME,
+  NETWORK, MS_PER_EPOCH, windowOrigin, LAMP_ASSET_NAME,
   makeLucid, walletPkh, resolveCommittee,
   rawValidator, applyValidator, scriptAddress, scriptHash,
   nativeSigPolicyId, beaconNftPolicyIdFromRef, treasuryNftPolicyIdFromRef,
@@ -81,6 +81,7 @@ async function main(): Promise<void> {
 
   console.log(`Network:           ${NETWORK}`);
   console.log(`ms_per_epoch:      ${MS_PER_EPOCH}`);
+  console.log(`window_origin_ms:  ${windowOrigin()}  (Specs/Window v1.0 — Utils ▸ WINDOW_ORIGIN_MS_BY_NETWORK)`);
   console.log(`Deploy wallet PKH: ${pkh}`);
   console.log(`Committee source:  ${committee.source}`);
   console.log(`Committee keys:    ${committee.keyHashes.length} (threshold ${committee.threshold})`);
@@ -226,6 +227,7 @@ async function main(): Promise<void> {
     beaconNftPolicy,
     treasuryNftPolicy,
     accountNftPolicy,
+    windowOrigin(),
   ]);
   const claimHash = scriptHash(claimScript);
   const claimAddr = scriptAddress(claimScript);
@@ -237,6 +239,7 @@ async function main(): Promise<void> {
     thresholdData,
     beaconNftPolicy,
     MS_PER_EPOCH,
+    windowOrigin(),
   ]);
   const beaconHash = scriptHash(beaconScript);
   const beaconAddr = scriptAddress(beaconScript);
@@ -254,6 +257,8 @@ async function main(): Promise<void> {
     // v3, tham số thứ 8: `GrantEntitlement` đọc beacon làm reference input để ghim
     // `index_at_start` (C-CLAIM-8), nên treasury phải biết NFT nào xác thực beacon.
     beaconNftPolicy,
+    // `window_origin_ms` — tham số CUỐI (Specs/Window/CONTRACT.md v1.0).
+    windowOrigin(),
   ]);
   const treasuryHash = scriptHash(treasuryScript);
   const treasuryAddr = scriptAddress(treasuryScript);
@@ -277,6 +282,7 @@ async function main(): Promise<void> {
       String(committee.threshold),
       lampPolicy, lampName, beaconNftPolicy, treasuryNftPolicy, accountNftPolicy,
       MS_PER_EPOCH.toString(),
+      windowOrigin().toString(),
       claimHash, beaconHash, treasuryHash,
     ].join("|"))
     .digest("hex")
@@ -293,6 +299,7 @@ async function main(): Promise<void> {
   console.log(`   treasury_nft_policy:${treasuryNftPolicy}`);
   console.log(`   account_nft_policy: ${accountNftPolicy}`);
   console.log(`   ms_per_epoch:       ${MS_PER_EPOCH}`);
+  console.log(`   window_origin_ms:   ${windowOrigin()}`);
   console.log(`   3-hash checksum:    ${checksum}`);
   console.log();
 
@@ -319,6 +326,7 @@ async function main(): Promise<void> {
     treasury:     { hash: treasuryHash, address: treasuryAddr },
     params: {
       msPerEpoch: MS_PER_EPOCH.toString(),
+      windowOriginMs: windowOrigin().toString(),
       lampPolicy,
       lampName,
       beaconNftPolicy,

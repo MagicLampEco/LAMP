@@ -38,6 +38,7 @@ import {
   msPerEpoch, assertMsPerEpochMatchesNetwork,
 } from "../offchain/src/constants.js";
 import { pinnedEpochWindow } from "../offchain/src/epochWindow.js";
+import { windowOriginMs as windowOriginMsOf } from "@magiclamp/utils";
 import { OPENED_ROOT_EMPTY } from "../offchain/src/openedLedger.js";
 import type { FaucetConfig, PoolDatum } from "../offchain/src/types.js";
 
@@ -61,6 +62,10 @@ const MAX_CLAIMS_PER_WINDOW = BigInt(process.env.MAX_CLAIMS_PER_WINDOW ?? "20");
 const NETWORK = "Preview" as const;
 const MS_PER_EPOCH = msPerEpoch(NETWORK);
 assertMsPerEpochMatchesNetwork(MS_PER_EPOCH, NETWORK);
+// `window_origin_ms` (Specs/Window/CONTRACT.md v1.0): tham số CUỐI của faucet_nft/faucet_pool/
+// faucet_account/custody/reserve_draw. Lấy từ Utils; Preview KHÔNG có gốc (WIN-PREVIEW) nên dòng
+// này NÉM trên Preview — script chỉ chạy được khi NETWORK là Preprod/Mainnet.
+const WINDOW_ORIGIN_MS = windowOriginMsOf(NETWORK);
 
 const lucid = await Lucid(
   new Blockfrost(`https://cardano-preview.blockfrost.io/api/v0`, process.env.BLOCKFROST_KEY!),
@@ -140,14 +145,15 @@ const genesis = utxos0.reduce((a, b) => ((b.assets.lovelace ?? 0n) > (a.assets.l
 const genesisRef = new Constr(0, [genesis.txHash, BigInt(genesis.outputIndex)]);
 console.log(`[deploy] genesis ref: ${genesis.txHash}#${genesis.outputIndex}`);
 
-const faucetNftPolicy: MintingPolicy = { type: "PlutusV3", script: applyChecked("faucet_nft.faucet_nft.mint", [genesisRef, MS_PER_EPOCH]) };
+const faucetNftPolicy: MintingPolicy = { type: "PlutusV3", script: applyChecked("faucet_nft.faucet_nft.mint", [genesisRef, MS_PER_EPOCH, WINDOW_ORIGIN_MS]) };
 const faucetNftPid = mintingPolicyToId(faucetNftPolicy);
 
-const acctParams = [faucetNftPid, didPolicyId, LAMP_POLICY, LAMP_NAME, MS_PER_EPOCH];
+const acctParams = [faucetNftPid, didPolicyId, LAMP_POLICY, LAMP_NAME, MS_PER_EPOCH, WINDOW_ORIGIN_MS];
 const faucetAccountScript: Validator = { type: "PlutusV3", script: applyChecked("faucet_account.faucet_account.spend", acctParams) };
 const accountScriptHash = validatorToScriptHash(faucetAccountScript);
 
-const poolParams = [...acctParams, accountScriptHash];
+// `window_origin_ms` luôn là tham số CUỐI ⇒ account_script_hash đứng TRƯỚC nó ở pool.
+const poolParams = [faucetNftPid, didPolicyId, LAMP_POLICY, LAMP_NAME, MS_PER_EPOCH, accountScriptHash, WINDOW_ORIGIN_MS];
 const faucetPoolScript: Validator = { type: "PlutusV3", script: applyChecked("faucet_pool.faucet_pool.spend", poolParams) };
 
 const poolAddr = credentialToAddress("Preview", scriptHashToCredential(validatorToScriptHash(faucetPoolScript)));
@@ -168,7 +174,7 @@ const cfg: FaucetConfig = { drip_oildrop: DRIP_OILDROP, cooldown_epochs: COOLDOW
 let poolInitialDatum: PoolDatum;
 {
   // C-MP-6: window_epoch khởi tạo PHẢI đúng bucket THẬT — pinned, không phải 0 mặc định.
-  const { loMs, hiMs, epoch } = pinnedEpochWindow(Date.now(), Number(MS_PER_EPOCH));
+  const { loMs, hiMs, epoch } = pinnedEpochWindow(Date.now(), Number(MS_PER_EPOCH), Number(WINDOW_ORIGIN_MS));
   // C-MP-8: sổ `opened_root` khởi tạo RỖNG.
   poolInitialDatum = { cfg, window_epoch: epoch, claims_in_window: 0n, opened_root: OPENED_ROOT_EMPTY };
 
@@ -215,7 +221,7 @@ let accountRef: { txHash: string; outputIndex: number };
     // thật (FAUCET-LEDGER-001 nếu lệch) chứ không tin danh sách này suông.
     openedLedger: [],
     tlampPolicyId: LAMP_POLICY, tlampAssetName: LAMP_NAME,
-    nowMs: Date.now(), msPerEpoch: MS_PER_EPOCH,
+    nowMs: Date.now(), msPerEpoch: MS_PER_EPOCH, windowOriginMs: WINDOW_ORIGIN_MS,
   });
   const h = await (await res.tx.sign.withWallet().complete()).submit();
   console.log(`[T2] ClaimOpen ${res.drip / 1_000_000n} tLAMP → account (epoch=${res.epoch}) ${link(h)}`);
@@ -247,7 +253,7 @@ let accountRef: { txHash: string; outputIndex: number };
     accountUtxo: acctUtxo, faucetAccountScript, faucetNftPolicyId: faucetNftPid,
     didUtxo, didNftPolicyId: didPolicyId, didName: DID_NAME,
     tlampPolicyId: LAMP_POLICY, tlampAssetName: LAMP_NAME,
-    nowMs: Date.now(), msPerEpoch: MS_PER_EPOCH,
+    nowMs: Date.now(), msPerEpoch: MS_PER_EPOCH, windowOriginMs: WINDOW_ORIGIN_MS,
   });
   const h = await (await res.tx.sign.withWallet().complete()).submit();
   console.log(`[T3] Use (last_touch_epoch=${res.epoch}) ${link(h)}`);

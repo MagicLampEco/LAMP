@@ -259,6 +259,7 @@ fn happy_tx() -> Transaction {
 fn run_raw(tx: Transaction, d_in: CustodyDatum, amount: Int) -> Bool {
   custody.custody.spend(
     #"feed", seed_policy, ms_per_epoch, lamp_policy, lamp_name,
+      0,
     Some(d_in), StakeRewardIn { amount }, util.mk_ref(0), tx,
   )
 }

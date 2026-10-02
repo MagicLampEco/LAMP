@@ -73,20 +73,26 @@ pub fn get_finite(bt: IntervalBoundType) -> Option<Int> {
 }
 
 /// Bucket suy từ cận DƯỚI. ĐỌC CHÚ THÍCH TRÊN trước khi dùng.
-pub fn get_epoch(tx: Transaction, ms_per_epoch: Int) -> Int {
+pub fn get_epoch(tx: Transaction, ms_per_epoch: Int, window_origin_ms: Int) -> Int {
   expect Some(s) = tx.validity_range.lower_bound.bound_type |> get_finite
-  s / ms_per_epoch
+  // WIN-ORIGIN-1 (Specs/Window/CONTRACT.md v1.0).
+  ( s - window_origin_ms ) / ms_per_epoch
 }
 
 /// Bucket của tx, ĐƯỢC NEO VÀO THỜI GIAN THẬT: cả hai cận hữu hạn và cùng bucket.
 /// Nghĩa vụ off-chain đi kèm: builder đặt `lo = now_ms`,
-/// `hi = min(now_ms + ttl, (lo / ms_per_epoch + 1) × ms_per_epoch − 1)`; nếu phần
+/// `hi = min(now_ms + ttl, o + ((lo − o) / ms_per_epoch + 1) × ms_per_epoch − 1)` với
+/// `o = window_origin_ms` (WIN-ORIGIN-2); nếu phần
 /// còn lại của bucket ngắn hơn ttl tối thiểu thì CHỜ sang bucket sau, không nới `hi`.
-pub fn get_epoch_pinned(tx: Transaction, ms_per_epoch: Int) -> Int {
+pub fn get_epoch_pinned(
+  tx: Transaction,
+  ms_per_epoch: Int,
+  window_origin_ms: Int,
+) -> Int {
   expect Some(lo) = tx.validity_range.lower_bound.bound_type |> get_finite
   expect Some(hi) = tx.validity_range.upper_bound.bound_type |> get_finite
-  let e = lo / ms_per_epoch
-  expect hi / ms_per_epoch == e
+  let e = ( lo - window_origin_ms ) / ms_per_epoch
+  expect ( hi - window_origin_ms ) / ms_per_epoch == e
   e
 }
 

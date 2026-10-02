@@ -25,7 +25,7 @@ import {
   Constr,
   type LucidEvolution, type Validator, type MintingPolicy,
 } from "@lucid-evolution/lucid";
-import { msPerEpoch, type Network } from "@magiclamp/utils";
+import { msPerEpoch, windowOriginMs, windowOf, type Network } from "@magiclamp/utils";
 import { assertCommitteeShape } from "../offchain/src/committee.js";
 import { assertParamCount as assertParamCountGate } from "../offchain/src/applyGate.js";
 import { readFile } from "node:fs/promises";
@@ -60,6 +60,15 @@ export const PRIVATE_KEY    = process.env.PRIVATE_KEY ?? "";
 export const WALLET_SEED    = (process.env.WALLET_SEED ?? "").trim().replace(/\s+/g, " ");
 
 export const MS_PER_EPOCH = msPerEpoch(NETWORK);
+
+/**
+ * `window_origin_ms` của mạng đang chạy (Specs/Window/CONTRACT.md v1.0) — hàm, KHÔNG phải hằng
+ * toàn cục: Preview không có giá trị (WIN-PREVIEW, `windowOriginMs` ném lỗi) và một hằng ở
+ * đầu tệp sẽ làm mọi `import` config chết trước khi script kịp nói mình cần gì.
+ */
+export function windowOrigin(): bigint {
+  return windowOriginMs(NETWORK);
+}
 
 /** Bắt lỗi rõ ràng khi thiếu credential: nói THIẾU BIẾN NÀO, không nói tìm nó ở đâu. */
 export function assertEnv(): void {
@@ -330,9 +339,10 @@ export async function tipPosixMs(): Promise<bigint> {
   return BigInt(tip.time) * 1000n;
 }
 
-/** current epoch = tipPosixMs / ms_per_epoch (khớp Aiken posix_ms_to_epoch). */
+/** Cửa sổ hiện tại = (tipPosixMs − window_origin_ms) / ms_per_epoch (khớp Aiken `get_epoch`);
+ *  trên Preprod/Mainnet chính là số epoch Cardano. Tính ở `Utils` ▸ `windowOf`. */
 export async function currentEpoch(): Promise<bigint> {
-  return (await tipPosixMs()) / MS_PER_EPOCH;
+  return windowOf(await tipPosixMs(), NETWORK);
 }
 
 // ── deployed.json (state file giữa các bước) ───────────────────
@@ -370,6 +380,9 @@ export interface DeployedState {
   // validator params (để re-apply deterministically ở bước sau)
   params: {
     msPerEpoch: string;
+    /** `window_origin_ms` đã nướng vào claim_account/beacon/treasury (tham số CUỐI của cả ba,
+     *  Specs/Window/CONTRACT.md v1.0). bigint dạng chuỗi. Thiếu ⇒ deployed.json cũ. */
+    windowOriginMs: string;
     lampPolicy: string;
     lampName: string;
     beaconNftPolicy: string;
@@ -485,6 +498,8 @@ export async function saveDeployed(state: DeployedState): Promise<void> {
  *
  * Danh sách tham số PHẢI khớp blueprint — `applyValidator` chặn bằng APPLY-001. Sau PR #22:
  * claim_account 8 tham số (thêm `account_nft_policy`), treasury 6 (thêm `account_nft_policy`).
+ * Specs/Window v1.0 thêm `window_origin_ms` làm tham số CUỐI của claim_account (9), beacon (5),
+ * treasury (9).
  */
 export async function reapplyValidators(state: DeployedState): Promise<{
   claimScript: Validator;
@@ -496,6 +511,14 @@ export async function reapplyValidators(state: DeployedState): Promise<{
   const committee  = state.committee.keyHashes;
   const threshold  = BigInt(state.committee.threshold);
   const msPerEpochBaked = BigInt(p.msPerEpoch);
+  if (typeof p.windowOriginMs !== "string") {
+    throw new Error(
+      "deployed.json thiếu params.windowOriginMs — state này deploy TRƯỚC khi mọi validator có " +
+      "tham số `window_origin_ms` (Specs/Window/CONTRACT.md v1.0). Script hash cũ không còn khớp " +
+      "validator nào đang build; chạy lại 'npm run deploy' để sinh bộ địa chỉ mới.",
+    );
+  }
+  const windowOriginBaked = BigInt(p.windowOriginMs);
 
   // ── deployed.json ĐÃ CŨ so với bảng epoch hiện tại (fail-closed) ─────────────
   // Không phép kiểm hash nào bên dưới bắt được chuyện này: `ms_per_epoch` là tham số #3 của
@@ -522,6 +545,16 @@ export async function reapplyValidators(state: DeployedState): Promise<{
     );
   }
 
+  if (windowOriginBaked !== windowOrigin()) {
+    throw new Error(
+      `deployed.json ĐÃ CŨ: params.windowOriginMs=${windowOriginBaked} nhưng gốc cửa sổ của ` +
+      `${NETWORK} là ${windowOrigin()} (Utils ▸ WINDOW_ORIGIN_MS_BY_NETWORK). Gốc nướng trong script ` +
+      `hash nên re-apply vẫn khớp hash — desync chỉ lộ ra trên chuỗi: off-chain gửi validity_range ` +
+      `theo gốc ${windowOrigin()} còn validator trừ ${windowOriginBaked}, nhãn cửa sổ lệch. ` +
+      `Chạy lại 'npm run deploy'.`,
+    );
+  }
+
   if (!p.accountNftPolicy) {
     throw new Error(
       "deployed.json thiếu params.accountNftPolicy — state này deploy TRƯỚC khi có NFT tài " +
@@ -541,10 +574,12 @@ export async function reapplyValidators(state: DeployedState): Promise<{
   const claimScript = applyValidator(rawClaim.compiledCode, [
     committee, threshold, msPerEpochBaked, p.lampPolicy, p.lampName,
     p.beaconNftPolicy, p.treasuryNftPolicy, p.accountNftPolicy,
+    windowOriginBaked,
   ]);
   const rawBeacon = await rawValidator("beacon.beacon.spend");
   const beaconScript = applyValidator(rawBeacon.compiledCode, [
     committee, threshold, p.beaconNftPolicy, msPerEpochBaked,
+    windowOriginBaked,
   ]);
   const rawTreasury = await rawValidator("treasury.treasury.spend");
   const treasuryScript = applyValidator(rawTreasury.compiledCode, [
@@ -554,6 +589,8 @@ export async function reapplyValidators(state: DeployedState): Promise<{
     // (làm reference input) để ghim `index_at_start` — nó cần biết NFT nào xác thực beacon,
     // nếu không ai cũng dựng được một "beacon" mang chỉ số tuỳ ý.
     p.beaconNftPolicy,
+    // `window_origin_ms` — tham số CUỐI (Specs/Window/CONTRACT.md v1.0).
+    windowOriginBaked,
   ]);
 
   // verify hash khớp

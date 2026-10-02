@@ -56,14 +56,9 @@ export function msPerEpoch(network: Network): bigint {
   return MS_PER_EPOCH_BY_NETWORK[network];
 }
 
-/** POSIX ms → PROTOCOL epoch: `posixMs / ms_per_epoch`, origin = Unix epoch (1970), NOT
- *  the network genesis. This is the epoch system of every LAMP validator:
- *  `Distribution/onchain/lib/magiclamp/lampdist/util.ak` ▸ `get_epoch` / `get_epoch_strict`
- *  (`lower_bound / ms_per_epoch`). It is a different number from the Cardano (chain) epoch
- *  returned by `slotToEpoch` — see the note above `slotToEpoch`. */
-export function posixMsToEpoch(posixMs: bigint, network: Network): bigint {
-  return posixMs / msPerEpoch(network);
-}
+// (`posixMsToEpoch` — `posixMs / ms_per_epoch` from the 1970 origin — was REMOVED with
+//  Specs/Window/CONTRACT.md v1.0. Its replacement is `windowOf` below: it subtracts
+//  `window_origin_ms` first, exactly as every validator now does.)
 
 // OAC [GenMAGIC §6.4, Constitutional]
 export const DRM_LOOKBACK        = 12n;   // epochs
@@ -75,14 +70,15 @@ export const MIN_BURN_FOR_OAC    = 1_000_000_000n;  // 1 MAGIC
 
 export type Network = "Preview" | "Preprod" | "Mainnet";
 
-// ── Two epoch systems — do not mix them ──────────────────────────────────────
-//   PROTOCOL epoch = posixMs / ms_per_epoch            (`posixMsToEpoch`, `slotToProtocolEpoch`)
-//                    origin 1970; what every LAMP validator computes from validity_range
-//                    and what every `*_epoch` datum field carries.
-//   CHAIN epoch    = the Cardano epoch explorers show   (`slotToEpoch`, `getCurrentEpoch`)
-//                    origin = network genesis, with the Byron era in front of it.
-// Same instant (late 2026-09), Preprod: chain epoch ≈ 315, protocol epoch ≈ 4_144. A chain epoch put
-// into a datum or a validity range is rejected by the validator with no explanation.
+// ── One epoch system since Specs/Window/CONTRACT.md v1.0 ─────────────────────
+//   WINDOW index = (posixMs − window_origin_ms) / ms_per_epoch   (`windowOf`, `slotToProtocolEpoch`)
+//                  what every LAMP validator computes from validity_range and what every
+//                  `*_epoch` datum field carries.
+//   CHAIN epoch  = the Cardano epoch explorers show               (`slotToEpoch`, `getCurrentEpoch`)
+// On Preprod and Mainnet the two are the SAME number and the window edges are the epoch edges
+// (= the stake-snapshot instants): `window_origin_ms` is the Shelley start pulled back to epoch 0.
+// The retired system (`posixMs / ms_per_epoch`, origin 1970, Preprod ≈ 4_144) is rejected by every
+// validator built with a `window_origin_ms` parameter, with no explanation — never produce it.
 
 /** First Shelley-era slot of each network: its slot number, chain epoch and POSIX time.
  *  From this slot on every network has slot_length = 1 s (`MS_PER_SLOT`), so slot ↔ time is
@@ -121,6 +117,9 @@ export const CHAIN_TIME_ERRORS = {
   PROVIDER_FAILED:      "UTILS-TIME-002-PROVIDER-FAILED",
   TIP_SLOT_INVALID:     "UTILS-TIME-003-TIP-SLOT-INVALID",
   PRE_SHELLEY:          "UTILS-TIME-004-PRE-SHELLEY",
+  WINDOW_ORIGIN_UNDEFINED: "UTILS-TIME-005-WINDOW-ORIGIN-UNDEFINED",
+  WINDOW_BEFORE_ORIGIN:    "UTILS-TIME-006-WINDOW-BEFORE-ORIGIN",
+  WINDOW_PARAMS_INVALID:   "UTILS-TIME-007-WINDOW-PARAMS-INVALID",
 } as const;
 
 /** Chain-time error with a stable code, so callers can tell the causes apart. */
@@ -144,6 +143,103 @@ function assertShelleySlot(slot: bigint, network: Network): void {
   }
 }
 
+// ══════════════════════════════════════════════════════════════
+// Window arithmetic — Specs/Window/CONTRACT.md v1.0 (WIN-ORIGIN-1..4)
+//   window(t)       = (t − window_origin_ms) / ms_per_epoch      (floor)
+//   window_start(e) = window_origin_ms + e × ms_per_epoch
+//   window_end(e)   = window_origin_ms + (e + 1) × ms_per_epoch − 1
+// The ONLY place in the off-chain tree where this arithmetic is written. Every other
+// `epochWindow` / `windowAt` / `epochOf` is a thin layer over `windowBounds` / `windowIndex`.
+// ══════════════════════════════════════════════════════════════
+
+/** Networks that have a defined `window_origin_ms`. Preview is deliberately NOT here (WIN-PREVIEW). */
+const WINDOW_ORIGIN_NETWORKS = ["Preprod", "Mainnet"] as const;
+
+/** `window_origin_ms` of a network: the Shelley start pulled back to epoch 0,
+ *  `shelley.posixMs − shelley.epoch × ms_per_epoch` (Byron epochs are also 432_000 s long on
+ *  both networks). DERIVED from `SHELLEY_START_BY_NETWORK` — never typed by hand (WIN-ORIGIN-4).
+ *    Mainnet 1_506_203_091_000 · Preprod 1_654_041_600_000
+ *  Preview has NO entry (WIN-PREVIEW): index it and you get `undefined`; call `windowOriginMs`
+ *  and you get a thrown `WINDOW_ORIGIN_UNDEFINED` (fail-closed). Apply validator parameters
+ *  through `windowOriginMs(network)`, not through a bare index. */
+export const WINDOW_ORIGIN_MS_BY_NETWORK: Readonly<Partial<Record<Network, bigint>>> = Object.freeze(
+  Object.fromEntries(
+    WINDOW_ORIGIN_NETWORKS.map((n) => {
+      const s = SHELLEY_START_BY_NETWORK[n];
+      return [n, s.posixMs - s.epoch * MS_PER_EPOCH_BY_NETWORK[n]];
+    }),
+  ),
+) as Readonly<Partial<Record<Network, bigint>>>;
+
+/** `window_origin_ms` for `network`. Throws `WINDOW_ORIGIN_UNDEFINED` for Preview (WIN-PREVIEW). */
+export function windowOriginMs(network: Network): bigint {
+  const o = WINDOW_ORIGIN_MS_BY_NETWORK[network];
+  if (o === undefined) {
+    throw new ChainTimeError(
+      CHAIN_TIME_ERRORS.WINDOW_ORIGIN_UNDEFINED,
+      `no window_origin_ms for ${network} (Specs/Window/CONTRACT.md §4 WIN-PREVIEW): ` +
+        `ms_per_epoch and the origin of that network are not settled — refusing to guess`,
+    );
+  }
+  return o;
+}
+
+function assertWindowParams(originMs: bigint, epochMs: bigint): void {
+  if (!(epochMs > 0n)) {
+    throw new ChainTimeError(CHAIN_TIME_ERRORS.WINDOW_PARAMS_INVALID, `ms_per_epoch must be > 0, got ${epochMs}`);
+  }
+  if (originMs < 0n) {
+    throw new ChainTimeError(CHAIN_TIME_ERRORS.WINDOW_PARAMS_INVALID, `window_origin_ms must be >= 0, got ${originMs}`);
+  }
+}
+
+/** Window index of a POSIX-ms instant for explicit parameters: `(t − origin) / ms_per_epoch` (floor).
+ *  `t` before the origin throws (`WINDOW_BEFORE_ORIGIN`) — Aiken truncates toward zero and
+ *  would return a wrong, plausible-looking index. `origin = 0` is a legal input but cannot tell
+ *  a build that subtracts the origin from one that forgot to: tests need a real origin too (spec §3). */
+export function windowIndex(t: bigint, originMs: bigint, epochMs: bigint): bigint {
+  assertWindowParams(originMs, epochMs);
+  if (t < originMs) {
+    throw new ChainTimeError(CHAIN_TIME_ERRORS.WINDOW_BEFORE_ORIGIN, `time ${t} ms is before window_origin_ms ${originMs}`);
+  }
+  return (t - originMs) / epochMs;
+}
+
+/** First ms of window `e`: `origin + e × ms_per_epoch`. */
+export function windowStartMs(e: bigint, originMs: bigint, epochMs: bigint): bigint {
+  assertWindowParams(originMs, epochMs);
+  return originMs + e * epochMs;
+}
+
+/** Last ms of window `e`: `origin + (e + 1) × ms_per_epoch − 1` (the largest `hi` that still divides to `e`). */
+export function windowEndMs(e: bigint, originMs: bigint, epochMs: bigint): bigint {
+  assertWindowParams(originMs, epochMs);
+  return originMs + (e + 1n) * epochMs - 1n;
+}
+
+/** The window containing `t`: its index and both edges (inclusive). */
+export function windowBounds(
+  t: bigint, originMs: bigint, epochMs: bigint,
+): { epoch: bigint; startMs: bigint; endMs: bigint } {
+  const epoch = windowIndex(t, originMs, epochMs);
+  return { epoch, startMs: windowStartMs(epoch, originMs, epochMs), endMs: windowEndMs(epoch, originMs, epochMs) };
+}
+
+/** POSIX ms → window index of `network` (= the Cardano epoch number on Preprod/Mainnet). Throws for Preview. */
+export function windowOf(t: bigint, network: Network): bigint {
+  return windowIndex(t, windowOriginMs(network), msPerEpoch(network));
+}
+
+/** First ms of window `e` of `network`. Throws for Preview. */
+export function windowStart(e: bigint, network: Network): bigint {
+  return windowStartMs(e, windowOriginMs(network), msPerEpoch(network));
+}
+
+/** Last ms of window `e` of `network`. Throws for Preview. */
+export function windowEnd(e: bigint, network: Network): bigint {
+  return windowEndMs(e, windowOriginMs(network), msPerEpoch(network));
+}
+
 /** slot → POSIX ms (Shelley era onward). Throws `PRE_SHELLEY` for Byron slots. */
 export function slotToPosixMs(slot: bigint, network: Network): bigint {
   assertShelleySlot(slot, network);
@@ -151,15 +247,16 @@ export function slotToPosixMs(slot: bigint, network: Network): bigint {
   return s.posixMs + (slot - s.slot) * MS_PER_SLOT;
 }
 
-/** slot → PROTOCOL epoch (the validator's system): `posixMsToEpoch(slotToPosixMs(slot))`. */
+/** slot → window index (the validator's system): `windowOf(slotToPosixMs(slot))`.
+ *  On Preprod/Mainnet this equals `slotToEpoch`; Preview throws (WIN-PREVIEW). */
 export function slotToProtocolEpoch(slot: bigint, network: Network): bigint {
-  return posixMsToEpoch(slotToPosixMs(slot, network), network);
+  return windowOf(slotToPosixMs(slot, network), network);
 }
 
 /** slot → CHAIN epoch (the Cardano epoch explorers show), Shelley era onward.
  *
- *  ⚠ NOT the protocol epoch. Never use it for a LAMP validity range or `*_epoch` datum
- *  field — use `slotToProtocolEpoch` / `posixMsToEpoch`.
+ *  Equals `slotToProtocolEpoch` on Preprod/Mainnet (window origin = epoch 0, Specs/Window v1.0);
+ *  unlike it, this one also answers for Preview.
  *
  *  The old body was `slot / slots_per_epoch`, which ignores the Byron era: it was right on
  *  Preview only, 4 epochs low on Preprod and ~198 epochs low on Mainnet.
@@ -224,9 +321,9 @@ export async function getTipSlot(lucid: { provider: unknown }): Promise<number> 
 
 /** Current CHAIN epoch (the Cardano epoch explorers show), read from the provider tip.
  *
- *  ⚠ NOT the protocol epoch the LAMP validators use — do not put it in a validity range or
- *  a `*_epoch` datum field. For that: `slotToProtocolEpoch(BigInt(await getTipSlot(lucid)), network)`
- *  or `posixMsToEpoch(nowMs, network)`.
+ *  On Preprod/Mainnet this IS the LAMP window index (Specs/Window/CONTRACT.md v1.0), so it may
+ *  go into a `*_epoch` datum field; for a window from a wall clock use `windowOf(nowMs, network)`
+ *  (it throws for Preview, this one does not).
  *  `network` is required: a default network would silently mis-convert on the other two. */
 export async function getCurrentEpoch(
   lucid   : { provider: unknown },

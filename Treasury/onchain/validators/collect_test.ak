@@ -166,6 +166,7 @@ fn run_with(
   // Collect KHÔNG đụng proposal_policy (chỉ nhánh Release dùng) → dummy; seed_policy + ms thật.
   custody.custody.spend(
     #"feed", seed_policy, ms_per_epoch, lamp_policy, lamp_name,
+      0,
     Some(d_in), Collect { items }, util.mk_ref(0), tx,
   )
 }
@@ -403,6 +404,7 @@ test collect_missing_datum() fail {
   // datum_opt = None ⇒ expect Some(datum) crash.
   custody.custody.spend(
     #"feed", seed_policy, ms_per_epoch, lamp_policy, lamp_name,
+      0,
     None, Collect { items }, util.mk_ref(0), tx,
   )
 }
@@ -478,6 +480,7 @@ test collect_rebalance_unimplemented() fail {
   let tx = Transaction { ..placeholder, inputs: [cust_in], outputs: [cust_out], mint: assets.zero }
   custody.custody.spend(
     #"feed", seed_policy, ms_per_epoch, lamp_policy, lamp_name,
+      0,
     Some(datum(ledger_in)), Rebalance { moves: [] }, util.mk_ref(0), tx,
   )
 }
@@ -494,6 +497,7 @@ test collect_migrate_without_mint_rejected() fail {
   let tx = Transaction { ..placeholder, inputs: [cust_in], outputs: [cust_out], mint: assets.zero }
   custody.custody.spend(
     #"feed", seed_policy, ms_per_epoch, lamp_policy, lamp_name,
+      0,
     Some(datum(ledger_in)), MigrateIn { source: #"00" }, util.mk_ref(0), tx,
   )
 }

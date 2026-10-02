@@ -134,6 +134,7 @@ fn run(tx: Transaction, d_in: CustodyDatum, items: List<CollectItem>) -> Bool {
     ms_per_epoch,
     lamp_policy,
     lamp_name,
+    0,
     Some(d_in),
     Deposit { items },
     util.mk_ref(0),

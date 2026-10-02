@@ -19,9 +19,9 @@ const normHex = (h: string): string => (h.startsWith("0x") ? h.slice(2) : h).toL
  * cho người vận hành, nhãn tính kế hoạch và nhãn ghi vào datum phải là CÙNG một cửa sổ.
  */
 export function windowNow(
-  msPerEpoch: bigint, expectedEpoch: bigint, nowMs: bigint = BigInt(Date.now()),
+  msPerEpoch: bigint, windowOriginMs: bigint, expectedEpoch: bigint, nowMs: bigint = BigInt(Date.now()),
 ): EpochWindow {
-  const w = epochWindow(msPerEpoch, nowMs);
+  const w = epochWindow(msPerEpoch, windowOriginMs, nowMs);
   if (w.epoch !== expectedEpoch) {
     throw new Error(
       `WINDOW-001: cửa sổ vừa sang trang (${expectedEpoch} → ${w.epoch}) giữa lượt chạy. ` +
@@ -33,30 +33,30 @@ export function windowNow(
 
 /**
  * Tham số thời gian cho grant (CREATE lẫn UPDATE): CẢ HAI đầu, cùng cửa sổ (C-ACC-2/3).
- * `buildClaimTx` SUY `start_epoch` từ đầu dưới (`validFromMs / msPerEpoch`) — không còn nhận
- * `currentEpoch` rời.
+ * `buildClaimTx` SUY `start_epoch` từ đầu dưới (`(validFromMs − windowOriginMs) / msPerEpoch`)
+ * — không còn nhận `currentEpoch` rời.
  */
 export function grantTimeParams(
-  w: EpochWindow, msPerEpoch: bigint,
-): { msPerEpoch: bigint; validFromMs: bigint; validToMs: bigint } {
-  return { msPerEpoch, validFromMs: w.loMs, validToMs: w.hiMs };
+  w: EpochWindow, msPerEpoch: bigint, windowOriginMs: bigint,
+): { msPerEpoch: bigint; windowOriginMs: bigint; validFromMs: bigint; validToMs: bigint } {
+  return { msPerEpoch, windowOriginMs, validFromMs: w.loMs, validToMs: w.hiMs };
 }
 
 /**
  * Tham số thời gian cho redeem. Validator chỉ đọc đầu dưới (`get_epoch`), và `buildRedeemTx`
- * SUY cửa sổ từ chính đầu dưới đó (`validFromMs / msPerEpoch`) — không còn nhận `currentEpoch`
- * rời. Đầu trên vẫn truyền (builder bắt buộc: khoảng rỗng không bao giờ lên chuỗi, và để Lucid
+ * SUY cửa sổ từ chính đầu dưới đó (`(validFromMs − windowOriginMs) / msPerEpoch`) — không còn
+ * nhận `currentEpoch` rời. Đầu trên vẫn truyền (builder bắt buộc: khoảng rỗng không bao giờ lên chuỗi, và để Lucid
  * tự đặt thì có thể vượt chân trời slot).
  */
 export function redeemTimeParams(
-  w: EpochWindow, msPerEpoch: bigint,
-): { msPerEpoch: bigint; validFromMs: bigint; validToMs: bigint } {
-  return { msPerEpoch, validFromMs: w.loMs, validToMs: w.hiMs };
+  w: EpochWindow, msPerEpoch: bigint, windowOriginMs: bigint,
+): { msPerEpoch: bigint; windowOriginMs: bigint; validFromMs: bigint; validToMs: bigint } {
+  return { msPerEpoch, windowOriginMs, validFromMs: w.loMs, validToMs: w.hiMs };
 }
 
 export type BeaconPlan =
   | { action: "skip"; onChainEpoch: bigint }
-  | { action: "post"; params: { newBeacon: BeaconDatum; msPerEpoch: bigint; currentBeacon: BeaconDatum } };
+  | { action: "post"; params: { newBeacon: BeaconDatum; msPerEpoch: bigint; windowOriginMs: bigint; currentBeacon: BeaconDatum } };
 
 /**
  * C-BCN-2 đòi nhãn tăng, C-BCN-3 đòi nhãn == cửa sổ ⇒ mỗi cửa sổ đúng một lượt post.
@@ -72,14 +72,14 @@ export type BeaconPlan =
  * — `beaconBuilder` ép C-BCN-5'/5a/5b. Ở đây chỉ dựng datum; không kiểm hộ nó hai lần.
  */
 export function planBeacon(p: {
-  onChain: BeaconDatum; window: EpochWindow; rateRoot: bigint; msPerEpoch: bigint;
+  onChain: BeaconDatum; window: EpochWindow; rateRoot: bigint; msPerEpoch: bigint; windowOriginMs: bigint;
   trimNum?: bigint; trimDen?: bigint;
 }): BeaconPlan {
   const { onChain, window: w } = p;
   if (onChain.epoch > w.epoch) {
     throw new Error(
       `E2E-BCN-001: beacon trên chuỗi mang nhãn ${onChain.epoch} LỚN HƠN cửa sổ hiện tại ${w.epoch}. ` +
-        `C-BCN-3 không cho dán nhãn tương lai, nên đồng hồ máy dựng hoặc MS_PER_EPOCH đang lệch.`,
+        `C-BCN-3 không cho dán nhãn tương lai, nên đồng hồ máy dựng, MS_PER_EPOCH hoặc gốc cửa sổ đang lệch.`,
     );
   }
   if (onChain.epoch === w.epoch) return { action: "skip", onChainEpoch: onChain.epoch };
@@ -96,6 +96,7 @@ export function planBeacon(p: {
         speed_policies: onChain.speed_policies,
       },
       msPerEpoch: p.msPerEpoch,
+      windowOriginMs: p.windowOriginMs,
       currentBeacon: onChain,
     },
   };

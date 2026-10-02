@@ -38,6 +38,7 @@ fn run(
     tally_sh(),
     wp_policy,
     ms_per_epoch,
+    0,
     Some(d_in),
     r,
     util.mk_ref(0),

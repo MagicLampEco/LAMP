@@ -26,7 +26,8 @@
 //   cooldown = 36 cửa sổ giữa 2 claim của cùng 1 DID.
 //   reclaim  = 72 cửa sổ idle → ai cũng thu hồi account về pool (hằng
 //              compile-time ở faucet_account, KHÔNG còn bản sao trong datum).
-// "Cửa sổ" (window) = bucket `posix_ms / ms_per_epoch`, mặc định 5 ngày. Đây
+// "Cửa sổ" (window) = bucket `(posix_ms − window_origin_ms) / ms_per_epoch` (Specs/Window/CONTRACT.md
+// v1.0), mặc định 5 ngày. Đây
 // KHÔNG phải epoch Cardano — biên bucket không trùng biên epoch mạng.
 //
 // ─────────────────────────────────────────────────────────────────────────

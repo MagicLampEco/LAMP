@@ -17,6 +17,7 @@ use magiclamp/allocation/types.{
   Claim, ClaimAccountDatum, ClaimAccountRedeemer, Redeem,
 }
 use magiclamp/allocation/util
+use magiclamp/allocation/window_origin_fixtures
 
 validator claim_account(
   committee         : List<ByteArray>,
@@ -30,6 +31,10 @@ validator claim_account(
                                      // (đáy DAG) — BỎ channel_budget_hash (param chéo gây vòng).
   account_nft_policy : ByteArray,    // C-ACC: policy NFT xác thực per-account (committee-gated
                                      // lúc genesis). name = blake2b_256(owner ‖ channel_id).
+  // THÊM 2026-10-02 (Specs/Window/CONTRACT.md v1.0, WIN-ORIGIN-3) — ĐẶT CUỐI theo khuôn các
+  // tham số đã thêm trước. Gốc lưới cửa sổ: cửa sổ = (t − window_origin_ms) / ms_per_epoch,
+  // nên chỉ số cửa sổ = số epoch Cardano của mạng. Đổi hash validator này.
+  window_origin_ms: Int,
 ) {
   spend(
     datum_opt : Option<ClaimAccountDatum>,
@@ -109,7 +114,7 @@ validator claim_account(
         expect drop_value > 0
         expect datum.drops_per_epoch > 0
 
-        let current_epoch = util.get_epoch(tx, ms_per_epoch)
+        let current_epoch = util.get_epoch(tx, ms_per_epoch, window_origin_ms)
         let elapsed =
           if current_epoch > datum.start_epoch {
             current_epoch - datum.start_epoch
@@ -226,7 +231,7 @@ fn claim_tx(
 fn run_claim(in_d: ClaimAccountDatum, amount: Int, tx: Transaction) -> Bool {
   claim_account.spend(
     t_committee, t_threshold, t_mspe, t_lamp_policy, t_lamp_name, t_drop_value,
-    t_budget_policy, t_account_policy, Some(in_d), Claim { amount }, util.mk_ref(0), tx,
+    t_budget_policy, t_account_policy, 0, Some(in_d), Claim { amount }, util.mk_ref(0), tx,
   )
 }
 
@@ -306,9 +311,21 @@ fn redeem_tx(
 fn run_redeem(in_d: ClaimAccountDatum, tx: Transaction) -> Bool {
   claim_account.spend(
     t_committee, t_threshold, t_mspe, t_lamp_policy, t_lamp_name, t_drop_value,
-    t_budget_policy, t_account_policy, Some(in_d), Redeem, util.mk_ref(0), tx,
+    t_budget_policy, t_account_policy, 0, Some(in_d), Redeem, util.mk_ref(0), tx,
   )
 }
+
+// ── Gốc cửa sổ (Specs/Window/CONTRACT.md v1.0, WIN-ORIGIN-1..3) ─────────────────
+// Bản của `run_redeem` nhận gốc `origin` và dời mọi biên hữu hạn của validity range đi
+// `shift`. `(o, o)`: cùng kịch bản dời sang lưới có gốc ⇒ kết quả phải y như bản gốc 0.
+// `(0, o)`: validator QUÊN gốc trên tx đã dời ⇒ phải bị chặn.
+fn run_redeem_at(origin: Int, shift: Int, in_d: ClaimAccountDatum, tx: Transaction) -> Bool {
+  claim_account.spend(
+    t_committee, t_threshold, t_mspe, t_lamp_policy, t_lamp_name, t_drop_value,
+    t_budget_policy, t_account_policy, origin, Some(in_d), Redeem, util.mk_ref(0), window_origin_fixtures.shift_tx(tx, shift),
+  )
+}
+
 
 // ── REDEEM tx GIẢ MẠO: account KHÔNG mang NFT xác thực (C-ACC-4 regression) ──
 fn redeem_tx_no_nft(
@@ -517,4 +534,31 @@ test atk_redeem_self_funded_no_treasury() {
   let out_d = ca_datum(1000, 300, 0, 1, t_channel)
   let tx = redeem_tx(in_d, out_d, 300, 3, [t_owner], [])
   run_redeem(in_d, tx)
+}
+
+/// `redeem_happy` dời sang gốc Mainnet: phải xanh như bản gốc 0.
+test redeem_happy_origin_mainnet() {
+  // E=1000, D=100, dpe=1, start=0, epoch=3 → vested=300, amount=300.
+  let in_d = ca_datum(1000, 0, 0, 1, t_channel)
+  let out_d = ca_datum(1000, 300, 0, 1, t_channel)
+  let tx = redeem_tx(in_d, out_d, 300, 3, [t_owner], [])
+  run_redeem_at(window_origin_fixtures.mainnet_origin_ms, window_origin_fixtures.mainnet_origin_ms, in_d, tx)
+}
+
+/// `redeem_happy` dời sang gốc Preprod: phải xanh như bản gốc 0.
+test redeem_happy_origin_preprod() {
+  // E=1000, D=100, dpe=1, start=0, epoch=3 → vested=300, amount=300.
+  let in_d = ca_datum(1000, 0, 0, 1, t_channel)
+  let out_d = ca_datum(1000, 300, 0, 1, t_channel)
+  let tx = redeem_tx(in_d, out_d, 300, 3, [t_owner], [])
+  run_redeem_at(window_origin_fixtures.preprod_origin_ms, window_origin_fixtures.preprod_origin_ms, in_d, tx)
+}
+
+/// Ca âm: tx đã dời sang lưới Mainnet nhưng validator nhận gốc 0 (quên trừ gốc) ⇒ phải bị chặn.
+test redeem_happy_origin_forgotten() fail {
+  // E=1000, D=100, dpe=1, start=0, epoch=3 → vested=300, amount=300.
+  let in_d = ca_datum(1000, 0, 0, 1, t_channel)
+  let out_d = ca_datum(1000, 300, 0, 1, t_channel)
+  let tx = redeem_tx(in_d, out_d, 300, 3, [t_owner], [])
+  run_redeem_at(0, window_origin_fixtures.mainnet_origin_ms, in_d, tx)
 }

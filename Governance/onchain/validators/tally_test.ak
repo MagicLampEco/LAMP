@@ -32,6 +32,7 @@ use magiclamp/governance/types.{
 }
 use magiclamp/governance/util
 use tally
+use magiclamp/governance/window_origin_fixtures
 
 const tally_policy: PolicyId = #"7a11"
 
@@ -323,12 +324,36 @@ fn run_finalize(tx: Transaction, d_in: TallyDatum) -> Bool {
     c3_sh,
     window,
     ms_ep,
+    0,
     Some(d_in),
     tally.Finalize,
     util.mk_ref(0),
     tx,
   )
 }
+
+// ── Gốc cửa sổ (Specs/Window/CONTRACT.md v1.0, WIN-ORIGIN-1..3) ─────────────────
+// Bản của `run_finalize` nhận gốc `origin` và dời mọi biên hữu hạn của validity range đi
+// `shift`. `(o, o)`: cùng kịch bản dời sang lưới có gốc ⇒ kết quả phải y như bản gốc 0.
+// `(0, o)`: validator QUÊN gốc trên tx đã dời ⇒ phải bị chặn.
+fn run_finalize_at(origin: Int, shift: Int, tx: Transaction, d_in: TallyDatum) -> Bool {
+  tally.tally.spend(
+    tally_policy,
+    vote_sh,
+    null_policy,
+    wp_policy,
+    c3_policy,
+    c3_sh,
+    window,
+    ms_ep,
+    origin,
+    Some(d_in),
+    tally.Finalize,
+    util.mk_ref(0),
+    window_origin_fixtures.shift_tx(tx, shift),
+  )
+}
+
 
 fn run_sum(tx: Transaction, d_in: TallyDatum, proofs: List<Proof>) -> Bool {
   tally.tally.spend(
@@ -340,6 +365,7 @@ fn run_sum(tx: Transaction, d_in: TallyDatum, proofs: List<Proof>) -> Bool {
     c3_sh,
     window,
     ms_ep,
+    0,
     Some(d_in),
     tally.SumBatch { insert_proofs: proofs },
     util.mk_ref(0),
@@ -1470,4 +1496,52 @@ test vp_zero_pass_khong_bao_gio_dung() {
     d.yes_voters_acc >= 21,
     tally_lib.total_vp_eff(d) == 0,
   }
+}
+
+/// `finalize_clamp_tc1` dời sang gốc Mainnet: phải xanh như bản gốc 0.
+test finalize_clamp_tc1_origin_mainnet() {
+  // ΣVP=1000, F=10 → τ=100. Một DID Yes vp_raw=400 vượt trần → trừ 300.
+  let top = [TopEntry { vp_raw: 400, choice: Yes }]
+  let d_in = summing(700, 200, 100, 30, 25, top)
+  let d_out = clamped_of(d_in, 400, 200, 100)
+  run_finalize_at(window_origin_fixtures.mainnet_origin_ms, window_origin_fixtures.mainnet_origin_ms, finalize_tx(d_in, d_out, 10), d_in)
+}
+
+/// `finalize_clamp_tc1` dời sang gốc Preprod: phải xanh như bản gốc 0.
+test finalize_clamp_tc1_origin_preprod() {
+  // ΣVP=1000, F=10 → τ=100. Một DID Yes vp_raw=400 vượt trần → trừ 300.
+  let top = [TopEntry { vp_raw: 400, choice: Yes }]
+  let d_in = summing(700, 200, 100, 30, 25, top)
+  let d_out = clamped_of(d_in, 400, 200, 100)
+  run_finalize_at(window_origin_fixtures.preprod_origin_ms, window_origin_fixtures.preprod_origin_ms, finalize_tx(d_in, d_out, 10), d_in)
+}
+
+
+/// Ca âm theo CHIỀU NGƯỢC: chốt thời gian ở đây chỉ chặn "quá sớm" (cận dưới), nên quên gốc
+/// làm epoch LỚN thêm ~3_486 cửa sổ và tx được thả. Bài phân biệt được bản quên gốc là bài
+/// "quá sớm" `finalize_truoc_khi_het_cua_so_gom_tu_choi` dời sang lưới có gốc: mã đúng vẫn chặn; mã quên gốc sẽ thả.
+test finalize_truoc_khi_het_cua_so_gom_tu_choi_origin_mainnet() fail {
+  let top = [TopEntry { vp_raw: 400, choice: Yes }]
+  let d_in = summing(700, 200, 100, 30, 25, top)
+  let d_out = clamped_of(d_in, 400, 200, 100)
+  let tx =
+    Transaction {
+      ..finalize_tx(d_in, d_out, 10),
+      validity_range: at_epoch(close_e + window - 1),
+    }
+  expect run_finalize_at(window_origin_fixtures.mainnet_origin_ms, window_origin_fixtures.mainnet_origin_ms, tx, d_in)
+  True
+}
+
+test finalize_truoc_khi_het_cua_so_gom_tu_choi_origin_preprod() fail {
+  let top = [TopEntry { vp_raw: 400, choice: Yes }]
+  let d_in = summing(700, 200, 100, 30, 25, top)
+  let d_out = clamped_of(d_in, 400, 200, 100)
+  let tx =
+    Transaction {
+      ..finalize_tx(d_in, d_out, 10),
+      validity_range: at_epoch(close_e + window - 1),
+    }
+  expect run_finalize_at(window_origin_fixtures.preprod_origin_ms, window_origin_fixtures.preprod_origin_ms, tx, d_in)
+  True
 }

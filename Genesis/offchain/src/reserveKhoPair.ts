@@ -183,7 +183,7 @@ export function lampMintParamList(p: LampMintParamValues): unknown[] {
   ];
 }
 
-/** Tham số `validator reserve_draw(` — 12 khe, đúng thứ tự chữ ký on-chain. */
+/** Tham số `validator reserve_draw(` — 13 khe, đúng thứ tự chữ ký on-chain. */
 export interface ReserveDrawParamValues {
   /** #1-2 LAMP — đo Δ mint. */
   lampPolicy: string;
@@ -217,6 +217,15 @@ export interface ReserveDrawParamValues {
   reserveCap: bigint;
 
   /**
+   * #13 `window_origin_ms` — tham số CUỐI (Specs/Window/CONTRACT.md v1.0). `reserve_draw` suy
+   * cửa sổ `t = (hi − window_origin_ms) / ms_per_epoch` (Luật 2b), nên gốc này PHẢI là gốc mà
+   * `custody` cùng dùng — lấy từ MỘT nơi
+   * (`Utils` ▸ `windowOriginMs(network)`), không gõ ở từng chỗ gọi. Thư viện này nhận gốc
+   * TƯỜNG MINH và không biết "mạng" là gì: bên gọi quyết.
+   */
+  windowOriginMs: bigint;
+
+  /**
    * Cặp #13-14 ĐÃ nướng vào `lamp_mint` — vế đối chiếu, KHÔNG đi vào danh sách tham số.
    *
    * Bắt buộc, không có mặc định: không có nó thì cổng APPLY-003 mất vế so sánh và việc "ép
@@ -226,7 +235,7 @@ export interface ReserveDrawParamValues {
 }
 
 /**
- * Dựng danh sách 12 tham số cho `reserve_draw.reserve_draw.spend`, SAU khi ép cặp kho khớp
+ * Dựng danh sách 13 tham số cho `reserve_draw.reserve_draw.spend`, SAU khi ép cặp kho khớp
  * với `lamp_mint` (#13-14) và ép `reserve_cap` (#12) là một giá trị sống.
  *
  * Thứ tự gọi có nghĩa: cổng chạy TRƯỚC khi mảng được dựng, nên không có đường nào lấy được
@@ -234,6 +243,13 @@ export interface ReserveDrawParamValues {
  */
 export function reserveDrawParamList(p: ReserveDrawParamValues): unknown[] {
   assertReserveKhoPair(p.lampMintReserveKhoNft, p.khoNft);
+  if (typeof p.windowOriginMs !== "bigint" || p.windowOriginMs < 0n) {
+    throw new Error(
+      `WINDOW-ORIGIN-001: reserve_draw.window_origin_ms (#13) = ${String(p.windowOriginMs)} — cần ` +
+      `bigint >= 0 từ \`Utils\` ▸ windowOriginMs(network). Thiếu khe cuối không hỏng lúc apply ` +
+      `(applyParamsToScript áp một phần) mà ra một script hash khác, im lặng.`,
+    );
+  }
   if (typeof p.reserveCap !== "bigint" || p.reserveCap <= 0n) {
     throw new Error(
       `RESERVE-CAP-002: reserve_draw.reserve_cap (#12) = ${String(p.reserveCap)} — cần bigint ` +
@@ -256,5 +272,6 @@ export function reserveDrawParamList(p: ReserveDrawParamValues): unknown[] {
     p.gateScriptHash,                                        // #10
     p.custodyScriptHash,                                     // #11
     p.reserveCap,                                            // #12
+    p.windowOriginMs,                                        // #13 — tham số CUỐI
   ];
 }

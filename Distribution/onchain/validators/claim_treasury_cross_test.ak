@@ -61,6 +61,7 @@ fn run_one(tx: Transaction, run: ScriptRun) -> Bool {
         fx.beacon_policy,
         fx.treasury_nft_policy,
         fx.account_nft_policy,
+        0,
         datum_opt,
         r,
         fx.ref(ix),
@@ -86,6 +87,7 @@ fn run_one(tx: Transaction, run: ScriptRun) -> Bool {
         fx.ms_per_epoch,
         // v3 C-CLAIM-8: beacon policy — tham số thứ 8 của `treasury`.
         fx.beacon_policy,
+        0,
         datum_opt,
         r,
         fx.ref(ix),

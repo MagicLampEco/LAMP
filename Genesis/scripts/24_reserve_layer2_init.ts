@@ -30,7 +30,7 @@
 // Không đặt SUBMIT=true ⇒ chạy khô: dựng bước chưa có trên chuỗi đầu tiên rồi dừng, không ký, không gửi.
 import { type UTxO } from "@lucid-evolution/lucid";
 import { NETWORK, makeLucid, walletPkh, explorerTx, haltUnlessSubmit } from "./config.js";
-import { rehydrate, writeState, waitFor, MET_NAME } from "./_canonical_v2.js";
+import { rehydrate, writeState, waitFor, MET_NAME, canonicalWindowOrigin } from "./_canonical_v2.js";
 import { supplyStateFromCbor } from "../offchain/src/datum.js";
 import {
   AUTH_NAME, INSTANCE_ID, deriveCustody, deriveReserveWiring, custodySeedDatum,
@@ -366,7 +366,7 @@ async function main(): Promise<void> {
     }
     console.log(`✓ RESERVE-CAP-001: total_oildrop = reserve_cap trên chuỗi (${RESERVE_TOTAL})`);
 
-    const start = epochNow();
+    const start = epochNow(canonicalWindowOrigin(wiring.network));
     console.log(`\nL2c dời meter: ví → ${rw!.reserve.drawAddr}`);
     console.log(`    ReserveState: start_epoch=${start} total=${RESERVE_TOTAL} drawn=0 last_epoch=0`);
     console.log(`    trần mỗi epoch = ${rw!.reserve.maxPerEpoch} oildrop`);

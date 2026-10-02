@@ -5,7 +5,8 @@
 // của ba validator cùng lúc (`custody` 3→5, `custody_seed` 2→1, `reserve_draw` 9→11), nên mọi
 // lời gọi off-chain cũ đều rơi đúng vào lớp lỗi đó. Đợt sau lại đổi hai cái nữa —
 // `reserve_draw` 11→12 (`reserve_cap`, Luật 1b) và `reserve_auth` 2→3 (`floor_oildrop`,
-// A-FLOOR-1) — và cổng này bắn đúng lúc, đó là tính năng chứ không phải hỏng.
+// A-FLOOR-1) — và cổng này bắn đúng lúc, đó là tính năng chứ không phải hỏng. Specs/Window v1.0
+// thêm `window_origin_ms` làm khe CUỐI của `custody` (5→6) và `reserve_draw` (12→13).
 //
 // Bài chạy OFFLINE: apply-param là phép thuần trên compiledCode, không cần provider hay UTxO.
 //
@@ -72,6 +73,9 @@ const THREAD_NAME = "524553";          // "RES"
 const MS_PER_EPOCH = 432_000_000n;
 const FLOOR = 1_000_000n;
 const RESERVE_CAP = 9_630_000_000_000_000n;
+// Gốc Mainnet THẬT (Utils ▸ WINDOW_ORIGIN_MS_BY_NETWORK), không phải 0: gốc 0 vẫn áp được và ra hash,
+// nhưng không phân biệt "đã truyền gốc" với "quên truyền".
+const WINDOW_ORIGIN = 1_506_203_091_000n;
 // `OutputReference` = Constr(0, [txHash 32 byte, index]) — phải là Constr THẬT, không phải
 // một đối tượng cùng hình dạng: lucid serialize theo class, đối tượng thường ném "Unsupported type".
 const GENESIS_REF = new Constr(0, ["ab".repeat(32), 0n]);
@@ -87,9 +91,9 @@ const CALLS: Array<{ mod: "Treasury" | "Reserve"; title: string; params: unknown
   },
   {
     mod: "Treasury", title: "custody.custody.spend",
-    // +2 khe LAMP (#4-5) để nhánh MigrateIn đo Δ.
-    params: [PROPOSAL_POLICY, SEED_POLICY, MS_PER_EPOCH, LAMP_POLICY, TOKEN_NAME],
-    soCu: 2,
+    // +2 khe LAMP (#4-5) để nhánh MigrateIn đo Δ; +1 khe CUỐI `window_origin_ms` (#6).
+    params: [PROPOSAL_POLICY, SEED_POLICY, MS_PER_EPOCH, LAMP_POLICY, TOKEN_NAME, WINDOW_ORIGIN],
+    soCu: 5,
   },
   {
     mod: "Treasury", title: "reserve_gate.reserve_gate.spend",
@@ -109,8 +113,9 @@ const CALLS: Array<{ mod: "Treasury" | "Reserve"; title: string; params: unknown
       GATE_HASH,
       CUSTODY_HASH,
       RESERVE_CAP,
+      WINDOW_ORIGIN,   // #13 — khe CUỐI (Specs/Window v1.0)
     ],
-    soCu: 11,
+    soCu: 12,
   },
   {
     // Khe #3 `floor_oildrop` thêm vào cùng đợt với luật A-FLOOR-1. Nó KHÔNG so sánh gì trong
@@ -127,10 +132,10 @@ describe.skipIf(!haveBlueprints)("apply-param đường rút Reserve — qua c�
 
   it("số tham số blueprint khai đúng như chữ ký on-chain sau đợt vá", () => {
     expect(declaredOf(bp.Treasury, "custody_seed.custody_seed.mint")).toBe(1);
-    expect(declaredOf(bp.Treasury, "custody.custody.spend")).toBe(5);
+    expect(declaredOf(bp.Treasury, "custody.custody.spend")).toBe(6);
     expect(declaredOf(bp.Treasury, "reserve_gate.reserve_gate.spend")).toBe(7);
     expect(declaredOf(bp.Treasury, "reserve_auth.reserve_auth.mint")).toBe(3);
-    expect(declaredOf(bp.Reserve, "reserve_draw.reserve_draw.spend")).toBe(12);
+    expect(declaredOf(bp.Reserve, "reserve_draw.reserve_draw.spend")).toBe(13);
   });
 
   for (const c of CALLS) {

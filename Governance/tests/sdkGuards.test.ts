@@ -28,18 +28,41 @@ const blueprint = JSON.parse(readFileSync(resolve(__dirname, "../onchain/plutus.
 const H28 = (b: string) => b.repeat(28);
 const baseParams = (c3PolicyId: string, c3ScriptHash: string): GovernanceDeployParams => ({
   phaseTag: "5031", taadPolicyId: H28("7a"), c3PolicyId, c3ScriptHash,
-  msPerEpoch: 3_600_000n, tallyWindowEpochs: 2n, deltaMinEpochs: 1n, recoveryTimelockEpochs: 10n,
+  msPerEpoch: 3_600_000n, windowOriginMs: 1_506_203_091_000n, // gốc Mainnet thật, không phải 0
+  tallyWindowEpochs: 2n, deltaMinEpochs: 1n, recoveryTimelockEpochs: 10n,
   weightParam: { policyId: H28("a0") },
 });
 
-describe("config — tally 8 tham số, cặp C3", () => {
+describe("config — tally 9 tham số (tham số cuối window_origin_ms), cặp C3", () => {
   it("EXPECTED_PARAMS.tally khớp nguyên văn parameters của blueprint", () => {
     const v = blueprint.validators.find((x: { title: string }) => x.title === "tally.tally.spend");
     expect(v.parameters.map((p: { title: string }) => p.title)).toEqual(EXPECTED_PARAMS.tally);
     expect(EXPECTED_PARAMS.tally).toEqual([
       "tally_policy", "vote_script_hash", "nullifier_policy", "weight_param_policy", "c3_policy", "c3_script_hash",
-      "tally_window_epochs", "ms_per_epoch",
+      "tally_window_epochs", "ms_per_epoch", "window_origin_ms",
     ]);
+  });
+  it("window_origin_ms là tham số CUỐI của nullifier/vote/tally/governance; blueprint khớp EXPECTED_PARAMS", () => {
+    for (const [key, title] of [
+      ["nullifier", "nullifier.nullifier.mint"], ["vote", "vote.vote.spend"],
+      ["tally", "tally.tally.spend"], ["governance", "governance.governance.mint"],
+    ] as const) {
+      const v = blueprint.validators.find((x: { title: string }) => x.title === title);
+      const names = v.parameters.map((p: { title: string }) => p.title);
+      expect(names.at(-1), title).toBe("window_origin_ms");
+      expect(names, title).toEqual(EXPECTED_PARAMS[key]);
+    }
+  });
+  it("gốc cửa sổ đi vào hash của cả bốn script; thiếu/âm ⇒ GOV-APPLY-005", () => {
+    const a = applyGovernanceBlueprint(blueprint, baseParams("", ""));
+    const b = applyGovernanceBlueprint(blueprint, { ...baseParams("", ""), windowOriginMs: 1_654_041_600_000n });
+    expect(b.nullifierPolicyId).not.toBe(a.nullifierPolicyId);
+    expect(b.voteScriptHash).not.toBe(a.voteScriptHash);
+    expect(b.tallyScriptHash).not.toBe(a.tallyScriptHash);
+    expect(b.governancePolicyId).not.toBe(a.governancePolicyId);
+    expect(a.windowOriginMs).toBe(1_506_203_091_000n);
+    expect(() => applyGovernanceBlueprint(blueprint, { ...baseParams("", ""), windowOriginMs: undefined as never })).toThrow("GOV-APPLY-005");
+    expect(() => applyGovernanceBlueprint(blueprint, { ...baseParams("", ""), windowOriginMs: -1n })).toThrow("GOV-APPLY-005");
   });
   it("cả hai rỗng (pha chưa bật C3) và cả hai là hash 28 byte đều apply được; hai hash tally khác nhau", () => {
     const off = applyGovernanceBlueprint(blueprint, baseParams("", ""));

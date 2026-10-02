@@ -134,12 +134,14 @@ pub fn get_finite(bt: IntervalBoundType) -> Option<Int> {
 ///      trong cả bề rộng bucket (5 ngày ở Preprod). Trần 1 giờ kẹp sai lệch lại.
 ///
 /// Nghĩa vụ off-chain: đặt `lo = now_ms`,
-/// `hi = min(now_ms + ttl, (lo / ms_per_epoch + 1) × ms_per_epoch − 1)` với
+/// `hi = min(now_ms + ttl, o + ((lo − o) / ms_per_epoch + 1) × ms_per_epoch − 1)`,
+/// `o = window_origin_ms` (WIN-ORIGIN-2), với
 /// `ttl ≤ max_range_ms`; phần còn lại của bucket ngắn hơn ttl tối thiểu thì CHỜ
 /// sang bucket sau, KHÔNG nới `hi`.
 pub fn get_epoch_pinned(
   tx: Transaction,
   ms_per_epoch: Int,
+  window_origin_ms: Int,
   max_range_ms: Int,
 ) -> Int {
   let lower = tx.validity_range.lower_bound
@@ -160,11 +162,14 @@ pub fn get_epoch_pinned(
     }
   // Khoảng rỗng (`lo > hi`) không phải tx hợp lệ; và số âm làm phép chia đổi
   // nghĩa ⇒ chặn cả hai, fail-closed.
-  expect lo >= 0
+  // Chặn âm đặt trên SỐ BỊ CHIA (`lo − gốc`), không trên `lo` thô: với gốc = 0 hai
+  // vế trùng nhau; với gốc > 0 đây mới là vế giữ đúng nghĩa "chia sàn không đổi dấu".
+  expect lo - window_origin_ms >= 0
   expect lo <= hi
   expect hi - lo <= max_range_ms
-  let e = lo / ms_per_epoch
-  expect hi / ms_per_epoch == e
+  // WIN-ORIGIN-1 (Specs/Window/CONTRACT.md v1.0).
+  let e = ( lo - window_origin_ms ) / ms_per_epoch
+  expect ( hi - window_origin_ms ) / ms_per_epoch == e
   e
 }
 

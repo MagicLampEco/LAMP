@@ -65,6 +65,13 @@ export interface ReclaimParams {
   /** Mốc "bây giờ" (ms Unix) — CỐ Ý cận dưới, không pinned. Xem đầu tệp. */
   nowMs: number;
   msPerEpoch: bigint;
+  /**
+   * `window_origin_ms` đã apply vào faucet_nft/faucet_pool/faucet_account (tham số CUỐI,
+   * Specs/Window/CONTRACT.md v1.0): cửa sổ = `(nowMs − windowOriginMs) / msPerEpoch`. Lấy từ
+   * `windowOriginMs(network)` của `@magiclamp/utils` (Preview ném lỗi, không có giá trị). Truyền
+   * lệch thì nhãn cửa sổ trong datum lệch với cái validator suy ra và giao dịch bị từ chối.
+   */
+  windowOriginMs: bigint;
 
   /** Sổ `opened_root` hiện tại: `OpenedLedger` đã dựng, HOẶC danh sách account đang sống
    *  (gồm cả account sắp thu hồi) để builder tự dựng. Gốc phải khớp datum pool input. */
@@ -88,7 +95,7 @@ export interface ReclaimResult {
 export async function buildReclaimTx(params: ReclaimParams): Promise<ReclaimResult> {
   const {
     lucid, poolUtxo, faucetPoolScript, accountUtxo, faucetAccountScript,
-    faucetNftPolicy, faucetNftPolicyId, tlampPolicyId, msPerEpoch,
+    faucetNftPolicy, faucetNftPolicyId, tlampPolicyId, msPerEpoch, windowOriginMs,
   } = params;
 
   const assetName = params.tlampAssetName ?? TLAMP_ASSET_NAME;
@@ -116,7 +123,7 @@ export async function buildReclaimTx(params: ReclaimParams): Promise<ReclaimResu
 
   // ── Cận dưới (get_epoch), CỐ Ý không pinned. Kiểm idle offchain, mirror on-chain
   // `now >= acct.last_touch_epoch + reclaim_epochs_const` — đọc mốc IDLE, KHÔNG phải cooldown.
-  const epoch = epochAt(params.nowMs, Number(msPerEpoch));
+  const epoch = epochAt(params.nowMs, Number(msPerEpoch), Number(windowOriginMs));
   if (epoch < acct.last_touch_epoch + RECLAIM) {
     throw new Error(
       `RECLAIM-004: account chưa idle đủ. now=${epoch} < last_touch_epoch ${acct.last_touch_epoch} + reclaim ${RECLAIM}`,

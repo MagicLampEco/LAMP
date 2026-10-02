@@ -15,7 +15,7 @@ import {
   scriptHashToCredential, validatorToScriptHash,
   type LucidEvolution, type Validator,
 } from "@lucid-evolution/lucid";
-import { msPerEpoch, type Network } from "@magiclamp/utils";
+import { msPerEpoch, windowOriginMs, type Network } from "@magiclamp/utils";
 // SDK Treasury: import THẲNG từ ../offchain/src (như Distribution scripts) — package
 // treasury-sdk không khai "exports", resolve theo đường dẫn nguồn .js (tsx/NodeNext).
 //
@@ -63,6 +63,15 @@ export const WALLET_SEED    = (process.env.WALLET_SEED ?? "").trim().replace(/\s
 
 // ms_per_epoch THEO network (Preview/Preprod/Mainnet) — param vào custody validator.
 export const MS_PER_EPOCH = msPerEpoch(NETWORK);
+
+/**
+ * `window_origin_ms` của mạng đang chạy (Specs/Window/CONTRACT.md v1.0) — HÀM, không phải hằng
+ * toàn cục: Preview không có giá trị (WIN-PREVIEW, `windowOriginMs` ném lỗi) và một hằng ở đầu
+ * tệp sẽ làm mọi `import` config chết trước khi script kịp nói mình cần gì.
+ */
+export function windowOrigin(): bigint {
+  return windowOriginMs(NETWORK);
+}
 
 /** true khi đủ credential build tx thật. Thiếu → DRY mode (chỉ apply-params + in plan). */
 export function hasCredentials(): boolean {
@@ -157,7 +166,7 @@ export function scriptHash(script: Validator): string {
 // custody_seed.custody_seed.mint : [genesis_ref:OutputReference]
 //     → seed_policy = mintingPolicyToId(custody_seed đã apply).
 // custody.custody.spend          : [proposal_policy, seed_policy, ms_per_epoch,
-//                                   lamp_policy, token_name]   ← FIVE khe
+//                                   lamp_policy, token_name, window_origin_ms]   ← SIX khe
 //
 // DEPENDENCY: custody cần seed_policy → apply custody_seed TRƯỚC.
 //
@@ -168,11 +177,13 @@ export function scriptHash(script: Validator): string {
 export interface AppliedCustody {
   custodySeed:   Validator;   // minting policy one-shot (apply genesis_ref)
   seedPolicy:    string;      // = mintingPolicyToId(custodySeed)
-  custodyScript: Validator;   // spend validator (5 khe, xem custodyParamList)
+  custodyScript: Validator;   // spend validator (6 khe, xem custodyParamList)
   custodyHash:   string;
   custodyAddr:   string;
   lampPolicy:    ResolvedLampPolicy;   // giá trị + nguồn (env / sổ policy / placeholder)
   tokenName:     string;
+  /** `window_origin_ms` đã nướng vào `custodyScript` (khe #6). */
+  windowOriginMs: bigint;
 }
 
 /**
@@ -181,12 +192,15 @@ export interface AppliedCustody {
  * @param proposalPolicy PolicyId beacon Governance (gác Release). Dev → placeholder.
  * @param msPerEpoch POSIX ms ↔ epoch (mặc định MS_PER_EPOCH theo network).
  * @param lampPolicyOverride `lamp_policy` đã giải sẵn; bỏ trống → `resolveLampPolicy(NETWORK)`.
+ * @param windowOriginParam `window_origin_ms` (khe CUỐI, Specs/Window v1.0); bỏ trống → `windowOrigin()`
+ *        của mạng (Preview NÉM). Gốc nằm trong script hash ⇒ trong ĐỊA CHỈ két.
  */
 export async function applyCustodyInstance(
   genesisRef: OutputReference,
   proposalPolicy: string,
   msPerEpochParam: bigint = MS_PER_EPOCH,
   lampPolicyOverride?: ResolvedLampPolicy,
+  windowOriginParam: bigint = windowOrigin(),
 ): Promise<AppliedCustody> {
   // 1. custody_seed (one-shot, param genesis_ref:OutputReference) → seed_policy.
   //    Dùng applyCustodySeed của SDK (dựng Constr nội bộ, tránh lệch class-identity). SDK
@@ -208,12 +222,16 @@ export async function applyCustodyInstance(
       msPerEpoch: msPerEpochParam,
       lampPolicy: lampPolicy.policy,
       tokenName,
+      windowOriginMs: windowOriginParam,
     }),
   );
   const custodyHash = scriptHash(custodyScript);
   const custodyAddr = scriptAddress(custodyScript);
 
-  return { custodySeed, seedPolicy, custodyScript, custodyHash, custodyAddr, lampPolicy, tokenName };
+  return {
+    custodySeed, seedPolicy, custodyScript, custodyHash, custodyAddr, lampPolicy, tokenName,
+    windowOriginMs: windowOriginParam,
+  };
 }
 
 // ── Phần STAKE của địa chỉ kho ─────────────────────────────────
@@ -355,6 +373,8 @@ export const SEEDED_PATH = resolve(__dirname, "seeded.json");
 export interface SeededInstance {
   network:        Network;
   msPerEpoch:     string;          // bigint as string
+  /** `window_origin_ms` đã nướng vào `custody` (khe #6) — bigint dạng chuỗi. Thiếu ⇒ seeded.json cũ. */
+  windowOriginMs: string;
   instanceId:     string;          // hex (= NFT name)
   custodyHash:    string;
   /** Địa chỉ BASE của kho (payment = custody, stake = treasury_stake) — đúng địa chỉ mà

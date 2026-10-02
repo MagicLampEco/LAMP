@@ -31,7 +31,7 @@ import {
   planLedgerOut, valueOk,
 } from "./collect.js";
 import {
-  assetsToMap, custodyOutputAddress, mapToAssets, sameEpochValidToMs,
+  assetsToMap, custodyOutputAddress, mapToAssets, sameEpochValidToMs, windowIndexOf,
 } from "./collectBuilder.js";
 
 export interface DepositParams {
@@ -45,9 +45,11 @@ export interface DepositParams {
   /** Lô item nạp — mỗi `amount` vào kho TRỌN VẸN. */
   items: CollectItem[];
 
-  /** validity_range lower bound (POSIX ms); out_datum.epoch = ⌊validFromMs / msPerEpoch⌋. */
+  /** validity_range lower bound (POSIX ms); out_datum.epoch = ⌊(validFromMs − windowOriginMs) / msPerEpoch⌋. */
   validFromMs: bigint;
   msPerEpoch:  bigint;
+  /** `window_origin_ms` đã nướng vào `custody` (khe CUỐI) — Specs/Window/CONTRACT.md v1.0. BẮT BUỘC. */
+  windowOriginMs: bigint;
 
   /** seed_policy (PolicyId NFT chứng thực kho). BẮT BUỘC. */
   seedPolicy: string;
@@ -123,19 +125,19 @@ export function planDeposit(
 }
 
 export async function buildDepositTx(params: DepositParams): Promise<DepositResult> {
-  const { lucid, custodyUtxo, custodyScript, items, validFromMs, msPerEpoch, seedPolicy } = params;
+  const { lucid, custodyUtxo, custodyScript, items, validFromMs, msPerEpoch, windowOriginMs, seedPolicy } = params;
 
   if (!custodyUtxo.datum) throw new Error("DEPOSIT-000: custodyUtxo không có inline datum");
   const datum = decodeCustodyDatum(Data.from(custodyUtxo.datum));
 
   const valueIn = assetsToMap(custodyUtxo.assets);
-  const newEpoch = validFromMs / msPerEpoch;
+  const newEpoch = windowIndexOf(validFromMs, windowOriginMs, msPerEpoch);
   const { newDatum, custodyAfter, deposited } =
     planDeposit(datum, valueIn, items, newEpoch, seedPolicy);
 
   // C-DEP-ADDR: địa chỉ kho MANG THEO từ input (kể cả stake credential).
   const custodyAddress = custodyOutputAddress(custodyUtxo.address, custodyScript);
-  const validToMs = sameEpochValidToMs(validFromMs, msPerEpoch);
+  const validToMs = sameEpochValidToMs(validFromMs, msPerEpoch, windowOriginMs);
 
   // Người nạp cấp Σamount từ ví của mình (coin selection của lucid).
   const tx = await lucid

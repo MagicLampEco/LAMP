@@ -218,6 +218,10 @@ validator proposal(
   tally_script_hash: ByteArray,
   weight_param_policy: PolicyId,
   ms_per_epoch: Int,
+  // THÊM 2026-10-02 (Specs/Window/CONTRACT.md v1.0, WIN-ORIGIN-3) — ĐẶT CUỐI theo khuôn các
+  // tham số đã thêm trước. Gốc lưới cửa sổ: cửa sổ = (t − window_origin_ms) / ms_per_epoch,
+  // nên chỉ số cửa sổ = số epoch Cardano của mạng. Đổi hash validator này.
+  window_origin_ms: Int,
 ) {
   spend(
     datum_opt: Option<ProposalDatum>,
@@ -228,7 +232,7 @@ validator proposal(
     expect Some(d_in) = datum_opt
     let own_addr = util.own_address(own_ref, tx.inputs)
     let own_hash = util.own_script_hash(own_addr)
-    let epoch = util.get_epoch(tx, ms_per_epoch)
+    let epoch = util.get_epoch(tx, ms_per_epoch, window_origin_ms)
 
     when redeemer is {
       // ── OpenProposal: status Open + value bảo toàn NFT. (Mint NFT ở proposal_nft.) ──

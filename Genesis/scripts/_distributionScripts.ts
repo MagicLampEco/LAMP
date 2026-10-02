@@ -31,12 +31,17 @@ export interface ClaimScripts {
 
 /**
  * Dựng `claim_account_nft` [committee, threshold, khoPid] và `claim_account` [committee,
- * threshold, MS_PER_EPOCH, lampPid, tokenName, beaconPid, khoPid, accountPid] từ
+ * threshold, MS_PER_EPOCH, lampPid, tokenName, beaconPid, khoPid, accountPid, windowOriginMs] từ
  * `Distribution/onchain/plutus.json`. Phía gọi PHẢI đối chiếu kết quả với wiring
  * (`assertClaimScriptsMatch`) trước khi dựng giao dịch.
+ *
+ * `windowOriginMs` BẮT BUỘC, không mặc định (Specs/Window/CONTRACT.md v1.0): nó nướng vào hash
+ * `claim_account`, và một mặc định ở đây là một gốc đoán — phía gọi lấy từ
+ * `canonicalWindowOrigin(wiring.network)`, cùng nguồn với `deriveWiring`.
  */
 export async function claimScripts(pkh: string, khoPid: string, lampPid: string,
-                                   tokenName: string, beaconPid: string): Promise<ClaimScripts> {
+                                   tokenName: string, beaconPid: string,
+                                   windowOriginMs: bigint): Promise<ClaimScripts> {
   const p = resolve(__dirname, "../../Distribution/onchain/plutus.json");
   const vs = (JSON.parse(await readFile(p, "utf8")) as {
     validators: { title: string; compiledCode: string; parameters?: unknown[] }[];
@@ -65,6 +70,7 @@ export async function claimScripts(pkh: string, khoPid: string, lampPid: string,
   const accountPid = validatorToScriptHash(accountNft as Validator);
   const claim: Validator = apply("claim_account.claim_account.spend", [
     committee, threshold, MS_PER_EPOCH, lampPid, tokenName, beaconPid, khoPid, accountPid,
+    windowOriginMs,
   ]);
   return { accountNft, accountPid, claim, claimHash: validatorToScriptHash(claim) };
 }

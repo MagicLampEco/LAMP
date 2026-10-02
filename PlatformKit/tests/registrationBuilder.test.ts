@@ -17,7 +17,7 @@ const baseConfig = (over: Partial<PlatformConfig> = {}): PlatformConfig => ({
   buckets: [{ id: 0n, label: "ops" }],
   cutBps: 300n,
   governanceRef: "cc".repeat(28),
-  msPerEpoch: 86_400_000n,
+  msPerEpoch: 86_400_000n, windowOriginMs: 1_506_203_091_000n,
   reservedMinAda: 2_000_000n,
   registryAuthority: "ab".repeat(28),
   genesisRef: { transaction_id: "ff".repeat(32), output_index: 0n },

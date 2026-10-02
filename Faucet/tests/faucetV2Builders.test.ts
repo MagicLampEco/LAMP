@@ -22,6 +22,7 @@ import {
   DRIP_OILDROP, COOLDOWN, RECLAIM, MAX_CLAIMS_CEILING, TLAMP_ASSET_NAME, POOL_NFT_NAME,
   acctName,
 } from "../offchain/src/constants.js";
+import { WINDOW_ORIGIN_MS_BY_NETWORK } from "@magiclamp/utils";
 import { epochAt } from "../offchain/src/epochWindow.js";
 
 interface Recorded {
@@ -58,6 +59,10 @@ function mockLucid(): { lucid: any; rec: Recorded } {
 
 const NETWORK = "Preview" as const;
 const MS_PER_EPOCH = 86_400_000n; // Preview
+// Gốc cửa sổ TƯỜNG MINH (Specs/Window/CONTRACT.md v1.0): builder không suy gốc từ `network` —
+// Preview không có gốc. Dùng gốc Mainnet thật (không phải 0, không chia hết MS_PER_EPOCH) để một
+// builder quên trừ gốc cho nhãn lệch hàng nghìn cửa sổ.
+const ORIGIN_MS = WINDOW_ORIGIN_MS_BY_NETWORK.Mainnet!;
 const POOL_SCRIPT: Validator = { type: "PlutusV3", script: "49480100002221200101" };
 const ACCT_SCRIPT: Validator = { type: "PlutusV3", script: "49480100002221200102" };
 const NFT_POLICY: MintingPolicy = { type: "PlutusV3", script: "49480100002221200199" };
@@ -77,8 +82,8 @@ function addr(v: Validator): string {
 }
 
 const CFG = { drip_oildrop: DRIP_OILDROP, cooldown_epochs: COOLDOWN, max_claims_per_window: MAX_CLAIMS_CEILING };
-const NOW_MS = 200 * Number(MS_PER_EPOCH) + 5_000;
-const EPOCH = epochAt(NOW_MS, Number(MS_PER_EPOCH));
+const NOW_MS = Number(ORIGIN_MS) + 200 * Number(MS_PER_EPOCH) + 5_000;
+const EPOCH = epochAt(NOW_MS, Number(MS_PER_EPOCH), Number(ORIGIN_MS));
 
 // Gốc sổ khi DID_NAME ĐANG có account — trạng thái mặc định của mọi ca ClaimAgain/Use/Reclaim
 // ở tệp này (account của DID_NAME tồn tại ⇔ khoá của nó nằm trong sổ, INV-ONE-ACCT).
@@ -123,7 +128,7 @@ describe("buildClaimAgainTx — nạp thêm drip vào account đã có (DID-gate
       oldAccountUtxo: accountUtxo(DRIP_OILDROP, oldClaim, oldClaim), faucetAccountScript: ACCT_SCRIPT,
       didUtxo: didUtxo(), didNftPolicyId: DID_POLICY_ID, didName: DID_NAME,
       faucetNftPolicyId: NFT_POLICY_ID, tlampPolicyId: TLAMP_POLICY,
-      nowMs: NOW_MS, msPerEpoch: MS_PER_EPOCH,
+      nowMs: NOW_MS, msPerEpoch: MS_PER_EPOCH, windowOriginMs: ORIGIN_MS,
     });
     expect(res.drip).toBe(DRIP_OILDROP);
     expect(res.accountDatum.last_claim_epoch).toBe(EPOCH);
@@ -160,7 +165,7 @@ describe("buildClaimAgainTx — nạp thêm drip vào account đã có (DID-gate
       oldAccountUtxo: accountUtxo(DRIP_OILDROP, oldClaim, oldClaim), faucetAccountScript: ACCT_SCRIPT,
       didUtxo: badDid, didNftPolicyId: DID_POLICY_ID, didName: DID_NAME,
       faucetNftPolicyId: NFT_POLICY_ID, tlampPolicyId: TLAMP_POLICY,
-      nowMs: NOW_MS, msPerEpoch: MS_PER_EPOCH,
+      nowMs: NOW_MS, msPerEpoch: MS_PER_EPOCH, windowOriginMs: ORIGIN_MS,
     })).rejects.toThrow(/CLAIM-AGAIN-000/);
   });
 
@@ -173,7 +178,7 @@ describe("buildClaimAgainTx — nạp thêm drip vào account đã có (DID-gate
       oldAccountUtxo: accountUtxo(DRIP_OILDROP, oldClaim, oldClaim), faucetAccountScript: ACCT_SCRIPT,
       didUtxo: didUtxo(), didNftPolicyId: DID_POLICY_ID, didName: DID_NAME,
       faucetNftPolicyId: NFT_POLICY_ID, tlampPolicyId: TLAMP_POLICY,
-      nowMs: NOW_MS, msPerEpoch: MS_PER_EPOCH,
+      nowMs: NOW_MS, msPerEpoch: MS_PER_EPOCH, windowOriginMs: ORIGIN_MS,
     })).rejects.toThrow(/CLAIM-AGAIN-009/);
   });
 
@@ -188,7 +193,7 @@ describe("buildClaimAgainTx — nạp thêm drip vào account đã có (DID-gate
       oldAccountUtxo: wrongAcct, faucetAccountScript: ACCT_SCRIPT,
       didUtxo: didUtxo(), didNftPolicyId: DID_POLICY_ID, didName: DID_NAME,
       faucetNftPolicyId: NFT_POLICY_ID, tlampPolicyId: TLAMP_POLICY,
-      nowMs: NOW_MS, msPerEpoch: MS_PER_EPOCH,
+      nowMs: NOW_MS, msPerEpoch: MS_PER_EPOCH, windowOriginMs: ORIGIN_MS,
     })).rejects.toThrow(/CLAIM-AGAIN-004/);
   });
 });
@@ -202,7 +207,7 @@ describe("buildUseTx — gia hạn last_touch_epoch, last_claim_epoch BẤT BI�
       accountUtxo: accountUtxo(DRIP_OILDROP, 50n, 100n), faucetAccountScript: ACCT_SCRIPT,
       faucetNftPolicyId: NFT_POLICY_ID,
       didUtxo: didUtxo(), didNftPolicyId: DID_POLICY_ID, didName: DID_NAME,
-      tlampPolicyId: TLAMP_POLICY, nowMs: NOW_MS, msPerEpoch: MS_PER_EPOCH,
+      tlampPolicyId: TLAMP_POLICY, nowMs: NOW_MS, msPerEpoch: MS_PER_EPOCH, windowOriginMs: ORIGIN_MS,
       withdrawOildrop: 1_000_000n,
     });
     expect(res.newAccountDatum.last_touch_epoch).toBe(EPOCH);
@@ -222,7 +227,7 @@ describe("buildUseTx — gia hạn last_touch_epoch, last_claim_epoch BẤT BI�
       accountUtxo: accountUtxo(DRIP_OILDROP, 50n, 100n), faucetAccountScript: ACCT_SCRIPT,
       faucetNftPolicyId: NFT_POLICY_ID,
       didUtxo: didUtxo(), didNftPolicyId: DID_POLICY_ID, didName: DID_NAME,
-      tlampPolicyId: TLAMP_POLICY, nowMs: NOW_MS, msPerEpoch: MS_PER_EPOCH,
+      tlampPolicyId: TLAMP_POLICY, nowMs: NOW_MS, msPerEpoch: MS_PER_EPOCH, windowOriginMs: ORIGIN_MS,
       withdrawOildrop: DRIP_OILDROP + 1n,
     })).rejects.toThrow(/USE-005/);
   });
@@ -234,7 +239,7 @@ describe("buildUseTx — gia hạn last_touch_epoch, last_claim_epoch BẤT BI�
       accountUtxo: accountUtxo(DRIP_OILDROP, 50n, EPOCH + 1_000n), faucetAccountScript: ACCT_SCRIPT,
       faucetNftPolicyId: NFT_POLICY_ID,
       didUtxo: didUtxo(), didNftPolicyId: DID_POLICY_ID, didName: DID_NAME,
-      tlampPolicyId: TLAMP_POLICY, nowMs: NOW_MS, msPerEpoch: MS_PER_EPOCH,
+      tlampPolicyId: TLAMP_POLICY, nowMs: NOW_MS, msPerEpoch: MS_PER_EPOCH, windowOriginMs: ORIGIN_MS,
     })).rejects.toThrow(/USE-007/);
   });
 });
@@ -249,7 +254,7 @@ describe("buildReclaimTx — thu hồi idle về pool + ĐỐT ACCT NFT, cận d
       poolUtxo: poolUtxo(3_000_000_000n, EPOCH, 5n), faucetPoolScript: POOL_SCRIPT,
       accountUtxo: accountUtxo(DRIP_OILDROP, lastTouch, lastTouch), faucetAccountScript: ACCT_SCRIPT,
       faucetNftPolicy: NFT_POLICY, faucetNftPolicyId: NFT_POLICY_ID,
-      tlampPolicyId: TLAMP_POLICY, nowMs: NOW_MS, msPerEpoch: MS_PER_EPOCH,
+      tlampPolicyId: TLAMP_POLICY, nowMs: NOW_MS, msPerEpoch: MS_PER_EPOCH, windowOriginMs: ORIGIN_MS,
       openedLedger: [{ didName: DID_NAME }],
     });
     expect(res.reclaimed).toBe(DRIP_OILDROP);
@@ -285,7 +290,7 @@ describe("buildReclaimTx — thu hồi idle về pool + ĐỐT ACCT NFT, cận d
       poolUtxo: poolUtxo(3_000_000_000n, EPOCH, 0n, ledger.root), faucetPoolScript: POOL_SCRIPT,
       accountUtxo: accountUtxo(DRIP_OILDROP, lastTouch, lastTouch), faucetAccountScript: ACCT_SCRIPT,
       faucetNftPolicy: NFT_POLICY, faucetNftPolicyId: NFT_POLICY_ID,
-      tlampPolicyId: TLAMP_POLICY, nowMs: NOW_MS, msPerEpoch: MS_PER_EPOCH,
+      tlampPolicyId: TLAMP_POLICY, nowMs: NOW_MS, msPerEpoch: MS_PER_EPOCH, windowOriginMs: ORIGIN_MS,
       openedLedger: ledger,
     });
     const rest = await OpenedLedger.fromLiveAccounts([{ didName: "b0b0b0" }, { didName: "c0ffee" }]);
@@ -305,7 +310,7 @@ describe("buildReclaimTx — thu hồi idle về pool + ĐỐT ACCT NFT, cận d
       poolUtxo: poolUtxo(3_000_000_000n, EPOCH, 0n, ledger.root), faucetPoolScript: POOL_SCRIPT,
       accountUtxo: accountUtxo(DRIP_OILDROP, lastTouch, lastTouch), faucetAccountScript: ACCT_SCRIPT,
       faucetNftPolicy: NFT_POLICY, faucetNftPolicyId: NFT_POLICY_ID,
-      tlampPolicyId: TLAMP_POLICY, nowMs: NOW_MS, msPerEpoch: MS_PER_EPOCH,
+      tlampPolicyId: TLAMP_POLICY, nowMs: NOW_MS, msPerEpoch: MS_PER_EPOCH, windowOriginMs: ORIGIN_MS,
       openedLedger: ledger,
     })).rejects.toThrow(/FAUCET-LEDGER-004/);
     expect(rec.payData).toHaveLength(0);
@@ -319,7 +324,7 @@ describe("buildReclaimTx — thu hồi idle về pool + ĐỐT ACCT NFT, cận d
       poolUtxo: poolUtxo(3_000_000_000n), faucetPoolScript: POOL_SCRIPT,   // datum: sổ {DID_NAME}
       accountUtxo: accountUtxo(DRIP_OILDROP, lastTouch, lastTouch), faucetAccountScript: ACCT_SCRIPT,
       faucetNftPolicy: NFT_POLICY, faucetNftPolicyId: NFT_POLICY_ID,
-      tlampPolicyId: TLAMP_POLICY, nowMs: NOW_MS, msPerEpoch: MS_PER_EPOCH,
+      tlampPolicyId: TLAMP_POLICY, nowMs: NOW_MS, msPerEpoch: MS_PER_EPOCH, windowOriginMs: ORIGIN_MS,
       openedLedger: [{ didName: DID_NAME }, { didName: "b0b0b0" }],        // thừa một account
     })).rejects.toThrow(/FAUCET-LEDGER-001/);
     expect(rec.payData).toHaveLength(0);
@@ -340,7 +345,7 @@ describe("buildReclaimTx — thu hồi idle về pool + ĐỐT ACCT NFT, cận d
       poolUtxo: poolUtxo(3_000_000_000n, EPOCH, 5n), faucetPoolScript: POOL_SCRIPT,
       accountUtxo: emptyAccountUtxo(lastTouch), faucetAccountScript: ACCT_SCRIPT,
       faucetNftPolicy: NFT_POLICY, faucetNftPolicyId: NFT_POLICY_ID,
-      tlampPolicyId: TLAMP_POLICY, nowMs: NOW_MS, msPerEpoch: MS_PER_EPOCH,
+      tlampPolicyId: TLAMP_POLICY, nowMs: NOW_MS, msPerEpoch: MS_PER_EPOCH, windowOriginMs: ORIGIN_MS,
       openedLedger: [{ didName: DID_NAME }],
     });
     expect(res.reclaimed).toBe(0n);
@@ -367,7 +372,7 @@ describe("buildReclaimTx — thu hồi idle về pool + ĐỐT ACCT NFT, cận d
       poolUtxo: poolUtxo(3_000_000_000n, EPOCH, 5n), faucetPoolScript: POOL_SCRIPT,
       accountUtxo: emptyAccountUtxo(lastTouch), faucetAccountScript: ACCT_SCRIPT,
       faucetNftPolicy: NFT_POLICY, faucetNftPolicyId: NFT_POLICY_ID,
-      tlampPolicyId: TLAMP_POLICY, nowMs: NOW_MS, msPerEpoch: MS_PER_EPOCH,
+      tlampPolicyId: TLAMP_POLICY, nowMs: NOW_MS, msPerEpoch: MS_PER_EPOCH, windowOriginMs: ORIGIN_MS,
       openedLedger: [{ didName: DID_NAME }],
     })).rejects.toThrow(/RECLAIM-004/);
     expect(rec.payData).toHaveLength(0);
@@ -383,7 +388,7 @@ describe("buildReclaimTx — thu hồi idle về pool + ĐỐT ACCT NFT, cận d
       poolUtxo: pool, faucetPoolScript: POOL_SCRIPT,
       accountUtxo: emptyAccountUtxo(lastTouch), faucetAccountScript: ACCT_SCRIPT,
       faucetNftPolicy: NFT_POLICY, faucetNftPolicyId: NFT_POLICY_ID,
-      tlampPolicyId: TLAMP_POLICY, nowMs: NOW_MS, msPerEpoch: MS_PER_EPOCH,
+      tlampPolicyId: TLAMP_POLICY, nowMs: NOW_MS, msPerEpoch: MS_PER_EPOCH, windowOriginMs: ORIGIN_MS,
       openedLedger: [{ didName: DID_NAME }],
     });
     expect(res.poolAfter).toBe(0n);
@@ -400,7 +405,7 @@ describe("buildReclaimTx — thu hồi idle về pool + ĐỐT ACCT NFT, cận d
       poolUtxo: poolUtxo(3_000_000_000n), faucetPoolScript: POOL_SCRIPT,
       accountUtxo: accountUtxo(DRIP_OILDROP, lastTouch, lastTouch), faucetAccountScript: ACCT_SCRIPT,
       faucetNftPolicy: NFT_POLICY, faucetNftPolicyId: NFT_POLICY_ID,
-      tlampPolicyId: TLAMP_POLICY, nowMs: NOW_MS, msPerEpoch: MS_PER_EPOCH,
+      tlampPolicyId: TLAMP_POLICY, nowMs: NOW_MS, msPerEpoch: MS_PER_EPOCH, windowOriginMs: ORIGIN_MS,
       openedLedger: [{ didName: DID_NAME }],
     })).rejects.toThrow(/RECLAIM-004/);
   });
@@ -420,7 +425,7 @@ describe("INV-ONE-ACCT qua builder: mở → thu hồi → mở lại cùng DID 
         poolUtxo: poolUtxo(5_000_000_000n, EPOCH, 0n, l.root), faucetPoolScript: POOL_SCRIPT,
         faucetNftPolicy: NFT_POLICY, faucetNftPolicyId: NFT_POLICY_ID, faucetAccountScript: ACCT_SCRIPT,
         didUtxo: didUtxo(), didNftPolicyId: DID_POLICY_ID, didName: DID_NAME, openedLedger: l,
-        tlampPolicyId: TLAMP_POLICY, nowMs: NOW_MS, msPerEpoch: MS_PER_EPOCH,
+        tlampPolicyId: TLAMP_POLICY, nowMs: NOW_MS, msPerEpoch: MS_PER_EPOCH, windowOriginMs: ORIGIN_MS,
       });
     };
 
@@ -439,7 +444,7 @@ describe("INV-ONE-ACCT qua builder: mở → thu hồi → mở lại cùng DID 
       poolUtxo: poolUtxo(3_000_000_000n, EPOCH, 1n, ledger.root), faucetPoolScript: POOL_SCRIPT,
       accountUtxo: accountUtxo(DRIP_OILDROP, lastTouch, lastTouch), faucetAccountScript: ACCT_SCRIPT,
       faucetNftPolicy: NFT_POLICY, faucetNftPolicyId: NFT_POLICY_ID,
-      tlampPolicyId: TLAMP_POLICY, nowMs: NOW_MS, msPerEpoch: MS_PER_EPOCH,
+      tlampPolicyId: TLAMP_POLICY, nowMs: NOW_MS, msPerEpoch: MS_PER_EPOCH, windowOriginMs: ORIGIN_MS,
       openedLedger: ledger,
     });
     expect(recl.poolDatumOut.opened_root).toBe(rootBase);

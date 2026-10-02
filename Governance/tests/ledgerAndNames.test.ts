@@ -81,32 +81,50 @@ describe("VotedLedger — parity gốc với mpf_fixtures.ak", () => {
 
 describe("epochWindow — get_epoch_bounded", () => {
   const MS = 86_400_000n;
+  // Gốc Mainnet thật (Specs/Window/CONTRACT.md v1.0 §3): không chia hết MS (dư 78_291_000 ≠ 0),
+  // nên bản quên trừ gốc cho nhãn lệch hàng nghìn cửa sổ chứ không lệch 0.
+  const O = 1_506_203_091_000n;
+  const ON = Number(O);
   const preview = { zeroTime: 1_666_656_000_000, zeroSlot: 0, slotLength: 1000 };
   it("hai biên cùng một epoch, căn slot, chứa now", () => {
-    const now = 20_000 * 86_400_000 + 12_345;
-    const w = boundedEpochWindow(now, MS, preview);
+    const now = ON + 20_000 * 86_400_000 + 12_345;
+    const w = boundedEpochWindow(now, MS, O, preview);
     expect(w.epoch).toBe(20_000n);
-    expect(epochOf(w.loMs, MS)).toBe(w.epoch);
-    expect(epochOf(w.hiMs, MS)).toBe(w.epoch);
+    expect(epochOf(w.loMs, MS, O)).toBe(w.epoch);
+    expect(epochOf(w.hiMs, MS, O)).toBe(w.epoch);
     expect(w.loMs).toBeLessThanOrEqual(now);
     expect((w.loMs - preview.zeroTime) % 1000).toBe(0);
     expect((w.hiMs - preview.zeroTime) % 1000).toBe(0);
   });
   it("sát cuối epoch (< 60 s) ⇒ GOV-WINDOW-001, không nới sang epoch sau", () => {
-    const now = 20_001 * 86_400_000 - 30_000;
-    expect(() => boundedEpochWindow(now, MS, preview)).toThrow(/GOV-WINDOW-001/);
+    const now = ON + 20_001 * 86_400_000 - 30_000;
+    expect(() => boundedEpochWindow(now, MS, O, preview)).toThrow(/GOV-WINDOW-001/);
   });
   it("slot lệch pha với đầu epoch: lo không bị làm tròn xuống epoch trước", () => {
     const odd = { zeroTime: 1_000_000_000_500, zeroSlot: 0, slotLength: 1000 };
-    const start = 20_000 * 86_400_000;
-    const w = boundedEpochWindow(start + 700, MS, odd); // slot chứa now bắt đầu ở start − 300
-    expect(epochOf(w.loMs, MS)).toBe(20_000n);
-    expect(() => boundedEpochWindow(start + 200, MS, odd)).toThrow(/GOV-WINDOW-002/);
+    const start = ON + 20_000 * 86_400_000;
+    const w = boundedEpochWindow(start + 700, MS, O, odd); // slot chứa now bắt đầu ở start − 300
+    expect(epochOf(w.loMs, MS, O)).toBe(20_000n);
+    expect(() => boundedEpochWindow(start + 200, MS, O, odd)).toThrow(/GOV-WINDOW-002/);
   });
   it("khoảng do người gọi đưa vắt hai epoch ⇒ GOV-WINDOW-006", () => {
-    const e = 20_000 * 86_400_000;
-    expect(() => assertBoundedWindow(e - 1000, e + 1000, MS)).toThrow(/GOV-WINDOW-006/);
-    expect(assertBoundedWindow(e, e + 1000, MS)).toBe(20_000n);
+    const e = ON + 20_000 * 86_400_000;
+    expect(() => assertBoundedWindow(e - 1000, e + 1000, MS, O)).toThrow(/GOV-WINDOW-006/);
+    expect(assertBoundedWindow(e, e + 1000, MS, O)).toBe(20_000n);
+  });
+  it("biên cửa sổ rơi đúng gốc + k·MS, KHÔNG phải k·MS từ gốc Unix", () => {
+    const start = ON + 20_000 * 86_400_000;
+    expect(epochOf(start - 1, MS, O)).toBe(19_999n);
+    expect(epochOf(start, MS, O)).toBe(20_000n);
+    expect(epochOf(start + 86_400_000 - 1, MS, O)).toBe(20_000n);
+    // lưới Unix cũ ra nhãn khác hẳn — bài này đỏ nếu `epochOf` quên trừ gốc:
+    expect(BigInt(Math.floor(start / 86_400_000))).not.toBe(20_000n);
+  });
+  it("thiếu / sai gốc ⇒ GOV-WINDOW-007; mốc trước gốc ⇒ GOV-WINDOW-008", () => {
+    expect(() => epochOf(ON + 1, MS, undefined as never)).toThrow(/GOV-WINDOW-007/);
+    expect(() => epochOf(ON + 1, MS, -1n)).toThrow(/GOV-WINDOW-007/);
+    expect(() => epochOf(ON - 1, MS, O)).toThrow(/GOV-WINDOW-008/);
+    expect(() => boundedEpochWindow(5_000, MS, O, preview)).toThrow(/GOV-WINDOW-008/);
   });
 });
 

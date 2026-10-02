@@ -7,7 +7,7 @@ import {
   isqrt, isqrt10th, verifyVd, vDampened, mulQ, clamp,
   cmpBigIntAsc, cmpBigIntDesc, Q,
   DRM_LOOKBACK,
-  slotsPerEpoch, msPerEpoch, posixMsToEpoch, epochTablesAgree,
+  slotsPerEpoch, msPerEpoch, epochTablesAgree,
   SLOTS_PER_EPOCH_BY_NETWORK, MS_PER_EPOCH_BY_NETWORK, MS_PER_SLOT,
 } from "../src/index.js";
 import type { Network } from "../src/index.js";
@@ -84,12 +84,8 @@ describe("Epoch tables — ĐỐI XỨNG", () => {
     expect(msPerEpoch("Preview")).toBe(86_400_000n);
   });
 
-  it("posixMsToEpoch follows the same table (Preprod ≠ Preview)", () => {
-    const oneDayMs = 86_400_000n;
-    expect(posixMsToEpoch(oneDayMs, "Preview")).toBe(1n);
-    expect(posixMsToEpoch(oneDayMs, "Preprod")).toBe(0n);
-    expect(posixMsToEpoch(oneDayMs * 5n, "Preprod")).toBe(1n);
-  });
+  // The old `posixMsToEpoch` tests ("Preview 1 day = epoch 1 / Preprod 5 days = epoch 1") described the
+  // 1970-origin system and are retired with it; the window tests live in `windowOrigin.test.ts`.
 });
 
 // ══════════════════════════════════════════════════════════════

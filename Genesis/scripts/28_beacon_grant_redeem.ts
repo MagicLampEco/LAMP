@@ -28,10 +28,12 @@
 // Toán học nằm ở SDK (`Distribution/offchain/src/vested.ts`) — tệp này không tự tính lại.
 //
 // ĐỒNG HỒ EPOCH — chỗ dễ đọc nhầm nhất, đọc kỹ trước khi đổi số.
-// `util.get_epoch(tx, ms_per_epoch) = validity_range.lower_bound / ms_per_epoch`
-// (`Distribution/onchain/lib/magiclamp/lampdist/util.ak:12-15`). Với
-// `MS_PER_EPOCH = 432_000_000` thì đây là cửa sổ 5 ngày neo vào mốc Unix, KHÔNG liên quan
-// lịch epoch của Cardano. Đừng tra epoch Cardano rồi suy ra hạn ở đây — hai đồng hồ khác nhau.
+// `util.get_epoch(tx, ms_per_epoch, window_origin_ms) =
+//    (validity_range.lower_bound − window_origin_ms) / ms_per_epoch`
+// (`Distribution/onchain/lib/magiclamp/lampdist/util.ak` ▸ `get_epoch`; Specs/Window/CONTRACT.md
+// v1.0). Gốc `window_origin_ms` của Preprod/Mainnet là mốc epoch 0 của Cardano, nên cửa sổ
+// 5 ngày TRÙNG epoch Cardano — nhưng nó vẫn là một phép tính theo gốc, không phải `t / ms_per_epoch`
+// (bản cũ chia thô cho nhãn lệch vài cửa sổ). Gốc lấy từ `canonicalWindowOrigin(wiring.network)`.
 //
 //   v2 (lịch sử): vested = min(E, D · drops_per_epoch · max(0, current_epoch − start_epoch))
 //   v3 (hiện hành): xem khối TRẦN CỦA `topup` ở trên — `A_span` thay cho `elapsed`.
@@ -95,8 +97,9 @@ import {
 } from "@lucid-evolution/lucid";
 
 import { NETWORK, SUBMIT, makeLucid, walletPkh, explorerTx } from "./config.js";
+import { windowIndex, windowStartMs } from "../../Utils/src/index.js";
 import {
-  rehydrate, canonicalCommittee, CANONICAL_COMMITTEE_THRESHOLD, MS_PER_EPOCH, DROP_NAME,
+  rehydrate, canonicalWindowOrigin, canonicalCommittee, CANONICAL_COMMITTEE_THRESHOLD, MS_PER_EPOCH, DROP_NAME,
 } from "./_canonical_v2.js";
 // `claim_account` + `claim_account_nft` dựng lại từ blueprint, và chọn UTxO kho — dùng chung
 // với `30_feeder_accounts.ts`, không chép lại.
@@ -150,14 +153,14 @@ const STEP = (process.env.STEP ?? "").toLowerCase();
 
 const lamp = (oildrop: bigint) => `${oildrop / OILDROP_PER_LAMP} LAMP (${oildrop} oildrop)`;
 
-/** Epoch VALIDATOR (cửa sổ 5 ngày neo mốc Unix), KHÔNG phải epoch Cardano. */
-function epochNow(): bigint {
-  return BigInt(Date.now()) / MS_PER_EPOCH;
+/** Cửa sổ VALIDATOR hiện tại = `(now − window_origin_ms) / ms_per_epoch` (Specs/Window v1.0). */
+function epochNow(windowOriginMs: bigint): bigint {
+  return windowIndex(BigInt(Date.now()), windowOriginMs, MS_PER_EPOCH);
 }
 /** Cặp lo/hi của cửa sổ hiện tại. Ném nếu cửa sổ đã sang trang so với `e` in ở đầu lượt —
  *  nhãn in ra cho người vận hành và nhãn ghi vào datum phải là CÙNG một cửa sổ. */
-function windowNow(e: bigint): { loMs: bigint; hiMs: bigint; epoch: bigint } {
-  const w = epochWindow(MS_PER_EPOCH);
+function windowNow(e: bigint, windowOriginMs: bigint): { loMs: bigint; hiMs: bigint; epoch: bigint } {
+  const w = epochWindow(MS_PER_EPOCH, windowOriginMs);
   if (w.epoch !== e) {
     throw new Error(`WINDOW-001: cửa sổ vừa sang trang (${e} → ${w.epoch}) giữa lượt chạy. Chạy lại.`);
   }
@@ -214,8 +217,10 @@ async function main(): Promise<void> {
   const { wiring, scripts } = await rehydrate();
   if (pkh !== wiring.pkh) throw new Error(`SAI VÍ: state ghi pkh=${wiring.pkh}, ví hiện tại ${pkh}.`);
 
+  // Gốc cửa sổ của mạng — CÙNG nguồn với `deriveWiring` (gốc đã nướng vào claim/treasury/beacon).
+  const originMs = canonicalWindowOrigin(wiring.network);
   const cs = await claimScripts(pkh, wiring.markers.khoPid, wiring.lampPid,
-                                wiring.tokenName, wiring.markers.beaconPid);
+                                wiring.tokenName, wiring.markers.beaconPid, originMs);
   assertClaimScriptsMatch(cs, wiring);
   const claimAddr = credentialToAddress(NETWORK, scriptHashToCredential(cs.claimHash));
 
@@ -251,12 +256,12 @@ async function main(): Promise<void> {
     return true;
   });
 
-  const e = epochNow();
+  const e = epochNow(originMs);
   console.log(`═══ Beacon · Grant · Redeem (${NETWORK}) ═══`);
   console.log(`Ví vận hành pkh : ${pkh}`);
-  console.log(`Epoch VALIDATOR : ${e}  (cửa sổ 5 ngày neo mốc Unix — KHÔNG phải epoch Cardano)`);
-  console.log(`  cửa sổ này mở : ${new Date(Number(e * MS_PER_EPOCH)).toISOString()}`);
-  console.log(`  cửa sổ kế mở  : ${new Date(Number((e + 1n) * MS_PER_EPOCH)).toISOString()}`);
+  console.log(`Cửa sổ VALIDATOR: ${e}  (= (t − window_origin_ms) / ms_per_epoch; gốc ${originMs})`);
+  console.log(`  cửa sổ này mở : ${new Date(Number(windowStartMs(e, originMs, MS_PER_EPOCH))).toISOString()}`);
+  console.log(`  cửa sổ kế mở  : ${new Date(Number(windowStartMs(e + 1n, originMs, MS_PER_EPOCH))).toISOString()}`);
   console.log(`\nBeacon  ${refKey(beaconUtxo)}`);
   console.log(`  datum : ${JSON.stringify(beaconD, (_k, v) => typeof v === "bigint" ? v.toString() : v)}`);
   console.log(`\nKho     ${refKey(treasuryUtxo)}  @ ${wiring.treAddr}`);
@@ -293,7 +298,8 @@ async function main(): Promise<void> {
     // kiểm C-BCN-5'/5a/6 trước khi gửi; v2 chỉ truyền một con số (`currentDropValue`).
     if (!beaconD) throw new Error(`BCN-003: beacon ${refKey(beaconUtxo)} không có inline datum.`);
     const plan = planBeacon({
-      onChain: beaconD, window: windowNow(e), rateRoot: RATE_ROOT, msPerEpoch: MS_PER_EPOCH,
+      onChain: beaconD, window: windowNow(e, originMs), rateRoot: RATE_ROOT,
+      msPerEpoch: MS_PER_EPOCH, windowOriginMs: originMs,
     });
     if (plan.action === "skip") {
       throw new Error(
@@ -311,7 +317,7 @@ async function main(): Promise<void> {
       beaconNftPolicy: wiring.markers.beaconPid,
       committeeKeyHashes: canonicalCommittee(pkh),
       threshold: Number(CANONICAL_COMMITTEE_THRESHOLD),
-      ...plan.params,   // newBeacon + msPerEpoch (builder tự đặt lo/hi) + currentBeacon
+      ...plan.params,   // newBeacon + msPerEpoch + windowOriginMs (builder tự đặt lo/hi) + currentBeacon
     });
     console.log(`\n${r.summary}`);
     await finish(lucid, r.tx, "PostBeacon");
@@ -328,12 +334,12 @@ async function main(): Promise<void> {
         `sau (A-ACC-2 chỉ đếm trong một giao dịch). Tăng E thì đi đường UPDATE.`,
       );
     }
-    const w = windowNow(e);
+    const w = windowNow(e, originMs);
     const r = await buildClaimTx({
       lucid, claimScript: cs.claim, network: NETWORK,
       ownerPkh: pkh, amount: ENTITLEMENT,
-      // C-ACC-2: builder SUY start_epoch từ đầu dưới (`validFromMs / msPerEpoch`).
-      msPerEpoch: MS_PER_EPOCH,
+      // C-ACC-2: builder SUY start_epoch từ đầu dưới (`(validFromMs − windowOriginMs) / msPerEpoch`).
+      msPerEpoch: MS_PER_EPOCH, windowOriginMs: originMs,
       // `dropsPerEpoch` bỏ trống ⇒ mặc định 1 = giá trị ghim của v3 (CLAIM-006 chặn mọi số khác).
       accountNft: { script: cs.accountNft, policyId: cs.accountPid },
       treasury: {
@@ -410,11 +416,11 @@ async function main(): Promise<void> {
       );
     }
 
-    const w = windowNow(e);
+    const w = windowNow(e, originMs);
     const r = await buildClaimTx({
       lucid, claimScript: cs.claim, network: NETWORK,
       ownerPkh: pkh, amount: TOPUP,
-      msPerEpoch: MS_PER_EPOCH,
+      msPerEpoch: MS_PER_EPOCH, windowOriginMs: originMs,
       claimAccountUtxo: accUtxo,          // ⇒ đường UPDATE, builder KHÔNG đúc NFT
       treasury: {
         utxo: treasuryUtxo, script: scripts.treasury,
@@ -473,14 +479,14 @@ async function main(): Promise<void> {
     if (myAccounts.length !== 1) {
       throw new Error(`REDEEM-000: cần ĐÚNG 1 tài khoản ở ${claimAddr}, đếm ${myAccounts.length}. Chạy STEP=grant trước.`);
     }
-    const w = windowNow(e);   // ném nếu cửa sổ đã sang trang so với `e` in ở đầu lượt
+    const w = windowNow(e, originMs);   // ném nếu cửa sổ đã sang trang so với `e` in ở đầu lượt
     const r = await buildRedeemTx({
       lucid, network: NETWORK,
       claimAccountUtxo: myAccounts[0]!, claimScript: cs.claim,
       treasuryUtxo, treasuryScript: scripts.treasury,
       dropBeaconUtxo: beaconUtxo,
-      // Builder SUY cửa sổ từ đầu dưới (`validFromMs / msPerEpoch`) — không truyền `e` rời.
-      msPerEpoch: MS_PER_EPOCH,
+      // Builder SUY cửa sổ từ đầu dưới (`(validFromMs − windowOriginMs) / msPerEpoch`) — không truyền `e` rời.
+      msPerEpoch: MS_PER_EPOCH, windowOriginMs: originMs,
       validFromMs: w.loMs,   // đầu dưới ≤ now: giữa cửa sổ là mốc tương lai
       validToMs: w.hiMs,
       treasuryNftPolicy: wiring.markers.khoPid, treasuryNftAssetName: "54525359",

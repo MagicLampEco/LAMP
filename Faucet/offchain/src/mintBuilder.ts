@@ -69,6 +69,13 @@ export interface MintPoolParams {
   /** Mốc "bây giờ" (ms Unix) — dùng để tính `window_epoch` khởi tạo pinned (C-MP-6). */
   nowMs: number;
   msPerEpoch: bigint;
+  /**
+   * `window_origin_ms` đã apply vào faucet_nft/faucet_pool/faucet_account (tham số CUỐI,
+   * Specs/Window/CONTRACT.md v1.0): cửa sổ = `(nowMs − windowOriginMs) / msPerEpoch`. Lấy từ
+   * `windowOriginMs(network)` của `@magiclamp/utils` (Preview ném lỗi, không có giá trị). Truyền
+   * lệch thì nhãn cửa sổ trong datum lệch với cái validator suy ra và giao dịch bị từ chối.
+   */
+  windowOriginMs: bigint;
 }
 
 export interface MintPoolResult {
@@ -86,7 +93,7 @@ export interface MintPoolResult {
 export async function buildMintPoolTx(params: MintPoolParams): Promise<MintPoolResult> {
   const {
     lucid, network, tlampPolicy, tlampPolicyId, faucetNftPolicy, faucetNftPolicyId,
-    faucetPoolScript, genesisUtxo, msPerEpoch,
+    faucetPoolScript, genesisUtxo, msPerEpoch, windowOriginMs,
   } = params;
 
   assertMsPerEpochMatchesNetwork(msPerEpoch, network);
@@ -117,7 +124,7 @@ export async function buildMintPoolTx(params: MintPoolParams): Promise<MintPoolR
 
   // C-MP-6: window_epoch khởi tạo PHẢI đúng bucket thật (pinned) — window_epoch=0 (giá trị
   // mặc định tự nhiên khi viết builder ẩu) sẽ cho sẵn hàng nghìn bậc thang quota ngay sau deploy.
-  const { loMs, hiMs, epoch } = pinnedEpochWindow(params.nowMs, Number(msPerEpoch));
+  const { loMs, hiMs, epoch } = pinnedEpochWindow(params.nowMs, Number(msPerEpoch), Number(windowOriginMs));
 
   const poolAddress = credentialToAddress(
     network, scriptHashToCredential(validatorToScriptHash(faucetPoolScript)),

@@ -63,6 +63,19 @@ export interface OnboardPlan {
 export function onboardPlatform(params: OnboardParams): OnboardPlan {
   const { config, beaconPolicy, custodyHash, seedPolicy, createdEpoch } = params;
 
+  // Gốc cửa sổ (Specs/Window/CONTRACT.md v1.0): `epoch` trong datum custody/entry là nhãn
+  // `(t − window_origin_ms) / ms_per_epoch`. Thiếu gốc thì custody được apply với tham số cuối sai
+  // chỗ (hash khác, im lặng) và `createdEpoch` thuộc một lưới mà validator đã bỏ — chặn ở đây.
+  if (typeof config.windowOriginMs !== "bigint" || config.windowOriginMs < 0n) {
+    throw new Error(
+      `ONBOARD-ORIGIN: config.windowOriginMs phải là bigint ≥ 0, nhận ${String(config.windowOriginMs)} — lấy từ ` +
+      "`windowOriginMs(network)` của @magiclamp/utils (Preview không có gốc, WIN-PREVIEW).",
+    );
+  }
+  if (typeof config.msPerEpoch !== "bigint" || config.msPerEpoch <= 0n) {
+    throw new Error(`ONBOARD-ORIGIN: config.msPerEpoch phải là bigint > 0, nhận ${String(config.msPerEpoch)}.`);
+  }
+
   // ── BƯỚC 1: SEED custody instance ─────────────────────────────────────────
   // CustodyDatum genesis: instance_id, accepted_assets, ledger (canonical hoá trong planSeed),
   // cut_bps, governance_ref, epoch. planSeed ép consumed=[] + tự kiểm seedDatumOk.

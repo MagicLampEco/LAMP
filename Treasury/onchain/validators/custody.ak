@@ -155,6 +155,10 @@ validator custody(
   ms_per_epoch: Int,
   lamp_policy: assets.PolicyId,
   token_name: ByteArray,
+  // THÊM 2026-10-02 (Specs/Window/CONTRACT.md v1.0, WIN-ORIGIN-3) — ĐẶT CUỐI theo khuôn các
+  // tham số đã thêm trước. Gốc lưới cửa sổ: cửa sổ = (t − window_origin_ms) / ms_per_epoch,
+  // nên chỉ số cửa sổ = số epoch Cardano của mạng. Đổi hash validator này.
+  window_origin_ms: Int,
 ) {
   spend(
     datum_opt : Option<CustodyDatum>,
@@ -202,7 +206,7 @@ validator custody(
           assets.quantity_of(cust_out.value, seed_policy, out_datum.instance_id) == 1
 
         // C-EPOCH: neo epoch vào chain GỌN 1 epoch (audit thật, không lùi, không đóng băng).
-        let cur = util.get_epoch_bounded(tx, ms_per_epoch)
+        let cur = util.get_epoch_bounded(tx, ms_per_epoch, window_origin_ms)
         expect cur >= datum.epoch
         expect out_datum.epoch == cur
 
@@ -275,7 +279,7 @@ validator custody(
           assets.quantity_of(cust_out.value, seed_policy, out_datum.instance_id) == 1
 
         // C-EPOCH: neo epoch vào chain GỌN 1 epoch (không lùi, không đóng băng).
-        let cur = util.get_epoch_bounded(tx, ms_per_epoch)
+        let cur = util.get_epoch_bounded(tx, ms_per_epoch, window_origin_ms)
         expect cur >= datum.epoch
         expect out_datum.epoch == cur
 
@@ -388,7 +392,7 @@ validator custody(
           assets.quantity_of(cust_out.value, seed_policy, out_datum.instance_id) == 1
 
         // ── C-MIG-4: neo epoch vào chain GỌN 1 epoch (không lùi, không đóng băng) ──
-        let cur = util.get_epoch_bounded(tx, ms_per_epoch)
+        let cur = util.get_epoch_bounded(tx, ms_per_epoch, window_origin_ms)
         expect cur >= datum.epoch
         expect out_datum.epoch == cur
 
@@ -507,7 +511,7 @@ validator custody(
           assets.quantity_of(cust_out.value, seed_policy, out_datum.instance_id) == 1
 
         // ── C-STK-4: neo epoch vào chain GỌN 1 epoch (không lùi, không đóng băng) ──
-        let cur = util.get_epoch_bounded(tx, ms_per_epoch)
+        let cur = util.get_epoch_bounded(tx, ms_per_epoch, window_origin_ms)
         expect cur >= datum.epoch
         expect out_datum.epoch == cur
 
@@ -573,7 +577,7 @@ validator custody(
           assets.quantity_of(cust_out.value, seed_policy, out_datum.instance_id) == 1
 
         // C-EPOCH: neo epoch vào chain GỌN 1 epoch (không lùi, không đóng băng).
-        let cur = util.get_epoch_bounded(tx, ms_per_epoch)
+        let cur = util.get_epoch_bounded(tx, ms_per_epoch, window_origin_ms)
         expect cur >= datum.epoch
         expect out_datum.epoch == cur
 

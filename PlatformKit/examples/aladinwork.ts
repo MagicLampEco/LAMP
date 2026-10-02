@@ -171,6 +171,7 @@ export function aladinWorkConfig(opts: {
   lampPolicy: string;
   registryAuthority: string;
   msPerEpoch: bigint;
+  windowOriginMs: bigint;       // ĐIỀN: `windowOriginMs(network)` của @magiclamp/utils (Specs/Window v1.0) — Preview không có.
   reservedMinAda: bigint;
   genesisRef: { transaction_id: string; output_index: bigint };
   seedPolicy?: string;
@@ -193,6 +194,7 @@ export function aladinWorkConfig(opts: {
     governanceRef: opts.governanceRef ?? padHash28(asciiToHex("aladinwork-committee")),
     ...(opts.seedPolicy !== undefined ? { seedPolicy: opts.seedPolicy } : {}),
     msPerEpoch: opts.msPerEpoch,
+    windowOriginMs: opts.windowOriginMs,
     reservedMinAda: opts.reservedMinAda,
     registryAuthority: opts.registryAuthority.toLowerCase(),
     genesisRef: opts.genesisRef,

@@ -19,6 +19,7 @@ use magiclamp/potvault/types.{
   reserve_nft_name,
 }
 use magiclamp/potvault/util
+use magiclamp/potvault/window_origin_fixtures
 
 validator pot_vault(
   genesis_ref: OutputReference,
@@ -27,6 +28,10 @@ validator pot_vault(
   ms_per_epoch: Int,
   window_cap: Int,
   total_cap: Int,
+  // THÊM 2026-10-02 (Specs/Window/CONTRACT.md v1.0, WIN-ORIGIN-3) — ĐẶT CUỐI theo khuôn các
+  // tham số đã thêm trước. Gốc lưới cửa sổ: cửa sổ = (t − window_origin_ms) / ms_per_epoch,
+  // nên chỉ số cửa sổ = số epoch Cardano của mạng. Đổi hash validator này.
+  window_origin_ms: Int,
 ) {
   mint(redeemer: types.PotMintRedeemer, policy_id: PolicyId, tx: Transaction) {
     handlers.pot_mint(
@@ -52,6 +57,7 @@ validator pot_vault(
       lamp_policy,
       lamp_name,
       ms_per_epoch,
+      window_origin_ms,
       window_cap,
       total_cap,
       datum,
@@ -267,12 +273,41 @@ fn t_spend(
     t_ms_per_epoch,
     t_window_cap,
     t_total_cap,
+    0,
     d,
     r,
     own_ref,
     tx,
   )
 }
+
+// ── Gốc cửa sổ (Specs/Window/CONTRACT.md v1.0, WIN-ORIGIN-1..3) ─────────────────
+// Bản của `t_spend` nhận gốc `origin` và dời mọi biên hữu hạn của validity range đi
+// `shift`. `(o, o)`: cùng kịch bản dời sang lưới có gốc ⇒ kết quả phải y như bản gốc 0.
+// `(0, o)`: validator QUÊN gốc trên tx đã dời ⇒ phải bị chặn.
+fn t_spend_at(
+  origin: Int,
+  shift: Int,
+  d: Option<Data>,
+  r: PotRedeemer,
+  own_ref: OutputReference,
+  tx: Transaction,
+) -> Bool {
+  pot_vault.spend(
+    t_genesis_ref(),
+    t_lamp_policy,
+    t_lamp_name,
+    t_ms_per_epoch,
+    t_window_cap,
+    t_total_cap,
+    origin,
+    d,
+    r,
+    own_ref,
+    window_origin_fixtures.shift_tx(tx, shift),
+  )
+}
+
 
 fn t_mint_with(
   lamp_policy: PolicyId,
@@ -289,6 +324,7 @@ fn t_mint_with(
     ms_per_epoch,
     window_cap,
     total_cap,
+    0,
     MintPot,
     t_pot_hash,
     tx,
@@ -1530,4 +1566,22 @@ test mintpot_total_cap_bang_0() fail {
     0,
     t_mint_tx_ok(t_mint_out_ok()),
   )
+}
+
+/// `feed_dung_luat` dời sang gốc Mainnet: phải xanh như bản gốc 0.
+test feed_dung_luat_origin_mainnet() {
+  let (d, tx) = t_feed_ok()
+  t_spend_at(window_origin_fixtures.mainnet_origin_ms, window_origin_fixtures.mainnet_origin_ms, d, Feed, t_pot_ref(), tx)
+}
+
+/// `feed_dung_luat` dời sang gốc Preprod: phải xanh như bản gốc 0.
+test feed_dung_luat_origin_preprod() {
+  let (d, tx) = t_feed_ok()
+  t_spend_at(window_origin_fixtures.preprod_origin_ms, window_origin_fixtures.preprod_origin_ms, d, Feed, t_pot_ref(), tx)
+}
+
+/// Ca âm: tx đã dời sang lưới Mainnet nhưng validator nhận gốc 0 (quên trừ gốc) ⇒ phải bị chặn.
+test feed_dung_luat_origin_forgotten() fail {
+  let (d, tx) = t_feed_ok()
+  t_spend_at(0, window_origin_fixtures.mainnet_origin_ms, d, Feed, t_pot_ref(), tx)
 }

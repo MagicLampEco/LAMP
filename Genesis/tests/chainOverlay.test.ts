@@ -16,6 +16,7 @@ import {
 } from "../scripts/_chainOverlay.js";
 import { pickTreasury } from "../scripts/_distributionScripts.js";
 import { epochWindow } from "../../Distribution/offchain/src/constants.js";
+import { WINDOW_ORIGIN_MS_BY_NETWORK } from "../../Utils/src/index.js";
 
 const H = (c: string) => c.repeat(64);
 const WALLET = "addr_test1_wallet";
@@ -201,27 +202,43 @@ describe("providerCaughtUp", () => {
 });
 
 describe("chainWindowBlock — MỘT cửa sổ cho cả chuỗi", () => {
+  // Specs/Window/CONTRACT.md v1.0: cửa sổ = `(t − window_origin_ms) / ms_per_epoch`. Mốc cứng cũ
+  // (cửa sổ 4146 / 4147) là nhãn của phép chia THÔ `t / ms_per_epoch`; cụm feeder chạy trên
+  // Preprod nên nay đo theo GỐC PREPROD THẬT — cùng mốc t0, nhãn mới là 317 (và 318 là cửa sổ kế).
   const MS = 432_000_000n;
-  const t0 = 1_791_072_120_000n;            // mốc thuộc cửa sổ 4146 (cùng mốc bài DRY_RUN_AT_MS)
-  const w = epochWindow(MS, t0);
+  const O = WINDOW_ORIGIN_MS_BY_NETWORK.Preprod!;
+  const t0 = 1_791_072_120_000n;            // mốc thuộc cửa sổ 317 (cùng mốc bài DRY_RUN_AT_MS)
+  const w = epochWindow(MS, O, t0);
   const M = 600_000n;
-  it("mốc mở chuỗi ⇒ được dựng; cửa sổ là 4146", () => {
-    expect(w.epoch).toBe(4146n);
-    expect(chainWindowBlock(w, MS, t0, M)).toBeNull();
+  const nextStart = O + 318n * MS;          // đầu cửa sổ 318
+  it("mốc mở chuỗi ⇒ được dựng; cửa sổ là 317 (gốc Preprod), KHÔNG phải 4146 (chia thô)", () => {
+    expect(w.epoch).toBe(317n);
+    expect(t0 / MS).toBe(4146n);            // đối chứng: bản quên trừ gốc ra nhãn này
+    expect(chainWindowBlock(w, MS, O, t0, M)).toBeNull();
   });
   it("đúng biên lề: now + M = hi ⇒ được; thêm 1 ms ⇒ không", () => {
-    expect(chainWindowBlock(w, MS, w.hiMs - M, M)).toBeNull();
-    expect(chainWindowBlock(w, MS, w.hiMs - M + 1n, M)).toMatch(/còn </);
+    expect(chainWindowBlock(w, MS, O, w.hiMs - M, M)).toBeNull();
+    expect(chainWindowBlock(w, MS, O, w.hiMs - M + 1n, M)).toMatch(/còn </);
   });
   it("đồng hồ sang cửa sổ kế ⇒ không dựng", () => {
-    expect(chainWindowBlock(w, MS, 4147n * MS, M)).toMatch(/sang cửa sổ 4147/);
+    expect(chainWindowBlock(w, MS, O, nextStart, M)).toMatch(/sang cửa sổ 318/);
   });
   it("đồng hồ trước đầu dưới ⇒ không dựng", () => {
-    expect(chainWindowBlock(w, MS, w.loMs - 1n, M)).toMatch(/trước đầu dưới/);
+    expect(chainWindowBlock(w, MS, O, w.loMs - 1n, M)).toMatch(/trước đầu dưới/);
   });
   it("khoảng vắt qua biên cửa sổ ⇒ không dựng", () => {
-    expect(chainWindowBlock({ ...w, hiMs: 4147n * MS }, MS, t0, M)).toMatch(/vắt ra ngoài/);
-    expect(chainWindowBlock({ ...w, loMs: w.hiMs + 1n }, MS, t0, M)).toMatch(/khoảng hiệu lực âm/);
+    expect(chainWindowBlock({ ...w, hiMs: nextStart }, MS, O, t0, M)).toMatch(/vắt ra ngoài/);
+    expect(chainWindowBlock({ ...w, loMs: w.hiMs + 1n }, MS, O, t0, M)).toMatch(/khoảng hiệu lực âm/);
+  });
+  it("mốc TRƯỚC gốc ⇒ không dựng (chia BigInt cắt về 0 sẽ cho nhãn 0 giả)", () => {
+    // `(O − 1 − O) / MS` = 0 trong BigInt: không chặn riêng thì "cửa sổ 0" lọt qua phép so nhãn.
+    expect(chainWindowBlock({ loMs: O - 10n, hiMs: O - 5n, epoch: 0n }, MS, O, O - 1n, M)).toMatch(/TRƯỚC gốc/);
+    expect(chainWindowBlock(w, MS, O, O - 1n, M)).toMatch(/TRƯỚC gốc/);
+  });
+  it("gốc 0 không phân biệt được bản trừ gốc: cùng khoảng, hai gốc ⇒ hai kết luận", () => {
+    // Với gốc 0 khoảng `w` (nhãn 317) bị coi là vắt ra ngoài cửa sổ 4146≠317; với gốc đúng thì được.
+    expect(chainWindowBlock(w, MS, 0n, t0, M)).toMatch(/vắt ra ngoài/);
+    expect(chainWindowBlock(w, MS, O, t0, M)).toBeNull();
   });
 });
 

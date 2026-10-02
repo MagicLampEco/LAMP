@@ -184,6 +184,7 @@ fn happy_tx() -> Transaction {
 fn run(tx: Transaction, d_in: CustodyDatum, source: ByteArray) -> Bool {
   custody.custody.spend(
     #"feed", seed_policy, ms_per_epoch, lamp_policy, lamp_name,
+      0,
     Some(d_in), MigrateIn { source }, util.mk_ref(0), tx,
   )
 }

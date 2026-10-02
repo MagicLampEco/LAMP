@@ -57,6 +57,12 @@ export interface PostBeaconParams {
   msPerEpoch?: bigint;
 
   /**
+   * `window_origin_ms` đã apply vào beacon (Specs/Window/CONTRACT.md v1.0). Đi CÙNG `msPerEpoch`:
+   * có `msPerEpoch` mà thiếu gốc thì ném `BEACON-015` — một cửa sổ chia từ gốc Unix là lưới đã bỏ.
+   */
+  windowOriginMs?: bigint;
+
+  /**
    * Datum beacon HIỆN TẠI — để kiểm ba chốt v3 trước khi gửi: C-BCN-5' (chỉ nới),
    * C-BCN-5a (một lượt ≤ +10%), C-BCN-6 (chỉ số cộng dồn, quá khứ định giá bằng
    * `rate_root` CŨ). Bỏ trống thì ba phép kiểm đó không chạy — validator vẫn ép.
@@ -274,7 +280,14 @@ export async function buildPostBeaconTx(params: PostBeaconParams): Promise<PostB
   // sự tự do đó đẻ ra beacon mang nhãn 4144 trong khi cửa sổ thật là 4142.
   let windowLabel: bigint | undefined;
   if (params.msPerEpoch !== undefined) {
-    const w = epochWindow(params.msPerEpoch);
+    if (params.windowOriginMs === undefined) {
+      throw new Error(
+        "BEACON-015: có `msPerEpoch` mà thiếu `windowOriginMs` — validator beacon nay tính cửa sổ " +
+        "là `(t − window_origin_ms) / ms_per_epoch` (Specs/Window/CONTRACT.md v1.0). Truyền " +
+        "`windowOriginMs(network)` của @magiclamp/utils.",
+      );
+    }
+    const w = epochWindow(params.msPerEpoch, params.windowOriginMs);
     windowLabel = w.epoch;
     if (newBeacon.epoch !== w.epoch) {
       throw new Error(

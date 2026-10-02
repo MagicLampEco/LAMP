@@ -26,7 +26,7 @@ import { NETWORK, makeLucid, walletPkh, explorerTx, haltUnlessSubmit } from "./c
 import {
   supplyStateToCbor, supplyStateFromCbor, supplyStateRedeemerToCbor, mintRouteToCbor,
 } from "../offchain/src/datum.js";
-import { rehydrate, writeState, waitFor } from "./_canonical_v2.js";
+import { rehydrate, writeState, waitFor, canonicalWindowOrigin } from "./_canonical_v2.js";
 import {
   deriveReserveWiring, reserveStateDatum, drawWindow, printReserveWiring,
   resolveDelegationAdmin,
@@ -86,7 +86,7 @@ async function main(): Promise<void> {
   const s0 = supplyStateFromCbor(ssU.datum);
 
   // ── Ba trần, kiểm TRƯỚC khi dựng để lỗi đọc được thay vì "validator crashed" ──
-  const window = drawWindow();
+  const window = drawWindow(canonicalWindowOrigin(wiring.network));
   console.log(`ReserveState: start=${r0.start_epoch} total=${r0.total_oildrop} drawn=${r0.drawn_oildrop} last=${r0.last_epoch}`);
   console.log(`epoch lượt này t = ${window.t}  (cửa sổ ${window.loMs} → ${window.hiMs})`);
   if (!(window.t > r0.last_epoch)) {
