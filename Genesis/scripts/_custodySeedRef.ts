@@ -85,6 +85,93 @@ export function custodySeedRefFromEnv(
   return { txHash: tx, outputIndex: Number(idxRaw) };
 }
 
+/**
+ * Hạt giống GENESIS ghim trước — `GENESIS_SEED_TX`/`GENESIS_SEED_IDX`, TUỲ CHỌN.
+ *
+ * Vì sao cần: policy LAMP là hàm của `genesis_ref`, và các nhà khác (két/kho Wakeme, MAGIC)
+ * nướng policy đó vào hash của họ TRƯỚC khi Tx A gửi. Đường tự chọn của `20_canonical_genesis.ts`
+ * lấy UTxO nhiều ADA nhất trong ví, mà ví thường có vài UTxO bằng nhau ⇒ thứ tự do nhà cung cấp
+ * trả ⇒ policy công bố lúc chạy khô có thể khác policy gửi thật. Ghim outref thì hai lượt ra
+ * cùng một policy.
+ *
+ * Cả hai biến trống ⇒ `undefined` (giữ đường tự chọn). Đặt một nửa ⇒ ném: một nửa outref là một
+ * policy khác mà không dòng nào kêu.
+ */
+export function genesisSeedRefFromEnv(
+  env: Record<string, string | undefined> = process.env,
+): OutputRef | undefined {
+  const txRaw = (env.GENESIS_SEED_TX ?? "").trim();
+  const idxRaw = (env.GENESIS_SEED_IDX ?? "").trim();
+  if (!txRaw && !idxRaw) return undefined;
+  const tx = norm(txRaw);
+  if (!TX_HASH.test(tx) || !UINT.test(idxRaw)) {
+    throw new Error(
+      `GENESIS-SEED-001: GENESIS_SEED_TX = "${txRaw}", GENESIS_SEED_IDX = "${idxRaw}" — cần CẢ HAI: ` +
+        `hash giao dịch 64 ký tự hex và chỉ số nguyên không âm. Đặt một nửa là một policy khác.`,
+    );
+  }
+  return { txHash: tx, outputIndex: Number(idxRaw) };
+}
+
+/**
+ * Tra hạt giống genesis đã ghim: phải còn sống và khoá thanh toán của ví đang chạy tiêu được
+ * (base hoặc enterprise của cùng khoá). Không thấy ⇒ ném — hạt giống đã tiêu thì policy đã công
+ * bố không bao giờ đúc được nữa, và tự chọn hạt khác là phát ra một policy không ai chờ.
+ */
+export async function findOwnedGenesisSeed(
+  lucid: { utxosByOutRef(refs: OutputRef[]): Promise<UTxO[]> },
+  ref: OutputRef,
+  pkh: string,
+): Promise<UTxO> {
+  const found = (await lucid.utxosByOutRef([ref])).find((u) => refKey(u) === refKey(ref));
+  if (!found) {
+    throw new Error(
+      `GENESIS-SEED-002: hạt giống genesis ${refKey(ref)} KHÔNG còn trên chuỗi. Policy tính từ nó ` +
+        `không đúc được nữa. Đừng chọn hạt khác cho qua: các nhà đã nướng policy cũ vào hash phải ` +
+        `được báo trước.`,
+    );
+  }
+  const pay = getAddressDetails(found.address).paymentCredential;
+  if (pay?.type !== "Key" || norm(pay.hash) !== norm(pkh)) {
+    throw new Error(
+      `GENESIS-SEED-003: hạt giống genesis ${refKey(ref)} nằm ở ${found.address}, payment credential ` +
+        `${pay ? `${pay.type}:${pay.hash}` : "(không đọc được)"} — KHÔNG phải khoá ${pkh} của ví đang chạy.`,
+    );
+  }
+  return found;
+}
+
+/**
+ * `EXPECTED_LAMP_PID` — policy đã công bố cho nhà khác. Đặt thì policy dựng ra PHẢI bằng nó.
+ * `required` = true (ghim hạt giống + gửi thật) mà biến trống ⇒ ném: ghim hạt giống chỉ có nghĩa
+ * khi có một giá trị đã hứa để so.
+ */
+export function assertExpectedLampPid(
+  actual: string,
+  env: Record<string, string | undefined> = process.env,
+  required = false,
+): void {
+  const expected = norm(env.EXPECTED_LAMP_PID ?? "");
+  if (!expected) {
+    if (required) {
+      throw new Error(
+        "LAMP-PID-001: đã ghim GENESIS_SEED_* và SUBMIT=true nhưng thiếu EXPECTED_LAMP_PID. " +
+          "Đặt nó bằng policy đã công bố từ lượt chạy khô.",
+      );
+    }
+    return;
+  }
+  if (!/^[0-9a-f]{56}$/.test(expected)) {
+    throw new Error(`LAMP-PID-002: EXPECTED_LAMP_PID = "${env.EXPECTED_LAMP_PID}" — cần 56 ký tự hex.`);
+  }
+  if (norm(actual) !== expected) {
+    throw new Error(
+      `LAMP-PID-003: policy dựng ra ${norm(actual)} ≠ EXPECTED_LAMP_PID ${expected}. Hạt giống, bytes ` +
+        `validator hoặc tham số đã đổi so với lượt chạy khô — DỪNG trước khi gửi.`,
+    );
+  }
+}
+
 /** Nhà dẫn xuất policy id `custody_seed` từ một hạt giống — `_reserve_layer2.ts::custodySeedPolicyId`. */
 export type DeriveSeedPolicyId = (txHash: string, outputIndex: number) => Promise<string>;
 

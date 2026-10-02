@@ -34,6 +34,11 @@
 // Chạy:
 //   NETWORK=Preprod CUSTODY_SEED_TX=… CUSTODY_SEED_IDX=… tsx 20_canonical_genesis.ts   # dựng + eval
 //   NETWORK=Preprod CUSTODY_SEED_TX=… CUSTODY_SEED_IDX=… SUBMIT=true tsx 20_canonical_genesis.ts
+//
+// Policy phải công bố TRƯỚC khi gửi (nhà khác nướng nó vào hash): ghim hạt giống genesis và đòi
+// policy đã công bố — lượt gửi thật ném nếu thiếu EXPECTED_LAMP_PID hoặc lệch:
+//   … GENESIS_SEED_TX=… GENESIS_SEED_IDX=… tsx 20_canonical_genesis.ts            # in ra lampPid
+//   … GENESIS_SEED_TX=… GENESIS_SEED_IDX=… EXPECTED_LAMP_PID=… SUBMIT=true tsx 20_canonical_genesis.ts
 import { Constr, Data, mintingPolicyToId, scriptFromNative, type UTxO } from "@lucid-evolution/lucid";
 import { NETWORK, SUBMIT, TOKEN_NAME, makeLucid, walletPkh, explorerTx } from "./config.js";
 import { assertOneShotMarkers } from "./_guards.js";
@@ -44,7 +49,8 @@ import {
   DIST_CAP, RESERVE_CAP, MS_PER_EPOCH, STATE_PATH, writeState, type CanonicalState,
 } from "./_canonical_v2.js";
 import {
-  assertSeedNotCustody, assertSeedNotSpent, custodySeedRefFromEnv, findOwnedCustodySeed, refKey,
+  assertExpectedLampPid, assertSeedNotCustody, assertSeedNotSpent, custodySeedRefFromEnv,
+  findOwnedCustodySeed, findOwnedGenesisSeed, genesisSeedRefFromEnv, refKey,
   reserveKhoParamsFromEnv, type OutputRef,
 } from "./_custodySeedRef.js";
 import { INSTANCE_ID, custodySeedPolicyId } from "./_reserve_layer2.js";
@@ -125,6 +131,10 @@ async function main(): Promise<void> {
     return adoptExisting(lucid, pkh, adopt, idx, custodySeed);
   }
 
+  // Hạt giống ghim trước (GENESIS_SEED_TX/IDX) thắng đường tự chọn — xem `genesisSeedRefFromEnv`.
+  // Tra theo outref nên hạt giống cất ở enterprise của cùng khoá vẫn dùng được, dù nó nằm ngoài
+  // `lucid.wallet().getUtxos()` (chỉ địa chỉ base).
+  const pinned = genesisSeedRefFromEnv(process.env);
   const byAda = (a: UTxO, b: UTxO) => Number((b.assets.lovelace ?? 0n) - (a.assets.lovelace ?? 0n));
   const enough = utxos.filter((u) => (u.assets.lovelace ?? 0n) >= 5_000_000n).sort(byAda);
   // Loại hạt giống custody khỏi TẬP ỨNG VIÊN, không chỉ cảnh báo sau khi đã chọn. Hai lớp, vì
@@ -132,7 +142,9 @@ async function main(): Promise<void> {
   // cổng SEED-002 bên dưới bắt ca bộ lọc bị gỡ hoặc đi vòng.
   const free = enough.filter((u) => refKey(u) !== refKey(custodySeed));
   const pure = free.filter((u) => Object.keys(u.assets).length === 1);
-  const seed: UTxO | undefined = pure[0] ?? free[0];
+  const seed: UTxO | undefined = pinned
+    ? await findOwnedGenesisSeed(lucid, pinned, pkh)
+    : (pure[0] ?? free[0]);
   if (!seed) {
     throw new Error(
       "không có UTxO nào ≥ 5 ADA để làm hạt giống one-shot (đã loại hạt giống custody " +
@@ -141,7 +153,7 @@ async function main(): Promise<void> {
   }
   assertSeedNotCustody(seed, custodySeed, "hạt giống genesis");
   const extra = Object.keys(seed.assets).length - 1;
-  console.log(`hạt giống: ${seed.txHash}#${seed.outputIndex}` +
+  console.log(`hạt giống${pinned ? " (ghim)" : ""}: ${seed.txHash}#${seed.outputIndex}` +
     (extra > 0 ? `  (mang thêm ${extra} loại token — sẽ chảy vào output trả lại)` : "  (thuần ADA)"));
   console.log();
 
@@ -155,6 +167,9 @@ async function main(): Promise<void> {
     reserveKhoPid: reserveKho.pid, reserveKhoName: reserveKho.name,
   });
   printWiring(wiring);
+  // Cổng LAMP-PID — policy đã công bố cho nhà khác phải trùng policy sắp gửi.
+  assertExpectedLampPid(wiring.lampPid, process.env, SUBMIT && pinned !== undefined);
+  if (process.env.EXPECTED_LAMP_PID) console.log(`✓ LAMP-PID: khớp EXPECTED_LAMP_PID ${wiring.lampPid}`);
 
   // ── Cổng MARKER-001: không khe nào được là native-sig ────────────────────
   // Cổng này tồn tại vì bản diễn tập cũ (`canonical_mint.ts:108`, đã xoá khỏi kho — tra
