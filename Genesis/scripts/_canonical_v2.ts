@@ -483,7 +483,7 @@ export interface CanonicalState {
   /** Giao dịch đã gửi, theo thứ tự các bước. Thiếu bước nào = bước đó chưa chạy. */
   tx: Partial<Record<
     "genesis" | "placeReg" | "vest" | "reserveDraw"
-    | "custodySeed" | "authMint" | "meterPark" | "gatedDraw" | "fillFloor",
+    | "custodySeed" | "authMint" | "meterPark" | "gatedDraw" | "fillFloor" | "pointerMint",
     string
   >>;
   /** Số oildrop đã đúc theo từng đường, để verify đối chiếu với datum on-chain. */
@@ -520,6 +520,25 @@ export interface CanonicalState {
   reserve?: {
     custodyRef: { txHash: string; outputIndex: number };
     authRef: { txHash: string; outputIndex: number };
+    /**
+     * `true` = Lớp 2 dựng NGAY ở lượt genesis (`20_canonical_genesis.ts`: Tx A0 custody → Tx A
+     * với METER đúc thẳng vào `reserve_draw`, auth vào `reserve_gate`; `authRef` = hạt giống
+     * genesis). Vắng = cụm cũ, Lớp 2 (nếu có) đi bước rời `24_reserve_layer2_init.ts`.
+     */
+    placedAtGenesis?: boolean;
+    /**
+     * NFT con trỏ governance (Treasury/GovernancePointer.md v0.1) — đúc ở Tx P của
+     * `20_canonical_genesis.ts`, TRƯỚC Tx A0. `policy` là khe #1 của `custody` VÀ
+     * `CustodyDatum.governance_ref`, nên các bước sau dựng lại địa chỉ custody từ đây
+     * (`_reserve_layer2.ts::pointerPolicyFromState`). `seedRef` + `changeDelayMs` (ms, chuỗi vì
+     * bigint) là hai tham số áp vào `governance_pointer` — giữ để đối chiếu lại `policy`.
+     * Vắng = cụm dựng trước con trỏ ⇒ mã hiện hành không dựng lại được custody của nó.
+     */
+    pointer?: {
+      seedRef: { txHash: string; outputIndex: number };
+      policy: string;
+      changeDelayMs: string;
+    };
     /** Bằng chứng phủ định của phanh: vượt trần nhịp và rút hai lượt cùng epoch đều bị chặn. */
     brakeProof?: {
       attemptedAt: string;

@@ -1,5 +1,12 @@
 // 24_reserve_layer2_init.ts — LỚP 2 bước dựng: đưa meter NFT xuống dưới `reserve_draw`.
 //
+// ⚠ CHỈ CÒN CHO CỤM CŨ (METER ở ví sau genesis). Từ bản đóng-F1 (chủ dự án chốt 2026-10-02),
+// `20_canonical_genesis.ts` dựng Lớp 2 NGAY ở lượt genesis: Tx A0 đúc custody NFT vào instance
+// thật, rồi Tx A đúc METER thẳng vào `reserve_draw` và auth vào `reserve_gate` (authRef = hạt
+// giống genesis). State của cụm đó mang `reserve.placedAtGenesis = true`, và bước này NÉM
+// (L2-GENESIS-001) thay vì dựng một bộ wiring thứ hai. Đường cũ giữ lại vì cụm Preprod đang sống
+// đúc trước bản này vẫn còn METER ở ví — F1 của cụm đó chỉ đóng được bằng bước rời này.
+//
 // TRƯỚC BƯỚC NÀY, nhánh Reserve của policy canonical MỞ nhưng KHÔNG CÓ PHANH: meter NFT nằm
 // ở ví, nên tiêu nó không kích validator nào. Ai giữ khoá ví rút trọn 9,63 tỷ LAMP trong một
 // giao dịch (`22_reserve_draw.ts` phần đầu nói rõ điều này).
@@ -35,13 +42,13 @@ import { supplyStateFromCbor } from "../offchain/src/datum.js";
 import {
   AUTH_NAME, INSTANCE_ID, deriveCustody, deriveReserveWiring, custodySeedDatum,
   reserveStateDatum, epochNow, printReserveWiring, VOID_DATUM, RESERVE_TOTAL,
-  FLOOR_OILDROP, FLOOR_SOURCE, resolveDelegationAdmin,
+  resolveDelegationAdmin, reserveFloorFromEnv, carpAssetFromEnv,
+  pointerPolicyFromState, pointerLocation,
 } from "./_reserve_layer2.js";
 import {
   assertCustodyKhoPair, custodySeedRefFromEnv, findOwnedCustodySeed, refKey, sameRef,
 } from "./_custodySeedRef.js";
 import { floorSourceWarning } from "./_floorLabel.js";
-import { requiredHashParam, requiredHexParam } from "./_guards.js";
 import { custodyDatumToCbor } from "../../Treasury/offchain/src/datum.js";
 import { mintAuthRedeemerToCbor } from "../../Treasury/offchain/src/reserveAuthBuilder.js";
 import { Constr, Data } from "@lucid-evolution/lucid";
@@ -76,65 +83,6 @@ function pickSeed(utxos: UTxO[], avoid: Set<string>, min = 5_000_000n): UTxO {
   return ok[0]!;
 }
 
-/**
- * Script hash của validator governance, đọc từ `GOVERNANCE_SCRIPT_HASH`. KHÔNG có mặc định.
- *
- * Trường này đi vào datum lượt sinh và BẤT BIẾN từ đó (`custody.ak:79,133`); nhánh `Release`
- * của két gác bằng đúng nó (`release.ak:52-53`). Bản trước điền `""` — khi đó `Release` không
- * bao giờ thoả và két thành hố một chiều. Không có giá trị thì DỪNG: một két seed sai còn tệ
- * hơn một két chưa seed, vì lượt seed không làm lại được (one-shot NFT).
- */
-function governanceRef(): string {
-  const v = (process.env.GOVERNANCE_SCRIPT_HASH ?? "").trim();
-  if (!v) {
-    throw new Error(
-      `GOV-REF-001: chưa đặt GOVERNANCE_SCRIPT_HASH. Đây là script hash 28 byte của validator ` +
-      `governance sẽ ký duyệt các lượt chi từ két. Nó BẤT BIẾN sau lượt sinh custody và là cổng ` +
-      `cứng duy nhất của nhánh Release — đặt sai hoặc bỏ trống là két chỉ nhận, không bao giờ chi, ` +
-      `và LAMP trong đó không đốt được (Treasury/CONTRACT.md §5). Lượt sinh dùng NFT one-shot nên ` +
-      `KHÔNG làm lại được. Đặt GOVERNANCE_SCRIPT_HASH=<56 ký tự hex> rồi chạy lại.`,
-    );
-  }
-  // Ném ở trên mới lo vế THIẾU; vế HÌNH DẠNG thì chưa ai lo. Câu lỗi trên nói "56 ký tự hex"
-  // nhưng không gì ép điều đó: `GOVERNANCE_SCRIPT_HASH=abc` đi thẳng vào datum lượt sinh, và
-  // datum đó BẤT BIẾN trên một NFT one-shot — không có lượt thứ hai để sửa.
-  //
-  // Cổng gác chung lo đúng phần còn thiếu: hex, đủ 28 byte, và không phải giá trị CHẾT
-  // (00×28 — đúng cái giá trị mà bản trước điền vào và biến két thành hố một chiều).
-  // Truyền `submit: true` bất kể chế độ chạy: vế THIẾU đã xử ở trên, nên cờ này chỉ còn
-  // tác dụng bật phép kiểm giá trị chết, và bước này không có chế độ "thử cho vui" —
-  // một két seed sai còn tệ hơn một két chưa seed.
-  return requiredHashParam("GOVERNANCE_SCRIPT_HASH", {
-    env: process.env,
-    submit: true,
-    warn: console.warn,
-    consequence:
-      "nhánh Release của két không bao giờ thoả ⇒ két chỉ nhận, không bao giờ chi, và lượt " +
-      "sinh one-shot KHÔNG làm lại được",
-  }).value;
-}
-
-/**
- * CARP mà kho chung nhận. `accepted_assets` bất biến sau lượt sinh one-shot, nên thiếu CARP ở
- * đây là kho không bao giờ nhận CARP — không có chế độ placeholder.
- */
-function carpAsset(): { policy: string; name: string } {
-  const policy = requiredHashParam("CARP_POLICY_ID", {
-    env: process.env,
-    submit: true,
-    warn: console.warn,
-    consequence: "kho chung không bao giờ nhận CARP, và lượt sinh one-shot KHÔNG làm lại được",
-  }).value;
-  const name = requiredHexParam("CARP_TOKEN_NAME", {
-    env: process.env,
-    submit: true,
-    warn: console.warn,
-    placeholder: "",
-    consequence: "kho chung không bao giờ nhận CARP, và lượt sinh one-shot KHÔNG làm lại được",
-  }).value;
-  return { policy, name };
-}
-
 async function main(): Promise<void> {
   if (NETWORK === "Mainnet") throw new Error("CHẶN: script diễn tập, không chạy trên Mainnet.");
 
@@ -144,6 +92,18 @@ async function main(): Promise<void> {
   const { state, wiring } = await rehydrate();
   if (pkh !== wiring.pkh) {
     throw new Error(`SAI VÍ: state ghi pkh=${wiring.pkh}, ví hiện tại ${pkh}.`);
+  }
+
+  // CỔNG L2-GENESIS-001 — cụm dựng bằng `20_canonical_genesis.ts` bản đóng-F1 đã làm trọn Lớp 2
+  // ngay ở lượt genesis (Tx A0 custody → Tx A: METER đúc thẳng vào reserve_draw, auth vào
+  // reserve_gate). Chạy tiếp bước rời này sẽ chọn một hạt giống auth KHÁC ⇒ dựng ra một
+  // `reserve_draw` khác — không có METER nào ở đó, và state bị ghi đè bằng wiring sai.
+  if (state.reserve?.placedAtGenesis) {
+    throw new Error(
+      `L2-GENESIS-001: state ghi Lớp 2 đã dựng ở lượt genesis (reserve.placedAtGenesis = true, ` +
+      `authRef = ${state.reserve.authRef.txHash}#${state.reserve.authRef.outputIndex}). Bước rời ` +
+      `24 chỉ dành cho cụm CŨ (METER còn ở ví). Không có gì để làm — bước kế: tsx 25_gated_draw.ts.`,
+    );
   }
 
   console.log(`=== Lớp 2 — đặt phanh lên nhánh Reserve (${NETWORK}) ===`);
@@ -158,9 +118,12 @@ async function main(): Promise<void> {
   // một dòng in ra màn hình — không tệp nào giữ nó, nên bản thật sau này kế thừa CON SỐ mà
   // không kế thừa chữ "demo". Ghi ở đây, trước mọi `writeState` của lượt chạy, để mọi bản
   // trạng thái ghi ra từ bước này đều mang nhãn.
-  state.floorOildrop = FLOOR_OILDROP.toString();
-  state.floorSource = FLOOR_SOURCE;
-  const canhBaoSan = floorSourceWarning(FLOOR_SOURCE);
+  // Sàn đọc từ `RESERVE_FLOOR_OILDROP` — BẮT BUỘC, không mặc định (`reserveFloorFromEnv`), và
+  // truyền CÙNG một giá trị xuống cả hai lời gọi `deriveReserveWiring` bên dưới.
+  const floor = reserveFloorFromEnv(process.env);
+  state.floorOildrop = floor.floorOildrop.toString();
+  state.floorSource = floor.floorSource;
+  const canhBaoSan = floorSourceWarning(floor.floorSource);
   if (canhBaoSan) console.log(`⚠ ${canhBaoSan}\n`);
 
   // ══ L2a — custody NFT (giao dịch RIÊNG vì S-MINT-2) ═══════════════════════
@@ -181,7 +144,12 @@ async function main(): Promise<void> {
     );
   }
   const delegAdmin = resolveDelegationAdmin(pkh);
+  // Con trỏ governance (GovernancePointer v0.1): khe #1 custody = policy NFT con trỏ, đọc từ state
+  // (`20_canonical_genesis.ts` Tx P ghi). Bước rời này KHÔNG đúc con trỏ: state không có ⇒ NÉM
+  // (POINTER-STATE-001) — chọn bản chặt: không dựng custody trỏ vào một con trỏ chưa tồn tại.
+  const pointerPolicy = pointerPolicyFromState(state);
   const cust = await deriveCustody(custodyRef.txHash, custodyRef.outputIndex, {
+    pointerPolicy,
     lampPid: wiring.lampPid, tokenName: wiring.tokenName, network: wiring.network,
     delegationAdminPkh: delegAdmin,
   });
@@ -212,6 +180,17 @@ async function main(): Promise<void> {
     // Không tra trong `wallet().getUtxos()`: hạt giống được cất ở địa chỉ enterprise của cùng
     // khoá để các bước ở giữa (coin-selection tự do) không tiêu nhầm — `findOwnedCustodySeed`.
     // Không còn trên chuỗi = đã bị tiêu. Lúc đó KHÔNG đúc bừa bằng hạt giống khác — nói thẳng ra.
+    // POINTER-LIVE-001: con trỏ phải ĐANG ở `governance_pointer` trước khi đúc custody trỏ vào nó.
+    const ptrLoc = pointerLocation(pointerPolicy, wiring.network);
+    const ptrN = (await lucid.utxosAt(ptrLoc.addr))
+      .reduce((s, u) => s + (u.assets[ptrLoc.unit] ?? 0n), 0n);
+    if (ptrN !== 1n) {
+      throw new Error(
+        `POINTER-LIVE-001: NFT con trỏ ${ptrLoc.unit} có ${ptrN} bản ở ${ptrLoc.addr} (cần đúng 1). ` +
+        `Custody lượt sinh ghi governance_ref = ${pointerPolicy}; con trỏ vắng thì Release không ` +
+        `đọc được gì. KHÔNG đúc custody.`,
+      );
+    }
     const seed = await findOwnedCustodySeed(lucid, custodyRef, pkh);
     if (!seed) {
       throw new Error(
@@ -236,7 +215,10 @@ async function main(): Promise<void> {
       .pay.ToContract(cust.custodyAddr,
         { kind: "inline",
           value: custodyDatumToCbor(
-            custodySeedDatum(wiring.lampPid, wiring.tokenName, governanceRef(), carpAsset()),
+            custodySeedDatum(
+              wiring.lampPid, wiring.tokenName,
+              pointerPolicy, carpAssetFromEnv(process.env),
+            ),
           ) },
         { lovelace: RESERVED_MIN_ADA, [cust.custodyNftUnit]: 1n })
       .addSigner(walletAddr)
@@ -260,9 +242,9 @@ async function main(): Promise<void> {
 
   let rw = authRefValid
     ? await deriveReserveWiring(wiring, {
-        custodyTxHash: custodyRef.txHash, custodyIndex: custodyRef.outputIndex,
+        custodyTxHash: custodyRef.txHash, custodyIndex: custodyRef.outputIndex, pointerPolicy,
         authTxHash: authRef!.txHash, authIndex: authRef!.outputIndex,
-        network: wiring.network, delegationAdminPkh: delegAdmin,
+        network: wiring.network, delegationAdminPkh: delegAdmin, floor,
       })
     : undefined;
 
@@ -291,9 +273,9 @@ async function main(): Promise<void> {
     const seed = pickSeed(utxos, avoid);
     authRef = { txHash: seed.txHash, outputIndex: seed.outputIndex };
     rw = await deriveReserveWiring(wiring, {
-      custodyTxHash: custodyRef.txHash, custodyIndex: custodyRef.outputIndex,
+      custodyTxHash: custodyRef.txHash, custodyIndex: custodyRef.outputIndex, pointerPolicy,
       authTxHash: seed.txHash, authIndex: seed.outputIndex,
-      network: wiring.network, delegationAdminPkh: delegAdmin,
+      network: wiring.network, delegationAdminPkh: delegAdmin, floor,
     });
 
     console.log(`\nL2b hạt giống auth: ${key(seed)}`);

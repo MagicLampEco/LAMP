@@ -1,10 +1,12 @@
 {
-  "_doc": "Bằng chứng 'tài sản RA ĐƯỢC khỏi kho' theo từng mạng. Cổng đọc: Genesis/scripts/_treasuryExitProof.ts. null = đã đo, lối ra CHƯA chạy lần nào. THIẾU HẲN KHOÁ = không đo được (nặng hơn null) — đừng xoá khoá để 'dọn'. Ghi một mục chỉ khi ĐÃ có một giao dịch chi ra thật: txHash (lượt CHI RA, không phải lượt nạp) · date YYYY-MM-DD · branch (Redeem | Refill+Redeem | ...) · treasuryAddress (địa chỉ kho lúc đó; đổi apply-param là đổi địa chỉ và bằng chứng cũ hết giá trị).",
+  "_doc": "Bằng chứng 'tài sản RA ĐƯỢC khỏi kho' theo từng mạng. Cổng đọc: Genesis/scripts/_treasuryExitProof.ts. null = đã đo, lối ra CHƯA chạy lần nào. THIẾU HẲN KHOÁ = không đo được (nặng hơn null) — đừng xoá khoá để 'dọn'. Ghi một mục chỉ khi ĐÃ có một giao dịch chi ra thật: txHash (lượt CHI RA, không phải lượt nạp) · date YYYY-MM-DD · branch (Redeem | Refill+Redeem | ...) · treasuryAddress (địa chỉ kho lúc đó; đổi apply-param là đổi địa chỉ và bằng chứng cũ hết giá trị). Lối ra là FundPot thì thêm potId + amountOildrop (chuỗi số): fund_pot.ts trừ lượng này khỏi ngân sách pot ở lượt rót trọn, và tự ghi mục này sau lượt mồi.",
   "Preprod": {
-    "txHash": "f79adbdc049c981ea510e84aaffa65bff18e32bf1993a6494bb2070e4e29ae1e",
-    "date": "2026-09-30",
-    "branch": "Redeem",
-    "treasuryAddress": "addr_test1wptvkfjptza8ljj7cpqg34383v426rjmlpx30a0r23srs6qlrp83y"
+    "txHash": "21f77878ae256c6aad1e76ed0af00199d88bc56887be788d23f399030a4297b9",
+    "date": "2026-10-03",
+    "branch": "FundPot",
+    "treasuryAddress": "addr_test1wr4rr2av837g60eszp23740c5zdgmxlg8ngyppx4jp8yxzq5c9k5s",
+    "potId": "wakeme",
+    "amountOildrop": "1001000000"
   },
   "Preview": null,
   "Mainnet": null

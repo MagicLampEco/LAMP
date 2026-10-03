@@ -53,6 +53,13 @@ export interface GovernanceDeployParams {
    * cả hai `""` (pha chưa bật C3) hoặc cả hai là hash 28 byte — lệch cặp ⇒ `GOV-APPLY-004`.
    */
   c3ScriptHash: string;
+  /**
+   * Policy thread Engage (MAGIC `consume`) được công nhận cho C1 — apply-param CUỐI
+   * `engage_policies` của `tally` (`tally.ak ▸ c_sources_ok`, `engage.ak`). `[]` = pha chưa bật
+   * C1 (tally ép `c1_capped == 0`). Bắt buộc khai, kể cả `[]`: nó đi vào hash tally, nên một giá
+   * trị mặc định ngầm sẽ cho ra hash khác ý người gọi mà không gì báo.
+   */
+  engagePolicies: string[];
   msPerEpoch: bigint;
   /**
    * `window_origin_ms` (Specs/Window/CONTRACT.md v1.0) — gốc của cửa sổ `(t − o) / ms_per_epoch`,
@@ -81,6 +88,8 @@ export interface GovernanceConfig {
   c3PolicyId: string;
   /** `""` khi và chỉ khi `c3PolicyId == ""`. */
   c3ScriptHash: string;
+  /** Policy thread Engage đã nướng vào `tally`; `[]` = pha chưa bật C1. */
+  engagePolicies: string[];
   tallyNftPolicy: MintingPolicy;
   tallyPolicyId: string;
   weightParamPolicyId: string;
@@ -156,7 +165,7 @@ export const EXPECTED_PARAMS: Record<keyof typeof T, string[]> = {
   vote: ["tally_policy", "nullifier_policy", "taad_policy", "ms_per_epoch", "tally_window_epochs", "window_origin_ms"],
   tally: [
     "tally_policy", "vote_script_hash", "nullifier_policy", "weight_param_policy", "c3_policy", "c3_script_hash",
-    "tally_window_epochs", "ms_per_epoch", "window_origin_ms",
+    "tally_window_epochs", "ms_per_epoch", "window_origin_ms", "engage_policies",
   ],
   governance: [
     "tally_policy", "tally_script_hash", "weight_param_policy", "ms_per_epoch", "delta_min_epochs",
@@ -219,6 +228,13 @@ export function applyGovernanceBlueprint(bp: Blueprint, p: GovernanceDeployParam
       `nhận c3PolicyId='${c3}', c3ScriptHash='${c3Sh}'`,
     );
   }
+  if (!Array.isArray(p.engagePolicies)) {
+    throw new Error("GOV-APPLY-006: engagePolicies phải là mảng hash 28 byte ([] khi pha chưa bật C1)");
+  }
+  const engage = p.engagePolicies.map((h, i) => hash28(h, `engagePolicies[${i}]`));
+  if (new Set(engage).size !== engage.length) {
+    throw new Error("GOV-APPLY-006: engagePolicies có phần tử lặp — vô hại on-chain nhưng cho ra một hash tally khác bản không lặp");
+  }
   const msPerEpoch = assertPos(p.msPerEpoch, "msPerEpoch");
   const windowOriginMs = assertOrigin(p.windowOriginMs);
   const tallyWindow = assertPos(p.tallyWindowEpochs, "tallyWindowEpochs");
@@ -249,7 +265,7 @@ export function applyGovernanceBlueprint(bp: Blueprint, p: GovernanceDeployParam
   const voteScript = applyChecked(bp, "vote", [tallyPolicyId, nullifierPolicyId, taad, msPerEpoch, tallyWindow, windowOriginMs]);
   const voteScriptHash = validatorToScriptHash(voteScript);
   const tallyScript = applyChecked(bp, "tally", [
-    tallyPolicyId, voteScriptHash, nullifierPolicyId, weightParamPolicyId, c3, c3Sh, tallyWindow, msPerEpoch, windowOriginMs,
+    tallyPolicyId, voteScriptHash, nullifierPolicyId, weightParamPolicyId, c3, c3Sh, tallyWindow, msPerEpoch, windowOriginMs, engage,
   ]);
   const tallyScriptHash = validatorToScriptHash(tallyScript);
   const governanceScript = applyChecked(bp, "governance", [
@@ -259,7 +275,7 @@ export function applyGovernanceBlueprint(bp: Blueprint, p: GovernanceDeployParam
 
   return {
     msPerEpoch, windowOriginMs, tallyWindowEpochs: tallyWindow, deltaMinEpochs: deltaMin, recoveryTimelockEpochs: recovery,
-    taadPolicyId: taad, c3PolicyId: c3, c3ScriptHash: c3Sh,
+    taadPolicyId: taad, c3PolicyId: c3, c3ScriptHash: c3Sh, engagePolicies: engage,
     tallyNftPolicy, tallyPolicyId,
     weightParamPolicyId, ...(weightParamNft ? { weightParamNft } : {}),
     nullifierPolicy, nullifierPolicyId,

@@ -34,7 +34,11 @@ const TLAMP_NAME = "744c414d50"; // "tLAMP"
 /** pkh 28 byte được phép uỷ quyền phần stake. Nướng vào hash `treasury_stake`. */
 const ADMIN_PKH = "5e".repeat(28);
 
+/** policy NFT con trỏ governance — khe #1 custody (GovernancePointer v0.1). */
+const PTR_POLICY = "9a".repeat(28);
+
 const base = {
+  pointerPolicy: PTR_POLICY,
   lampPid: LAMP_PID,
   tokenName: TLAMP_NAME,
   network: "Preprod" as const,
@@ -102,11 +106,26 @@ describe("deriveCustody — lời gọi vắt qua ranh giới hai gói", () => {
     }
   });
 
-  // POISON-002 fail-closed trên mạng thật. Mọi ca trên đặt `network: "Preprod"` nên nhánh
-  // Mainnet không lượt nào chạm — tức chốt đó đang KHÔNG ĐO ĐƯỢC, không phải đang xanh.
-  it("ĐỎ: chạy Mainnet với proposal_policy là giá trị chết — POISON-002", async () => {
-    await expect(deriveCustody(SEED_TX, SEED_IX, { ...base, network: "Mainnet" }))
-      .rejects.toThrow(/POISON-002/);
+  // Khe #1 = policy NFT con trỏ (thay POISON-002 cũ, vốn chỉ chặn Mainnet). Cổng
+  // POINTER-POLICY-001 chạy MỌI mạng: con trỏ chết trên Preprod cũng làm Release chết.
+  it("ĐỎ: pointerPolicy thiếu / toàn 0 / toàn f / chữ hoa / ngắn — POINTER-POLICY-001, mọi mạng", async () => {
+    for (const network of ["Preprod", "Mainnet"] as const) {
+      for (const p of [undefined, "", "0".repeat(56), "f".repeat(56), "9A".repeat(28), "9a".repeat(27)]) {
+        await expect(deriveCustody(SEED_TX, SEED_IX, { ...base, network, pointerPolicy: p as string }))
+          .rejects.toThrow(/POINTER-POLICY-001/);
+      }
+    }
+  });
+
+  // Khe #1 phải THẬT SỰ vào hash `custody`: không vào thì hai custody trỏ hai con trỏ khác nhau
+  // trùng một địa chỉ, và Release của kho này đọc được con trỏ của kho kia.
+  it("đổi pointerPolicy ⇒ đổi custodyHash ⇒ đổi địa chỉ kho", async () => {
+    const a = await deriveCustody(SEED_TX, SEED_IX, base);
+    const b = await deriveCustody(SEED_TX, SEED_IX, { ...base, pointerPolicy: "9b".repeat(28) });
+    expect(b.custodyHash).not.toBe(a.custodyHash);
+    expect(b.custodyAddr).not.toBe(a.custodyAddr);
+    expect(b.custodySeedPid, "policy custody_seed (khe #13 lamp_mint) KHÔNG phụ thuộc con trỏ")
+      .toBe(a.custodySeedPid);
   });
 
   // Két là chỗ ĐẦU TIÊN của lượt dẫn xuất nhận `lampPid`, và nó được dẫn xuất RIÊNG, trước Lớp
@@ -197,5 +216,39 @@ describe("reserveKhoParamsFromEnv nối phép dẫn xuất THẬT", () => {
         SEED, opts,
       ),
     ).rejects.toThrow(/RESERVE-KHO-004/);
+  });
+});
+
+// ══ `derivePointer` — NFT con trỏ governance (GovernancePointer v0.1 §Genesis) ═════════════
+//
+// Áp `governance_pointer` THẬT (blueprint Treasury trên đĩa). Validator hai mục đích ⇒ policy id
+// == script hash ⇒ địa chỉ con trỏ = Script(policy). Hai tham số (seed, change_delay_ms) đều phải
+// đi vào hash: tham số nào lọt ngoài thì hai con trỏ khác trễ / khác hạt giống trùng một policy.
+import { derivePointer, pointerLocation, POINTER_NAME } from "../scripts/_reserve_layer2.js";
+
+describe("derivePointer", () => {
+  const PSEED = "3".repeat(64);
+  it("policy 56 hex; địa chỉ = Script(policy); unit = policy + GOVPOINTER", async () => {
+    const p = await derivePointer(PSEED, 0, 3_600_000n, "Preprod");
+    expect(p.policy).toMatch(/^[0-9a-f]{56}$/);
+    const d = getAddressDetails(p.addr);
+    expect(d.paymentCredential).toEqual({ type: "Script", hash: p.policy });
+    expect(p.unit).toBe(p.policy + fromText("GOVPOINTER"));
+    expect(POINTER_NAME).toBe("474f56504f494e544552");
+    expect(pointerLocation(p.policy, "Preprod")).toEqual({ addr: p.addr, unit: p.unit });
+  });
+  it("đổi trễ HOẶC đổi hạt giống ⇒ policy ĐỔI", async () => {
+    const goc = (await derivePointer(PSEED, 0, 3_600_000n, "Preprod")).policy;
+    expect((await derivePointer(PSEED, 0, 3_600_001n, "Preprod")).policy).not.toBe(goc);
+    expect((await derivePointer(PSEED, 1, 3_600_000n, "Preprod")).policy).not.toBe(goc);
+    expect((await derivePointer("4".repeat(64), 0, 3_600_000n, "Preprod")).policy).not.toBe(goc);
+  });
+  it("ĐỎ: trễ ≤ 0 ⇒ POINTER-DELAY-003 (P-MINT-DELAY on-chain cũng từ chối)", async () => {
+    await expect(derivePointer(PSEED, 0, 0n, "Preprod")).rejects.toThrow(/POINTER-DELAY-003/);
+  });
+  it("policy con trỏ thật đi qua cổng khe #1 custody", async () => {
+    const p = await derivePointer(PSEED, 0, 3_600_000n, "Preprod");
+    const w = await deriveCustody(SEED_TX, SEED_IX, { ...base, pointerPolicy: p.policy });
+    expect(w.custodyHash).toMatch(/^[0-9a-f]{56}$/);
   });
 });

@@ -25,14 +25,14 @@
 use aiken/collection/list
 use aiken/crypto.{blake2b_256}
 use aiken/interval
-use cardano/address.{Address}
+use cardano/address.{Address, Script}
 use cardano/assets
 use cardano/transaction.{
   InlineDatum, Input, Output, OutputReference, Transaction,
   placeholder,
 }
 use magiclamp/lampdist/types.{
-  BeaconDatum, ClaimAccountDatum, DropParam, GrantEntitlement, Refill,
+  BeaconDatum, ClaimAccountDatum, DropParam, FundPot, GrantEntitlement, Refill,
   ReleaseForRedeem, TreasuryDatum, TreasuryRedeemer,
 }
 use magiclamp/lampdist/util
@@ -478,6 +478,72 @@ validator treasury(
         // `amount > 0`, Refill đòi sổ ra = tổng sổ vào ⇒ mâu thuẫn.
         True
       }
+
+      // ── FUND POT (`Distribution/FundPot.md` v1.0) — rót trọn một phân bổ vào pot script ──
+      // Đường thứ hai cho tLAMP rời kho, ngoài `ReleaseForRedeem`. Sổ nợ KHÔNG đổi: LAMP rời
+      // kho ở đây không trả nợ ai, nên FP-6 ép phần còn lại vẫn phủ được sổ nợ.
+      //
+      // Chỗ spec để ngỏ, em chọn bản CHẶT hơn (ghi rõ để người đọc không tưởng là spec đòi):
+      //   • FP-7: cấm MỌI mint/burn (`is_zero`), không chỉ ba policy spec nêu. `treasury` không
+      //     nhận `treasury_nft_policy` làm tham số (xem docstring `carrier_ledger`), nên "không
+      //     đúc treasury_nft" không ép được theo policy id nếu không đổi arity; cấm hết thì ép
+      //     được, và đường rót pot không có lý do gì để đúc.
+      //   • FP-2: đếm TỔNG số đơn vị mang tên "TREASURY" trên input (policy bất kỳ) == 1 — một
+      //     carrier mang thêm token trùng tên dưới policy khác cũng bị từ chối.
+      //   • FP-3: ngoài "đúng địa chỉ", còn ép ĐÚNG MỘT output ở script kho (theo hash) — một
+      //     output thứ hai ở cùng hash nhưng khác stake credential không được lọt làm "pot".
+      //   • FP-4: tài sản ngoài ADA của carrier bảo toàn TUYỆT ĐỐI (chỉ LAMP giảm `funded`) —
+      //     cấm cả RỜI lẫn THÊM token lạ vào carrier.
+      //
+      // DOUBLE-SATISFACTION: FP-2 ép đúng 1 input ở script kho ⇒ validator này chạy ĐÚNG MỘT
+      // lần trong tx. Kèm `claim_account` cũng không mở được gì: `Claim` đòi sổ nợ TĂNG,
+      // `Redeem` đòi sổ nợ GIẢM, FP-3 đòi sổ đứng yên ⇒ mâu thuẫn ở cả hai.
+      FundPot -> {
+        expect Some(datum) = datum_opt
+
+        // FP-1 committee — cùng hàm với `GrantEntitlement`.
+        expect util.committee_approved(committee, threshold, tx.extra_signatories)
+
+        // FP-7 không đúc (bản chặt: không mint/burn gì cả).
+        expect assets.is_zero(tx.mint)
+
+        // FP-2 singleton: đúng 1 input ở script kho, mang đúng 1 NFT "TREASURY".
+        expect util.count_inputs_at_script(tx.inputs, own_hash) == 1
+        let tre_in = util.input_at_script(tx.inputs, own_hash)
+        expect count_named(tre_in.value, util.treasury_nft_name()) == 1
+
+        // FP-3 carrier quay về: đúng 1 output ở script kho, ĐÚNG địa chỉ đã vào, inline
+        // `TreasuryDatum` BẰNG datum vào (mọi trường), lovelace không giảm.
+        expect util.count_outputs_at_script(tx.outputs, own_hash) == 1
+        let tre_out = util.output_at_script(tx.outputs, own_hash)
+        expect tre_out.address == own_addr
+        expect InlineDatum(od) = tre_out.datum
+        expect out_datum: TreasuryDatum = od
+        expect out_datum == datum
+        expect assets.lovelace_of(tre_out.value) >= assets.lovelace_of(tre_in.value)
+
+        // FP-4 lượng rót: funded = lamp_in − lamp_out_carrier > 0; ngoài ADA, carrier chỉ
+        // được đổi đúng phần LAMP đó (NFT "TREASURY" và mọi token khác ở nguyên).
+        let lamp_in = assets.quantity_of(tre_in.value, lamp_policy, lamp_name)
+        let lamp_out = assets.quantity_of(tre_out.value, lamp_policy, lamp_name)
+        let funded = lamp_in - lamp_out
+        expect funded > 0
+        expect
+          assets.without_lovelace(tre_out.value) == assets.without_lovelace(
+            assets.add(tre_in.value, lamp_policy, lamp_name, -funded),
+          )
+
+        // FP-6 khả chi: sổ nợ (không đổi) vẫn được phần còn lại của pool phủ.
+        expect datum.outstanding_entitlement <= lamp_out
+
+        // FP-5 đích là pot script: mọi output KHÁC carrier mang LAMP phải ở một script khác
+        // kho và khác `claim_account`, có inline datum; tổng của chúng == funded CHÍNH XÁC.
+        // Không mint (FP-7) + tổng chính xác ⇒ không LAMP nào từ input khác đi vào tx được.
+        expect
+          pot_lamp_total(tx.outputs, own_hash, claim_account_hash, lamp_policy, lamp_name) == funded
+
+        True
+      }
     }
   }
 
@@ -577,6 +643,56 @@ fn bears_treasury_nft(v: assets.Value, trsy: ByteArray) -> Bool {
     fn(tok) {
       let (_policy, name, qty) = tok
       name == trsy && qty == 1
+    },
+  )
+}
+
+/// Tổng SỐ ĐƠN VỊ mang tên `name` trên mọi policy. FP-2 đòi == 1: đếm theo tổng chứ không
+/// theo "có một mục qty 1", để carrier mang thêm token trùng tên dưới policy khác bị từ chối.
+fn count_named(v: assets.Value, name: ByteArray) -> Int {
+  list.foldl(
+    assets.flatten(v),
+    0,
+    fn(tok, acc) {
+      let (_policy, n, qty) = tok
+      if n == name {
+        acc + qty
+      } else {
+        acc
+      }
+    },
+  )
+}
+
+/// FP-5 — tổng LAMP ở các output KHÁC carrier (carrier = output duy nhất ở `own_hash`, FP-3
+/// đã ép). Mỗi output mang LAMP phải: payment credential `Script(h)` (FP-5a), `h` khác kho và
+/// khác `claim_account` (FP-5b), inline datum (FP-5c). Output không mang LAMP thì tự do (tiền
+/// thối ADA về ví). Trả tổng để FP-5d so với `funded`.
+fn pot_lamp_total(
+  outputs     : List<Output>,
+  own_hash    : ByteArray,
+  claim_hash  : ByteArray,
+  lamp_policy : ByteArray,
+  lamp_name   : ByteArray,
+) -> Int {
+  list.foldl(
+    outputs,
+    0,
+    fn(o, acc) {
+      if util.is_at_script(o.address, own_hash) {
+        acc
+      } else {
+        let q = assets.quantity_of(o.value, lamp_policy, lamp_name)
+        if q == 0 {
+          acc
+        } else {
+          expect q > 0
+          expect Script(h) = o.address.payment_credential
+          expect h != own_hash && h != claim_hash
+          expect InlineDatum(_) = o.datum
+          acc + q
+        }
+      }
     },
   )
 }
@@ -1922,4 +2038,384 @@ test treasury_grant_after_full_redeem_ok_origin_forgotten() fail {
   // Cấp thêm 1000 cho account MỚI phải PASS. Bản đầu TỪ CHỐI ca này (5000+1000 > 5000)
   // dù quỹ không nợ ai — chính là bế tắc.
   grant_at(0, window_origin_fixtures.mainnet_origin_ms, 0, grant_tx(5000, 0, 1000, None, 1000, 0, [#"c1", #"c2"]))
+}
+
+// ══════════════════════════════════════════════════════════════
+// FUND POT (`Distribution/FundPot.md` v1.0) — FP-1..FP-7
+// ══════════════════════════════════════════════════════════════
+// Ca dương: kho 10.000 LAMP, sổ nợ 3.000 (đã phát 700) → rót 6.000 vào pot qua K = 3 output
+// 2.000, carrier giữ 4.000 ≥ nợ 3.000. Mỗi ca âm CHỈ khác ca dương ở đúng một luật. Sổ chọn
+// khác 0 ở CẢ HAI trường để ca "đổi datum" phân biệt được hai cực đột biến.
+
+const fp_pot_sh: ByteArray = #"9090"
+
+const fp_wallet_pkh: ByteArray = #"eeee"
+
+fn fp_d() -> TreasuryDatum {
+  tt_tre_d_tr(3000, 700)
+}
+
+fn fp_carrier_in_d(d: TreasuryDatum) -> Input {
+  util.mk_input(
+    util.mk_ref(0),
+    util.mk_output(util.script_address(tt_tre_sh), tt_val(5_000_000, 10_000, True), d),
+  )
+}
+
+fn fp_carrier_in() -> Input {
+  fp_carrier_in_d(fp_d())
+}
+
+fn fp_carrier_out_d(lovelace: Int, lamp: Int, d: TreasuryDatum) -> Output {
+  util.mk_output(util.script_address(tt_tre_sh), tt_val(lovelace, lamp, True), d)
+}
+
+fn fp_carrier_out(lamp: Int) -> Output {
+  fp_carrier_out_d(5_000_000, lamp, fp_d())
+}
+
+fn fp_pot_out(lamp: Int) -> Output {
+  util.mk_output(util.script_address(fp_pot_sh), tt_lamp_val(2_000_000, lamp), 42)
+}
+
+fn fp_wallet_in() -> Input {
+  util.mk_input(
+    util.mk_ref(1),
+    util.mk_output_no_datum(util.vk_address(fp_wallet_pkh), assets.from_lovelace(20_000_000)),
+  )
+}
+
+/// Tiền thối ADA về ví — output VK KHÔNG mang LAMP thì hợp lệ.
+fn fp_change() -> Output {
+  util.mk_output_no_datum(util.vk_address(fp_wallet_pkh), assets.from_lovelace(13_000_000))
+}
+
+fn fp_tx(
+  ins  : List<Input>,
+  outs : List<Output>,
+  sigs : List<ByteArray>,
+  mint : assets.Value,
+) -> Transaction {
+  Transaction {
+    ..placeholder,
+    inputs: ins,
+    outputs: outs,
+    extra_signatories: sigs,
+    mint: mint,
+  }
+}
+
+fn fp_ins() -> List<Input> {
+  [fp_carrier_in(), fp_wallet_in()]
+}
+
+fn fp_sigs() -> List<ByteArray> {
+  [#"c1", #"c2"]
+}
+
+/// Bộ output của ca dương; ca âm thay đúng một phần tử.
+fn fp_outs(carrier: Output, pots: List<Output>) -> List<Output> {
+  list.concat([carrier], list.concat(pots, [fp_change()]))
+}
+
+fn fp_pots3() -> List<Output> {
+  [fp_pot_out(2000), fp_pot_out(2000), fp_pot_out(2000)]
+}
+
+fn fund_pot(datum: TreasuryDatum, tx: Transaction) -> Bool {
+  treasury.spend(
+    tt_ca_sh, tt_lamp_policy, tt_lamp_name, tt_committee, tt_threshold,
+    tt_acct_nft_policy,
+    tt_mspe,
+    tt_bcn_policy,
+    0,
+    Some(datum), FundPot, util.mk_ref(0), tx,
+  )
+}
+
+// ── Ca dương ──────────────────────────────────────────────────
+
+test fund_pot_three_outputs_ok() {
+  fund_pot(
+    fp_d(),
+    fp_tx(fp_ins(), fp_outs(fp_carrier_out(4000), fp_pots3()), fp_sigs(), assets.zero),
+  )
+}
+
+/// Biên FP-6: nợ == pool còn lại thì vẫn hợp lệ (spec viết `≤`).
+test fund_pot_debt_equals_remaining_pool_ok() {
+  let d = tt_tre_d_tr(4000, 700)
+  fund_pot(
+    d,
+    fp_tx(
+      [fp_carrier_in_d(d), fp_wallet_in()],
+      fp_outs(fp_carrier_out_d(5_000_000, 4000, d), fp_pots3()),
+      fp_sigs(),
+      assets.zero,
+    ),
+  )
+}
+
+/// FP-3 chỉ đòi lovelace KHÔNG GIẢM — nạp thêm ADA vào carrier là hợp lệ.
+test fund_pot_carrier_gains_ada_ok() {
+  fund_pot(
+    fp_d(),
+    fp_tx(fp_ins(), fp_outs(fp_carrier_out_d(6_000_000, 4000, fp_d()), fp_pots3()), fp_sigs(), assets.zero),
+  )
+}
+
+// ── FP-1 committee ────────────────────────────────────────────
+
+test fund_pot_missing_committee_signature_rejected() fail {
+  fund_pot(
+    fp_d(),
+    fp_tx(fp_ins(), fp_outs(fp_carrier_out(4000), fp_pots3()), [#"c1"], assets.zero),
+  )
+}
+
+// ── FP-2 singleton ────────────────────────────────────────────
+
+test fund_pot_two_treasury_inputs_rejected() fail {
+  fund_pot(
+    fp_d(),
+    fp_tx(
+      list.concat(fp_ins(), [tre_in_bare(2, 2_000_000, 0)]),
+      fp_outs(fp_carrier_out(4000), fp_pots3()),
+      fp_sigs(),
+      assets.zero,
+    ),
+  )
+}
+
+/// Input ở kho KHÔNG mang "TREASURY" (in và out cùng thiếu ⇒ FP-4 vẫn thoả).
+test fund_pot_input_without_treasury_nft_rejected() fail {
+  let i =
+    util.mk_input(
+      util.mk_ref(0),
+      util.mk_output(util.script_address(tt_tre_sh), tt_val(5_000_000, 10_000, False), fp_d()),
+    )
+  let o = util.mk_output(util.script_address(tt_tre_sh), tt_val(5_000_000, 4000, False), fp_d())
+  fund_pot(fp_d(), fp_tx([i, fp_wallet_in()], fp_outs(o, fp_pots3()), fp_sigs(), assets.zero))
+}
+
+/// Carrier mang thêm một token trùng tên "TREASURY" dưới policy khác (in và out cùng mang).
+test fund_pot_carrier_with_foreign_treasury_name_rejected() fail {
+  let extra = fn(v) { assets.add(v, #"6666", util.treasury_nft_name(), 1) }
+  let i =
+    util.mk_input(
+      util.mk_ref(0),
+      util.mk_output(util.script_address(tt_tre_sh), extra(tt_val(5_000_000, 10_000, True)), fp_d()),
+    )
+  let o = util.mk_output(util.script_address(tt_tre_sh), extra(tt_val(5_000_000, 4000, True)), fp_d())
+  fund_pot(fp_d(), fp_tx([i, fp_wallet_in()], fp_outs(o, fp_pots3()), fp_sigs(), assets.zero))
+}
+
+// ── FP-3 carrier quay về ──────────────────────────────────────
+
+/// Đổi DUY NHẤT `total_redeemed` (700 → 701): sổ nợ, value, mọi thứ khác giữ nguyên, nên
+/// FP-6 không bắt hộ được.
+test fund_pot_carrier_datum_changed_rejected() fail {
+  fund_pot(
+    fp_d(),
+    fp_tx(
+      fp_ins(),
+      fp_outs(fp_carrier_out_d(5_000_000, 4000, tt_tre_d_tr(3000, 701)), fp_pots3()),
+      fp_sigs(),
+      assets.zero,
+    ),
+  )
+}
+
+test fund_pot_carrier_debt_erased_rejected() fail {
+  fund_pot(
+    fp_d(),
+    fp_tx(
+      fp_ins(),
+      fp_outs(fp_carrier_out_d(5_000_000, 4000, tt_tre_d_tr(0, 700)), fp_pots3()),
+      fp_sigs(),
+      assets.zero,
+    ),
+  )
+}
+
+/// Cùng script hash, khác stake credential ⇒ KHÔNG phải "đúng địa chỉ đã vào".
+test fund_pot_carrier_to_other_stake_address_rejected() fail {
+  let o =
+    util.mk_output(
+      util.script_address_staked(tt_tre_sh, #"5757"),
+      tt_val(5_000_000, 4000, True),
+      fp_d(),
+    )
+  fund_pot(fp_d(), fp_tx(fp_ins(), fp_outs(o, fp_pots3()), fp_sigs(), assets.zero))
+}
+
+test fund_pot_carrier_ada_skimmed_rejected() fail {
+  fund_pot(
+    fp_d(),
+    fp_tx(fp_ins(), fp_outs(fp_carrier_out_d(4_999_999, 4000, fp_d()), fp_pots3()), fp_sigs(), assets.zero),
+  )
+}
+
+test fund_pot_carrier_without_datum_rejected() fail {
+  let o = util.mk_output_no_datum(util.script_address(tt_tre_sh), tt_val(5_000_000, 4000, True))
+  fund_pot(fp_d(), fp_tx(fp_ins(), fp_outs(o, fp_pots3()), fp_sigs(), assets.zero))
+}
+
+/// Output thứ hai ở script kho (0 LAMP) — chỉ FP-3 (đếm output ở kho) bắt.
+test fund_pot_two_treasury_outputs_rejected() fail {
+  let extra = util.mk_output(util.script_address(tt_tre_sh), assets.from_lovelace(2_000_000), fp_d())
+  fund_pot(
+    fp_d(),
+    fp_tx(fp_ins(), fp_outs(fp_carrier_out(4000), list.concat(fp_pots3(), [extra])), fp_sigs(), assets.zero),
+  )
+}
+
+// ── FP-4 lượng rót ────────────────────────────────────────────
+
+/// funded = 0: carrier giữ trọn 10.000, không output pot nào (tổng pot 0 == funded 0 ⇒ FP-5
+/// thoả) — chỉ `funded > 0` bắt.
+test fund_pot_funded_zero_rejected() fail {
+  fund_pot(
+    fp_d(),
+    fp_tx(fp_ins(), fp_outs(fp_carrier_out(10_000), []), fp_sigs(), assets.zero),
+  )
+}
+
+/// NFT "TREASURY" rời carrier (sang pot output đầu, LAMP giữ nguyên).
+test fund_pot_treasury_nft_leaves_carrier_rejected() fail {
+  let o = util.mk_output(util.script_address(tt_tre_sh), tt_val(5_000_000, 4000, False), fp_d())
+  let p =
+    util.mk_output(
+      util.script_address(fp_pot_sh),
+      tt_val(2_000_000, 2000, True),
+      42,
+    )
+  fund_pot(
+    fp_d(),
+    fp_tx(fp_ins(), fp_outs(o, [p, fp_pot_out(2000), fp_pot_out(2000)]), fp_sigs(), assets.zero),
+  )
+}
+
+/// Token lạ được nhét THÊM vào carrier — bản chặt của FP-4 cấm cả chiều thêm.
+test fund_pot_foreign_token_added_to_carrier_rejected() fail {
+  let o =
+    util.mk_output(
+      util.script_address(tt_tre_sh),
+      assets.add(tt_val(5_000_000, 4000, True), #"7777", #"4a554e4b", 1),
+      fp_d(),
+    )
+  fund_pot(fp_d(), fp_tx(fp_ins(), fp_outs(o, fp_pots3()), fp_sigs(), assets.zero))
+}
+
+// ── FP-5 đích là pot script ───────────────────────────────────
+
+test fund_pot_lamp_to_vk_address_rejected() fail {
+  let v = util.mk_output_no_datum(util.vk_address(fp_wallet_pkh), tt_lamp_val(2_000_000, 2000))
+  fund_pot(
+    fp_d(),
+    fp_tx(fp_ins(), fp_outs(fp_carrier_out(4000), [fp_pot_out(2000), fp_pot_out(2000), v]), fp_sigs(), assets.zero),
+  )
+}
+
+/// Output VK CÓ datum inline và mang LAMP — (a) phải bắt độc lập với (c).
+test fund_pot_lamp_to_vk_address_with_datum_rejected() fail {
+  let v = util.mk_output(util.vk_address(fp_wallet_pkh), tt_lamp_val(2_000_000, 2000), 42)
+  fund_pot(
+    fp_d(),
+    fp_tx(fp_ins(), fp_outs(fp_carrier_out(4000), [fp_pot_out(2000), fp_pot_out(2000), v]), fp_sigs(), assets.zero),
+  )
+}
+
+test fund_pot_lamp_to_claim_account_rejected() fail {
+  let c = util.mk_output(util.script_address(tt_ca_sh), tt_lamp_val(2_000_000, 2000), 42)
+  fund_pot(
+    fp_d(),
+    fp_tx(fp_ins(), fp_outs(fp_carrier_out(4000), [fp_pot_out(2000), fp_pot_out(2000), c]), fp_sigs(), assets.zero),
+  )
+}
+
+test fund_pot_pot_output_without_datum_rejected() fail {
+  let p = util.mk_output_no_datum(util.script_address(fp_pot_sh), tt_lamp_val(2_000_000, 2000))
+  fund_pot(
+    fp_d(),
+    fp_tx(fp_ins(), fp_outs(fp_carrier_out(4000), [fp_pot_out(2000), fp_pot_out(2000), p]), fp_sigs(), assets.zero),
+  )
+}
+
+test fund_pot_pot_total_below_funded_rejected() fail {
+  fund_pot(
+    fp_d(),
+    fp_tx(
+      fp_ins(),
+      fp_outs(fp_carrier_out(4000), [fp_pot_out(2000), fp_pot_out(2000), fp_pot_out(1999)]),
+      fp_sigs(),
+      assets.zero,
+    ),
+  )
+}
+
+test fund_pot_pot_total_above_funded_rejected() fail {
+  fund_pot(
+    fp_d(),
+    fp_tx(
+      fp_ins(),
+      fp_outs(fp_carrier_out(4000), [fp_pot_out(2000), fp_pot_out(2000), fp_pot_out(2001)]),
+      fp_sigs(),
+      assets.zero,
+    ),
+  )
+}
+
+// ── FP-6 khả chi ──────────────────────────────────────────────
+
+/// Sổ nợ 4.001 (in và out cùng, nên FP-3 thoả), pool còn 4.000 sau rót.
+test fund_pot_debt_above_remaining_pool_rejected() fail {
+  let d = tt_tre_d_tr(4001, 700)
+  fund_pot(
+    d,
+    fp_tx(
+      [fp_carrier_in_d(d), fp_wallet_in()],
+      fp_outs(fp_carrier_out_d(5_000_000, 4000, d), fp_pots3()),
+      fp_sigs(),
+      assets.zero,
+    ),
+  )
+}
+
+// ── FP-7 không đúc ────────────────────────────────────────────
+
+test fund_pot_with_lamp_mint_rejected() fail {
+  fund_pot(
+    fp_d(),
+    fp_tx(
+      fp_ins(),
+      fp_outs(fp_carrier_out(4000), fp_pots3()),
+      fp_sigs(),
+      assets.from_asset(tt_lamp_policy, tt_lamp_name, 1),
+    ),
+  )
+}
+
+test fund_pot_with_account_nft_mint_rejected() fail {
+  fund_pot(
+    fp_d(),
+    fp_tx(
+      fp_ins(),
+      fp_outs(fp_carrier_out(4000), fp_pots3()),
+      fp_sigs(),
+      assets.from_asset(tt_acct_nft_policy, #"01", 1),
+    ),
+  )
+}
+
+test fund_pot_with_treasury_nft_burn_rejected() fail {
+  fund_pot(
+    fp_d(),
+    fp_tx(
+      fp_ins(),
+      fp_outs(fp_carrier_out(4000), fp_pots3()),
+      fp_sigs(),
+      assets.from_asset(tt_trsy_policy, util.treasury_nft_name(), -1),
+    ),
+  )
 }

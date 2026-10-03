@@ -84,22 +84,23 @@ describe("nhãn phải nằm trong TẠO TÁC, không chỉ trên màn hình", (
     expect(src).toMatch(/floorSource\?:\s*FloorSource;/);
   });
 
-  it("FLOOR_SOURCE khai ngay cạnh FLOOR_OILDROP, cùng kiểu liệt kê đóng", () => {
+  // Sàn nay đọc từ `RESERVE_FLOOR_OILDROP` (bắt buộc). Nhãn KHÔNG còn là một hằng gõ tay cạnh con
+  // số: `reserveFloorFromEnv` SUY nhãn từ phép so với giá trị đã chốt, nên con số và nhãn đi ra
+  // từ CÙNG một lời gọi — không còn hai chỗ để đổi lệch nhau. Hành vi nhãn ghim ở
+  // `genesisReservePlacement.test.ts` ▸ "reserveFloorFromEnv".
+  it("nhãn sàn suy ra trong reserveFloorFromEnv, không phải hằng gõ tay", () => {
     const src = readFileSync(`${SCRIPTS_DIR}/_reserve_layer2.ts`, "utf8");
-    expect(src).toMatch(/export const FLOOR_SOURCE:\s*FloorSource\s*=/);
-    // Khoảng cách giữa hai khai báo: đứng cạnh nhau thì đổi con số mà quên nhãn là chuyện khó
-    // xảy ra hơn. Không phải một bảo đảm, là một cách sắp xếp — nên ngưỡng đặt rộng.
-    const iSo = src.indexOf("export const FLOOR_OILDROP");
-    const iNhan = src.indexOf("export const FLOOR_SOURCE");
-    expect(iSo).toBeGreaterThan(-1);
-    expect(iNhan).toBeGreaterThan(iSo);
-    expect(src.slice(iSo, iNhan).split("\n").length).toBeLessThan(15);
+    expect(src).not.toMatch(/export const FLOOR_SOURCE/);
+    expect(src).toMatch(/floorSource:\s*v === DECIDED_FLOOR_OILDROP \? "production" : "demo"/);
   });
 
-  it("bước Lớp 2 GHI cả hai trường vào state, không chỉ in ra", () => {
-    const src = readFileSync(`${SCRIPTS_DIR}/24_reserve_layer2_init.ts`, "utf8");
-    expect(src).toMatch(/state\.floorOildrop\s*=/);
-    expect(src).toMatch(/state\.floorSource\s*=\s*FLOOR_SOURCE/);
+  it("bước Lớp 2 rời và bước genesis GHI cả hai trường vào state, không chỉ in ra", () => {
+    const l2 = readFileSync(`${SCRIPTS_DIR}/24_reserve_layer2_init.ts`, "utf8");
+    expect(l2).toMatch(/state\.floorOildrop\s*=/);
+    expect(l2).toMatch(/state\.floorSource\s*=\s*floor\.floorSource/);
+    const g = readFileSync(`${SCRIPTS_DIR}/20_canonical_genesis.ts`, "utf8");
+    expect(g).toMatch(/floorOildrop:\s*floor\.floorOildrop\.toString\(\)/);
+    expect(g).toMatch(/floorSource:\s*floor\.floorSource/);
   });
 
   it("bước đối chiếu ĐỌC nhãn qua liệt kê đóng, không đọc chuỗi trần", () => {

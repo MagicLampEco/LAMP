@@ -108,9 +108,43 @@ chỉ tiêu được một lần trong lịch sử chuỗi. Marker nào không �
 |---|---|---|---|
 | SUPPLY | `oneshot_nft` | `supply_state` | neo định danh bộ đếm cap |
 | REG | `oneshot_nft` | ví (xem hạn chế bên dưới) | bảng `token_tag` → authority |
-| MET | `oneshot_nft` | ví ở Lớp 1 → **`reserve_draw` ở Lớp 2** | cửa DUY NHẤT của nhánh `ReserveDraw`; ở ví là cửa KHÔNG KHOÁ |
+| MET | `oneshot_nft` | **`reserve_draw`, ngay ở Tx A** (cụm cũ: ví ở Lớp 1 → `reserve_draw` ở Lớp 2) | cửa DUY NHẤT của nhánh `ReserveDraw`; ở ví là cửa KHÔNG KHOÁ |
 | TREASURY | `treasury_nft` | `treasury.ak` (KHO) | đích A-DEST, đọc hash kho động |
 | DROP | `beacon_nft` | `beacon.ak` | beacon Distribution, cần cho claim/redeem |
+| TREASURYPULL (auth) | `reserve_auth` (genesis_ref = hạt giống genesis) | `reserve_gate`, ngay ở Tx A | credential "kéo" của Treasury; khoá ở cổng sàn |
+| custody NFT `lamp-reserve` | `custody_seed` (hạt giống custody) | instance custody thật, ở **Tx A0** gửi TRƯỚC Tx A | NFT kho Reserve (khe #13-14 của `lamp_mint`) |
+
+### F1 đóng ở lượt genesis (chủ dự án chốt 2026-10-02)
+
+F1: METER ở ví sau genesis + hạt giống custody ở cùng khoá ⇒ hai giao dịch là rút trọn 9,63 tỷ
+Reserve về một script tuỳ chọn. `20_canonical_genesis.ts` nay gửi BA giao dịch, theo thứ tự, mỗi
+bước chờ xác nhận trước bước sau:
+
+0. **Tx P** (thêm 2026-10-03, `Treasury/GovernancePointer.md` v0.1 §Genesis) — tiêu hạt giống con
+   trỏ `POINTER_SEED_TX/IDX`, đúc NFT `GOVPOINTER` vào `Script(pointer_policy)` (policy = hash
+   `governance_pointer` áp `(seed, change_delay_ms)`), datum đầu: `governance_hash` rỗng,
+   committee = [pkh vận hành], threshold 1, chưa niêm phong, không pending. `pointer_policy` là
+   khe #1 của `custody` VÀ `CustodyDatum.governance_ref` — custody không còn nướng hash
+   governance, nên governance dựng lại được mà không đúc lại kho. Tx A0 chỉ đi khi NFT con trỏ đã
+   ở chỗ (cổng `POINTER-ORDER-001`). Hạt giống con trỏ phải KHÁC hạt giống genesis và custody
+   (`POINTER-SEED-002`); Tx P không được kéo hai hạt giống đó vào input/collateral (`F1-SEED-001`).
+   Trễ `POINTER_CHANGE_DELAY_MS`: Preprod thiếu ⇒ 3 600 000 (1 giờ); Mainnet CHƯA CHỐT ⇒ thiếu
+   là ném `POINTER-DELAY-001`. Các bước 24/25/26/verify đọc `reserve.pointer.policy` từ state;
+   state không có (cụm dựng trước con trỏ) ⇒ `POINTER-STATE-001`.
+1. **Tx A0** — tiêu hạt giống custody, đúc custody NFT vào instance custody thật. Đi RIÊNG vì
+   `Treasury/onchain/validators/custody_seed.ak` luật S-MINT-2
+   (`expect list.length(assets.policies(tx.mint)) == 1`); gộp vào Tx A chỉ được khi đổi bytes
+   `custody_seed` ⇒ đổi policy tLAMP đã công bố. Tx A0 không cần output nào của Tx A, nên gửi
+   trước: không có thời điểm nào hạt giống custody còn sống cùng lúc với METER.
+2. **Tx A** — năm marker + auth NFT → `reserve_gate` + METER đúc thẳng vào `reserve_draw` kèm
+   `ReserveState(start = cửa sổ hiện tại, total = reserve_cap, 0, 0)`. Lượt gửi thật chỉ đi khi
+   custody NFT đã ở instance (cổng `F1-ORDER-001`).
+
+Không marker nào chạm ví: cổng `F1-PLACE-*` (`Genesis/scripts/_genesisReservePlacement.ts`) đo
+đích trên output THẬT của cả ba giao dịch trước khi gửi. Biến bắt buộc thêm:
+`POINTER_SEED_TX`/`POINTER_SEED_IDX` (+ `POINTER_CHANGE_DELAY_MS` trên Mainnet), `RESERVE_FLOOR_OILDROP` (giá trị đã chốt 96300000000000 = 1% trần
+Reserve; không mặc định), `CARP_POLICY_ID`/`CARP_TOKEN_NAME`. Bước rời `24_reserve_layer2_init.ts`
+chỉ còn cho cụm cũ; với state mang `reserve.placedAtGenesis` nó ném `L2-GENESIS-001`.
 
 DROP có mặt vì đúng cái lý do đã giết nhánh Reserve của mainnet: `beaconPid` đã nướng vào
 `claim_account` ⇒ vào `treHash` ⇒ vào **địa chỉ kho**. Không đúc nó bây giờ thì địa chỉ kho
@@ -388,7 +422,8 @@ ghi ở bảng trên **không còn ứng với mã trong cây**. Mọi số đo 
 | `drawn_oildrop >= 0` | `reserve_draw.ak` | `drawn` âm làm pot còn lại phình (`total − drawn > total`). Không lượt sinh nào ép trường này: thread NFT đang dùng là `oneshot_nft.ak`, chỉ ép one-shot chứ không ép hình dạng datum. Gương `lamp_mint.ak:150-151` |
 
 `S-GOV-0` kéo theo một đổi ở phía dựng: `custodySeedDatum()` nay **đòi** `governance_ref` 28 byte,
-và `24_reserve_layer2_init.ts` đọc nó từ `GOVERNANCE_SCRIPT_HASH`, fail-closed. Lượt sinh custody
+và `24_reserve_layer2_init.ts` đọc nó từ `GOVERNANCE_SCRIPT_HASH`, fail-closed (2026-10-03: biến này
+đã gỡ — `governance_ref` nay là policy NFT con trỏ, xem §F1 đóng ở lượt genesis, Tx P). Lượt sinh custody
 dùng NFT one-shot nên **không làm lại được** — một két seed sai còn tệ hơn một két chưa seed.
 
 **`reserve_thread.ak` là mã chết.** `reserve_draw.ak:22` giới thiệu tham số

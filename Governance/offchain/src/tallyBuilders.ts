@@ -19,7 +19,7 @@
 // ép token bị đốt) — nó về ví người dựng lô như tiền thối. Đó là thiết kế on-chain hiện hành, không
 // phải lựa chọn của builder.
 
-import { Data, getAddressDetails, toUnit, type LucidEvolution, type TxSignBuilder, type UTxO } from "@lucid-evolution/lucid";
+import { Constr, Data, getAddressDetails, toUnit, type LucidEvolution, type TxSignBuilder, type UTxO } from "@lucid-evolution/lucid";
 
 import { compareInputOrder, isAtScript, qtyOf, readTally, readWeightParam, slotConfigOf } from "./chainRead.js";
 import type { GovernanceConfig } from "./config.js";
@@ -73,12 +73,50 @@ export function attestedC3(refs: readonly UTxO[], c3Policy: string, c3ScriptHash
 }
 
 /**
+ * Mirror `engage.ak ▸ thread_credits` + `attested_c1`: tổng `consumed_nanogic` (trường 4 của
+ * `EngageDatum`, KHÔNG phải `consumed_count` trường 1) trên các UTxO mang đúng 1 token qty 1 dưới
+ * một policy thuộc `engagePolicies` và có `did_commit` (trường 3) khớp. UTxO mang thread NFT mà
+ * datum sai hình dạng ⇒ ném, vì on-chain `expect` làm cả lô trượt.
+ */
+export function attestedC1(refs: readonly UTxO[], engagePolicies: readonly string[], did: string): bigint {
+  let sum = 0n;
+  for (const u of refs) {
+    const isThread = engagePolicies.some((p) => {
+      const units = Object.entries(u.assets).filter(([unit]) => unit !== "lovelace" && unit.startsWith(p));
+      return units.length === 1 && units[0]![1] === 1n;
+    });
+    if (!isThread) continue;
+    const d = u.datum ? Data.from(u.datum) : undefined;
+    if (!(d instanceof Constr) || d.index !== 0 || d.fields.length !== 5) {
+      throw new Error(`GOV-TALLY-020: thread Engage ${u.txHash}#${u.outputIndex} không mang EngageDatum inline 5 trường`);
+    }
+    const [, , , didCommit, nanogic] = d.fields;
+    if (typeof didCommit !== "string" || typeof nanogic !== "bigint") {
+      throw new Error(`GOV-TALLY-020: thread Engage ${u.txHash}#${u.outputIndex} sai kiểu trường did_commit/consumed_nanogic`);
+    }
+    if (didCommit === did) sum += nanogic;
+  }
+  return sum;
+}
+
+/**
  * Mirror `tally.ak ▸ c_sources_ok` cho một phiếu. `txRefs` = TOÀN BỘ reference input sẽ đi vào
  * giao dịch (on-chain lọc trên `tx.reference_inputs`, không trên một danh sách riêng).
  */
 function assertVoteSources(cfg: GovernanceConfig, wp: WeightParam, v: VoteDatum, txRefs: readonly UTxO[]): void {
-  if (v.c1_capped !== 0n || v.c2_capped !== 0n || v.c4_capped !== 0n) {
-    throw new Error(`GOV-TALLY-012: phiếu của did ${v.did_commit} khai c1/c2/c4 ≠ 0 — c_sources_ok bác cả lô; loại phiếu này khỏi lô`);
+  if (v.c2_capped !== 0n || v.c4_capped !== 0n) {
+    throw new Error(`GOV-TALLY-012: phiếu của did ${v.did_commit} khai c2/c4 ≠ 0 — c_sources_ok bác cả lô; loại phiếu này khỏi lô`);
+  }
+  if (cfg.engagePolicies.length === 0) {
+    if (v.c1_capped !== 0n) throw new Error(`GOV-TALLY-012: pha chưa bật C1 mà phiếu của did ${v.did_commit} khai c1 = ${v.c1_capped}`);
+  } else {
+    if (v.c1_capped < 0n || v.c1_capped > capOf(wp.k1)) {
+      throw new Error(`GOV-TALLY-018: c1 = ${v.c1_capped} ngoài [0, cap_1 = ${capOf(wp.k1)}] (did ${v.did_commit})`);
+    }
+    const att1 = attestedC1(txRefs, cfg.engagePolicies, v.did_commit);
+    if (att1 < v.c1_capped) {
+      throw new Error(`GOV-TALLY-019: c1 khai ${v.c1_capped} > tổng consumed_nanogic ${att1} trên thread Engage có mặt (did ${v.did_commit})`);
+    }
   }
   if (cfg.c3PolicyId === "") {
     if (v.c3_capped !== 0n) throw new Error(`GOV-TALLY-013: pha chưa bật C3 mà phiếu của did ${v.did_commit} khai c3 = ${v.c3_capped}`);
@@ -142,6 +180,8 @@ export interface SumBatchParams {
   votedLedger: VotedLedgerSource;
   /** Reference input chứng thực C3 (bắt buộc khi pha bật C3). */
   c3AttestUtxos?: UTxO[];
+  /** Reference input thread Engage (MAGIC) — bắt buộc cho mọi phiếu khai c1 > 0 khi pha bật C1. */
+  engageThreadUtxos?: UTxO[];
   nowMs: number;
   slotConfig?: SlotConfig;
 }
@@ -177,7 +217,7 @@ export async function buildSumBatchTx(p: SumBatchParams): Promise<SumBatchResult
     { kind: "tally", role: "spend" }, { kind: "vote", role: "spend" }, { kind: "nullifier", role: "mint" },
   ]);
   // Đúng danh sách `tx.reference_inputs` sẽ lên chuỗi — kiểm C3 trên chính danh sách này.
-  const txRefs = uniqueRefs([p.weightParamUtxo], c3Refs, used.refs);
+  const txRefs = uniqueRefs([p.weightParamUtxo], [...c3Refs, ...(p.engageThreadUtxos ?? [])], used.refs);
   const votes = ordered.map((u) => {
     const v = readVote(u, cfg);
     if (v.proposal_id !== td.proposal_id) {

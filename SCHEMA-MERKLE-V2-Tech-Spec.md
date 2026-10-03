@@ -67,6 +67,7 @@ owner mang credential PHÙ HỢP với cách pot đó trả tiền / định dan
 | **Delegator** (airdrop payout) | **payment key-hash** | pot TRẢ LAMP cho người nhận. Trả vào stake address (reward addr) KHÔNG tiêu được (lỗ#1). payment-cred cho phép push-claim: operator trả hộ vào địa chỉ có đúng payment-cred đó (ví người nhận kiểm soát). |
 | **SRCL** (reward-redirect) | ✅ **payment key-hash (CHỐT)** | payout `srcl_pool.ak:198-203` so **payment**-cred; builder join stake→payment. Self-consistent, KHÔNG đổi validator. Xem §3.1. |
 | **MCS / Engage** | theo spec vai đó (chưa hiện thực) | khoá vào spec khi dựng validator vai đó. |
+| **SPO** (`0x04`) | **payment key-hash của ví PhoenixKey của người vận hành pool** (chốt 2026-10-03) | Cùng loại credential với Delegator, nên validator và đường claim không đổi. Pool không có "payment key" riêng: cold key không ký giao dịch thường, reward address là stake credential (trả vào đó KHÔNG tiêu được, lỗ#1). Nối pool → PhoenixKey làm MỘT lần lúc đăng ký: người vận hành ký thử thách bằng **khoá VRF** của pool theo **CIP-22** (Pool operator verification, Active; CNCLI · CNTools · SPO Scripts đã hiện thực). Bộ dựng snapshot kiểm chữ ký với VRF key hash đăng ký on-chain của pool, chỉ đưa vào lá các pool đã nối. Một pool ↔ một DID. |
 
 ⇒ **owner KHÔNG đồng nhất một loại credential toàn hệ.** Mỗi role bake nghĩa owner riêng; role byte
 trong leaf đã cô lập nên không nhầm được.

@@ -10,6 +10,9 @@ export * from "./depositBuilder.js";
 export * from "./releaseBuilder.js";
 export * from "./seedBuilder.js";
 
+// NFT con trỏ governance (GovernancePointer v0.1): codec PointerDatum/PointerRedeemer + plan*.
+export * from "./pointer.js";
+
 // Cầu Reserve↔Treasury (Treasury-pull): mint auth one-shot + spend gate ép sàn.
 export * from "./reserveAuthBuilder.js";
 export * from "./reserveGateBuilder.js";

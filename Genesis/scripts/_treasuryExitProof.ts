@@ -38,6 +38,10 @@ export interface ExitProof {
   branch: string;
   /** Địa chỉ kho lúc đó — đổi apply-param là đổi địa chỉ, nên bằng chứng cũ hết giá trị. */
   treasuryAddress: string;
+  /** Chỉ khi lối ra là `FundPot`: mã pot trong `pots.ts` đã nhận lượt mồi. */
+  potId?: string;
+  /** Chỉ khi lối ra là `FundPot`: lượng (oildrop, chuỗi số thập phân) lượt mồi đã rót vào pot. */
+  amountOildrop?: string;
 }
 
 export type ExitProofLedger = Record<string, ExitProof | null>;
@@ -136,6 +140,14 @@ function shapeErrors(network: string, p: ExitProof): string[] {
   if (!m || !d || d.getUTCMonth() !== +m[2]! - 1 || d.getUTCDate() !== +m[3]!) {
     out.push(`date phải là ngày có thật dạng YYYY-MM-DD (đang '${p.date}')`);
   }
+  // Lượt mồi qua FundPot phải ghi CẢ HAI trường: `fund_pot.ts` trừ lượng này khỏi ngân sách pot
+  // ở lượt rót trọn. Thiếu một trường thì lượt sau rót thừa hoặc thiếu đúng một suất.
+  const hasPot = p.potId !== undefined, hasAmt = p.amountOildrop !== undefined;
+  if (hasPot !== hasAmt) out.push(`potId và amountOildrop phải đi cùng nhau`);
+  if (hasPot && (typeof p.potId !== "string" || p.potId.length === 0)) out.push(`potId phải là chuỗi khác rỗng`);
+  if (hasAmt && (typeof p.amountOildrop !== "string" || !/^[1-9][0-9]*$/.test(p.amountOildrop))) {
+    out.push(`amountOildrop phải là số nguyên dương dạng chuỗi (đang '${p.amountOildrop}')`);
+  }
   const prefix = network === "Mainnet" ? "addr1" : "addr_test1";
   if (!p.treasuryAddress.startsWith(prefix)) {
     out.push(`treasuryAddress phải bắt đầu bằng '${prefix}' trên ${network} (đang '${p.treasuryAddress}')`);
@@ -144,16 +156,21 @@ function shapeErrors(network: string, p: ExitProof): string[] {
 }
 
 /**
- * Trần cho lượt nạp MỒI, tính bằng oildrop (1 LAMP = 1e6 oildrop) ⇒ 1 LAMP.
+ * Trần cho lượt nạp MỒI, tính bằng oildrop (1 LAMP = 1e6 oildrop) ⇒ 1001 LAMP.
  *
  * VÌ SAO PHẢI CÓ MỘT TRẦN chứ không chặn sạch: cổng đòi bằng chứng chi ra, mà muốn chi ra thì
  * trong kho phải có gì đó. Chặn sạch là dựng một vòng không lối vào — và một cổng không thể
  * thoả được thì người bị chặn sẽ gỡ nó, chứ không đi làm điều nó muốn.
  *
- * 1 LAMP là con số chọn theo tiêu chí "mất cũng được": nó đủ để chạy trọn một lượt chi ra
- * thật, và LAMP không burn nên nếu lượt đó hỏng thì đây đúng là lượng nằm chết vĩnh viễn.
+ * Tiêu chí chọn số là "mất cũng được": đủ để chạy trọn một lượt chi ra thật, và LAMP không
+ * burn nên nếu lượt đó hỏng thì đây đúng là lượng nằm chết vĩnh viễn.
+ *
+ * VÌ SAO 1001 chứ không 1 (2026-10-03): lối ra đầu tiên của kho mới là `FundPot` vào kho Wakeme,
+ * và kho đó chỉ nhận lượng là bội của một suất 1001 LAMP (`Distribution/FundPot.md`, bộ dựng
+ * `fundPotBuilder.ts` ném khi lệch bội). Trần 1 LAMP thì lượt mồi không chi ra được qua đúng
+ * đường sẽ dùng thật. 1001 LAMP là một suất người dùng — vẫn "mất cũng được" so với 36 tỷ.
  */
-export const BOOTSTRAP_CEILING_OILDROP = 1_000_000n;
+export const BOOTSTRAP_CEILING_OILDROP = 1_001_000_000n;
 
 /**
  * Cổng fail-closed cho MỌI đường nạp LAMP vào kho.

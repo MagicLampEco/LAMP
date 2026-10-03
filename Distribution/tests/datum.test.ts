@@ -247,7 +247,7 @@ describe("TREASURY_REDEEMER khớp thứ tự khai báo trong types.ak", () => {
 
   it("mỗi khoá trong TREASURY_REDEEMER trỏ đúng vị trí variant on-chain", () => {
     const vs = variantsOf("TreasuryRedeemer");
-    expect(vs).toEqual(["ReleaseForRedeem", "GrantEntitlement", "Refill"]);
+    expect(vs).toEqual(["ReleaseForRedeem", "GrantEntitlement", "Refill", "FundPot"]);
     for (const [name, index] of Object.entries(TREASURY_REDEEMER)) {
       expect(vs[index], `${name} phải ở vị trí ${index} trong types.ak`).toBe(name);
     }

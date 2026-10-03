@@ -112,6 +112,17 @@ describe("measureExitProof — mục đủ trường nhưng SAI HÌNH DẠNG = k
     expect(entry({ treasuryAddress: "addr1_kho" }).state).toBe("unmeasurable");
     expect(entry({ treasuryAddress: "addr1_kho" }, "Mainnet").state).toBe("proven");
   });
+
+  it("lượt mồi FundPot: potId + amountOildrop đi cùng nhau, lượng là số nguyên dương", () => {
+    expect(entry({ branch: "FundPot", potId: "wakeme", amountOildrop: "1001000000" }).state).toBe("proven");
+    const lone = entry({ potId: "wakeme" });
+    expect(lone.state === "unmeasurable" && lone.reason).toMatch(/đi cùng nhau/);
+    expect(entry({ amountOildrop: "1001000000" }).state).toBe("unmeasurable");
+    for (const bad of ["0", "-1", "1e9", "01001", "abc", ""]) {
+      const r = entry({ potId: "wakeme", amountOildrop: bad });
+      expect(r.state === "unmeasurable" && r.reason).toMatch(/amountOildrop/);
+    }
+  });
 });
 
 describe("assertTreasuryHasExit — chặn, và chặn bằng hai câu khác nhau", () => {

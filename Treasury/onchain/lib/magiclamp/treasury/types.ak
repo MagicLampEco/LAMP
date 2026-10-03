@@ -132,3 +132,32 @@ pub type CustodyRedeemer {
   // ⚠ Constr index 5 — thêm Ở CUỐI để 0..4 giữ nguyên.
   Deposit { items: List<CollectItem> }
 }
+
+// ── NFT con trỏ governance (Treasury/GovernancePointer.md v0.1) ─────────────────
+// `CustodyDatum.governance_ref` mang policy id của NFT con trỏ; custody đọc
+// `PointerDatum.governance_hash` qua reference input để biết governance nào đang có quyền
+// duyệt Release. Thứ tự trường và thứ tự Constr là hợp đồng với off-chain
+// (`Treasury/offchain/src/datum.ts` ▸ `pointerDatumToCbor`, `pointerRedeemerToCbor`).
+
+/// Thay đổi con trỏ đang chờ hết hạn trễ (`CommitteePropose` → `ApplyPending`).
+pub type Pending {
+  new_hash           : ByteArray,
+  effective_after_ms : Int,
+}
+
+/// Datum inline của UTxO mang NFT con trỏ.
+pub type PointerDatum {
+  governance_hash : ByteArray,                 // 28 byte, hoặc rỗng khi chưa có governance chạy được
+  committee       : List<ByteArray>,           // VerificationKeyHash, 28 byte, không trùng
+  threshold       : Int,                       // 1 ≤ threshold ≤ |committee|
+  sealed          : Bool,                      // niêm phong một chiều: committee mất quyền
+  pending         : Option<Pending>,
+}
+
+pub type PointerRedeemer {
+  CommitteePropose { new_hash: ByteArray }
+  ApplyPending
+  CommitteeCancel
+  Seal
+  GovernanceSet { new_hash: ByteArray, proposal_ref: OutputReference }
+}

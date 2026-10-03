@@ -479,23 +479,41 @@ describe("planRelease guards: NFT authenticity (C-NFT)", () => {
   });
 });
 
-describe("planRelease guards: proposal Ở ĐÚNG governance_ref (#1A)", () => {
+// GovernancePointer v0.1: `governance_ref` là policy con trỏ; proposal phải ở Script(g), g đọc
+// từ con trỏ (`governanceHash`). So với `governance_ref` là so sai đại lượng ⇒ ném.
+const G_PTR = "99".repeat(28);
+describe("planRelease guards: proposal Ở ĐÚNG Script(g) — g từ con trỏ (#1A + C-REL-PTR)", () => {
   const spec = spendSpecHash(SEED_POLICY, INSTANCE_ID, drawsSingle);
   const datum = custodyDatum(ledger([BUCKET_OPS, 1000n]));
   const valueIn = { [ADA_KEY]: 5_000_000n, [LAMP_KEY]: 5000n, [nftKey]: 1n };
 
-  it("happy: proposal script hash == governance_ref → plan đúng", () => {
+  it("happy: proposal script hash == g → plan đúng", () => {
     const plan = planRelease(
       datum, valueIn, proposal(spec), drawsSingle, CUST_SH, 5n, 11n,
-      { ...G, proposalScriptHash: GOV_REF },
+      { ...G, proposalScriptHash: G_PTR, governanceHash: G_PTR },
     );
     expect(plan.newDatum.ledger).toEqual(ledger([BUCKET_OPS, 700n]));
   });
 
-  it("reject: proposal script hash ≠ governance_ref → RELEASE-001 (fail-fast)", () => {
+  it("reject: proposal script hash ≠ g → RELEASE-001 (fail-fast)", () => {
     expect(() =>
-      planRelease(datum, valueIn, proposal(spec), drawsSingle, CUST_SH, 5n, 11n, { ...G, proposalScriptHash: "deadbeef" }),
+      planRelease(datum, valueIn, proposal(spec), drawsSingle, CUST_SH, 5n, 11n,
+        { ...G, proposalScriptHash: "de".repeat(28), governanceHash: G_PTR }),
     ).toThrow(/RELEASE-001/);
+  });
+
+  it("reject: proposal == governance_ref (policy con trỏ) nhưng thiếu g → RELEASE-PTR-001", () => {
+    expect(() =>
+      planRelease(datum, valueIn, proposal(spec), drawsSingle, CUST_SH, 5n, 11n,
+        { ...G, proposalScriptHash: GOV_REF }),
+    ).toThrow(/RELEASE-PTR-001/);
+  });
+
+  it("reject: g rỗng (con trỏ chưa trỏ governance nào) → RELEASE-PTR-001", () => {
+    expect(() =>
+      planRelease(datum, valueIn, proposal(spec), drawsSingle, CUST_SH, 5n, 11n,
+        { ...G, proposalScriptHash: G_PTR, governanceHash: "" }),
+    ).toThrow(/RELEASE-PTR-001/);
   });
 });
 

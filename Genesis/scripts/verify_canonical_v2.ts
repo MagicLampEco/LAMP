@@ -10,7 +10,9 @@ import { supplyStateFromCbor } from "../offchain/src/datum.js";
 import { rehydrate, printWiring } from "./_canonical_v2.js";
 import {
   deriveReserveWiring, printReserveWiring, resolveDelegationAdmin,
+  pointerLocation, pointerPolicyFromState,
 } from "./_reserve_layer2.js";
+import { pointerDatumFromCbor } from "../../Treasury/offchain/src/pointer.js";
 import { floorSourceWarning, parseFloorSource } from "./_floorLabel.js";
 import { reserveStateFromCbor } from "../../Reserve/offchain/src/datum.js";
 import { parkedOf } from "../../Treasury/offchain/src/reserveGateBuilder.js";
@@ -53,10 +55,34 @@ async function main(): Promise<void> {
   // dịch. Ở `reserve_draw`: tiêu nó = chạy bốn luật trần/nhịp/đích/cổng. Đây là khác biệt
   // giữa "đường thông" và "đường có phanh", nên nó phải là một dòng đối chiếu riêng.
   let rw: Awaited<ReturnType<typeof deriveReserveWiring>> | undefined;
-  if (state.reserve?.custodyRef && (state.reserve.authRef?.outputIndex ?? -1) >= 0) {
+  // Con trỏ governance (GovernancePointer v0.1): khe #1 custody. Đọc-không-ghi ⇒ không ném,
+  // mà ghi một dòng ✗ — cụm dựng trước con trỏ thì mã hiện hành không dựng lại được custody.
+  let pointerPolicy: string | undefined;
+  try {
+    pointerPolicy = pointerPolicyFromState(state);
+  } catch (e) {
+    if (state.reserve?.custodyRef) check(false, e instanceof Error ? e.message : String(e));
+  }
+  if (pointerPolicy) {
+    const loc = pointerLocation(pointerPolicy, wiring.network);
+    const atPtr = await lucid.utxosAt(loc.addr);
+    check(count(atPtr, loc.unit) === 1n,
+      `GOVPOINTER: 1 bản tại governance_pointer (${pointerPolicy}) — Release của custody đọc được con trỏ`);
+    const pu = atPtr.find((u) => (u.assets[loc.unit] ?? 0n) === 1n);
+    if (pu?.datum) {
+      const pd = pointerDatumFromCbor(pu.datum);
+      console.log(
+        `   con trỏ: governance_hash=${pd.governance_hash || "(rỗng — Release bị từ chối)"} · ` +
+        `committee=${pd.committee.length}/${pd.threshold} · sealed=${pd.sealed} · ` +
+        `pending=${pd.pending ? `${pd.pending.new_hash} sau ${pd.pending.effective_after_ms}` : "không"}`,
+      );
+    }
+  }
+  if (pointerPolicy && state.reserve?.custodyRef && (state.reserve.authRef?.outputIndex ?? -1) >= 0) {
     rw = await deriveReserveWiring(wiring, {
       custodyTxHash: state.reserve.custodyRef.txHash,
       custodyIndex:  state.reserve.custodyRef.outputIndex,
+      pointerPolicy,
       authTxHash:    state.reserve.authRef.txHash,
       authIndex:     state.reserve.authRef.outputIndex,
       network:       wiring.network,

@@ -48,7 +48,7 @@ describe("custodyParamList — khớp ĐÚNG số khe blueprint khai", () => {
     const declared = (BLUEPRINT.validators as { title: string; parameters?: { title?: string }[] }[])
       .find((v) => v.title === CUSTODY_TITLE)!.parameters!.map((p) => p.title);
     expect(declared).toEqual([
-      "proposal_policy", "seed_policy", "ms_per_epoch", "lamp_policy", "token_name", "window_origin_ms",
+      "pointer_policy", "seed_policy", "ms_per_epoch", "lamp_policy", "token_name", "window_origin_ms",
     ]);
     expect(custodyParamList(SAMPLE)).toEqual([
       SAMPLE.proposalPolicy, SAMPLE.seedPolicy, SAMPLE.msPerEpoch, SAMPLE.lampPolicy, SAMPLE.tokenName,
