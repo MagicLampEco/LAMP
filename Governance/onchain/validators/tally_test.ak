@@ -22,6 +22,7 @@ use cardano/assets.{PolicyId, Value}
 use cardano/transaction.{
   Input, Output, OutputReference, Transaction, placeholder,
 }
+use magiclamp/governance/engage
 use magiclamp/governance/mpf_fixtures as fx
 use magiclamp/governance/names.{nullifier_name}
 use magiclamp/governance/power.{Knot, scale}
@@ -325,6 +326,7 @@ fn run_finalize(tx: Transaction, d_in: TallyDatum) -> Bool {
     window,
     ms_ep,
     0,
+    [],
     Some(d_in),
     tally.Finalize,
     util.mk_ref(0),
@@ -347,6 +349,7 @@ fn run_finalize_at(origin: Int, shift: Int, tx: Transaction, d_in: TallyDatum) -
     window,
     ms_ep,
     origin,
+    [],
     Some(d_in),
     tally.Finalize,
     util.mk_ref(0),
@@ -356,6 +359,16 @@ fn run_finalize_at(origin: Int, shift: Int, tx: Transaction, d_in: TallyDatum) -
 
 
 fn run_sum(tx: Transaction, d_in: TallyDatum, proofs: List<Proof>) -> Bool {
+  run_sum_ep([], tx, d_in, proofs)
+}
+
+/// `run_sum` với `engage_policies` cho trước — `[]` = pha chưa bật C1.
+fn run_sum_ep(
+  engage_policies: List<PolicyId>,
+  tx: Transaction,
+  d_in: TallyDatum,
+  proofs: List<Proof>,
+) -> Bool {
   tally.tally.spend(
     tally_policy,
     vote_sh,
@@ -366,6 +379,7 @@ fn run_sum(tx: Transaction, d_in: TallyDatum, proofs: List<Proof>) -> Bool {
     window,
     ms_ep,
     0,
+    engage_policies,
     Some(d_in),
     tally.SumBatch { insert_proofs: proofs },
     util.mk_ref(0),
@@ -1543,5 +1557,167 @@ test finalize_truoc_khi_het_cua_so_gom_tu_choi_origin_preprod() fail {
       validity_range: at_epoch(close_e + window - 1),
     }
   expect run_finalize_at(window_origin_fixtures.preprod_origin_ms, window_origin_fixtures.preprod_origin_ms, tx, d_in)
+  True
+}
+
+// ════════════════════════════════════════════════════════════
+// Nguồn C1 — thread Engage của MAGIC (`engage.ak`, `c_sources_ok`)
+// ════════════════════════════════════════════════════════════
+//
+// Mỗi ca âm có một ca dương khác nó đúng MỘT thứ, và đầu vào phân biệt được hai phía:
+// một validator "C1 tự khai, chỉ kẹp trần" XANH ở mọi ca âm dưới đây; một validator
+// "ép C1 == 0" (bản trước) ĐỎ ở mọi ca dương. Phiếu nào cũng mang chứng thực C3 hợp lệ
+// (giá trị 10) để không ca nào trượt xuống vế C3.
+
+const engage_a: PolicyId = #"e1e1"
+
+const engage_b: PolicyId = #"e2e2"
+
+/// Thread Engage: NFT `(policy, "th")` qty `qty`, tại `Script(policy)` (MAGIC neo địa
+/// chỉ = policy lúc đúc), datum `EngageDatum` inline.
+fn thread_ref_qty(
+  policy: PolicyId,
+  did: ByteArray,
+  nanogic: Int,
+  count: Int,
+  qty: Int,
+  ix: Int,
+) -> Input {
+  let val = assets.from_lovelace(2_000_000) |> assets.add(policy, #"7468", qty)
+  let ed =
+    engage.EngageDatum {
+      owner: #"0a",
+      consumed_count: count,
+      last_epoch: 5,
+      did_commit: did,
+      consumed_nanogic: nanogic,
+    }
+  util.mk_input(
+    util.mk_ref(200 + ix),
+    util.mk_output(util.script_address(policy), val, ed),
+  )
+}
+
+fn thread_ref(policy: PolicyId, did: ByteArray, nanogic: Int, ix: Int) -> Input {
+  // count = 3 cố ý KHÁC nanogic: ca đọc nhầm `consumed_count` phải đỏ.
+  thread_ref_qty(policy, did, nanogic, 3, 1, ix)
+}
+
+/// Một lô một phiếu của `did_of(1)` khai `c1`, các thread cho trước, pha công nhận `eps`.
+fn c1_case(c1: Int, threads: List<Input>, eps: List<PolicyId>) -> Bool {
+  let v = VoteDatum { ..vote_datum(Yes, 10, did_of(1)), c1_capped: c1 }
+  let d_in = summing(0, 0, 0, 0, 0, [])
+  let d_out =
+    summing_r(
+      v1_vp(),
+      0,
+      0,
+      1,
+      1,
+      [TopEntry { vp_raw: v1_vp(), choice: Yes }],
+      fx.root_a1,
+    )
+  let tx =
+    Transaction {
+      ..sum_tx(d_in, d_out, [vote_input(v, 1)], [v], burn_all([v])),
+      reference_inputs: [wp_input(10), c3_ref(did_of(1), 10, 0), ..threads],
+    }
+  run_sum_ep(eps, tx, d_in, [fx.ins_a1()])
+}
+
+/// Đối chứng DƯƠNG gốc: khai đúng bằng tổng trên chuỗi.
+test sum_c1_doc_tu_chuoi_qua() {
+  c1_case(100, [thread_ref(engage_a, did_of(1), 100, 0)], [engage_a])
+}
+
+/// Khai THỪA một đơn vị so với chuỗi — đòn mà vế `capped_ok` cũ để lọt.
+test sum_c1_khai_vuot_chuoi_tu_choi() fail {
+  expect c1_case(101, [thread_ref(engage_a, did_of(1), 100, 0)], [engage_a])
+  True
+}
+
+/// Khai THIẾU được nhận (`≥`, không `==`): thread tăng giữa lúc bỏ phiếu và lúc gom
+/// không được làm phiếu mất khả năng gom.
+test sum_c1_khai_duoi_chuoi_qua() {
+  c1_case(50, [thread_ref(engage_a, did_of(1), 100, 0)], [engage_a])
+}
+
+/// MƯỢN C1: thread hợp lệ, đủ giá trị, nhưng `did_commit` của DID KHÁC.
+test sum_c1_thread_cua_did_khac_tu_choi() fail {
+  expect c1_case(100, [thread_ref(engage_a, did_of(2), 100, 0)], [engage_a])
+  True
+}
+
+/// Đọc nhầm `consumed_count` (100) thay cho `consumed_nanogic` (3).
+test sum_c1_doc_nham_consumed_count_tu_choi() fail {
+  expect
+    c1_case(
+      100,
+      [thread_ref_qty(engage_a, did_of(1), 3, 100, 1, 0)],
+      [engage_a],
+    )
+  True
+}
+
+/// Cộng dồn qua HAI policy đều được công nhận: 60 + 40.
+test sum_c1_hai_policy_cong_don_qua() {
+  c1_case(
+    100,
+    [
+      thread_ref(engage_a, did_of(1), 60, 0),
+      thread_ref(engage_b, did_of(1), 40, 1),
+    ],
+    [engage_a, engage_b],
+  )
+}
+
+/// Cùng hai thread, nhưng `engage_b` CHƯA được công nhận ⇒ chỉ 60 được đếm.
+test sum_c1_policy_chua_cong_nhan_tu_choi() fail {
+  expect
+    c1_case(
+      100,
+      [
+        thread_ref(engage_a, did_of(1), 60, 0),
+        thread_ref(engage_b, did_of(1), 40, 1),
+      ],
+      [engage_a],
+    )
+  True
+}
+
+/// FAIL-CLOSED: pha chưa bật C1 (`[]`) mà phiếu khai C1 > 0, dù thread thật có mặt.
+test sum_c1_chua_bat_co_thread_tu_choi() fail {
+  expect c1_case(100, [thread_ref(engage_a, did_of(1), 100, 0)], [])
+  True
+}
+
+/// Token dưới policy được công nhận nhưng qty 2 — không phải một thread NFT.
+test sum_c1_nft_qty_hai_tu_choi() fail {
+  expect
+    c1_case(
+      100,
+      [thread_ref_qty(engage_a, did_of(1), 100, 3, 2, 0)],
+      [engage_a],
+    )
+  True
+}
+
+/// Khai đúng bằng trần `cap_of(k1)` khi chuỗi có NHIỀU hơn trần — qua.
+test sum_c1_khai_bang_tran_qua() {
+  let cap = power.cap_of(lin_knots())
+  c1_case(cap, [thread_ref(engage_a, did_of(1), cap + 5, 0)], [engage_a])
+}
+
+/// Khai vượt trần MỘT đơn vị, chuỗi đủ cho số khai — chỉ vế trần bác.
+test sum_c1_khai_vuot_tran_tu_choi() fail {
+  let cap = power.cap_of(lin_knots())
+  expect
+    c1_case(cap + 1, [thread_ref(engage_a, did_of(1), cap + 5, 0)], [engage_a])
+  True
+}
+
+/// Khai ÂM — vế chứng thực (`100 ≥ -1`) và vế trần thoả, chỉ vế sàn bác.
+test sum_c1_khai_am_tu_choi() fail {
+  expect c1_case(-1, [thread_ref(engage_a, did_of(1), 100, 0)], [engage_a])
   True
 }

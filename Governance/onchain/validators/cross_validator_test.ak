@@ -204,6 +204,7 @@ fn call_tally(
     window,
     ms,
     0,
+    [],
     Some(d_in),
     redeemer,
     tally_ref_or(),

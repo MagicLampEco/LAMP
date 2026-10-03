@@ -15,9 +15,10 @@
 // │    sổ sớm cộng với việc tiêu k phiếu của phe chống là đủ lật mọi proposal.   │
 // │ 3. GHIM ba trường mới ở `Finalize`. Thiếu vế ghim `voted_root` thì chính     │
 // │    `Finalize` vô hiệu hoá được lớp (V5) của `vote`.                         │
-// │ 4. NGUỒN c*. `c1/c2/c4` bị ép == 0 (chưa có policy nguồn nào chứng thực),    │
-// │    `c3` phải có NFT chứng thực tên = `did_commit` làm reference input. Cap    │
-// │    kiểm LẠI ở đây, không tin datum phiếu.                                   │
+// │ 4. NGUỒN c*. `c2/c4` bị ép == 0 (chưa có policy nguồn nào chứng thực),       │
+// │    `c3` phải có NFT chứng thực tên = `did_commit` làm reference input, `c1`   │
+// │    phải ≤ tổng `consumed_nanogic` trên thread Engage của DID đó (engage.ak).  │
+// │    Cap kiểm LẠI ở đây, không tin datum phiếu.                               │
 // └─────────────────────────────────────────────────────────────────────────────┘
 //
 // Tham số hoá:
@@ -32,6 +33,9 @@
 //                         mình KHÔNG đủ (xem `attested_c3`).
 //   tally_window_epochs : độ dài cửa sổ gom.
 //   ms_per_epoch        : quy đổi POSIX ms → epoch.
+//   window_origin_ms    : gốc lưới cửa sổ.
+//   engage_policies     : policy thread Engage (MAGIC) được công nhận cho C1. `[]` =
+//                         pha chưa bật C1 ⇒ ép `c1_capped == 0`.
 
 use aiken/collection/dict
 use aiken/collection/list
@@ -42,6 +46,7 @@ use cardano/assets.{PolicyId}
 use cardano/transaction.{
   InlineDatum, Input, Output, OutputReference, Transaction,
 }
+use magiclamp/governance/engage
 use magiclamp/governance/names.{nullifier_name}
 use magiclamp/governance/power.{cap_of}
 use magiclamp/governance/tally.{
@@ -212,7 +217,7 @@ fn attested_c3(
 /// Trước v2, `c*_capped` chỉ bị CAP, không bị chứng thực: một DID có anchor thật
 /// khai được VP tối đa mà không nắm MAGIC/LAMP nào. Cap không phải chứng thực.
 ///
-///   • C1, C2, C4 — chưa có policy nguồn nào tồn tại ⇒ ép == 0. Với công thức
+///   • C2, C4 — chưa có policy nguồn nào tồn tại ⇒ ép == 0. Với công thức
 ///     tích, một thừa số ở mốc đầu bảng kéo VP xuống mốc đầu, nên pha nào dựa vào
 ///     bốn yếu tố sẽ TỰ KHOÁ cho tới khi có nguồn. Đó là ý định: thà khoá còn hơn
 ///     đếm một con số không ai chứng thực.
@@ -220,21 +225,60 @@ fn attested_c3(
 ///     `Script(c3_script_hash)`, giá trị trong datum. Đòi giá trị chứng thực ≥ giá
 ///     trị khai, và khai trong `[0, cap_3]`. `c3_policy == #""` = pha chưa bật C3 ⇒
 ///     ép == 0.
+///   • C1 — có nguồn: thread Engage của MAGIC (`engage.ak`), policy thuộc
+///     `engage_policies`, `did_commit` trong datum khớp BYTE với phiếu. Đòi
+///     `0 ≤ c1_capped ≤ cap_1` VÀ tổng `consumed_nanogic` các thread đó `≥ c1_capped`.
+///     `engage_policies == []` = pha chưa bật C1 ⇒ ép == 0.
+///
+///     Vì sao `≥` chứ không `==` như bản v1 (`CastVote`, ff4563a): ở v2 phép kiểm chạy
+///     lúc GOM, không lúc bỏ phiếu. `consumed_nanogic` chỉ tăng, và thread bị tiêu-tạo
+///     lại mỗi lần tiêu MAGIC ⇒ giữa hai thời điểm đó tổng trên chuỗi có thể đã lớn hơn
+///     số khai. Với `==`, cử tri tiêu thêm MAGIC sau khi bỏ phiếu làm phiếu của chính họ
+///     KHÔNG GOM ĐƯỢC NỮA. `≥` chặn đúng đường cần chặn (khai THỪA), cùng khuôn với C3.
+///
+///     ⚠ VẾ C1 KHÔNG ĐÓNG ĐƯỢC LỖ "thread tự đúc": cổng đúc thread của MAGIC ghim ĐỘ
+///     DÀI `did_commit` chứ không ghim NỘI DUNG. Câu đúng mức khi báo cáo, đừng rút gọn:
+///       "C1 đọc từ chuỗi thay cho C1 tự khai — chặn được khai thừa trên thread đã có,
+///        KHÔNG chặn được thread tự đúc mang did_commit tự chọn."
+///     Việc vá nằm ở repo MAGIC; CONTRACT §5 D9 vẫn cấm mô tả C1 là "chống-Sybil".
 fn c_sources_ok(
   reference_inputs: List<Input>,
   c3_policy: PolicyId,
   c3_script_hash: ByteArray,
+  engage_policies: List<PolicyId>,
   wp: WeightParam,
   votes: List<VoteDatum>,
 ) -> Bool {
   // `cap_of` duyệt trọn bảng knots. Nó KHÔNG phụ thuộc phiếu, nên tính một lần
   // ngoài vòng lặp thay vì k lần bên trong (bảng 8 mốc, k = 5: 55 000 mem).
   let cap3 = cap_of(wp.k3)
+  // Pha chưa bật C1 thì KHÔNG tính bảng thread lẫn `cap_1` — đường nóng giữ nguyên chi phí.
+  let c1_on = engage_policies != []
+  let cap1 =
+    if c1_on {
+      cap_of(wp.k1)
+    } else {
+      0
+    }
+  let c1_credits =
+    if c1_on {
+      engage.thread_credits(reference_inputs, engage_policies)
+    } else {
+      []
+    }
   list.all(
     votes,
     fn(v) {
       and {
-        v.c1_capped == 0,
+        if c1_on {
+          and {
+            v.c1_capped >= 0,
+            v.c1_capped <= cap1,
+            engage.attested_c1(c1_credits, v.did_commit) >= v.c1_capped,
+          }
+        } else {
+          v.c1_capped == 0
+        },
         v.c2_capped == 0,
         v.c4_capped == 0,
         // cap4 cứng vẫn giữ trong mã như một chốt dự phòng cho lượt mở C4.
@@ -292,6 +336,9 @@ validator tally(
   // tham số đã thêm trước. Gốc lưới cửa sổ: cửa sổ = (t − window_origin_ms) / ms_per_epoch,
   // nên chỉ số cửa sổ = số epoch Cardano của mạng. Đổi hash validator này.
   window_origin_ms: Int,
+  // THÊM 2026-10-03 (bật C1, `Governance/SPEC.md` `[C1-C2-C4-SOURCE]`) — ĐẶT CUỐI theo khuôn
+  // các tham số đã thêm trước. `[]` = pha chưa bật C1. Đổi hash validator này.
+  engage_policies: List<PolicyId>,
 ) {
   spend(
     datum_opt: Option<TallyDatum>,
@@ -337,6 +384,7 @@ validator tally(
             tx.reference_inputs,
             c3_policy,
             c3_script_hash,
+            engage_policies,
             wp,
             votes,
           )

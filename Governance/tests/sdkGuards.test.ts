@@ -9,14 +9,14 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
-import { Data, credentialToAddress, type UTxO } from "@lucid-evolution/lucid";
+import { Constr, Data, credentialToAddress, type UTxO } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import { scriptAddress } from "../offchain/src/chainRead.js";
 import { EXPECTED_PARAMS, applyGovernanceBlueprint, type GovernanceDeployParams } from "../offchain/src/config.js";
 import { nullifierRedeemerToCbor } from "../offchain/src/datum.js";
 import { nullifierNameRaw } from "../offchain/src/names.js";
-import { attestedC3 } from "../offchain/src/tallyBuilders.js";
+import { attestedC1, attestedC3 } from "../offchain/src/tallyBuilders.js";
 import { SCALE, d8Ok, d8Problem, dominates, knotsProblem, knotsWellformed } from "../offchain/src/tallyMath.js";
 import type { Knot, WeightParam } from "../offchain/src/types.js";
 import { VotedLedger, replayBatchInsert } from "../offchain/src/votedLedger.js";
@@ -27,31 +27,52 @@ const blueprint = JSON.parse(readFileSync(resolve(__dirname, "../onchain/plutus.
 
 const H28 = (b: string) => b.repeat(28);
 const baseParams = (c3PolicyId: string, c3ScriptHash: string): GovernanceDeployParams => ({
-  phaseTag: "5031", taadPolicyId: H28("7a"), c3PolicyId, c3ScriptHash,
+  phaseTag: "5031", taadPolicyId: H28("7a"), c3PolicyId, c3ScriptHash, engagePolicies: [],
   msPerEpoch: 3_600_000n, windowOriginMs: 1_506_203_091_000n, // gốc Mainnet thật, không phải 0
   tallyWindowEpochs: 2n, deltaMinEpochs: 1n, recoveryTimelockEpochs: 10n,
   weightParam: { policyId: H28("a0") },
 });
 
-describe("config — tally 9 tham số (tham số cuối window_origin_ms), cặp C3", () => {
+describe("config — tally 10 tham số (window_origin_ms rồi engage_policies), cặp C3, C1", () => {
   it("EXPECTED_PARAMS.tally khớp nguyên văn parameters của blueprint", () => {
     const v = blueprint.validators.find((x: { title: string }) => x.title === "tally.tally.spend");
     expect(v.parameters.map((p: { title: string }) => p.title)).toEqual(EXPECTED_PARAMS.tally);
     expect(EXPECTED_PARAMS.tally).toEqual([
       "tally_policy", "vote_script_hash", "nullifier_policy", "weight_param_policy", "c3_policy", "c3_script_hash",
-      "tally_window_epochs", "ms_per_epoch", "window_origin_ms",
+      "tally_window_epochs", "ms_per_epoch", "window_origin_ms", "engage_policies",
     ]);
   });
-  it("window_origin_ms là tham số CUỐI của nullifier/vote/tally/governance; blueprint khớp EXPECTED_PARAMS", () => {
+  it("window_origin_ms là tham số CUỐI của nullifier/vote/governance, KẾ CUỐI của tally (sau nó là engage_policies)", () => {
     for (const [key, title] of [
       ["nullifier", "nullifier.nullifier.mint"], ["vote", "vote.vote.spend"],
       ["tally", "tally.tally.spend"], ["governance", "governance.governance.mint"],
     ] as const) {
       const v = blueprint.validators.find((x: { title: string }) => x.title === title);
       const names = v.parameters.map((p: { title: string }) => p.title);
-      expect(names.at(-1), title).toBe("window_origin_ms");
+      expect(names.at(key === "tally" ? -2 : -1), title).toBe("window_origin_ms");
       expect(names, title).toEqual(EXPECTED_PARAMS[key]);
     }
+  });
+  it("engage_policies đi vào hash tally (và governance qua tally_script_hash); lặp/sai độ dài ⇒ GOV-APPLY-006/hex", () => {
+    const off = applyGovernanceBlueprint(blueprint, baseParams("", ""));
+    const on = applyGovernanceBlueprint(blueprint, { ...baseParams("", ""), engagePolicies: [H28("e1")] });
+    expect(on.engagePolicies).toEqual([H28("e1")]);
+    expect(on.tallyScriptHash).not.toBe(off.tallyScriptHash);
+    expect(on.governancePolicyId).not.toBe(off.governancePolicyId);
+    expect(on.voteScriptHash).toBe(off.voteScriptHash);
+    expect(() => applyGovernanceBlueprint(blueprint, { ...baseParams("", ""), engagePolicies: [H28("e1"), H28("e1")] })).toThrow("GOV-APPLY-006");
+    expect(() => applyGovernanceBlueprint(blueprint, { ...baseParams("", ""), engagePolicies: undefined as never })).toThrow("GOV-APPLY-006");
+  });
+  it("attestedC1 cộng consumed_nanogic (trường 4) của thread đúng did, bỏ policy lạ và qty ≠ 1", () => {
+    const pol = H28("e1");
+    const mk = (i: number, policy: string, did: string, count: bigint, nanogic: bigint, qty = 1n): UTxO => ({
+      txHash: "ab".repeat(32), outputIndex: i, address: "addr_test1", assets: { lovelace: 2_000_000n, [policy + "7468"]: qty },
+      datum: Data.to(new Constr(0, ["0a", count, 5n, did, nanogic])), datumHash: null, scriptRef: null,
+    });
+    const refs = [mk(0, pol, DID, 3n, 60n), mk(1, pol, DID, 100n, 40n), mk(2, H28("e2"), DID, 3n, 999n),
+      mk(3, pol, "00".repeat(32), 3n, 500n), mk(4, pol, DID, 3n, 7n, 2n)];
+    expect(attestedC1(refs, [pol], DID)).toBe(100n);
+    expect(attestedC1(refs, [], DID)).toBe(0n);
   });
   it("gốc cửa sổ đi vào hash của cả bốn script; thiếu/âm ⇒ GOV-APPLY-005", () => {
     const a = applyGovernanceBlueprint(blueprint, baseParams("", ""));

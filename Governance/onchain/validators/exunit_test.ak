@@ -508,6 +508,7 @@ fn run_tally(s: Scn) -> Bool {
     window,
     ms_ep,
     0,
+    [],
     d,
     r,
     tally_ref(),

@@ -123,7 +123,7 @@ describe("E2E Governance v2 trên Emulator — validator thật", () => {
     const adminUtxos = await lucid.wallet().getUtxos();
     const wpSeed = adminUtxos[0]!;
     let cfg: GovernanceConfig = applyGovernanceBlueprint(blueprint, {
-      phaseTag: "5031", taadPolicyId, c3PolicyId: "", c3ScriptHash: "",
+      phaseTag: "5031", taadPolicyId, c3PolicyId: "", c3ScriptHash: "", engagePolicies: [],
       msPerEpoch: MS_PER_EPOCH, windowOriginMs: ORIGIN_MS, tallyWindowEpochs: 2n, deltaMinEpochs: 1n, recoveryTimelockEpochs: 10n,
       weightParam: {
         seedRef: { transaction_id: wpSeed.txHash, output_index: BigInt(wpSeed.outputIndex) },
@@ -418,7 +418,7 @@ describe("E2E Governance v2 trên Emulator — validator thật", () => {
     const adminUtxos = await lucid.wallet().getUtxos();
     const wpSeed = adminUtxos[0]!;
     let cfg: GovernanceConfig = applyGovernanceBlueprint(blueprint, {
-      phaseTag: "5032", taadPolicyId, c3PolicyId, c3ScriptHash,
+      phaseTag: "5032", taadPolicyId, c3PolicyId, c3ScriptHash, engagePolicies: [],
       msPerEpoch: MS_PER_EPOCH, windowOriginMs: ORIGIN_MS, tallyWindowEpochs: 2n, deltaMinEpochs: 1n, recoveryTimelockEpochs: 10n,
       weightParam: {
         seedRef: { transaction_id: wpSeed.txHash, output_index: BigInt(wpSeed.outputIndex) },
