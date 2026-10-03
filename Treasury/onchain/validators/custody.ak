@@ -25,7 +25,9 @@
 //   C-REL-10  KHÔNG mint/burn.
 //   C-NFT     cust_in/out mang đúng 1 NFT (seed_policy, instance_id).
 //   C-REL-4   ĐÚNG 1 custody input + 1 custody output theo PAYMENT SCRIPT HASH.
-//   C-REL-1   reference input tại proposal_ref Ở ĐÚNG governance_ref + mang ĐÚNG 1 Proposal NFT.
+//   C-REL-PTR governance_ref == pointer_policy; NFT con trỏ (reference input) ở Script(pointer_policy),
+//             PointerDatum.governance_hash = g dài 28 byte (con trỏ rỗng ⇒ từ chối).
+//   C-REL-1   reference input tại proposal_ref Ở ĐÚNG Script(g) + mang ĐÚNG 1 Proposal NFT policy g.
 //   C-REL-2   ProposalResult.status == Executed.
 //   C-REL-3   spend_spec_hash(seed_policy, instance_id, draws) == proposal.spend_spec_hash
 //             (khóa đích chi VÀ đúng một kho — C-REL-3-SEED, xem `release.spend_spec_hash`).
@@ -131,6 +133,7 @@ use cardano/assets
 use cardano/transaction.{InlineDatum, OutputReference, Transaction}
 use magiclamp/treasury/collect
 use magiclamp/treasury/migrate
+use magiclamp/treasury/pointer
 use magiclamp/treasury/release
 use magiclamp/treasury/stake_reward
 use magiclamp/treasury/types.{
@@ -140,7 +143,13 @@ use magiclamp/treasury/types.{
 use magiclamp/treasury/util
 
 /// Release validator parameterized bởi:
-///   proposal_policy — PolicyId của Proposal authenticity NFT (Governance one-shot).
+///   pointer_policy  — PolicyId của NFT con trỏ governance (`governance_pointer`, one-shot).
+///                     Đổi 2026-10-03 (Treasury/GovernancePointer.md v0.1): trước đây khe #1 là
+///                     `proposal_policy` (policy proposal NFT nướng cứng). Nay policy proposal
+///                     ĐỌC từ con trỏ (`pointer.read_governance`), nên governance dựng lại được
+///                     mà không phải đúc lại kho. Giữ khe #1 (không bỏ) và ÉP
+///                     `datum.governance_ref == pointer_policy` ở Release: tham số không chết,
+///                     và con trỏ bị khoá vào hash kho — người gieo không trỏ datum đi chỗ khác.
 ///   seed_policy     — PolicyId của custody authenticity NFT (custody_seed one-shot).
 ///   ms_per_epoch    — quy đổi POSIX ms → epoch (time-lock C-REL-8 + neo C-EPOCH).
 ///   lamp_policy     — minting policy LAMP/tLAMP (Genesis lamp_mint). MigrateIn đo Δ theo đây.
@@ -150,7 +159,7 @@ use magiclamp/treasury/util
 /// được đúc lại khi đổi. Đã tính: không có cách nào để MigrateIn đo Δ mà không biết token
 /// nào là LAMP, và đọc "token nào là LAMP" từ datum thì datum do người gửi đặt.
 validator custody(
-  proposal_policy: assets.PolicyId,
+  pointer_policy: assets.PolicyId,
   seed_policy: assets.PolicyId,
   ms_per_epoch: Int,
   lamp_policy: assets.PolicyId,
@@ -287,15 +296,16 @@ validator custody(
         // (phình datum → kẹt) mà không chi gì. Một Release phải chi thật.
         expect draws != []
 
-        // C-REL-1: đọc + xác thực ProposalResult — proposal Ở ĐÚNG governance_ref +
-        // mang đúng Proposal NFT (chống NFT dời sang datum giả / replay chéo instance).
-        let proposal =
-          release.read_proposal(
-            tx.reference_inputs,
-            proposal_ref,
-            proposal_policy,
-            datum.governance_ref,
-          )
+        // C-REL-PTR (Treasury/GovernancePointer.md v0.1): `governance_ref` là policy NFT con
+        // trỏ, và phải đúng con trỏ nướng vào hash kho này. Governance hiện hành
+        // g = PointerDatum.governance_hash, đọc qua reference input mang NFT con trỏ ở
+        // Script(governance_ref); con trỏ rỗng (|g| ≠ 28) ⇒ từ chối.
+        expect datum.governance_ref == pointer_policy
+        let g = pointer.read_governance(tx.reference_inputs, datum.governance_ref)
+
+        // C-REL-1: đọc + xác thực ProposalResult — proposal Ở ĐÚNG Script(g) + mang đúng
+        // Proposal NFT policy g (governance là validator mint+spend ⇒ policy == script hash).
+        let proposal = release.read_proposal(tx.reference_inputs, proposal_ref, g, g)
 
         // C-REL-2: CHỈ chi khi status == Executed.
         expect proposal.status == Executed

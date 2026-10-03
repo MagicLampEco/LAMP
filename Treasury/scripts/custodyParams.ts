@@ -1,7 +1,7 @@
 // custodyParams — NƠI DUY NHẤT dựng danh sách apply-param của validator `custody`.
 //
 // VÌ SAO CÓ TỆP NÀY: `custody.custody.spend` khai SIX khe theo đúng thứ tự
-//   [proposal_policy, seed_policy, ms_per_epoch, lamp_policy, token_name, window_origin_ms]
+//   [pointer_policy, seed_policy, ms_per_epoch, lamp_policy, token_name, window_origin_ms]
 // (`Treasury/onchain/validators/custody.ak` ▸ chữ ký `validator custody(`; khe cuối
 // `window_origin_ms` từ Specs/Window/CONTRACT.md v1.0). Hai khe cuối được thêm cùng nhánh
 // MigrateIn; `Treasury/scripts/config.ts` và `PlatformKit/scripts/03_onboard_platform.ts`
@@ -120,6 +120,13 @@ export function resolveLampPolicy(
 export const PLACEHOLDER_LAMP_POLICY = "ee".repeat(28);
 
 export interface CustodyParams {
+  /**
+   * Khe #1. ⚠ Từ 2026-10-03 (Treasury/GovernancePointer.md v0.1) khe này là `pointer_policy` —
+   * policy id NFT con trỏ governance, và nhánh Release ép `datum.governance_ref == khe #1`.
+   * Tên trường TS giữ `proposalPolicy` để không gãy các chỗ gọi ở `PlatformKit/scripts` và
+   * `Treasury/scripts/01_seed_custody.ts`; truyền policy proposal cũ vào đây thì Release từ chối
+   * (fail-closed), không chi sai.
+   */
   proposalPolicy: string;
   seedPolicy: string;
   msPerEpoch: bigint;

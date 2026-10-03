@@ -25,10 +25,11 @@ use aiken/interval
 use cardano/assets
 use cardano/transaction.{Input, Output, OutputReference, Transaction, placeholder}
 use custody
+use magiclamp/treasury/pointer
 use magiclamp/treasury/release
 use magiclamp/treasury/types.{
-  AssetKey, CustodyDatum, Executed, LedgerEntry, ProposalResult, ProposalStatus,
-  Release, ReleaseDraw, Tallied,
+  AssetKey, CustodyDatum, Executed, LedgerEntry, PointerDatum, ProposalResult,
+  ProposalStatus, Release, ReleaseDraw, Tallied,
 }
 use magiclamp/treasury/util
 use magiclamp/treasury/window_origin_fixtures
@@ -36,7 +37,13 @@ use magiclamp/treasury/window_origin_fixtures
 // ── Hằng số ──
 const cust_sh: ByteArray = #"c0c0c0c0"
 
-const prop_policy: assets.PolicyId = #"9a9a"
+// GovernancePointer v0.1: policy proposal NFT == script hash governance (`g`), đọc từ con trỏ.
+const prop_policy: assets.PolicyId =
+  #"99999999999999999999999999999999999999999999999999999999"
+
+// Policy (== script hash) NFT con trỏ governance; `CustodyDatum.governance_ref` mang giá trị này.
+const ptr_policy: assets.PolicyId =
+  #"70707070707070707070707070707070707070707070707070707070"
 
 // C-NFT: policy authenticity NFT custody (custody_seed mint one-shot).
 const seed_policy: assets.PolicyId = #"5eed"
@@ -47,7 +54,9 @@ const instance_id: ByteArray = #"abcd"
 // proposal_id của beacon dùng xuyên suốt test (single-use marker C-REL-9).
 const prop_id: ByteArray = #"0001"
 
-const gov_sh: ByteArray = #"9999"
+// Script hash governance hiện hành (28 byte) — nằm trong PointerDatum.governance_hash.
+const gov_sh: ByteArray =
+  #"99999999999999999999999999999999999999999999999999999999"
 
 const lamp_policy: ByteArray = #"1a3b"
 
@@ -78,7 +87,7 @@ fn datum(ledger: List<LedgerEntry>) -> CustodyDatum {
     accepted_assets: accepted(),
     ledger: ledger,
     cut_bps: 1000,
-    governance_ref: gov_sh,
+    governance_ref: ptr_policy,
     // C-EPOCH: in.epoch THẤP (3) để cur (lower_ms/ms) ≥ in.epoch trong mọi happy + cô lập
     // before_timelock (cur=3 ≥ in.epoch=3 nhưng < execute_after=4).
     epoch: 3,
@@ -135,6 +144,33 @@ fn prop_ref() -> OutputReference {
   util.mk_ref(7)
 }
 
+// ── NFT con trỏ governance (GovernancePointer v0.1) ──
+// UTxO con trỏ (reference input): NFT (policy, GOVPOINTER) ở Script(addr_hash), datum trỏ `g`.
+fn pointer_datum(g: ByteArray) -> PointerDatum {
+  PointerDatum {
+    governance_hash: g,
+    committee: [#"c0ffee00c0ffee00c0ffee00c0ffee00c0ffee00c0ffee00c0ffee00"],
+    threshold: 1,
+    sealed: False,
+    pending: None,
+  }
+}
+
+fn pointer_input_custom(policy: ByteArray, addr_hash: ByteArray, g: ByteArray) -> Input {
+  let val =
+    assets.from_lovelace(2_000_000)
+      |> assets.add(policy, pointer.pointer_name, 1)
+  util.mk_input(
+    util.mk_ref(9),
+    util.mk_output(util.script_address(addr_hash), val, pointer_datum(g)),
+  )
+}
+
+// Con trỏ thật, trỏ governance hiện hành gov_sh.
+fn pointer_input() -> Input {
+  pointer_input_custom(ptr_policy, ptr_policy, gov_sh)
+}
+
 // F4: get_epoch_bounded ÉP validity_range hữu hạn + lower&upper CÙNG epoch. Helper dựng
 // interval GỌN trong 1 epoch: lo = lower_ms, hi = lo + ms_per_epoch − 1 (cùng epoch).
 fn epoch_range(lower_ms: Int) -> interval.Interval {
@@ -170,7 +206,7 @@ fn release_tx(
   Transaction {
     ..placeholder,
     inputs: [cust_in, ..extra_custody],
-    reference_inputs: ref_inputs,
+    reference_inputs: [pointer_input(), ..ref_inputs],
     outputs: [cust_out, ..recipients],
     mint: mint,
     validity_range: epoch_range(lower_ms),
@@ -182,7 +218,7 @@ fn run(tx: Transaction, d_in: CustodyDatum, draws: List<ReleaseDraw>) -> Bool {
   //                  datum, redeemer, ref, tx). Release KHÔNG đụng 2 param cuối (chỉ
   //                  MigrateIn dùng) — truyền giá trị thật cho nhất quán fixture.
   custody.custody.spend(
-    prop_policy,
+    ptr_policy,
     seed_policy,
     ms_per_epoch,
     lamp_policy,
@@ -204,7 +240,7 @@ fn run_at(origin: Int, shift: Int, tx: Transaction, d_in: CustodyDatum, draws: L
   //                  datum, redeemer, ref, tx). Release KHÔNG đụng 2 param cuối (chỉ
   //                  MigrateIn dùng) — truyền giá trị thật cho nhất quán fixture.
   custody.custody.spend(
-    prop_policy,
+    ptr_policy,
     seed_policy,
     ms_per_epoch,
     lamp_policy,
@@ -636,7 +672,7 @@ fn replay_tx(
   Transaction {
     ..placeholder,
     inputs: [cust_in],
-    reference_inputs: ref_inputs,
+    reference_inputs: [pointer_input(), ..ref_inputs],
     outputs: [cust_out, ..recipients],
     mint: assets.zero,
     validity_range: epoch_range(5 * ms_per_epoch),
@@ -683,7 +719,7 @@ test release_strip_marker() fail {
     Transaction {
       ..placeholder,
       inputs: [cust_in],
-      reference_inputs: [proposal_input(Executed, spec, 4)],
+      reference_inputs: [proposal_input(Executed, spec, 4), pointer_input()],
       outputs: [cust_out, pay(alice, 300)],
       mint: assets.zero,
       validity_range: epoch_range(5 * ms_per_epoch),
@@ -707,7 +743,7 @@ test release_missing_datum() fail {
       [pay(alice, 300)], 5 * ms_per_epoch, [], assets.zero,
     )
   custody.custody.spend(
-    prop_policy, seed_policy, ms_per_epoch, lamp_policy, lamp_name, 0, None,
+    ptr_policy, seed_policy, ms_per_epoch, lamp_policy, lamp_name, 0, None,
     Release { proposal_ref: prop_ref(), draws }, util.mk_ref(0), tx,
   )
 }
@@ -735,7 +771,7 @@ test release_param_tamper() fail {
     Transaction {
       ..placeholder,
       inputs: [cust_in],
-      reference_inputs: [proposal_input(Executed, spec, 4)],
+      reference_inputs: [proposal_input(Executed, spec, 4), pointer_input()],
       outputs: [cust_out, pay(alice, 300)],
       mint: assets.zero,
       validity_range: epoch_range(5 * ms_per_epoch),
@@ -771,7 +807,7 @@ test release_reject_buckets_mutated() fail {
     Transaction {
       ..placeholder,
       inputs: [cust_in],
-      reference_inputs: [proposal_input(Executed, spec, 4)],
+      reference_inputs: [proposal_input(Executed, spec, 4), pointer_input()],
       outputs: [cust_out, pay(alice, 300)],
       mint: assets.zero,
       validity_range: epoch_range(5 * ms_per_epoch),
@@ -818,7 +854,7 @@ test release_no_custody_output() fail {
     Transaction {
       ..placeholder,
       inputs: [cust_in],
-      reference_inputs: [proposal_input(Executed, spec, 4)],
+      reference_inputs: [proposal_input(Executed, spec, 4), pointer_input()],
       outputs: [pay(alice, 300), util.mk_output_no_datum(util.vk_address(bob), lamp_val(5_000_000, 4700))],
       mint: assets.zero,
       validity_range: epoch_range(5 * ms_per_epoch),
@@ -900,7 +936,7 @@ fn release_tx_nft(
   Transaction {
     ..placeholder,
     inputs: [cust_in],
-    reference_inputs: ref_inputs,
+    reference_inputs: [pointer_input(), ..ref_inputs],
     outputs: [cust_out, ..recipients],
     mint: assets.zero,
     validity_range: epoch_range(lower_ms),
@@ -1063,7 +1099,7 @@ test release_draw_targets_seed_nft() fail {
     Transaction {
       ..placeholder,
       inputs: [cust_in],
-      reference_inputs: [proposal_input(Executed, spec, 4)],
+      reference_inputs: [proposal_input(Executed, spec, 4), pointer_input()],
       outputs: [cust_out, nft_to_alice],
       mint: assets.zero,
       validity_range: epoch_range(5 * ms_per_epoch),
@@ -1168,7 +1204,7 @@ test release_consumed_strip_old_id() fail {
     Transaction {
       ..placeholder,
       inputs: [cust_in],
-      reference_inputs: [proposal_input(Executed, spec, 4)],
+      reference_inputs: [proposal_input(Executed, spec, 4), pointer_input()],
       outputs: [cust_out, pay(alice, 300)],
       mint: assets.zero,
       validity_range: epoch_range(5 * ms_per_epoch),
@@ -1294,7 +1330,7 @@ test release_epoch_unbounded() fail {
     Transaction {
       ..placeholder,
       inputs: [cust_in],
-      reference_inputs: [proposal_input(Executed, spec, 4)],
+      reference_inputs: [proposal_input(Executed, spec, 4), pointer_input()],
       outputs: [cust_out, pay(alice, 300)],
       mint: assets.zero,
       // upper = +∞ (interval.after) → get_epoch_bounded expect Some(hi_ms) fail.
@@ -1330,7 +1366,7 @@ test release_stake_credential_hijack() fail {
     Transaction {
       ..placeholder,
       inputs: [cust_in],
-      reference_inputs: [proposal_input(Executed, spec, 4)],
+      reference_inputs: [proposal_input(Executed, spec, 4), pointer_input()],
       outputs: [cust_out, pay(alice, 300)],
       mint: assets.zero,
       validity_range: epoch_range(5 * ms_per_epoch),
@@ -1361,7 +1397,7 @@ test release_reference_script_attached() fail {
     Transaction {
       ..placeholder,
       inputs: [cust_in],
-      reference_inputs: [proposal_input(Executed, spec, 4)],
+      reference_inputs: [proposal_input(Executed, spec, 4), pointer_input()],
       outputs: [cust_out, pay(alice, 300)],
       mint: assets.zero,
       validity_range: epoch_range(5 * ms_per_epoch),
@@ -1409,7 +1445,7 @@ fn two_custody_tx() -> Transaction {
   Transaction {
     ..placeholder,
     inputs: [in_a, in_b],
-    reference_inputs: [proposal_input(Executed, spec_a, 4)],
+    reference_inputs: [proposal_input(Executed, spec_a, 4), pointer_input()],
     outputs: [out_a, out_b, pay(alice, 600)],
     mint: assets.zero,
     validity_range: epoch_range(5 * ms_per_epoch),
@@ -1423,7 +1459,7 @@ fn two_custody_ledger_in() -> List<LedgerEntry> {
 test release_two_custody_same_instance_id_owner_accepts() {
   // Validator của kho A (đúng kho proposal cam kết) trên CHÍNH tx chi đôi: chấp nhận.
   custody.custody.spend(
-    prop_policy,
+    ptr_policy,
     seed_policy,
     ms_per_epoch,
     lamp_policy,
@@ -1440,7 +1476,7 @@ test release_two_custody_same_instance_id_other_rejects() fail {
   // Validator của kho B (khác hạt giống, trùng instance_id) trên cùng tx: C-REL-3 từ chối
   // ⇒ tx tiêu cả hai kho bị từ chối, proposal chỉ chi được ở đúng một kho.
   custody.custody.spend(
-    prop_policy,
+    ptr_policy,
     seed_policy_b,
     ms_per_epoch,
     lamp_policy,
@@ -1544,4 +1580,117 @@ test release_happy_origin_forgotten() fail {
       assets.zero,
     )
   run_at(0, window_origin_fixtures.mainnet_origin_ms, tx, datum(ledger_in), draws)
+}
+
+// ════════════════════════════════════════════════════════════
+// 50+. CON TRỎ GOVERNANCE (Treasury/GovernancePointer.md v0.1, C-REL-PTR).
+//   Custody đọc governance hiện hành g từ NFT con trỏ (reference input) thay vì nướng cứng.
+//   Mỗi ca âm khác ca dương `release_ptr_happy` ĐÚNG MỘT chỗ.
+// ════════════════════════════════════════════════════════════
+const gov_new: ByteArray = #"88888888888888888888888888888888888888888888888888888888"
+
+// Proposal beacon ở Script(at), mang NFT (policy, prop_id).
+fn proposal_input_pg(at: ByteArray, policy: ByteArray, spec_hash: ByteArray) -> Input {
+  let result =
+    ProposalResult {
+      proposal_id: prop_id, status: Executed, spend_spec_hash: spec_hash,
+      execute_after_epoch: 4, released_cumulative: 0,
+    }
+  let val = assets.from_lovelace(2_000_000) |> assets.add(policy, prop_id, 1)
+  util.mk_input(util.mk_ref(7), util.mk_output(util.script_address(at), val, result))
+}
+
+fn ptr_case(refs: List<Input>, param: ByteArray) -> Bool {
+  let ledger_in = [LedgerEntry { bucket_id: bucket_ops, policy: lamp_policy, name: lamp_name, amount: 1000 }]
+  let ledger_out = [LedgerEntry { bucket_id: bucket_ops, policy: lamp_policy, name: lamp_name, amount: 700 }]
+  let draws = happy_draws()
+  let base =
+    release_tx(
+      lamp_val(5_000_000, 5000), lamp_val(5_000_000, 4700),
+      ledger_in, ledger_out, [], [pay(alice, 300)], 5 * ms_per_epoch, [], assets.zero,
+    )
+  let tx = Transaction { ..base, reference_inputs: refs }
+  custody.custody.spend(
+    param, seed_policy, ms_per_epoch, lamp_policy, lamp_name, 0,
+    Some(datum(ledger_in)),
+    Release { proposal_ref: prop_ref(), draws }, util.mk_ref(0), tx,
+  )
+}
+
+fn spec_ok() -> ByteArray {
+  release.spend_spec_hash(seed_policy, instance_id, happy_draws())
+}
+
+// Dương: con trỏ đã đổi sang gov_new, proposal của gov_new ⇒ chi được (governance dựng lại
+// không phải đúc lại kho — lý do tồn tại của con trỏ).
+test release_ptr_happy_after_change() {
+  ptr_case(
+    [proposal_input_pg(gov_new, gov_new, spec_ok()), pointer_input_custom(ptr_policy, ptr_policy, gov_new)],
+    ptr_policy,
+  )
+}
+
+// Proposal của governance CŨ sau khi con trỏ đã đổi ⇒ từ chối.
+test release_ptr_old_governance_rejected() fail {
+  ptr_case(
+    [proposal_input_pg(gov_sh, gov_sh, spec_ok()), pointer_input_custom(ptr_policy, ptr_policy, gov_new)],
+    ptr_policy,
+  )
+}
+
+// Con trỏ rỗng (chưa có governance chạy được) ⇒ từ chối.
+test release_ptr_empty_rejected() fail {
+  ptr_case(
+    [proposal_input(Executed, spec_ok(), 4), pointer_input_custom(ptr_policy, ptr_policy, #"")],
+    ptr_policy,
+  )
+}
+
+// Con trỏ trỏ hash 27 byte ⇒ từ chối (đúng 28).
+test release_ptr_short_hash_rejected() fail {
+  let g27 = #"999999999999999999999999999999999999999999999999999999"
+  ptr_case(
+    [proposal_input_pg(g27, g27, spec_ok()), pointer_input_custom(ptr_policy, ptr_policy, g27)],
+    ptr_policy,
+  )
+}
+
+// Thiếu reference input con trỏ ⇒ từ chối.
+test release_ptr_missing_rejected() fail {
+  ptr_case([proposal_input(Executed, spec_ok(), 4)], ptr_policy)
+}
+
+// Con trỏ giả: NFT policy KHÁC ở đúng Script(ptr_policy) ⇒ từ chối.
+test release_ptr_fake_policy_rejected() fail {
+  let fake = #"71717171717171717171717171717171717171717171717171717171"
+  ptr_case(
+    [proposal_input(Executed, spec_ok(), 4), pointer_input_custom(fake, ptr_policy, gov_sh)],
+    ptr_policy,
+  )
+}
+
+// Con trỏ giả: NFT đúng policy nhưng ở script KHÁC ⇒ từ chối.
+test release_ptr_wrong_script_rejected() fail {
+  let other = #"72727272727272727272727272727272727272727272727272727272"
+  ptr_case(
+    [proposal_input(Executed, spec_ok(), 4), pointer_input_custom(ptr_policy, other, gov_sh)],
+    ptr_policy,
+  )
+}
+
+// Datum trỏ con trỏ KHÁC con trỏ nướng vào hash kho (tham số #1) ⇒ từ chối.
+test release_ptr_param_mismatch_rejected() fail {
+  let other = #"73737373737373737373737373737373737373737373737373737373"
+  ptr_case(
+    [proposal_input(Executed, spec_ok(), 4), pointer_input()],
+    other,
+  )
+}
+
+// Proposal ở đúng Script(g) nhưng NFT policy KHÁC g ⇒ từ chối (proposal_policy := g).
+test release_ptr_proposal_policy_not_g_rejected() fail {
+  ptr_case(
+    [proposal_input_pg(gov_sh, gov_new, spec_ok()), pointer_input()],
+    ptr_policy,
+  )
 }

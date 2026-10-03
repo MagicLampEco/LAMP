@@ -36,6 +36,7 @@ import {
   decodeCustodyDatum, custodyDatumToCbor, custodyRedeemerToCbor,
 } from "./datum.js";
 import type { OutputReference } from "./types.js";
+import { POINTER_NAME, currentGovernance, decodePointerDatum } from "./pointer.js";
 import {
   assetsToMap, custodyOutputAddress, mapToAssets, sameEpochValidToMs, windowIndexOf,
 } from "./collectBuilder.js";
@@ -79,9 +80,14 @@ export interface ReleaseGuards {
    *  (C-REL-3-SEED, P7) — thiếu nó thì không tái dựng được hash mà validator so. Bản trước
    *  để trường này tuỳ chọn; nay tuỳ chọn nghĩa là tính sai hash, nên không còn tuỳ chọn. */
   seedPolicy: string;
-  /** payment script hash của proposal reference UTxO. Nếu set → ÉP == datum.governance_ref
-   *  (C-REL-1 / read_proposal #1A: proposal Ở ĐÚNG địa chỉ Script(governance_ref)). */
+  /** payment script hash của proposal reference UTxO. Nếu set → ÉP == `governanceHash`
+   *  (C-REL-1 / read_proposal #1A: proposal Ở ĐÚNG địa chỉ Script(g)). */
   proposalScriptHash?: string;
+  /** g = governance hiện hành đọc từ NFT con trỏ (`PointerDatum.governance_hash`,
+   *  GovernancePointer v0.1). BẮT BUỘC khi có `proposalScriptHash`: từ 2026-10-03
+   *  `datum.governance_ref` là policy NFT con trỏ, KHÔNG còn là script hash governance — so
+   *  proposal với nó là so sai đại lượng. */
+  governanceHash?: string;
 }
 
 /**
@@ -108,13 +114,19 @@ export function planRelease(
       "không có nó thì hash tái dựng không khớp proposal nào.",
     );
   }
-  // C-REL-1 (#1A): proposal reference UTxO PHẢI ở ĐÚNG địa chỉ Script(governance_ref).
-  // So payment script hash của proposalUtxo == datum.governance_ref TRƯỚC khi build.
+  // C-REL-1 (#1A): proposal reference UTxO PHẢI ở ĐÚNG địa chỉ Script(g), g đọc từ con trỏ.
+  // So payment script hash của proposalUtxo == g TRƯỚC khi build.
   if (guards.proposalScriptHash !== undefined) {
-    const ph = guards.proposalScriptHash.toLowerCase();
-    if (ph !== datum.governance_ref.toLowerCase()) {
+    if (guards.governanceHash === undefined || !/^[0-9a-fA-F]{56}$/.test(guards.governanceHash)) {
       throw new Error(
-        `RELEASE-001: proposal sai địa chỉ — script hash(${ph}) ≠ governance_ref(${datum.governance_ref})`,
+        "RELEASE-PTR-001: thiếu governanceHash (đọc từ NFT con trỏ) hoặc không đủ 28 byte — " +
+          "datum.governance_ref là policy con trỏ, không phải script hash governance",
+      );
+    }
+    const ph = guards.proposalScriptHash.toLowerCase();
+    if (ph !== guards.governanceHash.toLowerCase()) {
+      throw new Error(
+        `RELEASE-001: proposal sai địa chỉ — script hash(${ph}) ≠ governance hiện hành(${guards.governanceHash})`,
       );
     }
   }
@@ -232,6 +244,8 @@ export interface ReleaseParams {
   proposal:     ProposalResult;
   /** OutputReference của proposalUtxo (vào redeemer Release). */
   proposalRef:  OutputReference;
+  /** UTxO mang NFT con trỏ governance (reference input, KHÔNG tiêu) — C-REL-PTR. */
+  pointerUtxo:  UTxO;
 
   /** Danh sách rút thực tế (khớp spend_spec_hash của proposal). */
   draws: ReleaseDraw[];
@@ -260,7 +274,7 @@ export interface ReleaseResult {
 
 export async function buildReleaseTx(params: ReleaseParams): Promise<ReleaseResult> {
   const {
-    lucid, network, custodyUtxo, custodyScript, proposalUtxo, proposal, proposalRef,
+    lucid, network, custodyUtxo, custodyScript, proposalUtxo, proposal, proposalRef, pointerUtxo,
     draws, validFromMs, msPerEpoch, windowOriginMs, seedPolicy,
   } = params;
 
@@ -280,7 +294,19 @@ export async function buildReleaseTx(params: ReleaseParams): Promise<ReleaseResu
   }
   const proposalScriptHash = proposalCred.hash;
 
-  const guards: ReleaseGuards = { seedPolicy, proposalScriptHash };
+  // C-REL-PTR: con trỏ thật = NFT (governance_ref, GOVPOINTER) ở Script(governance_ref).
+  const ptrPolicy = datum.governance_ref.toLowerCase();
+  if ((pointerUtxo.assets[ptrPolicy + POINTER_NAME] ?? 0n) !== 1n) {
+    throw new Error(`RELEASE-PTR-002: pointerUtxo không mang NFT con trỏ ${ptrPolicy}.${POINTER_NAME}`);
+  }
+  const ptrCred = getAddressDetails(pointerUtxo.address).paymentCredential;
+  if (!ptrCred || ptrCred.type !== "Script" || ptrCred.hash.toLowerCase() !== ptrPolicy) {
+    throw new Error("RELEASE-PTR-003: pointerUtxo không ở Script(governance_ref)");
+  }
+  if (!pointerUtxo.datum) throw new Error("RELEASE-PTR-004: pointerUtxo không có datum inline");
+  const governanceHash = currentGovernance(decodePointerDatum(Data.from(pointerUtxo.datum)));
+
+  const guards: ReleaseGuards = { seedPolicy, proposalScriptHash, governanceHash };
 
   const { newDatum, custodyAfter, recipients, specHash } = planRelease(
     datum, valueIn, proposal, draws, custodyHash, currentEpoch,
@@ -303,7 +329,7 @@ export async function buildReleaseTx(params: ReleaseParams): Promise<ReleaseResu
     .newTx()
     .collectFrom([custodyUtxo], redeemer)
     .attach.SpendingValidator(custodyScript)
-    .readFrom([proposalUtxo])                       // C-REL-1: proposal qua reference input
+    .readFrom([proposalUtxo, pointerUtxo])          // C-REL-1 + C-REL-PTR: reference input
     .validFrom(validFrom)
     .validTo(validTo)
     // Custody output: value ⊖ Σdraw, datum ledger giảm.

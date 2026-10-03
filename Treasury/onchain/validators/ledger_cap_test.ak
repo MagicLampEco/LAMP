@@ -14,7 +14,7 @@ use aiken/collection/list
 use aiken/interval
 use cardano/address.{VerificationKey}
 use cardano/assets
-use cardano/transaction.{Transaction, placeholder}
+use cardano/transaction.{Input, Transaction, placeholder}
 use custody
 use custody_seed.{SeedGenesis}
 use magiclamp/treasury/ledger
@@ -23,8 +23,9 @@ use magiclamp/treasury/release
 use magiclamp/treasury/stake_reward
 use magiclamp/treasury/types.{
   AssetKey, Collect, CollectItem, CustodyDatum, Executed, LedgerEntry, MigrateIn,
-  ProposalResult, Release, ReleaseDraw, StakeRewardIn,
+  PointerDatum, ProposalResult, Release, ReleaseDraw, StakeRewardIn,
 }
+use magiclamp/treasury/pointer
 use magiclamp/treasury/util
 
 // ── Hằng số (soi gương collect_test / release_test / custody_seed_test) ──
@@ -32,7 +33,31 @@ const cust_sh: ByteArray = #"c0c0c0c0"
 
 const seed_policy: assets.PolicyId = #"5eed"
 
-const prop_policy: assets.PolicyId = #"9a9a"
+// GovernancePointer v0.1: policy proposal NFT == script hash governance g (đọc từ con trỏ).
+const prop_policy: assets.PolicyId =
+  #"99999999999999999999999999999999999999999999999999999999"
+
+// Policy (== script hash) NFT con trỏ; `CustodyDatum.governance_ref` mang giá trị này.
+const ptr_policy: assets.PolicyId =
+  #"70707070707070707070707070707070707070707070707070707070"
+
+// UTxO con trỏ (reference input) trỏ g = gov_sh.
+fn pointer_in() -> Input {
+  util.mk_input(
+    util.mk_ref(9),
+    util.mk_output(
+      util.script_address(ptr_policy),
+      assets.from_lovelace(2_000_000) |> assets.add(ptr_policy, pointer.pointer_name, 1),
+      PointerDatum {
+        governance_hash: gov_sh,
+        committee: [#"c0ffee00c0ffee00c0ffee00c0ffee00c0ffee00c0ffee00c0ffee00"],
+        threshold: 1,
+        sealed: False,
+        pending: None,
+      },
+    ),
+  )
+}
 
 const instance_id: ByteArray = #"abcd"
 
@@ -67,7 +92,7 @@ fn datum(ledger_lines: List<LedgerEntry>) -> CustodyDatum {
     accepted_assets: accepted(),
     ledger: ledger_lines,
     cut_bps: cut_bps_10,
-    governance_ref: gov_sh,
+    governance_ref: ptr_policy,
     epoch: 3,
     consumed_proposals: [],
     // Khai ĐỦ mọi bucket mà `lines(n, _)` dùng (1..n) CỘNG bucket n+1 — bucket mà bài
@@ -149,7 +174,7 @@ fn collect_run(
       },
     ]
   custody.custody.spend(
-    prop_policy,
+    ptr_policy,
     seed_policy,
     ms_per_epoch,
     lamp_policy,
@@ -252,13 +277,13 @@ fn release_run(
     Transaction {
       ..placeholder,
       inputs: [cust_in],
-      reference_inputs: [prop_in],
+      reference_inputs: [prop_in, pointer_in()],
       outputs: [cust_out, pay],
       mint: assets.zero,
       validity_range: epoch_range(5 * ms_per_epoch),
     }
   custody.custody.spend(
-    prop_policy,
+    ptr_policy,
     seed_policy,
     ms_per_epoch,
     lamp_policy,
@@ -320,7 +345,7 @@ fn migrate_run(ledger_in: List<LedgerEntry>) -> Bool {
       validity_range: epoch_range(11 * ms_per_epoch),
     }
   custody.custody.spend(
-    prop_policy,
+    ptr_policy,
     seed_policy,
     ms_per_epoch,
     lamp_policy,
@@ -382,7 +407,7 @@ fn stake_run(ledger_in: List<LedgerEntry>) -> Bool {
       validity_range: epoch_range(11 * ms_per_epoch),
     }
   custody.custody.spend(
-    prop_policy,
+    ptr_policy,
     seed_policy,
     ms_per_epoch,
     lamp_policy,
