@@ -38,6 +38,10 @@ export interface ExitProof {
   branch: string;
   /** Địa chỉ kho lúc đó — đổi apply-param là đổi địa chỉ, nên bằng chứng cũ hết giá trị. */
   treasuryAddress: string;
+  /** Chỉ khi lối ra là `FundPot`: mã pot trong `pots.ts` đã nhận lượt mồi. */
+  potId?: string;
+  /** Chỉ khi lối ra là `FundPot`: lượng (oildrop, chuỗi số thập phân) lượt mồi đã rót vào pot. */
+  amountOildrop?: string;
 }
 
 export type ExitProofLedger = Record<string, ExitProof | null>;
@@ -135,6 +139,14 @@ function shapeErrors(network: string, p: ExitProof): string[] {
   const d = m ? new Date(Date.UTC(+m[1]!, +m[2]! - 1, +m[3]!)) : null;
   if (!m || !d || d.getUTCMonth() !== +m[2]! - 1 || d.getUTCDate() !== +m[3]!) {
     out.push(`date phải là ngày có thật dạng YYYY-MM-DD (đang '${p.date}')`);
+  }
+  // Lượt mồi qua FundPot phải ghi CẢ HAI trường: `fund_pot.ts` trừ lượng này khỏi ngân sách pot
+  // ở lượt rót trọn. Thiếu một trường thì lượt sau rót thừa hoặc thiếu đúng một suất.
+  const hasPot = p.potId !== undefined, hasAmt = p.amountOildrop !== undefined;
+  if (hasPot !== hasAmt) out.push(`potId và amountOildrop phải đi cùng nhau`);
+  if (hasPot && (typeof p.potId !== "string" || p.potId.length === 0)) out.push(`potId phải là chuỗi khác rỗng`);
+  if (hasAmt && (typeof p.amountOildrop !== "string" || !/^[1-9][0-9]*$/.test(p.amountOildrop))) {
+    out.push(`amountOildrop phải là số nguyên dương dạng chuỗi (đang '${p.amountOildrop}')`);
   }
   const prefix = network === "Mainnet" ? "addr1" : "addr_test1";
   if (!p.treasuryAddress.startsWith(prefix)) {

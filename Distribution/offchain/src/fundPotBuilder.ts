@@ -13,9 +13,9 @@
 //   FP-7 `assets.is_zero(tx.mint)`                                                → builder không mint
 //
 // Ràng buộc CHỈ off-chain (chặt hơn chuỗi, có chủ đích):
-//   • FPB-001 lượng rót == ngân sách pot trong sổ `pots.ts` (nguồn `Papers/pot-catalog.md` §1).
-//     Chuỗi KHÔNG ép số phân bổ (`FundPot.md` §"Đúng số phân bổ…"), nên đây là chỗ DUY NHẤT nó
-//     được ép — ném nếu lệch, không có cờ bỏ qua.
+//   • FPB-001 lượng rót == ngân sách pot trong sổ `pots.ts` (nguồn `Papers/pot-catalog.md` §1)
+//     trừ phần đã rót ở lượt mồi; riêng lượt mồi rót đúng một suất D. Chuỗi KHÔNG ép số phân bổ
+//     (`FundPot.md` §"Đúng số phân bổ…"), nên đây là chỗ DUY NHẤT nó được ép — ném nếu lệch.
 //   • FPB-003 mỗi output pot ≥ D VÀ là BỘI của D (D = một suất của pot; Wakeme xác nhận
 //     2026-10-03). Dịch vụ phát của pot chọn MỘT UTxO kho mỗi lượt và trả đúng D — output lẻ
 //     suất để lại phần dư không ai rút được.
@@ -99,8 +99,12 @@ export interface FundPotParams {
   treasuryNftAssetName?: string;
   /** Script hash `claim_account` của cùng cụm — FP-5b cấm rót về đó. */
   claimAccountHash: string;
-  /** Mã pot trong sổ `pots.ts` — FPB-001 ép `amountOildrop` == ngân sách pot đó. */
+  /** Mã pot trong sổ `pots.ts` — FPB-001 ép `amountOildrop` == ngân sách − `fundedBeforeOildrop`. */
   potId: PotId;
+  /** Lượng đã rót vào pot này ở lượt trước (lượt mồi). Mặc định 0. Bên gọi đọc từ nguồn có ghi chép. */
+  fundedBeforeOildrop?: bigint;
+  /** Lượt mồi: rót đúng MỘT suất để chạy thử lối ra của kho mới. Mặc định false. */
+  bootstrap?: boolean;
   pot:   FundPotTarget;
   amountOildrop:   bigint;
   /** D — một suất của pot. Mọi output pot ≥ D và là bội của D. */
@@ -133,14 +137,32 @@ export async function buildFundPotTx(p: FundPotParams): Promise<FundPotResult> {
   const potHash = normHex(p.pot.scriptHash);
 
   // ── FPB-001: đúng ngân sách pot trong sổ ─────────────────────────────
+  // Hai hình dạng hợp lệ, không có hình dạng thứ ba:
+  //   • lượt MỒI: đúng MỘT suất D, chưa rót gì trước đó — chạy thử lối ra của kho mới;
+  //   • lượt TRỌN: đúng phần còn lại = ngân sách − đã rót trước.
+  // Không có "rót bao nhiêu cũng được": một lượng tự do là chỗ pot bị rót thiếu mà không ai thấy.
   const budget = potBudgetOildrop(p.potId);
-  if (p.amountOildrop !== budget) {
+  const before = p.fundedBeforeOildrop ?? 0n;
+  if (before < 0n || before >= budget) {
     throw new Error(
-      `FPB-001: lượng rót ${p.amountOildrop} ≠ ngân sách pot '${p.potId}' = ${budget} oildrop ` +
-      `(sổ \`pots.ts\`, nguồn Papers/pot-catalog.md §1). Chuỗi không ép số này — builder thì có.`,
+      `FPB-001: đã rót trước ${before} phải nằm trong [0, ngân sách ${budget}) của pot '${p.potId}'.`,
     );
   }
   if (p.amountOildrop <= 0n) throw new Error(`FPB-001: lượng rót phải > 0 (FP-4 \`funded > 0\`).`);
+  if (p.bootstrap) {
+    if (before !== 0n || p.amountOildrop !== p.potShareOildrop) {
+      throw new Error(
+        `FPB-001: lượt mồi phải rót đúng MỘT suất D=${p.potShareOildrop} vào pot chưa rót gì ` +
+        `(đang rót ${p.amountOildrop}, đã rót trước ${before}).`,
+      );
+    }
+  } else if (p.amountOildrop !== budget - before) {
+    throw new Error(
+      `FPB-001: lượng rót ${p.amountOildrop} ≠ phần còn lại của pot '${p.potId}' = ${budget} − ${before} ` +
+      `= ${budget - before} oildrop (sổ \`pots.ts\`, nguồn Papers/pot-catalog.md §1). ` +
+      `Chuỗi không ép số này — builder thì có.`,
+    );
+  }
 
   // ── FPB-002/003: K output, mỗi cái ≥ D và bội của D, tổng == amount ───
   assertPotOutputAmounts(p.outputAmounts, p.amountOildrop, p.potShareOildrop);

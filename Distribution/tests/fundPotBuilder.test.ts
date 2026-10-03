@@ -147,6 +147,24 @@ describe("buildFundPotTx — ca âm", () => {
   it("FPB-001 lượng rót ≠ ngân sách pot trong sổ", async () => {
     await expect(run({ amountOildrop: BUDGET - D, outputAmounts: splitPotOutputs(BUDGET - D, D, 3) })).rejects.toThrow(/FPB-001/);
   });
+  it("FPB-001 lượt mồi một suất ⇒ qua; phần còn lại sau mồi ⇒ qua", async () => {
+    const boot = await run({ bootstrap: true, amountOildrop: D, outputAmounts: [D] });
+    expect(boot.funded).toBe(D);
+    const rest = await run({ fundedBeforeOildrop: D, amountOildrop: BUDGET - D, outputAmounts: splitPotOutputs(BUDGET - D, D, 3) });
+    expect(rest.funded).toBe(BUDGET - D);
+  });
+  it("FPB-001 lượt mồi hai suất ⇒ ném", async () => {
+    await expect(run({ bootstrap: true, amountOildrop: 2n * D, outputAmounts: [2n * D] })).rejects.toThrow(/FPB-001.*mồi/);
+  });
+  it("FPB-001 lượt mồi khi pot đã rót trước ⇒ ném", async () => {
+    await expect(run({ bootstrap: true, fundedBeforeOildrop: D, amountOildrop: D, outputAmounts: [D] })).rejects.toThrow(/FPB-001.*mồi/);
+  });
+  it("FPB-001 sau mồi mà rót trọn ngân sách (đếm hai lần suất mồi) ⇒ ném", async () => {
+    await expect(run({ fundedBeforeOildrop: D })).rejects.toThrow(/FPB-001.*phần còn lại/);
+  });
+  it("FPB-001 đã rót trước ≥ ngân sách ⇒ ném", async () => {
+    await expect(run({ fundedBeforeOildrop: BUDGET, amountOildrop: D, outputAmounts: [D] })).rejects.toThrow(/FPB-001.*đã rót trước/);
+  });
   it("FPB-003 output lệch bội D", async () => {
     await expect(run({ outputAmounts: [333_334n * D + 1n, 333_333n * D - 1n, 333_333n * D] })).rejects.toThrow(/FPB-003/);
   });

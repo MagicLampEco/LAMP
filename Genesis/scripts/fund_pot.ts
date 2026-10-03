@@ -6,7 +6,7 @@
 // fundPotBuilder.ts`. Cổng hình dạng pot dùng chung với 29/30: `_potShape.ts`.
 //
 // Mọi lời khai bắt buộc, KHÔNG mặc định (trừ POT_LOVELACE):
-//   POT_ID            mã pot trong sổ `pots.ts` — AMOUNT_OILDROP phải BẰNG ngân sách pot đó (FPB-001)
+//   POT_ID            mã pot trong sổ `pots.ts` — AMOUNT_OILDROP phải BẰNG phần còn lại của pot (FPB-001)
 //   POT_ADDRESS       địa chỉ kho pot (Script)
 //   POT_SCRIPT_HASH   hash script pot — khai lần hai để đối chiếu với địa chỉ
 //   POT_DATUM_CBOR    datum inline của mọi output pot (Wakeme: 4100)
@@ -15,6 +15,13 @@
 //   POT_OUTPUTS       K — số output pot
 //   POT_LOVELACE      lovelace mỗi output pot (mặc định 2000000)
 // SUBMIT=false (mặc định): dựng, đọc lại giao dịch đã dựng, KHÔNG ký, KHÔNG in CBOR.
+//
+// Hai lượt, chọn tự động theo sổ `Genesis/treasury-exit-proof.json` (không có cờ tay):
+//   • Mạng chưa có bằng chứng lối ra ⇒ LƯỢT MỒI: rót đúng MỘT suất (AMOUNT_OILDROP = D,
+//     POT_OUTPUTS = 1). Lên chuỗi xong, script tự ghi sổ (branch FundPot, potId, amountOildrop).
+//   • Đã có bằng chứng ⇒ LƯỢT TRỌN: AMOUNT_OILDROP = ngân sách − lượng mồi đã ghi cho đúng pot đó.
+// Lượt mồi là để cổng của `21_vest_to_kho.ts` cho nạp lượng thật: kho mới phải chứng minh tài sản
+// RA được trước khi nhận nhiều hơn trần mồi (`_treasuryExitProof.ts`).
 //
 // Chạy:
 //   NETWORK=Preprod POT_ID=wakeme POT_ADDRESS=addr_test1w… POT_SCRIPT_HASH=… POT_DATUM_CBOR=4100 \
@@ -27,6 +34,8 @@ import {
   buildFundPotTx, splitPotOutputs, fundPotOutputFailures, type FundPotOutputShape,
 } from "../../Distribution/offchain/src/fundPotBuilder.js";
 import { potById } from "../../Distribution/offchain/src/pots.js";
+import { readFileSync, writeFileSync } from "node:fs";
+import { measureExitProof, EXIT_PROOF_LEDGER } from "./_treasuryExitProof.js";
 
 async function main(): Promise<void> {
   if (NETWORK === "Mainnet") throw new Error("CHẶN: script diễn tập, không chạy trên Mainnet.");
@@ -57,6 +66,28 @@ async function main(): Promise<void> {
     );
   }
 
+  // ── Lượt mồi hay lượt trọn: đọc từ sổ bằng chứng lối ra, không từ cờ tay ──
+  const exit = measureExitProof(NETWORK);
+  if (exit.state === "unmeasurable") {
+    throw new Error(`FUNDPOT-EXIT-002: không đo được sổ bằng chứng lối ra — ${exit.reason}`);
+  }
+  let bootstrap = false;
+  let fundedBefore = 0n;
+  if (exit.state === "not-proven") {
+    bootstrap = true;
+  } else {
+    if (exit.proof.treasuryAddress !== wiring.treAddr) {
+      throw new Error(
+        `FUNDPOT-EXIT-003: bằng chứng lối ra trên ${NETWORK} thuộc kho ${exit.proof.treasuryAddress}, ` +
+        `kho đang dùng ${wiring.treAddr}. Sổ đã cũ so với genesis hiện tại — sửa sổ trước.`,
+      );
+    }
+    if (exit.proof.potId === potId) fundedBefore = BigInt(exit.proof.amountOildrop!);
+  }
+  console.log(bootstrap
+    ? `Lượt MỒI: ${NETWORK} chưa có bằng chứng lối ra ⇒ rót đúng một suất ${share}.`
+    : `Lượt TRỌN: pot '${potId}' đã nhận ${fundedBefore} ở lượt trước ⇒ rót phần còn lại.`);
+
   // ── Carrier: đúng MỘT UTxO ở địa chỉ kho mang TREASURY thật ─────────────
   const carriers = (await lucid.utxosAt(wiring.treAddr)).filter((u) => (u.assets[wiring.khoUnit] ?? 0n) === 1n);
   if (carriers.length !== 1) {
@@ -73,6 +104,7 @@ async function main(): Promise<void> {
     treasuryNftPolicy: wiring.markers.khoPid, treasuryNftAssetName: TREASURY_NAME,
     claimAccountHash: wiring.claimHash,
     potId, pot, amountOildrop: amount, potShareOildrop: share, outputAmounts, potLovelace,
+    fundedBeforeOildrop: fundedBefore, bootstrap,
   });
   console.log(`\n${result.summary}`);
   console.log(`Pot (sổ):       ${potId} · K = ${k} · ${outputAmounts.length} output, mỗi output bội của D`);
@@ -113,6 +145,24 @@ async function main(): Promise<void> {
     return;
   }
   console.log(`\n✅ Trên chuỗi: ${k} output pot, tổng ${amount} oildrop.`);
+
+  if (bootstrap) {
+    // Ghi sổ chỉ SAU khi đã đọc lại output trên chuỗi: một dòng bằng chứng mở khoá lượt nạp lớn,
+    // nên nó không được ghi từ một giao dịch mới chỉ được gửi đi.
+    const ledger = JSON.parse(readFileSync(EXIT_PROOF_LEDGER, "utf8")) as Record<string, unknown>;
+    ledger[NETWORK] = {
+      txHash: hash, date: new Date().toISOString().slice(0, 10), branch: "FundPot",
+      treasuryAddress: wiring.treAddr, potId, amountOildrop: amount.toString(),
+    };
+    writeFileSync(EXIT_PROOF_LEDGER, JSON.stringify(ledger, null, 2) + "\n", "utf8");
+    const back = measureExitProof(NETWORK);
+    if (back.state !== "proven") {
+      process.exitCode = 1;
+      console.error(`\n❌ Đã ghi sổ nhưng đọc lại ra '${back.state}' — soát ${EXIT_PROOF_LEDGER}.`);
+      return;
+    }
+    console.log(`📒 Đã ghi bằng chứng lối ra ${NETWORK} vào ${EXIT_PROOF_LEDGER}.`);
+  }
 }
 
 main().catch((e) => { console.error(`\n❌ ${e instanceof Error ? e.message : String(e)}`); process.exit(1); });
