@@ -35,10 +35,11 @@
 //
 // THỨ TỰ PHỤ THUỘC — TUYẾN TÍNH, KHÔNG VÒNG
 //   custodyRef → custody_seed → custodySeedPid
-//              → custody(proposal_policy, custodySeedPid, ms_per_epoch, lamp_policy, token_name,
+//              → custody(pointer_policy, custodySeedPid, ms_per_epoch, lamp_policy, token_name,
 //                        window_origin_ms) → custodyAddr
-//   authRef    → reserve_auth(authRef, AUTH_NAME, FLOOR_OILDROP) → authPid
-//   custodySeedPid + lampPid + authPid + FLOOR_OILDROP → reserve_gate(7 tham số) → gateHash
+//   authRef    → reserve_auth(authRef, AUTH_NAME, floor) → authPid
+//   custodySeedPid + lampPid + authPid + floor → reserve_gate(7 tham số) → gateHash
+//   (`floor` = `RESERVE_FLOOR_OILDROP`, đọc qua `reserveFloorFromEnv` — bắt buộc, không mặc định)
 //   lampPid + metPid + custodySeedPid + authPid + gateHash + custodyHash + RESERVE_TOTAL
 //                                                → reserve_draw(13 tham số, cuối = window_origin_ms) → drawAddr
 //
@@ -46,7 +47,7 @@
 //   `auth_policy`, nên `reserve_auth` KHÔNG nướng ngược `gate_script_hash` được — vòng
 //   apply-param. Truyền sàn 5 vào `reserve_auth` và sàn 0 vào `reserve_gate` thì CẢ HAI SCRIPT
 //   VẪN ĐÚC ĐƯỢC và cổng cầu vẫn chết vĩnh viễn (`reserve_auth.ak`, khối RESIDUAL của
-//   A-FLOOR-1). Vì thế hai lời gọi dưới đây đọc CÙNG MỘT biến `FLOOR_OILDROP`, và cổng
+//   A-FLOOR-1). Vì thế hai lời gọi dưới đây đọc CÙNG MỘT biến cục bộ `floorOildrop`, và cổng
 //   FLOOR-PAIR-001 (`offchain/src/reserveFloorPair.ts`) đo lại trước khi mảng tham số tồn tại.
 //
 //   ⚠ MỘT CHIỀU PHỤ THUỘC NGƯỢC LÊN LỚP 1, ĐỌC KỸ: cặp kho #6-7 của `reserve_draw` PHẢI trùng
@@ -78,6 +79,7 @@ import {
 } from "./_canonical_v2.js";
 import type { FloorSource } from "./_floorLabel.js";
 import { canonicalWindowOrigin, epochAt, windowAt } from "./_epochWindow.js";
+import { requiredHashParam, requiredHexParam } from "./_guards.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -94,23 +96,62 @@ export const AUTH_NAME = fromText("TREASURYPULL");
 export const INSTANCE_ID = fromText("lamp-reserve");
 
 /**
- * SÀN của cổng cầu (oildrop). `reserve_gate` chỉ nhả auth NFT khi custody đang giữ ÍT HƠN
- * ngần này LAMP — "chỉ kéo Reserve khi Treasury thực sự cạn".
+ * SÀN đã chốt của cổng cầu (oildrop): 1% trần Reserve = 96_300_000_000_000 oildrop (chủ dự án
+ * chốt 2026-10-02). `reserve_gate` chỉ nhả auth NFT khi custody đang giữ ÍT HƠN ngần này LAMP.
  *
- * 1.000 LAMP cho màn diễn tập: đủ nhỏ để nạp qua sàn bằng một giao dịch, nên KIỂM ĐƯỢC CẢ HAI
- * CHIỀU (dưới sàn → mở; trên sàn → chặn). Con số mainnet là quyết định của Treasury, không
- * phải của tệp này.
+ * Hằng này KHÔNG phải mặc định: con số đi vào script đọc từ `RESERVE_FLOOR_OILDROP` (bắt buộc,
+ * `reserveFloorFromEnv`). Hằng chỉ dùng để GẮN NHÃN giá trị đọc được — bằng nó thì nhãn là
+ * `"production"`, khác nó thì `"demo"` và kéo theo cảnh báo. Một mặc định im lặng ở tham số
+ * nướng vào hash `reserve_auth` + `reserve_gate` là một quyết định đưa ra bởi việc KHÔNG gõ gì.
  */
-export const FLOOR_OILDROP = 1_000_000_000n;
+export const DECIDED_FLOOR_OILDROP = RESERVE_CAP / 100n;
+
+/** Tên biến môi trường giữ con số sàn — NGUỒN DUY NHẤT của sàn đi vào script. */
+export const RESERVE_FLOOR_ENV = "RESERVE_FLOOR_OILDROP";
+
+/** Sàn đọc được + nhãn xuất xứ của nó. Hai trường đi cùng nhau ở mọi chỗ in/ghi. */
+export interface ReserveFloor {
+  floorOildrop: bigint;
+  floorSource: FloorSource;
+}
 
 /**
- * Nhãn xuất xứ của `FLOOR_OILDROP`, LIỆT KÊ ĐÓNG (`_floorLabel.ts`).
+ * Đọc sàn cổng cầu từ env — BẮT BUỘC, không mặc định.
  *
- * Nó đứng ngay cạnh con số, và phải đổi CÙNG LÚC với con số. Trước đợt vá này chữ "diễn tập"
- * chỉ sống trong chú thích trên đây và trong một dòng `console.log` — không tạo tác nào giữ nó,
- * nên con số đi tiếp được sang bản thật mà nhãn thì không.
+ * - thiếu / rỗng ⇒ FLOOR-ENV-001 (không đoán: sàn nướng vào hash `reserve_auth` + `reserve_gate`,
+ *   tức vào địa chỉ `reserve_gate` và `reserve_draw`, và lượt sinh one-shot không làm lại được);
+ * - không phải số nguyên thập phân ⇒ FLOOR-ENV-002;
+ * - `<= 0` ⇒ FLOOR-ENV-003 (cùng điều `reserve_auth.ak` ép `floor_oildrop > 0`, bắt sớm hơn);
+ * - `> RESERVE_CAP` ⇒ FLOOR-ENV-004 (sàn lớn hơn cả pot Reserve thì cổng cầu luôn mở —
+ *   không còn là sàn).
  */
-export const FLOOR_SOURCE: FloorSource = "demo";
+export function reserveFloorFromEnv(env: Record<string, string | undefined>): ReserveFloor {
+  const raw = (env[RESERVE_FLOOR_ENV] ?? "").trim();
+  if (!raw) {
+    throw new Error(
+      `FLOOR-ENV-001: chưa đặt ${RESERVE_FLOOR_ENV}. Sàn cổng cầu nướng vào hash reserve_auth + ` +
+      `reserve_gate ⇒ vào địa chỉ reserve_gate và reserve_draw; lượt sinh one-shot KHÔNG làm lại ` +
+      `được. Giá trị đã chốt: ${DECIDED_FLOOR_OILDROP} (1% trần Reserve). Không có mặc định.`,
+    );
+  }
+  if (!/^[0-9]+$/.test(raw)) {
+    throw new Error(`FLOOR-ENV-002: ${RESERVE_FLOOR_ENV}='${raw}' không phải số nguyên thập phân (oildrop).`);
+  }
+  const v = BigInt(raw);
+  if (v <= 0n) {
+    throw new Error(
+      `FLOOR-ENV-003: ${RESERVE_FLOOR_ENV}=${v} — sàn phải > 0. Với sàn ≤ 0 thì vế parked < floor ` +
+      `không bao giờ đúng và auth NFT không bao giờ nhả (reserve_auth.ak ép floor_oildrop > 0).`,
+    );
+  }
+  if (v > RESERVE_CAP) {
+    throw new Error(
+      `FLOOR-ENV-004: ${RESERVE_FLOOR_ENV}=${v} lớn hơn trần Reserve ${RESERVE_CAP} — cổng cầu ` +
+      `luôn mở, sàn không còn tác dụng.`,
+    );
+  }
+  return { floorOildrop: v, floorSource: v === DECIDED_FLOOR_OILDROP ? "production" : "demo" };
+}
 
 /** Tổng pot Reserve — ĐÚNG BẰNG `reserve_cap` của SupplyState. Hai số này lệch là kế toán vỡ. */
 export const RESERVE_TOTAL = RESERVE_CAP;
@@ -118,21 +159,163 @@ export const RESERVE_TOTAL = RESERVE_CAP;
 /** Trần CỨNG mỗi epoch = tổng/1000 (`Reserve/…/math.ak:17` + `release_epochs = 1000`). */
 export const MAX_PER_EPOCH = RESERVE_TOTAL / 1000n;
 
+// ── NFT CON TRỎ GOVERNANCE (Treasury/GovernancePointer.md v0.1) ───────────────
+//
+// Thay cho `PROPOSAL_POLICY_PLACEHOLDER` (28 byte 0) cũ. Custody không còn nướng hash governance:
+// khe #1 của `custody` là `pointer_policy`, và `CustodyDatum.governance_ref` mang cùng giá trị đó.
+// Nhánh Release đọc governance hiện hành từ `PointerDatum.governance_hash` qua reference input —
+// governance dựng lại được (bật C2/C4, đổi tally) mà không phải đúc lại kho.
+//
+// `governance_pointer` là validator HAI MỤC ĐÍCH (mint + spend) ⇒ policy id NFT == script hash
+// ⇒ địa chỉ con trỏ = Script(policy). Tham số: [seed OutputReference, change_delay_ms]. Không
+// phụ thuộc custody ⇒ không vòng hash: pointer → custody → reserve_gate/reserve_draw.
+
+/** asset name NFT con trỏ — "GOVPOINTER". Khớp `pointer.pointer_name` (on-chain). */
+export const POINTER_NAME = fromText("GOVPOINTER");
+
+/** Tên biến môi trường của trễ đổi con trỏ qua committee (ms). */
+export const POINTER_DELAY_ENV = "POINTER_CHANGE_DELAY_MS";
+
+/** Preprod: 1 giờ — đủ ngắn để diễn tập Propose → Apply trong một buổi (spec §Genesis). */
+export const POINTER_DELAY_PREPROD_MS = 3_600_000n;
+
 /**
- * `proposal_policy` của `custody.ak` trong màn diễn tập: 28 byte 0.
- *
- * ⚠ ĐÂY LÀ CÙNG MỘT HÌNH với khuyết tật đã giết nhánh Reserve của policy mồi mainnet — chuỗi
- * 28 byte 0 không có tiền ảnh blake2b-224, nên KHÔNG proposal NFT nào tồn tại được dưới policy
- * đó, và nhánh chi-theo-proposal của custody đóng vĩnh viễn. Ở đây điều đó là CỐ Ý và VÔ HẠI:
- * màn này chỉ diễn tập đường KÉO (Reserve → custody), không diễn tập đường CHI (custody →
- * người nhận), và custody chỉ vào giao dịch với tư cách reference input nên validator của nó
- * không chạy.
- *
- * Nhưng khi lên mainnet mà vẫn để giá trị này thì LAMP vào custody sẽ nằm chết — và LAMP
- * KHÔNG burn được (`Treasury/CONTRACT.md §5`). Ghi ra to ở đây vì bài học của bản mồi đúng là:
- * một hằng 28 byte 0 trông y hệt một chỗ chưa điền.
+ * Mainnet: 6 epoch = 6 × 432_000_000 ms (30 ngày). Chủ dự án chốt 2026-10-03. Trước khi niêm
+ * phong, đây là chốt duy nhất cho người ngoài thấy một lượt đổi con trỏ và kịp phản ứng.
  */
-export const PROPOSAL_POLICY_PLACEHOLDER = "00".repeat(28);
+export const POINTER_DELAY_MAINNET_MS = 6n * 432_000_000n;
+
+/**
+ * Trễ đổi con trỏ — nướng vào hash `governance_pointer` ⇒ vào policy con trỏ ⇒ vào hash custody
+ * (khe #1) ⇒ vào địa chỉ kho.
+ * - Mainnet: luôn `POINTER_DELAY_MAINNET_MS`. Biến khai một giá trị KHÁC ⇒ NÉM (POINTER-DELAY-001):
+ *   giá trị đã chốt, không để một biến môi trường gõ nhầm đổi nó.
+ * - Mạng thử: thiếu biến ⇒ `POINTER_DELAY_PREPROD_MS`; khai thì lấy giá trị khai.
+ */
+export function pointerDelayFromEnv(
+  env: Record<string, string | undefined>, network: Network,
+): { delayMs: bigint; source: "env" | "preprod-default" | "mainnet-decided" } {
+  const raw = (env[POINTER_DELAY_ENV] ?? "").trim();
+  if (network === "Mainnet") {
+    if (raw && raw !== POINTER_DELAY_MAINNET_MS.toString()) {
+      throw new Error(
+        `POINTER-DELAY-001: ${POINTER_DELAY_ENV}='${raw}' khác giá trị Mainnet đã chốt ` +
+          `${POINTER_DELAY_MAINNET_MS} (6 epoch). Bỏ biến đi, hoặc khai đúng giá trị đó.`,
+      );
+    }
+    return { delayMs: POINTER_DELAY_MAINNET_MS, source: "mainnet-decided" };
+  }
+  if (!raw) {
+    return { delayMs: POINTER_DELAY_PREPROD_MS, source: "preprod-default" };
+  }
+  if (!/^[0-9]+$/.test(raw)) {
+    throw new Error(`POINTER-DELAY-002: ${POINTER_DELAY_ENV}='${raw}' không phải số nguyên thập phân (ms).`);
+  }
+  const v = BigInt(raw);
+  if (v <= 0n) {
+    throw new Error(
+      `POINTER-DELAY-003: ${POINTER_DELAY_ENV}=${v} — phải > 0 (governance_pointer.ak P-MINT-DELAY; ` +
+        `trễ 0 = committee đổi tức thì).`,
+    );
+  }
+  return { delayMs: v, source: "env" };
+}
+
+/**
+ * Hạt giống NFT con trỏ — `POINTER_SEED_TX`/`POINTER_SEED_IDX`, BẮT BUỘC cả hai. Policy con trỏ là
+ * hàm của outref này và nướng vào hash custody ⇒ phải ghim trước, không để script tự chọn.
+ */
+export function pointerSeedRefFromEnv(
+  env: Record<string, string | undefined>,
+): { txHash: string; outputIndex: number } {
+  const tx = (env.POINTER_SEED_TX ?? "").trim().toLowerCase();
+  const idx = (env.POINTER_SEED_IDX ?? "").trim();
+  if (!/^[0-9a-f]{64}$/.test(tx) || !/^[0-9]+$/.test(idx)) {
+    throw new Error(
+      `POINTER-SEED-001: POINTER_SEED_TX = "${env.POINTER_SEED_TX ?? ""}", POINTER_SEED_IDX = ` +
+        `"${env.POINTER_SEED_IDX ?? ""}" — cần CẢ HAI: hash giao dịch 64 hex + chỉ số nguyên không ` +
+        `âm. Policy NFT con trỏ suy từ outref này và nướng vào hash custody; không có mặc định.`,
+    );
+  }
+  return { txHash: tx, outputIndex: Number(idx) };
+}
+
+/**
+ * CỔNG POINTER-SEED-002 — hạt giống con trỏ phải KHÁC mọi hạt giống one-shot khác của lượt genesis
+ * (genesis, custody). Một UTxO chỉ tiêu được MỘT lần: trùng nhau thì giao dịch đi sau không còn gì
+ * để tiêu, và policy nướng trên outref đó (tLAMP qua `genesis_ref`, khe #13 qua custody, hay khe #1
+ * custody qua con trỏ) không bao giờ đúc được. Không gộp được Tx P vào Tx A0: `custody_seed.ak`
+ * S-MINT-2 ép đúng MỘT policy đúc mỗi giao dịch.
+ */
+export function assertPointerSeedDistinct(
+  pointer: { txHash: string; outputIndex: number },
+  others: ReadonlyArray<{ label: string; ref: { txHash: string; outputIndex: number } }>,
+): void {
+  const k = (r: { txHash: string; outputIndex: number }) => `${r.txHash.toLowerCase()}#${r.outputIndex}`;
+  for (const o of others) {
+    if (k(o.ref) === k(pointer)) {
+      throw new Error(
+        `POINTER-SEED-002: hạt giống con trỏ ${k(pointer)} TRÙNG ${o.label}. Mỗi one-shot tiêu một ` +
+          `UTxO riêng: dùng chung thì giao dịch đi sau không còn gì để tiêu, và policy đã nướng trên ` +
+          `outref đó không bao giờ đúc được. Chọn một UTxO khác cho POINTER_SEED_TX/IDX.`,
+      );
+    }
+  }
+}
+
+/** Địa chỉ + unit NFT con trỏ suy từ policy (validator hai mục đích ⇒ địa chỉ = Script(policy)). */
+export function pointerLocation(policy: string, network: Network): { addr: string; unit: string } {
+  const p = assertPointerPolicy(policy);
+  return { addr: credentialToAddress(network, scriptHashToCredential(p)), unit: toUnit(p, POINTER_NAME) };
+}
+
+/** Kiểm policy con trỏ trước khi nướng vào custody: 56 hex thường, không phải giá trị chết. */
+export function assertPointerPolicy(p: string): string {
+  if (!/^[0-9a-f]{56}$/.test(p) || /^0+$|^f+$/.test(p)) {
+    throw new Error(
+      `POINTER-POLICY-001: pointer_policy = "${p}" — cần policy id 28 byte (56 hex thường) dẫn xuất ` +
+        `từ hạt giống con trỏ, không phải toàn 0/f. Nó là khe #1 của custody và là ` +
+        `CustodyDatum.governance_ref: sai ở đây thì nhánh Release không đọc được con trỏ nào ⇒ ` +
+        `kho chỉ nhận, không bao giờ chi, và LAMP không đốt được (Treasury/CONTRACT.md §5).`,
+    );
+  }
+  return p;
+}
+
+/** Áp `governance_pointer` trên hạt giống + trễ. KHÔNG chạm mạng. */
+export async function derivePointer(
+  seedTxHash: string, seedIndex: number, changeDelayMs: bigint, network: Network = NETWORK,
+): Promise<{ script: MintingPolicy; policy: string; addr: string; unit: string }> {
+  if (changeDelayMs <= 0n) {
+    throw new Error(`POINTER-DELAY-003: change_delay_ms = ${changeDelayMs} — phải > 0.`);
+  }
+  const s = await applyOf("Treasury", "governance_pointer.governance_pointer.mint", [
+    encodeOutputRef(seedTxHash, seedIndex), // #1 seed
+    changeDelayMs,                          // #2 change_delay_ms
+  ]);
+  const script = { type: "PlutusV3" as const, script: s.script };
+  const policy = validatorToScriptHash(script as Validator);
+  return { script, policy, ...pointerLocation(policy, network) };
+}
+
+/**
+ * policy con trỏ ghi trong state (`20_canonical_genesis.ts` ghi lúc gửi Tx P). Các bước sau
+ * (24/25/26/verify) dựng lại địa chỉ custody từ đây. Vắng ⇒ ném: cụm dựng trước GovernancePointer
+ * v0.1 có custody hash khác hẳn mã hiện hành, đoán một giá trị là dựng giao dịch cho một kho khác.
+ */
+export function pointerPolicyFromState(
+  state: { reserve?: { pointer?: { policy?: string } } },
+): string {
+  const p = state.reserve?.pointer?.policy;
+  if (!p) {
+    throw new Error(
+      "POINTER-STATE-001: state không có `reserve.pointer.policy` — cụm này dựng trước NFT con trỏ " +
+        "governance (GovernancePointer v0.1), nên custody của nó nướng khe #1 cũ và mã hiện hành không " +
+        "dựng lại được địa chỉ đó. Chạy lại genesis theo đường mới (20_canonical_genesis.ts, Tx P).",
+    );
+  }
+  return assertPointerPolicy(p);
+}
 
 // ── Blueprint Treasury + Reserve, fail-closed như `applyDist` ─────────────────
 
@@ -281,6 +464,12 @@ export interface ReserveScripts {
  * báo. Đối tượng làm mọi lời gọi cũ ĐỎ ở tsc, tức lỗi lộ ra lúc dịch chứ không lúc đúc.
  */
 export interface DeriveCustodyOptions {
+  /**
+   * policy id NFT con trỏ governance (`derivePointer(...).policy`) — khe #1 của custody, và là
+   * giá trị PHẢI ghi vào `CustodyDatum.governance_ref` (Release ép hai thứ bằng nhau).
+   * BẮT BUỘC, không mặc định (POINTER-POLICY-001).
+   */
+  pointerPolicy: string;
   /** policy id LAMP/tLAMP (Genesis lamp_mint) — `MigrateIn` đo Δ theo đây. */
   lampPid: string;
   /** asset name LAMP/tLAMP (hex) — testnet "tLAMP" / mainnet "LAMP". */
@@ -363,23 +552,15 @@ export async function deriveCustody(
   // này (toàn 0 / toàn f, "đúng dạng" nên đi lọt), nhưng nó chỉ chạy trong `requiredHashParam`
   // /`requiredHexParam` — tức chỉ cho tham số ĐỌC TỪ ENV. Một hằng gõ cứng trong mã không đi
   // qua cổng nào. Cổng dựng ra để chặn lớp lỗi này mù đúng chỗ lớp lỗi đó đang nằm.
-  if (network === "Mainnet" && /^0+$|^f+$/i.test(PROPOSAL_POLICY_PLACEHOLDER)) {
-    throw new Error(
-      `POISON-002: deriveCustody() chạy trên Mainnet với proposal_policy = ` +
-        `${PROPOSAL_POLICY_PLACEHOLDER.slice(0, 8)}…(${PROPOSAL_POLICY_PLACEHOLDER.length / 2} byte) — ` +
-        `GIÁ TRỊ CHẾT. Chuỗi toàn 0 / toàn f không có tiền ảnh blake2b-224 ⇒ không proposal NFT ` +
-        `nào tồn tại được dưới policy đó ⇒ nhánh chi-theo-proposal của custody đóng VĨNH VIỄN, và ` +
-        `LAMP đã vào két thì không burn được (Treasury/CONTRACT.md §5). Đây đúng cùng một hình ` +
-        `với khuyết tật đã giết nhánh Reserve của policy mồi mainnet. Truyền proposal_policy thật ` +
-        `vào deriveCustody() trước khi chạy mạng này.`,
-    );
-  }
+  // Thay POISON-002 cũ (khe #1 = 28 byte 0 trên Mainnet): nay khe #1 là policy con trỏ, BẮT BUỘC,
+  // và cổng chạy trên MỌI mạng — con trỏ chết trên Preprod cũng làm Release chết như trên Mainnet.
+  const pointerPolicy = assertPointerPolicy(o.pointerPolicy);
 
   const custodySeed = await custodySeedScript(custodyTxHash, custodyIndex);
   const custodySeedPid = validatorToScriptHash(custodySeed as Validator);
 
   const custody = await applyOf("Treasury", "custody.custody.spend", [
-    PROPOSAL_POLICY_PLACEHOLDER,  // #1 proposal_policy — xem cảnh báo 28 byte 0 ở trên
+    pointerPolicy,                // #1 pointer_policy — NFT con trỏ governance (GovernancePointer v0.1)
     custodySeedPid,               // #2 seed_policy — ghim NFT one-shot làm định danh két
     MS_PER_EPOCH,                 // #3 ms_per_epoch
     // #4-5 LAMP — nhánh `MigrateIn` đo Δ theo đúng cặp này. Không đọc "token nào là LAMP" từ
@@ -443,6 +624,8 @@ export async function deriveCustody(
 export interface ReserveDeriveOptions {
   custodyTxHash: string;
   custodyIndex: number;
+  /** Xem `DeriveCustodyOptions.pointerPolicy` — khe #1 custody, nướng vào địa chỉ kho. */
+  pointerPolicy: string;
   authTxHash: string;
   authIndex: number;
   network?: Network;
@@ -454,6 +637,11 @@ export interface ReserveDeriveOptions {
   windowOriginMs?: bigint;
   /** Xem `DeriveCustodyOptions.delegationAdminPkh` — nướng vào phần stake của địa chỉ kho. */
   delegationAdminPkh: string;
+  /**
+   * Sàn cổng cầu + nhãn. Bỏ trống ⇒ đọc `RESERVE_FLOOR_OILDROP` từ env qua `reserveFloorFromEnv`
+   * — vẫn BẮT BUỘC, chỉ đổi chỗ đọc. Không có giá trị số mặc định nào.
+   */
+  floor?: ReserveFloor;
 }
 
 /**
@@ -483,6 +671,7 @@ export async function deriveReserveWiring(
   // ── custody: seed one-shot → két ────────────────────────────────────────────
   const { custodySeed, custody, custodySeedPid, custodyHash, custodyAddr, treasuryStakeHash } =
     await deriveCustody(o.custodyTxHash, o.custodyIndex, {
+      pointerPolicy: o.pointerPolicy,
       lampPid: w.lampPid, tokenName: w.tokenName, network, windowOriginMs: originMs,
       delegationAdminPkh: o.delegationAdminPkh,
     });
@@ -491,7 +680,8 @@ export async function deriveReserveWiring(
   // Đọc ra một hằng cục bộ ĐÚNG MỘT LẦN rồi truyền xuống cả hai lời gọi. Không gõ lại con số
   // ở lời gọi thứ hai: chuỗi không khép được vòng này (xem khối ⚠ ở đầu tệp), nên hai chỗ gõ
   // riêng là hai chỗ trôi riêng, và không tầng nào báo.
-  const floorOildrop = FLOOR_OILDROP;
+  const floor = o.floor ?? reserveFloorFromEnv(process.env);
+  const floorOildrop = floor.floorOildrop;
 
   // ── auth NFT: credential "kéo" của Treasury ─────────────────────────────────
   // Khe #3 `floor_oildrop` KHÔNG được `reserve_auth` dùng để so sánh gì — nó ở đó để luật
@@ -576,8 +766,8 @@ export async function deriveReserveWiring(
       gateAddr: addrOf(gateHash, network),
       drawHash,
       drawAddr: addrOf(drawHash, network),
-      floorOildrop: FLOOR_OILDROP,
-      floorSource: FLOOR_SOURCE,
+      floorOildrop,
+      floorSource: floor.floorSource,
       reserveTotal: RESERVE_TOTAL,
       maxPerEpoch: MAX_PER_EPOCH,
     },
@@ -620,18 +810,6 @@ export const VOID_DATUM = Data.to(new Constr(0, []));
  * đúng hiển nhiên, và `reserved_min_ada` khi đó PHẢI đúng bằng lovelace đặt lên output.
  */
 /**
- * Datum cho lượt SINH custody.
- *
- * `governanceRef` BẮT BUỘC và phải là script hash thật 28 byte — không có mặc định.
- *
- * Vì sao không cho rỗng: `custody.ak:79` và `:133` ép `governance_ref` BẤT BIẾN ở cả hai
- * nhánh, nên giá trị ghi ở đây là giá trị vĩnh viễn của instance; và `release.ak:52-53` dùng
- * nó làm cổng cứng. Ghi rỗng một lần ⇒ nhánh `Release` không bao giờ thoả ⇒ két chỉ NHẬN,
- * không bao giờ CHI ⇒ mọi LAMP vào đó mất vĩnh viễn, mà LAMP KHÔNG burn được
- * (`Treasury/CONTRACT.md §5`). Bản trước điền `""` lặng lẽ; nay `custody_seed.ak` luật
- * S-GOV-0 từ chối thẳng, và cổng dưới đây bắt sớm hơn với câu nói được nguyên nhân.
- */
-/**
  * Danh sách bucket ĐÓNG của kho chung (C-COL-CAT, `Treasury/CONTRACT.md §14`). Bất biến đời
  * instance — không nhánh nào thêm được bucket sau lượt sinh.
  *   0 feecover  — CARP của pot TxFee (nguồn trả phí mạng).
@@ -648,8 +826,22 @@ export const CUSTODY_BUCKETS: readonly bigint[] = [0n, 1n, 2n];
  */
 export const CUSTODY_CUT_BPS = 10_000n;
 
+/**
+ * Datum cho lượt SINH custody.
+ *
+ * `pointerPolicy` BẮT BUỘC: policy id NFT con trỏ governance (`derivePointer(...).policy`) — đi vào
+ * `governance_ref` (GovernancePointer.md v0.1 §Thiết kế: trường giữ kiểu, đổi NGHĨA từ "script hash
+ * governance" sang "policy NFT con trỏ"). Cùng giá trị PHẢI nằm ở khe #1 của `custody`
+ * (`deriveCustody`), vì nhánh Release của custody đọc con trỏ bằng policy ghi ở datum.
+ *
+ * Vì sao không cho rỗng / giá trị chết: `custody.ak` ép `governance_ref` BẤT BIẾN ở mọi nhánh, nên
+ * giá trị ghi ở đây là giá trị vĩnh viễn của instance. Con trỏ không đọc được ⇒ Release không bao
+ * giờ thoả ⇒ két chỉ NHẬN, không bao giờ CHI, mà LAMP KHÔNG burn được (`Treasury/CONTRACT.md §5`).
+ * Cổng POINTER-POLICY-001 (`assertPointerPolicy`) chặt hơn GOV-REF-001 cũ: hex thường, không toàn
+ * 0/f. Governance thật KHÔNG còn nướng ở đây — nó nằm trong `PointerDatum.governance_hash`, đổi được.
+ */
 export function custodySeedDatum(
-  lampPid: string, tokenName: string, governanceRef: string,
+  lampPid: string, tokenName: string, pointerPolicy: string,
   carp: { policy: string; name: string },
 ): CustodyDatum {
   // `accepted_assets` BẤT BIẾN sau lượt sinh (C-COL-2 ở mọi nhánh), và lượt sinh dùng NFT
@@ -665,14 +857,8 @@ export function custodySeedDatum(
       `CARP-REF-002: tên token CARP = "${carp.name}" — cần hex thường, 1..32 byte.`,
     );
   }
-  if (!/^[0-9a-fA-F]{56}$/.test(governanceRef)) {
-    throw new Error(
-      `GOV-REF-001: governance_ref = "${governanceRef}" — cần script hash 28 byte (56 ký tự hex). ` +
-        `Trường này BẤT BIẾN sau lượt sinh (custody.ak:79,133) và là cổng cứng của nhánh Release ` +
-        `(release.ak:52-53). Sai một lần là két thành hố một chiều: LAMP vào được, không bao giờ ` +
-        `ra, và không đốt được. Truyền script hash của validator governance thật.`,
-    );
-  }
+  // POINTER-POLICY-001 — khe #1 custody và governance_ref là CÙNG một giá trị.
+  const governanceRef = assertPointerPolicy(pointerPolicy);
   return {
     instance_id: INSTANCE_ID,
     // S-ACC-1 đòi danh sách KHÔNG rỗng. Két này nhận LAMP (Reserve rót vào) và lovelace.
@@ -688,6 +874,26 @@ export function custodySeedDatum(
     consumed_proposals: [],
     buckets: [...CUSTODY_BUCKETS],
   };
+}
+
+// `governanceScriptHashFromEnv` (biến GOVERNANCE_SCRIPT_HASH, GOV-REF-001) ĐÃ GỠ 2026-10-03 —
+// GovernancePointer v0.1 §Genesis: datum custody ghi policy NFT con trỏ, không ghi hash governance.
+// Không script nào khác trong kho đọc biến đó (đã quét `Genesis/scripts`, `Genesis/tests`,
+// `Treasury/**`), nên gỡ hẳn chứ không giữ bản chết.
+
+/**
+ * CARP mà kho chung nhận — `CARP_POLICY_ID` + `CARP_TOKEN_NAME`, BẮT BUỘC. `accepted_assets` bất
+ * biến sau lượt sinh one-shot, nên thiếu CARP ở đây là kho không bao giờ nhận CARP — không có
+ * chế độ placeholder (`submit: true` ở cả hai cổng).
+ */
+export function carpAssetFromEnv(
+  env: Record<string, string | undefined>,
+): { policy: string; name: string } {
+  const io = { env, submit: true, warn: (m: string) => console.warn(m) };
+  const consequence = "kho chung không bao giờ nhận CARP, và lượt sinh one-shot KHÔNG làm lại được";
+  const policy = requiredHashParam("CARP_POLICY_ID", { ...io, consequence }).value;
+  const name = requiredHexParam("CARP_TOKEN_NAME", { ...io, placeholder: "", consequence }).value;
+  return { policy, name };
 }
 
 /**

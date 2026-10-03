@@ -9,6 +9,7 @@ import { custodyDatumToCbor, decodeCustodyDatum } from "../../Treasury/offchain/
 import { Data } from "@lucid-evolution/lucid";
 
 const LAMP = "aa".repeat(28);
+/** policy NFT con trỏ governance — GovernancePointer v0.1: `governance_ref` mang giá trị này. */
 const GOV = "bb".repeat(28);
 const CARP = { policy: "cc".repeat(28), name: "43415250" };
 
@@ -57,5 +58,22 @@ describe("custodySeedDatum — CARP bắt buộc (accepted_assets bất biến s
   ];
   for (const [label, carp, re] of bad) {
     it(label, () => expect(() => custodySeedDatum(LAMP, "4c414d50", GOV, carp)).toThrow(re));
+  }
+});
+
+// GovernancePointer v0.1 §Genesis: `governance_ref` = policy NFT con trỏ (khe #1 custody), KHÔNG
+// phải hash governance. BẤT BIẾN đời instance ⇒ giá trị chết ở đây là Release chết vĩnh viễn.
+describe("custodySeedDatum — governance_ref = policy con trỏ", () => {
+  it("ghi ĐÚNG policy con trỏ được truyền (không thay, không chuẩn hoá ngầm)", () => {
+    const p = "9c".repeat(28);
+    expect(custodySeedDatum(LAMP, "4c414d50", p, CARP).governance_ref).toBe(p);
+  });
+  const bad: Array<[string, string]> = [
+    ["rỗng", ""], ["toàn 0", "0".repeat(56)], ["toàn f", "f".repeat(56)],
+    ["chữ hoa", "BB".repeat(28)], ["27 byte", "bb".repeat(27)], ["29 byte", "bb".repeat(29)],
+  ];
+  for (const [label, p] of bad) {
+    it(`ĐỎ: ${label} ⇒ POINTER-POLICY-001`, () =>
+      expect(() => custodySeedDatum(LAMP, "4c414d50", p, CARP)).toThrow(/POINTER-POLICY-001/));
   }
 });

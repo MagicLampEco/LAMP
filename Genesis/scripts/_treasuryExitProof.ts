@@ -144,16 +144,21 @@ function shapeErrors(network: string, p: ExitProof): string[] {
 }
 
 /**
- * Trần cho lượt nạp MỒI, tính bằng oildrop (1 LAMP = 1e6 oildrop) ⇒ 1 LAMP.
+ * Trần cho lượt nạp MỒI, tính bằng oildrop (1 LAMP = 1e6 oildrop) ⇒ 1001 LAMP.
  *
  * VÌ SAO PHẢI CÓ MỘT TRẦN chứ không chặn sạch: cổng đòi bằng chứng chi ra, mà muốn chi ra thì
  * trong kho phải có gì đó. Chặn sạch là dựng một vòng không lối vào — và một cổng không thể
  * thoả được thì người bị chặn sẽ gỡ nó, chứ không đi làm điều nó muốn.
  *
- * 1 LAMP là con số chọn theo tiêu chí "mất cũng được": nó đủ để chạy trọn một lượt chi ra
- * thật, và LAMP không burn nên nếu lượt đó hỏng thì đây đúng là lượng nằm chết vĩnh viễn.
+ * Tiêu chí chọn số là "mất cũng được": đủ để chạy trọn một lượt chi ra thật, và LAMP không
+ * burn nên nếu lượt đó hỏng thì đây đúng là lượng nằm chết vĩnh viễn.
+ *
+ * VÌ SAO 1001 chứ không 1 (2026-10-03): lối ra đầu tiên của kho mới là `FundPot` vào kho Wakeme,
+ * và kho đó chỉ nhận lượng là bội của một suất 1001 LAMP (`Distribution/FundPot.md`, bộ dựng
+ * `fundPotBuilder.ts` ném khi lệch bội). Trần 1 LAMP thì lượt mồi không chi ra được qua đúng
+ * đường sẽ dùng thật. 1001 LAMP là một suất người dùng — vẫn "mất cũng được" so với 36 tỷ.
  */
-export const BOOTSTRAP_CEILING_OILDROP = 1_000_000n;
+export const BOOTSTRAP_CEILING_OILDROP = 1_001_000_000n;
 
 /**
  * Cổng fail-closed cho MỌI đường nạp LAMP vào kho.

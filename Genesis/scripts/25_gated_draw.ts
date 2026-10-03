@@ -29,7 +29,7 @@ import {
 import { rehydrate, writeState, waitFor, canonicalWindowOrigin } from "./_canonical_v2.js";
 import {
   deriveReserveWiring, reserveStateDatum, drawWindow, printReserveWiring,
-  resolveDelegationAdmin,
+  resolveDelegationAdmin, pointerPolicyFromState,
 } from "./_reserve_layer2.js";
 import { reserveStateFromCbor, drawRedeemerToCbor } from "../../Reserve/offchain/src/datum.js";
 import { attachGateSpend, parkedOf } from "../../Treasury/offchain/src/reserveGateBuilder.js";
@@ -63,6 +63,7 @@ async function main(): Promise<void> {
   const { reserve, scripts: rs } = await deriveReserveWiring(wiring, {
     custodyTxHash: state.reserve.custodyRef.txHash,
     custodyIndex:  state.reserve.custodyRef.outputIndex,
+    pointerPolicy: pointerPolicyFromState(state),   // POINTER-STATE-001 nếu cụm dựng trước con trỏ
     authTxHash:    state.reserve.authRef.txHash,
     authIndex:     state.reserve.authRef.outputIndex,
     network:       wiring.network,

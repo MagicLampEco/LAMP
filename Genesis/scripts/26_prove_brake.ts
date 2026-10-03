@@ -25,7 +25,7 @@ import {
 import { rehydrate, writeState, canonicalWindowOrigin, MS_PER_EPOCH } from "./_canonical_v2.js";
 import { windowStartMs } from "../../Utils/src/index.js";
 import {
-  deriveReserveWiring, reserveStateDatum, drawWindow, resolveDelegationAdmin,
+  deriveReserveWiring, reserveStateDatum, drawWindow, resolveDelegationAdmin, pointerPolicyFromState,
 } from "./_reserve_layer2.js";
 import {
   custodyDatumToCbor, custodyDatumFromCbor, custodyRedeemerToCbor,
@@ -67,6 +67,7 @@ async function main(): Promise<void> {
   const { reserve, scripts: rs } = await deriveReserveWiring(wiring, {
     custodyTxHash: state.reserve.custodyRef.txHash,
     custodyIndex:  state.reserve.custodyRef.outputIndex,
+    pointerPolicy: pointerPolicyFromState(state),   // POINTER-STATE-001 nếu cụm dựng trước con trỏ
     authTxHash:    state.reserve.authRef.txHash,
     authIndex:     state.reserve.authRef.outputIndex,
     network:       wiring.network,
