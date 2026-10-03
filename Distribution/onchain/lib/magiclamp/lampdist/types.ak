@@ -94,4 +94,9 @@ pub type TreasuryRedeemer {
   // cấp phát suốt vòng đời do đó ≤ số dư genesis, còn LAMP rót về kho sau này (A-DEST hạ
   // cánh dưới dạng UTxO RIÊNG, thường KHÔNG datum) nằm chết tại địa chỉ script.
   Refill
+  // THÊM 2026-10-03 (`Distribution/FundPot.md` v1.0) — ĐẶT CUỐI để giữ index 0/1/2 của ba
+  // redeemer trên. Committee rót trọn một phân bổ từ kho vào một pot SCRIPT (chỉ-vào, mỗi
+  // người một suất), không đi qua `claim_account`. Sổ nợ KHÔNG đổi; luật FP-1..FP-7 ở
+  // `validators/treasury.ak` nhánh `FundPot`.
+  FundPot
 }

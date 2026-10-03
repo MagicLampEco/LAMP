@@ -245,6 +245,8 @@ export const TREASURY_REDEEMER = {
   ReleaseForRedeem: 0,
   GrantEntitlement: 1,
   Refill:           2,
+  // `Distribution/FundPot.md` v1.0 — khai CUỐI trong `types.ak` để giữ 0/1/2.
+  FundPot:          3,
 } as const;
 
 /** TreasuryRedeemer: ReleaseForRedeem = Constr(0, []). */
@@ -275,4 +277,16 @@ export function encodeRefillRedeemer(): Constr<Data> {
 
 export function refillRedeemerToCbor(): string {
   return Data.to(encodeRefillRedeemer());
+}
+
+/**
+ * TreasuryRedeemer: FundPot = Constr(3, []) — committee rót trọn một phân bổ từ kho vào một pot
+ * script (`Distribution/FundPot.md` v1.0, FP-1..FP-7). Sổ nợ không đổi.
+ */
+export function encodeFundPotRedeemer(): Constr<Data> {
+  return new Constr(TREASURY_REDEEMER.FundPot, []);
+}
+
+export function fundPotRedeemerToCbor(): string {
+  return Data.to(encodeFundPotRedeemer());
 }
