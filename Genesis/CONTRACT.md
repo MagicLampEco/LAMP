@@ -331,7 +331,7 @@ Phân tích grounded (xem báo cáo governance) xác nhận: hai rủi ro HIGH K
 
 | Bất biến | Vì sao | Verify post-deploy |
 |---|---|---|
-| **LAMP entry = `MultiSig`** (vd 3-of-5), KHÔNG `SinglePkh` | 1 khoá lộ = mint tới cap (vào kho) | đọc registry datum → `lookup_authority(LAMP_tag)` là MultiSig |
+| **LAMP entry = `SinglePkh` khoá chủ dự án** (chốt 2026-10-02, thay bản trước "MultiSig vd 3-of-5") | rủi ro chấp nhận: 1 khoá lộ = mint tới cap, nhưng chỉ vào kho (A-DEST) | đọc registry datum → `lookup_authority(LAMP_tag)` là `SinglePkh` của khoá chủ dự án |
 | **kho A-DEST = treasury VESTING**, KHÔNG `dist_treasury` 1-pkh | 1-pkh = rút sạch kho ngay | hash địa chỉ kho == hash treasury vesting đã biết |
 | **3 vai 3 bên khác nhau** (registry-controller ≠ committee-entitlement ≠ beacon-rate) | trùng bên = insider tự-cấp-tự-nhả | so 3 bộ khoá/param khác nhau |
 | **rate nhịp Distribution** | DistributionVest không rate-limit ở tầng mint | dựa kho-vesting làm cơ chế hãm (quyết định: KHÔNG thêm rate-limit mint) |
