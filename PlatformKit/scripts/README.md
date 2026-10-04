@@ -4,9 +4,9 @@ Apply-params Registry + onboard MỘT platform (PhoenixKey/OriLife) vào hệ si
 Mẫu theo `Distribution/scripts`. KHÔNG đụng `onchain/` (registry validator nằm trong
 **Treasury** onchain) hay `offchain/src` (đã chốt).
 
-> **Mạng:** đặt `NETWORK=Preprod`. Mặc định trong `config.ts` vẫn là `Preview`; trên Preview,
-> `03_onboard` dừng bằng lỗi vì mạng này chưa có gốc lưới cửa sổ (`config.ts` ▸ `windowOrigin`,
-> `WIN-PREVIEW` trong `Specs/Window/CONTRACT.md`). Registry và PlatformKit chưa có bản ghi triển
+> **Mạng:** đặt `NETWORK=Preprod`. Mặc định trong `config.ts` vẫn là `Preview`. Preview đã có gốc
+> lưới cửa sổ (`Specs/Window/CONTRACT.md` v1.2 §2) nhưng chưa có tLAMP (`Genesis/offchain/src/lampPolicies.ts`,
+> mục Preview), nên cụm để onboard chỉ có trên Preprod. Registry và PlatformKit chưa có bản ghi triển
 > khai nào trong kho — bộ script này dựng và kiểm kế hoạch, không phải bằng chứng đã chạy.
 
 ## Kiến trúc on-chain

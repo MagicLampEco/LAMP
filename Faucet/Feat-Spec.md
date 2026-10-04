@@ -1,8 +1,8 @@
 # tLAMP + Faucet — FEAT (Đặc tả tính năng / hành vi)
 
 > **Phiên bản:** v3.2 — 2026-10-04. Bump từ v3.1 vì định nghĩa cửa sổ đổi sang lưới gốc epoch
-> Cardano (`Specs/Window/CONTRACT.md` v1.1 §1): trên Mainnet/Preprod cửa sổ = epoch Cardano; Preview
-> chưa có gốc nên bỏ số ngày Preview (§1, §6).
+> Cardano (`Specs/Window/CONTRACT.md` v1.2 §1): trên mọi mạng cửa sổ = epoch Cardano — 5 ngày trên
+> Mainnet/Preprod, 1 ngày trên Preview (§1, §6).
 > v3.1 — 2026-09-28. Bump từ v3.0 vì hành vi người dùng đổi ở hai chỗ: **mỗi DID tối đa
 > một account đang sống** (mở account thứ hai bị từ chối; bị thu hồi thì mở lại được), và **account
 > nằm không bị thu hồi sau 72 cửa sổ** thay vì 1001. v3.1 chưa deploy.
@@ -101,10 +101,9 @@ chặn trường hợp đó là trần tốc độ toàn cục. Đường tạo 
 `C-MINT-ONLY-OPEN-2` · `C-RECL-BURN-2` ([MATH](./Math-Spec.md) v3.1 §6a.1).
 
 **Ngưỡng thu hồi ra thời gian:** `72 × ms_per_epoch`. Cửa sổ = `(posix_ms − window_origin_ms) /
-ms_per_epoch` (`Specs/Window/CONTRACT.md` v1.1 §1). Trên Mainnet/Preprod (`ms_per_epoch` =
+ms_per_epoch` (`Specs/Window/CONTRACT.md` v1.2 §1). Trên Mainnet/Preprod (`ms_per_epoch` =
 432 000 000, cửa sổ 5 ngày) chỉ số cửa sổ = số epoch Cardano, biên cửa sổ trùng biên epoch ⇒ 72 cửa
-sổ ≈ **360 ngày**. Preview: chưa có gốc cửa sổ (WIN-PREVIEW, `Utils/src/index.ts` ▸
-`windowOriginMs` ném lỗi) ⇒ pool v3 chưa dựng được trên Preview, nên không nêu số ngày cho Preview.
+sổ ≈ **360 ngày**. Trên Preview (`ms_per_epoch` = 86 400 000, cửa sổ 1 ngày) 72 cửa sổ ≈ **72 ngày**.
 
 ---
 
@@ -342,7 +341,7 @@ outputs: pool' = pool + TOÀN BỘ tLAMP của account (có thể là 0)
 ```
 
 Điều kiện: `now ≥ last_touch_epoch + 72` cửa sổ — tức `72 × ms_per_epoch`: ≈ **360 ngày** trên
-Preprod/Mainnet (cửa sổ 5 ngày, trùng epoch Cardano); Preview chưa có gốc cửa sổ (WIN-PREVIEW, §1). Đọc mốc **IDLE**, không
+Preprod/Mainnet (cửa sổ 5 ngày, trùng epoch Cardano); ≈ **72 ngày** trên Preview (cửa sổ 1 ngày, §1). Đọc mốc **IDLE**, không
 phải mốc cooldown: chủ DID gọi `Use` là gia hạn. KHÔNG cần DID NFT ⇒ ai cũng làm keeper được.
 
 **Sau thu hồi, DID được mở lại.** Thu hồi bỏ DID khỏi sổ account, nên chủ DID `ClaimOpen` lại được
