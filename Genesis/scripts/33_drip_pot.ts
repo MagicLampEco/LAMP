@@ -132,7 +132,7 @@ async function main(): Promise<void> {
   if (STEP === "seed") {
     const file = process.env.GRANTS_FILE ?? "";
     if (!file) throw new Error("DRIP-SEED-001: đặt GRANTS_FILE.");
-    const grants = parseEtdGrants(JSON.parse(readFileSync(file, "utf8")), NETWORK as EtdNetwork);
+    const grants = parseEtdGrants(JSON.parse(readFileSync(file, "utf8")), NETWORK as EtdNetwork, { target: "drip" });
     const startEpoch = BigInt(process.env.START_EPOCH ?? String(epoch));
     if (startEpoch < epoch) throw new Error(`DRIP-SEED-002: START_EPOCH ${startEpoch} < cửa sổ hiện tại ${epoch} (DP-MINT-4).`);
     const have = new Map(accounts.map((a) => [vaultKey(a.vault), a]));

@@ -162,9 +162,10 @@ Mọi `q` khác (`< −1`, hay `> 0` với redeemer `BurnAccount`, hay `< 0` v�
 
 ## 7. Nghĩa vụ off-chain
 
-- Chọn `vault`: chỉ đặt `did_payment` của một DID **đã có anchor Active** (thư Phoenix
-  `pk1004did-a`) — vào `did_payment` của DID chưa có anchor thì chưa có đường ra. Ví khoá thường
-  thì không ràng buộc gì thêm.
+- Chọn `vault`: chỉ đặt `did_payment` của một DID **đã có anchor Active** — vào `did_payment` của
+  DID chưa có anchor thì chưa có đường ra. Ví khoá thường thì không ràng buộc gì thêm. Danh sách cấp
+  đọc qua `Genesis/scripts/_etdGrants.ts` ▸ `parseEtdGrants(…, { target: "drip" })`: ở đích này cổng
+  ETD-GRANT-005 nhận cả ví script (với `claim_account` thì chỉ ví khoá).
 - Chia `E_i` theo `ETD-Spec-Vi.md §2`, `Σ E_i ≤` LAMP đang có ở `Reserve`.
 - Lượt `Claim`: đặt `lo` = thời điểm hiện tại (sớm hơn chỉ làm `amount` nhỏ đi), trả ≥ min-ADA cho
   output đích, ADA tiếp nối = `max(ADA input, min-ADA của output mới)` (số `claimed` dài thêm thì

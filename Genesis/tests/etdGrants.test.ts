@@ -62,6 +62,22 @@ describe("parseEtdGrants — mỗi cổng một ca đỏ", () => {
     const r = { ...row("a"), payment_address: credentialToAddress("Preprod", scriptHashToCredential(h("e"))) };
     expect(codeOf(() => parseEtdGrants(file([r]), "Preprod"))).toBe("ETD-GRANT-005");
   });
+  it("ETD-GRANT-005 với két drip: ví script (did_payment) được nhận, credential giữ nguyên", () => {
+    const vault = credentialToAddress("Preprod", scriptHashToCredential(h("e")));
+    const r = { ...row("a"), payment_address: vault };
+    const [g] = parseEtdGrants(file([r]), "Preprod", { target: "drip" });
+    expect(g!.paymentAddress).toBe(vault);
+    expect(g!.ownerPkh).toBe(h("e"));
+  });
+  it("ETD-GRANT-005 với két drip vẫn chặn ví khác mạng", () => {
+    const r = { ...row("a"), payment_address: credentialToAddress("Mainnet", scriptHashToCredential(h("e"))) };
+    expect(codeOf(() => parseEtdGrants(file([r]), "Preprod", { target: "drip" }))).toBe("ETD-GRANT-005");
+  });
+  it("ETD-GRANT-007 với két drip: hai dòng cùng ví script vẫn là trùng", () => {
+    const vault = credentialToAddress("Preprod", scriptHashToCredential(h("e")));
+    const rs = [{ ...row("a"), payment_address: vault }, { ...row("c"), payment_address: vault }];
+    expect(codeOf(() => parseEtdGrants(file(rs), "Preprod", { target: "drip" }))).toBe("ETD-GRANT-007");
+  });
   it("ETD-GRANT-005 ví nhận khác mạng", () => {
     const r = { ...row("a"), payment_address: payAddr(h("b"), "Mainnet") };
     expect(codeOf(() => parseEtdGrants(file([r]), "Preprod"))).toBe("ETD-GRANT-005");

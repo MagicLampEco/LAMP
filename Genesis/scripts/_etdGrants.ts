@@ -34,9 +34,18 @@ export type EtdNetwork = "Preprod" | "Preview" | "Mainnet";
 export interface EtdGrant {
   stakeAddress:       string;
   paymentAddress:     string;
+  /** Hash của payment credential: key-hash với `claim_account`; với két drip có thể là script hash. */
   ownerPkh:           string;
   entitlementOildrop: bigint;
 }
+
+/**
+ * Nơi danh sách sẽ được mở tài khoản. Cổng ETD-GRANT-005 phụ thuộc vào nó:
+ *  - `claim_account` (mặc định, `32_etd_claim.ts`): chỉ nhận ví KHOÁ — lý do ở đầu tệp.
+ *  - `drip` (`33_drip_pot.ts`): nhận cả ví script. Két drip trả LAMP thẳng vào `vault` mà không cần
+ *    người nhận ký (`Distribution/drip-pot/CONTRACT.md` v0.2), nên `did_payment` là đích hợp lệ.
+ */
+export type EtdGrantTarget = "claim_account" | "drip";
 
 function fail(code: string, msg: string): never {
   throw new Error(`${code}: ${msg}`);
@@ -48,7 +57,12 @@ const networkIdOf = (n: EtdNetwork): 0 | 1 => (n === "Mainnet" ? 1 : 0);
  * Đọc + soát danh sách. Ném ở lỗi ĐẦU TIÊN, kèm chỉ số dòng — danh sách sai một dòng thì không
  * cấp dòng nào, vì tổng ngân sách chỉ đúng khi cả danh sách đúng.
  */
-export function parseEtdGrants(raw: unknown, network: EtdNetwork): EtdGrant[] {
+export function parseEtdGrants(
+  raw: unknown,
+  network: EtdNetwork,
+  opts: { target?: EtdGrantTarget } = {},
+): EtdGrant[] {
+  const target: EtdGrantTarget = opts.target ?? "claim_account";
   if (typeof raw !== "object" || raw === null) fail("ETD-GRANT-001", "tệp không phải một đối tượng JSON.");
   const o = raw as Record<string, unknown>;
   if (o.schema !== ETD_GRANTS_SCHEMA) {
@@ -88,7 +102,8 @@ export function parseEtdGrants(raw: unknown, network: EtdNetwork): EtdGrant[] {
 
     let pd: ReturnType<typeof getAddressDetails>;
     try { pd = getAddressDetails(pay); } catch { fail("ETD-GRANT-005", `${at} payment_address không giải mã được.`); }
-    if (pd.paymentCredential?.type !== "Key") {
+    if (!pd.paymentCredential) fail("ETD-GRANT-005", `${at} payment_address không có payment credential.`);
+    if (target === "claim_account" && pd.paymentCredential.type !== "Key") {
       fail(
         "ETD-GRANT-005",
         `${at} payment_address không phải ví khoá. Tài khoản claim_account chỉ trả về ví khoá của ` +
