@@ -50,7 +50,7 @@ import { TREASURY_NFT_ASSET_NAME } from "../../Distribution/offchain/src/constan
 import { DEFAULT_BEACON_ASSET_NAMES } from "../../Distribution/offchain/src/beaconBuilder.js";
 import type { FloorSource } from "./_floorLabel.js";
 import { waitTimeoutError } from "./_waitTimeout.js";
-import { canonicalWindowOrigin } from "./_epochWindow.js";
+import { canonicalWindowOrigin, CANONICAL_MS_PER_EPOCH } from "./_epochWindow.js";
 // Datum Distribution dựng bằng CHÍNH hàm SDK, không gõ `Constr` tại chỗ: hình dạng datum có
 // đúng một nguồn (`Distribution/offchain/src/datum.ts`, soi theo `lampdist/types.ak`). Bản gõ
 // tay trước đây đứng yên ở v2 (2 trường) trong khi validator lên v3 (3 trường), và không gì
@@ -95,13 +95,14 @@ export const DIST_CAP = 26_370_000_000_000_000n;
 export const RESERVE_CAP = 9_630_000_000_000_000n;
 
 /** ms mỗi epoch trên Preprod/Preview (432000 slot × 1000 ms). */
-export const MS_PER_EPOCH = 432_000_000n;
+export const MS_PER_EPOCH = CANONICAL_MS_PER_EPOCH;
 
 /**
  * `window_origin_ms` của mạng — tham số CUỐI của claim_account · treasury · beacon (Distribution)
  * và của custody · reserve_draw (Lớp 2), Specs/Window/CONTRACT.md v1.0. KHÔNG khai hằng ở đây:
  * giá trị sống ở MỘT nơi (`Utils/src/index.ts` ▸ `WINDOW_ORIGIN_MS_BY_NETWORK`) và đi qua
- * `canonicalWindowOrigin(network)` — Preview/Custom NÉM (WIN-PREVIEW), không có giá trị đệm.
+ * `canonicalWindowOrigin(network)` — Custom NÉM (không có gốc), Preview NÉM (ms_per_epoch 1 ngày
+ * ≠ `MS_PER_EPOCH`), không có giá trị đệm.
  * Gốc nằm trong script hash của ba validator trên ⇒ đổi gốc là đổi địa chỉ kho, nên nó là một
  * phần của cái "một hạt giống ⇒ một bộ địa chỉ" mà `rehydrate()` đối chiếu.
  */
@@ -271,7 +272,7 @@ export interface DeriveOptions {
 
   /**
    * `window_origin_ms` nướng vào claim_account / treasury / beacon. Bỏ trống ⇒ lấy từ `network`
-   * qua `canonicalWindowOrigin` (Preview NÉM). Chỉ truyền tường minh khi cần đo một gốc khác
+   * qua `canonicalWindowOrigin` (Preview NÉM vì ms_per_epoch khác). Chỉ truyền tường minh khi cần đo một gốc khác
    * (bài kiểm); mọi script thật để trống để gốc có đúng một nguồn.
    */
   windowOriginMs?: bigint;

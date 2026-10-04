@@ -18,7 +18,9 @@ import {
   toUnit, Data, type Network, type Validator, type UTxO,
 } from "@lucid-evolution/lucid";
 import { assertParamCountFromBlueprint } from "../../Genesis/offchain/src/applyGate.js";
-import { windowOriginMs as windowOriginMsOf, type Network as UtilsNetwork } from "../../Utils/src/index.js";
+import {
+  windowOriginMs as windowOriginMsOf, msPerEpoch as msPerEpochOf, type Network as UtilsNetwork,
+} from "../../Utils/src/index.js";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
@@ -48,10 +50,9 @@ const LAMP_POLICY = process.env.LAMP_POLICY ?? "b1474a77c8867762efda418adda90ecf
 const LAMP_NAME = process.env.LAMP_NAME ?? "744c414d50"; // tLAMP
 
 const ZERO28 = "00".repeat(28);
-const MS_PER_EPOCH = 86_400_000n;       // 1 ngày/epoch
-// `window_origin_ms` (Specs/Window/CONTRACT.md v1.0) — tham số CUỐI của claim_account. Preview
-// KHÔNG có gốc (WIN-PREVIEW) nên dòng này NÉM khi NETWORK=Preview: demo này chỉ chạy được sau khi
-// chuyển sang Preprod/Mainnet (và `MS_PER_EPOCH` sang `msPerEpoch(NETWORK)` của Utils).
+// `ms_per_epoch` và `window_origin_ms` (Specs/Window/CONTRACT.md v1.2) lấy theo CÙNG một mạng từ Utils:
+// Preview 1 ngày/epoch, Preprod/Mainnet 5 ngày. `window_origin_ms` là tham số CUỐI của claim_account.
+const MS_PER_EPOCH = msPerEpochOf(NETWORK as UtilsNetwork);
 const WINDOW_ORIGIN_MS = windowOriginMsOf(NETWORK as UtilsNetwork);   // `Network` của Lucid có thêm "Custom"
 const DROP_VALUE = 1_000_000n;          // D = 1 LAMP / drop·epoch
 const CHANNEL_ID = Buffer.from("DEMO").toString("hex"); // "DEMO" hex

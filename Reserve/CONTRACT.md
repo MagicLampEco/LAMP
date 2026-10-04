@@ -173,7 +173,7 @@ nó chỉ ra một script hash khác một cách im lặng). Nguồn: chữ ký 
 | 10 | `gate_script_hash` | script hash của `reserve_gate` (Treasury). Auth NFT BẮT BUỘC spend từ input ở gate này → ép kích `reserve_gate.spend`. Hằng truyền vào — KHÔNG vòng phụ thuộc |
 | 11 | `custody_script_hash` | script hash của Treasury `custody`. UTxO mang kho NFT BẮT BUỘC nằm ở payment credential này (Luật 10). Đặt Ở CUỐI để không xê dịch khe cũ |
 | 12 | `reserve_cap` | pot Reserve ĐÚNG theo thiết kế (oildrop). Luật 1b đối chiếu `ReserveState.total_oildrop` với hằng này. PHẢI trùng khe `reserve_cap` của `Genesis/onchain/validators/lamp_mint.ak`. Đặt ở cuối vì cùng lý do khe #11 |
-| 13 | `window_origin_ms` | gốc lưới cửa sổ (`Specs/Window/CONTRACT.md` v1.0, WIN-ORIGIN-3): cửa sổ = `(t − window_origin_ms) / ms_per_epoch`. Đặt cuối theo khuôn các khe thêm sau |
+| 13 | `window_origin_ms` | gốc lưới cửa sổ (`Specs/Window/CONTRACT.md` v1.2, WIN-ORIGIN-3): cửa sổ = `(t − window_origin_ms) / ms_per_epoch`. Đặt cuối theo khuôn các khe thêm sau |
 
 ⚠ **BẤT BIẾN NỐI DÂY:** cặp `kho_nft_policy`/`kho_nft_name` (#6-7) của `reserve_draw` phải TRÙNG
 cặp `reserve_kho_nft_policy`/`reserve_kho_nft_name` (khe #13-14 của

@@ -3,7 +3,7 @@
 **Doctype:** MagicLamp Protocol — Onchain Spec (Technical / Implementation)
 **Version:** v3 "Capped Drop" — chỉ số cộng dồn + trần lõm + cắt ngọn
 **Updated:** 2026-10-04 — vì sao: §2.8 `TreasuryRedeemer` 4 constructor (thêm `GrantEntitlement`, `Refill`,
-`FundPot`), tham số `beacon`/`claim_account`/`treasury` lên 5/9/9 (gốc cửa sổ `Specs/Window/CONTRACT.md` v1.0 và
+`FundPot`), tham số `beacon`/`claim_account`/`treasury` lên 5/9/9 (gốc cửa sổ `Specs/Window/CONTRACT.md` v1.2 và
 các lượt NFT xác thực), §1 + §5.3 trỏ về chữ ký validator; khung cảnh báo đầu tệp cập nhật theo mã. Bản 2026-09-22
 còn tả 1 constructor và 3/6/4 tham số.
 **Nguồn chuẩn (interface contract):** [`CONTRACT.md`](./CONTRACT.md) — **v3**

@@ -24,11 +24,16 @@
 // validator ép, nên nó trông như mệnh đề cần đo; mệnh đề THIẾU là `lo ≤ now ≤ hi`.
 
 import {
-  windowBounds, windowIndex, windowOriginMs as utilsWindowOriginMs, ChainTimeError, CHAIN_TIME_ERRORS,
-  type Network as UtilsNetwork,
+  windowBounds, windowIndex, windowOriginMs as utilsWindowOriginMs, msPerEpoch as utilsMsPerEpoch,
+  ChainTimeError, CHAIN_TIME_ERRORS, type Network as UtilsNetwork,
 } from "../../Utils/src/index.js";
 
-// ── GỐC CỬA SỔ (Specs/Window/CONTRACT.md v1.0) ───────────────────────────────
+/** `ms_per_epoch` của cụm canonical — nướng vào script hash của claim_account · treasury · beacon
+ *  (Distribution) và custody · reserve_draw (Lớp 2). Cụm chỉ dựng cho Preprod/Mainnet (epoch 5 ngày).
+ *  `_canonical_v2.ts` ▸ `MS_PER_EPOCH` re-export đúng hằng này. */
+export const CANONICAL_MS_PER_EPOCH = 432_000_000n;
+
+// ── GỐC CỬA SỔ (Specs/Window/CONTRACT.md v1.2) ───────────────────────────────
 // Cửa sổ = `(t − window_origin_ms) / ms_per_epoch`, KHÔNG phải `t / ms_per_epoch`: 15 validator
 // nay nhận `window_origin_ms` làm tham số CUỐI, và phép chia thô lệch vài cửa sổ so với nhãn
 // on-chain. Số đo ở khối "LỖ ĐÃ CÓ" phía trên dùng gốc 0 cho dễ đọc; mọi mốc thật cộng thêm gốc.
@@ -37,17 +42,30 @@ import {
 
 /**
  * `window_origin_ms` cho một mạng của tầng script. Nhận `string` vì `Network` của lucid có thêm
- * "Custom" mà Utils không có — Custom không có gốc xác định nên NÉM, giống Preview
- * (Utils ▸ `windowOriginMs`, WIN-PREVIEW). Đây là chỗ DUY NHẤT ở Genesis đổi tên mạng thành gốc.
+ * "Custom" mà Utils không có — Custom không có gốc xác định nên NÉM `WINDOW_ORIGIN_UNDEFINED`.
+ * Đây là chỗ DUY NHẤT ở Genesis đổi tên mạng thành gốc.
+ *
+ * Mạng có gốc nhưng `ms_per_epoch` KHÁC `CANONICAL_MS_PER_EPOCH` (Preview: 1 ngày) cũng NÉM,
+ * mã `WINDOW_PARAMS_INVALID`: cụm canonical nướng 432_000_000 vào script hash, ghép nó với gốc
+ * Preview thì một cửa sổ bằng 5 epoch Preview — trái `Specs/Window/CONTRACT.md` v1.2 §1
+ * (cửa sổ = epoch Cardano), và không có gì báo.
  */
 export function canonicalWindowOrigin(network: string): bigint {
   if (network !== "Preview" && network !== "Preprod" && network !== "Mainnet") {
     throw new ChainTimeError(
       CHAIN_TIME_ERRORS.WINDOW_ORIGIN_UNDEFINED,
-      `mạng "${network}" không có window_origin_ms (Specs/Window/CONTRACT.md §4) — từ chối đoán`,
+      `mạng "${network}" không có window_origin_ms (Specs/Window/CONTRACT.md §2) — từ chối đoán`,
     );
   }
-  return utilsWindowOriginMs(network as UtilsNetwork);
+  const n = network as UtilsNetwork;
+  if (utilsMsPerEpoch(n) !== CANONICAL_MS_PER_EPOCH) {
+    throw new ChainTimeError(
+      CHAIN_TIME_ERRORS.WINDOW_PARAMS_INVALID,
+      `cụm canonical dùng ms_per_epoch ${CANONICAL_MS_PER_EPOCH}, mạng ${network} là ${utilsMsPerEpoch(n)} — ` +
+        `cửa sổ sẽ không trùng epoch Cardano (Specs/Window/CONTRACT.md §1); cụm chỉ dựng cho Preprod/Mainnet`,
+    );
+  }
+  return utilsWindowOriginMs(n);
 }
 
 /** Nhãn cửa sổ của một mốc. KHÔNG lùi trước khi chia — lùi ở đây chỉ đặt sai nhãn. */

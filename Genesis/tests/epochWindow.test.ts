@@ -111,7 +111,9 @@ describe("gốc cửa sổ — bản quên trừ gốc phải ĐỎ ở bài nà
 
   it("canonicalWindowOrigin: Preview và mạng lạ NÉM (fail-closed), Mainnet/Preprod trả gốc của Utils", () => {
     expect(canonicalWindowOrigin("Mainnet")).toBe(ORIGIN_BIG);
-    expect(() => canonicalWindowOrigin("Preview")).toThrow(CHAIN_TIME_ERRORS.WINDOW_ORIGIN_UNDEFINED);
+    // Preview CÓ gốc ở Utils (Window v1.2) nhưng ms_per_epoch 1 ngày ≠ cụm canonical 432_000_000.
+    expect(WINDOW_ORIGIN_MS_BY_NETWORK.Preview).toBe(1_666_656_000_000n);
+    expect(() => canonicalWindowOrigin("Preview")).toThrow(CHAIN_TIME_ERRORS.WINDOW_PARAMS_INVALID);
     expect(() => canonicalWindowOrigin("Custom")).toThrow(CHAIN_TIME_ERRORS.WINDOW_ORIGIN_UNDEFINED);
   });
 

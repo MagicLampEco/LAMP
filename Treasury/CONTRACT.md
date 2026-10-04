@@ -25,7 +25,7 @@ OriLife `animal_fee` cắt 7%; MAGIC AppEconomics). Reconcile `Foundation-Bootst
   (`Treasury/GovernancePointer.md` v0.2), không phải script hash governance. Param **validator** (bất biến
   đời instance): `(pointer_policy, seed_policy, ms_per_epoch, lamp_policy, token_name, window_origin_ms)` —
   **6 tham số**, nguồn: chữ ký `validator custody(` trong `Treasury/onchain/validators/custody.ak`.
-  `window_origin_ms` theo `Specs/Window/CONTRACT.md` v1.0. `governance_ref` là **ràng buộc cứng** ở release
+  `window_origin_ms` theo `Specs/Window/CONTRACT.md` v1.2. `governance_ref` là **ràng buộc cứng** ở release
   (§10 H1A, §16), không còn field trang trí.
 - **Custody tách accounting:** value nằm ở 1 (hoặc shard) UTxO custody; **bucket = sổ kế toán trong
   datum**, KHÔNG phải mỗi bucket một UTxO (chống bloat + min-ADA). DAO chỉnh % từng bucket.

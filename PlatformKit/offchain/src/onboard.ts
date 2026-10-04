@@ -69,7 +69,7 @@ export function onboardPlatform(params: OnboardParams): OnboardPlan {
   if (typeof config.windowOriginMs !== "bigint" || config.windowOriginMs < 0n) {
     throw new Error(
       `ONBOARD-ORIGIN: config.windowOriginMs phải là bigint ≥ 0, nhận ${String(config.windowOriginMs)} — lấy từ ` +
-      "`windowOriginMs(network)` của @magiclamp/utils (Preview không có gốc, WIN-PREVIEW).",
+      "`windowOriginMs(network)` của @magiclamp/utils (Specs/Window/CONTRACT.md v1.2 §2).",
     );
   }
   if (typeof config.msPerEpoch !== "bigint" || config.msPerEpoch <= 0n) {

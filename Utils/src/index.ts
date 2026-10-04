@@ -144,7 +144,7 @@ function assertShelleySlot(slot: bigint, network: Network): void {
 }
 
 // ══════════════════════════════════════════════════════════════
-// Window arithmetic — Specs/Window/CONTRACT.md v1.0 (WIN-ORIGIN-1..4)
+// Window arithmetic — Specs/Window/CONTRACT.md v1.2 (WIN-ORIGIN-1..4)
 //   window(t)       = (t − window_origin_ms) / ms_per_epoch      (floor)
 //   window_start(e) = window_origin_ms + e × ms_per_epoch
 //   window_end(e)   = window_origin_ms + (e + 1) × ms_per_epoch − 1
@@ -152,16 +152,20 @@ function assertShelleySlot(slot: bigint, network: Network): void {
 // `epochWindow` / `windowAt` / `epochOf` is a thin layer over `windowBounds` / `windowIndex`.
 // ══════════════════════════════════════════════════════════════
 
-/** Networks that have a defined `window_origin_ms`. Preview is deliberately NOT here (WIN-PREVIEW). */
-const WINDOW_ORIGIN_NETWORKS = ["Preprod", "Mainnet"] as const;
+/** Networks that have a defined `window_origin_ms` — every `Network` (Preview since spec v1.2). */
+const WINDOW_ORIGIN_NETWORKS = ["Preview", "Preprod", "Mainnet"] as const;
 
 /** `window_origin_ms` of a network: the Shelley start pulled back to epoch 0,
  *  `shelley.posixMs − shelley.epoch × ms_per_epoch` (Byron epochs are also 432_000 s long on
- *  both networks). DERIVED from `SHELLEY_START_BY_NETWORK` — never typed by hand (WIN-ORIGIN-4).
- *    Mainnet 1_506_203_091_000 · Preprod 1_654_041_600_000
- *  Preview has NO entry (WIN-PREVIEW): index it and you get `undefined`; call `windowOriginMs`
- *  and you get a thrown `WINDOW_ORIGIN_UNDEFINED` (fail-closed). Apply validator parameters
- *  through `windowOriginMs(network)`, not through a bare index. */
+ *  Preprod and Mainnet; Preview has no Byron era, so its Shelley start IS epoch 0).
+ *  DERIVED from `SHELLEY_START_BY_NETWORK` — never typed by hand (WIN-ORIGIN-4).
+ *    Mainnet 1_506_203_091_000 · Preprod 1_654_041_600_000 · Preview 1_666_656_000_000
+ *  The Preview origin IS a multiple of its 1-day `ms_per_epoch`: a Preview vector tells an
+ *  origin-subtracting build from one that forgot (the index differs by 19_290) but not the edge
+ *  phase — validator tests still need a Mainnet or Preprod case (spec §3).
+ *  An unknown network (a cast `Network`) has no entry: `windowOriginMs` throws
+ *  `WINDOW_ORIGIN_UNDEFINED` (fail-closed). Apply validator parameters through
+ *  `windowOriginMs(network)`, not through a bare index. */
 export const WINDOW_ORIGIN_MS_BY_NETWORK: Readonly<Partial<Record<Network, bigint>>> = Object.freeze(
   Object.fromEntries(
     WINDOW_ORIGIN_NETWORKS.map((n) => {
@@ -171,14 +175,14 @@ export const WINDOW_ORIGIN_MS_BY_NETWORK: Readonly<Partial<Record<Network, bigin
   ),
 ) as Readonly<Partial<Record<Network, bigint>>>;
 
-/** `window_origin_ms` for `network`. Throws `WINDOW_ORIGIN_UNDEFINED` for Preview (WIN-PREVIEW). */
+/** `window_origin_ms` for `network`. Throws `WINDOW_ORIGIN_UNDEFINED` for a network without an entry. */
 export function windowOriginMs(network: Network): bigint {
   const o = WINDOW_ORIGIN_MS_BY_NETWORK[network];
   if (o === undefined) {
     throw new ChainTimeError(
       CHAIN_TIME_ERRORS.WINDOW_ORIGIN_UNDEFINED,
-      `no window_origin_ms for ${network} (Specs/Window/CONTRACT.md §4 WIN-PREVIEW): ` +
-        `ms_per_epoch and the origin of that network are not settled — refusing to guess`,
+      `no window_origin_ms for ${network} (Specs/Window/CONTRACT.md §2): ` +
+        `that network has no settled origin — refusing to guess`,
     );
   }
   return o;
@@ -248,15 +252,14 @@ export function slotToPosixMs(slot: bigint, network: Network): bigint {
 }
 
 /** slot → window index (the validator's system): `windowOf(slotToPosixMs(slot))`.
- *  On Preprod/Mainnet this equals `slotToEpoch`; Preview throws (WIN-PREVIEW). */
+ *  On every network this equals `slotToEpoch` (window = Cardano epoch, Specs/Window v1.2 §1). */
 export function slotToProtocolEpoch(slot: bigint, network: Network): bigint {
   return windowOf(slotToPosixMs(slot, network), network);
 }
 
 /** slot → CHAIN epoch (the Cardano epoch explorers show), Shelley era onward.
  *
- *  Equals `slotToProtocolEpoch` on Preprod/Mainnet (window origin = epoch 0, Specs/Window v1.0);
- *  unlike it, this one also answers for Preview.
+ *  Equals `slotToProtocolEpoch` on every network (window origin = epoch 0, Specs/Window v1.2 §1).
  *
  *  The old body was `slot / slots_per_epoch`, which ignores the Byron era: it was right on
  *  Preview only, 4 epochs low on Preprod and ~198 epochs low on Mainnet.
@@ -321,9 +324,8 @@ export async function getTipSlot(lucid: { provider: unknown }): Promise<number> 
 
 /** Current CHAIN epoch (the Cardano epoch explorers show), read from the provider tip.
  *
- *  On Preprod/Mainnet this IS the LAMP window index (Specs/Window/CONTRACT.md v1.0), so it may
- *  go into a `*_epoch` datum field; for a window from a wall clock use `windowOf(nowMs, network)`
- *  (it throws for Preview, this one does not).
+ *  On every network this IS the LAMP window index (Specs/Window/CONTRACT.md v1.2 §1), so it may
+ *  go into a `*_epoch` datum field; for a window from a wall clock use `windowOf(nowMs, network)`.
  *  `network` is required: a default network would silently mis-convert on the other two. */
 export async function getCurrentEpoch(
   lucid   : { provider: unknown },
