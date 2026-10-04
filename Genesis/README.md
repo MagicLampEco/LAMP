@@ -85,7 +85,7 @@ Script chỉ đọc (Koios), không ký gì, không cần khoá.
 Genesis/
 ├── onchain/
 │   ├── lib/magiclamp/genesis/     # constants · types · util · registry
-│   └── validators/                # thread_nft · lamp_mint · supply_state
+│   └── validators/                # thread_nft · lamp_mint · supply_state · oneshot_nft (marker one-shot) · registry_write
 ├── bootstrap-closure/             # đóng policy mồi mainnet: dist_treasury · lock_vault + công cụ
 ├── offchain/src/                  # datum codec · mintBuilder · supplyState · circulating
 ├── scripts/                       # 00–03: đường Preview cũ · 20–32: đường canonical Preprod · verify_mainnet_supply.ts (chỉ đọc)

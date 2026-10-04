@@ -165,8 +165,9 @@ validator custody(
 > seed_policy, instance_id) == 1`** (C-NFT-1 dưới). NFT authenticity đã mint sẵn ở genesis mà KHÔNG dùng
 > khi spend là **sai gốc**: mất NFT-gate biến lỗ `cut_bps` từ *mis-seed bị động* thành *tấn công chủ
 > động* (kẻ tạo custody UTxO datum giả ở chính script này mà không có NFT vẫn spend được). Đổi param ⇒
-> **đổi script hash ⇒ đổi địa chỉ custody ⇒ deploy lại**. Chưa deploy gì lên testnet (EXEC §1) nên KHÔNG
-> phải migrate value.
+> **đổi script hash ⇒ đổi địa chỉ custody ⇒ deploy lại**. Lúc vá lỗ này (2026-06-13) chưa có custody nào trên
+> testnet nên không phải migrate value. Custody Preprod về sau đã gieo trên cụm canonical, và địa chỉ đổi
+> theo mỗi lần đổi tham số — tra `Genesis/offchain/src/lampPolicies.ts`.
 
 > **Sửa audit finding 10:** `protocol_cut_bps` ĐÃ DỜI khỏi param validator vào **datum** (mục 3,
 > `CustodyDatum.cut_bps`). Lý do: cut_bps là thứ **DAO chỉnh** (CONTRACT §1, §3.1); nếu để ở param thì
@@ -176,8 +177,8 @@ validator custody(
 `accepted_assets[]`, `buckets[]` (CONTRACT §1) **và `cut_bps`/`split_table`** **không** là tham số
 validator mà nằm trong **datum** (mục 3) — để DAO thêm/bớt asset, đổi % bucket hoặc cut **không phải
 đổi script hash** (giữ địa chỉ custody ổn định qua nâng cấp). Đây là quyết định tối ưu: param validator
-= thứ **bất biến suốt đời instance** (policy NFT governance `proposal_policy`, policy NFT authenticity
-`seed_policy`, ms_per_epoch); datum = thứ **DAO có thể chỉnh** (danh mục asset, cut_bps, % bucket,
+= thứ **bất biến suốt đời instance** (`pointer_policy`, `seed_policy`, `ms_per_epoch`, `lamp_policy`,
+`token_name`, `window_origin_ms` — chữ ký `validator custody(`); datum = thứ **DAO có thể chỉnh** (danh mục asset, cut_bps, % bucket,
 balance). (Đồng bộ MATH §1: `cut_bps` từ "tham số instance" → "tham số datum".)
 
 ---

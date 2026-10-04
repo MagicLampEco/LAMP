@@ -62,9 +62,11 @@ Distribution/
       beacon_nft.ak             # NFT authenticity beacon (one-shot theo genesis_ref)
       treasury.ak               # kho: GrantEntitlement · ReleaseForRedeem · Refill · FundPot + sổ cái solvency
       treasury_nft.ak           # NFT "TREASURY" authenticity kho (one-shot) — chống kho giả
+      claim_account_nft.ak      # NFT xác thực per-account (đúc ở GrantEntitlement)
   offchain/src/                 # TypeScript (Lucid Evolution)
     datum.ts committee.ts            # codec Data + committee threshold
     beaconBuilder.ts claimBuilder.ts redeemBuilder.ts   # tx builders (redeem tính vested)
+    fundPotBuilder.ts refillBuilder.ts accountNft.ts vested.ts pots.ts   # FundPot · Refill · NFT tài khoản · lịch nhả · sổ 18 pot
   tests/                        # vitest (foundation + builders + integration)
 ```
 

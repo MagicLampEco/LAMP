@@ -96,7 +96,7 @@ Toán: bảng M-* trong [`capped-drop/Math-Spec.md`](./capped-drop/Math-Spec.md)
 | **M-EPOCHS** | hết sau `⌈E/(D·drops_per_epoch)⌉` epoch. |
 | **F-RDM-3** | treasury nhả đúng `amount`; `tre_out = tre_in − amount`; không burn. |
 | **F-RDM-5** | đúng 1 ClaimAccount in + 1 out cùng payment script hash (anti double-satisfaction). |
-| **C-MINT-0** | mọi validator `tx.mint == 0` (không validator nào mint/burn LAMP). |
+| **C-MINT-0** | mọi validator `tx.mint == 0` (không validator nào mint/burn LAMP). *(v2; v3 nới đúng một khe ở `GrantEntitlement` để đúc NFT tài khoản — xem `capped-drop/CONTRACT.md`.)* |
 
 ---
 

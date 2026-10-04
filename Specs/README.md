@@ -111,7 +111,7 @@ vì người đọc tin nó.
 
 | Dữ kiện | Tình trạng |
 |---|---|
-| Con số phân bổ 18 pot | Chỉ tồn tại trong `Papers/`, mà `Papers/` là bản **phái sinh** — nên dữ kiện này hiện **không có nguồn định nghĩa**. Grep toàn bộ `*.ak` và `*.ts` (bỏ `node_modules/`, build): 0 kết quả. |
+| Con số phân bổ 18 pot | Có một bản chép CÓ NHÃN trong mã: `Distribution/offchain/src/pots.ts` ▸ `POTS` (chép 2026-09-23, `Distribution/tests/pots.test.ts` đối chiếu lại). Bản chép đó tự khai nguồn là `Papers/pot-catalog.md` §1, mà `Papers/` là bản **phái sinh** — nên dữ kiện vẫn **không có nguồn định nghĩa** trong `Specs/`. |
 | Hằng cap trong mã | 17 + 14 tệp mang literal như đo ở trên; chưa có một module nào được chỉ định là nơi khai duy nhất để các nơi khác `import`. |
 
 Ghi ra để người đọc không nhầm một khoảng trống thành một nguồn.

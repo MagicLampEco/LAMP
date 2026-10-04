@@ -12,7 +12,7 @@
 > **Vai:** hành vi nhìn thấy được — ai làm gì, trạng thái trước/sau, cái gì bị từ chối. Khi lệch với
 > mã trong `onchain/`, **mã thắng**.
 
-Bám [`CONTRACT.md`](./CONTRACT.md) v3.1 — KHÔNG mâu thuẫn. KHÔNG đi sâu công thức/chứng minh (xem
+Bám [`CONTRACT.md`](./CONTRACT.md) v3.2 — KHÔNG mâu thuẫn. KHÔNG đi sâu công thức/chứng minh (xem
 [MATH](./Math-Spec.md) v3.1) hay bản đồ chốt ↔ tệp mã (xem [TECH](./Tech-Spec.md) v3.1) hay lộ trình
 build/test/deploy (xem [EXEC](./Exec-Spec.md) v3.1).
 
@@ -30,7 +30,7 @@ phiếu Governance…) mà không phải tự mint token rời rạc.
 Mục tiêu cuối của cả dự án: **làm cho LAMP có giá trị** bằng cách mở SDK cho mọi Cardano team. Faucet
 phục vụ mục tiêu đó bằng **một token test dùng chung** (một policy id chia sẻ toàn mạng test) — dev
 của bất kỳ team nào đều dùng chung tLAMP để test SDK MagicLamp, thay vì mỗi ví mint một policy id
-khác nhau ([CONTRACT](./CONTRACT.md) v3.1 §6).
+khác nhau ([CONTRACT](./CONTRACT.md) v3.2 §6).
 
 ### 0.2 Khác biệt cốt lõi so với faucet "mint-on-demand"
 
@@ -43,7 +43,7 @@ một faucet mint-on-demand không cần: trần tốc độ toàn cục, cooldo
 > `tlamp_policy` (one-shot, không đúc lại được). Pool nhận `(lamp_policy, lamp_name)` qua tham số nên
 > token tới từ đâu không quan trọng với validator — nếu nó là token đúc bởi một policy **còn đúc được**
 > thì việc nạp lại pool là chuyện vận hành, không phải bất khả hồi. Policy nào đang giữ vai đó trên mỗi
-> mạng: [CONTRACT](./CONTRACT.md) v3.1 §2 (khối phạm vi) và `Genesis/offchain/src/lampPolicies.ts`. Đọc
+> mạng: [CONTRACT](./CONTRACT.md) v3.2 §2 (khối phạm vi) và `Genesis/offchain/src/lampPolicies.ts`. Đọc
 > vế này sai một chiều thì đánh giá rủi ro lệch hẳn, nên nó phải nằm ngay cạnh câu trên.
 
 ### 0.3 Thuộc spec này
@@ -59,9 +59,9 @@ một faucet mint-on-demand không cần: trần tốc độ toàn cục, cooldo
 | Chủ đề | Thuộc |
 |---|---|
 | Công thức + chứng minh (trần tốc độ, bảo toàn value, one-shot) | [MATH](./Math-Spec.md) v3.1 |
-| Danh sách bất biến theo redeemer | [CONTRACT](./CONTRACT.md) v3.1 §3.5–§3.9 |
+| Danh sách bất biến theo redeemer | [CONTRACT](./CONTRACT.md) v3.2 §3.5–§3.9 |
 | Chốt nào nằm ở tệp/hàm nào, ngữ nghĩa helper | [TECH](./Tech-Spec.md) v3.1 |
-| Codec byte-perfect | [CONTRACT](./CONTRACT.md) v3.1 §4 |
+| Codec byte-perfect | [CONTRACT](./CONTRACT.md) v3.2 §4 |
 | Lộ trình build/test/deploy, gaps | [EXEC](./Exec-Spec.md) v3.1 |
 | Token LAMP **thật** mainnet | LAMP mainnet — tLAMP chỉ là test surrogate |
 
@@ -85,7 +85,7 @@ phải danh sách người được phép.
 khoá ký riêng — đủ cho testnet, còn treo ở `[FAUCET-DID-OWNERSHIP]`
 ([README](./README.md) v3.1 §Điểm còn treo).
 
-**Mỗi DID tối đa MỘT account đang sống (INV-ONE-ACCT, [CONTRACT](./CONTRACT.md) v3.1 §3.3a).** Nhìn
+**Mỗi DID tối đa MỘT account đang sống (INV-ONE-ACCT, [CONTRACT](./CONTRACT.md) v3.2 §3.3a).** Nhìn
 từ phía người dùng:
 
 - DID chưa có account → `ClaimOpen` mở account và nhận drip đầu tiên.
@@ -187,7 +187,7 @@ outputs: pool'   = pool − drip tLAMP; PoolDatum{cfg giữ, window_epoch = now,
 
 `now` = cửa sổ **thật**, suy từ validity range bị neo hai đầu trong cùng một bucket. Builder phải
 đặt cửa sổ đó đúng cách, nếu không tx trượt ở biên bucket — xem
-[CONTRACT](./CONTRACT.md) v3.1 §5.
+[CONTRACT](./CONTRACT.md) v3.2 §5.
 
 `proof` là bằng chứng rằng DID **chưa** có trong sổ account; builder tự sinh nó từ danh sách account
 đang sống (tham số `openedLedger`). Người dùng không phải dựng tay.
