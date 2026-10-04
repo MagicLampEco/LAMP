@@ -48,8 +48,10 @@ VP_i = ∏_k  min( C_{k,i}, cap_k )^( w_k )
    giá trị tương đương: **tiêu MAGIC qua nhiều epoch** (C1) và **tích uy tín được cộng đồng
    công nhận** (C3).
    ⚠️ **Mức tuyên bố — đo 2026-09-01, đừng đọc mạnh hơn.** Câu "không rút ngắn bằng tiền" **đã
-   rút**: `MAGIC/GetMAGIC` bán quyền nhận MAGIC **bằng tiền pháp định** (`GetMAGIC/FEAT.md:8`),
-   nên C1 là **tiền × thời gian**, không phải thời gian thuần. Và cơ chế đo C3 **chưa chốt**
+   rút**: cửa `MAGIC/PrepaidGen` cho platform **khoá CARP** — token mua được — để người dùng
+   rút hạn-mức thành quyền-tiêu MAGIC, một chiều và không hoàn (`MAGIC/PrepaidGen/README.md`),
+   nên C1 là **tiền × thời gian**, không phải thời gian thuần. (Bản đo 2026-09-01 dẫn
+   `MAGIC/GetMAGIC`, cửa fiat→MAGIC; MAGIC đã gỡ module đó 2026-09-14 — `MAGIC/ChangeLog.md`.) Và cơ chế đo C3 **chưa chốt**
    (`Tech-Spec.md` §5.5, `Feat-Spec.md` §8) ⇒ C3 hiện là **nợ thiết kế, chưa phải một lớp**.
    Phòng tuyến ĐO ĐƯỢC hôm nay: DID sinh trắc + độ dài cửa sổ tích luỹ. Chi tiết `Math-Spec.md` §10.5c.
    Collusion (thuê 120 người thật vote hộ) không phải lỗ hổng: để 120 người đó có quyền lực thật,
