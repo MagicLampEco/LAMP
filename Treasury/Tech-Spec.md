@@ -1,8 +1,13 @@
 # Treasury — TECH (Kiến trúc on-chain Aiken)
 
-**Phiên bản:** v1.0 — 2026-10-04, lần đầu khai phiên bản. Vì sao: §2 và C-REL-1 đồng bộ với mã đã gộp
-(custody 6 tham số; `C-REL-PTR` — `Treasury/GovernancePointer.md` v0.2; gốc cửa sổ — `Specs/Window/CONTRACT.md`
-v1.0); khớp `Treasury/CONTRACT.md` v1.2.
+**Phiên bản:** v1.1 — 2026-10-04. Vì sao bump: §3–§11 theo kịp mã — `MigrateIn` đã hiện thực (nạp Δ
+LAMP từ Reserve, C-MIG-* trong `custody.ak`; khối `old_treasury_hash` cũ gắn nhãn thiết kế cũ, mã ràng buộc
+đổi thành `C-MIGOLD-*`); custody nhận `pointer_policy` thay `proposal_policy`; khối kiểu datum/redeemer
+thay bằng con trỏ tới `types.ak`; bảng test §11 sửa theo tên test thật; thêm con trỏ cho `StakeRewardIn`/
+`Deposit`. **Tài liệu chính của Treasury là `Treasury/CONTRACT.md` v1.2**; tài liệu này là tầng kỹ thuật
+đi kèm, lệch với CONTRACT thì CONTRACT thắng, lệch với mã thì mã thắng.
+(v1.0 — 2026-10-04: lần đầu khai phiên bản; §2 và C-REL-1 đồng bộ mã — custody 6 tham số, `C-REL-PTR`
+theo `Treasury/GovernancePointer.md` v0.2, gốc cửa sổ theo `Specs/Window/CONTRACT.md` v1.0.)
 
 **Trạng thái:** draft 2026-06-05 (chờ anh duyệt). Bám **xương sống** `Treasury/CONTRACT.md` —
 KHÔNG mâu thuẫn. Tài liệu này là tầng **kỹ thuật** (datum/redeemer/bất biến/validator) của hệ
@@ -40,7 +45,7 @@ Tái dùng nền: [`Distribution/onchain/validators/treasury.ak`](../Distributio
   ([CIP-1694](https://cips.cardano.org/cip/CIP-1694), [conway certs](https://aiken-lang.github.io/stdlib/cardano/certificate.html)).
   Mô tả tách ở FEAT §"Ba cửa tiền".
 - **Logic đếm phiếu / ngưỡng đạt**: validator Proposal (Governance) tự kiểm; Release chỉ đọc cờ
-  `Tallied` + `Executed` đã chứng thực.
+  `Executed` đã chứng thực (C-REL-2, Model A — `Tallied` không đủ).
 
 ### Bất biến cốt lõi (nhắc lại — sai là hỏng)
 LAMP fixed-supply 36 tỷ **tuyệt đối, KHÔNG BURN**. Mọi tx Treasury giữ `Σ_out(asset) = Σ_in(asset)`
@@ -59,7 +64,7 @@ thuộc tính **kế toán** `circulating = tổng − Σ balance Treasury insta
    caller (MAGIC   │   COLLECT validator (minting/spend gate)     │
    generators,     │   collectToTreasury(asset,amount,app_id,cat) │
    OriLife,        │   • split cut→bucket  • receipt  • batch      │
-   app SDK)  ─────▶│   • bất biến: custody nhận ≥ Σ cut theo asset │
+   app SDK)  ─────▶│   • bất biến: custody nhận == Σ cut theo asset│
                    └───────────────────┬─────────────────────────┘
                                        │ cập nhật (spend+respend custody)
                    ┌───────────────────▼─────────────────────────┐
@@ -71,7 +76,7 @@ thuộc tính **kế toán** `circulating = tổng − Σ balance Treasury insta
                    ┌───────────────────▼─────────────────────────┐
                    │   RELEASE path (spend custody, redeemer      │
                    │   Release{proposal_ref,...})                 │
-                   │   • đọc Proposal Tallied qua ref input       │
+                   │   • đọc Proposal Executed qua ref input      │
                    │   • value ra ĐÚNG số duyệt  • trừ đúng bucket │
                    └─────────────────────────────────────────────┘
 ```
@@ -88,7 +93,8 @@ script địa chỉ khác nhau. Gộp lại:
 - **Lợi an toàn:** một nơi duy nhất ép bất biến bảo-toàn-value + sổ — không rò nhánh.
 - **Đa thuê bao:** Custody param hóa theo instance (một script hash / instance).
 
-Vì vậy mục dưới đặt tên theo **redeemer nhánh** (`Collect`, `Release`, `Rebalance`, `Migrate`) của
+Vì vậy mục dưới đặt tên theo **redeemer nhánh** (`Collect`, `Release`, `Rebalance`, `MigrateIn`,
+`StakeRewardIn`, `Deposit` — `types.ak` ▸ `CustodyRedeemer`) của
 **một Custody validator**. "Collect validator" và "Release validator" trong CONTRACT là **góc nhìn
 nghiệp vụ** của hai nhánh này, không phải 2 script tách.
 
@@ -161,7 +167,7 @@ validator custody(
 
 > **Hardening v1 — LỖ #5 (custody nay ĐÒI NFT authenticity hiện diện khi spend).** `seed_policy`
 > là policy id của NFT do `custody_seed` mint (asset name = `instance_id`). **Mọi nhánh spend (Collect,
-> Release) ÉP `quantity_of(cust_in.value, seed_policy, instance_id) == 1` VÀ `quantity_of(cust_out.value,
+> Release, MigrateIn, StakeRewardIn, Deposit) ÉP `quantity_of(cust_in.value, seed_policy, instance_id) == 1` VÀ `quantity_of(cust_out.value,
 > seed_policy, instance_id) == 1`** (C-NFT-1 dưới). NFT authenticity đã mint sẵn ở genesis mà KHÔNG dùng
 > khi spend là **sai gốc**: mất NFT-gate biến lỗ `cut_bps` từ *mis-seed bị động* thành *tấn công chủ
 > động* (kẻ tạo custody UTxO datum giả ở chính script này mà không có NFT vẫn spend được). Đổi param ⇒
@@ -181,79 +187,31 @@ validator mà nằm trong **datum** (mục 3) — để DAO thêm/bớt asset, �
 `token_name`, `window_origin_ms` — chữ ký `validator custody(`); datum = thứ **DAO có thể chỉnh** (danh mục asset, cut_bps, % bucket,
 balance). (Đồng bộ MATH §1: `cut_bps` từ "tham số instance" → "tham số datum".)
 
+> **Trạng thái mã v1 — đặt ở datum KHÔNG có nghĩa là đổi được.** `cut_bps`, `accepted_assets`, `buckets`
+> nằm ở datum nhưng **bất biến đời instance**: mọi nhánh tiêu kho ép `out == in` cho cả ba (`custody.ak` ▸
+> khối params bảo toàn của từng nhánh: C-COL-2 · Release · C-MIG-3 · C-STK-3 · C-DEP-2, cùng
+> `C-BUCKETS-KEEP`). Không nhánh v1 nào sửa được chúng sau `custody_seed`. Đổi chúng cần một nhánh v1.x mới
+> (nhánh đó phải lặp kiểm range như `S-CUT-0`, xem ghi chú §11) hoặc gieo instance mới. `split_table` không
+> có trong mã (`types.ak` ▸ `CustodyDatum`).
+
 ---
 
 ## 3. Datum — sổ bucket + danh mục, KHÔNG mỗi bucket 1 UTxO
 
-```aiken
-// ── Một dòng sổ cho một bucket, theo TỪNG asset ──
-// Khóa = (bucket_id, asset). Dùng Pairs/Dict để tra nhanh + so khớp deterministic.
-pub type BucketLedger {
-  // bucket_id: 0=community, 1=ops, 2=grants, 3=reserve... (danh mục mở, DAO định)
-  // value: số dư kế toán của bucket đó cho asset cụ thể.
-  // Bất biến sổ: Σ_bucket ledger[asset] == custody.value(asset) − min_ada_overhead.
-  balances : Pairs<BucketKey, Int>,   // (xem BucketKey dưới)
-}
+**Kiểu thật — KHÔNG chép lại ở đây.** Nguồn duy nhất: `Treasury/onchain/lib/magiclamp/treasury/types.ak`
+(phải khớp tới từng byte với off-chain `Treasury/offchain/src/datum.ts`; Constr index theo thứ tự khai báo).
+Tóm tắt dưới chép 2026-10-04 từ nguồn đó, chỉ để định hướng — lệch thì `types.ak` thắng:
+- `types.ak` ▸ `CustodyDatum` — 8 trường theo thứ tự: `instance_id` · `accepted_assets` (`List<AssetKey>`) ·
+  `ledger` (`List<LedgerEntry>`, mỗi dòng `{bucket_id, policy, name, amount}`, ADA = `#""`/`#""`) ·
+  `cut_bps` · `governance_ref` · `epoch` · `consumed_proposals` · `buckets`.
+- `types.ak` ▸ `CustodyRedeemer` — `Collect{items}` (Constr 0) · `Release{proposal_ref, draws}` (1) ·
+  `Rebalance{moves}` (2) · `MigrateIn{source}` (3) · `StakeRewardIn{amount}` (4) · `Deposit{items}` (5).
+  Nhánh mới chỉ thêm ở CUỐI để giữ index.
+- Kiểu phụ cùng tệp: `CollectItem`, `ReleaseDraw`, `BucketMove`, `ProposalResult`, `ProposalStatus`.
 
-pub type BucketKey {
-  bucket_id : Int,
-  policy    : ByteArray,   // asset policy (ADA = #"")
-  name      : ByteArray,   // asset name  (ADA = #"")
-}
-
-// ── % chia về mỗi bucket khi collect (tổng = 10000 bps). DAO chỉnh. ──
-pub type BucketSplit {
-  bucket_id : Int,
-  weight_bps: Int,
-}
-
-pub type CustodyDatum {
-  instance_id    : ByteArray,        // định danh instance (audit, đa thuê bao)
-  accepted_assets: List<BucketKey>,  // (policy,name) được nhận — name/bucket_id bỏ trống ở đây, chỉ dùng (policy,name)
-  ledger         : BucketLedger,     // SỔ kế toán đa-asset × bucket (KHÔNG mỗi bucket 1 UTxO)
-  cut_bps        : Int,              // bps cắt về bucket (DAO chỉnh — finding 10; KHÔNG ở param)
-  split_table    : List<BucketSplit>,// (DÀNH RIÊNG đa-bucket — KHÔNG dùng ở đường collect đơn-bucket;
-                                     //  finding 2: collect dùng item.category, không split_table)
-  governance_ref : ByteArray,        // policy id NFT con trỏ governance; == tham số pointer_policy (C-REL-PTR)
-  receipt_root   : ByteArray,        // (ĐÍCH v1.x — F8: CODE CHƯA có field này) accumulator receipt (§6)
-  epoch          : Int,              // epoch cập nhật gần nhất (chống replay sổ)
-}
-
-pub type CustodyRedeemer {
-  // THU: gộp lô N collect vào 1 settlement tx (anti-bloat)
-  Collect { items: List<CollectItem> }
-  // CHI: release theo 1 proposal đã Tallied + pass (đọc qua reference input)
-  Release { proposal_ref: OutputReference, draws: List<ReleaseDraw> }
-  // CHUYỂN nội bộ giữa bucket (DAO duyệt) — value custody KHÔNG đổi, chỉ sổ
-  Rebalance { proposal_ref: OutputReference, moves: List<BucketMove> }
-  // MIGRATE: nạp value treasury cũ của generators vào instance (một lần, §9)
-  MigrateIn { source: ByteArray }
-}
-
-pub type CollectItem {
-  app_id   : ByteArray,   // ai trả (generators/OriLife/app) — cho receipt + tín dụng VP
-  policy   : ByteArray,   // asset
-  name     : ByteArray,
-  amount   : Int,         // số đã định giá ở app (Treasury KHÔNG định giá)
-  category : Int,         // bucket_id đích cho phần cut
-}
-
-pub type ReleaseDraw {
-  bucket_id : Int,
-  policy    : ByteArray,
-  name      : ByteArray,
-  amount    : Int,        // số rút ra (≤ balance bucket cho asset đó)
-  to        : Address,    // người nhận (đã ghi trong proposal — xem §7)
-}
-
-pub type BucketMove {
-  from_bucket : Int,
-  to_bucket   : Int,
-  policy      : ByteArray,
-  name        : ByteArray,
-  amount      : Int,
-}
-```
+Chỗ khác so với khối kiểu của bản trước (đã gỡ khỏi mục này): sổ là `List<LedgerEntry>`, không phải
+`BucketLedger{balances: Pairs<BucketKey,Int>}`; không có `split_table`/`BucketSplit`; không có `receipt_root`
+(đích v1.x, §6); `Rebalance` không mang `proposal_ref`.
 
 **Vì sao sổ trong datum, không mỗi bucket 1 UTxO (first-principles + tối ưu):**
 1. **Min-ADA & bloat:** mỗi UTxO Cardano phải giữ tối thiểu ~1 ADA + min-ADA theo kích thước
@@ -268,7 +226,7 @@ pub type BucketMove {
 
 Bất biến nền (ngữ nghĩa, luôn đúng sau mọi tx):
 ```
-∀ asset a:  Σ_{bucket b} ledger.balances[(b, a)]  ==  custody.value(a) − reserved_min_ada(a)
+∀ asset a:  Σ_{bucket b} ledger[(b, a)]  ==  custody.value(a) − reserved_min_ada(a)
 ```
 Với ADA, `reserved_min_ada` = phần ADA tối thiểu giữ UTxO sống (không thuộc bucket nào). Với LAMP/
 token, `reserved_min_ada = 0`. Bất biến này khóa "sổ không nói dối": tổng các bucket luôn bằng value
@@ -323,13 +281,33 @@ asset còn lại. Kiểm Δ chỉ trên `A_Δ` giữ chi phí tỉ lệ **kích 
 (xem C-COL-5, C-REL-5/6).
 
 **Phân tích ExUnit theo K·M + trần (T3 — đặt trần đo-thực TRƯỚC M2):**
-- Gọi **K** = số bucket có dòng sổ, **M** = số asset trong danh mục. Sổ `ledger.balances` là
-  `Pairs<BucketKey,Int>` cỡ **≤ K·M** dòng → mỗi lần spend custody, validator phải **đọc + giải mã
+- Gọi **K** = số bucket có dòng sổ, **M** = số asset trong danh mục. Sổ `ledger` là
+  `List<LedgerEntry>` cỡ **≤ K·M** dòng → mỗi lần spend custody, validator phải **đọc + giải mã
   datum** chứa tới K·M dòng (chi phí O(K·M) bất kể tx đụng mấy asset, vì datum nằm nguyên khối). Đây là
   **chi phí cố định của datum**, KHÁC chi phí kiểm Δ (O(|A_Δ| · K) cho phần cập nhật sổ).
 - Cập nhật incremental: với mỗi `a ∈ A_Δ` cần tra/ghi tối đa K dòng bucket → O(|A_Δ| · K). Tổng mỗi tx
   ≈ **O(K·M)** (giải mã datum) **+ O(|A_Δ|·K)** (cập nhật) **+ O(N)** (fold items/draws, N = số item lô).
-- **Trần (tham số mở — đo thực TRƯỚC M2):** vì giải mã datum là O(K·M) cứng, K·M không được vượt mức làm
+- **Trần hiện hành trong mã:** sổ ≤ `ledger.max_ledger_lines` dòng (hằng trong `ledger.ak`, ép qua
+  `ledger.is_canonical` ở mọi nhánh — C-COL-LINES/C-REL-LINES/C-MIG-LINES/C-STK-LINES/C-DEP-LINES).
+  `consumed_proposals` CHƯA có trần trong mã. Đoạn dưới là lập luận gốc dẫn tới trần đó.
+- **Rủi ro min-UTxO đã đo (2026-10-04, chưa vá trong mã):** lovelace của kho bị ép **bằng** ở `Release`,
+  `Collect`, `Deposit`, `StakeRewardIn` (`release.ak` ▸ `value_ok`, `collect.ak` ▸ `value_ok`,
+  `stake_reward.ak` ▸ `value_ok`); chỉ `MigrateIn` cho lovelace tăng ngoài sổ (`migrate.ak` ▸ `value_ok`).
+  `reserved_min_ada` chốt một lần ở seed và không nằm trong datum. Trong khi đó datum phình: mỗi
+  `Release` thêm một id vào `consumed_proposals` (+34 B ⇒ min-UTxO +146.540 lovelace ở
+  `coinsPerUtxoByte = 4310`), và mỗi dòng sổ mới thêm khoảng 97 B. Đo bằng CML trên output kho thật:
+  seed sổ rỗng 273 B ⇒ 1.866.230 lovelace; 20 dòng, 0 id ⇒ 6.348.630 lovelace.
+  Hệ quả:
+  - Kho gieo với `reserved_min_ada` sát min-UTxO thì `Release` một phần bị ledger từ chối, và khi ADA ∉
+    `accepted_assets` không còn nhánh nào nạp ADA vào được, trừ `MigrateIn` (chỉ mở khi LAMP trong kho
+    dưới sàn, G-FLOOR-1). Lối thoát duy nhất còn lại là một `Release` rút sạch trọn một dòng sổ.
+  - `consumed_proposals` không trần ⇒ sau khoảng 340–430 lượt `Release` (tuỳ số dòng sổ), output kho vượt
+    trần kích thước giao dịch và mọi nhánh tiêu kho dừng hẳn.
+  Ràng buộc tạm đang có hiệu lực: **gieo kho với `reserved_min_ada` ≥ min-UTxO của datum ở trạng thái đầy**
+  (đủ `max_ledger_lines` dòng, đủ danh mục, cộng số id dự kiến), không dùng mặc định 2 ADA. Hướng vá trong
+  mã (cho v1.x, đổi script hash): ép trần độ dài `consumed_proposals` và độ dài `proposal_id`; cho lovelace
+  kho tăng ngoài sổ ở mọi nhánh, hoặc đưa `reserved_min_ada` vào datum dưới dạng chỉ tăng.
+- **Trần (lập luận gốc — đo thực TRƯỚC M2):** vì giải mã datum là O(K·M) cứng, K·M không được vượt mức làm
   datum quá [max tx size] / [datum ExUnit budget]. Đặt **trần `K·M ≤ KM_max`** (đo bằng `aiken check`
   ExUnit thật + tx-build Preview), và **trần `N ≤ N_max`** mỗi batch (đã nêu §4.3). Nếu danh mục lớn tới
   mức K·M chạm trần → **shard-by-asset** (T4, §1): tách asset thành nhiều custody → mỗi shard sổ nhỏ hơn,
@@ -345,6 +323,14 @@ asset còn lại. Kiểm Δ chỉ trên `A_Δ` giữ chi phí tỉ lệ **kích 
 2. `Collect` validator chạy khi spend custody UTxO cũ, kiểm:
 
 ### 4.2 Kiểm tra (validator)
+
+> **Số hiệu C-COL-* ở mục này là số hiệu RIÊNG của tài liệu, KHÔNG trùng chú thích đầu `custody.ak`** (ở mã:
+> C-COL-2 = params instance bảo toàn, C-COL-4 = đẳng thức value — ở đây ngược lại). Đối chiếu theo NỘI DUNG,
+> không theo số. Mã còn ép các chốt mục này chưa liệt kê: `C-COL-CAT` (`item.category` ∈ `datum.buckets`,
+> `Treasury/CONTRACT.md` v1.2 §14) · `C-BUCKETS-KEEP` (`out.buckets == in.buckets`) · `C-COL-ADDR` (địa chỉ
+> kho giữ nguyên, kể cả stake credential) · `C-COL-REFSCRIPT` (không đính reference script) · `C-COL-LINES`
+> (trần số dòng sổ, §3). Danh sách đầy đủ và đúng số hiệu: khối chú thích đầu `custody.ak`.
+
 ```
 C-COL-1  Singleton custody theo SCRIPT HASH:
          count_inputs_at_script(tx.inputs, own_hash) == 1
@@ -352,7 +338,7 @@ C-COL-1  Singleton custody theo SCRIPT HASH:
          (util.count_inputs_at_script / count_outputs_at_script — chống N× qua stake cred, audit C1/C2)
 
 C-COL-2  Bảo-toàn-value PER-ASSET — ĐẲNG THỨC MỌI ASSET (vá lần 2 F9 — khớp MATH §2.3 `Δ_I(a) == cut(a)`):
-         Một đẳng thức Value tuyệt đối (code `collect.value_ok` L177):
+         Một đẳng thức Value tuyệt đối (`collect.ak` ▸ `value_ok`; ở mã là chốt C-COL-4):
              custody_out.value == merge(custody_in.value, cut_value(items, cut_bps))
          ⟺ ∀ asset a:  custody_out.value(a) == custody_in.value(a) + Σ_{item.asset=a} cut(item)
          (asset có item tăng ĐÚNG Σcut; asset KHÔNG item giữ nguyên → chống lẫn/drain — cùng một đẳng thức).
@@ -361,10 +347,13 @@ C-COL-2  Bảo-toàn-value PER-ASSET — ĐẲNG THỨC MỌI ASSET (vá lần 2
          `amount`). Phần residual = amount − cut do CALLER định tuyến ra provider/node trong cùng tx, NẰM
          NGOÀI bất biến custody. Dùng `cut`, KHÔNG dùng `amount`.
          **F9 — code dùng `==` cho MỌI asset KỂ CẢ ADA** (chặt hơn bản TECH cũ cho ADA `≥`). Đẳng thức loại
-         "tip" (nộp dư asset thu) vốn làm custody.value > Σ Δsổ ⇒ vỡ bất biến sổ↔value (§3). **min-ADA của
-         UTxO custody mới KHÔNG phá đẳng thức:** nó được hạch toán qua bucket ADA `reserved_min_ada` trong
-         SỔ (seed_value_ok), nên `value(ADA) == Σ sổ_ADA + reserved` vẫn là đẳng thức — caller trả min-ADA
-         vào reserved, KHÔNG để value vượt sổ. (Đồng bộ MATH §2.3 — cả hai về `==`.)
+         "tip" (nộp dư asset thu) vốn làm custody.value > Σ Δsổ ⇒ vỡ bất biến sổ↔value (§3). **min-ADA KHÔNG
+         ghi sổ:** nó là `reserved_min_ada`, chốt một lần ở `custody_seed` (redeemer `SeedGenesis`;
+         `collect.ak` ▸ `seed_value_ok` ép `value == sổ ⊕ reserved_min_ada ⊕ NFT`). `reserved_min_ada` KHÔNG
+         phải trường datum. Vì `value_ok` của Collect/Release/Deposit là đẳng thức, phần ADA ngoài sổ không
+         đổi qua các nhánh đó; ADA nạp thêm muốn vào sổ phải đi qua một item ADA. Ngoại lệ: `MigrateIn` cho
+         lovelace TĂNG (`migrate.ak` ▸ `value_ok`, `>=`), phần tăng đó cũng nằm ngoài sổ. (Đồng bộ MATH §2.3 —
+         cả hai về `==`.)
 
 C-COL-3  Asset hợp lệ: mọi item.(policy,name) ∈ datum.accepted_assets.
 
@@ -401,21 +390,21 @@ C-COL-6  (đích v1.x — F8: CHƯA áp v1) receipt_root_out = update(receipt_ro
          khi receipt thực thi (chống bịa C1). Xem cảnh báo F8 §6.
 
 C-COL-7  Epoch NEO CHAIN GỌN 1 EPOCH (C-EPOCH — hardening v1 LỖ #4; vá lần 2 LỖ #F4 dùng get_epoch_bounded):
-           cur := get_epoch_bounded(tx, ms_per_epoch)
+           cur := get_epoch_bounded(tx, ms_per_epoch, window_origin_ms)
            epoch_out == cur  ∧  cur >= epoch_in
-           `get_epoch_bounded` (vá lần 2, `util.ak` L105-114) ép validity_range **hữu hạn CẢ HAI BIÊN** +
-             lower & upper **cùng một epoch** (`lo_ms/ms_per_epoch == hi_ms/ms_per_epoch`). `get_epoch` cũ
+           `get_epoch_bounded` (vá lần 2, `util.ak` ▸ `get_epoch_bounded`) ép validity_range **hữu hạn CẢ HAI
+             BIÊN** + lower & upper **cùng một cửa sổ**: cửa sổ = `(t − window_origin_ms) / ms_per_epoch`, và
+             `(lo_ms − window_origin_ms)/ms_per_epoch == (hi_ms − window_origin_ms)/ms_per_epoch`. `get_epoch` cũ
              chỉ đọc lower_bound → kẻ đặt lower ở epoch CŨ rồi submit muộn (range trải nhiều epoch) ⇒ epoch
              sổ TỤT HẬU thời gian thật (đóng băng epoch field). Ép upper hữu hạn + cùng epoch ⇒ tx chỉ hợp
              lệ TRONG đúng epoch đó ⇒ `cur` == epoch submit THẬT → field `epoch` là AUDIT THẬT, không bịa
-             được mốc lẫn không đóng băng. (Áp y hệt Release C-REL-11, MigrateIn.) KHÔNG mint LAMP/accepted (sửa audit finding 4):
-           ràng buộc PER-ASSET, KHÔNG nới is_zero(tx.mint) toàn cục:
-             ∀ (p,n) ∈ accepted_assets ∪ {(lamp_policy, lamp_name)}:  tx.mint.quantity_of(p,n) == 0
-           ⇒ LAMP/token kho TUYỆT ĐỐI mint==0 trong MỌI nhánh collect (giữ BIV-1, MATH §2.2).
-           Mint NFT beacon của generator (policy KHÁC, không thuộc accepted_assets) được phép trong
-           cùng tx — nhưng KHÔNG có cửa hậu nới "tx generator có mint riêng thì OK" (cụm đó đã xóa,
-           vì không định nghĩa được "riêng" → kẻ tấn công gói mint LAMP vào tx collect sẽ lọt).
-           (Áp y hệt cho MigrateIn §9.)
+             được mốc lẫn không đóng băng. (Áp y hệt Release C-REL-11, MigrateIn C-MIG-4.)
+
+C-COL-7b KHÔNG mint/burn — Collect cấm MỌI lệnh mint/burn, mọi policy: `assets.is_zero(tx.mint)`
+           (`custody.ak` ▸ nhánh `Collect`, chốt C-MINT-0; ca âm `collect_test.ak` ▸ `collect_mint_rejected`).
+           Generator đúc beacon của mình ở tx RIÊNG, không gói chung tx Collect. `Release`, `StakeRewardIn`,
+           `Deposit` cũng cấm mint y hệt (C-REL-10 · C-STK-0 · C-DEP-MINT). `MigrateIn` thì NGƯỢC lại: bắt
+           buộc tx đúc ĐÚNG cặp `(lamp_policy, token_name)` với Δ > 0 và không gì khác (C-MIG-6, §9).
 
 C-COL-8  Custody address ≠ mọi ví nguồn trong tx (CONTRACT §6): output custody phải ở SCRIPT
          address (payment_credential = Script(own_hash)), không trùng ví caller — nếu trùng, bất biến
@@ -438,7 +427,7 @@ C-COL-11 Collect PHẢI sinh cut > 0 (vá lần 2 LỖ #F3):  !is_zero(cut_value
            Collect là **permissionless** (bất kỳ ai cũng build được settlement tx, không cần authority/
            proposal) → một no-op Collect (items rỗng / mọi cut==0) RESPEND custody MIỄN PHÍ mỗi block,
            tạo **contention** chặn settlement thật (custody là điểm tuần tự — T4). Ép Σcut per-asset > 0
-           buộc mỗi Collect có ích. Code: `custody.ak` L105.
+           buộc mỗi Collect có ích. Code: `custody.ak` ▸ nhánh `Collect`, chốt C-COL-11.
            > **Phạm vi vá (ghi rõ — KHÔNG over-claim):** C-COL-11 GIẢM griefing **zero-cost** (kẻ tấn công
            > nay phải đóng cut THẬT mỗi tx → tốn value, không còn miễn phí). NHƯNG **contention gốc 1-UTxO
            > VẪN còn**: kẻ chịu chi cut nhỏ vẫn chiếm lượt spend custody. Đóng hẳn cần **shard custody T4**
@@ -450,7 +439,7 @@ C-COL-11 Collect PHẢI sinh cut > 0 (vá lần 2 LỖ #F3):  !is_zero(cut_value
 > **Làm rõ "cut vào custody, residual ra provider" (quyết định tối ưu):** CONTRACT §3.1 nói residual
 > "định tuyến theo app". Để **một** settlement tx vừa thu cut vừa trả provider, mô hình chuẩn là:
 > nguồn (phí user) → (a) `cut` vào custody, (b) `residual` ra ví provider/node, cùng tx. Validator
-> custody chỉ quan tâm (a): `custody nhận ≥ Σ cut`. Residual nằm ngoài tầm custody (đúng tinh thần
+> custody chỉ quan tâm (a): custody nhận ĐÚNG `Σ cut` (đẳng thức, C-COL-2). Residual nằm ngoài tầm custody (đúng tinh thần
 > "định giá/định tuyến ở app"). Nếu một instance muốn **toàn bộ** `amount` vào treasury (vd quỹ thuần
 > LAMP), đặt `cut_bps = 10000` (ở datum) → cut = amount, residual = 0 (toàn bộ amount vào custody+sổ).
 
@@ -473,7 +462,7 @@ Off-chain gom **N micro-fee** (mỗi giao dịch user) thành **một** `Collect
 - **ADA biểu diễn** `policy=#"", name=#""` (lovelace) — nhất quán với
   [`assets.from_lovelace`](https://aiken-lang.github.io/stdlib/cardano/assets.html). ADA reserve cho
   free-ops (PersonDID, CONTRACT §6) là một `bucket_id` riêng giữ lovelace.
-- **Bảo-toàn-value áp cho TỪNG asset độc lập** (C-COL-2, C-REL-2): không asset nào được drain bù asset
+- **Bảo-toàn-value áp cho TỪNG asset độc lập** (C-COL-2, C-REL-5): không asset nào được drain bù asset
   khác — đúng bài học M1 (LAMP delta đúng nhưng rút ADA → reject).
 - Token doanh nghiệp (đa thuê bao): instance khác param `lamp_*` theo token của họ; cùng khung
   validator. LAMP-specific chỉ ở chỗ bất biến fixed-supply gọi tên LAMP cho instance MagicLamp.
@@ -483,9 +472,10 @@ Off-chain gom **N micro-fee** (mỗi giao dịch user) thành **một** `Collect
 ## 6. Receipt accumulator — audit + tín dụng VP/uy tín (CONTRACT §3.4)
 
 > ⛔ **F8 (vá lần 2 — reconcile spec↔code): `receipt_root` CHƯA THỰC THI.** Spec này (§3 datum + C-COL-6 +
-> C-REL-9 cũ) HỨA một `receipt_root` accumulator, NHƯNG **CODE `CustodyDatum` (types.ak L30-43) KHÔNG có
-> field `receipt_root`** — chỉ có `instance_id/accepted_assets/ledger/cut_bps/governance_ref/epoch/
-> consumed_proposals`. `app_id` chỉ tồn tại trong `CollectItem` (redeemer — `types.ak` L47), **không neo
+> C-REL-9 cũ) HỨA một `receipt_root` accumulator, NHƯNG **CODE `CustodyDatum` (`types.ak` ▸ `CustodyDatum`)
+> KHÔNG có field `receipt_root`** — chỉ có `instance_id/accepted_assets/ledger/cut_bps/governance_ref/epoch/
+> consumed_proposals/buckets`. `app_id` chỉ tồn tại trong `CollectItem` (redeemer — `types.ak` ▸
+> `CollectItem`), **không neo
 > on-chain vào datum/accumulator** → sau khi tx confirm, `app_id` là dữ liệu **vô danh** (không UTxO/hash
 > nào chứng thực ai đóng góp). **Hệ quả an toàn (chống bịa C1):** VP/uy tín **KHÔNG ĐƯỢC tin `app_id` từ
 > Collect** để cấp tín dụng C1 (MAGIC tiêu thụ) cho tới khi receipt được THỰC THI thật — nếu tin, bất kỳ
@@ -576,7 +566,7 @@ C-REL-1  Reference input tồn tại tại proposal_ref, mang đúng Proposal NF
          > thể phơi N datum khác `proposal_id` (cùng `spend_spec_hash`) ở N reference input giả, mỗi cái
          > "tươi" với `consumed_proposals` ⇒ replay-marker C-REL-9 **không chặn được** (mỗi datum một id
          > chưa-chi). Khóa marker vào DANH TÍNH MẬT MÃ của NFT (asset name, do Governance one-shot ép) =
-         > một NFT ↔ đúng MỘT proposal_id ↔ chi đúng một lần. Code: `release.ak read_proposal` L62-65.
+         > một NFT ↔ đúng MỘT proposal_id ↔ chi đúng một lần. Code: `release.ak` ▸ `read_proposal`.
          > (4 trục: first-principles — replay-guard phải neo vào danh tính bất biến, không field tự-khai;
          >  bền vững — đóng đường lách C-REL-9; dài hạn — open SDK an toàn với proposal one-shot.)
 
@@ -588,8 +578,8 @@ C-REL-1  Reference input tồn tại tại proposal_ref, mang đúng Proposal NF
          > ⛔ **YÊU CẦU INTERFACE MỚI lên Governance (thay cho gap cũ):** khi tạo proposal, Governance PHẢI
          > tính `spend_spec_hash` với ĐÚNG `instance_id` đích (commit target instance) — nếu Governance tính
          > sai instance, proposal sẽ KHÔNG bao giờ chi được ở instance nào (hash không khớp). Đây là ràng
-         > buộc build-side của Governance, KHÔNG còn là lỗ hổng on-chain của Treasury. (Xem §11 Phụ thuộc +
-         > known-gap.) Code: `release.ak` ▸ `spend_spec_hash`.
+         > buộc build-side của Governance, KHÔNG còn là lỗ hổng on-chain của Treasury. (Xem mục Phụ thuộc +
+         > Câu hỏi còn treo.) Code: `release.ak` ▸ `spend_spec_hash`.
          > **Thay ở P7 (2026-09-27):** công thức trên còn hở khi hai kho khác hạt giống TRÙNG `instance_id`
          > (một tx tiêu cả hai, chi 2×). Tiền ảnh nay gắn thêm `seed_policy`, tag `0x03` — xem C-REL-3 dưới.
          > **CHỐT INTERFACE với Governance (LỖ #1A hệ quả):** Proposal NFT phải là **MỘT policy chung
@@ -597,6 +587,10 @@ C-REL-1  Reference input tồn tại tại proposal_ref, mang đúng Proposal NF
          > custody param `proposal_policy` (một policy id đơn) chỉ đúng khi policy **ổn định per-DAO**;
          > nếu mỗi proposal mint policy riêng (one-shot theo seed) thì `proposal_policy` không cố định
          > được → C-REL-1(a) vô nghĩa. Ghi mâu thuẫn này vào "Phụ thuộc Governance".
+         > **Trạng thái mã (đổi 2026-10-03, `Treasury/GovernancePointer.md` v0.2):** custody KHÔNG còn tham
+         > số `proposal_policy`; khe #1 là `pointer_policy`, và policy proposal là `g` đọc từ
+         > `PointerDatum.governance_hash` (C-REL-PTR; `release.read_proposal(…, g, g)`). Yêu cầu "một policy
+         > chung" nay áp cho `g`, không cho một tham số nướng vào hash kho.
 
 C-REL-2  Proposal đã thông qua — CHỐT MODEL A (sửa audit finding 5): Execute là tx RIÊNG do
            Governance làm TRƯỚC; Release đọc proposal qua reference input khi status ĐÃ == Executed.
@@ -627,7 +621,9 @@ C-REL-3  Khớp đích chi (HARD BLOCKER — sửa audit finding 7; vá lần 2 
            (`ProposalDatum` field 7/8/9, và cả ba được chiếu ra `ProposalResult` 5 field mà Treasury
            đọc). Vế Treasury cũng đã ép thật: `validators/custody.ak:170` so
            `release.spend_spec_hash(instance_id, draws) == proposal.spend_spec_hash`, `:173` ép
-           time-lock. `aiken check` ở `Treasury/onchain`: **137 pass / 0 fail, exit 0**.
+           time-lock. `aiken check` ở `Treasury/onchain`: **137 pass / 0 fail, exit 0**. (Số dòng, chữ ký
+           và số test là tại lúc đo; nay chữ ký có thêm `seed_policy` — `release.ak` ▸ `spend_spec_hash`,
+           điểm gọi ở `custody.ak` ▸ nhánh `Release`, chốt C-REL-3 và C-REL-8.)
            Giữ đoạn dưới để hiểu vì sao ràng buộc này tồn tại — KHÔNG còn là điều kiện chặn DoD.
            Thiếu spend_spec_hash ⇒ Release = KÉT KHÔNG KHÓA ĐÍCH
            (cho chi sai địa chỉ/sai số). Trong giai đoạn beacon-giả-lập (EXEC §6.1 M3): KHÔNG được merge
@@ -659,7 +655,7 @@ C-REL-7  Người nhận đúng — đối chiếu TỔNG per (to,asset), chốn
            > (value rời custody == Σ draw, đẳng thức) khóa CẢ HAI đầu (value vào nhận = value rời kho).
 
 C-REL-8  Time-lock (CONTRACT §4): epoch hiện tại ≥ proposal.execute_after_epoch (multi-sig council
-           + time-lock). Dùng CÙNG `cur = get_epoch_bounded(tx, ms_per_epoch)` của C-REL-11 (vá lần 2
+           + time-lock). Dùng CÙNG `cur = get_epoch_bounded(tx, ms_per_epoch, window_origin_ms)` của C-REL-11 (vá lần 2
            LỖ #F4 — gọn 1 epoch, chống đóng băng). (độ trễ time-lock tham số mở — DAO định.)
 
 C-RECEIPT-OUT (đích v1.x — F8: CHƯA áp v1) receipt_root cập nhật cho khoản chi (đối xứng C-COL-6) — audit
@@ -669,11 +665,11 @@ C-RECEIPT-OUT (đích v1.x — F8: CHƯA áp v1) receipt_root cập nhật cho k
 C-REL-10 KHÔNG mint (assets.is_zero(tx.mint)) — release không tạo/đốt token. LAMP fixed-supply.
 
 C-REL-11 Epoch NEO CHAIN GỌN 1 EPOCH (C-EPOCH — hardening v1 LỖ #4; vá lần 2 LỖ #F4, đối xứng C-COL-7):
-           cur := get_epoch_bounded(tx, ms_per_epoch)
+           cur := get_epoch_bounded(tx, ms_per_epoch, window_origin_ms)
            epoch_out == cur  ∧  cur >= epoch_in
-           `get_epoch_bounded` ép validity_range hữu hạn 2 biên + gọn 1 epoch (`util.ak` L105-114) →
+           `get_epoch_bounded` ép validity_range hữu hạn 2 biên + gọn 1 cửa sổ (`util.ak` ▸ `get_epoch_bounded`) →
            field `epoch` là audit thật, chống đóng băng (kẻ đặt lower epoch cũ submit muộn). Code: `custody.ak`
-           L92/L145 (cur dùng chung cho cả time-lock C-REL-8 + neo epoch).
+           ▸ chốt C-EPOCH ở nhánh `Collect` và nhánh `Release` (ở Release, `cur` dùng chung cho time-lock C-REL-8).
 
 C-REL-12 NFT authenticity hiện diện (C-NFT-1 — hardening v1 LỖ #5, đối xứng C-COL-9):
            quantity_of(custody_in.value,  seed_policy, datum.instance_id) == 1
@@ -684,9 +680,15 @@ C-REL-12 NFT authenticity hiện diện (C-NFT-1 — hardening v1 LỖ #5, đố
 C-REL-13 Draws KHÔNG rỗng (vá lần 2 LỖ #F2):  draws != []
            Một Release PHẢI chi thật. Proposal rỗng (draws==[]) chỉ NHỒI `consumed_proposals` (đánh dấu
            proposal_id đã chi, phình datum O(N) → đẩy K·M chạm trần ExUnit) mà KHÔNG rút value nào ⇒
-           respend marker miễn phí. Ép `draws != []` chặn no-op release. Code: `custody.ak` L151.
+           respend marker miễn phí. Ép `draws != []` chặn no-op release. Code: `custody.ak` ▸ nhánh `Release`,
+           chốt C-REL-13.
            (4 trục: tối ưu — không nhồi rác vào datum nóng; bền vững — chặn phình datum né trần.)
 ```
+
+> Mã còn ép ở nhánh `Release` các chốt mục này chưa liệt kê: params instance bảo toàn (kể cả `cut_bps`,
+> `accepted_assets`) · `C-BUCKETS-KEEP` · `C-REL-ADDR` (địa chỉ kho giữ nguyên, kể cả stake credential) ·
+> `C-REL-REFSCRIPT` (không đính reference script) · `C-REL-LINES` (trần số dòng sổ, §3). Danh sách đầy đủ:
+> khối chú thích đầu `custody.ak`.
 
 ### 7.2 Vì sao reference input, KHÔNG spend Proposal
 - Spend Proposal trong tx release sẽ **tiêu** UTxO proposal → chỉ một release/proposal, và phá vòng
@@ -713,12 +715,14 @@ C-REL-13 Draws KHÔNG rỗng (vá lần 2 LỖ #F2):  draws != []
 
 > **Hardening v1 — CHƯA triển khai (LỖ #6).** v1 validator để `Rebalance _ -> fail` (chưa mở nhánh
 > này). Khai báo `Constr Rebalance` GIỮ trong `CustodyRedeemer` để **index constructor ổn định** (đừng
-> đổi thứ tự variant — phá decode Plutus Data, xem CLAUDE.md invariant). Đặc tả C-RBL-* dưới là **đích
-> v1.x**; khi mở phải bổ sung C-NFT-1 (seed NFT) + C-EPOCH + C-POS/C-SORT/C-PRUNE như Collect/Release.
+> đổi thứ tự variant — phá decode Plutus Data, xem `types.ak` ▸ `CustodyRedeemer`). Đặc tả C-RBL-* dưới là
+> **đích v1.x**; khi mở phải bổ sung C-NFT-1 (seed NFT) + C-EPOCH + C-POS/C-SORT/C-PRUNE như Collect/Release.
+> Trạng thái mã: `custody.ak` ▸ nhánh mặc định `_ -> fail` (ca `collect_test.ak` ▸
+> `collect_rebalance_unimplemented`); redeemer hiện là `Rebalance { moves }`, KHÔNG mang `proposal_ref`.
 
 DAO muốn chuyển từ ops→community: value custody **KHÔNG đổi**, chỉ sổ:
 ```
-C-RBL-1  Như C-REL-1/2: proposal_ref Tallied chứng thực việc rebalance.
+C-RBL-1  Như C-REL-1/2: proposal_ref `Executed` chứng thực việc rebalance (Model A, cùng C-REL-2).
 C-RBL-2  ∀ asset a:  custody_out.value(a) == custody_in.value(a)   (value bảo toàn TUYỆT ĐỐI).
 C-RBL-3  Sổ: ledger_out = move(ledger_in, moves); Σ ledger không đổi; mỗi from bucket đủ số dư.
 C-RBL-4  Singleton custody theo script hash; KHÔNG mint.
@@ -728,12 +732,28 @@ tấn công của nhánh chi.
 
 ---
 
-## 9. Migrate — nạp treasury payment hiện có của generators
+## 9. `MigrateIn` — nạp Δ LAMP từ Reserve (thiết kế cũ: di trú treasury payment của generators)
 
-> **Hardening v1 — `MigrateIn` CHƯA triển khai (LỖ #6).** v1 validator để `MigrateIn _ -> fail`. Khai
-> báo `Constr MigrateIn` GIỮ trong `CustodyRedeemer` để index constructor ổn định. C-MIG-* dưới là đích
-> v1.x; khi mở phải bổ sung C-NFT-1 (seed NFT trên custody_out) + C-EPOCH + C-POS/C-SORT. v1 nạp
-> generators bằng **adapter off-chain (b-ii)** đi qua nhánh `Collect` đã có (không cần MigrateIn).
+> **Trạng thái mã: `MigrateIn` ĐÃ hiện thực, nhưng mang nghĩa KHÁC tiêu đề mục này.** `custody.ak` ▸ nhánh
+> `MigrateIn` (logic thuần ở `migrate.ak`) nạp Δ LAMP **vừa đúc từ Reserve** vào kho — vào value VÀ vào
+> sổ trong cùng một tx. Nó KHÔNG di trú treasury cũ của generators. Ràng buộc (số hiệu theo chú thích đầu
+> `custody.ak`, đó là nguồn):
+> - C-MIG-6 — tx đúc ĐÚNG cặp `(lamp_policy, token_name)`, Δ > 0, không policy/tên nào khác (`migrate.mint_ok`).
+> - C-MIG-1 · 2 · 3 · 4 · 5 — singleton theo script hash · NFT seed ở in và out · params instance,
+>   `buckets`, `consumed_proposals` bảo toàn · neo epoch · output ở script.
+> - C-MIG-7 — phần phi-lovelace tăng ĐÚNG Δ, mọi asset khác nguyên; lovelace chỉ được TĂNG
+>   (`migrate.value_ok`), phần tăng nằm ngoài sổ (§4.2 C-COL-2, ghi chú min-ADA).
+> - C-MIG-8 — `source == migrate.reserve_source_tag`; sổ tăng ĐÚNG Δ tại dòng
+>   `(migrate.reserve_inflow_bucket_id, LAMP)`. Bucket đích là HẰNG, người gọi không chọn.
+> - C-MIG-9 — `(lamp_policy, token_name)` ∈ `accepted_assets`.
+> - C-MIG-ADDR · C-MIG-REFSCRIPT · C-MIG-LINES — như Collect.
+>
+> Nhánh này permissionless: không chữ ký council, không one-shot guard. Nó không tự kiểm ai được đúc —
+> quyền đúc nằm ở policy LAMP (Genesis `lamp_mint`, đường `ReserveDraw`; chú thích đầu `migrate.ak`).
+> Ca kiểm: `Treasury/onchain/validators/migrate_test.ak`.
+>
+> Phần (a) dưới là **thiết kế cũ**, giữ để truy vết. Mã ràng buộc của nó đổi thành `C-MIGOLD-*` để không
+> trùng nghĩa với `C-MIG-*` trong mã.
 
 Generators MAGIC (Vacuum/Instant/Schedule…) TỪNG trả LAMP về một `treasury_addr` đơn giản (bất biến
 `treasury_receives_lamp >= lamp_paid`, `Legacy/VacuumGen/onchain/validators/vault.ak` — kho MAGIC nay
@@ -743,27 +763,32 @@ công khai, nhưng module ĐÃ KHAI TỬ và dời vào `Legacy/`; đường cũ
 Hai con đường tích hợp:
 
 **(a) Migrate value cũ (một lần) — `MigrateIn`:** (param thêm `old_treasury_hash: ByteArray` cho instance)
+
+> **THIẾT KẾ CŨ — không hiện thực.** Mã hiện hành: `custody.ak` ▸ nhánh `MigrateIn` (khối trạng thái đầu
+> mục). Custody không có tham số `old_treasury_hash` (6 tham số, §2); không có bucket "unallocated"; không có
+> chữ ký council; và mã BẮT BUỘC đúc LAMP ở nhánh này (C-MIG-6), ngược với C-MIGOLD-5.
+
 ```
-C-MIG-1  Spend UTxO treasury cũ tại CHÍNH old_treasury_hash → tạo 1 custody output instance mới.
+C-MIGOLD-1  Spend UTxO treasury cũ tại CHÍNH old_treasury_hash → tạo 1 custody output instance mới.
          Singleton ĐÍCH: count_outputs_at_script(tx.outputs, own_hash) == 1.
 
-C-MIG-2  Khóa NGUỒN theo script hash (sửa audit finding 6 — chống trộn UTxO lạ vào Σ source):
+C-MIGOLD-2  Khóa NGUỒN theo script hash (sửa audit finding 6 — chống trộn UTxO lạ vào Σ source):
            let k = count_inputs_at_script(tx.inputs, old_treasury_hash)   // số source thật tại old hash
            k == source_count_declared (redeemer khai báo, hoặc ép k == số input KHÔNG ở own_hash)
            ∀ asset a:  custody_out.value(a) == Σ_{i: is_at_script(i, old_treasury_hash)} i.value(a)
          ⇒ Σ source CHỈ gộp UTxO tại old_treasury_hash; input lạ (script/ví khác) KHÔNG được chen vào
            Σ rồi rút qua custody_out sai. (Trước đây Σ source_in mở → lỗ hổng nạp giả/double-satisfaction.)
 
-C-MIG-3  ledger khởi tạo: toàn bộ value vào bucket "unallocated" (bucket_id dành riêng) — DAO phân
+C-MIGOLD-3  ledger khởi tạo: toàn bộ value vào bucket "unallocated" (bucket_id dành riêng) — DAO phân
          bổ sau bằng Rebalance. Bất biến sổ↔value (§3) giữ.
 
-C-MIG-4  Authorize — CHỐT MỘT cơ chế on-chain (sửa audit finding 6, bỏ "HOẶC" mơ hồ):
+C-MIGOLD-4  Authorize — CHỐT MỘT cơ chế on-chain (sửa audit finding 6, bỏ "HOẶC" mơ hồ):
            multisig council M-of-N:  ∀ key ∈ council_keys cần thiết: list.has(tx.extra_signatories, key)
            (hoặc đếm ≥ M chữ ký council), KÈM one-shot guard: MigrateIn chạy ĐÚNG MỘT LẦN/instance
            (vd tiêu một bootstrap-NFT one-shot, mẫu beacon_nft.ak). Vì MigrateIn là bootstrap một lần,
            ưu tiên khóa CHẶT (multisig + one-shot), KHÔNG để cờ proposal mơ hồ.
 
-C-MIG-5  KHÔNG mint LAMP/accepted (per-asset, như C-COL-7 — finding 4): ∀ (p,n) ∈ accepted_assets ∪
+C-MIGOLD-5  KHÔNG mint LAMP/accepted (per-asset, như bản cũ của C-COL-7 — finding 4): ∀ (p,n) ∈ accepted_assets ∪
          {LAMP}: tx.mint.quantity_of(p,n) == 0. (Bootstrap-NFT one-shot policy KHÁC được phép.)
 ```
 
@@ -780,7 +805,18 @@ C-MIG-5  KHÔNG mint LAMP/accepted (per-asset, như C-COL-7 — finding 4): ∀ 
 
 **Khuyến nghị (4 trục):** v1 chọn **(b-ii) adapter off-chain** — không sửa generators đang live
 Preview (giảm rủi ro hồi quy), value chảy vào custody qua batch `Collect`, tận dụng nguyên bất biến
-generators sẵn có. Migrate value cũ (a) chỉ chạy một lần lúc bootstrap instance.
+generators sẵn có. Migrate value cũ (a) chỉ chạy một lần lúc bootstrap instance — (a) là thiết kế cũ, không
+hiện thực; tên `MigrateIn` trong mã nay dùng cho đường nạp Δ từ Reserve (khối trạng thái đầu mục).
+
+### 9.1 Hai nhánh nạp khác — `StakeRewardIn`, `Deposit`
+
+Cả hai đã hiện thực (`custody.ak` ▸ nhánh `StakeRewardIn`, chốt C-STK-*; nhánh `Deposit`, chốt C-DEP-*).
+Tài liệu này KHÔNG đặc tả lại chúng:
+- `Deposit` (nạp 100% vào kho, permissionless, mỗi item vào sổ đủ `amount`, `amount > 0`):
+  `Treasury/CONTRACT.md` v1.2 §15.2. Ca kiểm: `deposit_test.ak`.
+- `StakeRewardIn` (nạp phần thưởng uỷ quyền của chính kho vào value và vào sổ, Δ khớp đúng khoản rút
+  reward-account của kho): `Treasury/CONTRACT.md` v1.2 chưa có mục riêng (chỉ nhắc ở §14, `C-BUCKETS-KEEP`);
+  nguồn hiện là khối chú thích C-STK-* đầu `custody.ak` và `stake_reward.ak`. Ca kiểm: `stake_reward_test.ak`.
 
 ---
 
@@ -801,7 +837,8 @@ Mọi nhánh ép **đúng 1 custody input + 1 custody output theo script hash** 
 > vẫn qua được check "là Script address". Vì vậy bootstrap PHẢI bảo đảm:
 >   • `governance_ref ≠ own_hash` (cổng release không trỏ về chính custody),
 >   • payment script hash của mọi caller được chấp nhận ≠ `own_hash` (caller không trùng custody),
->   • `old_treasury_hash` (MigrateIn) ≠ `own_hash`.
+>   • `old_treasury_hash` (MigrateIn) ≠ `own_hash` — chỉ áp cho thiết kế cũ C-MIGOLD (§9), không hiện thực;
+>     mã không có tham số này.
 > Đây là kiểm tra CẤU HÌNH instance (off-chain/bootstrap) — ghi vào **EXEC bootstrap checklist**.
 
 > **Hardening v1 — NFT authenticity custody + phá vòng phụ thuộc seed↔custody (LỖ #5).** Bên cạnh
@@ -814,7 +851,8 @@ Mọi nhánh ép **đúng 1 custody input + 1 custody output theo script hash** 
 >   custody = output **mang chính token vừa mint** (`quantity_of(out.value, own_policy, instance_id)==1`)
 >   và **ở Script address** (bất kỳ Script), KHÔNG cần biết hash custody trước. Custody side thì param
 >   `seed_policy` = policy id của `custody_seed` (tính được độc lập từ `genesis_ref`).
-> - `value_ok` của seed vẫn ép `value == ledger_value ⊕ reserved_min_ada` (base case bất biến nền).
+> - Seed vẫn ép `value == ledger_value ⊕ reserved_min_ada ⊕ NFT` (base case bất biến nền; `collect.ak` ▸
+>   `seed_value_ok`, chốt S-SEED-0).
 > - **Đổi param ⇒ đổi script hash ⇒ deploy lại.** Chưa deploy gì → không migrate.
 
 Nền tảng lý thuyết double-satisfaction:
@@ -825,64 +863,69 @@ Nền tảng lý thuyết double-satisfaction:
 
 ## 11. Bộ test bắt buộc (như Distribution — mock Transaction, chạy `aiken check`)
 
-| Test | Mục | Kỳ vọng |
+Tên ca là tên thật trong `Treasury/onchain/validators/*_test.ak` (tra bằng `test <tên>`). Bảng là danh mục
+**tính chất bắt buộc**, không phải danh sách đầy đủ — mỗi tệp test còn nhiều ca hơn. Ô ghi "—" là tính
+chất chưa thấy ca mang tên riêng (lỗ phủ, không phải ca đã xoá).
+
+| Ca (tên thật) | Mục | Kỳ vọng |
 |---|---|---|
 | `collect_happy` | thu 1 asset, cut đúng bucket, sổ khớp | pass |
-| `collect_batch_multi_asset` | lô N item LAMP+ADA+token | pass |
-| `collect_underpay` | custody nhận < Σ cut | **fail** (C-COL-2) |
-| `collect_drain_other_asset` | tăng LAMP nhưng rút ADA | **fail** (M1 per-asset) |
-| `collect_double_custody` | 2 custody input khác stake cred | **fail** (C1/C2) |
-| `collect_custody_eq_wallet` | custody == ví caller | **fail** (C-COL-8) |
-| `collect_ledger_mismatch` | sổ_out ≠ value_out | **fail** (§3 bất biến) |
-| `collect_tip_lamp` | nộp LAMP DƯ hơn Σ cut (custody.value(LAMP) > in + Σ cut) | **fail** (C-COL-2 `==` cho LAMP, finding 3) |
-| `collect_mint_lamp` | gói mint LAMP vào tx collect | **fail** (C-COL-7 per-asset, finding 4) |
-| `collect_ledger_sum_ne_cut` | Σ_b Δledger ≠ Σ cut (cộng dư/rớt oildrop) | **fail** (C-COL-5a, finding 2) |
-| `release_happy` | proposal Tallied + NFT đúng, rút đúng bucket | pass |
+| `collect_batch_multi_bucket` | lô 2 item khác bucket (một asset) | pass |
+| — | lô N item nhiều asset (LAMP+ADA+token) | pass |
+| `collect_value_tamper` | custody nhận < Σ cut | **fail** (C-COL-2) |
+| `collect_ada_drain` | tăng LAMP đúng cut nhưng rút ADA | **fail** (M1 per-asset) |
+| `collect_double_satisfaction` | 2 custody input khác stake cred | **fail** (C1/C2) |
+| `collect_script_addr_is_not_vk` | địa chỉ kho là Script, không phải ví (ca hồi quy, không phải ca âm) | pass (C-COL-8) |
+| `collect_ledger_line_dropped` | bỏ dòng sổ còn dư ở output | **fail** (§3 bất biến, C-PRUNE) |
+| `collect_phantom_ledger_line` | thêm dòng sổ khống không item nào nhắm tới (Σ Δsổ ≠ Σ cut) | **fail** (C-COL-5a) |
+| `collect_wrong_bucket` | cut ghi vào bucket khác `item.category` | **fail** (C-COL-4) |
+| — | nộp LAMP DƯ hơn Σ cut (custody.value(LAMP) > in + Σ cut) | **fail** (C-COL-2 `==`, finding 3) |
+| `collect_mint_rejected` | gói mint vào tx collect | **fail** (C-COL-7b, C-MINT-0) |
+| `release_happy` | proposal `Executed` + NFT đúng, rút đúng bucket | pass |
 | `release_no_proposal` | thiếu reference input proposal | **fail** (C-REL-1) |
 | `release_fake_nft` | proposal ref không có NFT đúng policy | **fail** (C-REL-1) |
-| `release_not_executed_status` | status=Open/Closed | **fail** (C-REL-2 chỉ Executed) |
+| `release_not_executed` | status ≠ `Executed` (ca dùng `Tallied`; `ProposalStatus` gồm Open/Tallied/Executed/Rejected) | **fail** (C-REL-2 Model A, finding 5) |
 | `release_overdraw_bucket` | rút > balance bucket | **fail** (C-REL-6) |
 | `release_drain_ada` | LAMP delta đúng, rút lén ADA | **fail** (C-REL-5) |
-| `release_wrong_recipient` | to ≠ proposal spend_spec | **fail** (C-REL-3) |
-| `release_not_executed` | status=Tallied (chưa Executed) | **fail** (C-REL-2 Model A, finding 5) |
-| `release_double_sat_recipient` | 2 draw cùng (to,asset), 1 output thỏa cả hai | **fail** (C-REL-7 tổng-khớp, finding 8) |
+| `release_spec_mismatch` | draws ≠ spend_spec đã duyệt | **fail** (C-REL-3) |
+| `release_double_sat` | 2 draw cùng (to,asset), output tới `to` không đủ tổng | **fail** (C-REL-7 tổng-khớp, finding 8) |
+| `release_recipient_missing` | không có output tới `to` | **fail** (C-REL-7) |
 | `release_before_timelock` | epoch < execute_after | **fail** (C-REL-8) |
 | `release_double_custody` | 2 custody UTxO | **fail** (C-REL-4) |
-| **`release_proposal_wrong_governance_addr`** | proposal NFT ở UTxO **script lạ** (≠ Script(governance_ref)) | **fail** (C-REL-1 #1A) |
-| **`release_cross_instance_same_gov`** | proposal của instance khác, CÙNG governance_ref | **fail** (đã ĐÓNG #1B — spend_spec_hash gồm instance_id, C-REL-3; hash khác instance ⇒ reject) |
+| `release_ptr_*` (nhóm ca trong `release_test.ak`) | con trỏ governance rỗng / thiếu / sai policy / sai script / lệch tham số | **fail** (C-REL-PTR) |
+| **`release_proposal_wrong_governance_addr`** | proposal NFT ở UTxO **script lạ** (≠ Script(g)) | **fail** (C-REL-1 #1A) |
+| **`release_wrong_instance_id`** | proposal tính cho instance khác, CÙNG governance_ref | **fail** (đã ĐÓNG #1B — C-REL-3) |
 | **`release_two_custody_same_instance_id_other_rejects`** | hai kho khác hạt giống, TRÙNG instance_id, một tx tiêu cả hai với một proposal | **fail** ở kho không được cam kết (C-REL-3-SEED, P7); đối chứng `…_owner_accepts` **pass** trên cùng tx |
-| **`release_nft_name_ne_proposal_id`** | NFT name ≠ proposal_id trong datum | **fail** (C-REL-1(c) F1) |
+| **`release_proposal_id_name_mismatch`** | NFT name ≠ proposal_id trong datum | **fail** (C-REL-1(c) F1) |
 | **`release_empty_draws`** | draws == [] (nhồi consumed_proposals, không chi) | **fail** (C-REL-13 F2) |
-| **`collect_zero_cut_noop`** | items rỗng / mọi cut==0 (no-op respend griefing) | **fail** (C-COL-11 F3) |
-| **`collect_epoch_range_spans_two`** | validity_range trải 2 epoch (đóng băng epoch) | **fail** (C-COL-7 get_epoch_bounded F4) |
-| **`release_epoch_range_spans_two`** | validity_range trải 2 epoch | **fail** (C-REL-11 get_epoch_bounded F4) |
+| **`collect_empty_items`** · **`collect_all_cut_zero`** | items rỗng / mọi cut==0 (no-op respend griefing) | **fail** (C-COL-11 F3) |
+| **`collect_epoch_range_multi_epoch`** | validity_range trải nhiều epoch (đóng băng epoch) | **fail** (C-COL-7 get_epoch_bounded F4) |
+| **`release_epoch_unbounded`** | validity_range không có biên trên | **fail** (C-REL-11 get_epoch_bounded F4) |
+| — | Release với validity_range trải 2 epoch (hai biên hữu hạn) | **fail** (C-REL-11) |
 | **`seed_mint_foreign_policy`** | tx seed mint thêm policy ngoài | **fail** (S-MINT-2 F5) |
 | **`release_custody_missing_seed_nft`** | custody_in/out thiếu seed NFT | **fail** (C-REL-12 / C-NFT-1 #5) |
 | **`release_prune_zero_line`** | rút cạn bucket → dòng==0 bị bỏ ở out | **pass** (C-REL-6 prune) |
 | **`release_epoch_not_anchored`** | epoch_out ≠ get_epoch_bounded(tx) | **fail** (C-REL-11 C-EPOCH) |
-| **`ledger_must_be_strict_sorted`** | sổ_out không strict-sorted theo (bucket,policy,name) | **fail** (C-SORT §3) |
+| **`collect_ledger_not_sorted`** · **`seed_ledger_unsorted`** | sổ không strict-sorted theo (bucket,policy,name) | **fail** (C-SORT §3) |
 | **`collect_missing_seed_nft`** | custody_in/out thiếu seed NFT | **fail** (C-COL-9 / C-NFT-1 #5) |
 | **`collect_epoch_not_anchored`** | epoch_out ≠ get_epoch_bounded(tx) | **fail** (C-COL-7 C-EPOCH) |
-| **`seed_cut_bps_out_of_range`** | seed datum có cut_bps < 0 hoặc > 10000 | **fail** (S-CUT-0 #2) |
-| **`seed_ledger_line_nonpositive`** | seed có dòng sổ amount ≤ 0 (âm hoặc 0) | **fail** (S-LEDGER-1 #2/E) |
+| **`seed_cut_bps_negative`** · **`seed_cut_bps_over_10000`** | seed datum có cut_bps < 0 hoặc > 10000 | **fail** (S-CUT-0 #2) |
+| **`seed_ledger_line_zero`** · **`seed_ledger_line_negative_ada`** | seed có dòng sổ amount ≤ 0 (0 hoặc âm) | **fail** (S-LEDGER-1 #2/E) |
 | **`seed_instance_id_empty`** | seed instance_id == #"" | **fail** (S-ID-0) |
 | **`seed_accepted_empty`** | seed accepted_assets == [] | **fail** (S-ACC-1) |
-| `rebalance_value_conserved` | chuyển bucket, value giữ nguyên | **v1.x — CHƯA triển khai** (`Rebalance _ -> fail`) |
-| `rebalance_value_changed` | rebalance mà value đổi | **v1.x — CHƯA triển khai** |
-| `migrate_full_value` | nạp đủ value treasury cũ (đúng old_treasury_hash) | **v1.x — CHƯA triển khai** (`MigrateIn _ -> fail`) |
-| `migrate_short` | nạp thiếu | **v1.x — CHƯA triển khai** |
-| `migrate_foreign_input` | trộn UTxO lạ (khác old_treasury_hash) vào Σ source | **v1.x — CHƯA triển khai** |
-| `migrate_no_council_sig` | thiếu chữ ký council / one-shot guard | **v1.x — CHƯA triển khai** |
+| `collect_rebalance_unimplemented` | redeemer `Rebalance` | **fail** (nhánh `_ -> fail`; Rebalance là v1.x) |
+| cả tệp `migrate_test.ak` | `MigrateIn` — C-MIG-1…9, ADDR, REFSCRIPT, LINES (§9) | xem tệp |
+| cả tệp `stake_reward_test.ak` · `deposit_test.ak` | `StakeRewardIn` · `Deposit` (§9.1) | xem tệp |
 
-> **LỖ #6 — 6 dòng `rebalance_*`/`migrate_*` đánh dấu "v1.x — CHƯA triển khai"** (validator để
-> `_ -> fail`): GỠ khỏi DoD "xong v1" để không hiểu nhầm là đã có. Constr Rebalance/MigrateIn vẫn giữ
-> trong `types` (index ổn định). Khi mở nhánh ở v1.x → kích hoạt các test này + thêm C-NFT-1/C-EPOCH.
+> **LỖ #6 (2026-06-13) — nay chỉ còn đúng cho Rebalance.** Rebalance vẫn `_ -> fail`; hai dòng
+> `rebalance_*` cũ thay bằng ca `collect_rebalance_unimplemented`. `MigrateIn` đã hiện thực với nghĩa khác
+> (§9); bốn dòng `migrate_*` cũ tả thiết kế C-MIGOLD nên đã gỡ, ca thật ở `migrate_test.ak`.
 >
 > **LỖ #2/E — seed guards mới (ép TẠI `custody_seed`, EXEC §16):** `S-CUT-0` `0 ≤ cut_bps ≤ 10000`;
 > `S-LEDGER-1` mọi dòng sổ `amount > 0` (gộp chặn âm + chặn zero); `S-ID-0` `instance_id ≠ #""`;
 > `S-ACC-1` `accepted_assets ≠ []`; **`S-MINT-2` (vá lần 2 LỖ #F5) `length(policies(tx.mint)) == 1`** —
 > tx seed CHỈ mint policy NÀY, KHÔNG gánh mint policy NGOÀI cùng tx (least-authority): custody_seed không
-> ngầm cấp phép đồng-mint token lạ. Code: `custody_seed.ak` L81. (4 trục: bền vững — thu hẹp quyền tx; first-
+> ngầm cấp phép đồng-mint token lạ. Code: `custody_seed.ak` ▸ chốt S-MINT-2. (4 trục: bền vững — thu hẹp quyền tx; first-
 > principles — minting policy chỉ chịu trách nhiệm token của nó.) `cut_bps` **bất biến đời instance** (KHÔNG nhánh nào đổi ở v1) → ép
 > **một lần tại seed** là đủ + tối ưu (không lặp kiểm range mỗi Collect). ⚠️ Khi v1.x thêm nhánh ĐỔI
 > cut_bps (vd qua proposal), nhánh đó **PHẢI lặp lại** kiểm range — nếu không, đường drain quay lại:
@@ -895,29 +938,43 @@ Evidence bắt buộc: `aiken check` output pass FULL (như chuẩn build mode �
 
 ## Tham số mở (DAO định)
 - `cut_bps` — bps cut về bucket khi collect. **Ở DATUM** (finding 10 — không phải param validator,
-  để DAO đổi không phải đổi script hash).
+  để DAO đổi không phải đổi script hash). Mã v1: chốt một lần ở `custody_seed`, rồi BẤT BIẾN đời instance
+  (mọi nhánh ép `out == in`; xem ghi chú cuối §2) — đổi cần nhánh v1.x mới hoặc instance mới.
 - `split_table` weights — % cut chia mỗi bucket. **CHỈ dùng nếu instance bật model đa-bucket**; đường
-  collect mặc định ĐƠN-BUCKET theo `item.category` (finding 2).
+  collect mặc định ĐƠN-BUCKET theo `item.category` (finding 2). Mã v1 không có trường này.
 - Ngưỡng pass mỗi loại bucket (community ≥2/3, ops ≥1/2, emergency ≥2/3 — dạng "≥", DAO chỉnh).
 - Time-lock release `execute_after_epoch` delta.
 - N tối đa mỗi batch `Collect` (theo tx-size + ExUnit budget thực đo).
-- `reserved_min_ada` mỗi custody UTxO.
-- Danh mục `bucket_id` + `accepted_assets` (trong datum — DAO thêm/bớt không đổi script).
+- `reserved_min_ada` mỗi custody UTxO — chốt một lần ở `custody_seed` (redeemer `SeedGenesis`), không ghi sổ.
+- Danh mục `buckets` + `accepted_assets` (trong datum — để việc thêm/bớt không phải đổi script). Mã v1: BẤT BIẾN đời instance như `cut_bps` (§2) —
+  thêm/bớt cần nhánh v1.x mới hoặc instance mới.
 - Số shard custody (1 hay vài — nếu contention cao, xem Câu hỏi treo).
 
 ## Phụ thuộc
-- **Governance / VotingPower** — phơi `ProposalDatum{status, yes/no_power, voter_count}` +
-  Proposal authenticity NFT (policy `proposal_policy`). Treasury đọc qua reference input
+- **Governance / VotingPower** — phơi `ProposalResult{proposal_id, status, spend_spec_hash,
+  execute_after_epoch, released_cumulative}` (`types.ak` ▸ `ProposalResult`) tại `Script(g)` kèm Proposal
+  authenticity NFT policy `g` (`g` đọc từ con trỏ governance — C-REL-PTR). Treasury đọc qua reference input
+  và KHÔNG đọc `yes/no_power`/`voter_count` (§7.1)
   ([Governance TECH](../Governance/VotingPower/Tech-Spec.md)). ✅ **finding 7 ĐÃ ĐÓNG (đo 2026-09-02)**:
   `spend_spec_hash`, `released_cumulative`, `execute_after_epoch` đã có trong `ProposalDatum` và được
-  chiếu ra `ProposalResult` 5 field; `custody.ak:166-173` ép cả hai vế.
+  chiếu ra `ProposalResult` 5 field; `custody.ak:166-173` ép cả hai vế (số dòng tại lúc đo; nay là
+  `custody.ak` ▸ nhánh `Release`, chốt C-REL-3 và C-REL-8).
   - ⛔ **CHỐT INTERFACE (hardening v1 LỖ #1A): Proposal NFT = MỘT policy chung per-governance**
     (asset name = `proposal_id`), **KHÔNG one-shot-by-seed per-proposal**. Custody param `proposal_policy`
     là một policy id đơn → chỉ đúng khi policy **ổn định per-DAO**. Nếu mỗi proposal mint policy riêng
     (one-shot theo seed) thì `proposal_policy` không cố định → C-REL-1(a) vô nghĩa. Đây là **mâu thuẫn
     interface** phải chốt với Governance trước khi code Release thật.
 
-    🔴 **CÒN MỞ, và nay đo được là mâu thuẫn THẬT — không phải rủi ro giả định (2026-09-02).**
+    **Trạng thái mã vế Treasury (đổi 2026-10-03, `Treasury/GovernancePointer.md` v0.2):** custody KHÔNG
+    còn tham số `proposal_policy`. Khe #1 là `pointer_policy`; Release ép `datum.governance_ref ==
+    pointer_policy`, đọc `g = PointerDatum.governance_hash` qua `pointer.read_governance`, rồi gọi
+    `release.read_proposal(…, g, g)` (`custody.ak` ▸ nhánh `Release`, chốt C-REL-PTR và C-REL-1). Hệ quả
+    "một instance custody chỉ chi được MỘT proposal" ở đoạn đo 2026-09-02 dưới **không còn nằm ở vế
+    Treasury**: policy proposal không nướng vào hash kho nữa. Còn hay không tuỳ Governance có đúc mọi NFT
+    proposal dưới một policy chung `g` hay không — vế đó tài liệu này chưa kiểm lại trên mã Governance.
+
+    🔴 **(Đo 2026-09-02 — vế Treasury đã đổi, xem đoạn trạng thái ngay trên.) CÒN MỞ, và nay đo được là
+    mâu thuẫn THẬT — không phải rủi ro giả định (2026-09-02).**
     `Governance/onchain/validators/proposal_nft.ak:29` khai
     `validator proposal_nft(genesis_ref: OutputReference, asset_name: ByteArray)` và mint chỉ hợp lệ
     khi tx tiêu đúng `genesis_ref` — tức **one-shot MỖI PROPOSAL**, policy id đổi theo từng proposal.
@@ -934,8 +991,10 @@ Evidence bắt buộc: `aiken check` output pass FULL (như chuẩn build mode �
     **Hướng thiết kế đóng mâu thuẫn (đặc tả, chưa có mã):** `Governance/SPEC.md` v2.0 §Kiến trúc
     on-chain v2 — `proposal_policy` dùng chung trong một pha (handler mint của validator
     `governance`, nên cùng giá trị với `governance_ref`; custody vẫn kiểm cả hai), tên =
-    `blake2b_256(cbor(seed_ref))` với seed bị tiêu lúc đúc ⇒ F11 thành bất biến mật mã. Custody
-    KHÔNG phải đổi apply-param hay nhánh nào cho việc này; chuyển pha đi bằng quét kho sang instance
+    `blake2b_256(cbor(seed_ref))` với seed bị tiêu lúc đúc ⇒ F11 thành bất biến mật mã. Lúc viết đoạn
+    này, custody được coi là không phải đổi apply-param cho việc này; mã sau đó vẫn đổi khe #1 sang
+    `pointer_policy` (2026-10-03, đoạn trạng thái trên) để dựng lại governance mà không phải đúc lại kho.
+    Chuyển pha đi bằng quét kho sang instance
     mới (§v2.7 đó, kèm hai điểm mở phía Treasury: nhánh nhận của instance mới và đường Reserve ghim
     instance cũ).
   - **LỖ #1B — ĐÓNG (vá lần 2 F10):** `spend_spec_hash` NAY gồm `instance_id` (C-REL-3) → replay chéo
@@ -951,8 +1010,9 @@ Evidence bắt buộc: `aiken check` output pass FULL (như chuẩn build mode �
     bất biến mật mã ở Treasury. Treasury tin Governance không tái cấp một `proposal_id`.
 
 > **Đồng bộ MATH cần làm (audit findings 1,2,3,9,10,11):** (1) ~~MATH §2.3 INV-COLLECT giữ `≥`~~ →
-> **vá lần 2 F9 ĐÃ ĐỒNG BỘ MATH về `==` cho MỌI asset** (code `value_ok` dùng đẳng thức; min-ADA hạch
-> toán qua bucket reserved — xem §11.1 F9 + MATH §2.3). (2) MATH §10 #2 đã
+> **vá lần 2 F9 ĐÃ ĐỒNG BỘ MATH về `==` cho MỌI asset** (code `collect.value_ok` dùng đẳng thức; min-ADA là
+> `reserved_min_ada` chốt ở seed, KHÔNG ghi sổ — xem §4.2 C-COL-2, bảng "Phản hồi vá audit lần 2" dòng F9
+> + MATH §2.3). (2) MATH §10 #2 đã
 > chốt category rời rạc — TECH nay khớp (bỏ đa-bucket khỏi collect). (9) MATH §5.1 bỏ "emergency bucket"
 > khỏi liệt kê của MỘT instance I, thêm `I_emg` như phần tử RIÊNG của T. (10) MATH §1: `cut_bps` từ
 > "tham số instance" → "tham số datum". (11) MATH §6.3/§7 đổi `count_*_at_payment_script_hash` →
@@ -966,10 +1026,12 @@ Evidence bắt buộc: `aiken check` output pass FULL (như chuẩn build mode �
 ## Câu hỏi còn treo
 1. ✅ **ĐÃ ĐÓNG (đo 2026-09-02) — `spend_spec_hash` trong ProposalDatum.** Field 7 của `ProposalDatum`,
    chiếu ra `ProposalResult`; `custody.ak:170` ép `release.spend_spec_hash(instance_id, draws) ==
-   proposal.spend_spec_hash`. Két ĐÃ khóa đích. Không còn là điều kiện chặn DoD.
+   proposal.spend_spec_hash` (chữ ký và số dòng tại lúc đo; nay thêm `seed_policy` — `release.ak` ▸
+   `spend_spec_hash`, chốt C-REL-3). Két ĐÃ khóa đích. Không còn là điều kiện chặn DoD.
 2. ✅ **ĐÃ ĐÓNG (đo 2026-09-02) — `released_cumulative` trong ProposalDatum.** Field 8; có trong
    `ProposalResult`. Câu hỏi CÒN LẠI thuộc phạm vi sản phẩm, không phải phạm vi interface: **v1 có
-   vesting hay chỉ chi một lần?** `release.ak:297` hiện chốt "một Release dùng hết proposal"
+   vesting hay chỉ chi một lần?** Mã hiện chốt "một Release dùng hết proposal" (`release.ak` ▸
+   `proposal_is_fresh`/`consumed_appended_ok`, chốt C-REL-9)
    (không vesting). Muốn vesting thì mở thêm đường cộng dồn, field đã sẵn.
 3. **Custody shard — QUYẾT-ĐỊNH-CÓ-SỐ-ĐO (T4, không còn treo mở):** một UTxO custody là điểm contention
    tuần tự. EXEC **phải đo throughput** (batch N/tx × tx/block so tải tổng nhiều thuê bao) TRƯỚC khi
@@ -986,13 +1048,17 @@ Evidence bắt buộc: `aiken check` output pass FULL (như chuẩn build mode �
 7. **F11 (vá lần 2) — `proposal_id` đơn-nhất-vĩnh-viễn** do Governance đảm bảo (policy chung per-governance
    KHÔNG ép unique asset-name on-chain). F1 khóa marker vào NFT name; tính duy nhất id là van Governance.
 8. ⛔ **F12 (vá lần 2) — authority/committee 1-of-1 → multisig M-of-N TRƯỚC mainnet.** Mọi điểm 1-key
-   (C-MIG-4 council, `governance_ref` bootstrap committee) là single point of failure: lộ key = drain mọi
+   (C-MIGOLD-4 council — thiết kế cũ, không hiện thực; `governance_ref` bootstrap committee) là single point of failure: lộ key = drain mọi
    custody của governance đó / giả mọi entry. Bắt buộc nâng multisig M-of-N trước mainnet (blast radius
    lớn). Van tạm v1: committee multisig bootstrap; lộ trình → DAO khi Governance chạy.
 
 ---
 
 ## Phản hồi audit (vòng 2026-06-05)
+
+> Các bảng "Phản hồi …" dưới đây là lịch sử, giữ nguyên văn. Trong đó `C-MIG-*` là thiết kế cũ (nay
+> `C-MIGOLD-*`, §9), số dòng mã là tại lúc viết, và "Rebalance/MigrateIn vẫn `_ -> fail`" chỉ còn đúng cho
+> Rebalance.
 
 13 finding rà phản biện. Mỗi mục: quyết định + nơi sửa.
 
@@ -1043,7 +1109,7 @@ sàn `|S|≥F` do Governance ép, Treasury không nhúng (T1/D3); định giá �
 | Lỗ | Mức | Sửa gì | Mã | Nơi | Lý do (4 trục) |
 |---|---|---|---|---|---|
 | **#1A** | critical | `read_proposal` ép proposal UTxO ở `Script(governance_ref)` — `governance_ref` từ field trang trí → ràng buộc cứng. Chặn dời NFT sang script lạ + replay chéo khác governance_ref. | C-REL-1 | §7.1 C-REL-1, bảng "5 thứ kiểm", Phụ thuộc | dài hạn (open SDK đa instance an toàn); first-principles (hiện thực vế đã viết mà code bỏ sót); bền vững (đóng đường giả mạo địa chỉ) |
-| **#1B** | — (vòng 1: v1.x) | ~~Known-gap xfail~~ → **ĐÓNG vòng 2 (F10):** instance_id NAY trong tiền ảnh spend_spec_hash (C-REL-3). Test `release_cross_instance_same_gov` đổi **xfail → fail**. Xem §11.1 F10 + Phụ thuộc. | C-REL-3 | §7.1 (note #1B ĐÓNG), Phụ thuộc | đã giải bằng instance_id trong spec_hash (không cần target_instance) |
+| **#1B** | — (vòng 1: v1.x) | ~~Known-gap xfail~~ → **ĐÓNG vòng 2 (F10):** instance_id NAY trong tiền ảnh spend_spec_hash (C-REL-3). Test `release_cross_instance_same_gov` đổi **xfail → fail**. Xem bảng "Phản hồi vá audit lần 2" dòng F10 + Phụ thuộc. | C-REL-3 | §7.1 (note #1B ĐÓNG), Phụ thuộc | đã giải bằng instance_id trong spec_hash (không cần target_instance) |
 | **#2/E/A,B** | critical | Seed guards: `S-CUT-0` (0≤cut_bps≤10000), `S-LEDGER-1` (mọi dòng amount>0), `S-ID-0` (instance_id≠#""), `S-ACC-1` (accepted≠[]). cut_bps bất biến đời instance → ép 1 lần tại seed; v1.x đổi cut_bps PHẢI lặp range. | S-CUT-0/S-LEDGER-1/S-ID-0/S-ACC-1 | §11 (note), EXEC §16 | first-principles (ép base-case tại genesis); tối ưu (1 lần, không đường nóng); bền vững (chặn drain cut_bps<0) |
 | **#3** | major | Canonical sổ: mọi dòng amount>0 (C-POS) + strict-sorted (C-SORT, thay no_dup O(n²)→O(n)) + prune dòng==0 (C-PRUNE). T3 giữ nguyên. Gốc = đưa consumed_proposals ra khỏi datum (v1.x, cần Gov `Spent`); van tạm = trần N_max. Bác rolling-hash. | C-POS/C-SORT/C-PRUNE | §3, §4.2 C-COL-10, §7.1 C-REL-6, §11 | tối ưu (O(n) + datum không rác); first-principles (vá triệu chứng rõ + ghi vá gốc) |
 | **#4** | major | Epoch neo chain: `epoch_out == get_epoch(tx) ∧ get_epoch(tx) >= epoch_in`. Field epoch thành audit thật. | C-EPOCH | §4.2 C-COL-7, §7.1 C-REL-11 | bền vững (audit trail thật, không số bịa) |
