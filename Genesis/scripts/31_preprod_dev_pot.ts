@@ -11,10 +11,17 @@
 //
 //   NETWORK=Preprod STEP=address tsx 31_preprod_dev_pot.ts
 //   NETWORK=Preprod STEP=pay PAY_TO=addr_test1q… PAY_OILDROP=100000000 tsx 31_preprod_dev_pot.ts
-import { getAddressDetails } from "@lucid-evolution/lucid";
+//   NETWORK=Preprod STEP=pay-pot PAY_OILDROP=… POT_SHARE_OILDROP=… POT_OUTPUTS=… \
+//     POT_ADDRESS=addr_test1w… POT_SCRIPT_HASH=<hex28> POT_DATUM_CBOR=<cbor> tsx 31_preprod_dev_pot.ts
+//     (chi thẳng vào kho script của nhà khác — lý do ở hàm `payPot`)
+import { getAddressDetails, coreToTxOutput, type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 import { NETWORK, SUBMIT, makeLucid, walletPkh, explorerTx } from "./config.js";
 import { rehydrate } from "./_canonical_v2.js";
+import {
+  requireField, positiveBig, potTargetFromEnv, potOutputAssets, potOutputFailures, unitAt, type OutputShape,
+} from "./_potShape.js";
 import { preprodDevPot, DEV_POT_DATUM_CBOR } from "../offchain/src/preprodDevPot.js";
+import { splitPotOutputs } from "../../Distribution/offchain/src/fundPotBuilder.js";
 
 const STEP = (process.env.STEP ?? "").toLowerCase();
 const PAY_TO = (process.env.PAY_TO ?? "").trim();
@@ -42,7 +49,8 @@ async function main(): Promise<void> {
     return;
   }
 
-  if (STEP !== "pay") throw new Error(`DEVPOT-010: STEP phải là 'address' hoặc 'pay' (đang '${STEP}').`);
+  if (STEP === "pay-pot") return payPot(lucid, pkh, pot, utxos, wiring.lampUnit);
+  if (STEP !== "pay") throw new Error(`DEVPOT-010: STEP phải là 'address', 'pay' hoặc 'pay-pot' (đang '${STEP}').`);
   if (!PAY_TO) throw new Error("DEVPOT-011: đặt PAY_TO = địa chỉ ví nhận.");
   if (PAY_OILDROP <= 0n) throw new Error(`DEVPOT-012: PAY_OILDROP phải > 0 (đang ${PAY_OILDROP}).`);
   const det = getAddressDetails(PAY_TO);
@@ -86,6 +94,81 @@ async function main(): Promise<void> {
   const signed = await built.sign.withWallet().complete();
   const hash = await signed.submit();
   console.log(`📤 Chi pot development: ${hash}\n   ${explorerTx(hash)}`);
+  await lucid.awaitTx(hash);
+  console.log(`✅ Đã vào block.`);
+}
+
+/** Chọn ÍT UTxO nhất đủ trả `need`: lớn trước. */
+function pickLargest(utxos: UTxO[], unit: string, need: bigint): { picked: UTxO[]; sum: bigint } {
+  const sorted = utxos
+    .filter((u) => (u.assets[unit] ?? 0n) > 0n)
+    .sort((a, b) => Number((b.assets[unit] ?? 0n) - (a.assets[unit] ?? 0n)));
+  const picked: UTxO[] = [];
+  let sum = 0n;
+  for (const u of sorted) {
+    if (sum >= need) break;
+    picked.push(u);
+    sum += u.assets[unit] ?? 0n;
+  }
+  return { picked, sum };
+}
+
+/**
+ * STEP=pay-pot — chi từ pot development thay thế THẲNG vào kho script của một nhà khác (vd kho
+ * Wakeme dựng lại), không qua kho Treasury. Lý do có đường này: một pot đã rót trọn ngân sách từ
+ * kho Treasury (FPB-001) thì không rót lần hai từ đó được; khi nhà nhận dựng lại kho trên mạng thử,
+ * tiền thử đi từ pot development — ngân sách pot kia trong sổ không bị vượt.
+ *
+ * Hình dạng đích khai bằng POT_ADDRESS + POT_SCRIPT_HASH + POT_DATUM_CBOR, soát bằng đúng các cổng
+ * của `fund_pot.ts` (`_potShape.ts`). Mỗi output = bội của POT_SHARE_OILDROP (`splitPotOutputs`),
+ * inline datum, chỉ {ADA, LAMP}. Đọc lại giao dịch ĐÃ DỰNG trước khi ký.
+ */
+async function payPot(lucid: LucidEvolution, pkh: string, pot: ReturnType<typeof preprodDevPot>,
+                      utxos: UTxO[], lampUnit: string): Promise<void> {
+  const target = potTargetFromEnv(process.env, 0);
+  const share = positiveBig("POT_SHARE_OILDROP", requireField("POT_SHARE_OILDROP", process.env.POT_SHARE_OILDROP));
+  const k = Number(positiveBig("POT_OUTPUTS", requireField("POT_OUTPUTS", process.env.POT_OUTPUTS)));
+  if (!Number.isSafeInteger(k)) throw new Error(`DEVPOT-020: POT_OUTPUTS quá lớn.`);
+  if (PAY_OILDROP <= 0n) throw new Error(`DEVPOT-012: PAY_OILDROP phải > 0 (đang ${PAY_OILDROP}).`);
+  if (target.address === pot.address) throw new Error(`DEVPOT-021: đích là chính pot development.`);
+  const amounts = splitPotOutputs(PAY_OILDROP, share, k);   // ném nếu không phải bội của suất
+
+  const { picked, sum } = pickLargest(utxos, lampUnit, PAY_OILDROP);
+  if (sum < PAY_OILDROP) throw new Error(`DEVPOT-015: pot giữ không đủ ${PAY_OILDROP} oildrop.`);
+
+  let tx = lucid.newTx().collectFrom(picked).attach.SpendingValidator(pot.script);
+  for (const a of amounts) {
+    tx = tx.pay.ToContract(target.address, { kind: "inline", value: target.datumCbor },
+      potOutputAssets(POT_LOVELACE, lampUnit, a));
+  }
+  const rest = sum - PAY_OILDROP;
+  if (rest > 0n) {
+    tx = tx.pay.ToContract(pot.address, { kind: "inline", value: DEV_POT_DATUM_CBOR },
+      { lovelace: POT_LOVELACE, [lampUnit]: rest });
+  }
+  const built = await tx.addSignerKey(pkh).complete();
+
+  // Đọc lại giao dịch đã dựng: đúng k output ở đích, mỗi cái đúng lượng + datum, tổng đúng.
+  const outs = built.toTransaction().body().outputs();
+  const shaped: OutputShape[] = [];
+  for (let i = 0; i < outs.len(); i++) shaped.push(coreToTxOutput(outs.get(i)));
+  const atTarget = shaped.filter((o) => o.address === target.address);
+  const fails: string[] = [];
+  if (atTarget.length !== amounts.length) fails.push(`${atTarget.length} output ở đích, dựng ${amounts.length}`);
+  atTarget.forEach((o, i) => fails.push(...potOutputFailures(o, { lampUnit, amount: amounts[i]!, datumCbor: target.datumCbor })
+    .map((f) => `#${i}: ${f}`)));
+  if (unitAt(shaped, target.address, lampUnit) !== PAY_OILDROP) fails.push(`tổng ở đích ≠ ${PAY_OILDROP}`);
+  if (fails.length > 0) throw new Error(`DEVPOT-022: giao dịch đã dựng lệch hình dạng — ${fails.join("; ")}`);
+
+  console.log(`Chi từ pot development → kho ${target.address}: ${PAY_OILDROP} oildrop, ${amounts.length} output ` +
+    `(bội của ${share}), datum ${target.datumCbor}. Pot: ${picked.length} UTxO vào, ${rest} quay về.`);
+  if (!SUBMIT) {
+    console.log(`(SUBMIT=false ⇒ KHÔNG ký, KHÔNG gửi.) Hash thân giao dịch: ${built.toHash()}`);
+    return;
+  }
+  const signed = await built.sign.withWallet().complete();
+  const hash = await signed.submit();
+  console.log(`📤 Chi pot development → kho: ${hash}\n   ${explorerTx(hash)}`);
   await lucid.awaitTx(hash);
   console.log(`✅ Đã vào block.`);
 }

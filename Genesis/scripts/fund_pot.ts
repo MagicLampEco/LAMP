@@ -82,7 +82,10 @@ async function main(): Promise<void> {
         `kho đang dùng ${wiring.treAddr}. Sổ đã cũ so với genesis hiện tại — sửa sổ trước.`,
       );
     }
-    if (exit.proof.potId === potId) fundedBefore = BigInt(exit.proof.amountOildrop!);
+    // Sổ cộng dồn theo pot đứng trước; mục cũ chỉ có lượng mồi thì lùi về nó.
+    const byPot = exit.proof.fundedOildropByPot?.[potId];
+    if (byPot !== undefined) fundedBefore = BigInt(byPot);
+    else if (exit.proof.potId === potId) fundedBefore = BigInt(exit.proof.amountOildrop!);
   }
   console.log(bootstrap
     ? `Lượt MỒI: ${NETWORK} chưa có bằng chứng lối ra ⇒ rót đúng một suất ${share}.`
@@ -146,15 +149,23 @@ async function main(): Promise<void> {
   }
   console.log(`\n✅ Trên chuỗi: ${k} output pot, tổng ${amount} oildrop.`);
 
-  if (bootstrap) {
-    // Ghi sổ chỉ SAU khi đã đọc lại output trên chuỗi: một dòng bằng chứng mở khoá lượt nạp lớn,
-    // nên nó không được ghi từ một giao dịch mới chỉ được gửi đi.
-    const ledger = JSON.parse(readFileSync(EXIT_PROOF_LEDGER, "utf8")) as Record<string, unknown>;
-    ledger[NETWORK] = {
-      txHash: hash, date: new Date().toISOString().slice(0, 10), branch: "FundPot",
-      treasuryAddress: wiring.treAddr, potId, amountOildrop: amount.toString(),
-    };
+  // Ghi sổ chỉ SAU khi đã đọc lại output trên chuỗi: một dòng bằng chứng mở khoá lượt nạp lớn,
+  // nên nó không được ghi từ một giao dịch mới chỉ được gửi đi. Mọi lượt (mồi lẫn trọn) đều cộng
+  // vào `fundedOildropByPot` — thiếu bước này thì FPB-001 không thấy lượt trọn đã chạy.
+  {
+    const ledger = JSON.parse(readFileSync(EXIT_PROOF_LEDGER, "utf8")) as Record<string, Record<string, unknown> | null>;
+    const prev = bootstrap ? {} : (ledger[NETWORK] ?? {});
+    const byPot = { ...((prev["fundedOildropByPot"] as Record<string, string> | undefined) ?? {}) };
+    byPot[potId] = (fundedBefore + amount).toString();
+    ledger[NETWORK] = bootstrap
+      ? {
+          txHash: hash, date: new Date().toISOString().slice(0, 10), branch: "FundPot",
+          treasuryAddress: wiring.treAddr, potId, amountOildrop: amount.toString(), fundedOildropByPot: byPot,
+        }
+      : { ...prev, fundedOildropByPot: byPot };
     writeFileSync(EXIT_PROOF_LEDGER, JSON.stringify(ledger, null, 2) + "\n", "utf8");
+  }
+  if (bootstrap) {
     const back = measureExitProof(NETWORK);
     if (back.state !== "proven") {
       process.exitCode = 1;
