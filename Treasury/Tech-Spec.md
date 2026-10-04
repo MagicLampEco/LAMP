@@ -1039,8 +1039,9 @@ Evidence bắt buộc: `aiken check` output pass FULL (như chuẩn build mode �
    circulating — §1). v1 đề xuất **1 custody** (đủ vì collect đã batch) nhưng kèm điều kiện đo, không
    mặc định mù. Shard theo ASSET (không theo bucket) để bất biến per-asset độc lập không vỡ + giảm K·M
    mỗi shard (§3).
-4. **Migrate (a) vs (b)** — chốt con đường nạp generators (đề xuất b-ii adapter, không sửa generators
-   live). Cần EXEC xác nhận generators cho output script-address mang datum.
+4. ✅ **ĐÃ ĐÓNG — Migrate (a) vs (b).** `CONTRACT.md` H6 chốt: nạp generators v1 dùng adapter
+   off-chain b-ii qua `Collect`, không cần `MigrateIn`; `MigrateIn` nay là nhánh nhận LAMP từ Reserve.
+   Bên nạp đang chạy theo đường này: Feecover nạp kho qua `Collect`.
 5. **Emergency instance riêng** — xác nhận emergency = Custody instance tách script hash (isolation
    physical), KHÔNG dòng sổ. Council/threshold riêng.
 6. **Conway `donateToCardanoTreasury`** — tx-level field, không qua validator này. Có cần một helper
