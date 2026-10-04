@@ -88,8 +88,9 @@ Genesis/
 │   └── validators/                # thread_nft · lamp_mint · supply_state
 ├── bootstrap-closure/             # đóng policy mồi mainnet: dist_treasury · lock_vault + công cụ
 ├── offchain/src/                  # datum codec · mintBuilder · supplyState · circulating
-├── scripts/                       # deploy · mint · verify (verify_mainnet_supply.ts là bản đọc-chỉ-đọc)
+├── scripts/                       # 00–03: đường Preview cũ · 20–32: đường canonical Preprod · verify_mainnet_supply.ts (chỉ đọc)
 ├── CONTRACT.md
+├── canonical-preprod-runbook.md   # thứ tự chạy cụm canonical trên Preprod
 ├── kho-a-dest.md
 └── mainnet-deploy-plan.md
 ```
@@ -97,9 +98,12 @@ Genesis/
 ## Chạy test
 
 ```bash
-cd Genesis/onchain && aiken check      # 71 pass / 0 fail (đo 2026-07-29)
-cd Genesis/offchain && npm install && npx vitest run   # 71 pass / 0 fail (đo 2026-08-16)
+cd Genesis/onchain && aiken check
+cd Genesis/offchain && npm install && npx vitest run
 ```
+
+Đọc kết quả ở dòng tổng kết của output (số bài đạt / lỗi), không đọc ở mã thoát của một đường ống.
+Số bài kiểm thay đổi theo từng lượt sửa nên tài liệu này không ghi con số — chạy lệnh để biết.
 
 ## Trạng thái thật — đọc trước khi dùng
 
@@ -113,3 +117,10 @@ cd Genesis/offchain && npm install && npx vitest run   # 71 pass / 0 fail (đo 2
   không được là ví 1-pkh. Lý do và ràng buộc: [`kho-a-dest.md`](./kho-a-dest.md). Điều kiện
   trước khi phát hành (đối chiếu byte script với mã nguồn, dạng authority của Registry):
   [`mainnet-deploy-plan.md`](./mainnet-deploy-plan.md).
+- **Preprod (mạng thử nghiệm) đã chạy cụm canonical.** Bản `ACTIVE` duy nhất của Preprod được khai
+  ở `offchain/src/lampPolicies.ts` (bản ghi `preprod-oneshot-14param-final`; đọc bằng
+  `activeLampPolicyId("preprod")`). Ba giao dịch genesis theo thứ tự: con trỏ governance → gieo
+  custody → năm marker one-shot cùng METER và quyền rút Reserve đặt vào script. Các bản Preprod
+  trước đó đều `SUPERSEDED` — không tích hợp mới vào đó. Thứ tự chạy các bước:
+  [`canonical-preprod-runbook.md`](./canonical-preprod-runbook.md). Lưu ý: mục ghi lượt chạy theo
+  ngày ở cuối runbook mô tả một cụm cũ, chưa có mục riêng cho cụm `ACTIVE` hiện hành.

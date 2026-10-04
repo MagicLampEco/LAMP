@@ -21,8 +21,9 @@ cục và cooldown per-DID — cộng với **tự thu hồi token nằm không*
 | `drip_oildrop` | `1_001_000_000` (1001 tLAMP) | `FaucetConfig` trong datum POOL | **Không** — C-CFG-1 đóng băng |
 | `cooldown_epochs` | `36` cửa sổ | `FaucetConfig` | **Không** — C-CFG-1 đóng băng |
 | `max_claims_per_window` | deploy Preprod: `20`; trần cứng `100` | `FaucetConfig` | **Không** — C-CFG-1 đóng băng |
-| ngưỡng thu hồi | `72` cửa sổ (≈ 360 ngày với cửa sổ 5 ngày; 72 ngày trên Preview) | hằng compile-time `reclaim_epochs_const` ở `lib/magiclamp/faucet/handlers.ak` | Không — phải biên dịch lại |
+| ngưỡng thu hồi | `72` cửa sổ (≈ 360 ngày với cửa sổ = epoch Cardano 5 ngày trên Preprod/Mainnet; Preview chưa có gốc cửa sổ nên chưa quy ra ngày) | hằng compile-time `reclaim_epochs_const` ở `lib/magiclamp/faucet/handlers.ak` | Không — phải biên dịch lại |
 | `ms_per_epoch` | theo mạng | tham số compile-time của cả ba script | Không — phải biên dịch lại |
+| `window_origin_ms` | gốc cửa sổ theo mạng (`Specs/Window/CONTRACT.md` v1.0 §2) | tham số compile-time CUỐI của cả ba script (`faucet_nft`, `faucet_account`, `faucet_pool`) | Không — phải biên dịch lại |
 
 **`FaucetConfig` KHÔNG còn chỉnh được sau deploy.** Bản v2 ghi "chỉnh không cần redeploy" — điều đó
 sai với mã hiện tại: `faucet_pool.spend` ép `out_pd.cfg == cfg` ở mọi lượt spend (C-CFG-1), và POOL
@@ -39,8 +40,12 @@ dùng để offchain tự tính "đã đủ idle chưa" trước khi dựng tx, 
 account" trong sổ `opened_root`. 1001 cửa sổ (≈ 13,7 năm) trên thực tế là không bao giờ; 72 nằm trong
 tầm đời một mạng test.
 
-**"Cửa sổ" (window) KHÔNG phải epoch Cardano.** Nó là bucket `posix_ms / ms_per_epoch`; biên bucket
-không trùng biên epoch mạng. Xem chú thích đầu `lib/magiclamp/faucet/ledger.ak`.
+**"Cửa sổ" (window) = `(posix_ms − window_origin_ms) / ms_per_epoch`** (`Specs/Window/CONTRACT.md`
+v1.0 §1). Trên Preprod/Mainnet, chỉ số cửa sổ bằng số epoch Cardano và biên cửa sổ trùng biên epoch.
+Preview chưa có gốc (`WIN-PREVIEW`, v1.0 §4) nên off-chain ném lỗi trên Preview. Bản trước của đoạn này
+nói cửa sổ "không phải epoch Cardano" — đó là định nghĩa cũ, đã bị thay.
+Chú thích đầu `lib/magiclamp/faucet/ledger.ak` có thể còn câu theo định nghĩa cũ; khi lệch, `Specs/Window`
+thắng.
 
 ## Hai tầng chặn — mục tiêu KHÁC nhau, đừng đọc tầng hai rộng hơn nó làm
 
@@ -66,13 +71,17 @@ KHÔNG truyền script-hash chéo HAI CHIỀU làm tham số compile-time (pool 
 deploy được). Một chiều thì không vòng, và thứ tự áp tham số là một dãy thẳng:
 
 ```
-faucet_nft(genesis_ref, ms_per_epoch)                          → faucet_nft_policy
+faucet_nft(genesis_ref, ms_per_epoch, window_origin_ms)                  → faucet_nft_policy
 faucet_account(faucet_nft_policy, did_nft_policy,
-               lamp_policy, lamp_name, ms_per_epoch)           → account_script_hash
+               lamp_policy, lamp_name, ms_per_epoch,
+               window_origin_ms)                                          → account_script_hash
 faucet_pool(faucet_nft_policy, did_nft_policy,
             lamp_policy, lamp_name, ms_per_epoch,
-            account_script_hash)                               → pool_script_hash
+            account_script_hash, window_origin_ms)                        → pool_script_hash
 ```
+
+(Thứ tự đối chiếu với chữ ký `validator` trong `onchain/validators/faucet_nft.ak`,
+`faucet_account.ak`, `faucet_pool.ak` ngày 2026-10-04: `window_origin_ms` là tham số cuối của cả ba.)
 
 Dãy acyclic vì `faucet_account` và `faucet_nft` **không bên nào ôm hash pool** — chúng nhận diện
 pool bằng POOL NFT.
@@ -225,7 +234,9 @@ lặng lẽ. Bảng "bất biến ↔ ca kiểm ghim nó" ở [`Math-Spec.md`](.
 nào** — không có địa chỉ hay tx mới; hash chưa áp tham số của v3.1 ghi ở
 [`deployed-artifacts.md`](./deployed-artifacts.md). Pool đang sống trên
 Preprod và Preview là **bản v1** — datum chỉ có `claim_amount`, không POOL NFT, không DID-gate, và
-nó có đúng cái lỗ vét kho mà trần tốc độ ở v3 dựng ra để đóng. Tx hash, địa chỉ pool và policy id
+nó có đúng cái lỗ vét kho mà trần tốc độ ở v3 dựng ra để đóng. Pool v1 đó giữ token của policy cũ
+`SUPERSEDED`; **chưa có faucet nào trên policy `ACTIVE` hiện hành của Preprod** (sổ
+`Genesis/offchain/src/lampPolicies.ts`, đối chiếu 2026-10-04). Tx hash, địa chỉ pool và policy id
 của bản đang chạy: [`deployed-artifacts.md`](./deployed-artifacts.md).
 
 Mã nguồn validator v1 **không còn trong cây làm việc** (`validators/faucet.ak` đã xoá) ⇒ dựng tx

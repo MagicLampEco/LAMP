@@ -1,5 +1,8 @@
 # Pot vault (két pot 8) — hợp đồng on-chain
 
+**Phiên bản:** v1.0 — 2026-10-04, lần đầu khai phiên bản. Vì sao: §Tham số biên dịch thêm `window_origin_ms`
+(7 tham số, khớp chữ ký `validator pot_vault(`); bản trước còn 6.
+
 Két trung gian giữa nguồn LAMP của kênh pot 8 và két swap của Feecover. Một
 validator đa mục đích duy nhất, permissionless: không nhánh nào đòi chữ ký, toàn bộ
 an toàn nằm ở ràng buộc giá trị và datum.
@@ -20,6 +23,7 @@ pot_vault(
   ms_per_epoch: Int,
   window_cap:  Int,
   total_cap:   Int,
+  window_origin_ms: Int,
 )
 ```
 
@@ -30,6 +34,7 @@ pot_vault(
 | `ms_per_epoch` | độ rộng một cửa sổ, ms | `432_000_000` (5 ngày) |
 | `window_cap` | trần LAMP của két swap NGAY SAU một lượt rót | `1_000_000 × 10^6` |
 | `total_cap` | trần tích luỹ của kênh (F8 = 1) | `7_000_000 × 10^6` |
+| `window_origin_ms` | gốc lưới cửa sổ: cửa sổ = `(t − window_origin_ms) / ms_per_epoch` (`Specs/Window/CONTRACT.md` v1.0 §1, WIN-ORIGIN-3) | `1_654_041_600_000` (nguồn: `Specs/Window/CONTRACT.md` v1.0 §2) |
 
 `window_cap` và `total_cap` tính bằng oildrop (LAMP decimals 6).
 

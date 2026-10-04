@@ -1,5 +1,9 @@
 # Treasury — TECH (Kiến trúc on-chain Aiken)
 
+**Phiên bản:** v1.0 — 2026-10-04, lần đầu khai phiên bản. Vì sao: §2 và C-REL-1 đồng bộ với mã đã gộp
+(custody 6 tham số; `C-REL-PTR` — `Treasury/GovernancePointer.md` v0.2; gốc cửa sổ — `Specs/Window/CONTRACT.md`
+v1.0); khớp `Treasury/CONTRACT.md` v1.2.
+
 **Trạng thái:** draft 2026-06-05 (chờ anh duyệt). Bám **xương sống** `Treasury/CONTRACT.md` —
 KHÔNG mâu thuẫn. Tài liệu này là tầng **kỹ thuật** (datum/redeemer/bất biến/validator) của hệ
 Treasury đa thuê bao. Phần hành vi ở FEAT, chứng minh toán ở MATH, tích hợp/lộ trình ở EXEC.
@@ -121,8 +125,8 @@ nghiệp vụ** của hai nhánh này, không phải 2 script tách.
 // Một instance Treasury = một lần áp tham số → một script hash.
 // MagicLamp = 1 instance; team eco khác = instance khác (open SDK).
 validator custody(
-  // ── cổng Governance: chỉ NFT này chứng thực 1 Proposal hợp lệ ──
-  proposal_policy    : ByteArray,   // policy id của Proposal authenticity NFT (Governance)
+  // ── cổng Governance: policy NFT con trỏ GOVPOINTER (C-REL-PTR, GovernancePointer v0.2) ──
+  pointer_policy     : ByteArray,   // == datum.governance_ref; governance hiện hành g đọc từ con trỏ
   // ── NFT authenticity custody (seed) — ÉP hiện diện khi spend (LỖ #5) ──
   seed_policy        : ByteArray,   // policy id của custody_seed NFT (asset name = instance_id)
   // ── thời gian mạng ──
@@ -130,10 +134,12 @@ validator custody(
   // ── định danh LAMP: nhánh MigrateIn đo Δ theo cặp này ──
   lamp_policy        : ByteArray,   // minting policy LAMP/tLAMP (Genesis lamp_mint)
   token_name         : ByteArray,   // asset name — "tLAMP" testnet / "LAMP" mainnet
+  // ── gốc lưới cửa sổ (Specs/Window/CONTRACT.md v1.0, WIN-ORIGIN-3) ──
+  window_origin_ms   : Int,         // cửa sổ = (t − window_origin_ms) / ms_per_epoch
 ) { ... }
 ```
 
-**5 tham số, ĐÚNG thứ tự trên.** Nguồn: chữ ký `validator custody(` trong
+**6 tham số, ĐÚNG thứ tự trên.** Nguồn: chữ ký `validator custody(` trong
 `Treasury/onchain/validators/custody.ak`.
 
 > ⚠️ **`lamp_policy`/`token_name` VẪN LÀ THAM SỐ — đừng đọc từ datum.** Một bản spec trước từng ghi
@@ -207,7 +213,7 @@ pub type CustodyDatum {
   cut_bps        : Int,              // bps cắt về bucket (DAO chỉnh — finding 10; KHÔNG ở param)
   split_table    : List<BucketSplit>,// (DÀNH RIÊNG đa-bucket — KHÔNG dùng ở đường collect đơn-bucket;
                                      //  finding 2: collect dùng item.category, không split_table)
-  governance_ref : ByteArray,        // script hash Proposal/Governance instance gắn với treasury này
+  governance_ref : ByteArray,        // policy id NFT con trỏ governance; == tham số pointer_policy (C-REL-PTR)
   receipt_root   : ByteArray,        // (ĐÍCH v1.x — F8: CODE CHƯA có field này) accumulator receipt (§6)
   epoch          : Int,              // epoch cập nhật gần nhất (chống replay sổ)
 }
@@ -537,18 +543,26 @@ này làm **reference input** (không tiêu — nhiều release/đọc song song
 [`Transaction.reference_inputs`](https://aiken-lang.github.io/stdlib/cardano/transaction.html).
 
 ```
-C-REL-1  Reference input tồn tại tại proposal_ref, mang đúng Proposal NFT, NẰM Ở ĐÚNG địa chỉ
-         Governance, VÀ tên NFT khớp proposal_id (hardening v1 LỖ #1A + vá lần 2 LỖ #F1):
+C-REL-PTR (2026-10-03, GovernancePointer v0.2) — chạy TRƯỚC C-REL-1:
+           expect datum.governance_ref == pointer_policy
+           let g = pointer.read_governance(tx.reference_inputs, datum.governance_ref)
+           // g = PointerDatum.governance_hash, đọc qua reference input mang NFT GOVPOINTER ở
+           // Script(governance_ref); con trỏ rỗng (|g| ≠ 28) ⇒ từ chối.
+C-REL-1  Reference input tồn tại tại proposal_ref, mang đúng Proposal NFT policy g, NẰM Ở ĐÚNG
+         Script(g), VÀ tên NFT khớp proposal_id (hardening v1 LỖ #1A + vá lần 2 LỖ #F1;
+         `release.read_proposal(tx.reference_inputs, proposal_ref, g, g)`):
            expect Some(ref) = list.find(tx.reference_inputs, _.output_reference == proposal_ref)
-           // (a) authenticity token: ĐÚNG 1 token của proposal_policy
-           expect [Pair(nft_name, qty)] = dict.to_pairs(assets.tokens(ref.output.value, proposal_policy))
+           // (a) authenticity token: ĐÚNG 1 token của policy g
+           expect [Pair(nft_name, qty)] = dict.to_pairs(assets.tokens(ref.output.value, g))
            expect qty == 1
            // (b) BINDING proposal↔governance (#1A):
-           ref.output.address.payment_credential == Script(datum.governance_ref)
+           ref.output.address.payment_credential == Script(g)
            // (c) F1 — replay-marker khóa vào DANH TÍNH NFT (vá lần 2, bổ sung C-REL-1):
            expect result: ProposalResult = inline_datum
            expect nft_name == result.proposal_id
-         `read_proposal` nay ÉP proposal UTxO ở **đúng** payment credential = `Script(governance_ref)`.
+         `read_proposal` nay ÉP proposal UTxO ở **đúng** payment credential = `Script(g)`, `g` đọc từ NFT
+         con trỏ ở `Script(governance_ref)` (C-REL-PTR). Đoạn dưới viết lúc proposal còn nằm thẳng ở
+         `Script(governance_ref)`; lý lẽ giữ nguyên, chỉ thay địa chỉ đích bằng `Script(g)`.
          Trước đây `governance_ref` chỉ là **field trang trí** (C-REL-1 viết "is_at_script theo
          governance_ref" nhưng code KHÔNG kiểm) → `governance_ref` nay thành **ràng buộc cứng**. Chặn:
            (a) NFT proposal bị DỜI sang một UTxO datum giả ở **script lạ** (kẻ tấn công tự dựng UTxO

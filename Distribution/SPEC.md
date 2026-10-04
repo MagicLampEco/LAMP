@@ -1,5 +1,10 @@
 # LampDistribution — Spec phân bổ LAMP (Capped Drop)
 
+> **Lỗi thời so với [`capped-drop/CONTRACT.md`](./capped-drop/CONTRACT.md) v3.1 (2026-10-04).**
+> Tệp này tả bản v2 (2026-06-06); công thức vested, datum, beacon, nhánh committee và bất biến bên
+> dưới đã đổi ở CONTRACT v3/v3.1. Khi lệch, CONTRACT thắng — đọc CONTRACT trước, không suy hành vi
+> hiện hành từ tệp này.
+
 **Doctype:** MagicLamp Protocol — Onchain Spec
 **Version:** v2 "Capped Drop" (thay Drop Lottery v0.1)
 **Updated:** 2026-06-06

@@ -4,6 +4,10 @@
 > (PlutusV3 / Aiken). Thay v1 (`CONTRACT.md`, bản pre-registry 8-param `dist_dest`). Mọi số
 > liệu, datum, luật trong tài liệu này được trích từ code đã verify (71/71 aiken VM test) +
 > đã chạy thật trên Preview (xem §13). Đơn vị nội bộ: **oildrop** (1 LAMP = 10⁶ oildrop).
+>
+> **Bản tài liệu 2.1 (2026-10-04):** §15 cập nhật trạng thái (policy mồi mainnet đã đóng, bản 14
+> tham số ACTIVE trên Preprod) và thêm §17 tả lượt genesis ba giao dịch mà
+> `20_canonical_genesis.ts` đang chạy. Không đổi luật on-chain nào.
 
 ---
 
@@ -412,11 +416,12 @@ Cặp dương: `reservedraw_delta_vao_dung_custody_duoc_nhan`,
 - Aiken (bản build 12-tham-số, `not_started` cho bản 14): **150/150 VM test pass** (Genesis);
   plutus.json 12 param (aiken v1.1.21+42babe5). Số test và số tham số của bản 14 chưa đo.
 - Off-chain (bản 12-tham-số): apply 12-param + genesis/mint/attack chạy thật trên Preview (§13).
-- **Chưa deploy mainnet.** Mainnet bootstrap hiện tại là bản TEST, sẽ thay bằng bản registry này
-  (1 lần cuối, sau khi đóng băng nền TAAD + genesis OrgDID GreenSun).
-- **Pending trước mainnet:** build lại plutus.json theo **14 param** rồi đồng bộ deploy script sang
-  14-param (thêm bước nối `reserve_kho_nft_*` vào instance `custody` đích) + bước đúc kho/registry
-  NFT; audit độc lập tập trung (one-shot + no-dup + policy-bất-biến).
+- **Policy mồi mainnet đã đóng 2026-09-27** (`Genesis/bootstrap-closure/REHEARSAL.md` §5). Bản 14
+  tham số: Preprod ACTIVE theo `Genesis/offchain/src/lampPolicies.ts` ▸ `activeLampPolicyId(network)`
+  (bản ghi `preprod-oneshot-14param-final`); Mainnet chưa đúc. Lượt genesis của bản 14 tham số: §17.
+- **Pending trước mainnet:** audit độc lập tập trung (one-shot + no-dup + policy-bất-biến). Việc
+  build lại plutus.json theo 14 tham số và đồng bộ script genesis (nối `reserve_kho_nft_*` vào
+  instance `custody`, đúc kho/registry NFT) đã xong — Preprod `493002cc…` đúc từ bản đó.
 
 ---
 
@@ -476,5 +481,27 @@ Sau lượt đúc trọn, registry không còn tác dụng gì với LAMP. Thu h
 redeemer retire) làm cho điều đó **nhìn thấy được** thay vì phải suy luận — nhưng nó là **hệ quả**,
 không phải nguyên nhân: cổng đã chết trước khi registry bị thu hồi, và sẽ vẫn chết nếu registry
 còn sống.
+
+---
+
+## 17. Lượt genesis canonical — ba giao dịch (2026-10-03)
+
+`Genesis/scripts/20_canonical_genesis.ts` gửi theo thứ tự, mỗi bước chờ xác nhận:
+
+1. **Tx P** — tiêu hạt giống con trỏ (riêng, KHÁC hạt giống genesis và custody: `POINTER-SEED-002`),
+   đúc `GOVPOINTER` của policy one-shot `governance_pointer` vào chính script đó.
+2. **Tx A0** — tiêu hạt giống custody, đúc custody NFT vào instance `custody`. Đi riêng vì
+   `Treasury/onchain/validators/custody_seed.ak` luật S-MINT-2 đòi `tx.mint` có đúng một policy.
+3. **Tx A** — đúc `SUPPLY` / `REGISTRY` / `TREASURY` / `DROP`; `METER` đặt thẳng vào `reserve_draw`,
+   quyền rút `TREASURYPULL` đặt vào `reserve_gate`.
+
+Không marker nào chạm ví: cổng `F1-PLACE-*` (`Genesis/scripts/_genesisReservePlacement.ts` ▸
+`assertMarkerPlacement`) đọc lại output đã dựng của cả ba giao dịch. Tx P và Tx A0 không được tiêu
+hạt giống của giao dịch sau (`assertTxKeepsSeed`, `F1-SEED-*`). Thứ tự ép bằng `POINTER-ORDER-001`
+(NFT con trỏ chưa ở `governance_pointer` ⇒ không gửi Tx A0) và `F1-ORDER-001` (custody NFT chưa ở
+instance ⇒ không gửi Tx A).
+
+Chi tiết vận hành: `Genesis/canonical-preprod-runbook.md` §"F1 đóng ở lượt genesis". Bản ghi
+policy: `Genesis/offchain/src/lampPolicies.ts` ▸ `activeLampPolicyId(network)`.
 
 ---

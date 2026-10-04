@@ -24,14 +24,16 @@
 
 > ⚠️ **Con số dưới đây KHÔNG phải nguồn.** Nguồn duy nhất: `Genesis/offchain/src/lampPolicies.ts`.
 > Trạng thái bản này: **SUPERSEDED** — bị thay bởi bản ghi `preprod-oneshot-12param`
-> (`d9c09230…`). **Preprod đã có bản kế nhiệm ACTIVE** — `preprod-oneshot-14param`, policy id
-> `8169b76cdaba83cf7c9ae32ebd2bb3a58aa215c7dc0b62c8f5e268dd`, đúc ngày 2026-09-14 theo đường
-> registry-gate 14 tham số. Preview thì chưa: `preview-oneshot-14param` còn `PENDING-MINT`.
-> ⚠️ Nghĩa là `activeLampPolicyId("preprod")` nay **TRẢ VỀ** chứ không còn ném. Đừng đọc câu
-> này thành "policy dưới đây là bản đang sống" — bản dưới đây vẫn `SUPERSEDED`, nó chỉ là bản
-> mà pool faucet hiện tại đang giữ token.
-> Nguồn duy nhất cho trạng thái: `Genesis/offchain/src/lampPolicies.ts` (bản ghi
-> `preprod-oneshot-14param`). Đo lại:
+> (`d9c09230…`), và chuỗi thay thế đã đi tiếp: `8169b76c…`, `53bc12ad…`, `7ecbffe2…` đều là bản
+> **SUPERSEDED** của Preprod. **Bản ACTIVE hiện hành của Preprod** (đối chiếu sổ 2026-10-04) là
+> bản ghi `preprod-oneshot-14param-final`, policy id
+> `493002cc03004e3e14fd607cfba59312bd946e478e69d6ab431ccfac`, đường registry-gate 14 tham số.
+> **Faucet CHƯA được triển khai trên bản ACTIVE này** — pool faucet bên dưới vẫn giữ token của
+> bản cũ `7a1a7aed…`. Preview thì chưa có bản ACTIVE: `preview-oneshot-14param` còn `PENDING-MINT`.
+> ⚠️ Đừng đọc câu này thành "policy dưới đây là bản đang sống" — bản dưới đây vẫn `SUPERSEDED`,
+> nó chỉ là bản mà pool faucet hiện tại đang giữ token.
+> Nguồn duy nhất cho trạng thái: `Genesis/offchain/src/lampPolicies.ts` (đọc bằng
+> `activeLampPolicyId("preprod")`; chuỗi `supersededBy` của các bản ghi `preprod-*`). Đo lại:
 > `cd Genesis/offchain && npx vitest run ../tests/lampPolicies.test.ts` — đọc ở **dòng tổng kết
 > `Tests N passed`**, không đọc ở mã thoát của một đường ống.
 
@@ -65,7 +67,7 @@
 - Canonical genesis+mint (đường cũ, đã chạy lượt này): `Genesis/scripts/canonical_mint.ts` —
   tệp đã xoá khỏi kho (tra `git show 930480e:Genesis/scripts/canonical_mint.ts`);
   `canonical-state.json` vẫn còn. Đường đang sống cho lượt genesis+mint mới: `Genesis/scripts/_canonical_v2.ts`
-  + `20_canonical_genesis.ts` … `26_prove_brake.ts` (runbook: `Genesis/canonical-preprod-runbook.md`).
+  + `20_canonical_genesis.ts` … `32_etd_claim.ts` (runbook: `Genesis/canonical-preprod-runbook.md`).
 
 ## Preview
 - Seed pool tx: `6a375e47d0c3cbcff696f3d71be7915bba42bd44a713c48df17f82a6456d144f` (9.000 tLAMP)
@@ -136,5 +138,3 @@ của từng validator.
 - Preprod one-shot `59113c3e32d4dd3dc9b6c4fbed134fabbd37353f839df80c357f72dd` — bỏ.
 - Preview one-shot `770a518de374f4db9c854af3fc93f125c30afd8d658ab586a2eb655e` — bỏ.
 - Token sig cũ (prodLAMP `28e916b0…`, test-LAMP native) — bỏ.
-
-— LAMP agent

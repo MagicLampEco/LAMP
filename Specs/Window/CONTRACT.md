@@ -1,5 +1,7 @@
 # Cửa sổ thời gian của LAMP — gốc trùng biên epoch Cardano
 
+Phiên bản 1.1 (2026-10-04). Vì sao bump: thêm §5 (danh sách validator mang `window_origin_ms`); §1–§4 không
+đổi, nên con trỏ `v1.0 §1–§4` vẫn đúng nghĩa.
 Phiên bản 1.0 (2026-10-02). Thay cho lưới cũ `posix_ms / ms_per_epoch` tính từ gốc Unix (1970).
 
 ## 1. Định nghĩa
@@ -54,3 +56,12 @@ Preprod — hai gốc này không chia hết cho `ms_per_epoch`.
 | Mã | Treo cái gì | Ràng buộc tạm đang có hiệu lực | Khai ở |
 |---|---|---|---|
 | WIN-PREVIEW | `ms_per_epoch` và `window_origin_ms` của Preview | Không có giá trị Preview ⟹ hàm off-chain ném lỗi với Preview (fail-closed) | `Utils/src/index.ts` ▸ `WINDOW_ORIGIN_MS_BY_NETWORK` |
+
+## 5. Validator mang tham số
+
+`window_origin_ms` là tham số validator (WIN-ORIGIN-3) của 15 validator, đo trên `origin/main` `2be9ffb`:
+`claim_account`, `beacon`, `treasury` (Distribution) · `pot_vault` (Distribution/pot-vault) · `claim_account`
+(Allocation) · `faucet_nft`, `faucet_account`, `faucet_pool` (Faucet) · `custody` (Treasury) · `reserve_draw`
+(Reserve) · `nullifier`, `vote`, `proposal`, `governance`, `tally` (Governance). Vị trí trong bộ tham số: xem chữ
+ký `validator <tên>(` của từng tệp — ở `tally` nó đứng ngay trước `engage_policies`. Validator mới thêm sau mốc
+đo trên không tự hiện ở danh sách này; tra lại bằng `git grep -l "window_origin_ms: Int" -- '*/validators/*.ak'`.

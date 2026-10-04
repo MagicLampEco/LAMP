@@ -1,6 +1,9 @@
-# Distribution — CONTRACT v3 "Capped Drop" (tất định, THAY Drop Lottery)
+# Distribution — CONTRACT v3.1 "Capped Drop" (tất định, THAY Drop Lottery)
 
 **Trạng thái:** khung v2 duyệt 2026-06-05. **v3 duyệt 2026-09-22** — xem §0 vì sao bump.
+**v3.1 (2026-10-04):** bảng quyền committee (§9) thêm quyền `FundPot` mà nhánh `FundPot` của
+`treasury.ak` đã cấp nhưng bảng chưa ghi; §4d-1 ghi rõ cách cấp nguồn pot 6 đã được thay bởi
+`FundPot`. Không đổi luật on-chain nào của Capped Drop.
 Đây là **interface contract**. Mọi spec/code phải bám file này. Bỏ random/merkle/committee-chọn-winner.
 
 > Lý do thay Lottery: nó mang 2 lỗ hổng (proof hết hạn → mất quyền redeem; committee nonce grinding).
@@ -511,6 +514,11 @@ mệnh đề nào ràng `N` khoá với `N` NGƯỜI.
 
 ### 4d-1. Pot Wakeme (pot 6): tách theo khoá là CÁCH CẤP NGUỒN đã chốt, không phải lỗ
 
+> **Đã thay bởi FundPot (2026-10-03).** Pot 6 được cấp nguồn bằng nhánh `FundPot` của
+> `treasury.spend` (`Distribution/FundPot.md` v1.1): LAMP rời thẳng carrier của kho vào kho script
+> của pot, không còn qua `k` tài khoản Capped Drop và ví vận hành. Mục dưới giữ làm lịch sử lý lẽ;
+> phần "Đường đi thật" và cấp feeder theo nhu cầu không còn là đường cấp nguồn hiện hành.
+
 Pot 6 cấp 1001 LAMP cho mỗi người dùng mới qua kho Wakeme. Dồn cả pot qua MỘT tài khoản thì tốc
 độ nhận người mới bằng tốc độ mở khoá của một tài khoản: ở `w = 77.460` là khoảng 2,45 triệu LAMP
 mỗi cửa sổ, tức khoảng 490 người mới mỗi ngày. Trần đó do cơ chế phân phối đặt, không do nhu cầu.
@@ -760,6 +768,7 @@ bằng hình phạt — chỉ xử được bằng **phân tán quyền**.
 | post beacon (`rate_root`, `trim_*`, `speed_policies`) | committee | M-of-N | — | `rate_root` chỉ nới ⟹ không đóng băng được ai, nhưng nới rồi thì không siết lại được (§3b, CD-RATE-ROOT-SYM). Cắt ngọn chỉ chạm lượt rút tương lai. **Nó siết được tới mức gần như tắt:** `C-BCN-TRIM-NUM` ép `trim_num > 0` và `beacon.ak` ép `trim_den > 0`, nhưng không có trần cho `trim_den`. Một lượt post với `trim_den` rất lớn đưa κ về gần 0, và trần một lượt rút bị ghim ở `trim_floor` — cùng hệ quả với `trim_num = 0` mà chốt tử số được dựng để chặn. Chiều ngược lại cũng không có biên: `trim_num ≥ trim_den` (κ ≥ 1) là hợp lệ, và bỏ hẳn cắt ngọn. Bất biến κ = 1/1000 không được mã ép. Lượt post sau sửa lại được. Trạng thái: **CD-TRIM-KAPPA-BOUND — chưa vá** (cần đổi script hash) |
 | `GrantEntitlement` (mở tài khoản, tăng `E`) | committee | M-of-N | — | cấp `E` khống bị C-SOLV-2 chặn ở `≤ pool` |
 | `GrantEntitlement` lên tài khoản ĐÃ CÓ (cấp thêm = rebase) | committee, **không cần chủ tài khoản** | M-of-N | — | Rebase giữ `E − redeemed` nhưng đặt lại mốc chỉ số về cửa sổ hiện tại (`claim_account.ak` C-CLAIM-4..8, `treasury.ak` C-CLAIM-8). Không ai mất LAMP, nhưng phần đã mở mà chưa rút quay về vạch xuất phát. Một lượt cấp thêm 1 oildrop mỗi cửa sổ giữ được một tài khoản cụ thể không bao giờ mở thêm. Trạng thái: **CD-TOPUP-OWNER-SIG — chưa vá** (đòi chữ ký chủ tài khoản ở nhánh cấp thêm; cần đổi script hash) |
+| FundPot (rót trọn phân bổ vào pot script) | committee | M-of-N | — | rót được mọi LAMP vượt sổ nợ (FP-6) vào BẤT KỲ địa chỉ Script có inline datum (FP-5), không phải script treasury/claim_account. Chuỗi KHÔNG ép đúng số phân bổ, cũng không ép datum đúng hình dạng script đích đòi — số phân bổ chỉ ép off-chain (fundPotBuilder.ts ▸ FPB-001). Đích nhận sai datum ⇒ LAMP nằm ở địa chỉ đó mà không nhánh nào tiêu lại được. Nguồn: Distribution/FundPot.md v1.1 |
 | đặt `drops_per_epoch` lúc mở | — | — | — | **ĐÃ ĐÓNG ở v3**: `C-ACC-DPE` ép `dpe == 1` cho mọi tài khoản (§1b). Núm `dpe` đã đóng; núm per-account còn lại là cấp thêm (dòng CD-TOPUP-OWNER-SIG) |
 | đặt `trim_floor` | — | — | — | **KHÔNG phải quyền của committee**: hằng trong `constants.ak`, đổi thì phải đúc lại script (`C-RDM-TRIM-FLOOR` §4 mục 4). Trong datum thì hạ về 0 dựng lại đúng điểm hấp thụ nó sinh ra để phá |
 | `DistributionVest` (đúc LAMP vào kho) | entry Registry `lamp_tag` | **PHẢI `MultiSig`, CẤM `SinglePkh`** | có (`Revoked`) | `SinglePkh` = một chữ ký đúc được tới `dist_cap`; nếu đúc từng đợt thì nhánh này còn sống suốt vòng đời |

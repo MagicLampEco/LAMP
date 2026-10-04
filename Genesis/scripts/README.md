@@ -1,4 +1,11 @@
-# Genesis lazy-mint — deploy Preview
+# Genesis lazy-mint — deploy Preview (đường cũ, 01–03)
+
+> **Đường `01`–`03` dưới đây (8 tham số, Preview) đã lỗi thời.** Đường hiện hành là cụm canonical
+> với `lamp_mint` 14 tham số: `20_canonical_genesis.ts` … `32_etd_claim.ts`, thứ tự chạy ở
+> [`../canonical-preprod-runbook.md`](../canonical-preprod-runbook.md). Policy `ACTIVE` của từng
+> mạng lấy từ `../offchain/src/lampPolicies.ts` (`activeLampPolicyId`), không từ tài liệu này.
+> Biến bí mật đặt ngay trước lệnh chạy, không đặt trong tệp `.env` ở gốc kho như đoạn "Chuẩn bị"
+> bên dưới mô tả.
 
 Deploy + mint thử lazy-mint tLAMP trên Cardano Preview. Mặc định **SUBMIT=false**
 (build tx + eval script + in CBOR, KHÔNG gửi chain — an toàn, kiểm logic trước khi
@@ -6,7 +13,7 @@ tốn tADA).
 
 ## Chuẩn bị
 
-`.env` ở repo root (`../../.env`):
+(Đường cũ) `.env` ở repo root (`../../.env`):
 
 ```
 NETWORK=Preview
