@@ -42,6 +42,13 @@ export interface ExitProof {
   potId?: string;
   /** Chỉ khi lối ra là `FundPot`: lượng (oildrop, chuỗi số thập phân) lượt mồi đã rót vào pot. */
   amountOildrop?: string;
+  /**
+   * Tổng đã rót qua FundPot theo TỪNG pot (oildrop, chuỗi số), cộng dồn mọi lượt — mồi lẫn trọn.
+   * `fund_pot.ts` đọc nó làm "đã rót trước" và ghi lại sau mỗi lượt đã đọc lại được trên chuỗi.
+   * Thiếu trường này thì lượt rót trọn chỉ trừ được lượng mồi (`amountOildrop`), và một pot đã
+   * rót đủ ngân sách vẫn rót lần hai được mà FPB-001 không kêu.
+   */
+  fundedOildropByPot?: Record<string, string>;
 }
 
 export type ExitProofLedger = Record<string, ExitProof | null>;
@@ -147,6 +154,19 @@ function shapeErrors(network: string, p: ExitProof): string[] {
   if (hasPot && (typeof p.potId !== "string" || p.potId.length === 0)) out.push(`potId phải là chuỗi khác rỗng`);
   if (hasAmt && (typeof p.amountOildrop !== "string" || !/^[1-9][0-9]*$/.test(p.amountOildrop))) {
     out.push(`amountOildrop phải là số nguyên dương dạng chuỗi (đang '${p.amountOildrop}')`);
+  }
+  if (p.fundedOildropByPot !== undefined) {
+    const m = p.fundedOildropByPot;
+    if (typeof m !== "object" || m === null || Array.isArray(m)) {
+      out.push(`fundedOildropByPot phải là đối tượng {potId: lượng}`);
+    } else {
+      for (const [k, v] of Object.entries(m)) {
+        if (k.length === 0) out.push(`fundedOildropByPot có khoá rỗng`);
+        if (typeof v !== "string" || !/^[1-9][0-9]*$/.test(v)) {
+          out.push(`fundedOildropByPot.${k} phải là số nguyên dương dạng chuỗi (đang '${String(v)}')`);
+        }
+      }
+    }
   }
   const prefix = network === "Mainnet" ? "addr1" : "addr_test1";
   if (!p.treasuryAddress.startsWith(prefix)) {
