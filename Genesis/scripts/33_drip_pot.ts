@@ -201,9 +201,18 @@ async function main(): Promise<void> {
       .filter((x) => x.amount > 0n);
     console.log(`${due.length} tài khoản có phần đến hạn · tổng ${fmt(due.reduce((s, x) => s + x.amount, 0n))} LAMP`);
     let done = 0;
+    const walletAddr = await lucid.wallet().address();
+    // Ví chỉ dùng UTxO THUẦN ADA, và tập đó do CHÍNH script giữ qua từng lượt (`chain()` trả tập ví
+    // sau giao dịch) — không đọc lại từ chỉ mục. Đo 2026-10-04, hai cách hỏng:
+    //   • để lucid tự chọn ⇒ nó lấy UTxO ví giữ token làm collateral (`CollateralContainsNonADA`);
+    //   • đọc lại ví từ chỉ mục sau `awaitTx` (kể cả chờ 20 s) ⇒ còn thấy UTxO vừa tiêu (`BadInputsUTxO`).
+    const isPure = (u: UTxO) => Object.keys(u.assets).length === 1 && (u.assets.lovelace ?? 0n) >= 5_000_000n;
+    let walletSet = (await lucid.utxosAt(walletAddr)).filter(isPure);
     for (const { a, amount } of due) {
       const next = a.claimed + amount;
       const inLovelace = a.utxo.assets.lovelace ?? 0n;
+      if (walletSet.length === 0) throw new Error("DRIP-CLAIM-010: ví vận hành không còn UTxO thuần ADA ≥ 5 ADA.");
+      lucid.wallet().overrideUTxOs(walletSet);
       let tx = lucid.newTx()
         .collectFrom([a.utxo], redeemer(DRIP_SPEND.Claim))
         .attach.SpendingValidator(script)
@@ -217,14 +226,12 @@ async function main(): Promise<void> {
       } else {
         tx = tx.mintAssets({ [tokenUnit]: -1n }, redeemer(DRIP_MINT.BurnAccount)).attach.MintingPolicy(script);
       }
-      const built = await tx.validFrom(Date.now() - 60_000).complete();
+      const [walletAfter, , built] = await tx.validFrom(Date.now() - 60_000).chain();
       console.log(`→ ${a.vault.slice(0, 24)}… +${fmt(amount)} LAMP (đã nhả ${fmt(next)}/${fmt(a.entitlement)})`);
       if (!SUBMIT) { console.log(`(SUBMIT=false) hash thân ${built.toHash()}`); return; }
       const signed = await built.sign.withWallet().complete();
       await submitAndWait(lucid, signed, `rút ${++done}/${due.length}`);
-      // Cùng lý do chờ ở bước seed: ví vận hành trả phí, chỉ mục trễ thì lượt sau chọn lại UTxO ví
-      // vừa tiêu. Chờ một nhịp thay vì đọc ngay.
-      await new Promise((r) => setTimeout(r, 20_000));
+      walletSet = walletAfter.filter(isPure);
     }
     return;
   }
