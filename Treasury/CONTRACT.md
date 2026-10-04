@@ -157,7 +157,7 @@ testnet → đổi param/script hash KHÔNG cần migrate (lý do làm ngay bây
 - **H1A-interface — Proposal NFT = MỘT policy chung per-governance** (asset name = `proposal_id`),
   **KHÔNG one-shot-by-seed per-proposal**. Custody param `proposal_policy` là policy id đơn → chỉ đúng
   khi policy ổn định per-DAO. **Mâu thuẫn phải chốt với Governance** trước khi code Release thật.
-  Hướng đóng (đặc tả Governance, chưa có mã): `Governance/SPEC.md` v2.0 §Kiến trúc on-chain v2 —
+  Hướng đóng: `Governance/SPEC.md` v2.1 §Kiến trúc on-chain v2 (đã có mã, `Governance/onchain/validators/governance.ak`) —
   policy dùng chung trong một pha, tên = `blake2b_256(cbor(seed_ref))`. Từ `C-REL-PTR` (§16) custody
   không còn tham số `proposal_policy`: Proposal NFT policy = `g` đọc từ con trỏ.
 - **H1B — ĐÓNG (vá lần 2 F10).** `spend_spec_hash` NAY gồm `instance_id`
@@ -190,7 +190,7 @@ testnet → đổi param/script hash KHÔNG cần migrate (lý do làm ngay bây
 - **H4 — epoch neo chain.** `epoch_out == get_epoch(tx) ∧ get_epoch(tx) >= epoch_in` (thay chỉ `>=`).
   Field `epoch` thành audit thật. **Vá lần 2 (F4): dùng `get_epoch_bounded`** — validity_range hữu hạn
   CẢ HAI biên + gọn 1 epoch (chống đóng băng: kẻ đặt lower epoch cũ submit muộn). (TECH C-EPOCH.)
-- **H6 — Rebalance/MigrateIn hoãn v1.x** (`_ -> fail`). Giữ Constr trong types (index ổn định). Nạp
+- **H6 — Rebalance/MigrateIn hoãn v1.x** (`_ -> fail`). → `MigrateIn` đã hiện thực sau đó (`custody.ak` ▸ nhánh `MigrateIn`); chỉ `Rebalance` còn `_ -> fail`. Giữ Constr trong types (index ổn định). Nạp
   generators v1 dùng adapter off-chain b-ii qua `Collect` (không cần MigrateIn). (TECH §8/§9, EXEC §4.)
 
 ## 11. Vá audit lần 2 (2026-06-15 — interface KHÓA, mọi spec phải khớp)
@@ -413,5 +413,5 @@ Gương off-chain: `planDeposit` / `buildDepositTx` (`Treasury/offchain/src/depo
 ## 16. Con trỏ governance (2026-10-03, **ĐÃ HIỆN THỰC**)
 
 Nguồn: `Treasury/GovernancePointer.md` v0.2. Validator: `Treasury/onchain/validators/governance_pointer.ak`.
-Redeemer: `CommitteePropose` · `ApplyPending` · `Seal` · `GovernanceSet` (`Treasury/onchain/lib/magiclamp/treasury/types.ak`
+Redeemer: `CommitteePropose` · `ApplyPending` · `CommitteeCancel` · `Seal` · `GovernanceSet` (`Treasury/onchain/lib/magiclamp/treasury/types.ak`
 ▸ `PointerRedeemer`). Phía custody: §10 H1A đoạn "Đổi nghĩa từ 2026-10-03".

@@ -7,7 +7,7 @@
 > tư `opened_root` (sổ MPF các DID đang có account), `PoolRedeemer::ClaimOpen`/`Reclaim` mang bằng
 > chứng MPF, ngưỡng thu hồi 1001 → 72 cửa sổ, và bất biến mới INV-ONE-ACCT (§3.3a). Bản v3.0 nâng từ
 > v1 vì v1 tả một validator đã bị xoá (`validators/faucet.ak`, `FaucetDatum{claim_amount}`).
-> **Trạng thái:** v3.1 **CHƯA deploy** trên mạng nào — xem [`deployed-artifacts.md`](./deployed-artifacts.md).
+> **Trạng thái:** v3.2 **CHƯA deploy** trên mạng nào — xem [`deployed-artifacts.md`](./deployed-artifacts.md).
 > **Vai:** interface giữa on-chain và mọi bên tiêu thụ (SDK, script vận hành, module test khác).
 > Khi lệch với mã trong `onchain/`, **mã thắng** và chỗ lệch phải sửa ở đây.
 

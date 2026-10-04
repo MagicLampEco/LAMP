@@ -94,7 +94,7 @@ Quy ước đặt tên + phân biệt Spec/Paper: [`CONVENTIONS.md`](CONVENTIONS
 | `Treasury/` | Kho bạc custody sổ-kế-toán đa-bucket (collect / release theo quản trị) | đang phát triển | **Preprod** (cụm `ACTIVE`): con trỏ governance và custody dựng ở genesis. Collect / Release: chưa xác minh đã chạy |
 | `Reserve/` | Đệm phát hành, trần mỗi epoch, demand-gated qua Treasury-pull | ổn định | **Preprod** (cụm `ACTIVE`): METER và quyền rút đặt vào script ở genesis. `ReserveDraw` trên cụm này: chưa xác minh. Mainnet: nhánh này đã chết từ lúc deploy (`meter_nft_policy` = 28 byte 0) |
 | `Faucet/` | Vòi tLAMP cho dev (chỉ testnet) | ổn định | chưa trên bản `ACTIVE`; pool hiện có còn trên policy cũ `SUPERSEDED` — xem `Faucet/deployed-artifacts.md` |
-| `Governance/` | Voting Power on-chain v1 (cử tri = cá nhân, ≥4 tham số có cap). iVoteSpace · bầu 3 hội đồng · Recall mới có spec | VP: ổn định · phần còn lại: spec | chưa |
+| `Governance/` | Voting Power on-chain v2 (cử tri = cá nhân, ≥4 tham số có cap) — mã + SDK có; chưa thông qua được proposal vì C2/C4 chưa có nguồn (`Governance/SPEC.md` v2.1 `[VP-ZERO-FACTOR]`). iVoteSpace · bầu 3 hội đồng · Recall mới có spec | VP: mã v2 · phần còn lại: spec | chưa |
 | `PlatformKit/` | Bộ ráp cho bên tích hợp — **đang chuyển sang repo `Registry`**, xem `PlatformKit/README.md` | spec + adapter off-chain | chưa |
 
 Cột "Đã deploy?" lấy trạng thái từ sổ policy

@@ -45,7 +45,7 @@ qua NFT két ghi trong datum của chính nó. Chi tiết ở đầu `types.ak`.
 
 Hash validator CHƯA áp tham số (`aiken build` v1.1.21, stdlib
 `7d5cee54b2bb4eea211ae3bd806c7c39e5fd899d`):
-`1a05301954b74f50dd58e856baa7a4b1a87c357e4f122280a35814dd`.
+`06c8995deaeb3caff69e1d37f0f1ef4ce9f411895c7417fc3286e109` (chữ ký 7 tham số, có `window_origin_ms`; đo 2026-10-04).
 Hash sau khi áp tham số khác giá trị này và phải đọc lại từ `plutus.json` của lượt
 dựng thật — đừng chép con số trên vào bên off-chain.
 

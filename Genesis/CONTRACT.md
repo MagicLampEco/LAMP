@@ -2,7 +2,7 @@
 
 > **Phạm vi.** Đây là spec CHUẨN cho việc **phân bổ + phát hành** token LAMP trên Cardano
 > (PlutusV3 / Aiken). Thay v1 (`CONTRACT.md`, bản pre-registry 8-param `dist_dest`). Mọi số
-> liệu, datum, luật trong tài liệu này được trích từ code đã verify (71/71 aiken VM test) +
+> liệu, datum, luật trong tài liệu này được trích từ code đã verify (aiken VM test; số đo hiện hành ở §15) +
 > đã chạy thật trên Preview (xem §13). Đơn vị nội bộ: **oildrop** (1 LAMP = 10⁶ oildrop).
 >
 > **Bản tài liệu 2.1 (2026-10-04):** §15 cập nhật trạng thái (policy mồi mainnet đã đóng, bản 14
