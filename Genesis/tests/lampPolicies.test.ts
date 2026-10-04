@@ -73,11 +73,18 @@ describe("khớp — bản ACTIVE đọc ra được", () => {
   });
 
   it("preprod có đúng một bản ACTIVE và trả về policy id 56 hex", () => {
-    // Đo trên chuỗi 2026-09-14: Tx A `61252504…` sinh 5 marker one-shot, Tx B `47679b09…` rót
-    // 10.000 LAMP vào KHO dưới đúng policy này. Bản dựng 14 tham số, neo `oneshot-markers`.
+    // Đo trên chuỗi 2026-10-03: Tx A `249082f4…` sinh 5 marker one-shot; FundPot `21f77878…` là lối
+    // ra đầu tiên của kho. Bản dựng 14 tham số, neo `oneshot-markers`.
     const pid = activeLampPolicyId("preprod");
     expect(pid).toMatch(/^[0-9a-f]{56}$/);
-    expect(pid).toBe("53bc12ade5ee24d43750b9560f152a54b48b804fab34dab810fb8743");
+    expect(pid).toBe("493002cc03004e3e14fd607cfba59312bd946e478e69d6ab431ccfac");
+    expect(lampPolicyIdRequireActive("preprod-oneshot-14param-final")).toBe(pid);
+    expect(codeOf(() => lampPolicyIdRequireActive("preprod-oneshot-14param-v3"))).toBe(
+      LAMP_POLICY_ERRORS.SUPERSEDED,
+    );
+    expect(codeOf(() => lampPolicyIdRequireActive("preprod-oneshot-14param-v4"))).toBe(
+      LAMP_POLICY_ERRORS.SUPERSEDED,
+    );
   });
 
   it("bản mainnet KHÔNG chép giá trị — nó trỏ về LAMP_MAINNET ở deployed.ts", async () => {

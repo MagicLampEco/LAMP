@@ -239,7 +239,7 @@ export const LAMP_POLICY_REGISTRY: readonly LampPolicyRecord[] = [
     network: "preprod",
     assetName: "744c414d50",
     policyId: "53bc12ade5ee24d43750b9560f152a54b48b804fab34dab810fb8743",
-    status: "ACTIVE",
+    status: "SUPERSEDED",
     mintParamCount: 14,
     anchor: "oneshot-markers",
     anchorNote:
@@ -249,7 +249,7 @@ export const LAMP_POLICY_REGISTRY: readonly LampPolicyRecord[] = [
       "`9e9b1fabe87c043bc4fae6fa5aa89981f0b82a718507eadfa04b747b` / `lamp-reserve`. Hạt giống custody " +
       "cất ở địa chỉ ENTERPRISE của khoá vận hành, ngoài tầm coin-selection của ví " +
       "(`Genesis/scripts/_custodySeedRef.ts::findOwnedCustodySeed`).",
-    supersededBy: null,
+    supersededBy: "preprod-oneshot-14param-v4",
     recordedAt: "2026-09-26",
     evidence: [
       "Tx A (genesis, 5 marker one-shot): 21f39c9b92c51080a6dd769f637f6fb0e6ae8307eb0089c597d63f9b031aa716",
@@ -260,12 +260,74 @@ export const LAMP_POLICY_REGISTRY: readonly LampPolicyRecord[] = [
       "Mã: nhánh chính `3e43f96` + sửa offchain `findOwnedCustodySeed` (không đổi script hash).",
     ],
     caveats: [
+      "BỊ THAY 2026-10-02 bởi `preprod-oneshot-14param-v4`: lượt đúc mới tiêu chính hạt giống custody " +
+        "`6a271c69…d1ae#0` của cụm này làm hạt giống genesis ⇒ lớp 2 (Reserve) của cụm này không bao giờ " +
+        "dựng được nữa. Token còn trên chuỗi; không tích hợp mới vào đây.",
       "Beacon genesis: cửa sổ 4144, index 0, `rate_root` 77.460, κ = 1/1000 — cùng hằng với Mainnet.",
       "Lối ra kho CHƯA chạy: lượt Redeem đầu sớm nhất cửa sổ 4145 (2026-09-29 07:00 +07). Tới lúc đó " +
         "`Genesis/treasury-exit-proof.json` khoá Preprod còn `null` và cổng TRE-EXIT-001 chặn nạp lớn.",
       "Lớp 2 (Reserve) CHƯA dựng: MET còn ở ví vận hành ⇒ khoá ví rút được toàn bộ 9,63 tỷ Reserve " +
         "trong một giao dịch cho tới khi `24_reserve_layer2_init.ts` chạy. Lớp 2 chờ CARP dựng lại " +
         "(instance custody chung nhận CARP) và `GOVERNANCE_SCRIPT_HASH`.",
+    ],
+  },
+
+  {
+    // Cụm đúc tối 2026-10-02 rồi bỏ ngay sáng 2026-10-03: thiếu nhãn marker đọc ra nghĩa, mà nhãn
+    // phải đi cùng lượt đúc cuối. Ghi lại để policy id gặp trên chuỗi tra ra được là ĐÃ BỎ.
+    id: "preprod-oneshot-14param-v4",
+    network: "preprod",
+    assetName: "744c414d50",
+    policyId: "7ecbffe2b41f68c917035f52a1053efbd2323dfd85a81cf840089ea2",
+    status: "SUPERSEDED",
+    mintParamCount: 14,
+    anchor: "oneshot-markers",
+    anchorNote:
+      "Registry-gate, `lamp_mint` 14 tham số, bốn khe marker neo `oneshot_nft.ak`. Hạt giống genesis " +
+      "`6a271c69…d1ae#0` (= hạt giống custody của `preprod-oneshot-14param-v3`). Khe #13-14 = " +
+      "`custody_seed` áp trên hạt giống custody `1f495fbe…f825#0` = " +
+      "`bab37d33e533445caa912b9d288f05fbc0ab668e9d29a6f3499d8722` / `lamp-reserve`.",
+    supersededBy: "preprod-oneshot-14param-final",
+    recordedAt: "2026-10-04",
+    evidence: [
+      "Tx A (genesis): 892cff97fc02d7dd335e8bf2b7121833f9be78720ec7da9472ee93aba5ca1471",
+      "Tx vest mồi 1 tLAMP → KHO: 478ff1f4f945ed7d68224c28080e959da0dee32d69ceb754a3dce6ce745f6047",
+    ],
+    caveats: [
+      "BỊ THAY 2026-10-03 bởi `preprod-oneshot-14param-final`: lượt đúc cuối tiêu hạt giống custody " +
+        "`1f495fbe…f825#0` của cụm này làm hạt giống genesis ⇒ lớp 2 của cụm này không dựng được nữa. " +
+        "Cụm chỉ có 1 tLAMP mồi trong kho; không tích hợp vào đây.",
+    ],
+  },
+
+  {
+    // Lượt đúc cuối trên Preprod: nhãn marker đọc ra nghĩa, F1 đóng ở genesis (METER và quyền rút
+    // Reserve đặt vào script ngay Tx A), con trỏ governance dựng trước genesis (Tx P).
+    id: "preprod-oneshot-14param-final",
+    network: "preprod",
+    assetName: "744c414d50",
+    policyId: "493002cc03004e3e14fd607cfba59312bd946e478e69d6ab431ccfac",
+    status: "ACTIVE",
+    mintParamCount: 14,
+    anchor: "oneshot-markers",
+    anchorNote:
+      "Registry-gate, `lamp_mint` 14 tham số, bốn khe marker neo `oneshot_nft.ak`. Hạt giống genesis " +
+      "`1f495fbe…f825#0` (= hạt giống custody của `preprod-oneshot-14param-v4`). Khe #13-14 = " +
+      "`custody_seed` áp trên hạt giống custody `c503986c…bdee#0` = " +
+      "`6ba3c1ad59153432669be4a1b49a165bfe9ebe29bc0a91a6361a5098` / `lamp-reserve`. Ba giao dịch genesis " +
+      "theo thứ tự P (con trỏ governance) → A0 (gieo custody) → A (5 marker + METER/quyền rút vào script).",
+    supersededBy: null,
+    recordedAt: "2026-10-04",
+    evidence: [
+      "Tx P (con trỏ governance, hạt giống d11bf984…d667#0): 93b285129f16a3d479f7c01a299d151ce8b380b75d9a1a81d7758cc7446d8319",
+      "Tx A0 (gieo custody): 288614fdd6c011b6577e72efd4073e16a32c3b045d87906a19b69d415d754bcb",
+      "Tx A (genesis): 249082f48eb05bca6074df6efaf187175f33d610853963d794bec37fde7f765f",
+      "Lối ra kho đã có bằng chứng: FundPot mồi pot `wakeme` 21f77878… (`Genesis/treasury-exit-proof.json` khoá Preprod).",
+      "Kho Treasury: addr_test1wr4rr2av837g60eszp23740c5zdgmxlg8ngyppx4jp8yxzq5c9k5s.",
+    ],
+    caveats: [
+      "Pot `development` trên Preprod là native-script khoá vận hành (`Genesis/offchain/src/preprodDevPot.ts`), " +
+        "không phải validator pot — chỉ dùng cho mạng thử.",
     ],
   },
 

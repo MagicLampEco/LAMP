@@ -470,7 +470,7 @@ state đó thuộc về một policy 12 tham số, không phải policy hiện t
 
 Đúc lại sau khi #93 (Capped Drop v3), #95 (beacon) và #96 (custody) vào nhánh chính. Ba bản vá đổi
 script hash của `treasury`, `claim_account`, `beacon`; hash kho nướng vào `lamp_mint`, nên policy mới
-là bắt buộc. Bản ghi ACTIVE: `Genesis/offchain/src/lampPolicies.ts` ▸ `preprod-oneshot-14param-v3`
+là bắt buộc. Bản ghi lúc đó: `Genesis/offchain/src/lampPolicies.ts` ▸ `preprod-oneshot-14param-v3` (nay SUPERSEDED; bản ACTIVE tra `activeLampPolicyId("preprod")`)
 (nguồn duy nhất cho policy id — mục này không chép lại).
 
 ### Hạt giống custody cất NGOÀI ví
