@@ -244,8 +244,8 @@ export async function beaconNftPolicyIdFromRef(ref: GenesisRef): Promise<string>
 // Asset-name hex `TREASURY_NFT_ASSET_NAME` (PHẢI khớp onchain util.treasury_nft_name):
 // giữ DUY NHẤT ở `../offchain/src/constants.ts`, re-export ở đầu tệp này — trước đây
 // tệp này giữ một bản định nghĩa RIÊNG, hai nơi cùng một giá trị mà không ai báo khi
-// một bên đổi còn bên kia quên (ca thật: đợt đổi REG/MET/TRSY/TPULL 2026-09-14 phải sửa
-// tay cả hai chỗ).
+// một bên đổi còn bên kia quên (ca thật: đợt đổi bốn nhãn marker viết tắt sang tên đọc được 2026-09-14 phải
+// sửa tay cả hai chỗ).
 
 /** Compiled code (chưa apply) của minting validator treasury_nft. */
 export async function rawTreasuryNft(): Promise<RawValidator> {
