@@ -9,7 +9,8 @@
     "amountOildrop": "1001000000",
     "fundedOildropByPot": {
       "wakeme": "1001000000000000",
-      "development": "2718000000000000"
+      "development": "2718000000000000",
+      "early-tiger-deleg": "12000000000000"
     }
   },
   "Preview": null,
