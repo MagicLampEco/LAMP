@@ -122,7 +122,7 @@
 //   nguyên hữu hạn mà AI CŨNG chiếm được: lấp 20 dòng bằng category rác ⇒ mọi dòng hợp lệ
 //   mới bị từ chối. Vá gồm HAI vế, thiếu một vế thì vế kia vô nghĩa:
 //     • C-COL-CAT       `item.category` ∈ `datum.buckets`  (nhánh Collect)
-//     • C-BUCKETS-KEEP  `out.buckets == in.buckets`        (CẢ BỐN nhánh tiêu kho)
+//     • C-BUCKETS-KEEP  `out.buckets == in.buckets`        (CẢ NĂM nhánh tiêu kho)
 //   Danh sách được ép hợp lệ ĐÚNG MỘT LẦN ở `custody_seed` ▸ S-BUCKETS-* (khác rỗng, tăng
 //   nghiêm ngặt, không chứa bucket dành riêng), nên bốn nhánh dưới chỉ mang nó qua — không
 //   nhánh nào kiểm lại `config_ok` (theo quy nạp đã đúng; kiểm lại là trả tiền mỗi lượt).
@@ -144,7 +144,7 @@ use magiclamp/treasury/util
 
 /// Release validator parameterized bởi:
 ///   pointer_policy  — PolicyId của NFT con trỏ governance (`governance_pointer`, one-shot).
-///                     Đổi 2026-10-03 (Treasury/GovernancePointer.md v0.1): trước đây khe #1 là
+///                     Đổi 2026-10-03 (Treasury/GovernancePointer.md v0.2): trước đây khe #1 là
 ///                     `proposal_policy` (policy proposal NFT nướng cứng). Nay policy proposal
 ///                     ĐỌC từ con trỏ (`pointer.read_governance`), nên governance dựng lại được
 ///                     mà không phải đúc lại kho. Giữ khe #1 (không bỏ) và ÉP
@@ -296,7 +296,7 @@ validator custody(
         // (phình datum → kẹt) mà không chi gì. Một Release phải chi thật.
         expect draws != []
 
-        // C-REL-PTR (Treasury/GovernancePointer.md v0.1): `governance_ref` là policy NFT con
+        // C-REL-PTR (Treasury/GovernancePointer.md v0.2): `governance_ref` là policy NFT con
         // trỏ, và phải đúng con trỏ nướng vào hash kho này. Governance hiện hành
         // g = PointerDatum.governance_hash, đọc qua reference input mang NFT con trỏ ở
         // Script(governance_ref); con trỏ rỗng (|g| ≠ 28) ⇒ từ chối.
