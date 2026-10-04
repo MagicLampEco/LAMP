@@ -330,7 +330,7 @@ lý do để chi nó ra; (2) mỗi category lạ là một dòng sổ mới — 
 - `S-BUCKETS-NONEMPTY` · `S-BUCKETS-SORTED` · `S-BUCKETS-RESERVED` — lúc gieo: `buckets` khác rỗng, tăng
   NGHIÊM NGẶT (⇒ không trùng), không chứa `reserve_inflow` hay `stake_reward` (`buckets.ak` ▸ `config_ok`,
   gọi trong `custody_seed`). Đây là cửa DUY NHẤT kiểm hình dạng `buckets`.
-- `C-BUCKETS-KEEP` — cả bốn nhánh tiêu kho (`Collect` · `Release` · `MigrateIn` · `StakeRewardIn`) ép
+- `C-BUCKETS-KEEP` — cả năm nhánh tiêu kho (`Collect` · `Release` · `MigrateIn` · `StakeRewardIn` · `Deposit`) ép
   `out.buckets == in.buckets`. ⇒ **danh sách category là cấu hình của instance, chốt lúc gieo, bất biến đời
   instance.** Cần category mới = gieo instance mới (hoặc một nhánh đổi cấu hình qua Governance — chưa có).
 
