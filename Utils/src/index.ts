@@ -198,8 +198,8 @@ function assertWindowParams(originMs: bigint, epochMs: bigint): void {
 }
 
 /** Window index of a POSIX-ms instant for explicit parameters: `(t − origin) / ms_per_epoch` (floor).
- *  `t` before the origin throws (`WINDOW_BEFORE_ORIGIN`) — Aiken truncates toward zero and
- *  would return a wrong, plausible-looking index. `origin = 0` is a legal input but cannot tell
+ *  `t` before the origin throws (`WINDOW_BEFORE_ORIGIN`) — Aiken's `/` floors, so on-chain it
+ *  would return a negative index (−1 just before the origin) that no window can match. `origin = 0` is a legal input but cannot tell
  *  a build that subtracts the origin from one that forgot to: tests need a real origin too (spec §3). */
 export function windowIndex(t: bigint, originMs: bigint, epochMs: bigint): bigint {
   assertWindowParams(originMs, epochMs);
