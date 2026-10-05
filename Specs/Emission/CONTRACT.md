@@ -101,21 +101,26 @@ Cổng đo **trạng thái TRƯỚC giao dịch** của kho, và là một ngư�
 từ sàn trở lên thì đóng. Không có dải nội suy.
 
 ```
-sàn = 1% × C
-cổng MỞ   ⟺  parked_custody × 100 < C
-cổng ĐÓNG ⟺  parked_custody × 100 ≥ C
+sàn       = floor_oildrop = 1% × reserve_cap (§2)   — một HẰNG SỐ
+cổng MỞ   ⟺  parked_custody < floor_oildrop
+cổng ĐÓNG ⟺  parked_custody ≥ floor_oildrop
 ```
 
-Phát biểu bằng lời: **kho Treasury phải giữ một khoản đệm ít nhất bằng 1% lượng LAMP đang lưu
-hành; xuống dưới mức đó thì Reserve tiếp tế.**
+Phát biểu bằng lời: **kho Treasury phải giữ một khoản đệm ít nhất bằng 1% trần Reserve; xuống
+dưới mức đó thì Reserve tiếp tế.** Giá trị vận hành là hằng `DECIDED_FLOOR_OILDROP`
+(`Genesis/scripts/_reserve_layer2.ts`). Kịch bản genesis đọc sàn từ biến `RESERVE_FLOOR_OILDROP`
+(bắt buộc, không mặc định — `reserveFloorFromEnv`) và gắn nhãn `production` khi trùng hằng, `demo`
+khi khác. Sàn đi vào script qua tham số áp `floor_oildrop` của `reserve_auth` (khe #3) và
+`reserve_gate` (khe #5); `reserveFloorPair.ts` ép hai khe trùng nhau.
 
-Sàn là một **tỷ lệ của lưu hành**, không phải một hằng số tuyệt đối. Hệ quả cố ý:
+Sàn là một **hằng số tuyệt đối**, không phải tỷ lệ của lưu hành `C`. Hệ quả:
 
-- Sàn **tự co giãn** theo quy mô hệ, nên không bao giờ cần sửa — và vì không cần sửa nên việc nó
-  bị nướng vào định danh của script không tạo ra nợ.
-- Ở giai đoạn đầu, `C` nhỏ ⟹ sàn nhỏ ⟹ kho dễ nằm trên sàn ⟹ cổng **đóng**. Đúng như mong muốn:
-  chưa có cầu thật thì Reserve không tiếp tế.
-- So sánh dùng **phép nhân**, không dùng phép chia — tránh mất mát do chia số nguyên.
+- Kiểm được **tĩnh**: áp lại tham số rồi so với script hash đang chạy là biết sàn; không cần đo
+  `C` trên chuỗi lúc giao dịch.
+- Sàn **không tự co giãn**. Đổi sàn là đổi tham số áp ⇒ đổi hash `reserve_auth` + `reserve_gate`
+  ⇒ phải triển khai lại hai script đó. Đây là cái giá được chấp nhận để đổi lấy vế trên.
+- Sàn không phụ thuộc quy mô lưu hành: kho Treasury giữ ít hơn `floor_oildrop` thì cổng **mở**
+  bất kể `C` lớn hay nhỏ; vế A (trần nhịp §3.1) vẫn giới hạn tốc độ nhả.
 
 ### 3.3 Không có epoch kết thúc
 
@@ -216,7 +221,6 @@ phía trên, và trôi **im lặng** vì con trỏ vẫn trỏ vào một dòng 
 
 | Mã | Treo cái gì | Ràng buộc TẠM đang có hiệu lực | Khai ở |
 |---|---|---|---|
-| `EMIT-FLOOR-IMPL` | Cổng cầu chưa ép sàn ở dạng **tỷ lệ** `1%·C` (§3.2); bản đang có dùng một ngưỡng tuyệt đối | Fail-closed theo cả hai cách đọc: không thoả sàn thì **không** nhả. Ngưỡng dùng trong kịch bản diễn tập **không phải** giá trị vận hành. | tham số triển khai module Treasury |
 | `EMIT-INFLATION-DENOM` | Kho này không định nghĩa đại lượng "lạm phát"/"pha loãng" — không mẫu số nào được khai cho nó | Tệp này chỉ phát biểu tốc độ nhả theo mẫu số **tổng trần**, và gọi đúng tên mẫu số đó (§3.4). Không tài liệu nào trong kho được phát biểu một tỷ lệ lạm phát chừng nào đại lượng đó còn chưa có định nghĩa. | §3.4 tệp này |
 
 Danh mục này ghi **trạng thái hiện thực**, không ghi lựa chọn đang cân nhắc. Luật thì đã đủ ở §3;
@@ -226,13 +230,14 @@ chỗ còn lại là mã đuổi theo luật, và mọi bước trung gian đề
 
 ## 7. Các câu ĐÃ BỊ THAY
 
-Ghi lại để người đọc bản cũ không kết luận ngược. Bốn câu dưới đây từng nằm trong kho và **đã bị
+Ghi lại để người đọc bản cũ không kết luận ngược. Năm câu dưới đây từng nằm trong kho và **đã bị
 thay bởi tệp này**:
 
 | Câu cũ | Vì sao bị thay |
 |---|---|
 | *"Gate nhịp Reserve = theo mức Treasury, **KHÔNG theo epoch**"* | Vế cổng cầu đúng và được giữ (§3.2). Vế *"không theo epoch"* sai: nó phủ nhận trần nhịp, mà trần nhịp là vế trả lời một câu hỏi khác. Hai vế bổ sung nhau, không loại trừ nhau. |
 | *"Reserve module hiện tại (trần E/1000/epoch) là thiết kế **CŨ** — cần thiết kế lại"* | Sai. Trần E/1000 là vế A của luật hiện hành và là phần **đã có mã, đã chạy xanh trên mạng thử**. Không có gì phải viết lại. |
+| *"sàn = 1% × C — một **tỷ lệ của lưu hành**, không phải hằng số tuyệt đối"*; kèm điểm treo `EMIT-FLOOR-IMPL` ở §6 | Thay bằng hằng `floor_oildrop` = 1% trần Reserve (§3.2), đúng dạng mã đang ép. Lý do: hằng kiểm được tĩnh từ tham số áp; dạng tỷ lệ đòi đo `C` trên chuỗi ở mỗi giao dịch nhả, việc chưa có mã. Điểm treo đã **xoá** khỏi §6 vì mã và luật nay khớp. |
 | *"nhả theo một **hàm nội suy** giữa sàn và trần (1%·C → 2%·C)"* | Không được giữ. Cổng cầu là **một ngưỡng nhị phân** (§3.2). Dải nội suy đòi hai tham số và một hàm chưa từng được định nghĩa; không có mã nào hiện thực nó. |
 | *"đường Reserve nhận diện kho bằng **địa chỉ** và đo **tổng mặt output** (`qty_to_credential`); bản đổi cách đã có mã nhưng **chưa vào nhánh chính**"* — từng là điểm treo `EMIT-DEST-NFT` ở §6 | Hết hiệu lực: bản đổi cách **đã ở trên nhánh chính**. `reserve_draw.ak` nay ép Luật 9 (`count_inputs_with_nft`) + Luật 10 (`is_at_script` với `custody_script_hash`), và nhánh `ReserveDraw` của `lamp_mint.ak` ép thêm `script_hash_of_holder` + `qty_delta_at_script` trên `reserve_kho_nft_*`. `qty_to_credential` không còn được `reserve_draw` gọi. Mục treo đã **xoá** khỏi §6 thay vì đính chính bên cạnh — §3.5 là nơi duy nhất mô tả cách ép hiện hành. |
 

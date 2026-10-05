@@ -97,7 +97,7 @@ export const INSTANCE_ID = fromText("lamp-reserve");
 
 /**
  * SÀN đã chốt của cổng cầu (oildrop): 1% trần Reserve = 96_300_000_000_000 oildrop (chủ dự án
- * chốt 2026-10-02). `reserve_gate` chỉ nhả auth NFT khi custody đang giữ ÍT HƠN ngần này LAMP.
+ * chốt dạng hằng số 2026-10-05; luật ở `Specs/Emission/CONTRACT.md` §3.2). `reserve_gate` chỉ nhả auth NFT khi custody đang giữ ÍT HƠN ngần này LAMP.
  *
  * Hằng này KHÔNG phải mặc định: con số đi vào script đọc từ `RESERVE_FLOOR_OILDROP` (bắt buộc,
  * `reserveFloorFromEnv`). Hằng chỉ dùng để GẮN NHÃN giá trị đọc được — bằng nó thì nhãn là

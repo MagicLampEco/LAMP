@@ -1,6 +1,8 @@
 # GovernancePointer — custody trỏ tới governance qua một NFT con trỏ
 
-Phiên bản 0.2 (2026-10-03). Nằm cạnh `Treasury/CONTRACT.md` và `Treasury/Tech-Spec.md` §7 (C-REL-*). Validator mới: `Treasury/onchain/validators/governance_pointer.ak`.
+Phiên bản 0.3 (2026-10-05). Nằm cạnh `Treasury/CONTRACT.md` và `Treasury/Tech-Spec.md` §7 (C-REL-*). Validator mới: `Treasury/onchain/validators/governance_pointer.ak`.
+
+Vì sao lên 0.3: chốt committee Mainnet 2-of-3 (mục "Đã chốt", mục "Genesis"). Hình dạng on-chain không đổi so với 0.2: `pointer.committee_wellformed` đã nhận mọi `1 ≤ threshold ≤ n`.
 
 Vì sao lên 0.2: chốt mô hình tin cậy và trễ Mainnet (mục "Đã chốt"). Hình dạng on-chain không đổi so với 0.1.
 
@@ -10,6 +12,7 @@ Vì sao lên 0.2: chốt mô hình tin cậy và trễ Mainnet (mục "Đã ch�
   - Committee niêm phong một chiều (`Seal`) khi governance có đủ C1–C4 chạy được. Sau đó chỉ proposal đã thông qua mới đổi được (`GovernanceSet`).
   - Đã loại: chỉ governance đổi được (governance hiện hành không thông qua được gì ⇒ con trỏ kẹt ngay), và committee đổi mãi không niêm phong (trái nguyên tắc governance theo cá nhân).
 - **Trễ Mainnet:** 6 epoch = `2_592_000_000` ms. Hằng `POINTER_DELAY_MAINNET_MS` ở `Genesis/scripts/_reserve_layer2.ts`; khai số khác trên Mainnet ⇒ `POINTER-DELAY-001`.
+- **Committee Mainnet (2026-10-05):** 3 khoá, `threshold = 2`. Committee **không đổi được** sau khi đúc NFT con trỏ — mọi nhánh chi giữ nguyên `committee` và `threshold` — nên ba khoá phải chốt trước genesis Mainnet. Mất một khoá vẫn ký được. Mất hai khoá thì không còn `CommitteePropose`, `CommitteeCancel`, `Seal`; con trỏ chỉ còn đổi được qua `GovernanceSet`, nhánh này không đòi đã niêm phong nhưng đòi `governance_hash` đã dài 28 byte và governance đó thông qua được proposal. Con trỏ còn rỗng lúc mất hai khoá ⇒ kẹt vĩnh viễn.
 - **Hạn của Propose** tính từ CẬN TRÊN khoảng hiệu lực + trễ. Cận dưới lùi về quá khứ được, nên tính từ cận dưới thì rút ngắn được trễ.
 
 ## Vì sao
@@ -83,7 +86,9 @@ Nướng hash governance hôm nay = nhánh `Release` của custody chết vĩnh 
 
 ## Genesis
 - NFT con trỏ đúc ở một giao dịch riêng (Tx P), TRƯỚC Tx A0, theo hạt giống ghim `POINTER_SEED_TX/IDX`.
-  - Datum đầu: `governance_hash = #""`, `committee = [pkh vận hành]`, `threshold = 1`, `sealed = False`, `pending = None`.
+  - Datum đầu: `governance_hash = #""`, `sealed = False`, `pending = None`, và:
+    - Preprod (diễn tập): `committee = [pkh vận hành]`, `threshold = 1`;
+    - Mainnet: `committee` = 3 pkh, `threshold = 2` (mục "Đã chốt"). `20_canonical_genesis.ts` chặn Mainnet; genesis Mainnet đi theo `Genesis/mainnet-deploy-plan.md`.
 - `CustodyDatum.governance_ref` = policy NFT con trỏ. Bỏ biến `GOVERNANCE_SCRIPT_HASH` khỏi đường genesis.
 - `change_delay_ms`: Preprod `3_600_000` (1 giờ, để diễn tập). Mainnet 6 epoch (mục "Đã chốt").
 

@@ -12,8 +12,7 @@
 
 | Mã | Treo cái gì | Ràng buộc TẠM đang có hiệu lực (fail-closed) | Khai ở |
 |---|---|---|---|
-| `EMIT-FLOOR-IMPL` | Cổng cầu chưa ép sàn ở dạng tỷ lệ `1%·C`; bản đang có dùng một ngưỡng tuyệt đối | Fail-closed theo cả hai cách đọc: không thoả sàn thì không nhả. Ngưỡng dùng trong kịch bản diễn tập **không phải** giá trị vận hành. | tham số triển khai module Treasury |
-| `RSV-PARAM-FREEZE` | Bộ tham số của một instance `reserve_draw` | Mọi tham số là **apply-param** — nướng vào script hash. Validator ép state ở lại đúng địa chỉ của nó và redeemer duy nhất là `Draw` (không có `Migrate`) ⇒ meter NFT không rời được instance đã gửi vào. Từ cụm Preprod 2026-10-03, METER được đúc **thẳng vào** `reserve_draw` trong Tx A của lượt genesis (F1 đóng ở genesis — `Genesis/CONTRACT.md` §17), nên bộ tham số khoá ngay lúc genesis. Ràng buộc tạm: **genesis Mainnet chưa chạy** cho tới khi `EMIT-FLOOR-IMPL` đóng. | `Genesis/mainnet-deploy-plan.md` |
+| `RSV-PARAM-FREEZE` | Bộ tham số của một instance `reserve_draw` | Mọi tham số là **apply-param** — nướng vào script hash. Validator ép state ở lại đúng địa chỉ của nó và redeemer duy nhất là `Draw` (không có `Migrate`) ⇒ meter NFT không rời được instance đã gửi vào. Từ cụm Preprod 2026-10-03, METER được đúc **thẳng vào** `reserve_draw` trong Tx A của lượt genesis (F1 đóng ở genesis — `Genesis/CONTRACT.md` §17), nên bộ tham số khoá ngay lúc genesis. Ràng buộc tạm: genesis Mainnet chỉ chạy khi sàn mang nhãn `production`, tức `floor_oildrop` bằng đúng hằng `DECIDED_FLOOR_OILDROP` (dạng sàn ở `Specs/Emission/CONTRACT.md` §3.2), vì sàn khoá cùng bộ tham số lúc genesis. | `Genesis/mainnet-deploy-plan.md` |
 
 Mô hình **đệm phát hành demand-gated** (allocation v3, đông kết 2026-06-14). Reserve là
 **lớp đệm phát hành SAU CÙNG** của LAMP: 9,630 tỷ LAMP (26,75%) nhả từ U-space (chưa mint)
