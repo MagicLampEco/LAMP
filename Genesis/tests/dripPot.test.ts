@@ -1,11 +1,19 @@
-// Phần thuần của két drip — `Distribution/offchain/src/dripPot.ts`, hợp đồng
-// `Distribution/drip-pot/CONTRACT.md` v0.2.
+// Phần thuần của két drip — `Distribution/offchain/src/dripPot.ts` + `dripDeployment.ts`, hợp đồng
+// `Distribution/drip-pot/CONTRACT.md` v0.3. Bài Emulator của nhánh Return: `Distribution/tests/dripPotReturn.test.ts`.
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, it, expect } from "vitest";
 import {
   dripVested, dripClaimable, encodeAccountDatum, decodeDripDatum, dripTagDatum, dripParamList,
-  addressToData, dataToAddress, vaultKey, epochAt, DRIP_RESERVE_DATUM_CBOR,
+  dripParamListV02, addressToData, dataToAddress, vaultKey, epochAt, DRIP_RESERVE_DATUM_CBOR,
 } from "../../Distribution/offchain/src/dripPot.js";
-import { Constr, Data, getAddressDetails } from "@lucid-evolution/lucid";
+import {
+  DRIP_DEPLOYED_DIR, readDripCode, readDripDeployments, resolveDripScript,
+} from "../../Distribution/offchain/src/dripDeployment.js";
+import {
+  LAMP_POLICY_REGISTRY, activeDistributionTreasury, selectActiveDistributionTreasury,
+} from "../offchain/src/lampPolicies.js";
+import { Constr, Data, getAddressDetails, validatorToAddress, validatorToScriptHash } from "@lucid-evolution/lucid";
 
 const BASE = "addr_test1qp067hf434akjn7yhvx25cahwzq4l7plj65szhh5zgp375zl4awntrtmd98ufwcv4f3mwuyptlurl94fq900gysrragqhrtrhl";
 const SCRIPT_ENT = "addr_test1wr4rr2av837g60eszp23740c5zdgmxlg8ngyppx4jp8yxzq5c9k5s";
@@ -62,13 +70,75 @@ describe("datum — §2", () => {
 });
 
 describe("tham số — DP-PARAM", () => {
-  const ok = { campaignIdHex: "65", lampPolicy: "00".repeat(28), lampName: "744c414d50", committee: ["aa".repeat(28)],
+  const v02 = { campaignIdHex: "65", lampPolicy: "00".repeat(28), lampName: "744c414d50", committee: ["aa".repeat(28)],
     threshold: 1n, msPerEpoch: 432_000_000n, windowOriginMs: 1_654_041_600_000n, vestEpochs: 36n };
-  it("bộ đúng ra 8 tham số theo thứ tự §1", () => expect(dripParamList(ok)).toHaveLength(8));
+  const ok = { ...v02, returnScript: "bb".repeat(28), treasuryNftPolicy: "cc".repeat(28) };
+  it("v0.3 ra 10 tham số theo thứ tự §1, hai tham số cuối là return_script, treasury_nft_policy", () => {
+    const l = dripParamList(ok);
+    expect(l).toHaveLength(10);
+    expect(l.slice(8)).toEqual(["bb".repeat(28), "cc".repeat(28)]);
+    expect(l.slice(0, 8)).toEqual(dripParamListV02(v02));
+  });
+  it("v0.2 (két đang chạy Preprod) giữ 8 tham số", () => expect(dripParamListV02(v02)).toHaveLength(8));
   it("threshold 0, vest 0, khoá trùng vượt threshold đều bị từ chối", () => {
     expect(() => dripParamList({ ...ok, threshold: 0n })).toThrow(/DRIP-PARAM-002/);
     expect(() => dripParamList({ ...ok, vestEpochs: 0n })).toThrow(/DRIP-PARAM-001/);
     expect(() => dripParamList({ ...ok, committee: ["aa".repeat(28), "aa".repeat(28)], threshold: 2n })).toThrow(/DRIP-PARAM-002/);
+  });
+  it("return_script / treasury_nft_policy không phải 28 byte ⇒ DRIP-PARAM-003", () => {
+    expect(() => dripParamList({ ...ok, returnScript: "bb".repeat(27) })).toThrow(/DRIP-PARAM-003/);
+    expect(() => dripParamList({ ...ok, treasuryNftPolicy: "" })).toThrow(/DRIP-PARAM-003/);
+  });
+});
+
+// Két v0.2 đang chạy Preprod (CONTRACT §10): bytecode đóng băng + bản ghi triển khai phải dựng lại
+// ĐÚNG hash đã lên chuỗi. Không cần mạng, không cần aiken build.
+describe("bản ghi triển khai — két v0.2 Preprod", () => {
+  const rec = JSON.parse(readFileSync(resolve(DRIP_DEPLOYED_DIR, "deployments.json"), "utf8")).deployments[0];
+  const w = rec.appliedWith;
+  const params = { campaignIdHex: w.campaignIdHex, lampPolicy: w.lampPolicy, lampName: w.lampName,
+    committee: w.committee, threshold: BigInt(w.threshold), msPerEpoch: BigInt(w.msPerEpoch),
+    windowOriginMs: BigInt(w.windowOriginMs), vestEpochs: BigInt(w.vestEpochs) };
+  it("tệp đóng băng có hash chưa áp 20d5ca92…, dựng lại ra hash + địa chỉ đã ghi (c739ee4c…)", () => {
+    expect(readDripDeployments().map((d) => d.id)).toContain("preprod-early-tiger-deleg-v0.2");
+    const r = resolveDripScript({ version: "v0.2", network: "Preprod", campaign: "early-tiger-deleg", params });
+    expect(r.deployment?.id).toBe("preprod-early-tiger-deleg-v0.2");
+    expect(r.hash).toBe("c739ee4ccf9e30aeda4103954fc7858778c13895a3d2d8f396bdc63e");
+    expect(validatorToAddress("Preprod", r.script)).toBe("addr_test1wrrnnmjve70rptk6gype2n78skrh3sfcjk3a9k8nj67uv0s7c4z50");
+    expect(validatorToScriptHash({ type: "PlutusV3", script: readDripCode(
+      resolve(DRIP_DEPLOYED_DIR, "drip_pot-v0.2.blueprint.json"), "v0.2") })).toBe("20d5ca92e7477abb6892cd7866e12e4d9e5c54e15d62820fc946a5d3");
+  });
+  it("tham số lệch (committee khác) ⇒ DRIP-DEPLOY-005, không dựng im lặng một két khác", () => {
+    expect(() => resolveDripScript({ version: "v0.2", network: "Preprod", campaign: "early-tiger-deleg",
+      params: { ...params, committee: ["aa".repeat(28)] } })).toThrow(/DRIP-DEPLOY-005/);
+  });
+  it("v0.2 không có bản ghi cho chiến dịch khác ⇒ DRIP-DEPLOY-007", () => {
+    expect(() => resolveDripScript({ version: "v0.2", network: "Preprod", campaign: "khac", params })).toThrow(/DRIP-DEPLOY-007/);
+  });
+  it("blueprint đóng băng đọc như v0.3 ⇒ DRIP-DEPLOY-003 (số tham số)", () => {
+    expect(() => readDripCode(resolve(DRIP_DEPLOYED_DIR, "drip_pot-v0.2.blueprint.json"), "v0.3")).toThrow(/DRIP-DEPLOY-003/);
+  });
+  it("hash chưa áp lệch bản ghi ⇒ DRIP-DEPLOY-004", () => {
+    expect(() => readDripCode(resolve(DRIP_DEPLOYED_DIR, "drip_pot-v0.2.blueprint.json"), "v0.2", "00".repeat(28))).toThrow(/DRIP-DEPLOY-004/);
+  });
+});
+
+describe("kho Distribution của cụm ACTIVE — nguồn return_script / treasury_nft_policy", () => {
+  it("preprod: trường có cấu trúc của bản ghi ACTIVE", () => {
+    const t = activeDistributionTreasury("preprod");
+    expect(t.recordId).toBe("preprod-oneshot-14param-final");
+    expect(t.lampPolicy).toBe("493002cc03004e3e14fd607cfba59312bd946e478e69d6ab431ccfac");
+    expect(t.scriptHash).toBe("ea31abac3c7c8d3f3010551f55f8a09a8d9be83cd04084d5904e4308");
+    expect(t.nftPolicy).toBe("379e60c09b0c778dc7651e254a977f89017393226df389acd5f27277");
+    // Đối chiếu chéo với chuỗi `evidence` CHỈ trong bài kiểm (mã chạy không đọc chuỗi đó).
+    const rec = LAMP_POLICY_REGISTRY.find((r) => r.id === t.recordId)!;
+    const kho = rec.evidence.find((e) => e.startsWith("Kho Treasury: "))!.slice("Kho Treasury: ".length).replace(/\.$/, "");
+    expect(getAddressDetails(kho).paymentCredential).toEqual({ type: "Script", hash: t.scriptHash });
+  });
+  it("bản ACTIVE thiếu trường ⇒ TLAMP-SRC-007; mạng không có ACTIVE ⇒ ném, không trả rỗng", () => {
+    const bare = LAMP_POLICY_REGISTRY.map((r) => ({ ...r, distributionTreasury: undefined }));
+    expect(() => selectActiveDistributionTreasury(bare as never, "preprod")).toThrow(/TLAMP-SRC-007/);
+    expect(() => activeDistributionTreasury("preview")).toThrow(/TLAMP-SRC-005/);
   });
 });
 

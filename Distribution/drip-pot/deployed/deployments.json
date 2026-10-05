@@ -1,0 +1,31 @@
+{
+  "schema": "drip-pot-deployments/1",
+  "deployments": [
+    {
+      "id": "preprod-early-tiger-deleg-v0.2",
+      "network": "Preprod",
+      "campaign": "early-tiger-deleg",
+      "contractVersion": "v0.2",
+      "blueprint": "drip_pot-v0.2.blueprint.json",
+      "unappliedHash": "20d5ca92e7477abb6892cd7866e12e4d9e5c54e15d62820fc946a5d3",
+      "appliedHash": "c739ee4ccf9e30aeda4103954fc7858778c13895a3d2d8f396bdc63e",
+      "address": "addr_test1wrrnnmjve70rptk6gype2n78skrh3sfcjk3a9k8nj67uv0s7c4z50",
+      "appliedWith": {
+        "campaignIdHex": "6561726c792d74696765722d64656c6567",
+        "lampPolicy": "493002cc03004e3e14fd607cfba59312bd946e478e69d6ab431ccfac",
+        "lampName": "744c414d50",
+        "committee": ["603249abe9bc29ea474777fc4cfc2f220a784a53e201b9b9afac5ff5"],
+        "threshold": "1",
+        "msPerEpoch": "432000000",
+        "windowOriginMs": "1654041600000",
+        "vestEpochs": "36"
+      },
+      "evidence": [
+        "FundPot a489876124f8260e871bc4004a666730cbe785aade12a2c3b97330d9b1397f0c: output tới payment_cred c739ee4c…c63e; input/tiền thối của ví 603249ab…5ff5 (Koios preprod tx_info, 2026-10-05).",
+        "Koios preprod address_info 2026-10-05: địa chỉ két có 125 UTxO.",
+        "Dựng lại 2026-10-05: blueprint đóng băng (aiken v1.1.21, mã ở commit 4fd4bd2) + appliedWith ⇒ appliedHash và address trên.",
+        "Distribution/drip-pot/CONTRACT.md v0.3 §10."
+      ]
+    }
+  ]
+}

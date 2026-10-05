@@ -67,6 +67,24 @@ export interface LampPolicyRecord {
   evidence: string[];
   /** Thứ phải đọc trước khi tích hợp. */
   caveats: string[];
+  /**
+   * Kho Distribution (`Distribution/onchain/validators/treasury.ak`) của cụm này, ĐO trên chuỗi.
+   * Nguồn có cấu trúc cho hai tham số cuối của két drip v0.3 (`return_script`,
+   * `treasury_nft_policy` — `Distribution/drip-pot/CONTRACT.md` v0.3 §1, §7). Vắng = chưa đo; đọc
+   * qua `activeDistributionTreasury`, KHÔNG đọc chuỗi `evidence`.
+   */
+  distributionTreasury?: DistributionTreasuryRecord;
+}
+
+export interface DistributionTreasuryRecord {
+  /** Script hash của `treasury` đã áp tham số — payment credential của địa chỉ kho. */
+  scriptHash: string;
+  /** Policy NFT "TREASURY" (`treasury_nft`, one-shot) của carrier kho. */
+  nftPolicy: string;
+  /** Ngày đo (YYYY-MM-DD). */
+  measuredAt: string;
+  /** Phép đo, mỗi dòng một nguồn kiểm lại được. */
+  source: string[];
 }
 
 /**
@@ -329,6 +347,18 @@ export const LAMP_POLICY_REGISTRY: readonly LampPolicyRecord[] = [
       "Pot `development` trên Preprod là native-script khoá vận hành (`Genesis/offchain/src/preprodDevPot.ts`), " +
         "không phải validator pot — chỉ dùng cho mạng thử.",
     ],
+    distributionTreasury: {
+      scriptHash: "ea31abac3c7c8d3f3010551f55f8a09a8d9be83cd04084d5904e4308",
+      nftPolicy: "379e60c09b0c778dc7651e254a977f89017393226df389acd5f27277",
+      measuredAt: "2026-10-05",
+      source: [
+        "Koios preprod `address_utxos` (addr_test1wr4rr2av837g60eszp23740c5zdgmxlg8ngyppx4jp8yxzq5c9k5s): " +
+          "đúng 1 UTxO a489876124f8260e871bc4004a666730cbe785aade12a2c3b97330d9b1397f0c#0, payment_cred " +
+          "ea31abac…4308, mang 1 (379e60c0…7277, 5452454153555259 = TREASURY) + tLAMP 493002cc…, datum inline.",
+        "Koios preprod `asset_info` (379e60c0…7277, TREASURY): minting_tx_hash = 249082f4…765f (Tx A genesis " +
+          "của cụm này, `evidence` ở trên), total_supply 1, mint_cnt 1, burn_cnt 0.",
+      ],
+    },
   },
 
   // ── PREVIEW ────────────────────────────────────────────────────────────────
@@ -559,6 +589,7 @@ export const LAMP_POLICY_ERRORS = {
   SUPERSEDED: "TLAMP-SRC-004-SUPERSEDED",
   NO_ACTIVE_RECORD: "TLAMP-SRC-005-NO-ACTIVE-RECORD",
   AMBIGUOUS_ACTIVE: "TLAMP-SRC-006-AMBIGUOUS-ACTIVE",
+  NO_DISTRIBUTION_TREASURY: "TLAMP-SRC-007-NO-DISTRIBUTION-TREASURY",
 } as const;
 
 /** Lỗi của sổ policy — mang mã tra được, để chỗ gọi phân biệt được bốn nguyên nhân. */
@@ -624,6 +655,46 @@ export function readPolicyIdOf(record: LampPolicyRecord): string {
  */
 export function activeLampPolicyId(network: LampNetwork): string {
   return selectActivePolicyId(LAMP_POLICY_REGISTRY, network);
+}
+
+/**
+ * Kho Distribution của cụm ACTIVE trên `network`, kèm policy LAMP của cụm đó.
+ *
+ * Ném (KHÔNG trả rỗng) khi: mạng không có đúng một bản ACTIVE (cùng luật `selectActivePolicyId`) ·
+ * bản ACTIVE chưa có `distributionTreasury` · hash/policy sai hình dạng. Két drip v0.3 nướng hai giá
+ * trị này vào hash (CONTRACT §8 "Két gắn vĩnh viễn với MỘT bản kho") — đoán sai là két Return về
+ * một kho không ai gộp.
+ */
+export function activeDistributionTreasury(network: LampNetwork): {
+  recordId: string; lampPolicy: string; scriptHash: string; nftPolicy: string;
+} {
+  return selectActiveDistributionTreasury(LAMP_POLICY_REGISTRY, network);
+}
+
+/** Lõi của `activeDistributionTreasury`, nhận bảng tra làm tham số (seam cho bài kiểm). */
+export function selectActiveDistributionTreasury(
+  registry: readonly LampPolicyRecord[],
+  network: LampNetwork,
+): { recordId: string; lampPolicy: string; scriptHash: string; nftPolicy: string } {
+  const lampPolicy = selectActivePolicyId(registry, network);
+  const record = registry.find((r) => r.network === network && r.status === "ACTIVE")!;
+  const t = record.distributionTreasury;
+  if (!t) {
+    throw new LampPolicySourceError(
+      LAMP_POLICY_ERRORS.NO_DISTRIBUTION_TREASURY,
+      `bản ACTIVE "${record.id}" chưa có trường \`distributionTreasury\` — chưa đo kho Distribution ` +
+        `của cụm này. Đo trên chuỗi rồi ghi vào sổ; đừng suy từ \`evidence\`.`,
+    );
+  }
+  for (const [k, v] of [["scriptHash", t.scriptHash], ["nftPolicy", t.nftPolicy]] as const) {
+    if (!POLICY_ID_SHAPE.test(v)) {
+      throw new LampPolicySourceError(
+        LAMP_POLICY_ERRORS.POLICY_ID_MALFORMED,
+        `bản ghi "${record.id}" có distributionTreasury.${k} sai hình dạng: cần 56 ký tự hex thường, nhận "${v}".`,
+      );
+    }
+  }
+  return { recordId: record.id, lampPolicy, scriptHash: t.scriptHash, nftPolicy: t.nftPolicy };
 }
 
 /**

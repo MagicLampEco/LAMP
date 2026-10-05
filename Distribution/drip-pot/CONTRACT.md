@@ -124,8 +124,9 @@ Gọi `d` = datum input, `e = epoch(tx)`, `E = d.entitlement`, `c = d.claimed`.
 - **DP-CLAIM-3** `amount = vested(E, d.start_epoch, e) − c`, và `amount > 0`.
 - **DP-CLAIM-4** Có **đúng một** output mà địa chỉ bằng hệt `d.vault` (payment + stake) VÀ datum
   là `tag(input két đang chi)`. Output đó: không reference script, value chỉ ADA + LAMP, và
-  `lamp ≥ amount`. Thẻ là duy nhất theo từng input nên hai két (hay hai hợp đồng) không dùng chung
-  được một output. Output tới `d.vault` mang datum khác hay không datum không được tính.
+  `lamp ≥ amount`. Thẻ là duy nhất theo từng input nên hai lượt rút của két drip không dùng chung
+  được một output. Thẻ chỉ bảo vệ két drip; nó không bảo đảm gì cho một hợp đồng khác không biết
+  thẻ này cùng chạy trong giao dịch. Output tới `d.vault` mang datum khác hay không datum không được tính.
 - **DP-CLAIM-5** Nếu `c + amount < E` (chưa hết):
   - đúng một output của két, địa chỉ **bằng hệt** địa chỉ input;
   - datum inline **bằng hệt** (so Data) `Account{ vault = d.vault, entitlement = E, claimed =
@@ -161,10 +162,12 @@ Gọi `i` = input két đang chi, `r = lamp(i)`, `K = Script(return_script)`.
 
 Vì sao đích này là SỔ chứ không chỉ là địa chỉ: kho Distribution có nhánh `Refill`
 (`Distribution/onchain/validators/treasury.ak` ▸ `Refill`, committee kho ký) gộp mọi UTxO ở payment
-credential của kho vào carrier mang NFT `TREASURY` và cộng LAMP của chúng vào pool. Hình dạng nó gộp
-được là `NoDatum`: `treasury.spend` khai datum kiểu `Option<TreasuryDatum>`, nên một datum không giải
-mã được thành `TreasuryDatum` làm MỌI nhánh từ chối input đó. Một datum thẻ ở đây sẽ đưa LAMP tới
-đúng địa chỉ kho mà không nhánh nào tiêu lại được. DP-RET-7 ép phía két: `K` phải đang giữ carrier
+credential của kho vào carrier mang NFT `TREASURY` và cộng LAMP của chúng vào pool; nhánh đó không
+đọc datum của input không phải carrier. Đo trên Emulator với hai validator thật
+(`Distribution/tests/dripPotReturn.test.ts`): `Refill` gộp được output trả về, cả khi nó không datum
+lẫn khi mang datum inline lạ. DP-RET-6 vẫn đòi `NoDatum` vì đó là hình dạng tối thiểu mà `Refill`
+sinh ra để gộp (LAMP rót về qua A-DEST), không để két phụ thuộc cách kho xử datum lạ ở các bản sau;
+chống dùng chung output vì thế đi qua DP-RET-2b chứ không qua thẻ. DP-RET-7 ép phía két: `K` phải đang giữ carrier
 của đúng policy `TREASURY` đã áp — `return_script` trỏ nhầm (native script, kho khác policy, script
 khác) thì Return không chạy được.
 
@@ -240,8 +243,7 @@ Mọi `q` khác (`< −1`, hay `> 0` với redeemer `BurnAccount`, hay `< 0` v�
 - **Committee là điểm tin cậy** khi mở tài khoản: chọn `vault`, `E`, `start_epoch`. Sau khi mở,
   committee không đổi được gì của tài khoản. Rót Treasury (đa chữ ký) → `Reserve` là HẠ mức tin
   cậy xuống committee của két (Preprod: 1-of-1). Khoá committee bị chiếm ⇒ mở được tài khoản tuỳ ý
-  từ `Reserve`, nhả trong `N` cửa sổ, không ai can thiệp được. Hướng bỏ điểm tin cậy (chưa làm):
-  tham số `grants_root` — `MintAccounts` kèm bằng chứng Merkle cho `(vault, E, start_epoch)`.
+  từ `Reserve`, nhả trong `N` cửa sổ, không ai can thiệp được.
 - **Đích chết.** Đích là script đòi datum riêng (kho Treasury, pot khác, script V1/V2) thì LAMP tới
   đúng địa chỉ mà không tiêu lại được. `did_payment` của DID chuyển `Revoked`/`Migrated` sau khi mở
   tài khoản thì phần nhả sau đó kẹt. Ràng buộc tạm (off-chain, fail-closed): chỉ mở tài khoản cho
@@ -269,8 +271,12 @@ Mọi `q` khác (`< −1`, hay `> 0` với redeemer `BurnAccount`, hay `< 0` v�
 
 - Tham số: `campaign_id = utf8("early-tiger-deleg")`, policy tLAMP `493002cc…`, committee = khoá vận
   hành `603249ab…`, `threshold = 1`, `ms_per_epoch = 432_000_000`, gốc `1_654_041_600_000`, `N = 36`.
-- Két: `addr_test1wrrnnmjve70rptk6gype2n78skrh3sfcjk3a9k8nj67uv0s7c4z50`
-  (hash `c739ee4ccf9e30aeda4103954fc7858778c13895a3d2d8f396bdc63e`).
+- Két v0.2: `addr_test1wrrnnmjve70rptk6gype2n78skrh3sfcjk3a9k8nj67uv0s7c4z50`. Hash đã áp tham số,
+  tham số đã áp và bytecode v0.2 đóng băng: nguồn duy nhất là
+  `Distribution/drip-pot/deployed/deployments.json` + `drip_pot-v0.2.blueprint.json`
+  (`dripDeployment.ts` ▸ `resolveDripScript` ném lỗi khi hash dựng lại lệch).
 - Rót từ kho Treasury: FundPot `a489876124f8260e871bc4004a666730cbe785aade12a2c3b97330d9b1397f0c`
   (12.000.000 tLAMP, 1 Reserve).
-- Công cụ: `Genesis/scripts/33_drip_pot.ts` (address · status · seed · claim).
+- Công cụ: `Genesis/scripts/33_drip_pot.ts` (address · status · seed · claim · return).
+  `DRIP_VERSION` mặc định `v0.2` (két đang chạy); `v0.3` đọc `return_script`/`treasury_nft_policy` từ
+  `lampPolicies.ts` ▸ `activeDistributionTreasury`.
