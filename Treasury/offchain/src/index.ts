@@ -13,6 +13,10 @@ export * from "./seedBuilder.js";
 // NFT con trỏ governance (GovernancePointer v0.1): codec PointerDatum/PointerRedeemer + plan*.
 export * from "./pointer.js";
 
+// Phần stake của địa chỉ kho: apply `treasury_stake`, địa chỉ BASE, rồi đăng ký + uỷ quyền.
+export * from "./stakeBuilder.js";
+export * from "./stakeDelegationBuilder.js";
+
 // Cầu Reserve↔Treasury (Treasury-pull): mint auth one-shot + spend gate ép sàn.
 export * from "./reserveAuthBuilder.js";
 export * from "./reserveGateBuilder.js";

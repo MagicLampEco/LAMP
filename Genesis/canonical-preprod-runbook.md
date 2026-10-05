@@ -51,7 +51,7 @@ Các script đi qua `rehydrate()` và do đó dừng cùng lúc (đếm bằng
 `grep -ln "rehydrate(" Genesis/scripts/*.ts`, trừ chính `_canonical_v2.ts`):
 `20b_place_registry` · `21_vest_to_kho` · `22_reserve_draw` · `23_prove_oneshot` ·
 `24_reserve_layer2_init` · `25_gated_draw` · `26_prove_brake` · `27_refill_treasury` ·
-`28_beacon_grant_redeem` · `verify_canonical_v2`.
+`28_beacon_grant_redeem` · `custody_stake_delegate` · `verify_canonical_v2`.
 
 Hai đường đi tiếp: chạy cụm đang sống bằng mã ở commit đã đúc nó (`git switch --detach <commit>`
 rồi `aiken build` lại cả hai), hoặc đúc lại cụm mới từ Bước 1 với mã hiện tại.
@@ -541,3 +541,29 @@ Thứ tự đã chạy:
 
 Pot Wakeme nay cấp nguồn bằng FundPot (rót thẳng từ carrier của kho), không qua nhiều tài khoản như
 mục 2026-09-26.
+
+### Uỷ quyền phần stake của kho (2026-10-04)
+
+Địa chỉ kho là địa chỉ BASE: phần stake là `treasury_stake`. Phần đó chỉ sinh thưởng khi credential
+đã đăng ký và đã uỷ quyền cho một pool; trước đó nhánh `StakeRewardIn` không có gì để ghi sổ.
+Builder: `Treasury/offchain/src/stakeDelegationBuilder.ts` ▸ `buildStakeDelegation`. Script:
+`Genesis/scripts/custody_stake_delegate.ts`.
+
+```bash
+NETWORK=Preprod POOL_ID=pool1… tsx custody_stake_delegate.ts            # chạy khô
+NETWORK=Preprod POOL_ID=pool1… SUBMIT=true tsx custody_stake_delegate.ts
+```
+
+Trước khi dựng, script dừng nếu một trong ba điều sau lệch: hash `treasury_stake` suy lại khác phần
+stake của địa chỉ kho; UTxO mang custody NFT không nằm ở địa chỉ đó; ví ký không phải
+`delegation_admin`. Trạng thái đăng ký đọc từ Blockfrost `/accounts`. Đã uỷ quyền đúng pool đích
+thì script không làm gì. Mainnet bị chặn trong script: chọn pool cho kho Mainnet là quyết định của chủ
+dự án.
+
+Cọc đăng ký (2 ADA) không rút lại được: `certificate_ok` cấm huỷ đăng ký.
+
+Lượt chạy trên cụm ACTIVE: giao dịch `04d8d2361d45b33bc3c9e7814d1b0743962313bd28bab197b0844bc1f5ff01da`,
+chứng chỉ `reg_cert` + `stake_delegation`. Koios `account_info` sau đó: `status = registered`,
+`delegated_pool = pool1axe693mzshvjx3yxgh9368yzjlgxntkudat5yjmk79mug4zcntc`, `deposit = 2000000`.
+Thưởng đầu tiên chỉ có sau khoảng hai epoch kể từ lúc uỷ quyền; khi đó mới chạy được `StakeRewardIn`
+đầu cuối.
