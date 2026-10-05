@@ -34,7 +34,7 @@ pot_vault(
 | `ms_per_epoch` | độ rộng một cửa sổ, ms | `432_000_000` (5 ngày) |
 | `window_cap` | trần LAMP của két swap NGAY SAU một lượt rót | `1_000_000 × 10^6` |
 | `total_cap` | trần tích luỹ của kênh (F8 = 1) | `7_000_000 × 10^6` |
-| `window_origin_ms` | gốc lưới cửa sổ: cửa sổ = `(t − window_origin_ms) / ms_per_epoch` (`Specs/Window/CONTRACT.md` v1.0 §1, WIN-ORIGIN-3) | `1_654_041_600_000` (nguồn: `Specs/Window/CONTRACT.md` v1.0 §2) |
+| `window_origin_ms` | gốc lưới cửa sổ: cửa sổ = `(t − window_origin_ms) / ms_per_epoch` (`Specs/Window/CONTRACT.md` v1.2 §1, WIN-ORIGIN-3) | `1_654_041_600_000` (nguồn: `Specs/Window/CONTRACT.md` v1.0 §2) |
 
 `window_cap` và `total_cap` tính bằng oildrop (LAMP decimals 6).
 

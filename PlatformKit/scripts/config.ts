@@ -53,8 +53,8 @@ export const WALLET_SEED    = (process.env.WALLET_SEED ?? "").trim().replace(/\s
 export const MS_PER_EPOCH = msPerEpoch(NETWORK);
 
 /**
- * `window_origin_ms` của mạng đang chạy (Specs/Window/CONTRACT.md v1.0) — HÀM, không phải hằng
- * toàn cục: Preview không có gốc (WIN-PREVIEW, `windowOriginMs` ném lỗi) và một hằng ở đầu tệp sẽ
+ * `window_origin_ms` của mạng đang chạy (Specs/Window/CONTRACT.md v1.2) — HÀM, không phải hằng
+ * toàn cục: mạng không có trong bảng gốc thì `windowOriginMs` ném lỗi, và một hằng ở đầu tệp sẽ
  * làm mọi `import` config chết trước khi script kịp nói mình cần gì.
  */
 export function windowOrigin(): bigint {

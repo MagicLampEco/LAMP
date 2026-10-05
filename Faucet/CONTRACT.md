@@ -126,9 +126,9 @@ NFT nên không bên nào ôm hash pool.
   per-DID = **asset name** của DID NFT (`did_name`).
 - `(lamp_policy, lamp_name)`: nhận diện tLAMP.
 - `ms_per_epoch`, `window_origin_ms`: cửa sổ = `(posix_ms − window_origin_ms) / ms_per_epoch`
-  (`Specs/Window/CONTRACT.md` v1.1 §1; mã: `util.get_epoch`, `util.get_epoch_pinned`). Trên
-  Mainnet/Preprod chỉ số cửa sổ = số epoch Cardano, biên cửa sổ trùng biên epoch. Preview: chưa có
-  gốc (WIN-PREVIEW) ⇒ off-chain ném lỗi.
+  (`Specs/Window/CONTRACT.md` v1.2 §1; mã: `util.get_epoch`, `util.get_epoch_pinned`). Trên
+  mọi mạng (Mainnet, Preprod, Preview) chỉ số cửa sổ = số epoch Cardano, biên cửa sổ trùng biên
+  epoch (`Specs/Window/CONTRACT.md` v1.2 §1–§2).
 - `account_script_hash`: tham số compile-time, **không** phải trường datum. Lý do: trong datum thì
   phép kiểm khả thi duy nhất là độ dài 28 byte — một phép kiểm ĐỘ DÀI đứng thay phép kiểm ĐỊNH
   DANH, và một hash sai làm drip rót vào địa chỉ không script, mất vĩnh viễn, trong khi mọi kiểm

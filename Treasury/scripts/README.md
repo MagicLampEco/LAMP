@@ -3,9 +3,9 @@
 Apply-params + seed (bootstrap) MỘT custody instance của Treasury. Mẫu theo
 `Distribution/scripts`. KHÔNG đụng `onchain/` hay `offchain/src` (đã chốt).
 
-> **Mạng:** đặt `NETWORK=Preprod`. Mặc định trong `config.ts` vẫn là `Preview`, và trên Preview
-> script **dừng bằng lỗi** vì mạng này chưa có gốc lưới cửa sổ (`config.ts` ▸ `windowOrigin`, mã
-> `WIN-PREVIEW` trong `Specs/Window/CONTRACT.md`). Mạng nào đã có custody chạy thật: xem bảng
+> **Mạng:** đặt `NETWORK=Preprod`. Mặc định trong `config.ts` vẫn là `Preview`. Preview đã có gốc
+> lưới cửa sổ (`Specs/Window/CONTRACT.md` v1.2 §2) nhưng chưa có tLAMP (`Genesis/offchain/src/lampPolicies.ts`,
+> mục Preview), nên custody chỉ gieo được trên Preprod. Mạng nào đã có custody chạy thật: xem bảng
 > module ở `README.md` gốc và sổ `Genesis/offchain/src/lampPolicies.ts`, đừng suy từ tệp này.
 
 ## Điều kiện

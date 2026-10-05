@@ -29,7 +29,7 @@ Công thức vested: `vested(t) = min(entitlement, drop_value · drops_per_epoch
 (drop_value = D, param validator claim_account); `redeemable = vested − redeemed`. Cliff = đặt lùi
 `start_epoch` (không cần field riêng).
 
-`t` (và `start_epoch`) là chỉ số **cửa sổ** theo luật chung `Specs/Window/CONTRACT.md` v1.1 §1:
+`t` (và `start_epoch`) là chỉ số **cửa sổ** theo luật chung `Specs/Window/CONTRACT.md` v1.2 §1:
 `window(t_ms) = (t_ms − window_origin_ms) / ms_per_epoch`. `window_origin_ms` là tham số CUỐI của
 `claim_account` (`claim_account.ak` ▸ `window_origin_ms`; hàm `util.get_epoch`), nên đổi gốc là đổi
 script hash. Allocation không định nghĩa lại luật này — chỉ áp dụng nó.

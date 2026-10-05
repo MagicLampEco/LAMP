@@ -6,9 +6,9 @@ lottery đã gỡ). Không giả lập — mỗi bước in tx hash + link explo
 > **Phạm vi của bộ script này.** Nó dựng một cụm Distribution tự chứa (test-LAMP riêng), không
 > phải cụm canonical đang chạy trên Preprod. Cụm canonical (kho, claim_account, beacon áp tham
 > số theo genesis `ACTIVE`) đi qua `Genesis/scripts/20`…`32` — xem
-> `Genesis/canonical-preprod-runbook.md`. Trên **Preview**, bước nào cần gốc cửa sổ sẽ ném lỗi vì Preview
-> chưa có giá trị đó (`Specs/Window/CONTRACT.md` v1.0 §4 `WIN-PREVIEW`; hàm `windowOrigin()`
-> trong `config.ts`); chạy với `NETWORK=Preprod`.
+> `Genesis/canonical-preprod-runbook.md`. Gốc cửa sổ lấy theo mạng (`Specs/Window/CONTRACT.md` v1.2 §2;
+> hàm `windowOrigin()` trong `config.ts`); Preview cũng có gốc, nhưng cụm canonical chỉ có trên Preprod,
+> nên chạy với `NETWORK=Preprod`.
 
 ## Chuẩn bị biến môi trường
 
@@ -71,5 +71,5 @@ npm run typecheck   # tsc --noEmit, phải sạch
   beacon_nft minting validator: set `BEACON_NFT_POLICY` + thay `nativeSigPolicy` ở 03.
 - **cửa sổ (epoch):** validator tính cửa sổ từ validity_range POSIX ms theo
   `(posix_ms − window_origin_ms) / ms_per_epoch`; trên Preprod/Mainnet đó chính là số epoch Cardano
-  (`Specs/Window/CONTRACT.md` v1.0). Runner dùng cùng công thức (`config.ts`, tính ở `Utils` ▸
+  (`Specs/Window/CONTRACT.md` v1.2). Runner dùng cùng công thức (`config.ts`, tính ở `Utils` ▸
   `windowOf`), và `window_origin_ms` là tham số CUỐI của `claim_account`, `beacon`, `treasury`.

@@ -62,10 +62,10 @@ tệp v1 → v2 ở §v2.11 (`proposal.ak`, `proposal_nft.ak` còn cho Pha 0). M
 Quy ước trong mục này:
 - **epoch** = `⌊(posix_ms − window_origin_ms) / ms_per_epoch⌋` (`Specs/Window/CONTRACT.md` v1.1 §1;
   mã: `Governance/onchain/lib/magiclamp/governance/util.ak` ▸ `get_epoch`, `get_epoch_bounded`;
-  `Treasury/onchain/lib/magiclamp/treasury/util.ak` ▸ `get_epoch_bounded`). Trên Mainnet/Preprod chỉ
-  số này = số epoch Cardano, biên trùng biên epoch. Preview: chưa có gốc (WIN-PREVIEW) ⇒ off-chain
-  ném lỗi. `window_origin_ms` là apply-param CUỐI của `nullifier`, `vote`, `proposal`, `governance`,
-  và của `tally` (đứng TRƯỚC `engage_policies`) — danh sách đầy đủ ở `Specs/Window/CONTRACT.md` v1.1
+  `Treasury/onchain/lib/magiclamp/treasury/util.ak` ▸ `get_epoch_bounded`). Trên mọi mạng (Mainnet,
+  Preprod, Preview) chỉ số này = số epoch Cardano, biên trùng biên epoch (`Specs/Window/CONTRACT.md`
+  v1.2 §1–§2). `window_origin_ms` là apply-param CUỐI của `nullifier`, `vote`, `proposal`, `governance`,
+  và của `tally` (đứng TRƯỚC `engage_policies`) — danh sách đầy đủ ở `Specs/Window/CONTRACT.md` v1.2
   §5; các bảng apply-param bên dưới không chép lại tham số này.
 - **epoch của giao dịch** (ký hiệu `e`) = epoch tính theo khuôn bị chặn hai đầu: cả hai biên của
   validity range phải hữu hạn và rơi vào cùng một epoch — đúng khuôn `get_epoch_bounded` mà custody

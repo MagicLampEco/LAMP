@@ -23,7 +23,7 @@ cục và cooldown per-DID — cộng với **tự thu hồi token nằm không*
 | `max_claims_per_window` | deploy Preprod: `20`; trần cứng `100` | `FaucetConfig` | **Không** — C-CFG-1 đóng băng |
 | ngưỡng thu hồi | `72` cửa sổ (≈ 360 ngày với cửa sổ = epoch Cardano 5 ngày trên Preprod/Mainnet; Preview chưa có gốc cửa sổ nên chưa quy ra ngày) | hằng compile-time `reclaim_epochs_const` ở `lib/magiclamp/faucet/handlers.ak` | Không — phải biên dịch lại |
 | `ms_per_epoch` | theo mạng | tham số compile-time của cả ba script | Không — phải biên dịch lại |
-| `window_origin_ms` | gốc cửa sổ theo mạng (`Specs/Window/CONTRACT.md` v1.0 §2) | tham số compile-time CUỐI của cả ba script (`faucet_nft`, `faucet_account`, `faucet_pool`) | Không — phải biên dịch lại |
+| `window_origin_ms` | gốc cửa sổ theo mạng (`Specs/Window/CONTRACT.md` v1.2 §2) | tham số compile-time CUỐI của cả ba script (`faucet_nft`, `faucet_account`, `faucet_pool`) | Không — phải biên dịch lại |
 
 **`FaucetConfig` KHÔNG còn chỉnh được sau deploy.** Bản v2 ghi "chỉnh không cần redeploy" — điều đó
 sai với mã hiện tại: `faucet_pool.spend` ép `out_pd.cfg == cfg` ở mọi lượt spend (C-CFG-1), và POOL
@@ -41,8 +41,8 @@ account" trong sổ `opened_root`. 1001 cửa sổ (≈ 13,7 năm) trên thực 
 tầm đời một mạng test.
 
 **"Cửa sổ" (window) = `(posix_ms − window_origin_ms) / ms_per_epoch`** (`Specs/Window/CONTRACT.md`
-v1.0 §1). Trên Preprod/Mainnet, chỉ số cửa sổ bằng số epoch Cardano và biên cửa sổ trùng biên epoch.
-Preview chưa có gốc (`WIN-PREVIEW`, v1.0 §4) nên off-chain ném lỗi trên Preview. Bản trước của đoạn này
+v1.2 §1). Trên mọi mạng (Mainnet, Preprod, Preview), chỉ số cửa sổ bằng số epoch Cardano và biên
+cửa sổ trùng biên epoch; trên Preview một cửa sổ dài 1 ngày. Bản trước của đoạn này
 nói cửa sổ "không phải epoch Cardano" — đó là định nghĩa cũ, đã bị thay.
 Chú thích đầu `lib/magiclamp/faucet/ledger.ak` có thể còn câu theo định nghĩa cũ; khi lệch, `Specs/Window`
 thắng.
