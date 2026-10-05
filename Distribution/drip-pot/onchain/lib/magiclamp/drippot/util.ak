@@ -5,6 +5,7 @@
 
 use aiken/collection/list
 use aiken/interval.{Finite, IntervalBoundType}
+use aiken/primitive/bytearray
 use cardano/address.{Address, Inline, Script, VerificationKey}
 use cardano/assets.{AssetName, PolicyId, Value}
 use cardano/transaction.{
@@ -89,14 +90,28 @@ pub fn committee_approved(
   }
 }
 
-/// DP-PARAM, phần tham số số học. Mọi nhánh gọi TRƯỚC tiên — kể cả nhánh không dùng
-/// tới tham số đó (Seed không đọc thời gian), để một bộ tham số hỏng không mở được
-/// bất cứ nhánh nào.
-pub fn params_ok(ms_per_epoch: Int, window_origin_ms: Int, vest_epochs: Int) -> Bool {
+/// DP-PARAM, phần tham số không thuộc committee. Mọi nhánh gọi TRƯỚC tiên — kể cả nhánh
+/// không dùng tới tham số đó (Seed không đọc thời gian, không đọc `return_script`), để
+/// một bộ tham số hỏng không mở được bất cứ nhánh nào.
+///
+/// v0.3: `|return_script| == 28` (hash 27/29 byte không khớp credential nào trên chuỗi ⇒
+/// LAMP trả về thành UTxO không ai tiêu được) và `return_script ≠ own` (trả về chính két
+/// thì output trả về bị DP-RET-5 coi là output của két), `|treasury_nft_policy| == 28`.
+pub fn params_ok(
+  ms_per_epoch: Int,
+  window_origin_ms: Int,
+  vest_epochs: Int,
+  return_script: ByteArray,
+  treasury_nft_policy: ByteArray,
+  own: ByteArray,
+) -> Bool {
   and {
     ms_per_epoch > 0,
     vest_epochs > 0,
     window_origin_ms >= 0,
+    bytearray.length(return_script) == 28,
+    return_script != own,
+    bytearray.length(treasury_nft_policy) == 28,
   }
 }
 
@@ -116,7 +131,11 @@ pub fn get_finite(bt: IntervalBoundType) -> Option<Int> {
 /// - `lo − window_origin_ms ≥ 0` (chặn trên SỐ BỊ CHIA, không trên `lo` thô).
 /// Không xét cận trên: `lo` sớm hơn thật chỉ làm `amount` nhỏ đi (§7), và với
 /// `MintAccounts` thì `start_epoch ≥ epoch(tx)` càng chặt khi `lo` càng muộn.
-pub fn tx_epoch(tx: Transaction, ms_per_epoch: Int, window_origin_ms: Int) -> Int {
+pub fn tx_epoch(
+  tx: Transaction,
+  ms_per_epoch: Int,
+  window_origin_ms: Int,
+) -> Int {
   let lower = tx.validity_range.lower_bound
   expect Some(lo_raw) = get_finite(lower.bound_type)
   let lo =
@@ -217,6 +236,93 @@ pub fn vault_paid(
     }
     _ -> False
   }
+}
+
+// ── Kho nhận LAMP trả về (DP-RET-7, DP-RET-6, v0.3) ───────────────
+
+/// Tên NFT carrier của kho Distribution = "TREASURY" (`5452454153555259`).
+pub const treasury_nft_name: ByteArray = "TREASURY"
+
+/// DP-RET-7: địa chỉ đầy đủ `A` của ĐÚNG MỘT reference input có payment credential
+/// `Script(return_script)` VÀ giữ đúng 1 `(treasury_nft_policy, "TREASURY")`. Không có,
+/// hoặc có hai ⇒ None. UTxO ở `K` không giữ NFT thì không được đếm (không phải carrier).
+/// Vế `is_at_script` ở đây bị DP-RET-6 bao hàm theo chiều từ chối (output phải vừa ở `K`
+/// vừa bằng hệt `A` ⇒ `A` ở `K`); đột biến gỡ nó SỐNG. Giữ vì spec ghi tường minh.
+pub fn treasury_carrier_address(
+  reference_inputs: List<Input>,
+  return_script: ByteArray,
+  treasury_nft_policy: PolicyId,
+) -> Option<Address> {
+  when
+    list.filter(
+      reference_inputs,
+      fn(i) {
+        and {
+          is_at_script(i.output.address, return_script),
+          assets.quantity_of(
+            i.output.value,
+            treasury_nft_policy,
+            treasury_nft_name,
+          ) == 1,
+        }
+      },
+    )
+  is {
+    [c] -> Some(c.output.address)
+    _ -> None
+  }
+}
+
+/// DP-RET-6: ĐÚNG MỘT output có payment credential `Script(return_script)` (lọc RỘNG
+/// theo payment credential, bất kể datum — để mọi output ở `K` đều bị đếm), rồi ghim:
+/// địa chỉ bằng hệt `carrier` (payment + stake), `NoDatum` (nhánh `Refill` của kho chỉ
+/// gộp được input không datum: `treasury.spend` giải datum thành `Option<TreasuryDatum>`),
+/// không ref script, value chỉ ADA + LAMP, `lamp ≥ amount`.
+pub fn returned_to_treasury(
+  outputs: List<Output>,
+  return_script: ByteArray,
+  carrier: Address,
+  own: PolicyId,
+  lamp_policy: PolicyId,
+  lamp_name: AssetName,
+  amount: Int,
+) -> Bool {
+  when
+    list.filter(outputs, fn(o) { is_at_script(o.address, return_script) })
+  is {
+    [p] -> {
+      let paid = lamp_of(p.value, lamp_policy, lamp_name)
+      and {
+        p.address == carrier,
+        p.datum == NoDatum,
+        p.reference_script == None,
+        value_is(p.value, own, lamp_policy, lamp_name, paid, 0),
+        paid >= amount,
+      }
+    }
+    _ -> False
+  }
+}
+
+/// DP-RET-2b: ngoài input két đang chi (`own_ref`), không input nào có payment credential
+/// `Script(_)` (kể cả native script) ⇒ không validator spend nào khác chạy cùng tx để
+/// dùng chung output trả về.
+pub fn no_other_script_input(
+  inputs: List<Input>,
+  own_ref: OutputReference,
+) -> Bool {
+  list.all(
+    inputs,
+    fn(i) {
+      or {
+        i.output_reference == own_ref,
+        when i.output.address.payment_credential is {
+          Script(_) -> False
+          _ -> True
+        },
+      }
+    },
+  )
 }
 
 // ── Dựng ca kiểm (mock UTxO/tx) ───────────────────────────────────

@@ -1,6 +1,11 @@
-# Drip pot — hợp đồng on-chain v0.2
+# Drip pot — hợp đồng on-chain v0.3
 
-**Trạng thái:** v0.2, 2026-10-04 — dựng cho đợt ETD trên Preprod. Chưa deploy Mainnet.
+**Trạng thái:** v0.3, 2026-10-05. Chưa deploy Mainnet. Bản v0.2 đang chạy trên Preprod (§10).
+
+v0.2 → v0.3: thêm nhánh `Return` (§4.3) — committee trả LAMP của `Reserve` về kho Distribution, ở
+dạng mà nhánh `Refill` của kho gộp được vào sổ. Thêm tham số cuối `return_script`. Trước v0.3,
+`Reserve` dư không có đường ra. Thêm hai tham số cuối `return_script`, `treasury_nft_policy`. Đổi
+tham số ⇒ đổi hash: két v0.2 đã triển khai giữ nguyên.
 
 v0.1 → v0.2 (sau một lượt tấn công spec): output đích gắn thẻ `OutputReference` thay cho đo dòng
 ròng (hai két drip chung một đích từng chia nhau được một output); `MintAccounts` ghim thời gian hai
@@ -36,12 +41,16 @@ drip_pot(
   ms_per_epoch:     Int,                       -- > 0
   window_origin_ms: Int,                       -- gốc cửa sổ (Specs/Window/CONTRACT.md v1.0)
   vest_epochs:      Int,                       -- N > 0
+  return_script:    ScriptHash,                -- hash script `treasury` (Distribution) nhận LAMP trả về
+  treasury_nft_policy: PolicyId,               -- policy NFT "TREASURY" của carrier kho đó (DP-RET-7)
 )
 ```
 
 Giá trị Preprod: `ms_per_epoch = 432_000_000`; `window_origin_ms = 1_654_041_600_000`
 (2022-06-01T00:00:00Z — epoch 317 bắt đầu 2026-10-03T00:00:00Z, đo trên Koios);
-`vest_epochs = 36`; committee = khoá vận hành, `threshold = 1`.
+`vest_epochs = 36`; committee = khoá vận hành, `threshold = 1`; `return_script` = hash script
+`treasury` của cụm đang chạy và `treasury_nft_policy` = policy NFT `TREASURY` của cụm đó, cả hai suy từ
+bản ghi cụm ACTIVE (`Genesis/offchain/src/lampPolicies.ts`), không gõ tay (§7).
 
 Một validator nhiều mục đích: `spend` và `mint` cùng một script hash. Policy của token xác thực
 = hash của chính script.
@@ -60,6 +69,7 @@ DripDatum =
 
 SpendRedeemer = Seed   -- Constr 0: committee mở tài khoản từ Reserve
               | Claim  -- Constr 1: nhả phần đã đến hạn của MỘT tài khoản
+              | Return -- Constr 2: committee trả LAMP của MỘT Reserve về kho Distribution
 
 MintRedeemer  = MintAccounts  -- Constr 0
               | BurnAccount   -- Constr 1
@@ -87,14 +97,14 @@ mất đi ở lượt `Claim` cuối (burn) ⇒ "UTxO ở địa chỉ này có 
 ## 3b. Chốt chung
 
 - **DP-PARAM** Mọi nhánh kiểm trước tiên: `ms_per_epoch > 0`, `vest_epochs > 0`,
-  `window_origin_ms ≥ 0`. Mọi phép kiểm committee dùng đúng ngữ nghĩa
+  `window_origin_ms ≥ 0`, `|return_script| == 28`, `return_script ≠ own`, `|treasury_nft_policy| == 28`. Mọi phép kiểm committee dùng đúng ngữ nghĩa
   `Distribution/onchain/lib/magiclamp/lampdist/util.ak` ▸ `committee_approved`: khử trùng
   `committee`, `|committee| ≤ 16`, `1 ≤ threshold ≤ |unique(committee)|`, đếm khoá DUY NHẤT đã ký.
 - **DP-PURPOSE** Mọi mục đích script ngoài `spend` và `mint` ⇒ từ chối.
 
 ## 4. Chốt — `spend`
 
-Datum phải là inline. Cặp (datum, redeemer) khác hai cặp dưới ⇒ từ chối.
+Datum phải là inline. Cặp (datum, redeemer) khác ba cặp dưới ⇒ từ chối.
 
 ### 4.1. `Reserve` + `Seed` — chỉ committee
 
@@ -127,6 +137,37 @@ Gọi `d` = datum input, `e = epoch(tx)`, `E = d.entitlement`, `c = d.claimed`.
   của két đúng bằng `{"account": −1}`. ADA của tài khoản do người dựng giao dịch nhận (bù phí cho
   người kích rút hộ).
 
+### 4.3. `Reserve` + `Return` — chỉ committee
+
+Gọi `i` = input két đang chi, `r = lamp(i)`, `K = Script(return_script)`.
+
+- **DP-RET-1** `committee_approved(committee, threshold, extra_signatories)`.
+- **DP-RET-2** Đúng MỘT input của két trong cả giao dịch; datum inline `Reserve`, không giữ token
+  xác thực.
+- **DP-RET-3** Không input nào có payment credential `K`. Lượt trả không gộp sổ kho; việc gộp là
+  một lượt `Refill` riêng của kho.
+- **DP-RET-4** Không mint/burn gì dưới policy của két.
+- **DP-RET-5** Output của két: không có, hoặc đúng MỘT output `Reserve` đúng hình (như DP-SEED-4:
+  địa chỉ bằng hệt địa chỉ input, datum inline `Reserve`, value chỉ ADA + LAMP, không reference
+  script). Gọi `k` = LAMP của nó (0 nếu không có). Đòi `k < r`.
+- **DP-RET-2b** Ngoài input két đang chi, không input nào của giao dịch có payment credential dạng
+  `Script(_)`. Không validator spend nào khác chạy cùng giao dịch, nên không ai dùng chung được
+  output trả về (thay vai trò thẻ của DP-CLAIM-4, vì output trả về không mang được datum — DP-RET-6).
+- **DP-RET-7** `reference_inputs` có **đúng một** UTxO có payment credential `K` và giữ đúng 1
+  `(treasury_nft_policy, "TREASURY")` — carrier của kho. Gọi địa chỉ đầy đủ của nó là `A`.
+- **DP-RET-6** Có **đúng một** output có payment credential `K`. Output đó: địa chỉ bằng hệt `A`
+  (payment + stake), **không datum** (`NoDatum`), không reference script, value chỉ ADA + LAMP,
+  `lamp ≥ r − k`.
+
+Vì sao đích này là SỔ chứ không chỉ là địa chỉ: kho Distribution có nhánh `Refill`
+(`Distribution/onchain/validators/treasury.ak` ▸ `Refill`, committee kho ký) gộp mọi UTxO ở payment
+credential của kho vào carrier mang NFT `TREASURY` và cộng LAMP của chúng vào pool. Hình dạng nó gộp
+được là `NoDatum`: `treasury.spend` khai datum kiểu `Option<TreasuryDatum>`, nên một datum không giải
+mã được thành `TreasuryDatum` làm MỌI nhánh từ chối input đó. Một datum thẻ ở đây sẽ đưa LAMP tới
+đúng địa chỉ kho mà không nhánh nào tiêu lại được. DP-RET-7 ép phía két: `K` phải đang giữ carrier
+của đúng policy `TREASURY` đã áp — `return_script` trỏ nhầm (native script, kho khác policy, script
+khác) thì Return không chạy được.
+
 ## 5. Chốt — `mint`
 
 Dưới policy của két, mint chỉ được chứa đúng tên `"account"` với lượng `q ≠ 0`.
@@ -156,8 +197,8 @@ Mọi `q` khác (`< −1`, hay `> 0` với redeemer `BurnAccount`, hay `< 0` v�
   nhả quá `vested`, và tổng nhả của một tài khoản không vượt `E`.
 - **INV-DP-dich-co-dinh** LAMP rời một `Account` chỉ đi tới `vault` của nó.
 - **INV-DP-chi-tang** `claimed` chỉ tăng; `vault`, `entitlement`, `start_epoch` không đổi.
-- **INV-DP-reserve-khong-ro** LAMP của `Reserve` chỉ rời két bằng cách thành `Account` (hoặc
-  `Reserve` mới) — không có nhánh chi `Reserve` ra ngoài.
+- **INV-DP-reserve-khong-ro** LAMP của `Reserve` chỉ rời két bằng một trong ba đường: thành
+  `Account`, thành `Reserve` mới, hoặc tới `K` qua `Return` (DP-RET-6).
 - **INV-DP-khong-tu-tro** `vault` không thể là chính két.
 
 ## 7. Nghĩa vụ off-chain
@@ -171,14 +212,30 @@ Mọi `q` khác (`< −1`, hay `> 0` với redeemer `BurnAccount`, hay `< 0` v�
   output đích, ADA tiếp nối = `max(ADA input, min-ADA của output mới)` (số `claimed` dài thêm thì
   min-ADA tăng).
 - Lượt `MintAccounts`: `lo` = bây giờ, `hi ≤ lo + 1 giờ` và còn trong cùng cửa sổ.
+- Áp tham số két: `return_script`, `treasury_nft_policy` lấy từ trường có cấu trúc của bản ghi cụm
+  ACTIVE, không từ chuỗi mô tả. Trước khi áp, kiểm có đúng một UTxO ở `Script(return_script)` mang 1
+  `(treasury_nft_policy, "TREASURY")`, và `lamp_policy`/`lamp_name` của két bằng tham số cùng tên của
+  `treasury` đó. Lệch ⇒ dừng.
+- FundPot vào két drip: dựng lại hash két từ đủ tham số, so với địa chỉ pot đích, và đòi
+  `return_script` == hash kho đang rót. Lệch ⇒ dừng.
+- Lượt `Return`: carrier hiện tại làm reference input; output trả về đặt đúng địa chỉ của nó, không
+  datum. Trước khi dựng, cụm chứa `return_script` phải ACTIVE.
 - Ví đích là địa chỉ khoá: datum thẻ trên UTxO ở ví khoá vô hại. `did_payment`: hàm `spend` nhận
   `_datum: Option<Data>` và bỏ qua (`PhoenixKey-Validator/validators/did_payment.ak` ▸ `spend`).
 
 ## 8. Giới hạn đã biết
 
-- **Không có đường thu hồi.** `Reserve` dư và `Account` có `vault` không tiêu được sẽ nằm lại
-  mãi. Treo: nhánh `Return` về kho Treasury cần datum đúng sổ kho (không phải chỉ đúng địa chỉ),
-  chưa thiết kế. Ràng buộc tạm: chỉ rót vào `Reserve` đúng lượng sẽ mở tài khoản.
+- **`Account` không thu hồi được.** Sau khi mở, LAMP của tài khoản chỉ đi tới `vault`
+  (INV-DP-dich-co-dinh); `Return` chỉ áp cho `Reserve`. `vault` chết thì phần chưa nhả kẹt theo
+  (mục "Đích chết").
+- **LAMP trả về chưa vào sổ cho tới lượt `Refill` của kho.** Giữa hai lượt, nó nằm ở địa chỉ kho
+  ngoài carrier, và `GrantEntitlement` chưa tính nó vào pool.
+- **Két gắn vĩnh viễn với MỘT bản kho** (`return_script`, `treasury_nft_policy` nướng vào hash). Kho
+  đổi phiên bản thì Return chỉ còn đưa LAMP về sổ của bản cũ. Ràng buộc tạm (off-chain): không
+  Return khi cụm của `return_script` không còn ACTIVE.
+- **Min-ADA của output trả về ở lại carrier.** Carrier không có nhánh rút ADA, nên mỗi lượt Return
+  nhốt khoảng 1–2 ADA vào kho. ADA của `Reserve` về người dựng giao dịch, như ở `Seed`.
+- **Ví trả phí lượt Return phải là ví khoá** (DP-RET-2b cấm mọi input script khác).
 - **Một tài khoản mỗi giao dịch** (DP-CLAIM-1). Kích rút hộ hàng loạt tốn N giao dịch.
 - **Committee là điểm tin cậy** khi mở tài khoản: chọn `vault`, `E`, `start_epoch`. Sau khi mở,
   committee không đổi được gì của tài khoản. Rót Treasury (đa chữ ký) → `Reserve` là HẠ mức tin
@@ -203,7 +260,9 @@ Mọi `q` khác (`< −1`, hay `> 0` với redeemer `BurnAccount`, hay `< 0` v�
 
 - Mã: `Distribution/drip-pot/onchain/` (Aiken v1.1.21, stdlib `7d5cee54…`, như `pot-vault`).
 - Mỗi chốt DP-* có ít nhất một ca âm tính mang tên chốt.
-- Hash CHƯA áp tham số (`aiken build` v1.1.21): `20d5ca92e7477abb6892cd7866e12e4d9e5c54e15d62820fc946a5d3`.
+- Hash CHƯA áp tham số v0.3 (`aiken build` v1.1.21, 4680 B):
+  `821e8f64d3a86b73fa5c8a8e291da402717a20e4c0ec4de8c2120b3c`. Bản v0.2 (đang chạy Preprod, §10):
+  `20d5ca92e7477abb6892cd7866e12e4d9e5c54e15d62820fc946a5d3`.
   Hash sau khi áp tham số đọc lại từ lượt dựng thật, đừng chép số này sang off-chain.
 
 ## 10. Triển khai Preprod (đợt ETD, 2026-10-04)
