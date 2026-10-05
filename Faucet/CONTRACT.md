@@ -1,10 +1,13 @@
 # tLAMP + Faucet — CONTRACT (interface chốt)
 
-> **Phiên bản:** v3.1 — 2026-09-28. Bump từ v3.0 vì codec on-chain đổi: `PoolDatum` thêm trường thứ
+> **Phiên bản:** v3.2 — 2026-10-04. Bump từ v3.1 vì chữ ký cả ba validator đã thêm tham số CUỐI
+> `window_origin_ms` (đổi hash cả ba script) và định nghĩa cửa sổ đổi sang lưới gốc epoch Cardano
+> theo `Specs/Window/CONTRACT.md` v1.1 §1 — tài liệu theo kịp mã (§3.1, §3.6, §3.8, §3.9, §5).
+> v3.1 — 2026-09-28. Bump từ v3.0 vì codec on-chain đổi: `PoolDatum` thêm trường thứ
 > tư `opened_root` (sổ MPF các DID đang có account), `PoolRedeemer::ClaimOpen`/`Reclaim` mang bằng
 > chứng MPF, ngưỡng thu hồi 1001 → 72 cửa sổ, và bất biến mới INV-ONE-ACCT (§3.3a). Bản v3.0 nâng từ
 > v1 vì v1 tả một validator đã bị xoá (`validators/faucet.ak`, `FaucetDatum{claim_amount}`).
-> **Trạng thái:** v3.1 **CHƯA deploy** trên mạng nào — xem [`deployed-artifacts.md`](./deployed-artifacts.md).
+> **Trạng thái:** v3.2 **CHƯA deploy** trên mạng nào — xem [`deployed-artifacts.md`](./deployed-artifacts.md).
 > **Vai:** interface giữa on-chain và mọi bên tiêu thụ (SDK, script vận hành, module test khác).
 > Khi lệch với mã trong `onchain/`, **mã thắng** và chỗ lệch phải sửa ở đây.
 
@@ -98,17 +101,23 @@ test surrogate) → không tạo nợ kỹ thuật.
 ### 3.1 Chữ ký + thứ tự áp tham số
 
 ```
-faucet_nft.faucet_nft.mint(genesis_ref: OutputReference, ms_per_epoch: Int)
+faucet_nft.faucet_nft.mint(genesis_ref: OutputReference, ms_per_epoch: Int,
+        window_origin_ms: Int)
         → faucet_nft_policy
 
 faucet_account.faucet_account.spend(faucet_nft_policy: ByteArray, did_nft_policy: ByteArray,
-        lamp_policy: ByteArray, lamp_name: ByteArray, ms_per_epoch: Int)
+        lamp_policy: ByteArray, lamp_name: ByteArray, ms_per_epoch: Int,
+        window_origin_ms: Int)
         → account_script_hash
 
 faucet_pool.faucet_pool.spend(faucet_nft_policy: ByteArray, did_nft_policy: ByteArray,
         lamp_policy: ByteArray, lamp_name: ByteArray, ms_per_epoch: Int,
-        account_script_hash: ByteArray)
+        account_script_hash: ByteArray, window_origin_ms: Int)
 ```
+
+Nguồn: `validator faucet_nft(` (`onchain/validators/faucet_nft.ak`), `validator faucet_account(`
+(`faucet_account.ak`), `validator faucet_pool(` (`faucet_pool.ak`). `window_origin_ms` đứng CUỐI ở
+cả ba (WIN-ORIGIN-3); với `faucet_pool` nó đứng SAU `account_script_hash`.
 
 Thứ tự này **bắt buộc** và không vòng: `faucet_nft` và `faucet_account` nhận diện pool bằng POOL
 NFT nên không bên nào ôm hash pool.
@@ -116,8 +125,10 @@ NFT nên không bên nào ôm hash pool.
 - `did_nft_policy`: testnet truyền policy DID **test**; mainnet truyền **PhoenixKey DID**. Định danh
   per-DID = **asset name** của DID NFT (`did_name`).
 - `(lamp_policy, lamp_name)`: nhận diện tLAMP.
-- `ms_per_epoch`: độ dài một **cửa sổ** tính bằng ms. "Cửa sổ" là bucket `posix_ms / ms_per_epoch`,
-  **không** phải epoch Cardano.
+- `ms_per_epoch`, `window_origin_ms`: cửa sổ = `(posix_ms − window_origin_ms) / ms_per_epoch`
+  (`Specs/Window/CONTRACT.md` v1.1 §1; mã: `util.get_epoch`, `util.get_epoch_pinned`). Trên
+  Mainnet/Preprod chỉ số cửa sổ = số epoch Cardano, biên cửa sổ trùng biên epoch. Preview: chưa có
+  gốc (WIN-PREVIEW) ⇒ off-chain ném lỗi.
 - `account_script_hash`: tham số compile-time, **không** phải trường datum. Lý do: trong datum thì
   phép kiểm khả thi duy nhất là độ dài 28 byte — một phép kiểm ĐỘ DÀI đứng thay phép kiểm ĐỊNH
   DANH, và một hash sai làm drip rót vào địa chỉ không script, mất vĩnh viễn, trong khi mọi kiểm
@@ -210,7 +221,7 @@ chúng ngay lúc đúc: một datum khởi tạo sai khoá chết toàn bộ tLA
 
 | Mã | Bất biến |
 |---|---|
-| `C-RATE-0` | `now = util.get_epoch_pinned(tx, ms_per_epoch)` — **không** dùng cận dưới. Với `now` lùi được, mỗi bucket quá khứ là một quota mới và trần tốc độ bị leo thang theo bậc thang |
+| `C-RATE-0` | `now = util.get_epoch_pinned(tx, ms_per_epoch, window_origin_ms)` — **không** dùng cận dưới. Với `now` lùi được, mỗi bucket quá khứ là một quota mới và trần tốc độ bị leo thang theo bậc thang |
 | `C-RATE-1` | `now ≥ pd.window_epoch` (cửa sổ đơn điệu so với datum) |
 | `C-RATE-2` | `used + 1 ≤ cfg.max_claims_per_window`, với `used = claims_in_window` nếu `now == window_epoch`, ngược lại `0` |
 | `C-RATE-3/4` | `out_pd.window_epoch == now` · `out_pd.claims_in_window == used + 1` |
@@ -280,7 +291,7 @@ qua stake credential).
 | | `C-MP-1` | `pool_out.address.payment_credential` là `Script(_)` — không đúc thẳng vào ví, vì khi đó `faucet_pool.spend` không bao giờ chạy |
 | | `C-MP-2/3` | `stake_credential == None` (enterprise); không script-carrier |
 | | `C-MP-4/5` | datum parse được thành `PoolDatum`; `claims_in_window == 0` |
-| | `C-MP-6` | `window_epoch == get_epoch_pinned(tx, ms_per_epoch)` — `window_epoch = 0` (mặc định tự nhiên của builder) cho sẵn hàng nghìn bậc thang quota dùng được ngay sau deploy |
+| | `C-MP-6` | `window_epoch == get_epoch_pinned(tx, ms_per_epoch, window_origin_ms)` — `window_epoch = 0` (mặc định tự nhiên của builder) cho sẵn hàng nghìn bậc thang quota dùng được ngay sau deploy |
 | | `C-MP-7` | `drip_oildrop > 0` · `cooldown_epochs ≥ 0` · `0 < max_claims_per_window ≤ max_claims_ceiling` |
 | | `C-MP-8` | `opened_root == empty_opened_root()` (= `mpf.root(mpf.empty)`) — sổ khởi tạo RỖNG; đúc pool với một gốc khác là cấp sẵn "account ma" cho các DID chưa từng mở |
 | `MintAccount` | `C-MA-1/2` | ≥ 1 POOL NFT input (pool đang được spend ⇒ pool validator đã chạy); `quantity_of(POOL) == 0`; đúng 1 asset name; đúng 1 đơn vị |
@@ -375,9 +386,11 @@ lượt nạp `ms_per_epoch` lệch mạng.
 
 **Nghĩa vụ bắt buộc của builder (không phải codec, nhưng thiếu thì tx trượt ngẫu nhiên ở biên
 bucket):** với `ClaimOpen`, `ClaimAgain`, `TopUp`, `Use`, `MintPool` phải đặt `lo = now_ms` và
-`hi = min(now_ms + ttl, (⌊lo / ms_per_epoch⌋ + 1) × ms_per_epoch − 1)`; bucket còn lại ngắn hơn TTL
-tối thiểu thì **chờ sang bucket sau, KHÔNG nới `hi`**. Hàm thuần: `epochWindow.pinnedEpochWindow`,
-ném `FAUCET-WINDOW-001`. **KHÔNG** áp cho `ReclaimIdle`.
+`hi = min(now_ms + ttl, o + (⌊(lo − o) / ms_per_epoch⌋ + 1) × ms_per_epoch − 1)` với
+`o = window_origin_ms` (WIN-ORIGIN-2); bucket còn lại ngắn hơn TTL tối thiểu thì **chờ sang bucket
+sau, KHÔNG nới `hi`**. Hàm thuần: `epochWindow.pinnedEpochWindow(…, windowOriginMs, …)`, ném
+`FAUCET-WINDOW-001`; `windowOriginMs` lệch hình dạng ⇒ `FAUCET-WINDOW-002`, `now_ms` trước gốc ⇒
+`FAUCET-WINDOW-003`. **KHÔNG** áp cho `ReclaimIdle`.
 
 Scripts (`Faucet/scripts/`, nhận `BLOCKFROST_KEY` + `WALLET_SEED` qua biến môi trường đặt
 ngay trước lệnh — `scripts/config.ts`): mặc định `SUBMIT=false` (chỉ build + log, KHÔNG gửi tx

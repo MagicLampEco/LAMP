@@ -1,6 +1,9 @@
 # Treasury — CONTRACT (interface đa thuê bao)
 
-> **Phiên bản:** v1.1 — 2026-09-27. Vì sao bump: §10 H1A-interface trỏ sang hướng đóng mâu thuẫn
+> **Phiên bản:** v1.2 — 2026-10-04. Vì sao bump: đồng bộ với mã đã gộp — custody nay mang 6 tham số
+> (`pointer_policy` thay `proposal_policy`, thêm `window_origin_ms`), Release đọc governance qua NFT con trỏ
+> (`C-REL-PTR`); bản v1.1 còn tả 5 tham số và proposal ở `Script(governance_ref)`. Thêm §16.
+> v1.1 — 2026-09-27: §10 H1A-interface trỏ sang hướng đóng mâu thuẫn
 > Proposal NFT ở `Governance/SPEC.md` v2.0; không đổi interface nào của Treasury.
 > v1.0 — 2026-06-05: lần đầu khai phiên bản.
 > **Vai:** spec build-fact — nguồn chuẩn (interface contract) cho Treasury đa thuê bao. Khi lệch với
@@ -18,10 +21,12 @@ OriLife `animal_fee` cắt 7%; MAGIC AppEconomics). Reconcile `Foundation-Bootst
 
 - Treasury = **instance** param hóa. MagicLamp = một instance; team eco khác = instance khác (open SDK).
 - Tham số instance: `(governance_ref, accepted_assets[], buckets[], protocol_cut_bps)` — nằm ở **datum**
-  (DAO chỉnh không đổi script hash). Param **validator** (bất biến đời instance, hardening v1 §10 H5):
-  `(proposal_policy, seed_policy, ms_per_epoch, lamp_policy, token_name)` — **5 tham số**, nguồn: chữ
-  ký `validator custody(` trong `Treasury/onchain/validators/custody.ak`. `governance_ref` là **ràng
-  buộc cứng** ở release (§10 H1A), không còn field trang trí.
+  (DAO chỉnh không đổi script hash). `governance_ref` là **policy id của NFT con trỏ governance**
+  (`Treasury/GovernancePointer.md` v0.2), không phải script hash governance. Param **validator** (bất biến
+  đời instance): `(pointer_policy, seed_policy, ms_per_epoch, lamp_policy, token_name, window_origin_ms)` —
+  **6 tham số**, nguồn: chữ ký `validator custody(` trong `Treasury/onchain/validators/custody.ak`.
+  `window_origin_ms` theo `Specs/Window/CONTRACT.md` v1.0. `governance_ref` là **ràng buộc cứng** ở release
+  (§10 H1A, §16), không còn field trang trí.
 - **Custody tách accounting:** value nằm ở 1 (hoặc shard) UTxO custody; **bucket = sổ kế toán trong
   datum**, KHÔNG phải mỗi bucket một UTxO (chống bloat + min-ADA). DAO chỉnh % từng bucket.
 - **Emergency bucket tách physical** (isolation) — không gộp custody với bucket thường.
@@ -69,7 +74,8 @@ Chữ ký: `collectToTreasury(asset ∈ accepted_assets, amount, app_id, categor
 ## 4. Bucket release — chi ra (nhóm B)
 
 - Release **chỉ khi** một proposal Governance đã pass (đọc kết quả qua reference input / beacon),
-  và proposal UTxO PHẢI ở đúng `Script(governance_ref)` (§10 H1A — binding cứng).
+  và proposal UTxO PHẢI ở đúng `Script(g)`, với `g` đọc từ NFT con trỏ ở `Script(governance_ref)`
+  (§10 H1A, §16 — binding cứng).
 - Ngưỡng theo loại bucket, viết dạng **"≥"** (tham số DAO): vd community ≥2/3, ops ≥1/2, emergency ≥2/3.
 - Multi-sig council + **time-lock** giải ngân.
 - **Chống double-satisfaction:** đếm theo **payment script hash** (bài học audit C1/C2/M1 Distribution),
@@ -144,12 +150,16 @@ testnet → đổi param/script hash KHÔNG cần migrate (lý do làm ngay bây
   nằm ở **đúng** `Script(governance_ref)` (`payment_credential == Script(governance_ref)`). `governance_ref`
   từ field trang trí → ràng buộc cứng. Chặn (a) NFT proposal bị dời sang UTxO datum giả ở script lạ,
   (b) replay chéo instance khác `governance_ref`. (TECH C-REL-1.)
+  **Đổi nghĩa từ 2026-10-03 (`C-REL-PTR`, `Treasury/GovernancePointer.md` v0.2):** Release ép
+  `datum.governance_ref == pointer_policy`, đọc `g = PointerDatum.governance_hash` qua reference input mang
+  NFT `GOVPOINTER` ở `Script(governance_ref)`, rồi ép proposal UTxO ở `Script(g)` mang Proposal NFT policy `g`
+  (`custody.ak` ▸ nhánh Release, `pointer.read_governance`). Governance dựng lại được mà không đúc lại kho.
 - **H1A-interface — Proposal NFT = MỘT policy chung per-governance** (asset name = `proposal_id`),
   **KHÔNG one-shot-by-seed per-proposal**. Custody param `proposal_policy` là policy id đơn → chỉ đúng
   khi policy ổn định per-DAO. **Mâu thuẫn phải chốt với Governance** trước khi code Release thật.
-  Hướng đóng (đặc tả Governance, chưa có mã): `Governance/SPEC.md` v2.0 §Kiến trúc on-chain v2 —
-  policy dùng chung trong một pha, tên = `blake2b_256(cbor(seed_ref))`; custody giữ nguyên hai vế
-  ghim `proposal_policy` + `governance_ref`.
+  Hướng đóng: `Governance/SPEC.md` v2.1 §Kiến trúc on-chain v2 (đã có mã, `Governance/onchain/validators/governance.ak`) —
+  policy dùng chung trong một pha, tên = `blake2b_256(cbor(seed_ref))`. Từ `C-REL-PTR` (§16) custody
+  không còn tham số `proposal_policy`: Proposal NFT policy = `g` đọc từ con trỏ.
 - **H1B — ĐÓNG (vá lần 2 F10).** `spend_spec_hash` NAY gồm `instance_id`
   (`= blake2b(0x02 ‖ blake2b(instance_id) ‖ blake2b(cbor(draws)))`) → hai instance Treasury CÙNG
   `governance_ref` KHÔNG còn replay chéo (hash khác instance ⇒ release reject). Known-gap #1B chuyển
@@ -158,8 +168,8 @@ testnet → đổi param/script hash KHÔNG cần migrate (lý do làm ngay bây
   không chi được ở instance nào. Đây là ràng buộc đúng-đắn của Governance, KHÔNG còn lỗ hổng on-chain.
   → **Công thức trên đã THAY ở P7 (§15, `C-REL-3-SEED`)**: `instance_id` không duy nhất, nên tiền ảnh nay
   gắn thêm `seed_policy` và domain tag đổi `0x02 → 0x03`.
-- **H5 — custody ĐÒI NFT authenticity khi spend.** Param custody → `(proposal_policy, seed_policy,
-  ms_per_epoch, lamp_policy, token_name)`. `lamp_policy`/`token_name` **VẪN LÀ THAM SỐ** — nhánh
+- **H5 — custody ĐÒI NFT authenticity khi spend.** Param custody (tại H5) → `(proposal_policy, seed_policy,
+  ms_per_epoch, lamp_policy, token_name)`; bộ hiện hành ở §1. `lamp_policy`/`token_name` **VẪN LÀ THAM SỐ** — nhánh
   `MigrateIn` phải đo Δ nên phải biết token nào là LAMP, mà đọc điều đó từ `accepted_assets` trong
   datum thì **datum do người gửi đặt**. `accepted_assets` chỉ giữ vai danh mục được nhận (`C-MIG-9`).
   Mọi spend (Collect/Release/MigrateIn) ép
@@ -180,7 +190,7 @@ testnet → đổi param/script hash KHÔNG cần migrate (lý do làm ngay bây
 - **H4 — epoch neo chain.** `epoch_out == get_epoch(tx) ∧ get_epoch(tx) >= epoch_in` (thay chỉ `>=`).
   Field `epoch` thành audit thật. **Vá lần 2 (F4): dùng `get_epoch_bounded`** — validity_range hữu hạn
   CẢ HAI biên + gọn 1 epoch (chống đóng băng: kẻ đặt lower epoch cũ submit muộn). (TECH C-EPOCH.)
-- **H6 — Rebalance/MigrateIn hoãn v1.x** (`_ -> fail`). Giữ Constr trong types (index ổn định). Nạp
+- **H6 — Rebalance/MigrateIn hoãn v1.x** (`_ -> fail`). → `MigrateIn` đã hiện thực sau đó (`custody.ak` ▸ nhánh `MigrateIn`); chỉ `Rebalance` còn `_ -> fail`. Giữ Constr trong types (index ổn định). Nạp
   generators v1 dùng adapter off-chain b-ii qua `Collect` (không cần MigrateIn). (TECH §8/§9, EXEC §4.)
 
 ## 11. Vá audit lần 2 (2026-06-15 — interface KHÓA, mọi spec phải khớp)
@@ -320,7 +330,7 @@ lý do để chi nó ra; (2) mỗi category lạ là một dòng sổ mới — 
 - `S-BUCKETS-NONEMPTY` · `S-BUCKETS-SORTED` · `S-BUCKETS-RESERVED` — lúc gieo: `buckets` khác rỗng, tăng
   NGHIÊM NGẶT (⇒ không trùng), không chứa `reserve_inflow` hay `stake_reward` (`buckets.ak` ▸ `config_ok`,
   gọi trong `custody_seed`). Đây là cửa DUY NHẤT kiểm hình dạng `buckets`.
-- `C-BUCKETS-KEEP` — cả bốn nhánh tiêu kho (`Collect` · `Release` · `MigrateIn` · `StakeRewardIn`) ép
+- `C-BUCKETS-KEEP` — cả năm nhánh tiêu kho (`Collect` · `Release` · `MigrateIn` · `StakeRewardIn` · `Deposit`) ép
   `out.buckets == in.buckets`. ⇒ **danh sách category là cấu hình của instance, chốt lúc gieo, bất biến đời
   instance.** Cần category mới = gieo instance mới (hoặc một nhánh đổi cấu hình qua Governance — chưa có).
 
@@ -358,7 +368,7 @@ bằng `genesis_ref` ⇒ một hạt giống, một NFT, một kho. Domain tag `
 không bao giờ khớp công thức mới.
 
 Chọn `seed_policy` chứ không phải script hash của `custody`: cả hai đều duy nhất theo kho, nhưng `seed_policy`
-là định danh GỐC — script hash custody suy ra từ nó cộng `ms_per_epoch`, `lamp_policy`, `token_name`. Bên dựng
+là định danh GỐC — script hash custody suy ra từ nó cộng các tham số apply còn lại (chữ ký `validator custody(`, §1). Bên dựng
 proposal chỉ cần biết NFT của kho đích (công khai trên chuỗi), không cần cả bộ tham số apply.
 
 ⛔ **Nghĩa vụ build-side của Governance** (thay cho nghĩa vụ ở §10 H1B): tính `spend_spec_hash` với ĐÚNG cặp
@@ -399,3 +409,9 @@ Gương off-chain: `planDeposit` / `buildDepositTx` (`Treasury/offchain/src/depo
 `depositItemsValid` / `DEPOSIT_BPS` (`collect.ts`); `seedPolicy` BẮT BUỘC như Release.
 
 Đơn vị dùng chung: `1 LAMP = 1_000_000 oildrop` (khớp `Utils.OILDROP_PER_LAMP`).
+
+## 16. Con trỏ governance (2026-10-03, **ĐÃ HIỆN THỰC**)
+
+Nguồn: `Treasury/GovernancePointer.md` v0.2. Validator: `Treasury/onchain/validators/governance_pointer.ak`.
+Redeemer: `CommitteePropose` · `ApplyPending` · `CommitteeCancel` · `Seal` · `GovernanceSet` (`Treasury/onchain/lib/magiclamp/treasury/types.ak`
+▸ `PointerRedeemer`). Phía custody: §10 H1A đoạn "Đổi nghĩa từ 2026-10-03".

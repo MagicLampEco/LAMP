@@ -22,14 +22,22 @@ Bức tranh tổng (cung, phát hành, điều tiết, pháp lý): `Papers/pot-c
 | `channel_budget.ak` | beacon `remaining_oildrop` mỗi kênh (Decrement khi Claim) |
 | `budget_nft.ak` | mint NFT chính danh mỗi kênh (name = channel_id) |
 | `claim_account.ak` | tài khoản Capped Drop mỗi người nhận (Claim/Redeem) |
+| `account_nft.ak` | mint NFT chính danh của tài khoản (`MintAccount`), cổng committee + ngưỡng chữ ký, ép tài khoản mới sạch (`redeemed == 0`) |
 | `treasury.ak` | sub-pool LAMP per-channel (ReleaseForRedeem) |
 
 Công thức vested: `vested(t) = min(entitlement, drop_value · drops_per_epoch · max(0, t − start_epoch))`
 (drop_value = D, param validator claim_account); `redeemable = vested − redeemed`. Cliff = đặt lùi
 `start_epoch` (không cần field riêng).
 
+`t` (và `start_epoch`) là chỉ số **cửa sổ** theo luật chung `Specs/Window/CONTRACT.md` v1.1 §1:
+`window(t_ms) = (t_ms − window_origin_ms) / ms_per_epoch`. `window_origin_ms` là tham số CUỐI của
+`claim_account` (`claim_account.ak` ▸ `window_origin_ms`; hàm `util.get_epoch`), nên đổi gốc là đổi
+script hash. Allocation không định nghĩa lại luật này — chỉ áp dụng nó.
+
 > ⚠️ **Engine vested là FORK từ Distribution** (math.ak đồng nhất, claim_account ~85% chung;
-> KHÔNG `use magiclamp/lampdist`). Đồng bộ **THỦ CÔNG** cho tới khi hợp nhất `magiclamp/common` (sau 18/6).
+> KHÔNG `use magiclamp/lampdist`). Đồng bộ **THỦ CÔNG**. Kế hoạch hợp nhất thành `magiclamp/common`
+> từng được ghi trong tài liệu này, nhưng kho hiện không có module `magiclamp/common` — hai bản
+> vẫn là hai bản.
 
 ## Các kênh (allocation v3) — khởi tạo per-channel
 
@@ -59,7 +67,9 @@ Công thức vested: `vested(t) = min(entitlement, drop_value · drops_per_epoch
 ## Offchain SDK (`@magiclamp/allocation-sdk`)
 - `setupBuilder` — khởi tạo kênh.
 - `claimBuilder` — committee cấp/tăng entitlement (co-spend account + beacon).
-- `redeemBuilder` — user rút LAMP đã vested (permissionless; tự suy epoch từ validFromMs/msPerEpoch).
+- `redeemBuilder` — user rút LAMP đã vested (permissionless; tự suy cửa sổ hiện tại
+  `floor((validFromMs − windowOriginMs) / msPerEpoch)`, khớp `get_epoch` on-chain; `windowOriginMs`
+  lấy từ `windowOriginMs(network)` của `@magiclamp/utils`).
 - `datum`/`math`/`committee` — codec Constr byte-perfect + vested + M-of-N.
 
 ## Giả định bảo mật
@@ -68,5 +78,15 @@ Setup kênh là thao tác committee tin-cậy (one-shot, nắm `genesis_ref` + c
 script-hash cụ thể (tránh vòng phụ thuộc). Committee chịu trách nhiệm đặt đúng
 `channel_budget`/`treasury` script khi setup.
 
+## Trạng thái triển khai
+Chưa có bản ghi triển khai nào của module này trong kho (không có trong sổ policy
+`Genesis/offchain/src/lampPolicies.ts`); trên mạng nào đã chạy: chưa xác minh. Script mẫu một kênh:
+`scripts/demo_allocation.ts`.
+
 ## Test
-onchain `aiken check` **75 pass** · offchain vitest **68 pass** (đo 2026-07-29). Xem `tests/` + `offchain/src/`.
+```bash
+cd Allocation/onchain && aiken check
+cd Allocation/offchain && npm install && npx vitest run
+```
+Số bài kiểm đổi theo từng commit — chạy lệnh để lấy số hiện tại, đừng chép số từ tài liệu. Bộ kiểm:
+`tests/` + `offchain/src/`.

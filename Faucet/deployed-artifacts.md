@@ -24,14 +24,16 @@
 
 > ⚠️ **Con số dưới đây KHÔNG phải nguồn.** Nguồn duy nhất: `Genesis/offchain/src/lampPolicies.ts`.
 > Trạng thái bản này: **SUPERSEDED** — bị thay bởi bản ghi `preprod-oneshot-12param`
-> (`d9c09230…`). **Preprod đã có bản kế nhiệm ACTIVE** — `preprod-oneshot-14param`, policy id
-> `8169b76cdaba83cf7c9ae32ebd2bb3a58aa215c7dc0b62c8f5e268dd`, đúc ngày 2026-09-14 theo đường
-> registry-gate 14 tham số. Preview thì chưa: `preview-oneshot-14param` còn `PENDING-MINT`.
-> ⚠️ Nghĩa là `activeLampPolicyId("preprod")` nay **TRẢ VỀ** chứ không còn ném. Đừng đọc câu
-> này thành "policy dưới đây là bản đang sống" — bản dưới đây vẫn `SUPERSEDED`, nó chỉ là bản
-> mà pool faucet hiện tại đang giữ token.
-> Nguồn duy nhất cho trạng thái: `Genesis/offchain/src/lampPolicies.ts` (bản ghi
-> `preprod-oneshot-14param`). Đo lại:
+> (`d9c09230…`), và chuỗi thay thế đã đi tiếp: `8169b76c…`, `53bc12ad…`, `7ecbffe2…` đều là bản
+> **SUPERSEDED** của Preprod. **Bản ACTIVE hiện hành của Preprod** (đối chiếu sổ 2026-10-04) là
+> bản ghi `preprod-oneshot-14param-final`, policy id
+> `493002cc03004e3e14fd607cfba59312bd946e478e69d6ab431ccfac`, đường registry-gate 14 tham số.
+> **Faucet CHƯA được triển khai trên bản ACTIVE này** — pool faucet bên dưới vẫn giữ token của
+> bản cũ `7a1a7aed…`. Preview thì chưa có bản ACTIVE: `preview-oneshot-14param` còn `PENDING-MINT`.
+> ⚠️ Đừng đọc câu này thành "policy dưới đây là bản đang sống" — bản dưới đây vẫn `SUPERSEDED`,
+> nó chỉ là bản mà pool faucet hiện tại đang giữ token.
+> Nguồn duy nhất cho trạng thái: `Genesis/offchain/src/lampPolicies.ts` (đọc bằng
+> `activeLampPolicyId("preprod")`; chuỗi `supersededBy` của các bản ghi `preprod-*`). Đo lại:
 > `cd Genesis/offchain && npx vitest run ../tests/lampPolicies.test.ts` — đọc ở **dòng tổng kết
 > `Tests N passed`**, không đọc ở mã thoát của một đường ống.
 
@@ -45,11 +47,11 @@
 - **Cái "chung cả 2 mạng" đó là TRIỆU CHỨNG, không phải tiện lợi.** Native-sig không one-shot:
   người giữ khoá ví deploy đúc lại SUPPLY NFT lượt hai ⇒ SupplyState thứ hai với `dist_minted`
   = 0 ⇒ đúc lại trọn cap; và đúc MET giữ ở ví ⇒ nhánh `ReserveDraw` thoả mà không validator nào
-  chạy. Nguyên văn hệ quả: `Genesis/scripts/_guards.ts:52-56`. Validator thì đúng là
+  chạy. Nguyên văn hệ quả: `Genesis/scripts/_guards.ts`, chuỗi thông báo bắt đầu bằng "marker đúc dưới native-sig KHÔNG one-shot". Validator thì đúng là
   registry-gate + A-DEST — nhưng câu "registry-gate" một mình che mất đúng vế này.
 - Bản thay thế (`d9c09230…`) đúc marker bằng `oneshot_nft.ak` neo `genesis_ref` `525b80f4…e301#1`;
-  lượt đúc SUPPLY NFT thứ hai **bị chặn** (`Genesis/scripts/canonical-v2-state.json`,
-  khối `oneshotProof`).
+  lượt đúc SUPPLY NFT thứ hai **bị chặn** (khối `oneshotProof` của tệp trạng thái
+  `canonical-v2-state.json` — `_canonical_v2.ts` ▸ `STATE_PATH`; tệp sinh lúc chạy, không nằm trong kho).
 - **Faucet pool address (cả 2 mạng):** `addr_test1wq5kway3ng4amxt47l2ugk7h0cvr7zyfp706uacqqmqcg7sg80hqc`
 - Faucet hash: `296774919a2bdd9975f7d5c45bd77e183f08890f9fae770006c1847a`
 - claim_amount: **100 tLAMP/claim**, permissionless on-chain — pool đang sống là **bản v1**
@@ -64,8 +66,8 @@
 - State file: `scripts/deployed-faucet.preprod.json`
 - Canonical genesis+mint (đường cũ, đã chạy lượt này): `Genesis/scripts/canonical_mint.ts` —
   tệp đã xoá khỏi kho (tra `git show 930480e:Genesis/scripts/canonical_mint.ts`);
-  `canonical-state.json` vẫn còn. Đường đang sống cho lượt genesis+mint mới: `Genesis/scripts/_canonical_v2.ts`
-  + `20_canonical_genesis.ts` … `26_prove_brake.ts` (runbook: `Genesis/canonical-preprod-runbook.md`).
+  tệp trạng thái `canonical-state.json` của lượt đó sinh lúc chạy, không nằm trong kho. Đường đang sống cho lượt genesis+mint mới: `Genesis/scripts/_canonical_v2.ts`
+  + `20_canonical_genesis.ts` … `32_etd_claim.ts` (runbook: `Genesis/canonical-preprod-runbook.md`).
 
 ## Preview
 - Seed pool tx: `6a375e47d0c3cbcff696f3d71be7915bba42bd44a713c48df17f82a6456d144f` (9.000 tLAMP)
@@ -112,16 +114,20 @@ chạy thành 180 ngày, `RECLAIM = 1001 epoch` (giá trị v3.0; v3.1 là 72) t
 
 Hash dưới đây là **hash CHƯA áp tham số** (bản compiled trong blueprint) — dùng để nhận ra đúng bản
 mã, **KHÔNG** phải script hash hay địa chỉ sẽ có sau deploy: cả ba validator faucet nhận tham số
-compile-time (`ms_per_epoch`, policy, `account_script_hash`…), áp xong thì hash đổi. Nguồn:
-`onchain/plutus.json` sinh từ commit `75323b4`; đo lại bằng `aiken build` rồi đọc trường `hash`
-của từng validator.
+compile-time (`ms_per_epoch`, policy, `account_script_hash`, `window_origin_ms`…), áp xong thì hash đổi.
+Đo 2026-10-04 bằng `aiken build` (v1.1.21) trên mã CONTRACT v3.2 — ba validator faucet đã thêm tham số
+cuối `window_origin_ms`, nên hash khác bản v3.1 (`75323b4`). `onchain/plutus.json` không được track;
+đo lại bằng `aiken build` rồi đọc trường `hash` của từng validator.
 
-| Validator | Hash chưa áp tham số | Compiled | Mã nguồn đổi ở `75323b4`? |
+| Validator | Hash chưa áp tham số (v3.2) | Compiled | Số tham số |
 |---|---|---|---|
-| `faucet_nft` | `1b2adb0cf862eea048cfd944306d3329c55f7b6050a929acf3f075c3` | 1.598 B | có (C-MP-8) |
-| `faucet_account` | `298c9fcaceac0bd11fa14b572724e93017c91e78bbdc85125368fff2` | 2.387 B | có (`reclaim_epochs_const` = 72) |
-| `faucet_pool` | `05e1d5d350b25b2bac1866477dbe8e7a902c9e5ad33713e0e1287d2b` | 6.288 B (≈ 6,3 KB) | có (sổ MPF + bằng chứng trong redeemer; cộng ba chốt cổng đúc `C-MINT-ONLY-OPEN-1/2` + `C-RECL-BURN-2`, +75 B so với bản 28/09 sớm hơn) |
-| `tlamp_policy` | `4d0b5eb484dfd2ccce18ed688d7ece2c15ccd54e3f91162b7d53ebba` | 423 B | **không** — tệp không đổi, chỉ import stdlib ⇒ hash như v3.0 |
+| `faucet_nft` | `60b36f5213a6a9372b9245811512762e046678fc5109513c7bc17b62` | 1.610 B | 3 (cuối: `window_origin_ms`) |
+| `faucet_account` | `e9f1fe129ad1f27b8400219a898a3b4d5f076e3e7145eac6991a1af4` | 2.409 B | 6 (cuối: `window_origin_ms`) |
+| `faucet_pool` | `239db364a38cb7dd0d711be12c4834d438c366400538b59a04bd899c` | 6.304 B (≈ 6,3 KB) | 7 (cuối: `window_origin_ms`) |
+| `tlamp_policy` | `4d0b5eb484dfd2ccce18ed688d7ece2c15ccd54e3f91162b7d53ebba` | 423 B | 2 — tệp không đổi, hash như v3.0 |
+
+Bản v3.1 (`75323b4`, trước khi thêm `window_origin_ms`): `faucet_nft` `1b2adb0c…75c3`, `faucet_account`
+`298c9fca…fff2`, `faucet_pool` `05e1d5d3…7d2b` — chỉ để nhận ra blueprint cũ.
 
 `validators/ledger_parity.ak` chỉ chứa ca kiểm, không vào blueprint, không đổi hash nào.
 
@@ -136,5 +142,3 @@ của từng validator.
 - Preprod one-shot `59113c3e32d4dd3dc9b6c4fbed134fabbd37353f839df80c357f72dd` — bỏ.
 - Preview one-shot `770a518de374f4db9c854af3fc93f125c30afd8d658ab586a2eb655e` — bỏ.
 - Token sig cũ (prodLAMP `28e916b0…`, test-LAMP native) — bỏ.
-
-— LAMP agent

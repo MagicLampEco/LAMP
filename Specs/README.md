@@ -36,6 +36,7 @@ Thấy hai nơi cùng phát biểu một luật ⟹ một trong hai đang là b�
 | Đường | Giữ luật gì |
 |---|---|
 | [`Emission/CONTRACT.md`](Emission/CONTRACT.md) | Luật phát hành LAMP: trần cung, lazy-mint, no-burn, trần nhịp Reserve, cổng cầu Treasury |
+| [`Window/CONTRACT.md`](Window/CONTRACT.md) | Luật cửa sổ thời gian: `window(t) = (t − window_origin_ms) / ms_per_epoch`, gốc theo mạng trùng biên epoch Cardano, danh sách validator mang `window_origin_ms` |
 
 ---
 
@@ -50,9 +51,10 @@ Kho LAMP **sở hữu** định nghĩa của token LAMP. Kho khác trong hệ si
 | Đơn vị: 1 LAMP = 1.000.000 oildrop | `Specs/Emission/CONTRACT.md` §1 | § |
 | Luật nhả Reserve (trần nhịp + cổng cầu) | `Specs/Emission/CONTRACT.md` §3 | § |
 | Bất biến phát hành `EMIT-*` | `Specs/Emission/CONTRACT.md` §4 | mã bất biến |
+| Định nghĩa cửa sổ thời gian + gốc `window_origin_ms` theo mạng | `Specs/Window/CONTRACT.md` §1–§2 | § và mã bất biến `WIN-ORIGIN-*` |
 | Mô hình quyền biểu quyết (KHÔNG token-weighted) | `Governance/VotingPower/CONTRACT.md` | § |
 | Kế toán Treasury — giảm lưu hành = chuyển vào kho, không đốt | `Treasury/CONTRACT.md` | § |
-| Hằng `dist_cap` / `reserve_cap` dùng trong mã | `Genesis/onchain/lib/magiclamp/genesis/constants.ak` | **tên hằng** |
+| Hằng `dist_cap_oildrop` / `reserve_cap_oildrop` dùng trong mã | `Genesis/onchain/lib/magiclamp/genesis/constants.ak` | **tên hằng** |
 | Phân bổ 18 pot | *chưa có nguồn* — xem "Khoảng trống" bên dưới | — |
 
 ## Ba mức trích, theo thứ tự ưu tiên
@@ -98,8 +100,8 @@ sao của một giá trị**: một literal gõ thẳng giữa một biểu th�
 y như một `const` có tên. Bỏ `.md` ra khỏi phép đếm — tài liệu trích giá trị thì đã có ba mức trích
 ở trên chi phối.
 
-Con số này **sẽ đổi** khi kho đổi. Nó không phải một dữ kiện phải giữ cho đúng; nó là một phép đo
-kèm cách đo lại. Đừng sửa riêng con số mà không chạy lại lệnh.
+Con số này **sẽ đổi** khi kho đổi (chưa đo lại sau mốc `2026-09-11`). Nó không phải một dữ kiện
+phải giữ cho đúng; nó là một phép đo kèm cách đo lại. Đừng sửa riêng con số mà không chạy lại lệnh.
 
 Các bản sao đó hiện đang **khớp giá trị**. Vấn đề không phải hôm nay chúng sai, mà là **không có gì
 kêu lên vào ngày một bản đổi** — và một bản sao chết im lặng nguy hiểm hơn một chỗ thiếu thông tin,
@@ -109,7 +111,7 @@ vì người đọc tin nó.
 
 | Dữ kiện | Tình trạng |
 |---|---|
-| Con số phân bổ 18 pot | Chỉ tồn tại trong `Papers/`, mà `Papers/` là bản **phái sinh** — nên dữ kiện này hiện **không có nguồn định nghĩa**. Grep toàn bộ `*.ak` và `*.ts` (bỏ `node_modules/`, build): 0 kết quả. |
+| Con số phân bổ 18 pot | Có một bản chép CÓ NHÃN trong mã: `Distribution/offchain/src/pots.ts` ▸ `POTS` (chép 2026-09-23, `Distribution/tests/pots.test.ts` đối chiếu lại). Bản chép đó tự khai nguồn là `Papers/pot-catalog.md` §1, mà `Papers/` là bản **phái sinh** — nên dữ kiện vẫn **không có nguồn định nghĩa** trong `Specs/`. |
 | Hằng cap trong mã | 17 + 14 tệp mang literal như đo ở trên; chưa có một module nào được chỉ định là nơi khai duy nhất để các nơi khác `import`. |
 
 Ghi ra để người đọc không nhầm một khoảng trống thành một nguồn.

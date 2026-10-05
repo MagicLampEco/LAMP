@@ -116,7 +116,7 @@ pub fn mint_ok(
 /// là đánh đổi có chủ ý: đổi một khoản ADA kẹt lấy việc `MigrateIn` dựng được.
 /// Đã kiểm: `reserved_min_ada` KHÔNG phải trường của `CustodyDatum` (`types.ak` —
 /// `CustodyDatum` chỉ có instance_id/accepted_assets/ledger/cut_bps/governance_ref/epoch/
-/// consumed_proposals) mà chỉ là tham số redeemer `SeedGenesis` của `custody_seed`, nên
+/// consumed_proposals/buckets) mà chỉ là tham số redeemer `SeedGenesis` của `custody_seed`, nên
 /// KHÔNG có phép kiểm on-chain nào sau seed bị vế nới này phá.
 pub fn value_ok(
   v_in   : Value,

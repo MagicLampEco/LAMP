@@ -31,9 +31,13 @@ Phần on-chain (`registry.ak`, `registry_beacon.ak`, `platform.ak`) đã sống
 `Treasury/onchain/` bên LAMP là **cùng một nguồn** — Registry đã đối chiếu script hash trùng từng bit ở
 ba chiều ngày 2026-08-04 (`registry b3b4c26a…`, `registry_beacon bc3b9041…`).
 
-## Lưu ý về từ vựng — CHƯA CHỐT
+## Trạng thái triển khai
+
+Chưa có bản ghi triển khai `registry` / `registry_beacon` nào trong kho (không có trong sổ policy
+`../Genesis/offchain/src/lampPolicies.ts`); đã chạy trên mạng nào: chưa xác minh. Bộ script
+`scripts/` dựng và kiểm kế hoạch ở chế độ DRY — xem `scripts/README.md`.
+
+## Lưu ý về từ vựng
 
 Ba kho đang dùng ba từ cho cùng một khái niệm: whitepaper "đăng ký", LAMP "đăng bạ", Registry
-"niêm yết". Chọn từ nào là quyết định của anh Aladin; khi có quyết định thì cả ba kho đổi một lượt.
-
-— LAMP agent
+"niêm yết". Chưa có từ thống nhất; khi có thì cả ba kho đổi một lượt.

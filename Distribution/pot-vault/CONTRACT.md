@@ -1,5 +1,8 @@
 # Pot vault (két pot 8) — hợp đồng on-chain
 
+**Phiên bản:** v1.0 — 2026-10-04, lần đầu khai phiên bản. Vì sao: §Tham số biên dịch thêm `window_origin_ms`
+(7 tham số, khớp chữ ký `validator pot_vault(`); bản trước còn 6.
+
 Két trung gian giữa nguồn LAMP của kênh pot 8 và két swap của Feecover. Một
 validator đa mục đích duy nhất, permissionless: không nhánh nào đòi chữ ký, toàn bộ
 an toàn nằm ở ràng buộc giá trị và datum.
@@ -20,6 +23,7 @@ pot_vault(
   ms_per_epoch: Int,
   window_cap:  Int,
   total_cap:   Int,
+  window_origin_ms: Int,
 )
 ```
 
@@ -30,6 +34,7 @@ pot_vault(
 | `ms_per_epoch` | độ rộng một cửa sổ, ms | `432_000_000` (5 ngày) |
 | `window_cap` | trần LAMP của két swap NGAY SAU một lượt rót | `1_000_000 × 10^6` |
 | `total_cap` | trần tích luỹ của kênh (F8 = 1) | `7_000_000 × 10^6` |
+| `window_origin_ms` | gốc lưới cửa sổ: cửa sổ = `(t − window_origin_ms) / ms_per_epoch` (`Specs/Window/CONTRACT.md` v1.0 §1, WIN-ORIGIN-3) | `1_654_041_600_000` (nguồn: `Specs/Window/CONTRACT.md` v1.0 §2) |
 
 `window_cap` và `total_cap` tính bằng oildrop (LAMP decimals 6).
 
@@ -40,7 +45,7 @@ qua NFT két ghi trong datum của chính nó. Chi tiết ở đầu `types.ak`.
 
 Hash validator CHƯA áp tham số (`aiken build` v1.1.21, stdlib
 `7d5cee54b2bb4eea211ae3bd806c7c39e5fd899d`):
-`1a05301954b74f50dd58e856baa7a4b1a87c357e4f122280a35814dd`.
+`06c8995deaeb3caff69e1d37f0f1ef4ce9f411895c7417fc3286e109` (chữ ký 7 tham số, có `window_origin_ms`; đo 2026-10-04).
 Hash sau khi áp tham số khác giá trị này và phải đọc lại từ `plutus.json` của lượt
 dựng thật — đừng chép con số trên vào bên off-chain.
 

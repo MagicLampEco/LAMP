@@ -1,6 +1,6 @@
 # FundPot — rót trọn một phân bổ từ kho Treasury vào một pot script
 
-Phiên bản 1.0 (2026-10-03). Nằm cạnh `Distribution/SPEC.md`; validator: `Distribution/onchain/validators/treasury.ak`.
+Phiên bản 1.1 (2026-10-04). Bump 1.0 → 1.1 vì phần off-chain thiếu ba luật bộ dựng đã ép (FPB-001 lượt mồi + sổ cộng dồn, FPB-003 bội của D, FPB-010 đọc lại giao dịch); luật on-chain FP-1..FP-7 không đổi. Nằm cạnh `Distribution/SPEC.md`; validator: `Distribution/onchain/validators/treasury.ak`.
 
 ## Vì sao
 Trước bản này, tLAMP chỉ rời kho Treasury qua `ReleaseForRedeem`, tức là đi kèm một lượt Redeem của `claim_account` đã vest. Tốc độ nhả vì thế bị giới hạn theo từng cửa sổ.
@@ -30,7 +30,7 @@ Chủ dự án chốt 2026-10-02: thêm nhánh rót pot, do MỘT chữ ký comm
 - **FP-7 không đúc**: tx không mint/burn token nào thuộc policy LAMP, policy `treasury_nft` hay `claim_account_nft`.
 
 "Đúng số phân bổ của từng pot" KHÔNG ép on-chain:
-- Số lấy từ `Papers/pot-catalog.md` lúc dựng giao dịch (bộ dựng ném nếu lệch).
+- Số lấy từ sổ `Distribution/offchain/src/pots.ts` (nguồn `Papers/pot-catalog.md` §1) lúc dựng giao dịch; bộ dựng ném nếu lệch (FPB-001, mục Off-chain).
 - Tin cậy ngang với `GrantEntitlement`: cùng chữ ký đó vốn đã cấp được entitlement tuỳ ý trong giới hạn kho.
 
 ## Bất biến không được phá (ràng buộc khi hiện thực)
@@ -42,11 +42,18 @@ Chủ dự án chốt 2026-10-02: thêm nhánh rót pot, do MỘT chữ ký comm
 ## Off-chain
 - `Distribution/offchain/src/fundPotBuilder.ts` dựng giao dịch theo FP-1..7, nhận vào:
   - pot đích (địa chỉ, script hash, datum inline CBOR);
-  - danh sách lượng cho K output, mỗi output ≥ suất D của pot;
+  - danh sách lượng cho K output, mỗi output ≥ D **và là bội của D** (FPB-003). D là một suất của pot. Dịch vụ phát của pot chọn MỘT UTxO mỗi lượt và trả đúng D, nên output lẻ suất để lại phần dư không ai rút được;
   - tổng phải bằng `amount`.
+- Ràng buộc CHỈ off-chain, chặt hơn chuỗi có chủ đích (`fundPotBuilder.ts`, chú thích đầu tệp):
+  - **FPB-001 đúng số phân bổ**: `amount` = ngân sách pot trong `pots.ts` **trừ phần đã rót cộng dồn cho đúng pot đó**; riêng lượt mồi rót đúng MỘT suất D. Chuỗi không ép số phân bổ, nên đây là chỗ duy nhất nó được ép.
+  - **FPB-010 đọc lại giao dịch đã dựng** (`fundPotOutputFailures`) trước khi ký: bộ dựng không biết trước UTxO ví nào được chọn trả phí, nên tiền thối về địa chỉ VK có thể mang LAMP ⇒ FP-5 từ chối. Phải đọc lại, không tin lượng đã khai.
 - `Genesis/scripts/fund_pot.ts` chạy builder trên state canonical.
-  - Bắt buộc khai `POT_ADDRESS`, `POT_SCRIPT_HASH`, `POT_DATUM_CBOR`, `AMOUNT_OILDROP`, `POT_SHARE_OILDROP`, `POT_OUTPUTS` (K).
+  - Bắt buộc khai `POT_ID`, `POT_ADDRESS`, `POT_SCRIPT_HASH`, `POT_DATUM_CBOR`, `AMOUNT_OILDROP`, `POT_SHARE_OILDROP` (D), `POT_OUTPUTS` (K).
   - Soát hình dạng pot bằng `_potShape.ts`. `SUBMIT=false` mặc định.
+  - **Hai lượt, chọn tự động theo sổ `Genesis/treasury-exit-proof.json`**, không có cờ tay:
+    - mạng chưa có bằng chứng lối ra ⇒ **lượt mồi**: `AMOUNT_OILDROP = D`, `POT_OUTPUTS = 1`. Lượt mồi để kho mới chứng minh tài sản RA được trước khi `21_vest_to_kho.ts` cho nạp vượt trần mồi (`_treasuryExitProof.ts`);
+    - đã có bằng chứng ⇒ **lượt trọn**: `AMOUNT_OILDROP` = ngân sách − lượng đã rót cho đúng pot đó.
+  - **Sổ cộng dồn theo pot**: lên chuỗi xong, script ghi tổng đã rót của từng pot (mồi lẫn trọn) vào trường `fundedOildropByPot` của sổ. Thiếu bước ghi này thì FPB-001 không thấy lượt trọn đã chạy. Sổ thuộc kho khác (địa chỉ kho lệch genesis hiện tại) ⇒ script ném, sửa sổ trước.
 
 ## Bài kiểm bắt buộc
 - Mỗi luật FP-1..FP-7 có một bài âm, đầu vào chỉ khác ca dương ở ĐÚNG luật đó:

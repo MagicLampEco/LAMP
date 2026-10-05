@@ -1,10 +1,10 @@
 // Treasury onchain types — interface contract (CONTRACT §1, §3; TECH §3).
 // Phải khớp byte-perfect với offchain types.ts (Constr index theo thứ tự khai báo).
 //
-// Phạm vi v1: validator COLLECT (nhánh `Collect`) + RELEASE (nhánh `Release`,
-// Model A — đọc kết quả Governance qua reference input beacon ProposalResult).
-// Các nhánh Rebalance/Migrate khai báo trong CustodyRedeemer để giữ index Constr
-// ổn định cho offchain, nhưng chưa triển khai.
+// Phạm vi v1: nhánh `Collect`, `Release` (Model A — đọc kết quả Governance qua reference
+// input beacon ProposalResult), `MigrateIn` (nạp Δ LAMP vừa đúc từ Reserve), `StakeRewardIn`
+// và `Deposit`. Riêng `Rebalance` khai báo trong CustodyRedeemer để giữ index Constr ổn
+// định cho offchain, nhưng chưa triển khai.
 
 use cardano/address.{Address}
 use cardano/transaction.{OutputReference}
@@ -113,7 +113,8 @@ pub type CustodyRedeemer {
   Release { proposal_ref: OutputReference, draws: List<ReleaseDraw> }
   // CHUYỂN nội bộ giữa bucket (v1.x — chưa triển khai)
   Rebalance { moves: List<BucketMove> }
-  // MIGRATE value treasury cũ vào instance (v1.x — chưa triển khai)
+  // NẠP Δ LAMP vừa đúc từ Reserve (nhánh ReserveDraw) vào value VÀ sổ — đã triển khai,
+  // xem `migrate.ak`. (Thiết kế cũ "migrate treasury cũ" không được hiện thực.)
   MigrateIn { source: ByteArray }
   // NẠP phần thưởng uỷ quyền của chính kho vào value VÀ vào SỔ (v1.x — triển khai).
   // `amount` = Δ lovelace KHAI BÁO; validator ép nó khớp ĐẲNG THỨC với độ tăng lovelace

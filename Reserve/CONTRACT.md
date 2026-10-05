@@ -1,5 +1,9 @@
 # LAMP Reserve — Demand-Gated Draw Engine
 
+**Phiên bản:** v1.0 — 2026-10-04, lần đầu khai phiên bản. Vì sao: §6 lên 13 tham số (`window_origin_ms`) và
+`RSV-PARAM-FREEZE` tả đúng việc METER vào `reserve_draw` ngay ở genesis; bản trước còn 12 tham số và ràng buộc
+"chưa gửi meter vào instance nào" đã không còn đúng trên Preprod.
+
 > **Luật phát hành: nguồn duy nhất là [`Specs/Emission/CONTRACT.md`](../Specs/Emission/CONTRACT.md).**
 > Tệp này mô tả **cách module Reserve hiện thực vế trần nhịp** của luật đó; vế cổng cầu nằm ở module
 > Treasury. Chỗ nào tệp này và nguồn duy nhất nói khác nhau thì **nguồn duy nhất đúng**.
@@ -8,8 +12,7 @@
 
 | Mã | Treo cái gì | Ràng buộc TẠM đang có hiệu lực (fail-closed) | Khai ở |
 |---|---|---|---|
-| `EMIT-FLOOR-IMPL` | Cổng cầu chưa ép sàn ở dạng tỷ lệ `1%·C`; bản đang có dùng một ngưỡng tuyệt đối | Fail-closed theo cả hai cách đọc: không thoả sàn thì không nhả. Ngưỡng dùng trong kịch bản diễn tập **không phải** giá trị vận hành. | tham số triển khai module Treasury |
-| `RSV-PARAM-FREEZE` | Bộ tham số của một instance `reserve_draw` | Mọi tham số là **apply-param** — nướng vào script hash. Validator ép state ở lại đúng địa chỉ của nó và redeemer duy nhất là `Draw` (không có `Migrate`) ⇒ meter NFT không rời được instance đã gửi vào. Ràng buộc tạm: **chưa gửi meter NFT vào instance nào** cho tới khi `EMIT-FLOOR-IMPL` đóng. | `Genesis/mainnet-deploy-plan.md` |
+| `RSV-PARAM-FREEZE` | Bộ tham số của một instance `reserve_draw` | Mọi tham số là **apply-param** — nướng vào script hash. Validator ép state ở lại đúng địa chỉ của nó và redeemer duy nhất là `Draw` (không có `Migrate`) ⇒ meter NFT không rời được instance đã gửi vào. Từ cụm Preprod 2026-10-03, METER được đúc **thẳng vào** `reserve_draw` trong Tx A của lượt genesis (F1 đóng ở genesis — `Genesis/CONTRACT.md` §17), nên bộ tham số khoá ngay lúc genesis. Ràng buộc tạm: genesis Mainnet chỉ chạy khi sàn mang nhãn `production`, tức `floor_oildrop` bằng đúng hằng `DECIDED_FLOOR_OILDROP` (dạng sàn ở `Specs/Emission/CONTRACT.md` §3.2), vì sàn khoá cùng bộ tham số lúc genesis. | `Genesis/mainnet-deploy-plan.md` |
 
 Mô hình **đệm phát hành demand-gated** (allocation v3, đông kết 2026-06-14). Reserve là
 **lớp đệm phát hành SAU CÙNG** của LAMP: 9,630 tỷ LAMP (26,75%) nhả từ U-space (chưa mint)
@@ -151,7 +154,7 @@ SAO ĐO KHO BỊ TIÊU, KHÔNG ĐO ĐỊA CHỈ NHẬN ĐỦ" trong `Reserve/onc
 
 ## 6. Param `reserve_draw` (apply-param lúc deploy)
 
-**12 tham số, ĐÚNG thứ tự** dưới đây (thứ tự nằm TRONG script hash — truyền lệch không báo lỗi,
+**13 tham số, ĐÚNG thứ tự** dưới đây (thứ tự nằm TRONG script hash — truyền lệch không báo lỗi,
 nó chỉ ra một script hash khác một cách im lặng). Nguồn: chữ ký `validator reserve_draw(` trong
 `Reserve/onchain/validators/reserve_draw.ak`.
 
@@ -169,6 +172,7 @@ nó chỉ ra một script hash khác một cách im lặng). Nguồn: chữ ký 
 | 10 | `gate_script_hash` | script hash của `reserve_gate` (Treasury). Auth NFT BẮT BUỘC spend từ input ở gate này → ép kích `reserve_gate.spend`. Hằng truyền vào — KHÔNG vòng phụ thuộc |
 | 11 | `custody_script_hash` | script hash của Treasury `custody`. UTxO mang kho NFT BẮT BUỘC nằm ở payment credential này (Luật 10). Đặt Ở CUỐI để không xê dịch khe cũ |
 | 12 | `reserve_cap` | pot Reserve ĐÚNG theo thiết kế (oildrop). Luật 1b đối chiếu `ReserveState.total_oildrop` với hằng này. PHẢI trùng khe `reserve_cap` của `Genesis/onchain/validators/lamp_mint.ak`. Đặt ở cuối vì cùng lý do khe #11 |
+| 13 | `window_origin_ms` | gốc lưới cửa sổ (`Specs/Window/CONTRACT.md` v1.0, WIN-ORIGIN-3): cửa sổ = `(t − window_origin_ms) / ms_per_epoch`. Đặt cuối theo khuôn các khe thêm sau |
 
 ⚠ **BẤT BIẾN NỐI DÂY:** cặp `kho_nft_policy`/`kho_nft_name` (#6-7) của `reserve_draw` phải TRÙNG
 cặp `reserve_kho_nft_policy`/`reserve_kho_nft_name` (khe #13-14 của
