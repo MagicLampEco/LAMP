@@ -1,6 +1,9 @@
 # Pot vault (két pot 8) — hợp đồng on-chain
 
-**Phiên bản:** v1.0 — 2026-10-04, lần đầu khai phiên bản. Vì sao: §Tham số biên dịch thêm `window_origin_ms`
+**Phiên bản:** v1.1 — 2026-10-06. Vì sao: §Nghĩa vụ off-chain — công thức cận `hi` của `Feed`
+thiếu `window_origin_ms`, lệch `util.get_epoch_pinned` (trừ gốc trước khi chia). Gốc Preprod không
+chia hết cho `ms_per_epoch`, nên công thức cũ tính sai cuối cửa sổ.
+v1.0 — 2026-10-04, lần đầu khai phiên bản: §Tham số biên dịch thêm `window_origin_ms`
 (7 tham số, khớp chữ ký `validator pot_vault(`); bản trước còn 6.
 
 Két trung gian giữa nguồn LAMP của kênh pot 8 và két swap của Feecover. Một
@@ -158,7 +161,8 @@ các UTxO lạc làm công dọn.
 ## Nghĩa vụ off-chain
 
 - `Feed`: đặt `lo = now_ms`,
-  `hi = min(now_ms + ttl, (lo / ms_per_epoch + 1) × ms_per_epoch − 1)` với
+  `hi = min(now_ms + ttl, window_origin_ms + ((lo − window_origin_ms) / ms_per_epoch + 1) × ms_per_epoch − 1)`
+  (cùng phép trừ gốc với `util.get_epoch_pinned`) với
   `ttl ≤ 3_600_000`. Phần còn lại của cửa sổ ngắn hơn ttl tối thiểu thì CHỜ sang cửa
   sổ sau, KHÔNG nới `hi` — nới là hai cận rơi vào hai bucket và tx bị từ chối.
 - Mọi output tới pot hoặc tới két phải dùng địa chỉ **enterprise** (không stake

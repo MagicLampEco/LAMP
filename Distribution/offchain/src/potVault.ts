@@ -1,5 +1,5 @@
 // potVault.ts — off-chain của két pot 8 (`Distribution/pot-vault`). Hợp đồng:
-// `Distribution/pot-vault/CONTRACT.md` v1.0. Mã on-chain: `pot-vault/onchain/validators/pot_vault.ak`,
+// `Distribution/pot-vault/CONTRACT.md` v1.1. Mã on-chain: `pot-vault/onchain/validators/pot_vault.ak`,
 // `.../lib/magiclamp/potvault/{types,handlers,util}.ak` — mã thắng tài liệu khi lệch.
 //
 //   PotDatum         = Constr 0 [reserve_hash: bytes(28), drawn_total: int, last_window: int]
@@ -34,7 +34,7 @@ export const SCRIPT_HASH_BYTES = 28;
 export const POT_SPEND = { Feed: 0, Absorb: 1 } as const;
 export const POT_MINT = { MintPot: 0 } as const;
 
-/** Thứ tự tham số của `validator pot_vault(` — CONTRACT v1.0 §Tham số biên dịch. */
+/** Thứ tự tham số của `validator pot_vault(` — CONTRACT v1.1 §Tham số biên dịch. */
 export const POT_VAULT_PARAM_ORDER = [
   "genesis_ref", "lamp_policy", "lamp_name", "ms_per_epoch", "window_cap", "total_cap", "window_origin_ms",
 ] as const;
@@ -43,7 +43,7 @@ export const POT_VAULT_PARAM_ORDER = [
 export const POT_VAULT_BLUEPRINT_TITLE = "pot_vault.pot_vault.spend";
 
 /**
- * Trần của kênh pot 8 trên Preprod — CONTRACT v1.0 §Tham số biên dịch, cột "giá trị Preprod"
+ * Trần của kênh pot 8 trên Preprod — CONTRACT v1.1 §Tham số biên dịch, cột "giá trị Preprod"
  * (oildrop, LAMP decimals 6). Đổi ở CONTRACT thì đổi ở đây, và hash pot đổi theo.
  */
 export const POT_VAULT_PREPROD_CAPS = {

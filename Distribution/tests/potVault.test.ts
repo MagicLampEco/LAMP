@@ -1,5 +1,5 @@
 // Két pot 8 — off-chain `Distribution/offchain/src/potVault.ts`, hợp đồng
-// `Distribution/pot-vault/CONTRACT.md` v1.0.
+// `Distribution/pot-vault/CONTRACT.md` v1.1.
 //
 // Phần Emulator chạy VALIDATOR THẬT (blueprint `pot-vault/onchain/plutus.json`, cần `aiken build`
 // trước): `complete()` của Lucid đánh giá script bằng máy UPLC cục bộ, nên một bước xanh nghĩa là

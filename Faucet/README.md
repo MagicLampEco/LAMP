@@ -1,6 +1,7 @@
 # Faucet tLAMP — self-serve, DID-gated, rate-limited, tự thu hồi
 
-> **Phiên bản:** v3.1 — 2026-09-28. Bump từ v3.0 vì mã thêm sổ một-DID-một-account
+> **Phiên bản:** v3.2 — 2026-10-06. Bump vì công thức cận `hi` ở mục nghĩa vụ builder thiếu `window_origin_ms` (mã `util.get_epoch_pinned` trừ gốc trước khi chia).
+> v3.1 — 2026-09-28. Bump từ v3.0 vì mã thêm sổ một-DID-một-account
 > (`PoolDatum.opened_root`, bất biến INV-ONE-ACCT), `ClaimOpen`/`Reclaim` mang bằng chứng MPF, và
 > ngưỡng thu hồi hạ 1001 → 72 cửa sổ. v3.1 **chưa deploy**.
 > Bản v3.0 nâng cấp từ bản tả v2 vì v2 sai ở bốn chỗ mã đã đổi:
@@ -187,7 +188,7 @@ Tách khỏi `Reclaim` vì hai ý định khác nhau, và để nhánh nạp kh�
 
 Mọi nhánh trừ `ReclaimIdle` đọc thời gian qua `util.get_epoch_pinned`, hàm này đòi **cả hai cận
 hữu hạn và cùng một bucket**. Builder phải đặt `lo = now_ms`,
-`hi = min(now_ms + ttl, (⌊lo / ms_per_epoch⌋ + 1) × ms_per_epoch − 1)`; phần bucket còn lại ngắn hơn
+`hi = min(now_ms + ttl, window_origin_ms + (⌊(lo − window_origin_ms) / ms_per_epoch⌋ + 1) × ms_per_epoch − 1)`; phần bucket còn lại ngắn hơn
 TTL tối thiểu thì **chờ sang bucket sau, KHÔNG nới `hi`**. Hàm thuần: `epochWindow.pinnedEpochWindow`
 (ném `FAUCET-WINDOW-001`).
 
