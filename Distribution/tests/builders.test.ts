@@ -26,7 +26,7 @@ import {
   DROPS_PER_EPOCH_PINNED, TREASURY_NFT_ASSET_NAME, TRIM_FLOOR, WINDOW_TTL_MS,
   RATE_ROOT_MIN, RATE_ROOT_MAX, epochWindow,
 } from "../offchain/src/constants.js";
-import type { BeaconDatum } from "../offchain/src/types.js";
+import type { BeaconDatum, BeaconKind } from "../offchain/src/types.js";
 import { beaconIndexAt } from "../offchain/src/vested.js";
 import { applyValidator } from "../scripts/blueprint.js";
 import { lampOildrop } from "./helpers.js";
@@ -786,7 +786,7 @@ describe("buildPostBeaconTx — DropParam (chỉ số cộng dồn)", () => {
     await expect(buildPostBeaconTx({
       lucid, beaconScript: FAKE_BEACON, network: NETWORK,
       beaconNftPolicy: NFT_POLICY,
-      beaconUtxo: { ...u, datum: undefined },
+      beaconUtxo: { ...u, datum: null },
       newBeacon: nextBeacon(cur, 10n),
       committeeKeyHashes: COMMITTEE,
     })).rejects.toThrow(/BEACON-010/);

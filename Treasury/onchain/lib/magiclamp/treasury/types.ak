@@ -48,8 +48,9 @@ pub type CustodyDatum {
   // quyết định layout CBOR của datum. Chèn giữa làm mọi `CustodyDatum` đã mã hoá trỏ sai
   // trường, và nó KHÔNG lỗi lúc build — nó lỗi lúc validator giải mã. Thêm ở cuối giữ
   // nguyên chỉ số 0..6, y lý lẽ đã dùng cho `StakeRewardIn` (index Constr 4) dưới đây.
-  // Chưa instance nào được gieo nên hôm nay hai cách đều chạy được; chọn cách không
-  // phụ thuộc vào dữ kiện đó, vì dữ kiện đó hết hiệu lực ở lượt gieo đầu tiên.
+  // Lúc thêm trường này chưa instance nào được gieo, nên khi đó hai cách đều chạy được;
+  // đã chọn cách không phụ thuộc vào dữ kiện đó. Nay đã có instance gieo trên chuỗi
+  // (Preprod), nên mọi thay đổi layout từ đây đều đòi di trú datum.
   //
   // Bất biến đời instance: ép MỘT LẦN tại `custody_seed` (khác rỗng, tăng nghiêm ngặt,
   // không chứa bucket dành riêng) rồi mọi nhánh tiêu kho ghim `out.buckets == in.buckets`.
