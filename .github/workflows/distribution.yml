@@ -1,0 +1,84 @@
+# Distribution — kiểm on-chain (aiken) và off-chain (tsc + vitest) trên mỗi PR.
+#
+# Phạm vi: chỉ Distribution (gồm két pot-vault) và Utils mà nó phụ thuộc. Các gói khác
+# (Genesis, Treasury, Reserve, …) chưa vào CI: bộ kiểm của chúng cần thêm blueprint của
+# gói khác và sẽ được thêm từng gói một.
+#
+# `plutus.json` là sản phẩm của `aiken build`, bị .gitignore, nên job build lại blueprint
+# trước khi chạy bài kiểm off-chain (bài Emulator của pot-vault đọc thẳng blueprint đó).
+# Lockfile npm cũng bị .gitignore ⇒ dùng `npm install`, không dùng `npm ci`.
+#
+# Action ghim theo SHA commit của bản phát hành (tên bản ở chú thích cùng dòng).
+
+name: distribution
+
+on:
+  pull_request:
+    paths:
+      - "Distribution/**"
+      - "Utils/**"
+      - ".github/workflows/distribution.yml"
+  push:
+    branches: [main]
+    paths:
+      - "Distribution/**"
+      - "Utils/**"
+      - ".github/workflows/distribution.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: distribution-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  onchain:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        project: [Distribution/onchain, Distribution/pot-vault/onchain]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: aiken-lang/setup-aiken@1728a4be43be099752e22d8b841706caaa6fdd88 # v1.0.4
+        with:
+          version: v1.1.21 # khớp `compiler` trong aiken.toml
+      - name: aiken check
+        working-directory: ${{ matrix.project }}
+        run: aiken check
+      - name: aiken build
+        working-directory: ${{ matrix.project }}
+        run: aiken build
+
+  offchain:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: aiken-lang/setup-aiken@1728a4be43be099752e22d8b841706caaa6fdd88 # v1.0.4
+        with:
+          version: v1.1.21
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+      - name: build blueprint (Distribution, pot-vault)
+        run: |
+          (cd Distribution/onchain && aiken build)
+          (cd Distribution/pot-vault/onchain && aiken build)
+      # `tsc` của offchain kiểm cả `../tests/**`, mà bài kiểm import `Distribution/scripts/blueprint.ts`;
+      # import trần trong tệp đó (`@lucid-evolution/lucid`) chỉ phân giải được qua
+      # `Distribution/scripts/node_modules` ⇒ cài cả hai gói, như máy dev.
+      - name: npm install (offchain)
+        working-directory: Distribution/offchain
+        run: npm install --no-audit --no-fund
+      - name: npm install (scripts)
+        working-directory: Distribution/scripts
+        run: npm install --no-audit --no-fund
+      - name: tsc --noEmit
+        working-directory: Distribution/offchain
+        run: npx tsc --noEmit -p .
+      - name: vitest
+        working-directory: Distribution/offchain
+        run: npx vitest run
