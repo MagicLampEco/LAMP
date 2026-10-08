@@ -1,0 +1,116 @@
+# Genesis — kiểm on-chain (aiken check + build), tệp định danh deploy và bộ vitest đầy đủ trên mỗi PR.
+#
+# Phạm vi:
+#   - on-chain: Genesis/onchain (lamp_mint, registry, …). `Genesis/bootstrap-closure/onchain` là mã
+#     ĐÓNG BĂNG để tái dựng policy mainnet ⇒ chỉ build (bài bootstrapClosure cần blueprint của nó),
+#     không đưa `aiken check` của nó làm cổng.
+#   - `deployments/<mạng>.json`: `npm run deployments:check` (Genesis/scripts) so từng byte tệp đã
+#     commit với nguồn; lệch ⇒ mã thoát 1 (DEPLOY-MANIFEST-009-CHECK-DRIFT).
+#   - vitest ĐẦY ĐỦ của Genesis/tests (gồm bài manifest). Bộ này chạy trên máy mới, không cần mạng
+#     hay ví, MIỄN là có đủ blueprint: các bài apply-param đọc `plutus.json` của Genesis,
+#     bootstrap-closure, Treasury, Reserve, Distribution; thiếu thì chúng rẽ sang nhánh "KHÔNG ĐO ĐƯỢC"
+#     (xanh kèm cảnh báo) hoặc đỏ ⇒ job build đủ năm blueprint trước. Có blueprint thì đúng 3 bài
+#     "KHÔNG ĐO ĐƯỢC" bị skip — đó là kết quả mong đợi, không phải lỗ.
+#   - Bài Genesis import mã của Treasury/offchain, Distribution/offchain, Distribution/scripts, Utils
+#     và đọc blueprint Treasury/Reserve/Distribution ⇒ các thư mục đó nằm trong `paths`.
+#
+# Gói cần `npm install` (đã đo bằng cách bỏ từng node_modules rồi chạy lại):
+#   - Genesis/offchain: vitest + lucid cho bộ bài.
+#   - Genesis/scripts: `tsx` cho `deployments:check`.
+#   - Distribution/offchain: mã Distribution mà bài Genesis kéo theo cần `@magiclamp/utils` (gói
+#     `file:`), thiếu thì 6 tệp bài đỏ.
+#   Treasury/offchain KHÔNG cần (bỏ node_modules của nó, bộ vẫn xanh).
+# Lockfile npm bị .gitignore ⇒ dùng `npm install`, không dùng `npm ci`.
+#
+# CỐ Ý KHÔNG có bước `tsc --noEmit`: đo 2026-10-08 trên main 2cc7636 với đúng bộ gói job này cài,
+# `npx tsc --noEmit -p .` báo lỗi TS có sẵn từ trước: Genesis/offchain 32, Genesis/scripts 10
+# (chủ yếu TS6059 rootDir, TS1470 import.meta, TS2322, TS2307). Đưa vào làm cổng thì job đỏ vĩnh viễn và không ai đọc nữa;
+# thêm lại khi số lỗi về 0.
+#
+# Action ghim theo SHA commit của bản phát hành (tên bản ở chú thích cùng dòng).
+
+name: genesis
+
+on:
+  pull_request:
+    paths:
+      - "Genesis/**"
+      - "deployments/**"
+      - "Treasury/onchain/**"
+      - "Treasury/offchain/**"
+      - "Reserve/onchain/**"
+      - "Distribution/onchain/**"
+      - "Distribution/offchain/**"
+      - "Distribution/scripts/**"
+      - "Utils/**"
+      - ".github/workflows/genesis.yml"
+  push:
+    branches: [main]
+    paths:
+      - "Genesis/**"
+      - "deployments/**"
+      - "Treasury/onchain/**"
+      - "Treasury/offchain/**"
+      - "Reserve/onchain/**"
+      - "Distribution/onchain/**"
+      - "Distribution/offchain/**"
+      - "Distribution/scripts/**"
+      - "Utils/**"
+      - ".github/workflows/genesis.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: genesis-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  onchain:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: aiken-lang/setup-aiken@1728a4be43be099752e22d8b841706caaa6fdd88 # v1.0.4
+        with:
+          version: v1.1.21 # khớp `compiler` trong aiken.toml
+      - name: aiken check
+        working-directory: Genesis/onchain
+        run: aiken check
+      - name: aiken build
+        working-directory: Genesis/onchain
+        run: aiken build
+
+  offchain:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: aiken-lang/setup-aiken@1728a4be43be099752e22d8b841706caaa6fdd88 # v1.0.4
+        with:
+          version: v1.1.21
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+      - name: build blueprint (Genesis, bootstrap-closure, Treasury, Reserve, Distribution)
+        run: |
+          (cd Genesis/onchain && aiken build)
+          (cd Genesis/bootstrap-closure/onchain && aiken build)
+          (cd Treasury/onchain && aiken build)
+          (cd Reserve/onchain && aiken build)
+          (cd Distribution/onchain && aiken build)
+      - name: npm install (Genesis/offchain)
+        working-directory: Genesis/offchain
+        run: npm install --no-audit --no-fund
+      - name: npm install (Genesis/scripts)
+        working-directory: Genesis/scripts
+        run: npm install --no-audit --no-fund
+      - name: npm install (Distribution/offchain)
+        working-directory: Distribution/offchain
+        run: npm install --no-audit --no-fund
+      - name: deployments --check
+        working-directory: Genesis/scripts
+        run: npm run deployments:check
+      - name: vitest
+        working-directory: Genesis/offchain
+        run: npx vitest run
