@@ -20,10 +20,18 @@
 //   release_empty_draws                draws=[] (spec của [] khớp nhưng draws!=[] chặn)    → fail (F2)
 //   release_wrong_instance_id          proposal.spec_hash tính cho instance_id KHÁC        → fail (F10/#1B)
 //   release_epoch_unbounded            validity_range upper = +∞ (interval.after)          → fail (F4)
+//  ── CONTRACT §17 (recipient-gross-sum) ──
+//   release_recreated_recipient_utxo_rejected   UTxO tại `to` tiêu+tái tạo, phần rút đi ví khác → fail (C-REL-7 ròng)
+//   release_recreated_recipient_other_stake_rejected  như trên, input ở stake khác            → fail (C-REL-7 theo credential)
+//   release_script_recipient_fresh_ok / _topup_ok / release_vk_recipient_own_ada_input_ok      → pass
+//   release_two_instances_one_output_*         hai kho khác hash, một output 300 cho cả hai  → fail (C-REL-SOLE)
+//   release_with_other_script_spend_rejected   ròng đủ nhưng có script Plutus thứ hai chạy   → fail (C-REL-SOLE)
 
 use aiken/interval
 use cardano/assets
-use cardano/transaction.{Input, Output, OutputReference, Transaction, placeholder}
+use cardano/transaction.{
+  Input, Output, OutputReference, ScriptPurpose, Spend, Transaction, placeholder,
+}
 use custody
 use magiclamp/treasury/pointer
 use magiclamp/treasury/release
@@ -1692,5 +1700,256 @@ test release_ptr_proposal_policy_not_g_rejected() fail {
   ptr_case(
     [proposal_input_pg(gov_sh, gov_new, spec_ok()), pointer_input()],
     ptr_policy,
+  )
+}
+
+// ════════════════════════════════════════════════════════════
+// CONTRACT §17 — `recipient-gross-sum`: C-REL-7 đo RÒNG + C-REL-SOLE.
+//   Lỗ trước bản vá: `recipients_ok` cộng GỘP mọi output tại `to`. `to` là script có UTxO mà
+//   người ngoài tiêu-rồi-tái-tạo được (claim permissionless, Collect…) ⇒ output tái tạo mang
+//   sẵn số dư cũ thoả kiểm; 300 LAMP rút ra đi ví kẻ dựng tx (bob). Ca "fail" đầu tiên dưới
+//   đây là PoC đó (trước bản vá validator trả True). Fixture để `redeemers` rỗng ⇒ C-REL-SOLE
+//   thoả rỗng, nên các ca đó đỏ đúng vì C-REL-7 ròng; ca SOLE dùng redeemers thật.
+// ════════════════════════════════════════════════════════════
+const recv_sh: ByteArray =
+  #"e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3e3"
+
+fn recv_draws() -> List<ReleaseDraw> {
+  [
+    ReleaseDraw {
+      bucket_id: bucket_ops,
+      policy: lamp_policy,
+      name: lamp_name,
+      amount: 300,
+      to: util.script_address(recv_sh),
+    },
+  ]
+}
+
+fn recv_ledger_in() -> List<LedgerEntry> {
+  [LedgerEntry { bucket_id: bucket_ops, policy: lamp_policy, name: lamp_name, amount: 1000 }]
+}
+
+fn recv_ledger_out() -> List<LedgerEntry> {
+  [LedgerEntry { bucket_id: bucket_ops, policy: lamp_policy, name: lamp_name, amount: 700 }]
+}
+
+// Tx Release 300 LAMP; `extra` = input ngoài custody, `recipients` = output ngoài custody.
+fn recv_tx(draws: List<ReleaseDraw>, extra: List<Input>, recipients: List<Output>) -> Transaction {
+  release_tx(
+    lamp_val(5_000_000, 5000),
+    lamp_val(5_000_000, 4700),
+    recv_ledger_in(),
+    recv_ledger_out(),
+    [proposal_input(Executed, release.spend_spec_hash(seed_policy, instance_id, draws), 4)],
+    recipients,
+    5 * ms_per_epoch,
+    extra,
+    assets.zero,
+  )
+}
+
+// UTxO sẵn có tại script nhận (mô phỏng nhánh claim permissionless của validator nhận).
+fn recv_input(stake: Option<ByteArray>, lamp: Int) -> Input {
+  let addr =
+    when stake is {
+      Some(k) -> util.script_address_staked(recv_sh, k)
+      None -> util.script_address(recv_sh)
+    }
+  util.mk_input(util.mk_ref(3), util.mk_output_no_datum(addr, lamp_val(2_000_000, lamp)))
+}
+
+fn recv_out(lamp: Int) -> Output {
+  util.mk_output_no_datum(util.script_address(recv_sh), lamp_val(2_000_000, lamp))
+}
+
+test release_recreated_recipient_utxo_rejected() fail {
+  // PoC: tiêu 1000 tại `to`, tái tạo 1000 tại `to`, 300 rút ra đi bob.
+  let draws = recv_draws()
+  let tx = recv_tx(draws, [recv_input(None, 1000)], [recv_out(1000), pay(bob, 300)])
+  run(tx, datum(recv_ledger_in()), draws)
+}
+
+test release_recreated_recipient_other_stake_rejected() fail {
+  // Như trên nhưng UTxO bị tiêu nằm ở CÙNG script, stake credential khác ⇒ trừ theo địa chỉ
+  // đầy đủ sẽ không thấy nó; trừ theo payment credential thì thấy.
+  let draws = recv_draws()
+  let tx =
+    recv_tx(draws, [recv_input(Some(#"5a5a"), 1000)], [recv_out(1000), pay(bob, 300)])
+  run(tx, datum(recv_ledger_in()), draws)
+}
+
+test release_script_recipient_fresh_ok() {
+  // Đối chứng dương: không input tại `to`, output 300 tới `to`.
+  let draws = recv_draws()
+  let tx = recv_tx(draws, [], [recv_out(300)])
+  run(tx, datum(recv_ledger_in()), draws)
+}
+
+test release_script_recipient_topup_ok() {
+  // Đối chứng dương sát biên: input 1000 tại `to`, output 1300 tại `to` ⇒ ròng đúng 300.
+  let draws = recv_draws()
+  let tx = recv_tx(draws, [recv_input(None, 1000)], [recv_out(1300)])
+  run(tx, datum(recv_ledger_in()), draws)
+}
+
+test release_script_recipient_topup_short_rejected() fail {
+  // Biên −1: ròng 299 < 300.
+  let draws = recv_draws()
+  let tx = recv_tx(draws, [recv_input(None, 1000)], [recv_out(1299), pay(bob, 1)])
+  run(tx, datum(recv_ledger_in()), draws)
+}
+
+test release_vk_recipient_own_ada_input_ok() {
+  // `to` là ví VK bình thường, ví đó tự dựng tx và trả phí bằng UTxO CHỈ ADA của mình
+  // (input tại `to` không mang LAMP ⇒ không làm giảm ròng LAMP).
+  let draws = happy_draws()
+  let alice_ada =
+    util.mk_input(
+      util.mk_ref(4),
+      util.mk_output_no_datum(util.vk_address(alice), assets.from_lovelace(10_000_000)),
+    )
+  let tx =
+    release_tx(
+      lamp_val(5_000_000, 5000),
+      lamp_val(5_000_000, 4700),
+      recv_ledger_in(),
+      recv_ledger_out(),
+      [proposal_input(Executed, release.spend_spec_hash(seed_policy, instance_id, draws), 4)],
+      [pay(alice, 300)],
+      5 * ms_per_epoch,
+      [alice_ada],
+      assets.zero,
+    )
+  run(tx, datum(recv_ledger_in()), draws)
+}
+
+// ── C-REL-SOLE ──
+fn spend_redeemer(ix: Int) -> Pair<ScriptPurpose, Data> {
+  let r: Data = 0
+  Pair(Spend(util.mk_ref(ix)), r)
+}
+
+test release_sole_redeemer_own_only_ok() {
+  // Đối chứng dương với redeemers THẬT: chỉ có mục của chính custody.
+  let draws = recv_draws()
+  let tx = recv_tx(draws, [], [recv_out(300)])
+  run(Transaction { ..tx, redeemers: [spend_redeemer(0)] }, datum(recv_ledger_in()), draws)
+}
+
+test release_with_other_script_spend_rejected() fail {
+  // Ròng ĐỦ (1000 → 1300 tại `to`), nhưng UTxO tại `to` là script Plutus ⇒ có redeemer thứ
+  // hai ⇒ C-REL-SOLE từ chối. Ca này cô lập SOLE: C-REL-7 ròng thoả (xem _topup_ok).
+  let draws = recv_draws()
+  let tx = recv_tx(draws, [recv_input(None, 1000)], [recv_out(1300)])
+  run(
+    Transaction { ..tx, redeemers: [spend_redeemer(0), spend_redeemer(3)] },
+    datum(recv_ledger_in()),
+    draws,
+  )
+}
+
+// Hai kho KHÁC script hash (khác hạt giống), mỗi kho có proposal riêng đã duyệt, cùng chi 300
+// LAMP tới alice; tx chỉ có MỘT output 300 cho alice — 300 còn lại đi bob.
+fn proposal_input_ref(ix: Int, spec_hash: ByteArray) -> Input {
+  let result =
+    ProposalResult {
+      proposal_id: prop_id,
+      status: Executed,
+      spend_spec_hash: spec_hash,
+      execute_after_epoch: 4,
+      released_cumulative: 0,
+    }
+  let val =
+    assets.from_lovelace(2_000_000) |> assets.add(prop_policy, prop_id, 1)
+  util.mk_input(
+    util.mk_ref(ix),
+    util.mk_output(util.script_address(gov_sh), val, result),
+  )
+}
+
+fn two_instance_tx(redeemers: Pairs<ScriptPurpose, Data>) -> Transaction {
+  let draws = happy_draws()
+  let d_out =
+    CustodyDatum {
+      ..datum(recv_ledger_out()),
+      ledger: recv_ledger_out(),
+      epoch: 5,
+      consumed_proposals: [prop_id],
+    }
+  let addr_a = util.script_address(cust_sh)
+  let addr_b = util.script_address(cust_sh_b)
+  let nft_a = fn(v) { assets.add(v, seed_policy, instance_id, 1) }
+  let nft_b = fn(v) { assets.add(v, seed_policy_b, instance_id, 1) }
+  Transaction {
+    ..placeholder,
+    inputs: [
+      util.mk_input(
+        util.mk_ref(0),
+        util.mk_output(addr_a, nft_a(lamp_val(5_000_000, 5000)), datum(recv_ledger_in())),
+      ),
+      util.mk_input(
+        util.mk_ref(1),
+        util.mk_output(addr_b, nft_b(lamp_val(5_000_000, 5000)), datum(recv_ledger_in())),
+      ),
+    ],
+    reference_inputs: [
+      proposal_input_ref(7, release.spend_spec_hash(seed_policy, instance_id, draws)),
+      proposal_input_ref(8, release.spend_spec_hash(seed_policy_b, instance_id, draws)),
+      pointer_input(),
+    ],
+    outputs: [
+      util.mk_output(addr_a, nft_a(lamp_val(5_000_000, 4700)), d_out),
+      util.mk_output(addr_b, nft_b(lamp_val(5_000_000, 4700)), d_out),
+      pay(alice, 300),
+      pay(bob, 300),
+    ],
+    mint: assets.zero,
+    validity_range: epoch_range(5 * ms_per_epoch),
+    redeemers: redeemers,
+  }
+}
+
+fn run_instance(seed: ByteArray, own_ix: Int, prop_ix: Int, tx: Transaction) -> Bool {
+  custody.custody.spend(
+    ptr_policy,
+    seed,
+    ms_per_epoch,
+    lamp_policy,
+    lamp_name,
+    0,
+    Some(datum(recv_ledger_in())),
+    Release { proposal_ref: util.mk_ref(prop_ix), draws: happy_draws() },
+    util.mk_ref(own_ix),
+    tx,
+  )
+}
+
+test release_two_instances_one_output_net_blind() {
+  // Chứng cứ vì sao cần C-REL-SOLE: bỏ redeemers (SOLE thoả rỗng) thì CẢ HAI kho đều chấp nhận
+  // dù alice chỉ nhận 300 cho hai lượt chi 300 — đo ròng một mình KHÔNG đóng biến thể này.
+  // Đồng thời là đối chứng dương: tx không hỏng vì lý do nào khác.
+  let tx = two_instance_tx([])
+  and {
+    run_instance(seed_policy, 0, 7, tx),
+    run_instance(seed_policy_b, 1, 8, tx),
+  }
+}
+
+test release_two_instances_one_output_rejected_a() fail {
+  run_instance(
+    seed_policy,
+    0,
+    7,
+    two_instance_tx([spend_redeemer(0), spend_redeemer(1)]),
+  )
+}
+
+test release_two_instances_one_output_rejected_b() fail {
+  run_instance(
+    seed_policy_b,
+    1,
+    8,
+    two_instance_tx([spend_redeemer(0), spend_redeemer(1)]),
   )
 }

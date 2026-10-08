@@ -20,7 +20,10 @@
 //   C-REL-3  hash canonical (seed_policy, instance_id, draws) == spend_spec_hash   (khóa đích chi + kho)
 //   C-REL-5  ∀a custody_out.value(a) == custody_in.value(a) − Σ draw(a)   (Σout=Σin, KHÔNG burn/drain)
 //   C-REL-6  ledger_out[(b,a)] == ledger_in[(b,a)] − Σ draw(b,a) ∧ draw ≤ số dư bucket  (sổ↔value)
-//   C-REL-7  Σ output tới `to` value(a) ≥ Σ draw(to,a) ∧ to ≠ custody  (tổng-khớp, chống double-sat)
+//   C-REL-7  Σ output tới `to` value(a) − Σ input cùng payment credential với `to` value(a)
+//            ≥ Σ draw(to,a) ∧ to ≠ custody  (đo RÒNG, chống double-sat qua UTxO tái tạo tại `to`)
+//   C-REL-SOLE  tx chạy đúng MỘT script Plutus (|tx.redeemers| ≤ 1 = chính custody) — chống
+//            hai kho / một validator khác cùng chấm MỘT output người nhận
 //   sổ out CANONICAL: strict-sorted ∧ mọi dòng > 0 (dòng cạn về 0 bị prune — ledger.ak)
 //
 // spend_spec_hash = blake2b_256(0x03 ‖ blake2b(seed_policy) ‖ blake2b(instance_id) ‖
@@ -33,9 +36,11 @@ use aiken/collection/dict
 use aiken/collection/list
 use aiken/crypto
 use aiken/primitive/bytearray
-use cardano/address.{Address, Script}
+use cardano/address.{Address, PaymentCredential, Script}
 use cardano/assets.{PolicyId, Value}
-use cardano/transaction.{InlineDatum, Input, Output, OutputReference}
+use cardano/transaction.{
+  InlineDatum, Input, Output, OutputReference, Redeemer, ScriptPurpose,
+}
 use magiclamp/treasury/ledger
 use magiclamp/treasury/types.{LedgerEntry, ProposalResult, ReleaseDraw}
 
@@ -253,6 +258,13 @@ pub fn ledger_ok(
 // có thể cùng khớp MỘT output → chi 1 lần, trừ sổ 2 lần (double-sat kinh điển).
 // Đúng: gộp draw theo (to,asset) rồi so Σ output value(asset) tới `to` ≥ Σ draw.
 // Kết hợp C-REL-5 (value rời custody == Σdraw, đẳng thức) khóa CẢ hai đầu.
+//
+// ĐO RÒNG, không đo gộp (vá `recipient-gross-sum`, CONTRACT §17). Tổng GỘP output tại `to`
+// bị lách khi `to` là script có UTxO mà người ngoài tiêu-rồi-tái-tạo được trong cùng tx
+// (claim permissionless, Collect…): output tái tạo mang sẵn số dư cũ ⇒ "đủ" mà người nhận
+// không được thêm đồng nào, phần rút đi ví kẻ dựng tx. Nên trừ Σ MỌI input có cùng payment
+// credential với `to` — theo credential, KHÔNG theo địa chỉ đầy đủ: input ở cùng script nhưng
+// stake credential khác vẫn là tiền của bên nhận, tái tạo nó sang địa chỉ `to` cũng là lách.
 
 /// Tổng value(asset) của mọi output GỬI tới address `to`.
 pub fn output_sum_to(outputs: List<Output>, to: Address, policy: ByteArray, name: ByteArray) -> Int {
@@ -262,6 +274,26 @@ pub fn output_sum_to(outputs: List<Output>, to: Address, policy: ByteArray, name
     fn(o, acc) {
       if o.address == to {
         acc + assets.quantity_of(o.value, policy, name)
+      } else {
+        acc
+      }
+    },
+  )
+}
+
+/// Tổng value(asset) của mọi input có payment credential == `cred` (mọi stake credential).
+pub fn input_sum_at_credential(
+  inputs: List<Input>,
+  cred: PaymentCredential,
+  policy: ByteArray,
+  name: ByteArray,
+) -> Int {
+  list.foldl(
+    inputs,
+    0,
+    fn(i, acc) {
+      if i.output.address.payment_credential == cred {
+        acc + assets.quantity_of(i.output.value, policy, name)
       } else {
         acc
       }
@@ -284,9 +316,11 @@ pub fn drawn_to(draws: List<ReleaseDraw>, to: Address, policy: ByteArray, name: 
   )
 }
 
-/// Mỗi draw: output tới `to` đủ Σ (tổng-khớp) ∧ `to` ≠ custody script hash
+/// Mỗi draw: lượng RÒNG tới `to` đủ Σ (tổng-khớp) ∧ `to` ≠ custody script hash
 /// (tiền THẬT rời treasury, không gửi vòng lại chính custody để né).
+/// Ròng = Σ output tại địa chỉ `to` − Σ input cùng payment credential với `to`.
 pub fn recipients_ok(
+  inputs      : List<Input>,
   outputs     : List<Output>,
   draws       : List<ReleaseDraw>,
   custody_hash: ByteArray,
@@ -300,14 +334,31 @@ pub fn recipients_ok(
           Script(h) -> h != custody_hash
           _ -> True
         }
-      to_not_custody && output_sum_to(outputs, d.to, d.policy, d.name) >= drawn_to(
-        draws,
-        d.to,
+      to_not_custody && output_sum_to(outputs, d.to, d.policy, d.name) - input_sum_at_credential(
+        inputs,
+        d.to.payment_credential,
         d.policy,
         d.name,
-      )
+      ) >= drawn_to(draws, d.to, d.policy, d.name)
     },
   )
+}
+
+// ── C-REL-SOLE: tx Release chạy đúng MỘT script Plutus ──
+// Đo ròng không đóng được biến thể HAI KHO: kho A và kho B (khác script hash) cùng chi 300
+// tới alice trong một tx, một output 300 tại alice thoả cả hai lượt chấm (mỗi kho chỉ thấy
+// draws của chính nó). Gắn thẻ datum lên output người nhận thì đóng được nhưng đổi HÌNH DẠNG
+// output (kho nhận đòi datum riêng sẽ không tiêu lại được). Thay vào đó: mọi script Plutus
+// khác chạy trong tx (tiêu kho khác, đúc, rút thưởng, chứng chỉ, phiếu) đều PHẢI có một mục
+// trong `tx.redeemers`; ledger luôn có mục của chính custody ⇒ |redeemers| ≤ 1 nghĩa là không
+// validator nào khác cùng chấm các output của tx này. Script native (multisig ví hội đồng)
+// không có redeemer nên vẫn trả phí được. Viết "≤ 1" thay "== 1" để fixture `placeholder`
+// (redeemers rỗng) dùng được; trên chuỗi ledger không bao giờ cho tập rỗng ở tx tiêu script.
+pub fn sole_plutus_script(redeemers: Pairs<ScriptPurpose, Redeemer>) -> Bool {
+  when redeemers is {
+    [_, _, ..] -> False
+    _ -> True
+  }
 }
 
 // ── C-REL-9: SINGLE-USE proposal (chống replay / chi vượt ngưỡng duyệt) ──

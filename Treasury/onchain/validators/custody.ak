@@ -35,7 +35,8 @@
 //   C-REL-5   Value: custody_out.value == custody_in.value ⊖ Σdraw — Σout=Σin per-asset.
 //   C-REL-6   Sổ: ledger_out[(b,a)] == ledger_in[(b,a)] − Σdraw(b,a) ∧ draw ≤ số dư, CANONICAL.
 //   C-REL-LINES  Sổ ra ≤ `ledger.max_ledger_lines` dòng (ép trong `ledger.is_canonical`).
-//   C-REL-7   Người nhận: Σ output tới `to` ≥ Σ draw(to,asset) ∧ to ≠ custody.
+//   C-REL-7   Người nhận: Σ output tới `to` − Σ input cùng credential ≥ Σ draw(to,asset) ∧ to ≠ custody.
+//   C-REL-SOLE  |tx.redeemers| ≤ 1 — chỉ custody chạy Plutus trong tx Release.
 //   C-REL-9   SINGLE-USE proposal (chống replay / chi vượt ngưỡng duyệt).
 //   C-REL-ADDR      cust_out.address == cust_in.address (GHIM CẢ stake credential).
 //   C-REL-REFSCRIPT cust_out.reference_script == None.
@@ -338,8 +339,13 @@ validator custody(
         // C-REL-5: value bảo toàn Σout=Σin per-asset, custody RA đúng Σdraw (no drain).
         expect release.value_ok(cust_in.value, cust_out.value, draws)
 
-        // C-REL-7: người nhận đúng — tổng-khớp per (to,asset), to ≠ custody.
-        expect release.recipients_ok(tx.outputs, draws, own_hash)
+        // C-REL-7: người nhận đúng — lượng RÒNG tới `to` (output − input cùng credential)
+        // đủ Σ draw per (to,asset), to ≠ custody. CONTRACT §17.
+        expect release.recipients_ok(tx.inputs, tx.outputs, draws, own_hash)
+
+        // C-REL-SOLE: không script Plutus nào khác chạy trong tx — chống hai kho / validator
+        // khác cùng chấm một output người nhận. CONTRACT §17.
+        expect release.sole_plutus_script(tx.redeemers)
 
         True
       }

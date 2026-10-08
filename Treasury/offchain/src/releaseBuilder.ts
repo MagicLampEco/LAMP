@@ -20,7 +20,10 @@
 //   C-REL-8   current_epoch ≥ proposal.execute_after_epoch (caller set validity_range).
 //   C-REL-5   value_out == value_in ⊖ Σdraw — Σout=Σin per-asset (KHÔNG drain/burn).
 //   C-REL-6   ledger_out[(b,a)] == ledger_in[(b,a)] − Σdraw(b,a) ∧ draw ≤ số dư bucket.
-//   C-REL-7   Σ output tới `to` == Σ draw(to,asset) ∧ to ≠ custody.
+//   C-REL-7   Σ output tới `to` − Σ input cùng payment credential == Σ draw(to,asset) ∧ to ≠ custody.
+//             Builder không tiêu input nào tại `to` ⇒ ví dựng tx KHÔNG được là một `to` (RELEASE-007c).
+//   C-REL-SOLE  tx chỉ chạy MỘT script Plutus (chính custody) — builder chỉ `collectFrom` custody,
+//             không đúc/rút thưởng/tiêu script khác; đừng ghép Release với thao tác script khác.
 
 import {
   Data, credentialToAddress, getAddressDetails, keyHashToCredential,
@@ -43,7 +46,8 @@ import {
 import { type AssetMap, assetKey } from "./collect.js";
 import {
   type RecipientOutput, applyDraws, drawsWithinBalance, ledgerOk, planLedgerOut,
-  planRecipientOutputs, recipientsOk, spendSpecHash, toIsCustody, valueOk,
+  drawAtSpenderCredential, planRecipientOutputs, recipientsOk, spendSpecHash, toIsCustody,
+  valueOk,
 } from "./release.js";
 
 // ── Cầu Address offchain → lucid bech32 ──────────────────────────────────
@@ -317,6 +321,18 @@ export async function buildReleaseTx(params: ReleaseParams): Promise<ReleaseResu
   // C-REL-ADDR: địa chỉ kho MANG THEO từ input (kể cả stake credential), không dựng lại.
   // Lý lẽ đầy đủ ở `custodyOutputAddress` trong `collectBuilder.ts`.
   const custodyAddress = custodyOutputAddress(custodyUtxo.address, custodyScript);
+
+  // C-REL-7 ròng (CONTRACT §17): on-chain trừ input cùng credential với `to`. Coin selection
+  // lấy UTxO của ví dựng tx ⇒ ví đó trùng một `to` thì input của nó làm ròng hụt và tx bị
+  // từ chối on-chain. Báo ở đây, trước khi tốn phí.
+  const spenderCred = getAddressDetails(await lucid.wallet().address()).paymentCredential;
+  if (!spenderCred) throw new Error("RELEASE-007c: địa chỉ ví dựng tx không có payment credential");
+  if (drawAtSpenderCredential(spenderCred.hash, draws)) {
+    throw new Error(
+      "RELEASE-007c: ví dựng tx trùng payment credential với người nhận một draw — " +
+      "on-chain đo RÒNG tới `to` (trừ input cùng credential); dựng tx từ ví khác",
+    );
+  }
 
   const redeemer = custodyRedeemerToCbor({ kind: "Release", proposal_ref: proposalRef, draws });
 

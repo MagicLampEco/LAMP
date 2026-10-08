@@ -647,12 +647,20 @@ C-REL-6  Trừ đúng bucket trong sổ + PRUNE dòng cạn (hardening v1 LỖ #
 
 C-REL-7  Người nhận đúng — đối chiếu TỔNG per (to,asset), chống double-satisfaction (sửa finding 8):
            gộp draw theo khóa (to, asset) TRƯỚC, rồi với mỗi (to,asset):
-             Σ_{output o: o.address==to} o.value(asset)  >=  Σ_{draw: draw.to==to ∧ draw.asset==asset} draw.amount
+             Σ_{output o: o.address==to} o.value(asset)
+               − Σ_{input i: i.address.payment_credential == to.payment_credential} i.value(asset)
+               >=  Σ_{draw: draw.to==to ∧ draw.asset==asset} draw.amount
            VÀ ∀ draw: draw.to ≠ custody address (tiền thật rời treasury).
            > KHÔNG dùng "tồn tại MỘT output ≥ amount" cho TỪNG draw độc lập: hai draw cùng (to,asset)
            > có thể cùng khớp MỘT output value=amount1 (mỗi draw "tìm thấy" cùng output) → chi 1 lần
            > nhưng trừ sổ 2 lần — đúng mẫu double-satisfaction kinh điển (§10). Tổng-khớp + C-REL-5
            > (value rời custody == Σ draw, đẳng thức) khóa CẢ HAI đầu (value vào nhận = value rời kho).
+           > Đo RÒNG (2026-10-08, CONTRACT v1.3 §17): tổng GỘP bị thoả hộ bởi UTxO sẵn có tại `to`
+           > bị tiêu rồi tái tạo trong cùng tx; trừ input theo payment credential (mọi stake).
+
+C-REL-SOLE  |tx.redeemers| ≤ 1 — tx Release không chạy script Plutus nào khác ngoài custody
+           (CONTRACT v1.3 §17). Đóng biến thể hai kho khác hash cùng chấm MỘT output người nhận,
+           thứ đo ròng không đóng được. `release.sole_plutus_script`.
 
 C-REL-8  Time-lock (CONTRACT §4): epoch hiện tại ≥ proposal.execute_after_epoch (multi-sig council
            + time-lock). Dùng CÙNG `cur = get_epoch_bounded(tx, ms_per_epoch, window_origin_ms)` của C-REL-11 (vá lần 2
@@ -890,6 +898,10 @@ chất chưa thấy ca mang tên riêng (lỗ phủ, không phải ca đã xoá)
 | `release_spec_mismatch` | draws ≠ spend_spec đã duyệt | **fail** (C-REL-3) |
 | `release_double_sat` | 2 draw cùng (to,asset), output tới `to` không đủ tổng | **fail** (C-REL-7 tổng-khớp, finding 8) |
 | `release_recipient_missing` | không có output tới `to` | **fail** (C-REL-7) |
+| `release_recreated_recipient_utxo_rejected` · `_other_stake_rejected` · `release_script_recipient_topup_short_rejected` | UTxO tại `to` tiêu+tái tạo (cùng/khác stake), ròng hụt | **fail** (C-REL-7 ròng) |
+| `release_script_recipient_fresh_ok` · `_topup_ok` · `release_vk_recipient_own_ada_input_ok` · `release_sole_redeemer_own_only_ok` | đối chứng dương | **pass** |
+| `release_two_instances_one_output_rejected_a/_b` · `release_with_other_script_spend_rejected` | hai kho một output / có script Plutus thứ hai | **fail** (C-REL-SOLE) |
+| `release_two_instances_one_output_net_blind` | như trên, redeemers rỗng — chứng cứ đo ròng một mình không đủ | **pass** |
 | `release_before_timelock` | epoch < execute_after | **fail** (C-REL-8) |
 | `release_double_custody` | 2 custody UTxO | **fail** (C-REL-4) |
 | `release_ptr_*` (nhóm ca trong `release_test.ak`) | con trỏ governance rỗng / thiếu / sai policy / sai script / lệch tham số | **fail** (C-REL-PTR) |
