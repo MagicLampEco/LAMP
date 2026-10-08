@@ -265,7 +265,10 @@ export function outputSumTo(
 }
 
 /**
- * recipients_ok onchain: mỗi draw — Σ output tới `to` ≥ Σ draw(to,asset) ∧ to ≠ custody.
+ * Gương off-chain của recipients_ok: mỗi draw — Σ output tới `to` ≥ Σ draw(to,asset) ∧ to ≠ custody.
+ * On-chain đo RÒNG (trừ input cùng payment credential với `to`, CONTRACT §17); hàm này chỉ thấy
+ * output nên khớp on-chain khi giao dịch không tiêu input nào cùng credential với `to` — builder
+ * chặn ca đó bằng RELEASE-007c (`drawAtSpenderCredential`).
  * (Off-chain BUILDER dựng output đúng Σ nên đẳng thức; ép ≥ để mirror on-chain.)
  */
 export function recipientsOk(
