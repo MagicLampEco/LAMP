@@ -132,7 +132,12 @@ validator custody_seed(genesis_ref: OutputReference) {
     // ── S-CUT-0: cut_bps trong dải [0,10000] (chống cut âm drain / >100%) ────
     expect seed_datum.cut_bps >= 0 && seed_datum.cut_bps <= 10000
 
-    // ── S-GOV-0: governance_ref là script hash THẬT (28 byte) ────────────────
+    // ── S-GOV-0: governance_ref là hash THẬT (28 byte) ───────────────────────
+    //
+    // Từ con trỏ governance (Treasury/GovernancePointer.md), giá trị này là policy id của NFT
+    // con trỏ, và `custody.ak` nhánh Release ép nó bằng tham số `pointer_policy`
+    // (C-REL-PTR). Đoạn dưới viết lúc nó còn là script Governance; lý lẽ "ghi sai một lần ⇒
+    // Release không bao giờ thoả" vẫn đúng y nguyên với nghĩa mới.
     //
     // Vì sao phải ép Ở ĐÂY và không chỗ nào khác: `custody.ak:79` và `:133` ép
     // `governance_ref` BẤT BIẾN ở cả hai nhánh, nên giá trị ghi ở lượt sinh là giá trị

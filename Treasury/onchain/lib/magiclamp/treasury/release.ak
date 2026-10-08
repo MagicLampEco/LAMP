@@ -5,11 +5,17 @@
 // MODEL A (CHỐT T1): Treasury KHÔNG tự tính ngưỡng vote. Cổng release = ĐỌC kết
 // quả Governance qua REFERENCE INPUT mang Proposal NFT one-shot; validator chỉ ép
 // 5 cờ (status==Executed + spend_spec_hash khớp + execute_after_epoch + NFT +
-// proposal Ở ĐÚNG địa chỉ governance_ref). Mọi ngưỡng (clamp BFT, sàn DID) do
+// proposal Ở ĐÚNG địa chỉ Governance hiện hành g). Mọi ngưỡng (clamp BFT, sàn DID) do
 // Governance ép TRƯỚC ở tx ExecuteProposal riêng.
 //
+// `g` KHÔNG phải `CustodyDatum.governance_ref`. Từ con trỏ governance
+// (Treasury/GovernancePointer.md), `governance_ref` là policy id của NFT con trỏ;
+// `custody.ak` nhánh Release đọc g = PointerDatum.governance_hash qua reference input
+// (`pointer.read_governance`) rồi gọi `read_proposal(…, g, g)`. Tham số thứ tư của
+// `read_proposal` dưới đây vì vậy mang g, dù tên của nó là `governance_ref`.
+//
 // BẤT BIẾN ÉP (TECH §7):
-//   C-REL-1  proposal Ở ĐÚNG governance_ref (payment_credential == Script(governance_ref))
+//   C-REL-1  proposal Ở ĐÚNG Governance g (payment_credential == Script(g); g đọc từ con trỏ)
 //            ∧ mang ĐÚNG 1 Proposal NFT (chống NFT dời sang datum giả / replay chéo instance)
 //   C-REL-3  hash canonical (seed_policy, instance_id, draws) == spend_spec_hash   (khóa đích chi + kho)
 //   C-REL-5  ∀a custody_out.value(a) == custody_in.value(a) − Σ draw(a)   (Σout=Σin, KHÔNG burn/drain)
@@ -34,8 +40,8 @@ use magiclamp/treasury/ledger
 use magiclamp/treasury/types.{LedgerEntry, ProposalResult, ReleaseDraw}
 
 // ── C-REL-1: đọc beacon ProposalResult qua REFERENCE INPUT mang Proposal NFT ──
-// Tìm reference input tại proposal_ref; ép (a) UTxO Ở ĐÚNG địa chỉ Governance của
-// instance (payment_credential == Script(governance_ref)) — chống NFT proposal bị
+// Tìm reference input tại proposal_ref; ép (a) UTxO Ở ĐÚNG địa chỉ Governance hiện hành
+// (payment_credential == Script(g), g do custody đọc từ con trỏ) — chống NFT proposal bị
 // dời sang UTxO datum giả ở script lạ + chống replay chéo instance khác governance;
 // (b) value chứa ĐÚNG 1 token policy proposal_policy (NFT one-shot chứng thực);
 // decode ProposalResult từ inline datum. KHÔNG tiêu proposal (nhiều release đọc song song).

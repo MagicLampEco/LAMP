@@ -32,7 +32,7 @@ pub type PlatformEntry {
   instance_id     : ByteArray,        // Treasury custody instance_id (= seed NFT name)
   custody_hash    : ByteArray,        // script hash custody.ak của platform
   seed_policy     : ByteArray,        // policy NFT authenticity custody (custody_seed)
-  governance_ref  : ByteArray,        // script hash DAO/committee gác release
+  governance_ref  : ByteArray,        // policy id NFT con trỏ governance của instance (cùng nghĩa CustodyDatum.governance_ref)
   accepted_assets : List<AssetKey>,   // assets platform thu (LAMP/ADA/token)
   cut_bps         : Int,              // protocol_cut_bps của instance
   created_epoch   : Int,              // epoch đăng ký
