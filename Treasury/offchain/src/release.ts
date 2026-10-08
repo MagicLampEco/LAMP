@@ -6,7 +6,9 @@
 //   C-REL-3  spend_spec_hash(seed_policy, instance_id, draws) == proposal.spend_spec_hash
 //   C-REL-5  ∀a custody_out.value(a) == custody_in.value(a) − Σdraw(a)  (Σout=Σin, KHÔNG burn)
 //   C-REL-6  ledger_out[(b,a)] == ledger_in[(b,a)] − Σdraw(b,a) ∧ draw ≤ số dư bucket
-//   C-REL-7  Σ output tới `to` value(a) == Σ draw(to,a) ∧ to ≠ custody  (tổng-khớp)
+//   C-REL-7  Σ output tới `to` value(a) == Σ draw(to,a) ∧ to ≠ custody  (tổng-khớp). On-chain đo
+//            RÒNG (trừ input cùng payment credential, CONTRACT §17) — builder không tiêu input tại
+//            `to` (`drawAtSpenderCredential`) nên mirror chỉ-output ở đây khớp.
 //
 // spend_spec_hash = blake2b_256( 0x03 ‖ blake2b_256(seed_policy) ‖ blake2b_256(instance_id)
 //                                     ‖ blake2b_256(cbor.serialise(draws)) )
@@ -274,6 +276,21 @@ export function recipientsOk(
     const toKey = addressKey(d.to);
     return outputSumTo(outputs, toKey, d.policy, d.name) >= drawnTo(draws, toKey, d.policy, d.name);
   });
+}
+
+/**
+ * C-REL-7 đo RÒNG (CONTRACT §17): on-chain trừ Σ MỌI input có cùng payment credential với
+ * `to`. `recipientsOk` ở trên chỉ nhìn output nên chỉ đúng khi tx KHÔNG tiêu input nào tại
+ * credential của một `to`. Builder chỉ tiêu custody + UTxO của ví dựng tx, nên điều kiện đó
+ * tương đương: payment credential của ví dựng tx ≠ mọi `to`. Trả về draw đầu tiên trùng
+ * (để báo lỗi), hoặc `undefined`. So theo hash (VK và script cùng hash 28 byte coi như trùng —
+ * bảo thủ).
+ */
+export function drawAtSpenderCredential(
+  spenderPaymentHash: string, draws: ReleaseDraw[],
+): ReleaseDraw | undefined {
+  const h = spenderPaymentHash.toLowerCase();
+  return draws.find((d) => d.to.payment_credential.hash.toLowerCase() === h);
 }
 
 // ── Plan recipient outputs: gộp Σ draw theo (to,asset) → 1 output/recipient ──

@@ -1,6 +1,8 @@
 # Treasury — CONTRACT (interface đa thuê bao)
 
-> **Phiên bản:** v1.2 — 2026-10-04. Vì sao bump: đồng bộ với mã đã gộp — custody nay mang 6 tham số
+> **Phiên bản:** v1.3 — 2026-10-08. Vì sao bump: đổi interface nhánh Release — `C-REL-7` đo RÒNG theo
+> payment credential và thêm `C-REL-SOLE` (§17), hash `custody` đổi.
+> v1.2 — 2026-10-04. Vì sao bump: đồng bộ với mã đã gộp — custody nay mang 6 tham số
 > (`pointer_policy` thay `proposal_policy`, thêm `window_origin_ms`), Release đọc governance qua NFT con trỏ
 > (`C-REL-PTR`); bản v1.1 còn tả 5 tham số và proposal ở `Script(governance_ref)`. Thêm §16.
 > v1.1 — 2026-09-27: §10 H1A-interface trỏ sang hướng đóng mâu thuẫn
@@ -415,3 +417,55 @@ Gương off-chain: `planDeposit` / `buildDepositTx` (`Treasury/offchain/src/depo
 Nguồn: `Treasury/GovernancePointer.md` v0.2. Validator: `Treasury/onchain/validators/governance_pointer.ak`.
 Redeemer: `CommitteePropose` · `ApplyPending` · `CommitteeCancel` · `Seal` · `GovernanceSet` (`Treasury/onchain/lib/magiclamp/treasury/types.ak`
 ▸ `PointerRedeemer`). Phía custody: §10 H1A đoạn "Đổi nghĩa từ 2026-10-03".
+
+## 17. `C-REL-7` đo RÒNG + `C-REL-SOLE` — người nhận Release không bị thoả hộ (2026-10-08, **ĐÃ HIỆN THỰC**, interface KHÓA)
+
+**Lỗ được bịt (`recipient-gross-sum`).** Bản trước của `release.recipients_ok` đo người nhận bằng
+TỔNG GỘP: `Σ output tại địa chỉ to ≥ Σ draw(to, asset)`. Release là permissionless (chỉ đọc proposal
+`Executed`), nên ai thấy proposal cũng dựng được tx. Hai biến thể:
+1. **UTxO tái tạo tại `to`.** `to` là script có UTxO mà người ngoài tiêu-rồi-tái-tạo được trong cùng tx
+   (claim permissionless, `Collect`…). Output tái tạo mang sẵn số dư cũ ⇒ tổng gộp "đủ" mà bên nhận không
+   được thêm đồng nào; lượng rút khỏi kho đi ví kẻ dựng tx; proposal một-lần cháy (`C-REL-9`).
+2. **Hai kho cùng một output.** Hai custody KHÁC script hash cùng chi tới một `to` trong một tx; mỗi
+   validator chỉ thấy `draws` của chính nó ⇒ một output thoả cả hai lượt chấm.
+
+**Chốt.**
+- `C-REL-7` (sửa): với mỗi draw, `Σ output tại địa chỉ to (asset) − Σ input có payment credential của to
+  (asset) ≥ Σ draw(to, asset)`, và `to ≠ custody`. Phần trừ đi theo **payment credential**, không theo địa
+  chỉ đầy đủ: input ở cùng script nhưng khác stake credential vẫn là tiền của bên nhận. Đóng biến thể 1
+  với MỌI loại `to` (kể cả script native chỉ khoá thời gian — tiêu không cần chữ ký).
+- `C-REL-SOLE` (mới): `|tx.redeemers| ≤ 1` — trong tx Release không script Plutus nào khác chạy (không
+  tiêu kho khác, không đúc, không rút thưởng script, không chứng chỉ/phiếu script). Ledger luôn có mục
+  của chính custody, nên "≤ 1" trên chuỗi nghĩa là "đúng custody". Đóng biến thể 2, và cắt mọi validator
+  khác (kể cả policy đúc đo "Δ tại kho") khỏi việc chấm chung output của tx Release. Script native
+  (ví multisig hội đồng) không có redeemer nên vẫn trả phí được.
+- Mã: `release.recipients_ok` · `release.input_sum_at_credential` · `release.sole_plutus_script`; gọi ở
+  `custody.ak` ▸ nhánh `Release`.
+
+**Phương án đã loại và vì sao.**
+- *Chỉ đo ròng:* không đóng biến thể 2 (ca `release_two_instances_one_output_net_blind` chứng minh: bỏ
+  `C-REL-SOLE` thì cả hai kho cùng chấp nhận một output 300 cho hai lượt chi 300).
+- *Mỗi draw một output mang datum thẻ `(instance, proposal_id, index)` + cấm input tại `to`:* đổi HÌNH
+  DẠNG output người nhận. Bên nhận là script đòi datum riêng (kho Distribution, nguồn đợt của
+  `storage_reward`) thì output mang thẻ không tiêu lại được bằng nhánh nào của nó — rót đúng địa chỉ mà
+  ngoài sổ. Thêm chi phí kích thước tx (một datum mỗi người nhận) và phải đổi builder cùng mọi bên nhận.
+  Bản chọn GIỮ NGUYÊN hình dạng output (builder vẫn `pay.ToAddress` không datum) nên đường tiêu lại của
+  mỗi loại `to` không đổi so với trước: ví VK tiêu bằng chữ ký; với script nhận, việc output không datum
+  có nhánh tiêu lại hay không là tính chất CÓ TỪ TRƯỚC của cặp builder↔bên nhận — bản vá này không làm nó
+  tốt lên hay xấu đi, và cũng không kiểm lại nó.
+
+**Giá phải trả — biết trước.**
+- Release không ghép được với thao tác script Plutus nào khác trong cùng tx (gộp Release của hai kho để
+  tiết kiệm phí là KHÔNG được; tách thành hai tx).
+- Ví dựng tx không được trùng payment credential với một `to` khi ví đó mang asset được chi: input của nó
+  bị trừ khỏi lượng ròng. Builder chặn sớm bằng `RELEASE-007c` (`offchain/src/release.ts` ▸
+  `drawAtSpenderCredential`) — bảo thủ: chặn mọi trùng credential, kể cả khi UTxO ví chỉ có ADA.
+- Hash `custody` đổi ⇒ kho đã gieo bằng hash cũ không nhận bản vá; theo §13, vá trước lần gieo
+  instance thật hoặc đi đường migrate.
+- ExUnit: thêm một vòng duyệt `tx.inputs` mỗi draw + một phép so khớp hình dạng danh sách redeemers.
+  Số đo trước/sau nằm ở báo cáo của lượt vá, không chép vào đây (§13: nguồn số đo là bộ kiểm).
+
+**Kiểm.** `onchain/validators/release_test.ak` khối "CONTRACT §17": PoC biến thể 1 (đỏ trước vá, xanh
+sau), biến thể 1 khác stake, biên ròng −1, ba đối chứng dương (script nhận mới, nạp thêm vào UTxO sẵn có,
+ví VK trả phí bằng UTxO chỉ ADA của chính mình), biến thể 2 ở cả hai kho, và ca cô lập `C-REL-SOLE` khi
+lượng ròng đã đủ.

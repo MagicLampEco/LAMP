@@ -28,7 +28,7 @@ import {
   encodeAddress, encodeProposalResult, encodeReleaseDraw, custodyRedeemerToCbor,
 } from "../offchain/src/datum.js";
 import {
-  applyDraws, drawsCbor, ledgerOk, planLedgerOut, planRecipientOutputs,
+  applyDraws, drawAtSpenderCredential, drawsCbor, ledgerOk, planLedgerOut, planRecipientOutputs,
   recipientsOk, spendSpecHash, valueOk,
 } from "../offchain/src/release.js";
 import { assetKey } from "../offchain/src/collect.js";
@@ -541,5 +541,25 @@ describe("epoch neo từ validity (C-EPOCH) — out.epoch = ⌊validFromMs/msPer
     expect(() =>
       planRelease(datum, valueIn, proposal(spec), drawsSingle, CUST_SH, currentEpoch, currentEpoch, G),
     ).toThrow(/RELEASE-008|RELEASE-009/);
+  });
+});
+
+// ════════════════════════════════════════════════════════════
+// C-REL-7 ròng (CONTRACT §17): ví dựng tx trùng credential một `to` ⇒ builder từ chối
+// (RELEASE-007c) vì input của ví sẽ bị on-chain trừ khỏi lượng ròng tới `to`.
+// ════════════════════════════════════════════════════════════
+describe("drawAtSpenderCredential (C-REL-7 ròng)", () => {
+  it("ví dựng tx khác mọi `to` → undefined", () => {
+    expect(drawAtSpenderCredential("dead", drawsMulti)).toBeUndefined();
+  });
+  it("ví dựng tx trùng `to` (không phân biệt hoa-thường) → trả draw trùng", () => {
+    expect(drawAtSpenderCredential(BOB.toUpperCase(), drawsMulti)).toEqual(drawsMulti[1]);
+  });
+  it("so theo payment credential, bỏ qua stake credential", () => {
+    const staked: ReleaseDraw = {
+      ...drawLamp(BUCKET_OPS, 300n, ALICE),
+      to: { ...vkAddr(ALICE), stake_credential: { kind: "Inline", credential: { kind: "VerificationKey", hash: "5a5a" } } } as Address,
+    };
+    expect(drawAtSpenderCredential(ALICE, [staked])).toEqual(staked);
   });
 });
