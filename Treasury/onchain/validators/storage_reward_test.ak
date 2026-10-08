@@ -1026,3 +1026,35 @@ test open_src_junk_rejected() fail {
 test close_at_old_grace_rejected() fail {
   run_spend(Some(with_round(round0())), Close, close_tx_with(ledger_after(batch_ada, 26_500), 107, [], [tomb_out()]))
 }
+
+// ── Đột biến mục 3/6 (2026-10-08): ca âm phân biệt từng vế ──
+// (3) PostRoot: token đợt phải ở lại output đợt (vế này riêng với vế CARP).
+test post_root_token_escapes_rejected() fail {
+  let tx = post_tx(fresh(), with_round(round0()), 101, [k1, k3])
+  let v = assets.from_lovelace(batch_ada) |> assets.add(carp_p, carp_n, 30_000)
+  let leak = out_nd(vk_addr(outsider), assets.from_lovelace(2_000_000) |> assets.add(own, batch_token_name, 1))
+  run_spend(Some(fresh()), post_r(), Transaction { ..tx, outputs: [out(batch_addr(), v, with_round(round0())), leak] })
+}
+
+// (3) PostRoot: không được gắn thêm asset lạ vào output đợt (Claim sau đó ép value sạch ⇒ kẹt đợt).
+test post_root_junk_added_rejected() fail {
+  let tx = post_tx(fresh(), with_round(round0()), 101, [k1, k3])
+  let v = bval(30_000) |> assets.add(outsider, "JUNK", 1)
+  run_spend(Some(fresh()), post_r(), Transaction { ..tx, outputs: [out(batch_addr(), v, with_round(round0()))] })
+}
+
+// (3) Ghim GIÁ TRỊ hằng theo spec (5 ADA): `open_below_min_ada_rejected` dùng `min_batch_lovelace - 1`
+// nên trượt theo hằng khi hằng bị hạ.
+test open_ada_below_spec_floor_rejected() fail {
+  let v = batch_value(4_999_999, carp_p, carp_n, 30_000, own, 1)
+  let src = Input { output_reference: oref(0), output: out_nd(batch_addr(), assets.from_lovelace(2_000_000) |> assets.add(carp_p, carp_n, 30_000)) }
+  let tx = open_tx_with(out(batch_addr(), v, fresh()), [k1, k2], [custody_ref_ok()])
+  run_mint(MintBatch, Transaction { ..tx, inputs: [src, wallet_in()] })
+}
+
+// (6) Nguồn Open đã mang token đợt ⇒ handler mint tự từ chối (không dựa vào spend `Open`).
+test open_src_holds_batch_token_rejected() fail {
+  let src = Input { output_reference: oref(0), output: out_nd(batch_addr(), assets.from_lovelace(batch_ada) |> assets.add(carp_p, carp_n, 30_000) |> assets.add(own, batch_token_name, 1)) }
+  let leak = out_nd(vk_addr(outsider), assets.from_lovelace(2_000_000) |> assets.add(own, batch_token_name, 1))
+  run_mint(MintBatch, Transaction { ..open_tx(), inputs: [src, wallet_in()], outputs: [out(batch_addr(), bval(30_000), fresh()), leak] })
+}
