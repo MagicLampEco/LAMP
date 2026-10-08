@@ -524,11 +524,14 @@ Ràng buộc và giới hạn của đường này:
   `BurnNullifier` KHÔNG cần vế tương ứng: B1 dựng LẠI tên token từ `did_commits` rồi so đẳng thức,
   nên một `did_commit` sai độ dài cho ra một tên mà không lượt đúc nào tạo được ⇒ không có token đó
   để đốt.
-- **`R-SWEEP-DELTA`.** `release.recipients_ok` cộng **mọi** output tới `to`. Khi `to` là địa chỉ
-  một script có nhánh permissionless tiêu-rồi-trả-lại (như custody), người dựng giao dịch có thể
-  tiêu một UTxO có sẵn ở đó và trả lại nguyên giá trị, khiến tổng output "đủ" trong khi khoản chi
-  thật đi nơi khác. Nhánh nhận của custody k+1 (`[PHASE-SWEEP-INTAKE]`) phải ép
-  `value_out − value_in` đúng bằng khoản chi và ghi đúng khoản đó vào sổ.
+- **`R-SWEEP-DELTA`.** Phía CHI đã đóng: `release.recipients_ok` đo người nhận theo lượng RÒNG
+  (Σ output tới `to` − Σ input cùng payment credential với `to`), và giao dịch `Release` chỉ được có
+  một redeemer (`release.sole_plutus_script`) — `Treasury/CONTRACT.md` v1.3 §17, C-REL-7 · C-REL-SOLE.
+  Bản trước cộng gộp mọi output tới `to`, nên khi `to` là script có nhánh permissionless
+  tiêu-rồi-trả-lại, người dựng giao dịch tiêu một UTxO có sẵn ở đó rồi trả lại nguyên giá trị, tổng
+  output "đủ" trong khi khoản chi thật đi nơi khác. Phía NHẬN vẫn là ràng buộc mở: nhánh nhận của
+  custody k+1 (`[PHASE-SWEEP-INTAKE]`) phải ép `value_out − value_in` đúng bằng khoản chi và ghi đúng
+  khoản đó vào sổ.
 - **`R-BOOK-MPF` — sổ DID đã đếm là một GỐC 32 byte, không một danh sách.** `TallyDatum.voted_root`
   là gốc Merkle Patricia Forestry với khoá = `did_commit`, giá trị = `nullifier` của phiếu được cộng.
   `SumBatch` chèn trọn lô bằng `insert_proofs` (một chứng minh mỗi phiếu); `mpf.insert` tự `fail` khi
