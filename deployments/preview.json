@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "network": "preview",
+  "networkMagic": 2,
+  "clock": {
+    "msPerEpoch": "86400000",
+    "windowOriginMs": "1666656000000"
+  },
+  "records": [
+    {
+      "id": "preview-native-sig-12param/lamp-token",
+      "role": "lamp-token",
+      "cluster": "preview-native-sig-12param",
+      "status": "SUPERSEDED",
+      "supersededBy": "preview-oneshot-14param/lamp-token",
+      "policyId": "7a1a7aed5ec47acc37b6fa82695c1219bf76895b505b01161367adf9",
+      "assetName": "744c414d50",
+      "scriptHash": null,
+      "address": null,
+      "params": {
+        "anchor": "native-sig-markers",
+        "mintParamCount": "12"
+      },
+      "evidence": [
+        "file:Genesis/offchain/src/lampPolicies.ts"
+      ]
+    },
+    {
+      "id": "preview-oneshot-14param/lamp-token",
+      "role": "lamp-token",
+      "cluster": "preview-oneshot-14param",
+      "status": "PENDING",
+      "supersededBy": null,
+      "policyId": null,
+      "assetName": "744c414d50",
+      "scriptHash": null,
+      "address": null,
+      "params": {
+        "anchor": "oneshot-markers",
+        "mintParamCount": "14"
+      },
+      "evidence": [
+        "file:Genesis/offchain/src/lampPolicies.ts"
+      ]
+    }
+  ]
+}

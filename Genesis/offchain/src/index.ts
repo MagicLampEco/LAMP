@@ -4,6 +4,7 @@ export * from "./types.js";
 export * from "./constants.js";
 export * from "./deployed.js";
 export * from "./lampPolicies.js";
+export * from "./deploymentsManifest.js";
 export * from "./applyGate.js";
 export * from "./blueprintSource.js";
 export * from "./reserveKhoPair.js";
