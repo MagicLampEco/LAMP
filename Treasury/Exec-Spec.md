@@ -68,36 +68,37 @@ Mục tiêu cuối của cả dự án: **làm LAMP có giá trị**. Treasury p
 >   `Math-Spec.md:127`, `SPEC.md:39`, `Tech-Spec.md:22,694`) nói đúng về **nguồn gốc ý tưởng**,
 >   nhưng sai thì: phải đọc là "từng có", không phải "đang có".
 >
-> **Chân thu KHÔNG mất — nó ĐỔI CHỖ.** (bổ sung cùng ngày, sau khi hỏi lại kho MAGIC và tự đo)
+> **Chân thu từ MAGIC: KHÔNG CÒN.** (đính chính 2026-10-08 — thay khối "chân thu ĐỔI CHỖ" ghi
+> cùng ngày 2026-09-03)
 >
-> Đường LAMP về Treasury vẫn còn, nhưng nằm ở một module **không phải generator** nên lần quét
-> đầu không thấy: `Paymaster/onchain/validators/paymaster.ak:122-137` ép
-> `lamp_to_treasury >= lamp_this`, với `treasury_addr` là apply-param (`:57`, chú thích
-> *"SEC-01 fix: ép LAMP đến đúng Treasury"*). Đó là **cùng một hình** với bất biến cũ.
+> Khối cũ ghi rằng chân thu dời sang module `Paymaster` của kho MAGIC (`paymaster.ak` ép
+> `lamp_to_treasury >= lamp_this`, `treasury_addr` là apply-param). Module đó đã bị xoá khỏi kho
+> MAGIC ở MagicLampEco/MAGIC#160 (gộp 2026-10-07). Nó chưa từng deploy ở mạng nào. Đo trên
+> `MagicLampEco/MAGIC@f90460f0`: không validator nào của MAGIC chuyển LAMP vào Treasury;
+> `git grep -i treasury -- '*.ak' ':!Legacy'` chỉ còn chú thích.
 >
-> Ý nghĩa kiến trúc: chân thu dời từ hành vi **SINH** sang hành vi **BẢO TRỢ**. Trước I-ACT-7,
-> Treasury thu khi ai đó sinh MAGIC. Sau I-ACT-7, sinh MAGIC không đụng LAMP; Treasury thu khi
-> một **app trả phí hộ người dùng**.
+> Treasury hôm nay **không phụ thuộc một module bên gọi cụ thể nào**. Tiền vào kho chỉ qua các
+> nhánh của chính `custody.ak`:
 >
-> ⇒ Hạng mục "Migrate 3 generators" (§0 mục 2, §4.2 đường b-ii, §4.5) **không sai đường dẫn, mà
-> sai ĐỐI TƯỢNG**: bên nguồn không phải ba generator, mà là **một Paymaster**. Adapter off-chain
-> vẫn có việc để làm — nhưng phải ráp cho Paymaster.
+> | Nhánh | Ai gọi | Ràng buộc chính | Nguồn |
+> |---|---|---|---|
+> | `Collect` | bất kỳ app nào quyết toán phần cắt (`cut`) của mình — permissionless | `Σcut > 0` mỗi asset; `category ∈ buckets`; trần số dòng | [CONTRACT §3](./CONTRACT.md), §13, §14 |
+> | `Deposit` | khoản phải vào kho trọn vẹn (100%), không đi qua `cut` | — | CONTRACT §15.2, Tech-Spec §9.1 |
+> | `StakeRewardIn` | thưởng uỷ quyền stake của chính địa chỉ kho | — | [Tech-Spec §9.1](./Tech-Spec.md) |
+> | `MigrateIn` | Δ LAMP vừa đúc từ Reserve | đo Δ theo `accepted_assets` | CONTRACT §10 (H5/H6), Tech-Spec §9 |
 >
-> **Ba giới hạn, ghi ra để không ai dựng lên nền quá tay:**
+> Hệ quả cho tệp này:
 >
-> 1. **Paymaster CHƯA deploy ở bất kỳ mạng nào** (`MAGIC/scripts/DEPLOYED.md` không có dòng nào).
->    Mã có, test có; giao dịch thật thì chưa. Đây là **thiết kế đã hiện thực, chưa vận hành**.
-> 2. **Chưa có tệp CHỐT ở tầng SPEC** cho "Treasury thu bằng gì". Điều trên là **đo được từ mã
->    đang sống**, không phải trích một quyết định đã ghi — nên đừng viết nó vào spec ở thì hiện
->    tại, đúng cái bẫy khối này vừa gỡ ra khỏi sáu tệp.
-> 3. Mới quét `*.ak` ngoài `Legacy/` của kho MAGIC. CARP và PhoenixKey chưa quét; có thể còn chân
->    thu song song.
+> - Hạng mục "Migrate 3 generators" (§0 mục 2, §4, M7) **không còn đối tượng**: không generator
+>   nào, và không module MAGIC nào, trả LAMP về Treasury. Adapter off-chain b-ii không có giao
+>   dịch nguồn để ráp. Đọc §4 như ghi chép thiết kế cũ.
+> - Một app muốn chia phần cho Treasury tự dựng giao dịch `Collect` theo CONTRACT §3. Đó là việc
+>   của app đó, không phải của Treasury, và không cần sửa validator kho.
+> - Kế toán và vector kiểm của Treasury trong kho này **không** giả định chân thu từ MAGIC: các bài
+>   kiểm `Treasury/tests/` dựng `Collect` trực tiếp với `app_id` tuỳ chọn.
 >
-> **Một điều ĐÃ kiểm và KHÔNG phải lỗ:** lo ngại Paymaster thừa hưởng lỗ double-satisfaction
-> C1/C2 của generator cũ (đếm theo full-address) là **sai** — `paymaster.ak:76-77` ép
-> `count_inputs_at_script == 1` và `count_outputs_at_script == 1`, kèm test phủ định
-> `pm_neg_double_meter` (`:849-850`). Nên khi Paymaster thành chân thu duy nhất, nó **không**
-> mang theo lỗ cũ.
+> [`paymaster-design.md`](./paymaster-design.md) giữ lại làm ghi chép thiết kế; module nó mô tả
+> không còn tồn tại.
 
 | Thành phần | Trạng thái | Bằng chứng |
 |---|---|---|
@@ -166,6 +167,8 @@ Mục tiêu cuối của cả dự án: **làm LAMP có giá trị**. Treasury p
 ---
 
 ## 4. Migrate 3 generators (Instant / Vacuum / Schedule)
+
+> Ghi chép thiết kế cũ — không còn đối tượng (xem §1, khối "Chân thu từ MAGIC: KHÔNG CÒN", 2026-10-08).
 
 **Hiện trạng (bản CŨ — hết hiệu lực 2026-09-03, giữ để đối chiếu):** mỗi vault validator có param `treasury_addr` và kiểm `treasury_receives_lamp(outputs, treasury_addr, lamp_policy, lamp_paid) ⇒ lamp_at_treasury >= lamp_paid` (`vault.ak` L298–313 — kho MAGIC nay ĐÃ công bố, và chân Treasury này ĐÃ GỠ (§1 đính chính); số dòng L298–313 là của bản CŨ, bản hiện tại không còn hàm đó). Treasury hiện là **addr câm** (ví trên Preview).
 

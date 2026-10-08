@@ -1,6 +1,11 @@
 # SPEC — Paymaster (MAGIC-as-gas, App Sponsor)
 
 **Trạng thái:** DESIGN SPEC (chưa code). Dự thảo 2026-06-10.
+
+> **Ghi chép thiết kế — module đã bị xoá.** Mã hiện thực spec này (`MAGIC/Paymaster/`) bị xoá khỏi kho
+> MAGIC ở MagicLampEco/MAGIC#160 (gộp 2026-10-07), chưa từng deploy ở mạng nào. Không có chân thu
+> Treasury nào đi qua Paymaster. Treasury nhận tiền qua các nhánh của chính kho — xem
+> [`Exec-Spec.md` §1](./Exec-Spec.md), khối "Chân thu từ MAGIC: KHÔNG CÒN".
 **Nguồn bám:** `DESIGN-fee-paymaster-reserve.md §B`; `ConsumeMAGIC/FEAT.md`, `ConsumeMAGIC/TECH.md`,
 `ConsumeMAGIC/MATH.md`; `Treasury/CONTRACT.md`; `CLAUDE.md` (ràng buộc vĩnh viễn).
 

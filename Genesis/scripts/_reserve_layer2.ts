@@ -585,9 +585,10 @@ export async function deriveCustody(
   //    sống, không phải một lần đổi cấu hình.
   // 3. Kho bên tiêu thụ nướng địa chỉ này vào apply-param của họ
   //    (`MAGIC/scripts/deployParams.ts` ▸ `assertTreasuryStakeDecided`, cổng fail-closed từ
-  //    2026-09-06). Địa chỉ enterprise làm cổng đó ĐỎ ⟹ Paymaster không deploy được ⟹ luồng
-  //    trả phí hộ đứng. Đó là một cổng của NHÀ KHÁC, CI kho này không kiểm được — nên chỗ
-  //    đúng để giữ lời hứa là ở đây, tại nơi địa chỉ được sinh ra.
+  //    2026-09-06; giữ lại sau khi module Paymaster bị xoá ở MAGIC#160, vì nó gác quyết định
+  //    kho có uỷ quyền stake). Địa chỉ enterprise làm cổng đó ĐỎ. Đó là một cổng của NHÀ
+  //    KHÁC, CI kho này không kiểm được — nên chỗ đúng để giữ lời hứa là ở đây, tại nơi địa
+  //    chỉ được sinh ra.
   //
   // `reward_cred` trỏ về chính credential thanh toán của kho ⟹ thưởng uỷ quyền chỉ đi được
   // vào kho, và `StakeRewardIn` là đường duy nhất ghi nó vào sổ.
