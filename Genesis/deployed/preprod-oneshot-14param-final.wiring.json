@@ -1,0 +1,70 @@
+{
+  "registryId": "preprod-oneshot-14param-final",
+  "network": "Preprod",
+  "genesisRef": {
+    "txHash": "1f495fbedbacfc871e2653636deb7cb88c06c0bebe783c6b2aa7c07b9719f825",
+    "outputIndex": 0
+  },
+  "tokenName": "744c414d50",
+  "committee": {
+    "pkhs": [
+      "603249abe9bc29ea474777fc4cfc2f220a784a53e201b9b9afac5ff5"
+    ],
+    "threshold": "1"
+  },
+  "markers": {
+    "threadPid": "6d416952e04d93e3c8d67589a3ce835ce406fcfaf3e8e73df481c0a8",
+    "regPid": "6305bbb52a0dbbfd994c75cbd0bb691bd7b83a55cad7b36f4b86bc78",
+    "metPid": "f7b623df4539ad00edc47ffd101fa81be851e1806c45eb39111de80f",
+    "khoPid": "379e60c09b0c778dc7651e254a977f89017393226df389acd5f27277",
+    "beaconPid": "0ba7f2f1c9fd63e9a88c6aa795296f4b70b33cb0ff45e1ad955c98a5"
+  },
+  "lampPid": "493002cc03004e3e14fd607cfba59312bd946e478e69d6ab431ccfac",
+  "lampUnit": "493002cc03004e3e14fd607cfba59312bd946e478e69d6ab431ccfac744c414d50",
+  "threadUnit": "6d416952e04d93e3c8d67589a3ce835ce406fcfaf3e8e73df481c0a8535550504c59",
+  "regUnit": "6305bbb52a0dbbfd994c75cbd0bb691bd7b83a55cad7b36f4b86bc785245474953545259",
+  "metUnit": "f7b623df4539ad00edc47ffd101fa81be851e1806c45eb39111de80f4d45544552",
+  "khoUnit": "379e60c09b0c778dc7651e254a977f89017393226df389acd5f272775452454153555259",
+  "beaconUnit": "0ba7f2f1c9fd63e9a88c6aa795296f4b70b33cb0ff45e1ad955c98a544524f50",
+  "reserveKhoPid": "6ba3c1ad59153432669be4a1b49a165bfe9ebe29bc0a91a6361a5098",
+  "reserveKhoName": "6c616d702d72657365727665",
+  "ssHash": "1e2566ca002bdadc08525373b4a6bb130f98251a6c3c8f85a023bd3a",
+  "ssAddr": "addr_test1wq0z2ek2qq4a4hqg2ffh8d9xhvfslxp9rfkreru95q3m6ws4xyqzt",
+  "regAddr": "addr_test1wp3stwa49gxmhlvef36uh59mdyda0wp62h9d0vm0fwrtc7qguf0du",
+  "treHash": "ea31abac3c7c8d3f3010551f55f8a09a8d9be83cd04084d5904e4308",
+  "treAddr": "addr_test1wr4rr2av837g60eszp23740c5zdgmxlg8ngyppx4jp8yxzq5c9k5s",
+  "claimHash": "38bd7236018bacad58e63f06c9a141de9288ec806138aca3f07cdf10",
+  "accountPid": "1ed6beaf4c2085c660716caa43e218bf67d1929947eedc2783f0dc9a",
+  "beaconHash": "a918b24172846efd092dc3463801a97b6f12f6ac1e73a3ba0f28c622",
+  "beaconAddr": "addr_test1wz533vjpw2zxalgf9hp5vwqp49ak7yhk4s088ga6pu5vvgsr9j8xj",
+  "caps": {
+    "dist": "26370000000000000",
+    "reserve": "9630000000000000"
+  },
+  "reserve": {
+    "pointer": {
+      "policy": "762ad632fc177ad89c4177c0a1987bd4f3a3e9b4471bb679c368c48c",
+      "assetName": "474f56504f494e544552",
+      "seedRef": {
+        "txHash": "d11bf98456a970e595e21793fa12ff8c77c4482215d4167027d70082a871d667",
+        "outputIndex": 0
+      },
+      "changeDelayMs": "3600000",
+      "holderAddress": "addr_test1wpmz443jlsth4kyug9mupgvc00208glfk3r3hdnecd5vfrqefpfea"
+    }
+  },
+  "treasuryCustody": {
+    "scriptHash": "f1dcc2e73a00a30f1ba2244dea33a7fef73d30d6974e6815018db588",
+    "address": "addr_test1xrcaesh88gq2xrcm5gjym63n5ll0w0fs66t5u6q4qxxmtzxvzft7e0nndnz6d3nj87zgamu6a8t84n5u5vkjsf8ssl8q83l6y4"
+  },
+  "tx": {
+    "genesis": "249082f48eb05bca6074df6efaf187175f33d610853963d794bec37fde7f765f",
+    "custodySeed": "288614fdd6c011b6577e72efd4073e16a32c3b045d87906a19b69d415d754bcb",
+    "pointerMint": "93b285129f16a3d479f7c01a299d151ce8b380b75d9a1a81d7758cc7446d8319",
+    "vest": "274fe8cf9946ab6add63048d2d2b21e60f6c724086ff9f0a7e598a154c5a48a1"
+  },
+  "observed": {
+    "at": "2026-10-08",
+    "how": "Koios preprod asset_addresses (every marker unit above, each held once at the address recorded here) and tx_info 288614fd... output #0 (custody NFT -> treasuryCustody.address, payment credential = treasuryCustody.scriptHash)"
+  }
+}

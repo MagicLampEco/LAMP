@@ -1,0 +1,93 @@
+{
+  "schemaVersion": 1,
+  "network": "mainnet",
+  "networkMagic": 764824073,
+  "clock": {
+    "msPerEpoch": "432000000",
+    "windowOriginMs": "1506203091000"
+  },
+  "records": [
+    {
+      "id": "mainnet-baked-pkh-8param/distribution-treasury",
+      "role": "distribution-treasury",
+      "cluster": "mainnet-baked-pkh-8param",
+      "status": "ACTIVE",
+      "supersededBy": null,
+      "policyId": null,
+      "assetName": null,
+      "scriptHash": "d5e80c9a5a885f56b36d915b4353c2e9e6797b38455d11d0014edbb6",
+      "address": "addr1w827sry6t2y9744ndkg4ks6nct57v7tm8pz46ywsq98dhdsf76slu",
+      "params": {},
+      "evidence": [
+        "file:Genesis/offchain/src/deployed.ts",
+        "tx:9d0724bd9865b14a6e77cf4495bdf73c41489689f38264e43e7ea2757dcff275",
+        "tx:8cb8e9abfe318d74cd5f4faaf6e28dd0dd7479e0231f181efa10a1c3bd7ebf9c"
+      ]
+    },
+    {
+      "id": "mainnet-baked-pkh-8param/lamp-token",
+      "role": "lamp-token",
+      "cluster": "mainnet-baked-pkh-8param",
+      "status": "ACTIVE",
+      "supersededBy": null,
+      "policyId": "55d3e01bb6c469e02665e4b6573ce65bbaf7a50ad2024e247eb180f0",
+      "assetName": "4c414d50",
+      "scriptHash": null,
+      "address": null,
+      "params": {
+        "anchor": "baked-pkh-list",
+        "mintParamCount": "8"
+      },
+      "mintClosed": true,
+      "evidence": [
+        "file:Genesis/offchain/src/lampPolicies.ts"
+      ]
+    },
+    {
+      "id": "mainnet-baked-pkh-8param/lock-vault",
+      "role": "lock-vault",
+      "cluster": "mainnet-baked-pkh-8param",
+      "status": "ACTIVE",
+      "supersededBy": null,
+      "policyId": null,
+      "assetName": null,
+      "scriptHash": null,
+      "address": "addr1wy5gl6nh5rm8f3sgp2ka3mfu5skdt2fqhu0spsxnucesdeqatlhxl",
+      "params": {},
+      "evidence": [
+        "file:Genesis/offchain/src/deployed.ts",
+        "tx:8cb8e9abfe318d74cd5f4faaf6e28dd0dd7479e0231f181efa10a1c3bd7ebf9c"
+      ]
+    },
+    {
+      "id": "mainnet-baked-pkh-8param/supply-marker",
+      "role": "supply-marker",
+      "cluster": "mainnet-baked-pkh-8param",
+      "status": "ACTIVE",
+      "supersededBy": null,
+      "policyId": "97213f2442271e01410abd26e0737982cf7d6b9b05e1ccddf0ae77f0",
+      "assetName": "535550504c59",
+      "scriptHash": null,
+      "address": null,
+      "params": {},
+      "evidence": [
+        "file:Genesis/offchain/src/deployed.ts"
+      ]
+    },
+    {
+      "id": "mainnet-baked-pkh-8param/supply-state",
+      "role": "supply-state",
+      "cluster": "mainnet-baked-pkh-8param",
+      "status": "ACTIVE",
+      "supersededBy": null,
+      "policyId": null,
+      "assetName": null,
+      "scriptHash": "84f6d84f64468d0b201171ec10c22fd1124ec3fd803e853697b34084",
+      "address": "addr1wxz0dkz0v3rg6zeqz9c7cyxz9lg3ynkrlkqrapfkj7e5ppqexy5d3",
+      "params": {},
+      "evidence": [
+        "file:Genesis/offchain/src/deployed.ts"
+      ]
+    }
+  ]
+}

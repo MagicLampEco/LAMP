@@ -1,0 +1,383 @@
+{
+  "schemaVersion": 1,
+  "network": "preprod",
+  "networkMagic": 1,
+  "clock": {
+    "msPerEpoch": "432000000",
+    "windowOriginMs": "1654041600000"
+  },
+  "records": [
+    {
+      "id": "preprod-native-sig-12param/lamp-token",
+      "role": "lamp-token",
+      "cluster": "preprod-native-sig-12param",
+      "status": "SUPERSEDED",
+      "supersededBy": "preprod-oneshot-12param/lamp-token",
+      "policyId": "7a1a7aed5ec47acc37b6fa82695c1219bf76895b505b01161367adf9",
+      "assetName": "744c414d50",
+      "scriptHash": null,
+      "address": null,
+      "params": {
+        "anchor": "native-sig-markers",
+        "mintParamCount": "12"
+      },
+      "evidence": [
+        "file:Genesis/offchain/src/lampPolicies.ts"
+      ]
+    },
+    {
+      "id": "preprod-oneshot-12param/lamp-token",
+      "role": "lamp-token",
+      "cluster": "preprod-oneshot-12param",
+      "status": "SUPERSEDED",
+      "supersededBy": "preprod-oneshot-14param/lamp-token",
+      "policyId": "d9c09230079b810ab5ed92e8db4c190d42efc42db6aac028656f7e07",
+      "assetName": "744c414d50",
+      "scriptHash": null,
+      "address": null,
+      "params": {
+        "anchor": "oneshot-markers",
+        "mintParamCount": "12"
+      },
+      "evidence": [
+        "file:Genesis/offchain/src/lampPolicies.ts"
+      ]
+    },
+    {
+      "id": "preprod-oneshot-14param-final/beacon",
+      "role": "beacon",
+      "cluster": "preprod-oneshot-14param-final",
+      "status": "ACTIVE",
+      "supersededBy": null,
+      "policyId": null,
+      "assetName": null,
+      "scriptHash": "a918b24172846efd092dc3463801a97b6f12f6ac1e73a3ba0f28c622",
+      "address": "addr_test1wz533vjpw2zxalgf9hp5vwqp49ak7yhk4s088ga6pu5vvgsr9j8xj",
+      "params": {
+        "committee": "603249abe9bc29ea474777fc4cfc2f220a784a53e201b9b9afac5ff5",
+        "committeeThreshold": "1"
+      },
+      "evidence": [
+        "file:Genesis/deployed/preprod-oneshot-14param-final.wiring.json",
+        "tx:249082f48eb05bca6074df6efaf187175f33d610853963d794bec37fde7f765f"
+      ]
+    },
+    {
+      "id": "preprod-oneshot-14param-final/beacon-marker",
+      "role": "beacon-marker",
+      "cluster": "preprod-oneshot-14param-final",
+      "status": "ACTIVE",
+      "supersededBy": null,
+      "policyId": "0ba7f2f1c9fd63e9a88c6aa795296f4b70b33cb0ff45e1ad955c98a5",
+      "assetName": "44524f50",
+      "scriptHash": null,
+      "address": null,
+      "params": {
+        "genesisRef": "1f495fbedbacfc871e2653636deb7cb88c06c0bebe783c6b2aa7c07b9719f825#0"
+      },
+      "evidence": [
+        "file:Genesis/deployed/preprod-oneshot-14param-final.wiring.json",
+        "tx:249082f48eb05bca6074df6efaf187175f33d610853963d794bec37fde7f765f"
+      ]
+    },
+    {
+      "id": "preprod-oneshot-14param-final/claim-account",
+      "role": "claim-account",
+      "cluster": "preprod-oneshot-14param-final",
+      "status": "ACTIVE",
+      "supersededBy": null,
+      "policyId": null,
+      "assetName": null,
+      "scriptHash": "38bd7236018bacad58e63f06c9a141de9288ec806138aca3f07cdf10",
+      "address": null,
+      "params": {
+        "committee": "603249abe9bc29ea474777fc4cfc2f220a784a53e201b9b9afac5ff5",
+        "committeeThreshold": "1"
+      },
+      "evidence": [
+        "file:Genesis/deployed/preprod-oneshot-14param-final.wiring.json",
+        "tx:249082f48eb05bca6074df6efaf187175f33d610853963d794bec37fde7f765f"
+      ]
+    },
+    {
+      "id": "preprod-oneshot-14param-final/claim-account-nft",
+      "role": "claim-account-nft",
+      "cluster": "preprod-oneshot-14param-final",
+      "status": "ACTIVE",
+      "supersededBy": null,
+      "policyId": "1ed6beaf4c2085c660716caa43e218bf67d1929947eedc2783f0dc9a",
+      "assetName": null,
+      "scriptHash": null,
+      "address": null,
+      "params": {
+        "committee": "603249abe9bc29ea474777fc4cfc2f220a784a53e201b9b9afac5ff5",
+        "committeeThreshold": "1"
+      },
+      "evidence": [
+        "file:Genesis/deployed/preprod-oneshot-14param-final.wiring.json",
+        "tx:249082f48eb05bca6074df6efaf187175f33d610853963d794bec37fde7f765f"
+      ]
+    },
+    {
+      "id": "preprod-oneshot-14param-final/distribution-treasury",
+      "role": "distribution-treasury",
+      "cluster": "preprod-oneshot-14param-final",
+      "status": "ACTIVE",
+      "supersededBy": null,
+      "policyId": null,
+      "assetName": null,
+      "scriptHash": "ea31abac3c7c8d3f3010551f55f8a09a8d9be83cd04084d5904e4308",
+      "address": "addr_test1wr4rr2av837g60eszp23740c5zdgmxlg8ngyppx4jp8yxzq5c9k5s",
+      "params": {
+        "committee": "603249abe9bc29ea474777fc4cfc2f220a784a53e201b9b9afac5ff5",
+        "committeeThreshold": "1"
+      },
+      "evidence": [
+        "file:Genesis/deployed/preprod-oneshot-14param-final.wiring.json",
+        "tx:249082f48eb05bca6074df6efaf187175f33d610853963d794bec37fde7f765f",
+        "tx:274fe8cf9946ab6add63048d2d2b21e60f6c724086ff9f0a7e598a154c5a48a1"
+      ]
+    },
+    {
+      "id": "preprod-oneshot-14param-final/governance-pointer",
+      "role": "governance-pointer",
+      "cluster": "preprod-oneshot-14param-final",
+      "status": "ACTIVE",
+      "supersededBy": null,
+      "policyId": "762ad632fc177ad89c4177c0a1987bd4f3a3e9b4471bb679c368c48c",
+      "assetName": "474f56504f494e544552",
+      "scriptHash": "762ad632fc177ad89c4177c0a1987bd4f3a3e9b4471bb679c368c48c",
+      "address": "addr_test1wpmz443jlsth4kyug9mupgvc00208glfk3r3hdnecd5vfrqefpfea",
+      "params": {
+        "changeDelayMs": "3600000",
+        "seedRef": "d11bf98456a970e595e21793fa12ff8c77c4482215d4167027d70082a871d667#0"
+      },
+      "evidence": [
+        "file:Genesis/deployed/preprod-oneshot-14param-final.wiring.json",
+        "tx:93b285129f16a3d479f7c01a299d151ce8b380b75d9a1a81d7758cc7446d8319"
+      ]
+    },
+    {
+      "id": "preprod-oneshot-14param-final/lamp-token",
+      "role": "lamp-token",
+      "cluster": "preprod-oneshot-14param-final",
+      "status": "ACTIVE",
+      "supersededBy": null,
+      "policyId": "493002cc03004e3e14fd607cfba59312bd946e478e69d6ab431ccfac",
+      "assetName": "744c414d50",
+      "scriptHash": null,
+      "address": null,
+      "params": {
+        "anchor": "oneshot-markers",
+        "mintParamCount": "14"
+      },
+      "evidence": [
+        "file:Genesis/offchain/src/lampPolicies.ts",
+        "tx:93b285129f16a3d479f7c01a299d151ce8b380b75d9a1a81d7758cc7446d8319",
+        "tx:288614fdd6c011b6577e72efd4073e16a32c3b045d87906a19b69d415d754bcb",
+        "tx:249082f48eb05bca6074df6efaf187175f33d610853963d794bec37fde7f765f"
+      ]
+    },
+    {
+      "id": "preprod-oneshot-14param-final/meter-marker",
+      "role": "meter-marker",
+      "cluster": "preprod-oneshot-14param-final",
+      "status": "ACTIVE",
+      "supersededBy": null,
+      "policyId": "f7b623df4539ad00edc47ffd101fa81be851e1806c45eb39111de80f",
+      "assetName": "4d45544552",
+      "scriptHash": null,
+      "address": null,
+      "params": {
+        "genesisRef": "1f495fbedbacfc871e2653636deb7cb88c06c0bebe783c6b2aa7c07b9719f825#0"
+      },
+      "evidence": [
+        "file:Genesis/deployed/preprod-oneshot-14param-final.wiring.json",
+        "tx:249082f48eb05bca6074df6efaf187175f33d610853963d794bec37fde7f765f"
+      ]
+    },
+    {
+      "id": "preprod-oneshot-14param-final/registry",
+      "role": "registry",
+      "cluster": "preprod-oneshot-14param-final",
+      "status": "ACTIVE",
+      "supersededBy": null,
+      "policyId": null,
+      "assetName": null,
+      "scriptHash": "6305bbb52a0dbbfd994c75cbd0bb691bd7b83a55cad7b36f4b86bc78",
+      "address": "addr_test1wp3stwa49gxmhlvef36uh59mdyda0wp62h9d0vm0fwrtc7qguf0du",
+      "params": {},
+      "evidence": [
+        "file:Genesis/deployed/preprod-oneshot-14param-final.wiring.json",
+        "tx:249082f48eb05bca6074df6efaf187175f33d610853963d794bec37fde7f765f"
+      ]
+    },
+    {
+      "id": "preprod-oneshot-14param-final/registry-marker",
+      "role": "registry-marker",
+      "cluster": "preprod-oneshot-14param-final",
+      "status": "ACTIVE",
+      "supersededBy": null,
+      "policyId": "6305bbb52a0dbbfd994c75cbd0bb691bd7b83a55cad7b36f4b86bc78",
+      "assetName": "5245474953545259",
+      "scriptHash": null,
+      "address": null,
+      "params": {
+        "genesisRef": "1f495fbedbacfc871e2653636deb7cb88c06c0bebe783c6b2aa7c07b9719f825#0"
+      },
+      "evidence": [
+        "file:Genesis/deployed/preprod-oneshot-14param-final.wiring.json",
+        "tx:249082f48eb05bca6074df6efaf187175f33d610853963d794bec37fde7f765f"
+      ]
+    },
+    {
+      "id": "preprod-oneshot-14param-final/reserve-custody-nft",
+      "role": "reserve-custody-nft",
+      "cluster": "preprod-oneshot-14param-final",
+      "status": "ACTIVE",
+      "supersededBy": null,
+      "policyId": "6ba3c1ad59153432669be4a1b49a165bfe9ebe29bc0a91a6361a5098",
+      "assetName": "6c616d702d72657365727665",
+      "scriptHash": null,
+      "address": null,
+      "params": {},
+      "evidence": [
+        "file:Genesis/deployed/preprod-oneshot-14param-final.wiring.json",
+        "tx:288614fdd6c011b6577e72efd4073e16a32c3b045d87906a19b69d415d754bcb"
+      ]
+    },
+    {
+      "id": "preprod-oneshot-14param-final/supply-marker",
+      "role": "supply-marker",
+      "cluster": "preprod-oneshot-14param-final",
+      "status": "ACTIVE",
+      "supersededBy": null,
+      "policyId": "6d416952e04d93e3c8d67589a3ce835ce406fcfaf3e8e73df481c0a8",
+      "assetName": "535550504c59",
+      "scriptHash": null,
+      "address": null,
+      "params": {
+        "genesisRef": "1f495fbedbacfc871e2653636deb7cb88c06c0bebe783c6b2aa7c07b9719f825#0"
+      },
+      "evidence": [
+        "file:Genesis/deployed/preprod-oneshot-14param-final.wiring.json",
+        "tx:249082f48eb05bca6074df6efaf187175f33d610853963d794bec37fde7f765f"
+      ]
+    },
+    {
+      "id": "preprod-oneshot-14param-final/supply-state",
+      "role": "supply-state",
+      "cluster": "preprod-oneshot-14param-final",
+      "status": "ACTIVE",
+      "supersededBy": null,
+      "policyId": null,
+      "assetName": null,
+      "scriptHash": "1e2566ca002bdadc08525373b4a6bb130f98251a6c3c8f85a023bd3a",
+      "address": "addr_test1wq0z2ek2qq4a4hqg2ffh8d9xhvfslxp9rfkreru95q3m6ws4xyqzt",
+      "params": {
+        "distCap": "26370000000000000",
+        "reserveCap": "9630000000000000"
+      },
+      "evidence": [
+        "file:Genesis/deployed/preprod-oneshot-14param-final.wiring.json",
+        "tx:249082f48eb05bca6074df6efaf187175f33d610853963d794bec37fde7f765f"
+      ]
+    },
+    {
+      "id": "preprod-oneshot-14param-final/treasury-custody",
+      "role": "treasury-custody",
+      "cluster": "preprod-oneshot-14param-final",
+      "status": "ACTIVE",
+      "supersededBy": null,
+      "policyId": null,
+      "assetName": null,
+      "scriptHash": "f1dcc2e73a00a30f1ba2244dea33a7fef73d30d6974e6815018db588",
+      "address": "addr_test1xrcaesh88gq2xrcm5gjym63n5ll0w0fs66t5u6q4qxxmtzxvzft7e0nndnz6d3nj87zgamu6a8t84n5u5vkjsf8ssl8q83l6y4",
+      "params": {},
+      "evidence": [
+        "file:Genesis/deployed/preprod-oneshot-14param-final.wiring.json",
+        "tx:288614fdd6c011b6577e72efd4073e16a32c3b045d87906a19b69d415d754bcb"
+      ]
+    },
+    {
+      "id": "preprod-oneshot-14param-final/treasury-marker",
+      "role": "treasury-marker",
+      "cluster": "preprod-oneshot-14param-final",
+      "status": "ACTIVE",
+      "supersededBy": null,
+      "policyId": "379e60c09b0c778dc7651e254a977f89017393226df389acd5f27277",
+      "assetName": "5452454153555259",
+      "scriptHash": null,
+      "address": null,
+      "params": {
+        "genesisRef": "1f495fbedbacfc871e2653636deb7cb88c06c0bebe783c6b2aa7c07b9719f825#0"
+      },
+      "evidence": [
+        "file:Genesis/deployed/preprod-oneshot-14param-final.wiring.json",
+        "tx:249082f48eb05bca6074df6efaf187175f33d610853963d794bec37fde7f765f"
+      ]
+    },
+    {
+      "id": "preprod-oneshot-14param-v3/lamp-token",
+      "role": "lamp-token",
+      "cluster": "preprod-oneshot-14param-v3",
+      "status": "SUPERSEDED",
+      "supersededBy": "preprod-oneshot-14param-v4/lamp-token",
+      "policyId": "53bc12ade5ee24d43750b9560f152a54b48b804fab34dab810fb8743",
+      "assetName": "744c414d50",
+      "scriptHash": null,
+      "address": null,
+      "params": {
+        "anchor": "oneshot-markers",
+        "mintParamCount": "14"
+      },
+      "evidence": [
+        "file:Genesis/offchain/src/lampPolicies.ts",
+        "tx:21f39c9b92c51080a6dd769f637f6fb0e6ae8307eb0089c597d63f9b031aa716",
+        "tx:0a252d63ba9e36691be2aa167b32253af23b0bfb04a495463ba287ea37f8b4a1",
+        "tx:af027fab64ea367641e1e64f32978f38b18d1863021717c85f75ebac789316e7",
+        "tx:838307c9738568a0cb1b8a718bb66942bd25f7beacd13dafb261f8d86b81da26"
+      ]
+    },
+    {
+      "id": "preprod-oneshot-14param-v4/lamp-token",
+      "role": "lamp-token",
+      "cluster": "preprod-oneshot-14param-v4",
+      "status": "SUPERSEDED",
+      "supersededBy": "preprod-oneshot-14param-final/lamp-token",
+      "policyId": "7ecbffe2b41f68c917035f52a1053efbd2323dfd85a81cf840089ea2",
+      "assetName": "744c414d50",
+      "scriptHash": null,
+      "address": null,
+      "params": {
+        "anchor": "oneshot-markers",
+        "mintParamCount": "14"
+      },
+      "evidence": [
+        "file:Genesis/offchain/src/lampPolicies.ts",
+        "tx:892cff97fc02d7dd335e8bf2b7121833f9be78720ec7da9472ee93aba5ca1471",
+        "tx:478ff1f4f945ed7d68224c28080e959da0dee32d69ceb754a3dce6ce745f6047"
+      ]
+    },
+    {
+      "id": "preprod-oneshot-14param/lamp-token",
+      "role": "lamp-token",
+      "cluster": "preprod-oneshot-14param",
+      "status": "SUPERSEDED",
+      "supersededBy": "preprod-oneshot-14param-v3/lamp-token",
+      "policyId": "8169b76cdaba83cf7c9ae32ebd2bb3a58aa215c7dc0b62c8f5e268dd",
+      "assetName": "744c414d50",
+      "scriptHash": null,
+      "address": null,
+      "params": {
+        "anchor": "oneshot-markers",
+        "mintParamCount": "14"
+      },
+      "evidence": [
+        "file:Genesis/offchain/src/lampPolicies.ts",
+        "tx:612525047f0912518ca53aae732aa11fc418d38b8b55f84ceb84fc9b81ed36a6",
+        "tx:47679b091e4db1d633efbd28f0747dfb8ddc0ddf403128c6f2bafe4532e2da39"
+      ]
+    }
+  ]
+}
