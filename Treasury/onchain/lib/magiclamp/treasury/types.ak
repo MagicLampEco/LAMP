@@ -32,7 +32,7 @@ pub type CustodyDatum {
   accepted_assets : List<AssetKey>,   // (policy,name) được nhận
   ledger          : List<LedgerEntry>,// sổ kế toán đa-asset × bucket
   cut_bps         : Int,              // bps cắt về bucket (DAO chỉnh)
-  governance_ref  : ByteArray,        // script hash Governance gắn với treasury này
+  governance_ref  : ByteArray,        // policy id NFT con trỏ governance (== tham số pointer_policy của custody; KHÔNG phải script Governance — GovernancePointer.md)
   epoch           : Int,              // epoch cập nhật gần nhất
   // SINGLE-USE marker chống replay proposal (HARD BLOCKER finding 7, TECH §7.2 / câu treo #2).
   // v1 KHÔNG vesting: mỗi proposal chi ĐÚNG MỘT LẦN → released_cumulative ngầm = toàn bộ.
