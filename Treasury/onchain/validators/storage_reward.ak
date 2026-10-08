@@ -1,4 +1,4 @@
-// Validator trả thưởng lưu trữ LampNet (Treasury/storage-reward/CONTRACT.md v0.1).
+// Validator trả thưởng lưu trữ LampNet (Treasury/storage-reward/CONTRACT.md v0.2).
 //
 // Mint + spend cùng một script: policy của token đợt == hash script này.
 // Mã bất biến `SRP-*` khớp mục §5 của CONTRACT; mỗi mã có bài ghim trong `storage_reward_test.ak`.
@@ -8,12 +8,14 @@ use aiken/collection/list
 use aiken/primitive/bytearray
 use cardano/address.{Script, VerificationKey}
 use cardano/assets
-use cardano/transaction.{InlineDatum, Input, Output, OutputReference, Transaction}
+use cardano/transaction.{
+  InlineDatum, Input, NoDatum, Output, OutputReference, Transaction,
+}
 use magiclamp/treasury/ledger
 use magiclamp/treasury/pointer
 use magiclamp/treasury/storage_reward.{
-  Active, BatchMint, Burn, BurnBatch, Claim, ClaimItem, Close, MintBatch, Open, PayoutAction,
-  PayoutDatum, PostRoot, Round, Tombstone,
+  Active, BatchMint, Burn, BurnBatch, Claim, ClaimItem, Close, MintBatch, Open,
+  PayoutAction, PayoutDatum, PostRoot, Round, Tombstone,
 } as sr
 use magiclamp/treasury/types.{AssetKey, CustodyDatum}
 use magiclamp/treasury/util
@@ -49,20 +51,42 @@ validator storage_reward(
         // SRP-OPEN-AUTH: M-of-N.
         expect
           pointer.committee_approved(committee, threshold, tx.extra_signatories)
+        // SRP-ONLY-VK-INPUTS (Open): ngoài UTxO nguồn, mọi input là ví khoá — không custody,
+        // không script lạ (chống một output thoả cho nhánh của script khác).
+        expect only_vk_inputs_besides(tx.inputs, policy_id, policy_id)
         // SRP-ONE-INPUT: đúng một input ở script này, và nó CHƯA mở (không token).
         expect [src] =
-          list.filter(tx.inputs, fn(i) { util.is_at_script(i.output.address, policy_id) })
-        expect assets.quantity_of(src.output.value, policy_id, name) == 0
+          list.filter(
+            tx.inputs,
+            fn(i) { util.is_at_script(i.output.address, policy_id) },
+          )
+        let src_value = src.output.value
+        let carp_in = assets.quantity_of(src_value, carp_policy, carp_name)
+        // SRP-OPEN-SRC-CLEAN: nguồn chỉ có ADA + CARP (không token đợt, không asset lạ).
+        expect
+          src_value == sr.batch_value(
+            assets.lovelace_of(src_value),
+            carp_policy,
+            carp_name,
+            carp_in,
+            policy_id,
+            0,
+          )
         // SRP-OPEN-OUT: đúng một output ở script này, cùng địa chỉ đầy đủ, không ref script.
         expect [out] =
-          list.filter(tx.outputs, fn(o) { util.is_at_script(o.address, policy_id) })
+          list.filter(
+            tx.outputs,
+            fn(o) { util.is_at_script(o.address, policy_id) },
+          )
         expect out.address == src.output.address
         expect out.reference_script == None
         expect InlineDatum(d) = out.datum
-        expect Active { start_epoch, epoch_fees, share_bps, round }: PayoutDatum = d
-        let carp_in =
-          assets.quantity_of(src.output.value, carp_policy, carp_name)
+        expect Active { batch_id, start_epoch, epoch_fees, share_bps, round }: PayoutDatum =
+          d
+        let out_ada = assets.lovelace_of(out.value)
         and {
+          // SRP-OPEN-ID: định danh đợt = băm outref nguồn.
+          batch_id == sr.batch_id_of(src.output_reference),
           // SRP-OPEN-FRESH: chưa vòng nào.
           round == None,
           start_epoch >= 0,
@@ -74,14 +98,16 @@ validator storage_reward(
           share_bps <= sr.max_share_bps,
           // SRP-OPEN-KEEP: toàn bộ CARP của UTxO nạp vào đợt; ADA không giảm; value sạch.
           out.value == sr.batch_value(
-            assets.lovelace_of(out.value),
+            out_ada,
             carp_policy,
             carp_name,
             carp_in,
             policy_id,
             1,
           ),
-          assets.lovelace_of(out.value) >= assets.lovelace_of(src.output.value),
+          out_ada >= assets.lovelace_of(src_value),
+          // SRP-OPEN-MINADA: đủ ADA cho datum lớn nhất (bitmap 512 B) ⇒ PostRoot không vướng min-UTxO.
+          out_ada >= sr.min_batch_lovelace,
           // SRP-OPEN-FUNDED: Σ trần ≤ CARP nạp ⇒ mọi trần đều chi được.
           sr.total_caps(epoch_fees, share_bps) <= carp_in,
           // SRP-OPEN-CLOSABLE: custody đích nhận CARP + ADA vào bucket `storage_reward`.
@@ -123,20 +149,24 @@ validator storage_reward(
     when redeemer is {
       Open -> and {
           token_in == 0,
-          // mint handler `MintBatch` gánh mọi kiểm còn lại.
+          // mint handler `MintBatch` gánh mọi kiểm còn lại (kể cả SRP-ONLY-VK-INPUTS).
           own_mint == [Pair(sr.batch_token_name, 1)],
         }
 
       PostRoot { epoch, root, leaf_count } -> {
         // SRP-AUTH-TOKEN: chỉ UTxO có token mới có datum đáng tin.
         expect token_in == 1
+        // SRP-ONLY-VK-INPUTS (PostRoot)
+        expect only_vk_inputs_besides(tx.inputs, own_hash, own_hash)
         expect Some(raw) = datum_opt
-        expect Active { start_epoch, epoch_fees, share_bps, round }: PayoutDatum =
+        expect Active { batch_id, start_epoch, epoch_fees, share_bps, round }: PayoutDatum =
           raw
         let cur = util.get_epoch(tx, ms_per_epoch, window_origin_ms)
         let out = continuing(tx.outputs, own_hash)
+        let in_value = own_in.output.value
         let expected: Data =
           Active {
+            batch_id,
             start_epoch,
             epoch_fees,
             share_bps,
@@ -167,29 +197,45 @@ validator storage_reward(
           leaf_count >= 1,
           leaf_count <= sr.max_leaves,
           own_mint == [],
-          // SRP-CONT: cùng địa chỉ, value NGUYÊN, datum đúng.
+          // SRP-CONT: cùng địa chỉ, datum đúng; mọi asset ngoài ADA NGUYÊN, ADA không giảm
+          // (datum phình theo bitmap ⇒ người dựng được nạp thêm ADA cho min-UTxO).
           out.address == own_addr,
           out.reference_script == None,
-          out.value == own_in.output.value,
+          assets.without_lovelace(out.value) == assets.without_lovelace(in_value),
+          assets.lovelace_of(out.value) >= assets.lovelace_of(in_value),
           out.datum == InlineDatum(expected),
         }
       }
 
       Claim { claims } -> {
         expect token_in == 1
+        // SRP-ONLY-VK-INPUTS (Claim): không custody trong cùng tx — chống `Release` của custody
+        // đếm output đợt-tiếp-tục làm người nhận của nó (thoả-kép, audit 2026-10-08).
+        expect only_vk_inputs_besides(tx.inputs, own_hash, own_hash)
         expect Some(raw) = datum_opt
-        expect Active { start_epoch, epoch_fees, share_bps, round }: PayoutDatum =
+        expect Active { batch_id, start_epoch, epoch_fees, share_bps, round }: PayoutDatum =
           raw
         expect Some(r) = round
         expect claims != []
         // SRP-PAY-POSITION: output[0] = đợt tiếp tục; output[1..k] trả lần lượt claim 1..k.
         expect [out, ..pays] = tx.outputs
         let (bitmap, total) =
-          settle(claims, pays, r, carp_policy, carp_name, r.claimed, 0)
+          settle(
+            claims,
+            pays,
+            r,
+            own_hash,
+            batch_id,
+            carp_policy,
+            carp_name,
+            r.claimed,
+            0,
+          )
         let in_value = own_in.output.value
         let carp_in = assets.quantity_of(in_value, carp_policy, carp_name)
         let expected: Data =
           Active {
+            batch_id,
             start_epoch,
             epoch_fees,
             share_bps,
@@ -222,40 +268,29 @@ validator storage_reward(
         let carp_amt = assets.quantity_of(in_value, carp_policy, carp_name)
         let ada_amt = assets.lovelace_of(in_value)
         // SRP-RETURN-INPUTS: ngoài đợt + custody, mọi input là ví khoá.
-        expect
-          list.all(
-            tx.inputs,
-            fn(i) {
-              when i.output.address.payment_credential is {
-                VerificationKey(_) -> True
-                Script(h) -> h == own_hash || h == custody_hash
-              }
-            },
-          )
+        expect only_vk_inputs_besides(tx.inputs, own_hash, custody_hash)
         // SRP-RETURN-NOMINT
         expect own_mint == []
         // SRP-RETURN-LINE: dòng sổ (storage_reward, CARP) và (storage_reward, ADA) của custody
-        // tăng ĐÚNG số đợt đang giữ.
-        expect
-          custody_line_delta(
-            tx,
+        // tăng ĐÚNG số đợt đang giữ. Giải mã CustodyDatum MỘT lần mỗi đầu.
+        let cin =
+          custody_utxo(
+            list.map(tx.inputs, fn(i) { i.output }),
             custody_hash,
             custody_seed_policy,
             custody_instance_id,
-            reward_bucket,
-            carp_policy,
-            carp_name,
-          ) == carp_amt
-        expect
-          custody_line_delta(
-            tx,
+          )
+        let cout =
+          custody_utxo(
+            tx.outputs,
             custody_hash,
             custody_seed_policy,
             custody_instance_id,
-            reward_bucket,
-            #"",
-            #"",
-          ) == ada_amt
+          )
+        expect
+          line_delta(cin.ledger, cout.ledger, reward_bucket, carp_policy, carp_name) == carp_amt
+        expect
+          line_delta(cin.ledger, cout.ledger, reward_bucket, #"", #"") == ada_amt
         let own_outs =
           list.filter(tx.outputs, fn(o) { util.is_at_script(o.address, own_hash) })
         if token_in == 1 {
@@ -264,7 +299,8 @@ validator storage_reward(
           let cur = util.get_epoch(tx, ms_per_epoch, window_origin_ms)
           // SRP-TOMBSTONE: token ở lại script, trong UTxO `Tombstone`, value = token + ADA.
           expect [tomb] = own_outs
-          let tombstone: Data = Tombstone
+          expect InlineDatum(td) = tomb.datum
+          expect Tombstone { refund_to }: PayoutDatum = td
           and {
             // SRP-CLOSE-AUTH
             or {
@@ -277,7 +313,7 @@ validator storage_reward(
             },
             tomb.address == own_addr,
             tomb.reference_script == None,
-            tomb.datum == InlineDatum(tombstone),
+            bytearray.length(refund_to) == 28,
             assets.without_lovelace(tomb.value) == assets.from_asset(
               own_hash,
               sr.batch_token_name,
@@ -296,11 +332,19 @@ validator storage_reward(
       Burn -> {
         expect token_in == 1
         expect Some(raw) = datum_opt
-        let tombstone: Data = Tombstone
+        expect Tombstone { refund_to }: PayoutDatum = raw
+        let ada = assets.lovelace_of(own_in.output.value)
         and {
-          // SRP-BURN-TOMB
-          raw == tombstone,
           own_mint == [Pair(sr.batch_token_name, -1)],
+          // SRP-BURN-REFUND: ADA của Tombstone về ví người đóng (payment credential).
+          list.any(
+            tx.outputs,
+            fn(o) {
+              o.address.payment_credential == VerificationKey(refund_to) && assets.lovelace_of(
+                o.value,
+              ) >= ada
+            },
+          ),
         }
       }
     }
@@ -309,6 +353,24 @@ validator storage_reward(
   else(_) {
     fail
   }
+}
+
+/// SRP-ONLY-VK-INPUTS / SRP-RETURN-INPUTS: mọi input là ví khoá, trừ input ở `own_hash` hoặc
+/// `allowed` (Close truyền custody_hash; nhánh khác truyền lại own_hash ⇒ không script nào khác).
+fn only_vk_inputs_besides(
+  inputs: List<Input>,
+  own_hash: ByteArray,
+  allowed: ByteArray,
+) -> Bool {
+  list.all(
+    inputs,
+    fn(i) {
+      when i.output.address.payment_credential is {
+        VerificationKey(_) -> True
+        Script(h) -> h == own_hash || h == allowed
+      }
+    },
+  )
 }
 
 /// Output đợt tiếp tục: đúng một output ở script này.
@@ -323,6 +385,8 @@ fn settle(
   claims: List<ClaimItem>,
   pays: List<Output>,
   r: Round,
+  own_hash: ByteArray,
+  batch_id: ByteArray,
   carp_policy: ByteArray,
   carp_name: ByteArray,
   bitmap: ByteArray,
@@ -338,15 +402,31 @@ fn settle(
       expect c.index < r.leaf_count
       // SRP-NO-DOUBLE: bit chưa bật (kể cả claim trùng trong cùng tx).
       expect !sr.is_claimed(bitmap, c.index)
-      // SRP-PROOF: lá dựng từ ĐỊA CHỈ output thật ⇒ không trả nhầm địa chỉ.
+      // SRP-PAYEE-PLAIN (fail-closed): người nhận là ví khoá, output không datum, không ref script.
+      expect VerificationKey(_) = p.address.payment_credential
+      expect p.datum == NoDatum
+      expect p.reference_script == None
+      // SRP-PROOF + SRP-LEAF-BATCH: lá dựng từ ĐỊA CHỈ output thật và định danh đợt.
       expect
-        sr.root_from(sr.leaf_hash(r.epoch, c.index, c.amount, p.address), c.proof) == r.root
+        sr.root_from(
+          sr.leaf_hash(
+            own_hash,
+            batch_id,
+            r.epoch,
+            c.index,
+            c.amount,
+            p.address,
+          ),
+          c.proof,
+        ) == r.root
       // SRP-PAY-EXACT
       expect assets.quantity_of(p.value, carp_policy, carp_name) == c.amount
       settle(
         rest,
         more,
         r,
+        own_hash,
+        batch_id,
         carp_policy,
         carp_name,
         sr.set_claimed(bitmap, c.index),
@@ -378,30 +458,15 @@ fn custody_utxo(
   cd
 }
 
-/// Δ dòng sổ (bucket, asset) của custody giữa input và output trong tx.
-fn custody_line_delta(
-  tx: Transaction,
-  custody_hash: ByteArray,
-  seed_policy: ByteArray,
-  instance_id: ByteArray,
+/// Δ dòng sổ (bucket, asset) giữa sổ custody vào và ra.
+fn line_delta(
+  lin: List<types.LedgerEntry>,
+  lout: List<types.LedgerEntry>,
   bucket: Int,
   policy: ByteArray,
   name: ByteArray,
 ) -> Int {
-  let cin =
-    custody_utxo(
-      list.map(tx.inputs, fn(i) { i.output }),
-      custody_hash,
-      seed_policy,
-      instance_id,
-    )
-  let cout = custody_utxo(tx.outputs, custody_hash, seed_policy, instance_id)
-  ledger.get(cout.ledger, bucket, policy, name) - ledger.get(
-    cin.ledger,
-    bucket,
-    policy,
-    name,
-  )
+  ledger.get(lout, bucket, policy, name) - ledger.get(lin, bucket, policy, name)
 }
 
 /// SRP-OPEN-CLOSABLE: custody (reference input) nhận CARP + ADA và có bucket `storage_reward`.
@@ -424,7 +489,10 @@ fn custody_closable(
       instance_id,
     )
   and {
-    list.has(cd.accepted_assets, AssetKey { policy: carp_policy, name: carp_name }),
+    list.has(
+      cd.accepted_assets,
+      AssetKey { policy: carp_policy, name: carp_name },
+    ),
     list.has(cd.accepted_assets, AssetKey { policy: #"", name: #"" }),
     list.has(cd.buckets, bucket),
   }

@@ -13,6 +13,7 @@ use aiken/math
 use aiken/primitive/bytearray
 use cardano/address.{Address, Credential, Inline, Script, VerificationKey}
 use cardano/assets.{Value}
+use cardano/transaction.{OutputReference}
 
 /// Tên token chứng thực đợt.
 pub const batch_token_name: ByteArray = "SRPBATCH"
@@ -32,8 +33,18 @@ pub const bps_denominator: Int = 10000
 /// Trần số lá một epoch ⇒ bitmap ≤ 512 byte trong datum.
 pub const max_leaves: Int = 4096
 
-/// Số epoch chờ sau epoch dịch vụ cuối rồi mới cho đóng đợt không cần chữ ký.
-pub const close_grace_epochs: Int = 1
+/// Số epoch chờ sau epoch dịch vụ cuối rồi mới cho đóng đợt không cần chữ ký. 2 (không phải 1):
+/// gốc epoch cuối đăng sớm nhất ở epoch `start + n`; hạn `start + n + 2` để lá đó có trọn một epoch
+/// sau epoch đăng gốc, kể cả khi hội đồng đăng muộn trong epoch `start + n`.
+pub const close_grace_epochs: Int = 2
+
+/// ADA tối thiểu của UTxO đợt lúc mở (SRP-OPEN-MINADA). Datum lớn nhất (bitmap 512 B, 4096 lá) làm
+/// output ≈ 800 B; min-UTxO Babbage = (160 + cỡ output) × coinsPerUTxOByte 4310 ≈ 4,14 ADA. 5 ADA chừa
+/// ~20%. Bài `min_batch_lovelace_covers_largest_datum` đo lại cỡ output bằng `cbor.serialise`.
+pub const min_batch_lovelace: Int = 5_000_000
+
+/// Hệ số min-UTxO hiện hành (tham số giao thức `coinsPerUTxOByte`) — chỉ bài kiểm dùng.
+pub const coins_per_utxo_byte: Int = 4310
 
 /// Trạng thái vòng trả của MỘT epoch dịch vụ.
 pub type Round {
@@ -46,12 +57,16 @@ pub type Round {
 
 pub type PayoutDatum {
   Active {
+    // Định danh đợt = blake2b_256(txid ‖ u16_be(index)) của UTxO nguồn tiêu ở `Open` — duy nhất
+    // toàn chuỗi. Vào lá ⇒ bằng chứng của đợt này không dùng được ở đợt khác (SRP-LEAF-BATCH).
+    batch_id: ByteArray,
     start_epoch: Int,
     epoch_fees: List<Int>,
     share_bps: Int,
     round: Option<Round>,
   }
-  Tombstone
+  // `refund_to` = VerificationKeyHash người đóng; `Burn` trả ADA của Tombstone về đó.
+  Tombstone { refund_to: ByteArray }
 }
 
 pub type ClaimItem {
@@ -94,10 +109,30 @@ pub fn stake_bytes(addr: Address) -> ByteArray {
   }
 }
 
-/// leaf = blake2b_256(0x20 ‖ u64be(epoch) ‖ u32be(index) ‖ u64be(amount) ‖ payment ‖ stake)
-pub fn leaf_hash(epoch: Int, index: Int, amount: Int, addr: Address) -> ByteArray {
+/// blake2b_256(txid ‖ u16_be(output_index)).
+pub fn batch_id_of(r: OutputReference) -> ByteArray {
+  crypto.blake2b_256(
+    bytearray.concat(
+      r.transaction_id,
+      bytearray.from_int_big_endian(r.output_index, 2),
+    ),
+  )
+}
+
+/// leaf = blake2b_256(0x20 ‖ policy(28) ‖ batch_id(32) ‖ u64be(epoch) ‖ u32be(index) ‖ u64be(amount)
+///                    ‖ payment ‖ stake)
+pub fn leaf_hash(
+  policy: ByteArray,
+  batch_id: ByteArray,
+  epoch: Int,
+  index: Int,
+  amount: Int,
+  addr: Address,
+) -> ByteArray {
   crypto.blake2b_256(
     leaf_tag
+      |> bytearray.concat(policy)
+      |> bytearray.concat(batch_id)
       |> bytearray.concat(bytearray.from_int_big_endian(epoch, 8))
       |> bytearray.concat(bytearray.from_int_big_endian(index, 4))
       |> bytearray.concat(bytearray.from_int_big_endian(amount, 8))

@@ -1,4 +1,9 @@
-# Storage reward payout — CONTRACT v0.1 (2026-10-08)
+# Storage reward payout — CONTRACT v0.2 (2026-10-08)
+
+v0.2 vá kết quả soát an ninh cùng ngày: cấm input script ngoài đợt ở Open/PostRoot/Claim (thoả-kép với `Release`
+của custody) · người nhận chỉ là ví khoá, output trả không datum/ref script · lá mang định danh đợt · PostRoot nạp thêm
+ADA được, Open ép ADA tối thiểu · Tombstone hoàn ADA cho người đóng · nguồn Open sạch · hạn đóng +2 epoch.
+Định dạng lá v0.1 BỊ THAY — bộ dựng cây phải dùng §4 bản này.
 
 Validator trả thưởng lưu trữ của LampNet bằng CARP, thuộc họ Treasury. Mã: `Treasury/onchain/validators/storage_reward.ak`
 (mint + spend), logic thuần `Treasury/onchain/lib/magiclamp/treasury/storage_reward.ak`, bài kiểm
@@ -37,13 +42,17 @@ người giữ nó gắn được token vào output của một `Release` sau (p
 
 ```
 Round       { epoch: Int, root: ByteArray, leaf_count: Int, paid: Int, claimed: ByteArray }
-PayoutDatum = Active { start_epoch: Int, epoch_fees: List<Int>, share_bps: Int, round: Option<Round> }
-            | Tombstone
+PayoutDatum = Active { batch_id: ByteArray, start_epoch: Int, epoch_fees: List<Int>, share_bps: Int,
+                       round: Option<Round> }
+            | Tombstone { refund_to: VerificationKeyHash }
 ClaimItem   { index: Int, amount: Int, proof: List<ByteArray> }
 PayoutAction (spend) = Open | PostRoot { epoch, root, leaf_count } | Claim { claims: List<ClaimItem> } | Close | Burn
 BatchMint    (mint)  = MintBatch | BurnBatch
 ```
 
+- `batch_id` = `blake2b_256(txid ‖ u16_be(output_index))` của UTxO nguồn tiêu ở `Open` — duy nhất toàn chuỗi, ép lúc đúc.
+  Không dùng `start_epoch` làm định danh: đóng sớm rồi mở lại đợt cùng `start_epoch` sẽ trùng định danh.
+- `refund_to` = VK người đóng; `Burn` trả ADA của Tombstone về đó.
 - `epoch_fees[i]` = ΣF của epoch dịch vụ `start_epoch + i`, do hội đồng khai lúc mở đợt (LampNet cung cấp).
 - `share_bps` = s × 10000. Trần epoch e: `cap(e) = ⌊epoch_fees[e − start] × share_bps / 10000⌋`.
 - `claimed` = bitmap ⌈leaf_count/8⌉ byte; lá i ứng với byte i/8, bit (7 − i mod 8), bit cao trước.
@@ -54,7 +63,15 @@ BatchMint    (mint)  = MintBatch | BurnBatch
 custody), `custody_seed_policy`, `custody_instance_id` (NFT chứng thực custody) · `reward_bucket` (bucket_id
 `storage_reward`) · `batch_epochs` (= 6) · `ms_per_epoch`, `window_origin_ms`.
 
-Hằng: `max_share_bps = 5000` · `max_leaves = 4096` · `close_grace_epochs = 1` · tag lá `0x20`, tag nút `0x21`.
+Hằng: `max_share_bps = 5000` · `max_leaves = 4096` · `close_grace_epochs = 2` · `min_batch_lovelace = 5_000_000` ·
+tag lá `0x20`, tag nút `0x21`.
+
+`min_batch_lovelace`: output đợt lớn nhất (bitmap 512 B, `paid`/CARP 10¹², epoch 6 chữ số) đo bằng `cbor.serialise` = 799 B;
+min-UTxO Babbage = (160 + 799) × `coinsPerUTxOByte` 4310 = 4.133.290 lovelace; 5 ADA chừa ~21%. Bài
+`min_batch_lovelace_covers_largest_datum` đo lại mỗi lượt kiểm. Đổi `coinsPerUTxOByte` trên mạng thì xét lại hằng này.
+
+`close_grace_epochs = 2`: gốc epoch cuối đăng sớm nhất trong epoch `start + n`; hạn `start + n + 2` để lá của nó có trọn một
+epoch sau epoch đăng gốc, kể cả khi hội đồng đăng muộn.
 
 ## 3. Các nhánh
 
@@ -63,9 +80,12 @@ Hằng: `max_share_bps = 5000` · `max_leaves = 4096` · `close_grace_epochs = 1
 | `Open` + mint `MintBatch` | M-of-N | Tiêu đúng một UTxO chưa mở, đúc 1 token, tạo đợt `Active` với `round = None` |
 | `PostRoot` | M-of-N | Đăng gốc cây cho epoch dịch vụ đã kết thúc; bitmap và `paid` về 0 |
 | `Claim` | Bất kỳ ai | Trả K lá theo bằng chứng; output thứ i+1 trả claim thứ i |
-| `Close` (đợt có token) | Bất kỳ ai sau `start + batch_epochs + 1`; M-of-N bất kỳ lúc nào | Toàn bộ CARP + ADA của đợt vào dòng sổ custody `(storage_reward, ·)`; token sang `Tombstone` |
+| `Close` (đợt có token) | Bất kỳ ai sau `start + batch_epochs + 2`; M-of-N bất kỳ lúc nào | Toàn bộ CARP + ADA của đợt vào dòng sổ custody `(storage_reward, ·)`; token sang `Tombstone { refund_to }` |
 | `Close` (UTxO chưa mở) | M-of-N | Toàn bộ CARP + ADA vào dòng sổ custody |
-| `Burn` + mint `BurnBatch` | Bất kỳ ai | Đốt token trong `Tombstone`; ADA tự do |
+| `Burn` + mint `BurnBatch` | Bất kỳ ai | Đốt token trong `Tombstone`; ADA về `refund_to` |
+
+Open, PostRoot, Claim: ngoài input của chính đợt, mọi input là ví khoá (`SRP-ONLY-VK-INPUTS`). Close: thêm đúng input
+custody (`SRP-RETURN-INPUTS`).
 
 **Trả về đi qua `Deposit`.** Giao dịch `Close` tiêu cả UTxO custody với redeemer `Deposit { items }`, `items` gồm
 `(reward_bucket, CARP, số CARP của đợt)` (bỏ khi bằng 0) và `(reward_bucket, ADA, lovelace của đợt)`. Validator này không đọc
@@ -86,6 +106,8 @@ làm một dòng tăng (`Release` chỉ trừ, hai bucket dành riêng không tr
 
 ```
 leaf = blake2b_256( 0x20
+                  ‖ policy(28)             // hash validator storage_reward (= policy token đợt)
+                  ‖ batch_id(32)           // datum đợt, §2.1
                   ‖ u64_be(epoch)          // epoch dịch vụ
                   ‖ u32_be(index)          // 0 ≤ index < leaf_count
                   ‖ u64_be(amount)         // đơn vị nhỏ nhất của CARP, > 0
@@ -99,14 +121,21 @@ node = blake2b_256( 0x21 ‖ min(a, b) ‖ max(a, b) )     // so sánh byte theo
   kèm bit hướng (cặp đã sắp).
 - Địa chỉ không nằm trong redeemer: validator dựng lá từ ĐỊA CHỈ CỦA OUTPUT trả, nên không trả được tới địa chỉ khác lá.
   Stake credential dạng con trỏ (pointer) bị từ chối.
+- **Người nhận chỉ là ví khoá (ràng buộc tạm, fail-closed):** lá có payment `0x01` (script) mã hoá được nhưng validator TỪ
+  CHỐI trả; output trả phải `NoDatum` và không reference script (`SRP-PAYEE-PLAIN`). LampNet không đưa nút có địa chỉ script
+  vào cây cho tới khi điểm treo `SRP-T-PAYEE-DATUM` được giải.
+- `policy ‖ batch_id` buộc lá vào đúng một đợt của đúng một bản triển khai: đóng sớm rồi mở đợt mới và đăng lại cùng
+  `(epoch, root)` không trả lại được lá cũ (`SRP-LEAF-BATCH`). LampNet đọc `batch_id` từ datum đợt sau `Open`.
 - Tag `0x20`/`0x21` tránh mọi tag đã dùng trong kho (`0x00`/`0x01` merkle Distribution, `0x03` `release.spend_spec_hash`,
   `0x04` `pointer.spend_spec_hash`, `0x10`/`0x11`). Lá dài 50–78 byte sau tag, nút 64 byte sau tag: hai miền khác tag lẫn độ dài.
-- Vector kiểm (ghim ở các bài `leaf_vector_*`, `node_vector_sorted`), epoch 100:
-  - lá 0: VK `e1×28`, không stake, 1000 → `b47b90e38bfb8d0ba3ad2cc20edf9effd6ed869596dbaa0d65575fe24f61a01d`
-  - lá 1: VK `e2×28`, stake VK `5a×28`, 2500 → `d9d4ea132efda1bb2ee67470508161ea1d8849b7baea876d76fb352ff4bbc442`
-  - lá 2: Script `e3×28`, không stake, 500 → `f33bf1891dfaf93aa97b47b79b4279dc205a86f9a1dcf5c3e5c8598250e78d9c`
-  - node(lá0, lá1) → `1e52485a61e469159777b1da7051a46649dadeee7e9a3fb20f8760a69acc6622`; gốc = node(đó, lá2) →
-    `88deba76829b2b3a99ddfc570dc4e58277d235d93c4a88e3fe7871613adc80c7`
+- Vector kiểm (ghim ở các bài `batch_id_vector`, `leaf_vector_*`, `node_vector_sorted`): policy = `52×28`;
+  batch_id = blake2b_256(`77` ‖ `0000`) = `083cdb5877e2861cc9fbfa4cbdb6ffbe221c309b3633023ce4a6e25c2b09922d`; epoch 100:
+  - lá 0: VK `e1×28`, không stake, 1000 → `b2041a954820f9e7e05ee248d4f61cb8c167492035595b4e3417db6b706e20ac`
+  - lá 1: VK `e2×28`, stake VK `5a×28`, 2500 → `21a5097770cef49482429906025643558f247882273adc1ec2699811ce924dca`
+  - lá 2: VK `e4×28`, không stake, 500 → `23edc21c284d94fd2faf9577a9c51311bf18e13d2701180c2a69c725f8cb3053`
+  - node(lá0, lá1) → `718bae551f47f787905688d2b175eb9c9ebbed585c3df09473cec0186d671e1a`; gốc = node(đó, lá2) →
+    `367c75918807ae17d354fae61d1c139f868f58109ccebdd03fd29492464c55c7`
+  - (chỉ để kiểm mã hoá) lá 2 với payee Script `e3×28` → `fc9ded531c6ecfe5efa51ae3f0b9eaa704ade22b49d09fbe8f9a4e6ebca6f557`
 
 Mỗi epoch LampNet giao cho hội đồng: `(epoch, root, leaf_count)` và danh sách lá đầy đủ (để bất kỳ ai dựng được bằng chứng).
 
@@ -118,6 +147,13 @@ Mỗi epoch LampNet giao cho hội đồng: `(epoch, root, leaf_count)` và danh
 | `SRP-OPEN-AUTH` | Mở đợt cần M-of-N |
 | `SRP-ONE-INPUT` | Mọi nhánh spend: đúng một input ở script này (chống thoả-kép giữa hai đợt); `MintBatch` cũng đòi đúng một input nguồn chưa có token |
 | `SRP-OPEN-OUT` | Đúng một output ở script, cùng địa chỉ đầy đủ với input nguồn, không reference script |
+| `SRP-ONLY-VK-INPUTS` | Open (mint), PostRoot, Claim: mọi input ngoài input của chính script là ví khoá — không custody, không script lạ. Chặn thoả-kép: `Release` của custody (C-REL-7) cộng mọi output tới `to`, nên output đợt-tiếp-tục của Claim từng được tính làm người nhận `Release` trong cùng giao dịch |
+| `SRP-OPEN-ID` | `batch_id = blake2b_256(txid ‖ u16_be(index))` của UTxO nguồn |
+| `SRP-OPEN-SRC-CLEAN` | UTxO nguồn chỉ có ADA + CARP |
+| `SRP-OPEN-MINADA` | ADA đợt lúc mở ≥ `min_batch_lovelace` |
+| `SRP-PAYEE-PLAIN` | Output trả: payment credential là ví khoá, `NoDatum`, không reference script |
+| `SRP-LEAF-BATCH` | Lá chứa `policy ‖ batch_id` của đợt đang trả |
+| `SRP-BURN-REFUND` | `Burn`: có output tới VK `refund_to` mang ≥ ADA của Tombstone |
 | `SRP-OPEN-FRESH` | `round = None`, `start_epoch ≥ 0` |
 | `SRP-OPEN-SHAPE` | `len(epoch_fees) = batch_epochs`, mọi phần tử ≥ 0 |
 | `SRP-SHARE-MAX` | `0 ≤ share_bps ≤ 5000` (s ≤ 0,5) |
@@ -129,7 +165,7 @@ Mỗi epoch LampNet giao cho hội đồng: `(epoch, root, leaf_count)` và danh
 | `SRP-ROOT-RANGE` | `start ≤ epoch < start + batch_epochs` |
 | `SRP-ROOT-MONOTONIC` | `epoch` mới > `epoch` vòng trước. Đăng lại cùng epoch xoá bitmap và `paid` ⇒ nhân đôi trần |
 | `SRP-ROOT-AFTER-EPOCH` | Epoch chuỗi (cận dưới khoảng hiệu lực) > `epoch` — epoch dịch vụ đã kết thúc |
-| `SRP-CONT` | Output đợt: cùng địa chỉ, không reference script, datum = đúng bản dự kiến (so bằng Data). `PostRoot`: value nguyên vẹn, gốc 32 byte, `1 ≤ leaf_count ≤ 4096`, bitmap toàn 0, `paid = 0` |
+| `SRP-CONT` | Output đợt: cùng địa chỉ, không reference script, datum = đúng bản dự kiến (so bằng Data). `PostRoot`: mọi asset ngoài ADA nguyên vẹn, ADA không giảm (datum phình tới ~600 B), gốc 32 byte, `1 ≤ leaf_count ≤ 4096`, bitmap toàn 0, `paid = 0` |
 | `SRP-PAY-POSITION` | `outputs[0]` = đợt tiếp tục; `outputs[i]` trả claim thứ i. Mỗi output trả đúng một lá ⇒ không thoả-kép trong cùng giao dịch |
 | `SRP-LEAF-BOUNDS` | `amount > 0`, `0 ≤ index < leaf_count` |
 | `SRP-NO-DOUBLE` | Bit `index` chưa bật; bật trong datum ra (bắt cả claim trùng trong cùng giao dịch) |
@@ -140,8 +176,8 @@ Mỗi epoch LampNet giao cho hội đồng: `(epoch, root, leaf_count)` và danh
 | `SRP-RETURN-INPUTS` | `Close`: ngoài đợt và custody, mọi input là ví khoá (chống một `Deposit` thoả cho hai script) |
 | `SRP-RETURN-NOMINT` | `Close`: không đúc/đốt dưới policy này |
 | `SRP-RETURN-LINE` | Δ sổ custody `(reward_bucket, CARP)` = CARP của đợt; Δ `(reward_bucket, ADA)` = lovelace của đợt |
-| `SRP-CLOSE-AUTH` | Đợt có token: epoch chuỗi ≥ `start + batch_epochs + 1`, hoặc M-of-N |
-| `SRP-TOMBSTONE` | Đợt có token: đúng một output ở script, cùng địa chỉ, datum `Tombstone`, value = token + ADA |
+| `SRP-CLOSE-AUTH` | Đợt có token: epoch chuỗi ≥ `start + batch_epochs + 2`, hoặc M-of-N |
+| `SRP-TOMBSTONE` | Đợt có token: đúng một output ở script, cùng địa chỉ, datum `Tombstone { refund_to }` với `refund_to` 28 byte, value = token + ADA |
 | `SRP-UNOPENED-AUTH` | UTxO chưa mở: M-of-N, và không output nào ở script |
 | `SRP-BURN-TOMB` / `SRP-BURN-ONE` | Chỉ `Tombstone` được đốt; đốt đúng 1 |
 
@@ -165,6 +201,10 @@ epoch nhỏ, và ai cũng đẩy được lô claim (người nhận không cầ
 | Người giữ token thoát ra | Gắn token vào output `Release` sau | Token không rời script: `SRP-TOMBSTONE`, `SRP-OPEN-OUT`, `SRP-CONT` |
 | Người đẩy claim | Trả sai địa chỉ / thừa / trùng / vượt trần / rút ADA | `SRP-PROOF`, `SRP-PAY-EXACT`, `SRP-NO-DOUBLE`, `SRP-CAP-PER-EPOCH`, `SRP-CLAIM-VALUE` |
 | Người đẩy claim | Tiêu hai đợt, một output trả cho cả hai | `SRP-ONE-INPUT`, `SRP-PAY-POSITION` |
+| Người đẩy claim | Ghép Claim với `Release` của custody (đích = địa chỉ đợt) trong một giao dịch: output đợt-tiếp-tục vừa là đợt vừa là "người nhận" `Release`, CARP của `Release` vào túi kẻ dựng | `SRP-ONLY-VK-INPUTS` (lỗ gốc ở custody `recipients_ok` vá riêng ở custody) |
+| Người đẩy claim | Gắn datum rác / ref script vào output trả cho người nhận là script | `SRP-PAYEE-PLAIN` |
+| Hội đồng / bất kỳ ai | Đóng sớm, mở đợt mới, đăng lại cùng `(epoch, root)` để trả lá lần hai | `SRP-LEAF-BATCH`, `SRP-OPEN-ID` |
+| Người lạ | Đốt Tombstone, lấy ADA của người đóng | `SRP-BURN-REFUND` |
 | Hội đồng (dưới ngưỡng) | Đăng gốc, mở, đóng sớm | M-of-N |
 | Hội đồng (đủ ngưỡng) | Gốc gian | Thiệt bị chặn bởi `cap(e)` mỗi epoch và CARP của đợt; không lấy được CARP qua `PostRoot` (value nguyên vẹn) hay `Close` (chỉ về custody) |
 | Hội đồng (đủ ngưỡng) | Đăng lại epoch để nhân đôi trần | `SRP-ROOT-MONOTONIC` |
@@ -182,10 +222,12 @@ Chi phí validator = ca `bench_*` trừ ca dựng fixture tương ứng.
 
 | Ca | mem | cpu |
 |---|---|---|
-| Claim 1 lá, cây sâu 12, bitmap 512 B | 0,48 M | 0,152 G |
-| Claim 8 lá | 1,46 M | 0,474 G |
-| Claim 16 lá | 2,56 M (18,3% trần 14 M) | 0,839 G (8,4% trần 10 G) |
-| Close, sổ custody 20 dòng (chỉ validator này) | 2,76 M | 0,810 G |
+| Claim 1 lá, cây sâu 12, bitmap 512 B | 0,53 M | 0,169 G |
+| Claim 8 lá | 1,58 M | 0,528 G |
+| Claim 16 lá | 2,75 M (19,7% trần 14 M) | 0,935 G (9,3% trần 10 G) |
+| Close, sổ custody 20 dòng (chỉ validator này; CustodyDatum giải mã một lần mỗi đầu) | 1,75 M | 0,521 G |
+
+Script (chưa áp tham số) 6.722 B.
 
 Close còn phải cộng chi phí nhánh `Deposit` của custody ở cùng giao dịch (chưa đo trong phiên này).
 
@@ -198,5 +240,5 @@ Close còn phải cộng chi phí nhánh `Deposit` của custody ở cùng giao 
 | `SRP-T-LEDGER-LINES` | `Deposit` có thể thêm 2 dòng sổ; custody chặn ở 20 dòng | `Close` bị custody từ chối khi sổ đầy; CARP nằm yên trong đợt | `Treasury/CONTRACT.md §13` |
 | `SRP-T-FEES-ATTEST` | F_e do hội đồng khai, không đối chiếu on-chain với ký quỹ LampNet | Thiệt ≤ CARP một đợt; `SRP-SHARE-MAX` vẫn ép trên số khai | §7 |
 | `SRP-T-UNCLAIMED-WINDOW` | Lá epoch e hết hạn khi đăng gốc e+1 | Hội đồng chọn thời điểm đăng; CARP chưa nhận về custody | §6 |
-| `SRP-T-PAYEE-DATUM` | Người nhận là script có thể cần datum | Validator không ép datum output trả | §4 |
+| `SRP-T-PAYEE-DATUM` | Trả cho nút có địa chỉ script (cần datum theo script đích) | Chỉ trả ví khoá; output trả `NoDatum`, không ref script (`SRP-PAYEE-PLAIN`) | §4 |
 | `SRP-T-OFFCHAIN` | Bộ dựng giao dịch + bộ dựng cây chưa có | Không triển khai khi chưa có bài đầu-cuối | — |
