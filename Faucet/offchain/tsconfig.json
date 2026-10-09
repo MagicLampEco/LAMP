@@ -18,9 +18,14 @@
     // Node đi ngược từ `<module>/tests/` không bao giờ chạm tới nó, và tsc ngập TS2307 — đỏ
     // tới mức không ai đọc nữa, tức mất luôn tác dụng cổng gác. Trỏ specifier trần về
     // node_modules của chính package để tests được typecheck THẬT.
+    // `../server/**` là ESM (`server/package.json` "type": "module"): phân giải ESM không nhận
+    // thư mục làm module, nên mẫu `*` ở trên trượt — lucid được trỏ thẳng tới tệp kiểu của nó.
     "baseUrl":          ".",
-    "paths":            { "*": ["node_modules/*"] }
+    "paths":            {
+      "@lucid-evolution/lucid": ["node_modules/@lucid-evolution/lucid/dist/index.d.ts"],
+      "*": ["node_modules/*"]
+    }
   },
-  "include": ["src/**/*", "../tests/**/*"],
+  "include": ["src/**/*", "../tests/**/*", "../server/**/*"],
   "exclude": ["node_modules", "dist"]
 }

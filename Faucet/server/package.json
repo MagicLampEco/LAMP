@@ -1,0 +1,6 @@
+{
+  "name": "@magiclamp/faucet-server",
+  "private": true,
+  "type": "module",
+  "description": "Đánh dấu ESM cho Faucet/server (tsc NodeNext và node đọc kiểu module từ package.json gần nhất). Phụ thuộc lấy từ Faucet/offchain; chạy bản dựng: cd Faucet/offchain && npm run build && node dist/server/faucetBuild.js"
+}

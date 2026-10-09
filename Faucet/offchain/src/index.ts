@@ -15,3 +15,6 @@ export * from "./epochWindow.js";
 
 // Faucet v3.1 — sổ `opened_root` (mỗi DID tối đa một account).
 export * from "./openedLedger.js";
+
+// Vòi v1 khôi phục (tLAMP Preprod 493002cc) — permissionless, máy chủ dựng tx chưa ký.
+export * from "./faucetV1.js";
