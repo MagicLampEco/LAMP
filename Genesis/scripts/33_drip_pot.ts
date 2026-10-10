@@ -253,12 +253,29 @@ async function main(): Promise<void> {
 
   if (STEP === "claim") {
     const only = (process.env.VAULT ?? "").trim();
-    const skip = new Set((process.env.SKIP_VAULTS ?? "").split(",").map((v) => v.trim()).filter(Boolean));
-    const skipped = accounts.filter((a) => skip.has(a.vault));
+    // So theo `vaultKey` (Plutus Data của địa chỉ), không theo chuỗi bech32: hai cách viết một địa
+    // chỉ phải cùng bị bỏ qua. Mục không đọc được ⇒ DỪNG; mục đọc được mà không khớp tài khoản nào
+    // ⇒ báo to (gõ nhầm thì đích chết sẽ bị rút vào), nhưng vẫn rút cho các tài khoản còn lại.
+    const skipRaw = (process.env.SKIP_VAULTS ?? "").split(",").map((v) => v.trim()).filter(Boolean);
+    const skip = new Set(skipRaw.map((v) => {
+      try { return vaultKey(v); } catch (e) {
+        throw new Error(`DRIP-CLAIM-011: mục SKIP_VAULTS '${v}' không phải địa chỉ — ${(e as Error).message}`);
+      }
+    }));
+    const accountKeys = new Set(accounts.map((a) => vaultKey(a.vault)));
+    for (const v of skipRaw) {
+      if (!accountKeys.has(vaultKey(v))) console.log(`⚠ SKIP_VAULTS: '${v}' không khớp tài khoản nào trong két — soát lại danh sách.`);
+    }
+    const skipped = accounts.filter((a) => skip.has(vaultKey(a.vault)));
     if (skipped.length > 0) console.log(`Bỏ qua ${skipped.length} tài khoản theo SKIP_VAULTS`);
+    // Mọi lượt rút dùng CÙNG một cận dưới `lo`, kẹp vào đầu cửa sổ `epoch`: lượng tính ở đây và
+    // lượng validator tính từ `lo` luôn cùng cửa sổ, kể cả khi vòng rút kéo qua mốc mở cửa sổ mới
+    // hoặc khởi động trong 60 giây đầu cửa sổ.
+    const epochStartMs = Number(origin + epoch * MS_PER_EPOCH);
+    const claimLo = Math.max(Number(nowMs) - 60_000, epochStartMs);
     const due = accounts
       .filter((a) => !only || a.vault === only)
-      .filter((a) => !skip.has(a.vault))
+      .filter((a) => !skip.has(vaultKey(a.vault)))
       .map((a) => ({ a, amount: dripClaimable(a, epoch, VEST_EPOCHS) }))
       .filter((x) => x.amount > 0n);
     console.log(`${due.length} tài khoản có phần đến hạn · tổng ${fmt(due.reduce((s, x) => s + x.amount, 0n))} LAMP`);
@@ -288,7 +305,7 @@ async function main(): Promise<void> {
       } else {
         tx = tx.mintAssets({ [tokenUnit]: -1n }, redeemer(DRIP_MINT.BurnAccount)).attach.MintingPolicy(script);
       }
-      const [walletAfter, , built] = await tx.validFrom(Date.now() - 60_000).chain();
+      const [walletAfter, , built] = await tx.validFrom(claimLo).chain();
       console.log(`→ ${a.vault.slice(0, 24)}… +${fmt(amount)} LAMP (đã nhả ${fmt(next)}/${fmt(a.entitlement)})`);
       if (!SUBMIT) { console.log(`(SUBMIT=false) hash thân ${built.toHash()}`); return; }
       const signed = await built.sign.withWallet().complete();

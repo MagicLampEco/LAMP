@@ -11,7 +11,7 @@
 //   liệu TIN ĐƯỢC; datum ở UTxO không token thì không.
 // - LAMP của `Account` chỉ đi tới `vault` của nó, mỗi lượt không quá phần đã đến hạn.
 // - LAMP của `Reserve` chỉ rời két bằng cách thành `Account`, thành `Reserve` mới, hoặc
-//   tới kho `Script(return_script)` qua `Return` (output gắn thẻ, DP-RET-6).
+//   tới kho `Script(return_script)` qua `Return` (output không datum, DP-RET-6).
 // - `vault` không bao giờ là chính két.
 
 use aiken/builtin

@@ -154,3 +154,51 @@ export function resolveDripScript(o: {
   }
   return { version: o.version, script, hash, deployment };
 }
+
+/** Phần của một bản ghi triển khai mà phép soát FundPot đọc: tham số đã áp (khoá theo `dripParamList`). */
+interface AppliedWithReturn { returnScript?: unknown; treasuryNftPolicy?: unknown }
+
+/**
+ * Soát đích của một lượt FundPot TRƯỚC khi rót (CONTRACT v0.3 §7: "dựng lại hash két từ đủ tham số,
+ * so với địa chỉ pot đích, và đòi `return_script` == hash kho đang rót"). Thuần — bên gọi đưa bản ghi.
+ *
+ * Đích được coi là két drip khi datum là `Reserve` (`d87980`) HOẶC hash script trùng một bản ghi két.
+ * Với đích két drip:
+ *   • phải có ĐÚNG MỘT bản ghi (network, appliedHash) — không có nghĩa là hash được gõ tay, chưa ai
+ *     dựng lại từ tham số ⇒ không rót;
+ *   • địa chỉ bản ghi == địa chỉ đích, datum == `d87980` (datum khác ở két là UTxO kẹt, CONTRACT §8);
+ *   • v0.3: `appliedWith.returnScript` == hash kho đang rót, `appliedWith.treasuryNftPolicy` == policy
+ *     NFT TREASURY của kho đó — lệch thì `Return` đưa LAMP về sổ của kho khác, hoặc không chạy được.
+ * Đích không phải két drip ⇒ `[]` (phép soát này không có ý kiến).
+ */
+export function dripFundTargetFailures(o: {
+  network: string;
+  potScriptHash: string;
+  potAddress: string;
+  potDatumCbor: string;
+  sourceTreasuryHash: string;
+  sourceTreasuryNftPolicy: string;
+  deployments: DripDeployment[];
+}): string[] {
+  const datum = o.potDatumCbor.toLowerCase();
+  const matches = o.deployments.filter((d) => d.network === o.network && d.appliedHash === o.potScriptHash);
+  if (datum !== "d87980" && matches.length === 0) return [];
+  if (matches.length !== 1) {
+    return [`DRIP-FUND-001: đích mang datum Reserve hoặc hash két, nhưng có ${matches.length} bản ghi triển khai ` +
+      `cho (${o.network}, ${o.potScriptHash}) — cần đúng một (ghi vào Distribution/drip-pot/deployed/deployments.json sau khi dựng lại từ tham số).`];
+  }
+  const d = matches[0]!;
+  const out: string[] = [];
+  if (d.address !== o.potAddress) out.push(`DRIP-FUND-002: bản ghi '${d.id}' ghi địa chỉ ${d.address}, đích là ${o.potAddress}.`);
+  if (datum !== "d87980") out.push(`DRIP-FUND-003: két drip chỉ nhận datum Reserve d87980, đích khai ${datum}.`);
+  if (d.contractVersion === "v0.3") {
+    const w = ((d as unknown as { appliedWith?: AppliedWithReturn }).appliedWith ?? {});
+    if (w.returnScript !== o.sourceTreasuryHash) {
+      out.push(`DRIP-FUND-004: két '${d.id}' áp return_script ${String(w.returnScript)}, kho đang rót là ${o.sourceTreasuryHash}.`);
+    }
+    if (w.treasuryNftPolicy !== o.sourceTreasuryNftPolicy) {
+      out.push(`DRIP-FUND-004: két '${d.id}' áp treasury_nft_policy ${String(w.treasuryNftPolicy)}, NFT kho đang rót là ${o.sourceTreasuryNftPolicy}.`);
+    }
+  }
+  return out;
+}
