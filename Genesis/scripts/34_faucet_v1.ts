@@ -6,8 +6,12 @@
 // `Genesis/offchain/src/lampPolicies.ts` ▸ `activeLampPolicyId("preprod")`, và script ném nếu
 // bản chép trong `Faucet/offchain/src/faucetV1.ts` ▸ `FAUCET_V1_PREPROD_TLAMP` lệch nguồn đó.
 //
-// Ba bước, theo thứ tự:
+// Các bước:
 //   STEP=address  in script hash + địa chỉ pool + datum + DÒNG LỆNH NẠP ĐIỀN SẴN. Không mạng, không khoá.
+//   STEP=export-script  ghi `Faucet/server/faucet_v1.preprod.json` (script ĐÃ áp tham số, sinh từ
+//                 blueprint) cho máy chủ — máy chủ chạy ở nơi không có aiken, `plutus.json` bị
+//                 gitignore. Không mạng, không khoá. Đổi validator ⇒ chạy lại + commit tệp;
+//                 `Faucet/tests/faucetServer.test.ts` đỏ khi tệp commit lệch blueprint.
 //   STEP=ref      dựng giao dịch đặt reference script vào CHÍNH địa chỉ pool, KHÔNG datum ⇒ khoá
 //                 vĩnh viễn (validator ném ở `expect Some(datum)`), không ai tiêu/gỡ được. Cần ví
 //                 vận hành + BLOCKFROST_KEY như các runner khác. SUBMIT=false (mặc định): dựng, không ký,
@@ -32,22 +36,25 @@
 //
 // Chạy:
 //   NETWORK=Preprod STEP=address tsx 34_faucet_v1.ts        (cần `aiken build` trong Faucet/onchain)
+//   NETWORK=Preprod STEP=export-script tsx 34_faucet_v1.ts  (cần `aiken build` trong Faucet/onchain)
 //   NETWORK=Preprod STEP=status  tsx 34_faucet_v1.ts
 //   NETWORK=Preprod STEP=ref BLOCKFROST_KEY=… WALLET_SEED="…" tsx 34_faucet_v1.ts
 //
 // Chỉ Preprod: policy tLAMP nướng vào script là của Preprod; Mainnet và Preview bị chặn.
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Koios, credentialToAddress, scriptHashToCredential, validatorToScriptHash, type UTxO } from "@lucid-evolution/lucid";
 import { NETWORK, SUBMIT, TLAMP_NAME, makeLucid, walletPkh, explorerTx } from "./config.js";
 import { activeLampPolicyId } from "../offchain/src/lampPolicies.js";
 import {
-  FAUCET_V1_CLAIM_OILDROP, FAUCET_V1_PREPROD_TLAMP, encodeFaucetV1Datum, faucetV1Validator, scanFaucetV1Pool,
+  FAUCET_V1_CLAIM_OILDROP, FAUCET_V1_PREPROD_TLAMP, encodeFaucetV1Datum, faucetV1CommittedScript, faucetV1Validator,
+  faucetV1ValidatorFromCommitted, scanFaucetV1Pool,
 } from "../../Faucet/offchain/src/faucetV1.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const FAUCET_BLUEPRINT = resolve(__dirname, "../../Faucet/onchain/plutus.json");
+const FAUCET_SERVER_SCRIPT = resolve(__dirname, "../../Faucet/server/faucet_v1.preprod.json");
 const KOIOS_PREPROD_URL = "https://preprod.koios.rest/api/v1";
 const STEP = (process.env.STEP ?? "").toLowerCase();
 
@@ -67,7 +74,8 @@ async function faucet() {
   }
   const { validator, scriptHash } = faucetV1Validator(bp as { validators?: [] }, { policyId: pid, assetName: TLAMP_NAME });
   const address = credentialToAddress("Preprod", scriptHashToCredential(scriptHash));
-  return { validator, scriptHash, address, unit: pid + TLAMP_NAME, datum: encodeFaucetV1Datum(FAUCET_V1_CLAIM_OILDROP) };
+  const committed = faucetV1CommittedScript(bp as { validators?: [] }, { policyId: pid, assetName: TLAMP_NAME });
+  return { validator, scriptHash, address, committed, unit: pid + TLAMP_NAME, datum: encodeFaucetV1Datum(FAUCET_V1_CLAIM_OILDROP) };
 }
 
 function refAt(utxos: UTxO[], scriptHash: string): UTxO | undefined {
@@ -89,6 +97,15 @@ async function main(): Promise<void> {
     return;
   }
 
+  if (STEP === "export-script") {
+    // Đọc lại đúng như máy chủ đọc: hash tính lại + khớp địa chỉ pool, trước khi ghi.
+    faucetV1ValidatorFromCommitted(f.committed, f.address);
+    await writeFile(FAUCET_SERVER_SCRIPT, JSON.stringify(f.committed, null, 2) + "\n");
+    console.log(`Đã ghi ${FAUCET_SERVER_SCRIPT}`);
+    console.log(`script_hash=${f.committed.script_hash} · ${f.committed.compiled_code.length / 2} byte · pool ${f.address}`);
+    return;
+  }
+
   if (STEP === "status") {
     const utxos = await new Koios(KOIOS_PREPROD_URL).getUtxos(f.address);
     const scan = scanFaucetV1Pool(utxos, f.unit, FAUCET_V1_CLAIM_OILDROP);
@@ -103,7 +120,7 @@ async function main(): Promise<void> {
     return;
   }
 
-  if (STEP !== "ref") throw new Error(`FAUCETV1-010: STEP phải là 'address', 'ref' hoặc 'status' (đang '${STEP}').`);
+  if (STEP !== "ref") throw new Error(`FAUCETV1-010: STEP phải là 'address', 'export-script', 'ref' hoặc 'status' (đang '${STEP}').`);
   const lucid = await makeLucid();
   const pkh = await walletPkh(lucid);
   const existing = refAt(await lucid.utxosAt(f.address), f.scriptHash);

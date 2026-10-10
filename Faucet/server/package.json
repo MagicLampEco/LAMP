@@ -1,6 +1,21 @@
 {
   "name": "@magiclamp/faucet-server",
+  "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Đánh dấu ESM cho Faucet/server (tsc NodeNext và node đọc kiểu module từ package.json gần nhất). Phụ thuộc lấy từ Faucet/offchain; chạy bản dựng: cd Faucet/offchain && npm run build && node dist/server/faucetBuild.js"
+  "description": "Faucet v1 HTTP server (tLAMP Preprod): builds unsigned Claim transactions. See README.md.",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/server/faucetBuild.js"
+  },
+  "dependencies": {
+    "@lucid-evolution/lucid": "0.4.34"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.3",
+    "typescript": "5.9.3"
+  }
 }

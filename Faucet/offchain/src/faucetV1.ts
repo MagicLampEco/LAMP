@@ -94,6 +94,83 @@ export function faucetV1Validator(
   return { validator, scriptHash: validatorToScriptHash(validator) };
 }
 
+// ── Script đã áp tham số, commit sẵn cho máy chủ ─────────────────────────────
+//
+// Máy chủ chạy trên máy KHÔNG có aiken và `plutus.json` bị gitignore ⇒ khi chưa có reference
+// UTxO trên chuỗi, nó cần chính script đã áp tham số. Tệp `Faucet/server/faucet_v1.preprod.json`
+// được SINH từ blueprint (`Genesis/scripts/34_faucet_v1.ts` STEP=export-script), không gõ tay;
+// `Faucet/tests/faucetServer.test.ts` đỏ khi tệp lệch blueprint.
+
+export const FAUCET_V1_COMMITTED_GENERATED_BY = "Genesis/scripts/34_faucet_v1.ts STEP=export-script";
+
+export interface FaucetV1CommittedScript {
+  title: string;
+  plutus_version: "V3";
+  policy: string;
+  name: string;
+  script_hash: string;
+  compiled_code: string;
+  generated_by: string;
+}
+
+/** Nội dung tệp script commit sẵn, sinh từ blueprint đã đọc (thuần). */
+export function faucetV1CommittedScript(
+  blueprint: { validators?: BlueprintValidator[] },
+  tlamp: { policyId: string; assetName: string },
+): FaucetV1CommittedScript {
+  const { validator, scriptHash } = faucetV1Validator(blueprint, tlamp);
+  return {
+    title: FAUCET_V1_TITLE,
+    plutus_version: "V3",
+    policy: tlamp.policyId.toLowerCase(),
+    name: tlamp.assetName.toLowerCase(),
+    script_hash: scriptHash,
+    compiled_code: validator.script,
+    generated_by: FAUCET_V1_COMMITTED_GENERATED_BY,
+  };
+}
+
+/**
+ * Đọc lại tệp script commit sẵn (đã JSON.parse) và ép ba điều, sai một là NÉM FAUCET-CONFIG:
+ * (1) tham số là tLAMP Preprod `FAUCET_V1_PREPROD_TLAMP`; (2) hash TÍNH LẠI từ `compiled_code`
+ * bằng `script_hash` ghi trong tệp; (3) hash đó là payment credential của `poolAddress`.
+ * Không tin trường `script_hash` một mình — sửa tay `compiled_code` thì (2) bắt.
+ */
+export function faucetV1ValidatorFromCommitted(json: unknown, poolAddress: string): { validator: Validator; scriptHash: string } {
+  if (typeof json !== "object" || json === null || Array.isArray(json)) {
+    throw new FaucetV1Error("FAUCET-CONFIG", `tệp script không phải JSON object.`);
+  }
+  const f = json as Record<string, unknown>;
+  for (const k of ["title", "plutus_version", "policy", "name", "script_hash", "compiled_code"] as const) {
+    if (typeof f[k] !== "string") throw new FaucetV1Error("FAUCET-CONFIG", `tệp script thiếu trường chuỗi '${k}'.`);
+  }
+  if (f["title"] !== FAUCET_V1_TITLE || f["plutus_version"] !== "V3") {
+    throw new FaucetV1Error("FAUCET-CONFIG", `tệp script là '${String(f["title"])}' ${String(f["plutus_version"])}, cần '${FAUCET_V1_TITLE}' V3.`);
+  }
+  if (f["policy"] !== FAUCET_V1_PREPROD_TLAMP.policyId || f["name"] !== FAUCET_V1_PREPROD_TLAMP.assetName) {
+    throw new FaucetV1Error("FAUCET-CONFIG",
+      `tệp script áp cho ${String(f["policy"])}.${String(f["name"])}, vòi v1 nhả ${FAUCET_V1_PREPROD_TLAMP.policyId}.${FAUCET_V1_PREPROD_TLAMP.assetName}.`);
+  }
+  const code = (f["compiled_code"] as string).toLowerCase();
+  if (code.length === 0 || !HEX.test(code)) throw new FaucetV1Error("FAUCET-CONFIG", `compiled_code không phải hex.`);
+  const validator: Validator = { type: "PlutusV3", script: code };
+  let scriptHash: string;
+  try { scriptHash = validatorToScriptHash(validator); } catch {
+    throw new FaucetV1Error("FAUCET-CONFIG", `compiled_code không giải được thành script Plutus V3.`);
+  }
+  if (scriptHash !== f["script_hash"]) {
+    throw new FaucetV1Error("FAUCET-CONFIG", `hash tính lại ${scriptHash} ≠ script_hash ghi trong tệp ${String(f["script_hash"])}.`);
+  }
+  let cred: ReturnType<typeof getAddressDetails>["paymentCredential"];
+  try { cred = getAddressDetails(poolAddress).paymentCredential; } catch {
+    throw new FaucetV1Error("FAUCET-CONFIG", `poolAddress '${poolAddress}' không đọc được.`);
+  }
+  if (cred?.type !== "Script" || cred.hash !== scriptHash) {
+    throw new FaucetV1Error("FAUCET-CONFIG", `poolAddress mang credential ${cred?.type}:${cred?.hash}, tệp script có hash ${scriptHash}.`);
+  }
+  return { validator, scriptHash };
+}
+
 // ── Datum ────────────────────────────────────────────────────────────────────
 
 /** `FaucetDatum { claim_amount }` = Constr(0, [Int]). */

@@ -1,0 +1,27 @@
+{
+  "compilerOptions": {
+    "target":           "ES2022",
+    "module":           "NodeNext",
+    "moduleResolution": "NodeNext",
+    "lib":              ["ES2022"],
+    "types":            ["node"],
+    "strict":           true,
+    "exactOptionalPropertyTypes": true,
+    "noUncheckedIndexedAccess":   true,
+    "skipLibCheck":     true,
+    "sourceMap":        true,
+
+    // rootDir ".." (= Faucet/) để `../offchain/src/faucetV1.ts` được biên dịch VÀO
+    // Faucet/server/dist/offchain/src/ — lúc chạy, `@lucid-evolution/lucid` phân giải ngược lên
+    // tới Faucet/server/node_modules. Lúc biên dịch, tệp ở offchain/ không đi ngược tới
+    // node_modules này ⇒ trỏ thẳng lucid về bản của package này.
+    "rootDir":          "..",
+    "outDir":           "./dist",
+    "baseUrl":          ".",
+    "paths":            {
+      "@lucid-evolution/lucid": ["node_modules/@lucid-evolution/lucid/dist/index.d.ts"]
+    }
+  },
+  "include": ["./*.ts"],
+  "exclude": ["node_modules", "dist"]
+}

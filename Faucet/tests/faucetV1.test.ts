@@ -23,7 +23,7 @@ import { describe, expect, it } from "vitest";
 import {
   FAUCET_V1_CLAIM_OILDROP, FAUCET_V1_PARAM_ORDER, FAUCET_V1_PREPROD_TLAMP, FAUCET_V1_TITLE,
   FaucetV1Error, assertClaimerAddress, buildFaucetV1ClaimTx, decodeFaucetV1Datum, encodeFaucetV1Datum,
-  faucetV1Validator, scanFaucetV1Pool, type FaucetV1Code,
+  faucetV1Validator, faucetV1ValidatorFromCommitted, scanFaucetV1Pool, type FaucetV1Code,
 } from "../offchain/src/faucetV1.js";
 
 const ONCHAIN = resolve(process.cwd(), "../onchain");
@@ -177,9 +177,17 @@ describe("Emulator — Claim trên validator thật", () => {
     expect(poolAfter).toBe(500_000n * 1_000_000n - CLAIM);
   });
 
-  it("happy (script đính trực tiếp, không reference) + rút cạn đúng một UTxO 100 tLAMP", async () => {
+  it("happy (script đính trực tiếp lấy từ tệp COMMIT SẴN của máy chủ, không reference) + rút cạn đúng một UTxO 100 tLAMP", async () => {
+    // Đúng đường máy chủ chạy khi không có FAUCET_REF_UTXO: đọc `server/faucet_v1.preprod.json`,
+    // kiểm hash với địa chỉ pool, đính inline. Validator thật đánh giá trong `complete()`.
+    const committed = faucetV1ValidatorFromCommitted(
+      JSON.parse(readFileSync(resolve(process.cwd(), "../server/faucet_v1.preprod.json"), "utf8")), POOL);
+    expect(committed.scriptHash).toBe(scriptHash);
     const w = await world([{ tlamp: CLAIM }]);
-    const r = await buildFaucetV1ClaimTx(w.lucid, opts(w, { refScriptUtxo: undefined, validator }));
+    const r = await buildFaucetV1ClaimTx(w.lucid, opts(w, { refScriptUtxo: undefined, validator: committed.validator }));
+    const tx = w.lucid.fromTx(r.txCbor).toTransaction();
+    expect(tx.body().reference_inputs()).toBeUndefined();
+    expect(tx.witness_set().plutus_v3_scripts()?.len()).toBe(1);
     const { outputs } = outputsOf(w.lucid, r.txCbor);
     const poolOut = outputs.find((o) => o.address === POOL)!;
     expect(poolOut.assets).toEqual({ lovelace: 2_000_000n });   // tLAMP về 0, ADA giữ nguyên
