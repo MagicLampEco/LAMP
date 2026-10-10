@@ -1,4 +1,11 @@
-# Storage reward payout — CONTRACT v0.2 (2026-10-08)
+# Storage reward payout — CONTRACT v0.3 (2026-10-10)
+
+v0.3 vá ba phát hiện soát an ninh PR #144 (chưa triển khai mạng nào, nên đổi hash chấp nhận được): (1) `Open` phải nộp
+không muộn hơn epoch `start + batch_epochs`, với khoảng hiệu lực hữu hạn hai đầu gọn một epoch — trước đây hội đồng mở muộn
+thì ai cũng `Close` được ngay trước mọi `PostRoot` (`SRP-OPEN-TIMELY`); (2) cô lập theo input chưa đủ, vì mint/withdraw/cert
+của script khác vẫn chạy cùng giao dịch và chấm chung output trả lá ⇒ ép số redeemer từng nhánh (`SRP-SOLE-REDEEMERS`, cùng
+khuôn `C-REL-SOLE` của custody); (3) `Burn` cũng đòi mọi input ngoài Tombstone là ví khoá. §3 sửa câu "chỉ `Collect`/`Deposit`
+làm một dòng tăng". Định dạng lá không đổi so với v0.2.
 
 v0.2 vá kết quả soát an ninh cùng ngày: cấm input script ngoài đợt ở Open/PostRoot/Claim (thoả-kép với `Release`
 của custody) · người nhận chỉ là ví khoá, output trả không datum/ref script · lá mang định danh đợt · PostRoot nạp thêm
@@ -84,14 +91,34 @@ epoch sau epoch đăng gốc, kể cả khi hội đồng đăng muộn.
 | `Close` (UTxO chưa mở) | M-of-N | Toàn bộ CARP + ADA vào dòng sổ custody |
 | `Burn` + mint `BurnBatch` | Bất kỳ ai | Đốt token trong `Tombstone`; ADA về `refund_to` |
 
-Open, PostRoot, Claim: ngoài input của chính đợt, mọi input là ví khoá (`SRP-ONLY-VK-INPUTS`). Close: thêm đúng input
+Open, PostRoot, Claim, Burn: ngoài input của chính đợt, mọi input là ví khoá (`SRP-ONLY-VK-INPUTS`). Close: thêm đúng input
 custody (`SRP-RETURN-INPUTS`).
+
+Mọi nhánh còn ép số redeemer (`SRP-SOLE-REDEEMERS`): không script Plutus nào ngoài những script nhánh cần được chạy cùng
+giao dịch. Script native (multisig trả phí) không có redeemer nên vẫn dùng được. Giá: không ghép được thao tác script khác
+(DEX, rút thưởng, cert) vào cùng giao dịch.
+
+| Nhánh | `tx.redeemers` |
+|---|---|
+| `Open` + `MintBatch` | Đúng 2: `Mint(own)` + `Spend(nguồn)` |
+| `PostRoot`, `Claim` | Đúng 1: `Spend(đợt)` |
+| `Close` | `Spend(đợt)` + tối đa một `Spend` của input ở `custody_hash` (redeemer `Deposit`) |
+| `Burn` + `BurnBatch` | Đúng 2: `Spend(Tombstone)` + `Mint(own)` |
+
+**Mở đúng hạn (`SRP-OPEN-TIMELY`).** `Open` đọc epoch bằng `get_epoch_bounded` (cận dưới và cận trên hữu hạn, cùng epoch)
+và đòi epoch đó ≤ `start + batch_epochs`. Hệ quả: đợt mở xong luôn còn ít nhất `close_grace_epochs` epoch trước khi `Close`
+tự do (`start + batch_epochs + close_grace_epochs`). Đợt mở ở epoch `start + batch_epochs` vẫn đăng được gốc cho epoch dịch
+vụ cuối và trả lá trong hai epoch ân hạn.
 
 **Trả về đi qua `Deposit`.** Giao dịch `Close` tiêu cả UTxO custody với redeemer `Deposit { items }`, `items` gồm
 `(reward_bucket, CARP, số CARP của đợt)` (bỏ khi bằng 0) và `(reward_bucket, ADA, lovelace của đợt)`. Validator này không đọc
 redeemer của custody; nó đo KẾT QUẢ trên sổ: Δ dòng `(reward_bucket, CARP)` và Δ dòng `(reward_bucket, ADA)` giữa custody vào
-và custody ra phải bằng đúng số đợt đang giữ. Custody tự ép Δ sổ khớp Δ value (`C-DEP-3`, `C-DEP-4`). Chỉ `Collect`/`Deposit`
-làm một dòng tăng (`Release` chỉ trừ, hai bucket dành riêng không trùng `storage_reward`), nên phép đo kết quả không bị vòng qua.
+và custody ra phải bằng đúng số đợt đang giữ. Custody tự ép Δ sổ khớp Δ value (`C-DEP-3`, `C-DEP-4`). Các nhánh
+custody làm một dòng tăng: `Collect`, `Deposit` ở mọi bucket khai báo; `MigrateIn` và `StakeRewardIn` CHỈ ở hai bucket dành
+riêng `1_000_000` (`migrate.reserve_inflow_bucket_id`) và `1_000_001` (`stake_reward.stake_reward_bucket_id`); `Release` chỉ trừ.
+Bucket `storage_reward` không trùng hai bucket dành riêng: `SRP-OPEN-CLOSABLE` đòi `reward_bucket ∈ buckets`, và custody
+ép `buckets.no_reserved`. `SRP-RETURN-INPUTS` + `SRP-SOLE-REDEEMERS` để lại đúng một redeemer custody trong giao dịch,
+nên phép đo kết quả không bị vòng qua.
 
 **Phép thử "rót vào sổ", từng output validator tạo ra:**
 
@@ -147,7 +174,7 @@ Mỗi epoch LampNet giao cho hội đồng: `(epoch, root, leaf_count)` và danh
 | `SRP-OPEN-AUTH` | Mở đợt cần M-of-N |
 | `SRP-ONE-INPUT` | Mọi nhánh spend: đúng một input ở script này (chống thoả-kép giữa hai đợt); `MintBatch` cũng đòi đúng một input nguồn chưa có token |
 | `SRP-OPEN-OUT` | Đúng một output ở script, cùng địa chỉ đầy đủ với input nguồn, không reference script |
-| `SRP-ONLY-VK-INPUTS` | Open (mint), PostRoot, Claim: mọi input ngoài input của chính script là ví khoá — không custody, không script lạ. Chặn thoả-kép: `Release` của custody (C-REL-7) cộng mọi output tới `to`, nên output đợt-tiếp-tục của Claim từng được tính làm người nhận `Release` trong cùng giao dịch |
+| `SRP-ONLY-VK-INPUTS` | Open (mint), PostRoot, Claim, Burn: mọi input ngoài input của chính script là ví khoá — không custody, không script lạ. Chặn thoả-kép: `Release` của custody (C-REL-7) cộng mọi output tới `to`, nên output đợt-tiếp-tục của Claim từng được tính làm người nhận `Release` trong cùng giao dịch |
 | `SRP-OPEN-ID` | `batch_id = blake2b_256(txid ‖ u16_be(index))` của UTxO nguồn |
 | `SRP-OPEN-SRC-CLEAN` | UTxO nguồn chỉ có ADA + CARP |
 | `SRP-OPEN-MINADA` | ADA đợt lúc mở ≥ `min_batch_lovelace` |
@@ -155,6 +182,8 @@ Mỗi epoch LampNet giao cho hội đồng: `(epoch, root, leaf_count)` và danh
 | `SRP-LEAF-BATCH` | Lá chứa `policy ‖ batch_id` của đợt đang trả |
 | `SRP-BURN-REFUND` | `Burn`: có output tới VK `refund_to` mang ≥ ADA của Tombstone |
 | `SRP-OPEN-FRESH` | `round = None`, `start_epoch ≥ 0` |
+| `SRP-OPEN-TIMELY` | `MintBatch`: khoảng hiệu lực hữu hạn hai đầu, gọn một epoch; epoch đó ≤ `start + batch_epochs` ⇒ còn ≥ `close_grace_epochs` epoch trước khi `Close` tự do |
+| `SRP-SOLE-REDEEMERS` | Số và mục đích redeemer theo bảng §3: Open 2 (mint + spend nguồn của chính hash), PostRoot/Claim 1, Close 1 + tối đa một spend custody, Burn 2 (spend + mint của chính hash). Chặn mint/withdraw/cert của script khác chấm chung output |
 | `SRP-OPEN-SHAPE` | `len(epoch_fees) = batch_epochs`, mọi phần tử ≥ 0 |
 | `SRP-SHARE-MAX` | `0 ≤ share_bps ≤ 5000` (s ≤ 0,5) |
 | `SRP-OPEN-KEEP` | Đợt giữ TOÀN BỘ CARP của UTxO nguồn; ADA không giảm; value chỉ gồm ADA + CARP + token |
@@ -212,6 +241,8 @@ epoch nhỏ, và ai cũng đẩy được lô claim (người nhận không cầ
 | Bất kỳ ai | Trả về ngoài sổ / về bucket khác / thiếu ADA | `SRP-RETURN-LINE` |
 | Bất kỳ ai | Một `Deposit` thoả cho hai script trả về | `SRP-RETURN-INPUTS` |
 | Bất kỳ ai | UTxO giả có datum `Active` | `SRP-AUTH-TOKEN` |
+| Bất kỳ ai | Đóng tự do ngay sau khi hội đồng mở đợt muộn, trước mọi `PostRoot` | `SRP-OPEN-TIMELY` |
+| Người dựng giao dịch | Ghép mint/withdraw/cert của script khác để output trả lá hoặc output hoàn ADA thoả hộ nó | `SRP-SOLE-REDEEMERS`, `SRP-ONLY-VK-INPUTS` (Burn) |
 
 Giả định tin cậy (không kiểm on-chain được): `epoch_fees` khai lúc mở đợt khớp F ký quỹ thật ở LampNet; danh sách lá khớp
 phép đo PoR. Thiệt tối đa khi cả hai sai = CARP của một đợt.
@@ -222,12 +253,12 @@ Chi phí validator = ca `bench_*` trừ ca dựng fixture tương ứng.
 
 | Ca | mem | cpu |
 |---|---|---|
-| Claim 1 lá, cây sâu 12, bitmap 512 B | 0,53 M | 0,169 G |
-| Claim 8 lá | 1,58 M | 0,528 G |
-| Claim 16 lá | 2,75 M (19,7% trần 14 M) | 0,935 G (9,3% trần 10 G) |
-| Close, sổ custody 20 dòng (chỉ validator này; CustodyDatum giải mã một lần mỗi đầu) | 1,75 M | 0,521 G |
+| Claim 1 lá, cây sâu 12, bitmap 512 B | 0,54 M | 0,174 G |
+| Claim 8 lá | 1,59 M | 0,533 G |
+| Claim 16 lá | 2,76 M (19,7% trần 14 M) | 0,939 G (9,4% trần 10 G) |
+| Close, sổ custody 20 dòng (chỉ validator này; CustodyDatum giải mã một lần mỗi đầu) | 1,79 M | 0,536 G |
 
-Script (chưa áp tham số) 6.722 B.
+Script (chưa áp tham số) 7.418 B (v0.2: 6.722 B). Đo v0.3, 2026-10-10.
 
 Close còn phải cộng chi phí nhánh `Deposit` của custody ở cùng giao dịch (chưa đo trong phiên này).
 

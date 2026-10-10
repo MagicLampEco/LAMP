@@ -1,4 +1,4 @@
-// Logic thuần cho validator trả thưởng lưu trữ LampNet (Treasury/storage-reward/CONTRACT.md v0.1).
+// Logic thuần cho validator trả thưởng lưu trữ LampNet (Treasury/storage-reward/CONTRACT.md v0.3).
 //
 // Một ĐỢT (batch) = một UTxO ở địa chỉ `storage_reward`, mang đúng 1 token chứng thực
 // (policy = hash chính validator, tên `batch_token_name`) và datum `Active`. Token chỉ đúc được

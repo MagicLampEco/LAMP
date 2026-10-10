@@ -1,4 +1,4 @@
-// Bài kiểm cho `storage_reward` (Treasury/storage-reward/CONTRACT.md v0.1 §5).
+// Bài kiểm cho `storage_reward` (Treasury/storage-reward/CONTRACT.md v0.3 §5).
 // Mỗi nhánh một ca dương; mỗi ca âm khác ca dương của nhánh đó ĐÚNG MỘT chỗ.
 // Lá/gốc cây gõ CỨNG bằng hex tính ngoài (python hashlib.blake2b, digest 32) — không dựng bằng
 // chính `leaf_hash`, để đột biến định dạng lá làm ca đỏ thay vì tự nhất quán.
@@ -11,7 +11,8 @@ use aiken/primitive/bytearray
 use cardano/address.{Address, Inline, Script, VerificationKey}
 use cardano/assets
 use cardano/transaction.{
-  InlineDatum, Input, NoDatum, Output, OutputReference, Transaction, placeholder,
+  InlineDatum, Input, Mint, NoDatum, Output, OutputReference, Redeemer,
+  ScriptPurpose, Spend, Transaction, Withdraw, placeholder,
 }
 use magiclamp/treasury/storage_reward.{
   Active, BurnBatch, Claim, ClaimItem, Close, MintBatch, Open, PayoutAction,
@@ -147,6 +148,11 @@ fn at_epoch(e: Int) -> interval.Interval {
   interval.after(e * ms + 1)
 }
 
+/// Khoảng hiệu lực hữu hạn hai đầu, gọn trong epoch `e` (thứ `get_epoch_bounded` đòi).
+fn in_epoch(e: Int) -> interval.Interval {
+  interval.between(e * ms + 1, e * ms + ms - 1)
+}
+
 // ── Datum ──
 fn fees() -> List<Int> {
   [10_000, 10_000, 10_000, 10_000, 10_000, 10_000]
@@ -207,8 +213,51 @@ fn custody_ref_ok() -> Input {
   }
 }
 
+// ── Redeemer như ledger điền ──
+// Ledger đòi một redeemer cho MỖI input ở script Plutus và MỖI policy Plutus đúc. Bộ dựng tx dùng
+// `placeholder` (redeemers rỗng) ⇒ `with_redeemers` điền như ledger cho các script Plutus mà bài
+// biết (`own`, `cust_h`), rồi NỐI THÊM những gì bài tự đặt vào `tx.redeemers` (script lạ). Input
+// ở `script_addr(outsider)` KHÔNG được điền ⇒ đóng vai script native (không redeemer), để ca âm
+// SRP-ONLY-VK-INPUTS phân biệt được với ca âm SRP-SOLE-REDEEMERS.
+fn with_redeemers(tx: Transaction) -> Transaction {
+  let rd: Data = 0
+  let spends =
+    list.filter_map(
+      tx.inputs,
+      fn(i) {
+        when i.output.address.payment_credential is {
+          Script(h) ->
+            if h == own || h == cust_h {
+              Some(Pair(Spend(i.output_reference), rd))
+            } else {
+              None
+            }
+          _ -> None
+        }
+      },
+    )
+  let mints =
+    if list.has(assets.policies(tx.mint), own) {
+      [Pair(Mint(own), rd)]
+    } else {
+      []
+    }
+  Transaction { ..tx, redeemers: list.concat(list.concat(spends, mints), tx.redeemers) }
+}
+
+fn foreign_withdraw() -> Pairs<ScriptPurpose, Redeemer> {
+  let rd: Data = 0
+  [Pair(Withdraw(Script(outsider)), rd)]
+}
+
+fn foreign_mint() -> Pairs<ScriptPurpose, Redeemer> {
+  let rd: Data = 0
+  [Pair(Mint(outsider), rd)]
+}
+
 // ── Gọi handler ──
-fn run_mint(r: sr.BatchMint, tx: Transaction) -> Bool {
+fn run_mint(r: sr.BatchMint, tx0: Transaction) -> Bool {
+  let tx = with_redeemers(tx0)
   storage_reward.storage_reward.mint(
     carp_p,
     carp_n,
@@ -227,7 +276,12 @@ fn run_mint(r: sr.BatchMint, tx: Transaction) -> Bool {
   )
 }
 
-fn run_spend(d: Option<Data>, r: PayoutAction, tx: Transaction) -> Bool {
+fn run_spend(d: Option<Data>, r: PayoutAction, tx0: Transaction) -> Bool {
+  run_spend_raw(d, r, with_redeemers(tx0))
+}
+
+/// Gọi spend với `tx.redeemers` NGUYÊN như bài đặt (không điền như ledger).
+fn run_spend_raw(d: Option<Data>, r: PayoutAction, tx: Transaction) -> Bool {
   storage_reward.storage_reward.spend(
     carp_p,
     carp_n,
@@ -266,6 +320,7 @@ fn open_tx_with(batch_out: Output, sigs: List<ByteArray>, refs: List<Input>) -> 
     outputs: [batch_out],
     mint: assets.from_asset(own, batch_token_name, 1),
     extra_signatories: sigs,
+    validity_range: in_epoch(100),
   }
 }
 
@@ -839,7 +894,7 @@ test bench_claim_1() {
 
 test bench_fixture_1() {
   let (_rd, tx, d) = bench_tx(1)
-  list.length(tx.outputs) == 2 && d != tomb()
+  list.length(with_redeemers(tx).outputs) == 2 && d != tomb()
 }
 
 test bench_claim_8() {
@@ -849,7 +904,7 @@ test bench_claim_8() {
 
 test bench_fixture_8() {
   let (_rd, tx, d) = bench_tx(8)
-  list.length(tx.outputs) == 9 && d != tomb()
+  list.length(with_redeemers(tx).outputs) == 9 && d != tomb()
 }
 
 test bench_claim_16() {
@@ -859,7 +914,7 @@ test bench_claim_16() {
 
 test bench_fixture_16() {
   let (_rd, tx, d) = bench_tx(16)
-  list.length(tx.outputs) == 17 && d != tomb()
+  list.length(with_redeemers(tx).outputs) == 17 && d != tomb()
 }
 
 // Close với sổ custody 18 dòng khác (đứng TRƯỚC dòng bucket 7) ⇒ sau trả về đúng trần 20 dòng.
@@ -888,7 +943,7 @@ test bench_close_20_lines() {
 }
 
 test bench_close_fixture_20_lines() {
-  list.length(bench_close_tx().outputs) == 2
+  list.length(with_redeemers(bench_close_tx()).outputs) == 2
 }
 
 // ═════════════ Vá audit 2026-10-08 ═════════════
@@ -1057,4 +1112,67 @@ test open_src_holds_batch_token_rejected() fail {
   let src = Input { output_reference: oref(0), output: out_nd(batch_addr(), assets.from_lovelace(batch_ada) |> assets.add(carp_p, carp_n, 30_000) |> assets.add(own, batch_token_name, 1)) }
   let leak = out_nd(vk_addr(outsider), assets.from_lovelace(2_000_000) |> assets.add(own, batch_token_name, 1))
   run_mint(MintBatch, Transaction { ..open_tx(), inputs: [src, wallet_in()], outputs: [out(batch_addr(), bval(30_000), fresh()), leak] })
+}
+
+// ═════════════ Vá soát an ninh #144 (v0.3) ═════════════
+// SRP-OPEN-TIMELY — start_epoch = 100, batch_epochs = 6 ⇒ mở muộn nhất ở epoch 106.
+fn open_at(v: interval.Interval) -> Transaction {
+  Transaction { ..open_tx(), validity_range: v }
+}
+
+test open_at_last_epoch_ok() {
+  run_mint(MintBatch, open_at(in_epoch(106))) && run_spend(None, Open, open_at(in_epoch(106)))
+}
+
+test open_one_epoch_late_rejected() fail {
+  run_mint(MintBatch, open_at(in_epoch(107)))
+}
+
+test open_unbounded_range_rejected() fail {
+  // Cận dưới hữu hạn ở epoch 100 nhưng cận trên vô hạn ⇒ không neo được epoch thật.
+  run_mint(MintBatch, open_at(at_epoch(100)))
+}
+
+test open_range_spans_epochs_rejected() fail {
+  // Cận dưới ở 106 (hợp lệ), cận trên lấn sang 107 ⇒ nộp được ở 107.
+  run_mint(MintBatch, open_at(interval.between(106 * ms + 1, 107 * ms + 1)))
+}
+
+// SRP-SOLE-REDEEMERS — mỗi nhánh: ca dương tương ứng + đúng một redeemer script lạ.
+test open_extra_redeemer_rejected() fail {
+  run_mint(MintBatch, Transaction { ..open_tx(), redeemers: foreign_withdraw() })
+}
+
+test post_root_extra_redeemer_rejected() fail {
+  let tx = post_tx(fresh(), with_round(round0()), 101, [k1, k3])
+  run_spend(Some(fresh()), post_r(), Transaction { ..tx, mint: assets.from_asset(outsider, "X", 1), redeemers: foreign_mint() })
+}
+
+test claim_extra_redeemer_rejected() fail {
+  run_spend(Some(with_round(round0())), claim01(), Transaction { ..claim_tx(), redeemers: foreign_withdraw() })
+}
+
+test close_extra_redeemer_rejected() fail {
+  run_spend(Some(with_round(round0())), Close, Transaction { ..close_tx(), redeemers: foreign_withdraw() })
+}
+
+test close_unopened_extra_redeemer_rejected() fail {
+  run_spend(None, Close, Transaction { ..unopened_close_tx([k1, k2]), redeemers: foreign_withdraw() })
+}
+
+test burn_extra_redeemer_rejected() fail {
+  run_spend(Some(tomb()), sr.Burn, Transaction { ..burn_tx(tomb()), redeemers: foreign_withdraw() })
+}
+
+// Close: hai redeemer Spend nhưng cái thứ hai không trỏ input custody ⇒ từ chối (vế `spends_at`).
+// Ledger không cho redeemer thừa, nên ca này chỉ ghim vế phòng thủ của `close_redeemers_ok`.
+test close_second_spend_not_custody_rejected() fail {
+  let rd: Data = 0
+  run_spend_raw(Some(with_round(round0())), Close, Transaction { ..close_tx(), redeemers: [Pair(Spend(oref(0)), rd), Pair(Spend(oref(9)), rd)] })
+}
+
+// SRP-ONLY-VK-INPUTS (Burn): input script lạ không redeemer (vai script native).
+test burn_with_foreign_script_input_rejected() fail {
+  let tx = burn_tx(tomb())
+  run_spend(Some(tomb()), sr.Burn, Transaction { ..tx, inputs: [foreign_input(), ..tx.inputs] })
 }

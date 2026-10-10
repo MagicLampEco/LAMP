@@ -1,4 +1,4 @@
-// Validator trả thưởng lưu trữ LampNet (Treasury/storage-reward/CONTRACT.md v0.2).
+// Validator trả thưởng lưu trữ LampNet (Treasury/storage-reward/CONTRACT.md v0.3).
 //
 // Mint + spend cùng một script: policy của token đợt == hash script này.
 // Mã bất biến `SRP-*` khớp mục §5 của CONTRACT; mỗi mã có bài ghim trong `storage_reward_test.ak`.
@@ -9,7 +9,8 @@ use aiken/primitive/bytearray
 use cardano/address.{Script, VerificationKey}
 use cardano/assets
 use cardano/transaction.{
-  InlineDatum, Input, NoDatum, Output, OutputReference, Transaction,
+  InlineDatum, Input, Mint, NoDatum, Output, OutputReference, Redeemer,
+  ScriptPurpose, Spend, Transaction,
 }
 use magiclamp/treasury/ledger
 use magiclamp/treasury/pointer
@@ -60,6 +61,14 @@ validator storage_reward(
             tx.inputs,
             fn(i) { util.is_at_script(i.output.address, policy_id) },
           )
+        // SRP-SOLE-REDEEMERS (Open): đúng 2 redeemer — mint của chính policy + spend nguồn.
+        // Không script Plutus nào khác (mint/withdraw/cert/vote) chạy cùng để chấm chung output.
+        expect
+          exactly_two(
+            tx.redeemers,
+            Mint(policy_id),
+            Spend(src.output_reference),
+          )
         let src_value = src.output.value
         let carp_in = assets.quantity_of(src_value, carp_policy, carp_name)
         // SRP-OPEN-SRC-CLEAN: nguồn chỉ có ADA + CARP (không token đợt, không asset lạ).
@@ -84,12 +93,17 @@ validator storage_reward(
         expect Active { batch_id, start_epoch, epoch_fees, share_bps, round }: PayoutDatum =
           d
         let out_ada = assets.lovelace_of(out.value)
+        // SRP-OPEN-TIMELY: validity range hữu hạn hai đầu, gọn một epoch (tiêu epoch thật).
+        let cur = util.get_epoch_bounded(tx, ms_per_epoch, window_origin_ms)
         and {
           // SRP-OPEN-ID: định danh đợt = băm outref nguồn.
           batch_id == sr.batch_id_of(src.output_reference),
           // SRP-OPEN-FRESH: chưa vòng nào.
           round == None,
           start_epoch >= 0,
+          // SRP-OPEN-TIMELY: mở muộn nhất ở epoch start+n ⇒ còn ≥ close_grace_epochs epoch
+          // trước khi `Close` tự do (không ai đóng được đợt trước mọi PostRoot).
+          cur <= start_epoch + batch_epochs,
           // SRP-OPEN-SHAPE: đúng `batch_epochs` mức phí, không âm.
           list.length(epoch_fees) == batch_epochs,
           list.all(epoch_fees, fn(f) { f >= 0 }),
@@ -158,6 +172,8 @@ validator storage_reward(
         expect token_in == 1
         // SRP-ONLY-VK-INPUTS (PostRoot)
         expect only_vk_inputs_besides(tx.inputs, own_hash, own_hash)
+        // SRP-SOLE-REDEEMERS (PostRoot): chỉ redeemer spend của chính UTxO đợt.
+        expect sole_own_spend(tx.redeemers, own_ref)
         expect Some(raw) = datum_opt
         expect Active { batch_id, start_epoch, epoch_fees, share_bps, round }: PayoutDatum =
           raw
@@ -212,6 +228,8 @@ validator storage_reward(
         // SRP-ONLY-VK-INPUTS (Claim): không custody trong cùng tx — chống `Release` của custody
         // đếm output đợt-tiếp-tục làm người nhận của nó (thoả-kép, audit 2026-10-08).
         expect only_vk_inputs_besides(tx.inputs, own_hash, own_hash)
+        // SRP-SOLE-REDEEMERS (Claim): output trả lá không được chấm thêm bởi script Plutus khác.
+        expect sole_own_spend(tx.redeemers, own_ref)
         expect Some(raw) = datum_opt
         expect Active { batch_id, start_epoch, epoch_fees, share_bps, round }: PayoutDatum =
           raw
@@ -269,6 +287,8 @@ validator storage_reward(
         let ada_amt = assets.lovelace_of(in_value)
         // SRP-RETURN-INPUTS: ngoài đợt + custody, mọi input là ví khoá.
         expect only_vk_inputs_besides(tx.inputs, own_hash, custody_hash)
+        // SRP-SOLE-REDEEMERS (Close): chính nó + tối đa một spend của custody (`Deposit`).
+        expect close_redeemers_ok(tx.redeemers, own_ref, tx.inputs, custody_hash)
         // SRP-RETURN-NOMINT
         expect own_mint == []
         // SRP-RETURN-LINE: dòng sổ (storage_reward, CARP) và (storage_reward, ADA) của custody
@@ -334,6 +354,10 @@ validator storage_reward(
         expect Some(raw) = datum_opt
         expect Tombstone { refund_to }: PayoutDatum = raw
         let ada = assets.lovelace_of(own_in.output.value)
+        // SRP-ONLY-VK-INPUTS (Burn): output hoàn ADA không thoả hộ nhánh của script khác.
+        expect only_vk_inputs_besides(tx.inputs, own_hash, own_hash)
+        // SRP-SOLE-REDEEMERS (Burn): đúng spend Tombstone + mint (đốt) của chính hash.
+        expect exactly_two(tx.redeemers, Spend(own_ref), Mint(own_hash))
         and {
           own_mint == [Pair(sr.batch_token_name, -1)],
           // SRP-BURN-REFUND: ADA của Tombstone về ví người đóng (payment credential).
@@ -369,6 +393,58 @@ fn only_vk_inputs_besides(
         VerificationKey(_) -> True
         Script(h) -> h == own_hash || h == allowed
       }
+    },
+  )
+}
+
+/// SRP-SOLE-REDEEMERS (PostRoot/Claim): `tx.redeemers` chỉ có spend của chính UTxO đợt.
+fn sole_own_spend(
+  redeemers: Pairs<ScriptPurpose, Redeemer>,
+  own_ref: OutputReference,
+) -> Bool {
+  when redeemers is {
+    [Pair(Spend(r), _)] -> r == own_ref
+    _ -> False
+  }
+}
+
+/// SRP-SOLE-REDEEMERS (Open/Burn): đúng hai redeemer, mục đích là {a, b} (không phụ thuộc thứ tự).
+fn exactly_two(
+  redeemers: Pairs<ScriptPurpose, Redeemer>,
+  a: ScriptPurpose,
+  b: ScriptPurpose,
+) -> Bool {
+  when redeemers is {
+    [Pair(x, _), Pair(y, _)] -> x == a && y == b || x == b && y == a
+    _ -> False
+  }
+}
+
+/// SRP-SOLE-REDEEMERS (Close): spend của chính nó, và nhiều nhất một spend khác, là spend một
+/// input ở `custody_hash` (luồng đi chung `Deposit`).
+fn close_redeemers_ok(
+  redeemers: Pairs<ScriptPurpose, Redeemer>,
+  own_ref: OutputReference,
+  inputs: List<Input>,
+  custody_hash: ByteArray,
+) -> Bool {
+  when redeemers is {
+    [Pair(Spend(r), _)] -> r == own_ref
+    [Pair(Spend(a), _), Pair(Spend(b), _)] ->
+      if a == own_ref {
+        spends_at(inputs, b, custody_hash)
+      } else {
+        b == own_ref && spends_at(inputs, a, custody_hash)
+      }
+    _ -> False
+  }
+}
+
+fn spends_at(inputs: List<Input>, r: OutputReference, hash: ByteArray) -> Bool {
+  list.any(
+    inputs,
+    fn(i) {
+      i.output_reference == r && util.is_at_script(i.output.address, hash)
     },
   )
 }
