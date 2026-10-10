@@ -36,6 +36,7 @@ import {
 import { potById } from "../../Distribution/offchain/src/pots.js";
 import { readFileSync, writeFileSync } from "node:fs";
 import { measureExitProof, EXIT_PROOF_LEDGER } from "./_treasuryExitProof.js";
+import { dripFundTargetFailures, readDripDeployments } from "../../Distribution/offchain/src/dripDeployment.js";
 
 async function main(): Promise<void> {
   if (NETWORK === "Mainnet") throw new Error("CHẶN: script diễn tập, không chạy trên Mainnet.");
@@ -65,6 +66,14 @@ async function main(): Promise<void> {
       `Kho đang chạy không phải bản có nhánh FundPot — cần genesis mới, không gửi.`,
     );
   }
+
+  // Đích là két drip ⇒ đối chiếu bản ghi triển khai + return_script với kho đang rót (CONTRACT v0.3 §7).
+  const dripFails = dripFundTargetFailures({
+    network: NETWORK, potScriptHash: pot.scriptHash, potAddress: pot.address, potDatumCbor: pot.datumCbor,
+    sourceTreasuryHash: wiring.treHash, sourceTreasuryNftPolicy: wiring.markers.khoPid,
+    deployments: readDripDeployments(),
+  });
+  if (dripFails.length > 0) throw new Error(dripFails.join("; "));
 
   // ── Lượt mồi hay lượt trọn: đọc từ sổ bằng chứng lối ra, không từ cờ tay ──
   const exit = measureExitProof(NETWORK);

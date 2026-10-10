@@ -39,7 +39,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        project: [Distribution/onchain, Distribution/pot-vault/onchain]
+        project: [Distribution/onchain, Distribution/pot-vault/onchain, Distribution/drip-pot/onchain]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: aiken-lang/setup-aiken@1728a4be43be099752e22d8b841706caaa6fdd88 # v1.0.4
@@ -63,10 +63,12 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 24
-      - name: build blueprint (Distribution, pot-vault)
+      # `dripPotReturn.test.ts` nạp blueprint két drip v0.3 (`drip-pot/onchain/plutus.json`, gitignored).
+      - name: build blueprint (Distribution, pot-vault, drip-pot)
         run: |
           (cd Distribution/onchain && aiken build)
           (cd Distribution/pot-vault/onchain && aiken build)
+          (cd Distribution/drip-pot/onchain && aiken build)
       # `tsc` của offchain kiểm cả `../tests/**`, mà bài kiểm import `Distribution/scripts/blueprint.ts`;
       # import trần trong tệp đó (`@lucid-evolution/lucid`) chỉ phân giải được qua
       # `Distribution/scripts/node_modules` ⇒ cài cả hai gói, như máy dev.

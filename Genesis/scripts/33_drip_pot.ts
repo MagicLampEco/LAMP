@@ -1,9 +1,17 @@
 // 33_drip_pot.ts — két drip cho đợt ETD trên mạng thử: LAMP nhả theo lịch THẲNG vào địa chỉ đích
 // của từng người (ví khoá, hoặc két `did_payment` của PhoenixKey), không cần người nhận ký.
-// Hợp đồng: `Distribution/drip-pot/CONTRACT.md` v0.2. Phần thuần: `Distribution/offchain/src/dripPot.ts`.
+// Hợp đồng: `Distribution/drip-pot/CONTRACT.md` v0.3. Mã: `Distribution/offchain/src/dripPot.ts`
+// (datum, tham số, bộ dựng Return) + `dripDeployment.ts` (chọn bytecode theo bản ghi triển khai).
 //
 // Khác `32_etd_claim.ts` (tài khoản `claim_account`): ở đó LAMP chỉ về `VerificationKey(owner)` và
 // owner phải ký, nên đích không thể là một script như `did_payment`.
+//
+// Phiên bản két — DRIP_VERSION:
+//   v0.2 (MẶC ĐỊNH) két đang chạy Preprod (CONTRACT §10): 8 tham số, bytecode ĐÓNG BĂNG ở
+//        `Distribution/drip-pot/deployed/`, hash áp tham số phải khớp bản ghi triển khai. Không có Return.
+//   v0.3 10 tham số; `return_script`/`treasury_nft_policy` lấy từ trường `distributionTreasury` của
+//        bản ghi cụm ACTIVE (`Genesis/offchain/src/lampPolicies.ts`), đối chiếu với wiring dựng lại
+//        và với chuỗi (đúng một carrier) trước khi áp (CONTRACT §7).
 //
 // Bước:
 //   STEP=address  in địa chỉ + hash + datum Reserve — đưa vào `fund_pot.ts` (POT_ID=early-tiger-deleg).
@@ -14,26 +22,31 @@
 //                 dịch (DP-CLAIM-1). Ví vận hành chỉ trả phí — không chữ ký nào của người nhận.
 //                 SKIP_VAULTS=<địa chỉ>,<địa chỉ> bỏ qua các tài khoản có đích không chi được
 //                 (két không có đường tiêu): rút vào đó là đốt phí, LAMP vẫn kẹt như cũ.
+//   STEP=return   (chỉ v0.3) committee trả LAMP của MỘT Reserve về kho Distribution (§4.3).
+//                 RESERVE=<txHash>#<idx> chọn Reserve (bắt buộc khi két có nhiều hơn một);
+//                 KEEP_LAMP=<oildrop> giữ lại ở Reserve tiếp nối (mặc định 0 = trả trọn).
+//                 Ví vận hành trả phí phải là ví KHOÁ; chỉ UTxO thuần ADA được tiêu (DP-RET-2b).
+//                 LAMP trả về vào sổ kho ở lượt `27_refill_treasury.ts` kế tiếp (CONTRACT §8).
 // SUBMIT=false (mặc định): dựng, không ký, không gửi.
 import { readFileSync } from "node:fs";
-import { resolve, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
 import {
-  Constr, Data, applyParamsToScript, validatorToAddress, validatorToScriptHash, toUnit,
-  type LucidEvolution, type UTxO, type Validator,
+  Constr, Data, credentialToAddress, validatorToAddress, toUnit,
+  type LucidEvolution, type UTxO,
 } from "@lucid-evolution/lucid";
 import { NETWORK, SUBMIT, makeLucid, walletPkh, explorerTx } from "./config.js";
 import { rehydrate, MS_PER_EPOCH } from "./_canonical_v2.js";
 import { canonicalWindowOrigin } from "./_epochWindow.js";
 import { parseEtdGrants, type EtdNetwork } from "./_etdGrants.js";
+import { activeDistributionTreasury, type LampNetwork } from "../offchain/src/lampPolicies.js";
 import {
-  DRIP_ACCOUNT_TOKEN_NAME, DRIP_RESERVE_DATUM_CBOR, DRIP_SPEND, DRIP_MINT,
-  dripParamList, encodeAccountDatum, decodeDripDatum, dripClaimable, dripTagDatum, dataToAddress,
-  vaultKey, epochAt,
+  DRIP_ACCOUNT_TOKEN_NAME, DRIP_RESERVE_DATUM_CBOR, DRIP_SPEND, DRIP_MINT, DRIP_TREASURY_NFT_NAME,
+  encodeAccountDatum, decodeDripDatum, dripClaimable, dripTagDatum, dataToAddress,
+  vaultKey, epochAt, buildDripReturnTx, isPureAdaUtxo, type DripParamsV02,
 } from "../../Distribution/offchain/src/dripPot.js";
+import { resolveDripScript, type DripVersion } from "../../Distribution/offchain/src/dripDeployment.js";
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
 const STEP = (process.env.STEP ?? "").toLowerCase();
+const DRIP_VERSION = (process.env.DRIP_VERSION ?? "v0.2") as DripVersion;
 const CAMPAIGN = "early-tiger-deleg";
 const VEST_EPOCHS = BigInt(process.env.VEST_EPOCHS ?? "36");
 const BATCH = Number(process.env.BATCH ?? "15");
@@ -43,22 +56,46 @@ const RESERVE_LOVELACE = 2_000_000n;
 
 const redeemer = (i: number) => Data.to(new Constr(i, []));
 
-async function dripScript(lampPolicy: string, lampName: string, pkh: string): Promise<Validator> {
-  const p = resolve(__dirname, "../../Distribution/drip-pot/onchain/plutus.json");
-  const vs = (JSON.parse(readFileSync(p, "utf8")) as {
-    validators: { title: string; compiledCode: string; parameters?: unknown[] }[];
-  }).validators;
-  const v = vs.find((x) => x.title === "drip_pot.drip_pot.spend");
-  if (!v) throw new Error(`DRIP-BP-001: không thấy 'drip_pot.drip_pot.spend' trong ${p} — chạy 'aiken build'.`);
-  const params = dripParamList({
-    campaignIdHex: Buffer.from(CAMPAIGN, "utf8").toString("hex"),
-    lampPolicy, lampName, committee: [pkh], threshold: 1n,
-    msPerEpoch: MS_PER_EPOCH, windowOriginMs: canonicalWindowOrigin(NETWORK), vestEpochs: VEST_EPOCHS,
-  });
-  if (v.parameters?.length !== params.length) {
-    throw new Error(`DRIP-BP-002: blueprint khai ${v.parameters?.length} tham số, truyền ${params.length}.`);
+interface ReturnTarget {
+  /** `return_script` = hash `treasury` của cụm ACTIVE. */
+  scriptHash: string;
+  /** `treasury_nft_policy` = policy NFT TREASURY của cụm đó. */
+  nftPolicy: string;
+  /** Mọi UTxO ở địa chỉ enterprise `Script(return_script)` lúc kiểm. */
+  utxos: UTxO[];
+}
+
+/**
+ * CONTRACT §7 — hai tham số cuối của két v0.3, từ trường CÓ CẤU TRÚC của bản ghi cụm ACTIVE, rồi
+ * đối chiếu ba phía trước khi áp:
+ *   (1) policy LAMP của cụm ACTIVE == policy LAMP của wiring dựng lại (== `lamp_policy` của két,
+ *       và == tham số `lamp_policy` mà `treasury` của wiring đã áp);
+ *   (2) `scriptHash`/`nftPolicy` của sổ == `treHash`/`markers.khoPid` của wiring dựng lại;
+ *   (3) trên chuỗi: ĐÚNG MỘT UTxO ở `Script(return_script)` mang 1 `(nftPolicy, "TREASURY")`.
+ * Lệch ở bất kỳ phía nào ⇒ DỪNG.
+ */
+async function returnTarget(
+  lucid: LucidEvolution,
+  wiring: Awaited<ReturnType<typeof rehydrate>>["wiring"],
+  lampPolicy: string,
+): Promise<ReturnTarget> {
+  const act = activeDistributionTreasury(NETWORK.toLowerCase() as LampNetwork);
+  if (act.lampPolicy !== lampPolicy || wiring.lampPid !== lampPolicy) {
+    throw new Error(`DRIP-CLUSTER-001: policy LAMP — cụm ACTIVE '${act.recordId}' ${act.lampPolicy}, ` +
+      `wiring ${wiring.lampPid}, két ${lampPolicy}. Cụm trong state không phải cụm ACTIVE ⇒ DỪNG.`);
   }
-  return { type: "PlutusV3", script: applyParamsToScript(v.compiledCode, params as never) };
+  if (act.scriptHash !== wiring.treHash || act.nftPolicy !== wiring.markers.khoPid) {
+    throw new Error(`DRIP-CLUSTER-002: sổ ghi kho ${act.scriptHash} / NFT ${act.nftPolicy}, wiring dựng lại ra ` +
+      `${wiring.treHash} / ${wiring.markers.khoPid}. Một trong hai sai — DỪNG, đối chiếu chuỗi.`);
+  }
+  const addr = credentialToAddress(NETWORK, { type: "Script", hash: act.scriptHash });
+  const utxos = await lucid.utxosAt(addr);
+  const nftUnit = toUnit(act.nftPolicy, DRIP_TREASURY_NFT_NAME);
+  const carriers = utxos.filter((u) => (u.assets[nftUnit] ?? 0n) === 1n);
+  if (carriers.length !== 1) {
+    throw new Error(`DRIP-CLUSTER-003: ${carriers.length} UTxO ở ${addr} mang 1 ${nftUnit}; CONTRACT §7 đòi đúng một ⇒ DỪNG.`);
+  }
+  return { scriptHash: act.scriptHash, nftPolicy: act.nftPolicy, utxos };
 }
 
 interface AccountUtxo {
@@ -98,23 +135,42 @@ async function submitAndWait(lucid: LucidEvolution, signed: { submit(): Promise<
 const fmt = (o: bigint) => (Number(o) / 1e6).toLocaleString("vi-VN", { maximumFractionDigits: 6 });
 
 async function main(): Promise<void> {
-  if (NETWORK === "Mainnet") throw new Error("CHẶN: két drip v0.2 chưa audit cho Mainnet.");
+  if (NETWORK === "Mainnet") throw new Error("CHẶN: két drip chưa audit cho Mainnet.");
+  if (DRIP_VERSION !== "v0.2" && DRIP_VERSION !== "v0.3") {
+    throw new Error(`DRIP-011: DRIP_VERSION phải là v0.2 | v0.3 (đang '${DRIP_VERSION}').`);
+  }
   const lucid = await makeLucid();
   const pkh = await walletPkh(lucid);
   const { wiring } = await rehydrate();
   if (pkh !== wiring.pkh) throw new Error(`SAI VÍ: state ghi pkh=${wiring.pkh}, ví hiện tại ${pkh}.`);
   const lampPolicy = wiring.lampUnit.slice(0, 56), lampName = wiring.lampUnit.slice(56);
-  const script = await dripScript(lampPolicy, lampName, pkh);
-  const hash = validatorToScriptHash(script);
+  const base: DripParamsV02 = {
+    campaignIdHex: Buffer.from(CAMPAIGN, "utf8").toString("hex"),
+    lampPolicy, lampName, committee: [pkh], threshold: 1n,
+    msPerEpoch: MS_PER_EPOCH, windowOriginMs: canonicalWindowOrigin(NETWORK), vestEpochs: VEST_EPOCHS,
+  };
+  const target = DRIP_VERSION === "v0.3" ? await returnTarget(lucid, wiring, lampPolicy) : null;
+  const resolved = resolveDripScript({
+    version: DRIP_VERSION, network: NETWORK, campaign: CAMPAIGN,
+    params: target ? { ...base, returnScript: target.scriptHash, treasuryNftPolicy: target.nftPolicy } : base,
+  });
+  const { script, hash } = resolved;
   const addr = validatorToAddress(NETWORK, script);
+  if (resolved.deployment && resolved.deployment.address !== addr) {
+    throw new Error(`DRIP-DEPLOY-009: địa chỉ dựng ${addr} ≠ địa chỉ bản ghi '${resolved.deployment.id}' ${resolved.deployment.address}.`);
+  }
   const tokenUnit = toUnit(hash, DRIP_ACCOUNT_TOKEN_NAME);
   const origin = canonicalWindowOrigin(NETWORK);
   const nowMs = BigInt(Date.now());
   const epoch = epochAt(nowMs, origin, MS_PER_EPOCH);
 
-  console.log(`═══ Két drip (${NETWORK}) · STEP=${STEP} · cửa sổ ${epoch} · N=${VEST_EPOCHS} ═══`);
+  console.log(`═══ Két drip ${DRIP_VERSION} (${NETWORK}) · STEP=${STEP} · cửa sổ ${epoch} · N=${VEST_EPOCHS} ═══`);
+  console.log(resolved.deployment
+    ? `Bản ghi triển khai: ${resolved.deployment.id} (hash áp tham số khớp)`
+    : `Chưa có bản ghi triển khai cho (${NETWORK}, ${CAMPAIGN}, ${DRIP_VERSION}) — hash dựng: ${hash}`);
   if (STEP === "address") {
     console.log(`POT_ID=${CAMPAIGN}\nPOT_ADDRESS=${addr}\nPOT_SCRIPT_HASH=${hash}\nPOT_DATUM_CBOR=${DRIP_RESERVE_DATUM_CBOR}`);
+    if (target) console.log(`RETURN_SCRIPT=${target.scriptHash}\nTREASURY_NFT_POLICY=${target.nftPolicy}`);
     return;
   }
 
@@ -197,12 +253,29 @@ async function main(): Promise<void> {
 
   if (STEP === "claim") {
     const only = (process.env.VAULT ?? "").trim();
-    const skip = new Set((process.env.SKIP_VAULTS ?? "").split(",").map((v) => v.trim()).filter(Boolean));
-    const skipped = accounts.filter((a) => skip.has(a.vault));
+    // So theo `vaultKey` (Plutus Data của địa chỉ), không theo chuỗi bech32: hai cách viết một địa
+    // chỉ phải cùng bị bỏ qua. Mục không đọc được ⇒ DỪNG; mục đọc được mà không khớp tài khoản nào
+    // ⇒ báo to (gõ nhầm thì đích chết sẽ bị rút vào), nhưng vẫn rút cho các tài khoản còn lại.
+    const skipRaw = (process.env.SKIP_VAULTS ?? "").split(",").map((v) => v.trim()).filter(Boolean);
+    const skip = new Set(skipRaw.map((v) => {
+      try { return vaultKey(v); } catch (e) {
+        throw new Error(`DRIP-CLAIM-011: mục SKIP_VAULTS '${v}' không phải địa chỉ — ${(e as Error).message}`);
+      }
+    }));
+    const accountKeys = new Set(accounts.map((a) => vaultKey(a.vault)));
+    for (const v of skipRaw) {
+      if (!accountKeys.has(vaultKey(v))) console.log(`⚠ SKIP_VAULTS: '${v}' không khớp tài khoản nào trong két — soát lại danh sách.`);
+    }
+    const skipped = accounts.filter((a) => skip.has(vaultKey(a.vault)));
     if (skipped.length > 0) console.log(`Bỏ qua ${skipped.length} tài khoản theo SKIP_VAULTS`);
+    // Mọi lượt rút dùng CÙNG một cận dưới `lo`, kẹp vào đầu cửa sổ `epoch`: lượng tính ở đây và
+    // lượng validator tính từ `lo` luôn cùng cửa sổ, kể cả khi vòng rút kéo qua mốc mở cửa sổ mới
+    // hoặc khởi động trong 60 giây đầu cửa sổ.
+    const epochStartMs = Number(origin + epoch * MS_PER_EPOCH);
+    const claimLo = Math.max(Number(nowMs) - 60_000, epochStartMs);
     const due = accounts
       .filter((a) => !only || a.vault === only)
-      .filter((a) => !skip.has(a.vault))
+      .filter((a) => !skip.has(vaultKey(a.vault)))
       .map((a) => ({ a, amount: dripClaimable(a, epoch, VEST_EPOCHS) }))
       .filter((x) => x.amount > 0n);
     console.log(`${due.length} tài khoản có phần đến hạn · tổng ${fmt(due.reduce((s, x) => s + x.amount, 0n))} LAMP`);
@@ -232,7 +305,7 @@ async function main(): Promise<void> {
       } else {
         tx = tx.mintAssets({ [tokenUnit]: -1n }, redeemer(DRIP_MINT.BurnAccount)).attach.MintingPolicy(script);
       }
-      const [walletAfter, , built] = await tx.validFrom(Date.now() - 60_000).chain();
+      const [walletAfter, , built] = await tx.validFrom(claimLo).chain();
       console.log(`→ ${a.vault.slice(0, 24)}… +${fmt(amount)} LAMP (đã nhả ${fmt(next)}/${fmt(a.entitlement)})`);
       if (!SUBMIT) { console.log(`(SUBMIT=false) hash thân ${built.toHash()}`); return; }
       const signed = await built.sign.withWallet().complete();
@@ -242,7 +315,33 @@ async function main(): Promise<void> {
     return;
   }
 
-  throw new Error(`DRIP-010: STEP phải là address | status | seed | claim (đang '${STEP}').`);
+  if (STEP === "return") {
+    if (!target) throw new Error("DRIP-RET-020: két v0.2 không có nhánh Return — đặt DRIP_VERSION=v0.3.");
+    const sel = (process.env.RESERVE ?? "").trim();
+    const refOf = (u: UTxO) => `${u.txHash}#${u.outputIndex}`;
+    const picked = sel ? reserves.filter((u) => refOf(u) === sel) : reserves;
+    if (picked.length !== 1) {
+      throw new Error(`DRIP-RET-021: ${sel ? `RESERVE=${sel} khớp ${picked.length} Reserve` : `két có ${reserves.length} Reserve`}; ` +
+        `cần đúng một — đặt RESERVE=<txHash>#<idx> trong: ${reserves.map(refOf).join(", ") || "(không có)"}.`);
+    }
+    const keep = BigInt(process.env.KEEP_LAMP ?? "0");
+    const walletAddr = await lucid.wallet().address();
+    const res = await buildDripReturnTx({
+      lucid, script, reserve: picked[0]!, keepLamp: keep, treasuryUtxos: target.utxos,
+      returnScript: target.scriptHash, treasuryNftPolicy: target.nftPolicy, lampPolicy, lampName,
+      signers: [pkh], committee: base.committee, threshold: base.threshold,
+      walletUtxos: (await lucid.utxosAt(walletAddr)).filter(isPureAdaUtxo),
+    });
+    console.log(`Reserve ${refOf(picked[0]!)}: ${fmt(res.reserveLamp)} LAMP → kho ${fmt(res.returnedLamp)} · giữ lại ${fmt(res.keptLamp)}`);
+    console.log(`Carrier (reference input): ${refOf(res.carrier)} · đích ${res.returnAddress} (không datum)`);
+    if (!SUBMIT) { console.log(`(SUBMIT=false) hash thân ${res.tx.toHash()}`); return; }
+    const signed = await res.tx.sign.withWallet().complete();
+    await submitAndWait(lucid, signed, "trả Reserve về kho");
+    console.log("LAMP trả về nằm ngoài sổ kho tới lượt Refill kế tiếp (27_refill_treasury.ts).");
+    return;
+  }
+
+  throw new Error(`DRIP-010: STEP phải là address | status | seed | claim | return (đang '${STEP}').`);
 }
 
 main().catch((e) => { console.error(`\n❌ ${e instanceof Error ? e.message : String(e)}`); process.exit(1); });

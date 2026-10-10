@@ -1,4 +1,4 @@
-// Kiểu on-chain của két drip pot (Distribution/drip-pot/CONTRACT.md v0.2 §2).
+// Kiểu on-chain của két drip pot (Distribution/drip-pot/CONTRACT.md v0.3 §2).
 //
 // THỨ TỰ CONSTRUCTOR = CHỈ SỐ Constr TRÊN CHUỖI. Đổi thứ tự là đổi định dạng dữ liệu
 // mà kho Treasury (`FundPot`, inline `d87980`) và bộ dựng off-chain đang ghi ra.
@@ -37,6 +37,9 @@ pub type SpendRedeemer {
   Seed
   /// Constr 1 — nhả phần đã đến hạn của MỘT tài khoản. Ai cũng gọi được.
   Claim
+  /// Constr 2 (v0.3) — committee trả LAMP của MỘT `Reserve` về kho Distribution
+  /// (payment credential `Script(return_script)`), output gắn thẻ như DP-CLAIM-4.
+  Return
 }
 
 /// Redeemer mint.
