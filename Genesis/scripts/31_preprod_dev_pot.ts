@@ -14,6 +14,9 @@
 //   NETWORK=Preprod STEP=pay-pot PAY_OILDROP=… POT_SHARE_OILDROP=… POT_OUTPUTS=… \
 //     POT_ADDRESS=addr_test1w… POT_SCRIPT_HASH=<hex28> POT_DATUM_CBOR=<cbor> tsx 31_preprod_dev_pot.ts
 //     (chi thẳng vào kho script của nhà khác — lý do ở hàm `payPot`)
+//   NETWORK=Preprod STEP=pay-batch PAY_FILE=<devpot-payouts/1.json> LEDGER_FILE=<sổ.jsonl> tsx 31_preprod_dev_pot.ts
+//     (sổ chưa có trên đĩa ⇒ thêm LEDGER_NEW=1, không thì DEVPOT-032)
+//     (vòi có sổ: nhiều ví khoá trong MỘT giao dịch, mỗi ví một lần — hợp đồng ở `_devPotPayouts.ts`)
 import { getAddressDetails, coreToTxOutput, type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 import { NETWORK, SUBMIT, makeLucid, walletPkh, explorerTx } from "./config.js";
 import { rehydrate } from "./_canonical_v2.js";
@@ -22,6 +25,10 @@ import {
 } from "./_potShape.js";
 import { preprodDevPot, DEV_POT_DATUM_CBOR } from "../offchain/src/preprodDevPot.js";
 import { splitPotOutputs } from "../../Distribution/offchain/src/fundPotBuilder.js";
+import { existsSync, readFileSync, appendFileSync } from "node:fs";
+import {
+  parseDevPotPayouts, parseDevPotLedger, planDevPotPayouts, devPotLedgerLines, DEVPOT_DEFAULT_CAP_OILDROP,
+} from "./_devPotPayouts.js";
 
 const STEP = (process.env.STEP ?? "").toLowerCase();
 const PAY_TO = (process.env.PAY_TO ?? "").trim();
@@ -50,7 +57,10 @@ async function main(): Promise<void> {
   }
 
   if (STEP === "pay-pot") return payPot(lucid, pkh, pot, utxos, wiring.lampUnit);
-  if (STEP !== "pay") throw new Error(`DEVPOT-010: STEP phải là 'address', 'pay' hoặc 'pay-pot' (đang '${STEP}').`);
+  if (STEP === "pay-batch") return payBatch(lucid, pkh, pot, utxos, wiring.lampUnit);
+  if (STEP !== "pay") {
+    throw new Error(`DEVPOT-010: STEP phải là 'address', 'pay', 'pay-batch' hoặc 'pay-pot' (đang '${STEP}').`);
+  }
   if (!PAY_TO) throw new Error("DEVPOT-011: đặt PAY_TO = địa chỉ ví nhận.");
   if (PAY_OILDROP <= 0n) throw new Error(`DEVPOT-012: PAY_OILDROP phải > 0 (đang ${PAY_OILDROP}).`);
   const det = getAddressDetails(PAY_TO);
@@ -169,6 +179,76 @@ async function payPot(lucid: LucidEvolution, pkh: string, pot: ReturnType<typeof
   const signed = await built.sign.withWallet().complete();
   const hash = await signed.submit();
   console.log(`📤 Chi pot development → kho: ${hash}\n   ${explorerTx(hash)}`);
+  await lucid.awaitTx(hash);
+  console.log(`✅ Đã vào block.`);
+}
+
+/**
+ * STEP=pay-batch — vòi CÓ SỔ: chi một lô ví khoá (`PAY_FILE`, hợp đồng `devpot-payouts/1`) trong MỘT
+ * giao dịch. Ví đã có trong sổ đã chi (`LEDGER_FILE`, JSON Lines) bị bỏ qua — mỗi ví nhận một lần.
+ * SUBMIT=true mà tệp sổ chưa có ⇒ DỪNG (DEVPOT-032), trừ khi khai `LEDGER_NEW=1`: đường gõ nhầm
+ * hoặc đường tương đối từ thư mục khác đọc ra sổ rỗng và chi lại cả lô.
+ * Sổ được ghi NGAY khi nút nhận giao dịch (trước `awaitTx`): chờ hết giờ không làm mất dòng sổ, nên
+ * lượt chạy lại không chi trùng. Giao dịch đã ghi sổ mà không vào block thì đối chiếu hash trên chuỗi
+ * (dòng 📤), xoá dòng sổ của nó rồi chạy lại — thà bỏ sót một ví còn hơn chi hai lần.
+ */
+async function payBatch(lucid: LucidEvolution, pkh: string, pot: ReturnType<typeof preprodDevPot>,
+                        utxos: UTxO[], lampUnit: string): Promise<void> {
+  const file = requireField("PAY_FILE", process.env.PAY_FILE);
+  const ledgerFile = (process.env.LEDGER_FILE ?? "").trim();
+  if (SUBMIT && !ledgerFile) throw new Error("DEVPOT-030: SUBMIT=true cần LEDGER_FILE — chi không ghi sổ là mở đường chi lần hai.");
+  const cap = process.env.CAP_OILDROP ? positiveBig("CAP_OILDROP", process.env.CAP_OILDROP) : DEVPOT_DEFAULT_CAP_OILDROP;
+  const payouts = parseDevPotPayouts(JSON.parse(readFileSync(file, "utf8")), NETWORK, cap);
+  const ledgerExists = ledgerFile !== "" && existsSync(ledgerFile);
+  if (SUBMIT && !ledgerExists && process.env.LEDGER_NEW !== "1") {
+    throw new Error(`DEVPOT-032: sổ '${ledgerFile}' không có trên đĩa — đọc nó thành sổ rỗng là chi lại mọi ví. ` +
+      `Sổ mới thật thì khai LEDGER_NEW=1.`);
+  }
+  const ledger = ledgerExists ? parseDevPotLedger(readFileSync(ledgerFile, "utf8")) : new Map();
+  const { toPay, alreadyPaid, total } = planDevPotPayouts(payouts, ledger);
+  for (const { payout, line } of alreadyPaid) {
+    console.log(`  · bỏ qua ${payout.address} (${payout.ref}): đã chi ${line.oildrop} oildrop ở tx ${line.tx}`);
+  }
+  if (toPay.length === 0) { console.log("Không còn ví nào phải chi."); return; }
+
+  const { picked, sum } = pickLargest(utxos, lampUnit, total);
+  if (sum < total) throw new Error(`DEVPOT-015: pot giữ không đủ ${total} oildrop cho ${toPay.length} ví.`);
+
+  let tx = lucid.newTx().collectFrom(picked).attach.SpendingValidator(pot.script);
+  for (const p of toPay) tx = tx.pay.ToAddress(p.address, { lovelace: PAY_LOVELACE, [lampUnit]: p.oildrop });
+  const rest = sum - total;
+  if (rest > 0n) {
+    tx = tx.pay.ToContract(pot.address, { kind: "inline", value: DEV_POT_DATUM_CBOR },
+      { lovelace: POT_LOVELACE, [lampUnit]: rest });
+  }
+  const built = await tx.addSignerKey(pkh).complete();
+
+  // Đọc lại giao dịch đã dựng: mỗi ví nhận ĐÚNG suất của nó, không ví nào ngoài danh sách nhận LAMP.
+  const outs = built.toTransaction().body().outputs();
+  const shaped: OutputShape[] = [];
+  for (let i = 0; i < outs.len(); i++) shaped.push(coreToTxOutput(outs.get(i)));
+  const fails: string[] = [];
+  for (const p of toPay) {
+    const got = unitAt(shaped, p.address, lampUnit);
+    if (got !== p.oildrop) fails.push(`${p.address} nhận ${got}, chờ ${p.oildrop}`);
+  }
+  const allowed = new Set([pot.address, ...toPay.map((p) => p.address)]);
+  for (const o of shaped) {
+    if ((o.assets[lampUnit] ?? 0n) > 0n && !allowed.has(o.address)) fails.push(`LAMP đi tới địa chỉ ngoài danh sách ${o.address}`);
+  }
+  if (fails.length > 0) throw new Error(`DEVPOT-031: giao dịch đã dựng lệch — ${fails.join("; ")}`);
+
+  console.log(`Vòi pot development: ${toPay.length} ví, tổng ${total} oildrop; pot ${picked.length} UTxO vào, ${rest} quay về.`);
+  for (const p of toPay) console.log(`  → ${p.address} ${p.oildrop} (${p.ref})`);
+  if (!SUBMIT) {
+    console.log(`(SUBMIT=false ⇒ KHÔNG ký, KHÔNG gửi.) Hash thân giao dịch: ${built.toHash()}`);
+    return;
+  }
+  const signed = await built.sign.withWallet().complete();
+  const hash = await signed.submit();
+  console.log(`📤 Vòi pot development: ${hash}\n   ${explorerTx(hash)}`);
+  appendFileSync(ledgerFile, devPotLedgerLines(toPay, hash, new Date()));
+  console.log(`📒 Sổ ${ledgerFile} thêm ${toPay.length} dòng (ghi ngay sau khi nút nhận).`);
   await lucid.awaitTx(hash);
   console.log(`✅ Đã vào block.`);
 }
