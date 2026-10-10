@@ -1,6 +1,7 @@
 # tLAMP + Faucet — TECH (Kiến trúc on-chain Aiken)
 
-> **Phiên bản:** v3.1 — 2026-09-28. Bump từ v3.0 vì on-chain thêm sổ MPF `PoolDatum.opened_root`
+> **Phiên bản:** v3.2 — 2026-10-06. Bump vì đoạn mã minh hoạ §4.1 thiếu tham số `window_origin_ms` mà `util.ak` thật đã có (đoạn minh hoạ vẫn giản lược: bản thật còn chặn số âm).
+> v3.1 — 2026-09-28. Bump từ v3.0 vì on-chain thêm sổ MPF `PoolDatum.opened_root`
 > (mỗi DID tối đa một account), `ClaimOpen`/`Reclaim` mang bằng chứng, ngưỡng thu hồi 1001 → 72, và
 > SDK có module `openedLedger.ts`. Bản v3.0 nâng từ draft 2026-06-09 vì bản đó tả `faucet.ak` và
 > `lib/magiclamp/faucet/types.ak` — cả hai đã bị xoá khỏi cây mã.
@@ -263,16 +264,16 @@ Ba tính chất của cách bố trí này, đáng ghi vì chúng dễ bị "t�
 ### 4.1 `get_epoch` và `get_epoch_pinned` KHÔNG thay thế cho nhau
 
 ```aiken
-pub fn get_epoch(tx, ms_per_epoch) -> Int {          // chỉ đọc cận DƯỚI
+pub fn get_epoch(tx, ms_per_epoch, window_origin_ms) -> Int {          // chỉ đọc cận DƯỚI
   expect Some(s) = tx.validity_range.lower_bound.bound_type |> get_finite
-  s / ms_per_epoch
+  (s - window_origin_ms) / ms_per_epoch
 }
 
-pub fn get_epoch_pinned(tx, ms_per_epoch) -> Int {   // NEO vào thời gian thật
+pub fn get_epoch_pinned(tx, ms_per_epoch, window_origin_ms) -> Int {   // NEO vào thời gian thật
   expect Some(lo) = tx.validity_range.lower_bound.bound_type |> get_finite
   expect Some(hi) = tx.validity_range.upper_bound.bound_type |> get_finite
-  let e = lo / ms_per_epoch
-  expect hi / ms_per_epoch == e
+  let e = (lo - window_origin_ms) / ms_per_epoch
+  expect (hi - window_origin_ms) / ms_per_epoch == e
   e
 }
 ```

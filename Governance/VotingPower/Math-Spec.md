@@ -999,7 +999,7 @@ viết ra thay vì để người đọc sau tự phát hiện.
 | `cost_C4` | §10.5 đã loại — vốn hoàn lại | **không** |
 | `cost_C2` | LAMP **khoá**, `lamp_balance` bất biến, chỉ lật `is_locked` (`MAGIC/ScheduleGen`) | **không** — hoàn lại sau `N_2` epoch |
 | `cost_C1` qua InstantGen | **"LAMP đứng yên trong vault"** (I-ACT-7), không có khoản LAMP thanh toán (`MAGIC/InstantGen/MATH.md` I-ACT-7) | **vốn hoàn lại**; cái mất là *credit MAGIC* |
-| `cost_C1` qua GetMAGIC | mua quyền nhận MAGIC **bằng tiền pháp định** (`MAGIC/GetMAGIC/FEAT.md:8`) | **CÓ** — và đây là hạng chìm thật duy nhất mà spec cũ không biết là mình có |
+| `cost_C1` qua PrepaidGen | platform **khoá CARP** (token mua được), người dùng rút hạn-mức thành quyền-tiêu MAGIC, một chiều và không hoàn (`MAGIC/PrepaidGen/README.md`). Bản đo 2026-09-01 dẫn `MAGIC/GetMAGIC` (fiat→MAGIC), module MAGIC đã gỡ 2026-09-14 (`MAGIC/ChangeLog.md`) | **CÓ** — và đây là hạng chìm thật duy nhất mà spec cũ không biết là mình có |
 | `cost_C3` | cơ chế đo **chưa định nghĩa** (`Tech-Spec.md` §5.5 "câu hỏi treo"; `Feat-Spec.md` §8 "tham số mở") | **chưa có nội dung** |
 | chi phí con người | tiền thuê / tiền mua danh tính | **CÓ** |
 

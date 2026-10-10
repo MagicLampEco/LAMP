@@ -2,16 +2,19 @@
 
 **Doctype:** MagicLamp Protocol — Onchain Spec (Technical / Implementation)
 **Version:** v3 "Capped Drop" — chỉ số cộng dồn + trần lõm + cắt ngọn
-**Updated:** 2026-09-22
+**Updated:** 2026-10-04 — vì sao: §2.8 `TreasuryRedeemer` 4 constructor (thêm `GrantEntitlement`, `Refill`,
+`FundPot`), tham số `beacon`/`claim_account`/`treasury` lên 5/9/9 (gốc cửa sổ `Specs/Window/CONTRACT.md` v1.2 và
+các lượt NFT xác thực), §1 + §5.3 trỏ về chữ ký validator; khung cảnh báo đầu tệp cập nhật theo mã. Bản 2026-09-22
+còn tả 1 constructor và 3/6/4 tham số.
 **Nguồn chuẩn (interface contract):** [`CONTRACT.md`](./CONTRACT.md) — **v3**
 **Hành vi:** [`Feat-Spec.md`](./Feat-Spec.md) — **v3**
 **Chứng minh toán:** [`Math-Spec.md`](./Math-Spec.md) — **v3**
 
-> ⚠ **TỆP NÀY MÔ TẢ TRẠNG THÁI ĐÍCH, KHÔNG MÔ TẢ MÃ ĐANG CHẠY.** Đo 2026-09-22: mã trong
-> `Distribution/onchain/` vẫn là **v2** — `types.ak` ▸ `BeaconDatum` còn trường `drop_value`,
-> `ClaimAccountDatum` chưa có `index_at_start`, `TreasuryDatum` chưa có `total_redeemed`.
-> Mục nào đã lệch mã đều mang nhãn **`CHƯA CÓ TRONG MÃ`** kèm con trỏ. Đừng đọc một dòng ở đây
-> thành một dòng đã hiện thực.
+> ⚠ **Mã đã lên v3 sau khi khung này được viết.** Đo 2026-10-04 trên `origin/main` `2be9ffb`:
+> `Distribution/onchain/lib/magiclamp/lampdist/types.ak` ▸ `ClaimAccountDatum` có `index_at_start`,
+> `TreasuryDatum` có `total_redeemed`, không còn trường `drop_value`. Các nhãn **`CHƯA CÓ TRONG MÃ`**
+> bên dưới được gắn lúc mã còn v2 (2026-09-22) và **chưa được soát lại từng nhãn** — đừng đọc một nhãn là
+> "chưa hiện thực" mà không mở mã ở con trỏ kèm theo.
 >
 > ⚠ **v3 ĐÒI GENESIS MỚI.** Aiken giải mã nghiêm ngặt theo **số trường**, nên thêm trường vào
 > `ClaimAccountDatum` và `TreasuryDatum` làm mọi UTxO đang sống không đọc được bằng validator
@@ -34,11 +37,11 @@ Tài liệu này đặc tả **cấu trúc kỹ thuật**: Aiken types → Plutu
 ```
 V1 (beacon_nft) → policyId BEACON_NFT_POLICY
   → dùng khi tạo Beacon UTxO ban đầu
-V2 (beacon)     → params: committee, threshold, BEACON_NFT_POLICY
+V2 (beacon)     → params: 5 (bộ đầy đủ ở §2 mục beacon và §5.3)
   → cần BEACON_NFT_POLICY từ V1
-V3 (claim_account) → params: committee, threshold, ms_per_epoch, LAMP_POLICY, LAMP_NAME, BEACON_NFT_POLICY
+V3 (claim_account) → params: 9 (bộ đầy đủ ở §2 mục claim_account và §5.3)
   → cần BEACON_NFT_POLICY từ V1
-V4 (treasury)   → params: CLAIM_ACCOUNT_HASH, LAMP_POLICY, LAMP_NAME
+V4 (treasury)   → params: 9 (bộ đầy đủ ở §2 mục treasury và §5.3)
   → cần script hash của V3
 ```
 
@@ -247,10 +250,13 @@ thứ gì đó" sẽ làm trần rút **co lại theo thời gian** thay vì n�
 
 ### 2.8 `TreasuryRedeemer`
 
-**Aiken** (`types.ak:45-48`):
+**Aiken** (`Distribution/onchain/lib/magiclamp/lampdist/types.ak` ▸ `TreasuryRedeemer`):
 ```
 pub type TreasuryRedeemer {
   ReleaseForRedeem   -- constructor index 0
+  GrantEntitlement   -- constructor index 1
+  Refill             -- constructor index 2
+  FundPot            -- constructor index 3 (Distribution/FundPot.md v1.0)
 }
 ```
 
@@ -259,6 +265,11 @@ pub type TreasuryRedeemer {
 | Redeemer | Encoding |
 |---|---|
 | `ReleaseForRedeem` | `Constr(0, [])` |
+| `GrantEntitlement` | `Constr(1, [])` |
+| `Refill` | `Constr(2, [])` |
+| `FundPot` | `Constr(3, [])` |
+
+Constructor mới luôn thêm ở CUỐI để giữ index của các constructor cũ (chú thích tại `TreasuryRedeemer`).
 
 ---
 
@@ -300,7 +311,7 @@ pub type BeaconNftRedeemer {
 
 ### 3.2 V2: `beacon` — `spend/PostBeacon`
 
-**Tham số validator:** `committee: List<ByteArray>`, `threshold: Int`, `beacon_nft_policy: ByteArray`, `ms_per_epoch: Int`
+**Tham số validator (5, đúng thứ tự — chữ ký `validator beacon(`):** `committee: List<ByteArray>`, `threshold: Int`, `beacon_nft_policy: ByteArray`, `ms_per_epoch: Int`, `window_origin_ms: Int` (`Specs/Window/CONTRACT.md` v1.0)
 
 > ⚠ **Ba mã định danh trong bảng này từng mang HAI nghĩa trong cùng tài liệu.** Bản trước
 > đặt `C-BCN-3/4/5` cho *kind bất biến* và *NFT bảo toàn*, trong khi §3.3 bên dưới đặt đúng
@@ -347,7 +358,7 @@ mọi ca khác vẫn xanh.
 
 ### 3.3 V3: `claim_account` — 2 redeemer
 
-**Tham số validator:** `committee`, `threshold`, `ms_per_epoch`, `lamp_policy`, `lamp_name`, `beacon_nft_policy`
+**Tham số validator (9, đúng thứ tự — chữ ký `validator claim_account(`):** `committee`, `threshold`, `ms_per_epoch`, `lamp_policy`, `lamp_name`, `beacon_nft_policy`, `treasury_nft_policy`, `account_nft_policy`, `window_origin_ms`
 
 **Tiền điều kiện chung:**
 
@@ -524,7 +535,7 @@ Preprod, chốt trước mainnet cùng biên D.
 
 ### 3.4 V4: `treasury` — `spend/ReleaseForRedeem`
 
-**Tham số validator:** `claim_account_hash`, `lamp_policy`, `lamp_name`
+**Tham số validator (9, đúng thứ tự — chữ ký `validator treasury(` trong `Distribution/onchain/validators/treasury.ak`):** `claim_account_hash`, `lamp_policy`, `lamp_name`, `committee`, `threshold`, `account_nft_policy`, `ms_per_epoch`, `beacon_nft_policy`, `window_origin_ms`
 
 **Tiền điều kiện chung:**
 
@@ -742,11 +753,17 @@ Bước 5 (optional): Tạo ClaimAccount UTxO cho wallet đầu tiên
 ```
 GENESIS_UTXO_REF
   └→ beacon_nft script → BEACON_NFT_POLICY
-       ├→ beacon(committee, threshold, BEACON_NFT_POLICY) → BEACON_SCRIPT_HASH
-       └→ claim_account(committee, threshold, ms_per_epoch, LAMP_POLICY, LAMP_NAME, BEACON_NFT_POLICY)
+       ├→ beacon(committee, threshold, BEACON_NFT_POLICY, ms_per_epoch, WINDOW_ORIGIN_MS) → BEACON_SCRIPT_HASH
+       └→ claim_account(committee, threshold, ms_per_epoch, LAMP_POLICY, LAMP_NAME, BEACON_NFT_POLICY,
+                        TREASURY_NFT_POLICY, ACCOUNT_NFT_POLICY, WINDOW_ORIGIN_MS)
               → CLAIM_ACCOUNT_HASH
-                   └→ treasury(CLAIM_ACCOUNT_HASH, LAMP_POLICY, LAMP_NAME) → TREASURY_SCRIPT_HASH
+                   └→ treasury(CLAIM_ACCOUNT_HASH, LAMP_POLICY, LAMP_NAME, committee, threshold,
+                               ACCOUNT_NFT_POLICY, ms_per_epoch, BEACON_NFT_POLICY, WINDOW_ORIGIN_MS)
+                        → TREASURY_SCRIPT_HASH
 ```
+
+Thứ tự tham số trong sơ đồ = chữ ký `validator <tên>(` của từng tệp; lệch thì chữ ký thắng. Nguồn của
+`TREASURY_NFT_POLICY` và `ACCOUNT_NFT_POLICY`: các validator NFT tương ứng trong `Distribution/onchain/validators/`.
 
 ---
 

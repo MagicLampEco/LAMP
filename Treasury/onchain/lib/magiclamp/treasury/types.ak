@@ -1,10 +1,10 @@
 // Treasury onchain types — interface contract (CONTRACT §1, §3; TECH §3).
 // Phải khớp byte-perfect với offchain types.ts (Constr index theo thứ tự khai báo).
 //
-// Phạm vi v1: validator COLLECT (nhánh `Collect`) + RELEASE (nhánh `Release`,
-// Model A — đọc kết quả Governance qua reference input beacon ProposalResult).
-// Các nhánh Rebalance/Migrate khai báo trong CustodyRedeemer để giữ index Constr
-// ổn định cho offchain, nhưng chưa triển khai.
+// Phạm vi v1: nhánh `Collect`, `Release` (Model A — đọc kết quả Governance qua reference
+// input beacon ProposalResult), `MigrateIn` (nạp Δ LAMP vừa đúc từ Reserve), `StakeRewardIn`
+// và `Deposit`. Riêng `Rebalance` khai báo trong CustodyRedeemer để giữ index Constr ổn
+// định cho offchain, nhưng chưa triển khai.
 
 use cardano/address.{Address}
 use cardano/transaction.{OutputReference}
@@ -32,7 +32,7 @@ pub type CustodyDatum {
   accepted_assets : List<AssetKey>,   // (policy,name) được nhận
   ledger          : List<LedgerEntry>,// sổ kế toán đa-asset × bucket
   cut_bps         : Int,              // bps cắt về bucket (DAO chỉnh)
-  governance_ref  : ByteArray,        // script hash Governance gắn với treasury này
+  governance_ref  : ByteArray,        // policy id NFT con trỏ governance (== tham số pointer_policy của custody; KHÔNG phải script Governance — GovernancePointer.md)
   epoch           : Int,              // epoch cập nhật gần nhất
   // SINGLE-USE marker chống replay proposal (HARD BLOCKER finding 7, TECH §7.2 / câu treo #2).
   // v1 KHÔNG vesting: mỗi proposal chi ĐÚNG MỘT LẦN → released_cumulative ngầm = toàn bộ.
@@ -48,8 +48,9 @@ pub type CustodyDatum {
   // quyết định layout CBOR của datum. Chèn giữa làm mọi `CustodyDatum` đã mã hoá trỏ sai
   // trường, và nó KHÔNG lỗi lúc build — nó lỗi lúc validator giải mã. Thêm ở cuối giữ
   // nguyên chỉ số 0..6, y lý lẽ đã dùng cho `StakeRewardIn` (index Constr 4) dưới đây.
-  // Chưa instance nào được gieo nên hôm nay hai cách đều chạy được; chọn cách không
-  // phụ thuộc vào dữ kiện đó, vì dữ kiện đó hết hiệu lực ở lượt gieo đầu tiên.
+  // Lúc thêm trường này chưa instance nào được gieo, nên khi đó hai cách đều chạy được;
+  // đã chọn cách không phụ thuộc vào dữ kiện đó. Nay đã có instance gieo trên chuỗi
+  // (Preprod), nên mọi thay đổi layout từ đây đều đòi di trú datum.
   //
   // Bất biến đời instance: ép MỘT LẦN tại `custody_seed` (khác rỗng, tăng nghiêm ngặt,
   // không chứa bucket dành riêng) rồi mọi nhánh tiêu kho ghim `out.buckets == in.buckets`.
@@ -113,7 +114,8 @@ pub type CustodyRedeemer {
   Release { proposal_ref: OutputReference, draws: List<ReleaseDraw> }
   // CHUYỂN nội bộ giữa bucket (v1.x — chưa triển khai)
   Rebalance { moves: List<BucketMove> }
-  // MIGRATE value treasury cũ vào instance (v1.x — chưa triển khai)
+  // NẠP Δ LAMP vừa đúc từ Reserve (nhánh ReserveDraw) vào value VÀ sổ — đã triển khai,
+  // xem `migrate.ak`. (Thiết kế cũ "migrate treasury cũ" không được hiện thực.)
   MigrateIn { source: ByteArray }
   // NẠP phần thưởng uỷ quyền của chính kho vào value VÀ vào SỔ (v1.x — triển khai).
   // `amount` = Δ lovelace KHAI BÁO; validator ép nó khớp ĐẲNG THỨC với độ tăng lovelace

@@ -51,7 +51,7 @@ Các script đi qua `rehydrate()` và do đó dừng cùng lúc (đếm bằng
 `grep -ln "rehydrate(" Genesis/scripts/*.ts`, trừ chính `_canonical_v2.ts`):
 `20b_place_registry` · `21_vest_to_kho` · `22_reserve_draw` · `23_prove_oneshot` ·
 `24_reserve_layer2_init` · `25_gated_draw` · `26_prove_brake` · `27_refill_treasury` ·
-`28_beacon_grant_redeem` · `verify_canonical_v2`.
+`28_beacon_grant_redeem` · `custody_stake_delegate` · `verify_canonical_v2`.
 
 Hai đường đi tiếp: chạy cụm đang sống bằng mã ở commit đã đúc nó (`git switch --detach <commit>`
 rồi `aiken build` lại cả hai), hoặc đúc lại cụm mới từ Bước 1 với mã hiện tại.
@@ -120,7 +120,7 @@ F1: METER ở ví sau genesis + hạt giống custody ở cùng khoá ⇒ hai gi
 Reserve về một script tuỳ chọn. `20_canonical_genesis.ts` nay gửi BA giao dịch, theo thứ tự, mỗi
 bước chờ xác nhận trước bước sau:
 
-0. **Tx P** (thêm 2026-10-03, `Treasury/GovernancePointer.md` v0.1 §Genesis) — tiêu hạt giống con
+0. **Tx P** (thêm 2026-10-03, `Treasury/GovernancePointer.md` v0.2 §Genesis) — tiêu hạt giống con
    trỏ `POINTER_SEED_TX/IDX`, đúc NFT `GOVPOINTER` vào `Script(pointer_policy)` (policy = hash
    `governance_pointer` áp `(seed, change_delay_ms)`), datum đầu: `governance_hash` rỗng,
    committee = [pkh vận hành], threshold 1, chưa niêm phong, không pending. `pointer_policy` là
@@ -128,8 +128,9 @@ bước chờ xác nhận trước bước sau:
    governance, nên governance dựng lại được mà không đúc lại kho. Tx A0 chỉ đi khi NFT con trỏ đã
    ở chỗ (cổng `POINTER-ORDER-001`). Hạt giống con trỏ phải KHÁC hạt giống genesis và custody
    (`POINTER-SEED-002`); Tx P không được kéo hai hạt giống đó vào input/collateral (`F1-SEED-001`).
-   Trễ `POINTER_CHANGE_DELAY_MS`: Preprod thiếu ⇒ 3 600 000 (1 giờ); Mainnet CHƯA CHỐT ⇒ thiếu
-   là ném `POINTER-DELAY-001`. Các bước 24/25/26/verify đọc `reserve.pointer.policy` từ state;
+   Trễ `POINTER_CHANGE_DELAY_MS`: Preprod thiếu ⇒ `POINTER_DELAY_PREPROD_MS` (1 giờ); Mainnet luôn
+   `POINTER_DELAY_MAINNET_MS` = 6 epoch (30 ngày, chủ dự án chốt 2026-10-03), khai một giá trị khác
+   ⇒ ném `POINTER-DELAY-001` (`Genesis/scripts/_reserve_layer2.ts` ▸ `pointerDelayFromEnv`). Các bước 24/25/26/verify đọc `reserve.pointer.policy` từ state;
    state không có (cụm dựng trước con trỏ) ⇒ `POINTER-STATE-001`.
 1. **Tx A0** — tiêu hạt giống custody, đúc custody NFT vào instance custody thật. Đi RIÊNG vì
    `Treasury/onchain/validators/custody_seed.ak` luật S-MINT-2
@@ -466,7 +467,12 @@ state đó thuộc về một policy 12 tham số, không phải policy hiện t
 
 — LAMP agent
 
-## 2026-09-26 — cụm Preprod cuối (Capped Drop v3)
+## 2026-09-26 — cụm Preprod 53bc12ad (Capped Drop v3) — LỊCH SỬ, đã bị thay
+
+> **Mục này là lịch sử.** Cụm `53bc12ad…` (bản ghi `preprod-oneshot-14param-v3`) đã bị thay, rồi bản
+> kế nó (`preprod-oneshot-14param-v4`) cũng bị thay ngày 2026-10-03; cụm đang dùng ở mục
+> "2026-10-03 — cụm Preprod ACTIVE" bên dưới. Các cửa sổ 4144–4146, lượt mồi 1 LAMP và cách cấp
+> pot Wakeme qua nhiều tài khoản trong mục này KHÔNG còn là bước cần chạy.
 
 Đúc lại sau khi #93 (Capped Drop v3), #95 (beacon) và #96 (custody) vào nhánh chính. Ba bản vá đổi
 script hash của `treasury`, `claim_account`, `beacon`; hash kho nướng vào `lamp_mint`, nên policy mới
@@ -485,7 +491,7 @@ Thứ tự đã chạy:
 1. Gửi 5 tADA thuần tới địa chỉ enterprise của khoá vận hành → `CUSTODY_SEED_TX/IDX`.
 2. `custodySeedPolicyId(tx, idx)` → `RESERVE_KHO_NFT_POLICY`.
 3. `20_canonical_genesis.ts` (thử) → `SUBMIT=true`.
-4. `verify_canonical_v2.ts`: SUPPLY/TRSY/DROP/REG đúng chỗ, tổng cap 36 tỷ. MET còn ở ví (Lớp 2 chưa dựng).
+4. `verify_canonical_v2.ts`: SUPPLY/TRSY/DROP/REG đúng chỗ, tổng cap 36 tỷ. MET còn ở ví (Lớp 2 chưa dựng). (TRSY/REG/MET là tên nhãn cũ của cụm này; cụm hiện hành dùng `TREASURY`/`REGISTRY`/`METER`.)
 
 ### Nạp kho: mồi → Refill → Grant → Redeem → bằng chứng → nạp thật
 
@@ -507,3 +513,57 @@ mỗi tài khoản một khoá vận hành riêng (tên NFT tài khoản = `blak
 mở được MỘT tài khoản). Việc còn thiếu trước khi chạy: một script dẫn xuất `k` khoá từ seed vận hành,
 rồi Grant / Redeem / chuyển vào kho Wakeme theo lô. Tài khoản mở ở cửa sổ 4145 rút được từ cửa sổ
 4146 (2026-10-04 07:00 +07).
+
+## 2026-10-03 — cụm Preprod ACTIVE (493002cc)
+
+Bản ghi nguồn: `Genesis/offchain/src/lampPolicies.ts` ▸ `preprod-oneshot-14param-final` (tra bằng
+`activeLampPolicyId("preprod")`). Các giá trị dưới đây CHÉP từ trường `policyId` và `evidence` của bản
+ghi đó ngày 2026-10-04; lệch thì bản ghi thắng.
+
+- Policy tLAMP: `493002cc03004e3e14fd607cfba59312bd946e478e69d6ab431ccfac`.
+- Nhãn marker đọc ra nghĩa: `SUPPLY` / `REGISTRY` / `TREASURY` / `DROP` / `METER`
+  (`Genesis/scripts/_canonical_v2.ts` ▸ `SUPPLY_NAME`, `REG_NAME`, `MET_NAME`).
+- Hạt giống genesis = hạt giống custody của cụm `preprod-oneshot-14param-v4` ⇒ cụm v4 không dựng
+  lớp 2 được nữa (caveat của bản ghi v4).
+
+Thứ tự đã chạy:
+
+1. **Genesis ba giao dịch** theo mục "F1 đóng ở lượt genesis" ở trên (`20_canonical_genesis.ts`):
+   Tx P `93b28512…8319` → Tx A0 `288614fd…4bcb` → Tx A `249082f4…765f`. METER và quyền rút Reserve
+   nằm ở script ngay sau Tx A — không còn bước Lớp 2 rời (`24_reserve_layer2_init.ts` chỉ cho cụm cũ).
+2. **Nạp kho + lối ra bằng FundPot** (`Distribution/FundPot.md` v1.1 §Off-chain): `21_vest_to_kho.ts`
+   dưới trần `BOOTSTRAP_CEILING_OILDROP` (`_treasuryExitProof.ts`) → `27_refill_treasury.ts` →
+   `fund_pot.ts` lượt MỒI (một suất D của pot `wakeme`, ghi `Genesis/treasury-exit-proof.json` khoá
+   Preprod) → vest lượng thật → Refill → `fund_pot.ts` lượt TRỌN. Lượt nào chạy do sổ quyết, không do
+   cờ tay. Tổng đã rót theo pot: trường `fundedOildropByPot` của sổ đó — đọc ở sổ, mục này không chép.
+3. **Pot development** trên Preprod là native script khoá vận hành, không phải validator pot — chỉ
+   dùng cho mạng thử (`Genesis/offchain/src/preprodDevPot.ts`).
+
+Pot Wakeme nay cấp nguồn bằng FundPot (rót thẳng từ carrier của kho), không qua nhiều tài khoản như
+mục 2026-09-26.
+
+### Uỷ quyền phần stake của kho (2026-10-04)
+
+Địa chỉ kho là địa chỉ BASE: phần stake là `treasury_stake`. Phần đó chỉ sinh thưởng khi credential
+đã đăng ký và đã uỷ quyền cho một pool; trước đó nhánh `StakeRewardIn` không có gì để ghi sổ.
+Builder: `Treasury/offchain/src/stakeDelegationBuilder.ts` ▸ `buildStakeDelegation`. Script:
+`Genesis/scripts/custody_stake_delegate.ts`.
+
+```bash
+NETWORK=Preprod POOL_ID=pool1… tsx custody_stake_delegate.ts            # chạy khô
+NETWORK=Preprod POOL_ID=pool1… SUBMIT=true tsx custody_stake_delegate.ts
+```
+
+Trước khi dựng, script dừng nếu một trong ba điều sau lệch: hash `treasury_stake` suy lại khác phần
+stake của địa chỉ kho; UTxO mang custody NFT không nằm ở địa chỉ đó; ví ký không phải
+`delegation_admin`. Trạng thái đăng ký đọc từ Blockfrost `/accounts`. Đã uỷ quyền đúng pool đích
+thì script không làm gì. Mainnet bị chặn trong script: chọn pool cho kho Mainnet là quyết định của chủ
+dự án.
+
+Cọc đăng ký (2 ADA) không rút lại được: `certificate_ok` cấm huỷ đăng ký.
+
+Lượt chạy trên cụm ACTIVE: giao dịch `04d8d2361d45b33bc3c9e7814d1b0743962313bd28bab197b0844bc1f5ff01da`,
+chứng chỉ `reg_cert` + `stake_delegation`. Koios `account_info` sau đó: `status = registered`,
+`delegated_pool = pool1axe693mzshvjx3yxgh9368yzjlgxntkudat5yjmk79mug4zcntc`, `deposit = 2000000`.
+Thưởng đầu tiên chỉ có sau khoảng hai epoch kể từ lúc uỷ quyền; khi đó mới chạy được `StakeRewardIn`
+đầu cuối.

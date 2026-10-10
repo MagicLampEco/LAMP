@@ -9,3 +9,5 @@ scripts/deployed-faucet.json
 # Secrets
 .env
 *.env
+# Ngoại lệ: máy chủ vòi chạy `npm ci` trên host ⇒ lockfile phải được commit (server/README.md).
+!server/package-lock.json

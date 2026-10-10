@@ -272,9 +272,9 @@ export const LAMP_POLICY_REGISTRY: readonly LampPolicyRecord[] = [
     evidence: [
       "Tx A (genesis, 5 marker one-shot): 21f39c9b92c51080a6dd769f637f6fb0e6ae8307eb0089c597d63f9b031aa716",
       "Tx B (DistributionVest mồi 1 tLAMP → KHO): 0a252d63ba9e36691be2aa167b32253af23b0bfb04a495463ba287ea37f8b4a1",
-      "Refill (gộp vào carrier TRSY): af027fab64ea367641e1e64f32978f38b18d1863021717c85f75ebac789316e7",
+      "Refill (gộp vào carrier TRSY — tên NFT kho trên chuỗi của cụm này; cụm hiện hành: TREASURY): af027fab64ea367641e1e64f32978f38b18d1863021717c85f75ebac789316e7",
       "GrantEntitlement tài khoản thử 1 tLAMP: 838307c9738568a0cb1b8a718bb66942bd25f7beacd13dafb261f8d86b81da26",
-      "`verify_canonical_v2.ts` 2026-09-26: SUPPLY/TRSY/DROP/REG đúng chỗ, tổng cap 36 tỷ.",
+      "`verify_canonical_v2.ts` 2026-09-26: SUPPLY/TRSY/DROP/REG đúng chỗ, tổng cap 36 tỷ (TRSY/REG là tên trên chuỗi của cụm này; cụm hiện hành: TREASURY/REGISTRY).",
       "Mã: nhánh chính `3e43f96` + sửa offchain `findOwnedCustodySeed` (không đổi script hash).",
     ],
     caveats: [

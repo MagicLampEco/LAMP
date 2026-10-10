@@ -150,7 +150,7 @@ describe("deriveWiring — lớp Distribution v3", () => {
     expect(b.lampPid).toBe(a.lampPid);
   }, 120_000);
 
-  it("không truyền gốc ⇒ lấy từ MẠNG; Preview NÉM (WIN-PREVIEW), không có giá trị đệm", async () => {
+  it("không truyền gốc ⇒ lấy từ MẠNG; Preview NÉM (ms_per_epoch khác cụm canonical), không có giá trị đệm", async () => {
     requireBlueprints();
     const mac = (await sampleWiring()).wiring;                  // Preprod, không truyền gốc
     const tuong = (await deriveWiring({
@@ -163,7 +163,7 @@ describe("deriveWiring — lớp Distribution v3", () => {
       genesisTxHash: SAMPLE_TX, genesisIndex: 0, pkh: SAMPLE_PKH, tokenName: TOKEN_NAME,
       reserveKhoPid: SAMPLE_RESERVE_KHO_PID, reserveKhoName: RESERVE_KHO_NAME,
       network: "Preview",
-    })).rejects.toThrow(CHAIN_TIME_ERRORS.WINDOW_ORIGIN_UNDEFINED);
+    })).rejects.toThrow(CHAIN_TIME_ERRORS.WINDOW_PARAMS_INVALID);
   }, 120_000);
 });
 

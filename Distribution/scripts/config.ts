@@ -67,8 +67,8 @@ export const WALLET_SEED    = (process.env.WALLET_SEED ?? "").trim().replace(/\s
 export const MS_PER_EPOCH = msPerEpoch(NETWORK);
 
 /**
- * `window_origin_ms` của mạng đang chạy (Specs/Window/CONTRACT.md v1.0) — hàm, KHÔNG phải hằng
- * toàn cục: Preview không có giá trị (WIN-PREVIEW, `windowOriginMs` ném lỗi) và một hằng ở
+ * `window_origin_ms` của mạng đang chạy (Specs/Window/CONTRACT.md v1.2) — hàm, KHÔNG phải hằng
+ * toàn cục: mạng không có trong bảng gốc thì `windowOriginMs` ném lỗi, và một hằng ở
  * đầu tệp sẽ làm mọi `import` config chết trước khi script kịp nói mình cần gì.
  */
 export function windowOrigin(): bigint {
@@ -244,7 +244,7 @@ export async function beaconNftPolicyIdFromRef(ref: GenesisRef): Promise<string>
 // Asset-name hex `TREASURY_NFT_ASSET_NAME` (PHẢI khớp onchain util.treasury_nft_name):
 // giữ DUY NHẤT ở `../offchain/src/constants.ts`, re-export ở đầu tệp này — trước đây
 // tệp này giữ một bản định nghĩa RIÊNG, hai nơi cùng một giá trị mà không ai báo khi
-// một bên đổi còn bên kia quên (ca thật: đợt đổi REG/MET/TRSY/TPULL 2026-09-14 phải sửa
+// một bên đổi còn bên kia quên (ca thật: đợt đổi REG/MET/TRSY/TPULL sang tên đọc được 2026-09-14 phải sửa
 // tay cả hai chỗ).
 
 /** Compiled code (chưa apply) của minting validator treasury_nft. */

@@ -240,14 +240,14 @@ thu hay lãi lỗ của bất kỳ pháp nhân nào: nó chỉ đọc lượng A
 ### 6.4 Góp qua ứng dụng của hệ — lập Franken qua PhoenixKey
 
 Ví phổ thông (Eternl/Lace) không có giao diện để uỷ quyền stake-cred cho một script tuỳ ý; người dùng
-tham gia SRCL qua ứng dụng của hệ (PhoenixKey / widget GetMAGIC), ứng dụng tự dựng giao dịch thay người
+tham gia SRCL qua ứng dụng của hệ (PhoenixKey), ứng dụng tự dựng giao dịch thay người
 dùng. Cơ sở kỹ thuật (đã xác minh): stake-cred có thể là một script (không chỉ một khoá) và vẫn hợp lệ để
 delegate — địa chỉ base gồm payment-cred và stake-cred độc lập nhau. Lập Franken là một giao dịch mang
 chứng nhận đăng ký stake và chứng nhận uỷ quyền cho `srcl_stake_script`; ứng dụng dựng giao dịch, người
 dùng ký bằng khoá của chính mình trong ứng dụng của hệ.
 - → Tham khảo: [Delegation — Cardano Docs](https://docs.cardano.org/about-cardano/learn/delegation) · [Stake registration+delegation cert (cardano-c)](https://cardano-c.readthedocs.io/en/latest/api/certs/stake_registration_delegation_cert.html).
 
-**Luồng người dùng:** trong PhoenixKey/GetMAGIC, người dùng chọn "Tham gia SRCL — redirect X% reward" →
+**Luồng người dùng:** trong PhoenixKey, người dùng chọn "Tham gia SRCL — redirect X% reward" →
 ứng dụng dựng địa chỉ Franken cùng hai chứng nhận, đặt `redirect_bp = X` → người dùng ký một lần → phần
 thưởng tự động định tuyến mỗi epoch, không phải ký lại. Người dùng không dùng ứng dụng của hệ vẫn tham
 gia được bằng cách tự rút phần thưởng rồi gửi ADA vào `srcl_pot`.

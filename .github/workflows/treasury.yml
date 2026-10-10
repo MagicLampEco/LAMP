@@ -1,0 +1,81 @@
+# Treasury — kiểm on-chain (aiken check + build) và off-chain (vitest) trên mỗi PR.
+#
+# Phạm vi: Treasury (custody, Release, seed, stake, reserve-pull). Bài off-chain import thêm
+# `Genesis/offchain/src` (applyGate, constants, lampPolicies — một phần qua
+# `Treasury/scripts/custodyParams.ts`) và `Utils/src` ⇒ hai thư mục đó nằm trong `paths`.
+# Genesis có workflow riêng (`genesis.yml`).
+#
+# `plutus.json` là sản phẩm của `aiken build`, bị .gitignore; năm tệp bài off-chain (seedBuilder,
+# custodyParams, custodyAddress, stakeBuilder, stakeDelegation) đọc thẳng `Treasury/onchain/plutus.json`
+# và ĐỎ khi thiếu nó ⇒ job off-chain build lại blueprint trước khi chạy vitest.
+# Chỉ cần `npm install` ở Treasury/offchain: vitest phân giải được import trần của mã Genesis kéo
+# theo qua node_modules của gói gốc (đã đo: bỏ node_modules của Genesis/offchain, bộ vẫn xanh).
+# Lockfile npm bị .gitignore ⇒ dùng `npm install`, không dùng `npm ci`.
+#
+# CỐ Ý KHÔNG có bước `tsc --noEmit`: đo 2026-10-08 trên main 2cc7636 với đúng bộ gói job này cài,
+# `npx tsc --noEmit -p .` ở Treasury/offchain báo 9 lỗi TS có sẵn từ trước (TS6059 rootDir, TS2307
+# thiếu kiểu `@magiclamp/utils`, TS2741/TS2351 ở bài stakeReward). Đưa vào làm cổng thì job đỏ
+# vĩnh viễn và không ai đọc nữa; thêm lại khi số lỗi về 0.
+#
+# Action ghim theo SHA commit của bản phát hành (tên bản ở chú thích cùng dòng).
+
+name: treasury
+
+on:
+  pull_request:
+    paths:
+      - "Treasury/**"
+      - "Genesis/offchain/**"
+      - "Utils/**"
+      - ".github/workflows/treasury.yml"
+  push:
+    branches: [main]
+    paths:
+      - "Treasury/**"
+      - "Genesis/offchain/**"
+      - "Utils/**"
+      - ".github/workflows/treasury.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: treasury-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  onchain:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: aiken-lang/setup-aiken@1728a4be43be099752e22d8b841706caaa6fdd88 # v1.0.4
+        with:
+          version: v1.1.21 # khớp `compiler` trong aiken.toml
+      - name: aiken check
+        working-directory: Treasury/onchain
+        run: aiken check
+      - name: aiken build
+        working-directory: Treasury/onchain
+        run: aiken build
+
+  offchain:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: aiken-lang/setup-aiken@1728a4be43be099752e22d8b841706caaa6fdd88 # v1.0.4
+        with:
+          version: v1.1.21
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+      - name: build blueprint (Treasury)
+        working-directory: Treasury/onchain
+        run: aiken build
+      - name: npm install (offchain)
+        working-directory: Treasury/offchain
+        run: npm install --no-audit --no-fund
+      - name: vitest
+        working-directory: Treasury/offchain
+        run: npx vitest run

@@ -1,8 +1,13 @@
-# PlatformKit — deploy scripts (Cardano Preview)
+# PlatformKit — deploy scripts (Preprod)
 
 Apply-params Registry + onboard MỘT platform (PhoenixKey/OriLife) vào hệ sinh thái.
 Mẫu theo `Distribution/scripts`. KHÔNG đụng `onchain/` (registry validator nằm trong
 **Treasury** onchain) hay `offchain/src` (đã chốt).
+
+> **Mạng:** đặt `NETWORK=Preprod`. Mặc định trong `config.ts` vẫn là `Preview`. Preview đã có gốc
+> lưới cửa sổ (`Specs/Window/CONTRACT.md` v1.2 §2) nhưng chưa có tLAMP (`Genesis/offchain/src/lampPolicies.ts`,
+> mục Preview), nên cụm để onboard chỉ có trên Preprod. Registry và PlatformKit chưa có bản ghi triển
+> khai nào trong kho — bộ script này dựng và kiểm kế hoạch, không phải bằng chứng đã chạy.
 
 ## Kiến trúc on-chain
 
@@ -35,8 +40,11 @@ npm run onboard -- orilife           #   (chạy được cho cả 2 platform)
 1. `02_deploy_registry` — PHÁ VÒNG: `registry_beacon(authority)` → `beacon_policy`
    (chỉ phụ thuộc authority) → `registry(authority, beacon_policy)`. Ghi `registry.json`.
 2. `03_onboard <platform>` — apply Treasury custody (`custody_seed(genesis_ref)` →
-   `seed_policy`; `custody(proposal_policy, seed_policy, ms_per_epoch)` → `custody_hash`),
-   rồi `onboardPlatform` plan 2 bước:
+   `seed_policy`; `custody(pointer_policy, seed_policy, ms_per_epoch, lamp_policy, token_name,
+   window_origin_ms)` → `custody_hash`; **6 tham số**, danh sách dựng bằng
+   `Treasury/scripts/custodyParams.ts` ▸ `custodyParamList`, chữ ký gốc ở `Treasury/onchain/validators/custody.ak`;
+   script này không apply `treasury_stake`, nên địa chỉ custody in ra là địa chỉ script trần, chưa
+   kèm phần stake mà `Treasury/scripts/01_seed_custody.ts` dựng), rồi `onboardPlatform` plan 2 bước:
    - **BƯỚC 1 SEED** custody instance (mint seed NFT + custody UTxO).
    - **BƯỚC 2 REGISTER** entry (mint beacon NFT + entry UTxO ở registry address).
    - BƯỚC 1 PHẢI confirm trước BƯỚC 2 (entry trỏ vào instance đã seed).
@@ -46,7 +54,10 @@ npm run onboard -- orilife           #   (chạy được cho cả 2 platform)
 ## Env
 
 Xem `.env.example`. DRY mode không cần gì (default dev + placeholder). LIVE cần
-`BLOCKFROST_KEY` + ví + `REGISTRY_AUTHORITY` (ký mint beacon NFT).
+`BLOCKFROST_KEY` + ví + `REGISTRY_AUTHORITY` (ký mint beacon NFT), và mọi tham số then chốt
+(`registry_authority`, `proposal_policy`, `genesis_ref`, `lamp_policy`) phải là giá trị thật —
+còn placeholder thì script tự ép về DRY. `lamp_policy` lấy theo thứ tự biến `LAMP_POLICY_ID` → bản
+`ACTIVE` của mạng trong `Genesis/offchain/src/lampPolicies.ts` → placeholder.
 
 ## Ghi chú class-identity
 

@@ -15,6 +15,7 @@
 //     POT_ADDRESS=addr_test1w… POT_SCRIPT_HASH=<hex28> POT_DATUM_CBOR=<cbor> tsx 31_preprod_dev_pot.ts
 //     (chi thẳng vào kho script của nhà khác — lý do ở hàm `payPot`)
 //   NETWORK=Preprod STEP=pay-batch PAY_FILE=<devpot-payouts/1.json> LEDGER_FILE=<sổ.jsonl> tsx 31_preprod_dev_pot.ts
+//     (sổ chưa có trên đĩa ⇒ thêm LEDGER_NEW=1, không thì DEVPOT-032)
 //     (vòi có sổ: nhiều ví khoá trong MỘT giao dịch, mỗi ví một lần — hợp đồng ở `_devPotPayouts.ts`)
 import { getAddressDetails, coreToTxOutput, type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 import { NETWORK, SUBMIT, makeLucid, walletPkh, explorerTx } from "./config.js";
@@ -185,8 +186,11 @@ async function payPot(lucid: LucidEvolution, pkh: string, pot: ReturnType<typeof
 /**
  * STEP=pay-batch — vòi CÓ SỔ: chi một lô ví khoá (`PAY_FILE`, hợp đồng `devpot-payouts/1`) trong MỘT
  * giao dịch. Ví đã có trong sổ đã chi (`LEDGER_FILE`, JSON Lines) bị bỏ qua — mỗi ví nhận một lần.
- * Sổ chỉ được ghi SAU khi giao dịch vào block; chạy lại sau lỗi giữa chừng thì sổ chưa có dòng và lô
- * được dựng lại — trước khi chạy lại phải đối chiếu tx vừa gửi trên chuỗi (dòng 📤 in ra hash).
+ * SUBMIT=true mà tệp sổ chưa có ⇒ DỪNG (DEVPOT-032), trừ khi khai `LEDGER_NEW=1`: đường gõ nhầm
+ * hoặc đường tương đối từ thư mục khác đọc ra sổ rỗng và chi lại cả lô.
+ * Sổ được ghi NGAY khi nút nhận giao dịch (trước `awaitTx`): chờ hết giờ không làm mất dòng sổ, nên
+ * lượt chạy lại không chi trùng. Giao dịch đã ghi sổ mà không vào block thì đối chiếu hash trên chuỗi
+ * (dòng 📤), xoá dòng sổ của nó rồi chạy lại — thà bỏ sót một ví còn hơn chi hai lần.
  */
 async function payBatch(lucid: LucidEvolution, pkh: string, pot: ReturnType<typeof preprodDevPot>,
                         utxos: UTxO[], lampUnit: string): Promise<void> {
@@ -195,7 +199,12 @@ async function payBatch(lucid: LucidEvolution, pkh: string, pot: ReturnType<type
   if (SUBMIT && !ledgerFile) throw new Error("DEVPOT-030: SUBMIT=true cần LEDGER_FILE — chi không ghi sổ là mở đường chi lần hai.");
   const cap = process.env.CAP_OILDROP ? positiveBig("CAP_OILDROP", process.env.CAP_OILDROP) : DEVPOT_DEFAULT_CAP_OILDROP;
   const payouts = parseDevPotPayouts(JSON.parse(readFileSync(file, "utf8")), NETWORK, cap);
-  const ledger = ledgerFile && existsSync(ledgerFile) ? parseDevPotLedger(readFileSync(ledgerFile, "utf8")) : new Map();
+  const ledgerExists = ledgerFile !== "" && existsSync(ledgerFile);
+  if (SUBMIT && !ledgerExists && process.env.LEDGER_NEW !== "1") {
+    throw new Error(`DEVPOT-032: sổ '${ledgerFile}' không có trên đĩa — đọc nó thành sổ rỗng là chi lại mọi ví. ` +
+      `Sổ mới thật thì khai LEDGER_NEW=1.`);
+  }
+  const ledger = ledgerExists ? parseDevPotLedger(readFileSync(ledgerFile, "utf8")) : new Map();
   const { toPay, alreadyPaid, total } = planDevPotPayouts(payouts, ledger);
   for (const { payout, line } of alreadyPaid) {
     console.log(`  · bỏ qua ${payout.address} (${payout.ref}): đã chi ${line.oildrop} oildrop ở tx ${line.tx}`);
@@ -238,9 +247,10 @@ async function payBatch(lucid: LucidEvolution, pkh: string, pot: ReturnType<type
   const signed = await built.sign.withWallet().complete();
   const hash = await signed.submit();
   console.log(`📤 Vòi pot development: ${hash}\n   ${explorerTx(hash)}`);
-  await lucid.awaitTx(hash);
   appendFileSync(ledgerFile, devPotLedgerLines(toPay, hash, new Date()));
-  console.log(`✅ Đã vào block; sổ ${ledgerFile} thêm ${toPay.length} dòng.`);
+  console.log(`📒 Sổ ${ledgerFile} thêm ${toPay.length} dòng (ghi ngay sau khi nút nhận).`);
+  await lucid.awaitTx(hash);
+  console.log(`✅ Đã vào block.`);
 }
 
 main().catch((e) => { console.error(`\n❌ ${e instanceof Error ? e.message : String(e)}`); process.exit(1); });

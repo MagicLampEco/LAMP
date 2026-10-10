@@ -1,5 +1,10 @@
 # LampDistribution — Spec phân bổ LAMP (Capped Drop)
 
+> **Lỗi thời so với [`capped-drop/CONTRACT.md`](./capped-drop/CONTRACT.md) v3.1 (2026-10-04).**
+> Tệp này tả bản v2 (2026-06-06); công thức vested, datum, beacon, nhánh committee và bất biến bên
+> dưới đã đổi ở CONTRACT v3/v3.1. Khi lệch, CONTRACT thắng — đọc CONTRACT trước, không suy hành vi
+> hiện hành từ tệp này.
+
 **Doctype:** MagicLamp Protocol — Onchain Spec
 **Version:** v2 "Capped Drop" (thay Drop Lottery v0.1)
 **Updated:** 2026-06-06
@@ -91,7 +96,7 @@ Toán: bảng M-* trong [`capped-drop/Math-Spec.md`](./capped-drop/Math-Spec.md)
 | **M-EPOCHS** | hết sau `⌈E/(D·drops_per_epoch)⌉` epoch. |
 | **F-RDM-3** | treasury nhả đúng `amount`; `tre_out = tre_in − amount`; không burn. |
 | **F-RDM-5** | đúng 1 ClaimAccount in + 1 out cùng payment script hash (anti double-satisfaction). |
-| **C-MINT-0** | mọi validator `tx.mint == 0` (không validator nào mint/burn LAMP). |
+| **C-MINT-0** | mọi validator `tx.mint == 0` (không validator nào mint/burn LAMP). *(v2; v3 nới đúng một khe ở `GrantEntitlement` để đúc NFT tài khoản — xem `capped-drop/CONTRACT.md`.)* |
 
 ---
 

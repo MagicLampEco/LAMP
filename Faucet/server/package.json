@@ -1,0 +1,21 @@
+{
+  "name": "@magiclamp/faucet-server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Faucet v1 HTTP server (tLAMP Preprod): builds unsigned Claim transactions. See README.md.",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/server/faucetBuild.js"
+  },
+  "dependencies": {
+    "@lucid-evolution/lucid": "0.4.34"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.3",
+    "typescript": "5.9.3"
+  }
+}

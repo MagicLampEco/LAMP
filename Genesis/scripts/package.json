@@ -18,6 +18,8 @@
     "v2:l2brake": "tsx 26_prove_brake.ts",
     "v2:verify": "tsx verify_canonical_v2.ts",
     "closure": "tsx bootstrap_closure.ts",
+    "deployments": "tsx emit_deployments.ts",
+    "deployments:check": "tsx emit_deployments.ts --check",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

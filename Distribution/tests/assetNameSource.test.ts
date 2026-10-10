@@ -23,7 +23,9 @@ const src = readFileSync(UTIL_AK, "utf8");
 function hexOf(pattern: RegExp, label: string): string {
   const m = [...src.matchAll(pattern)];
   expect(m.length, `${label}: cần đúng một literal trong util.ak, thấy ${m.length}`).toBe(1);
-  return m[0][1];
+  const hex = m[0]?.[1];
+  if (hex === undefined) throw new Error(`${label}: literal trong util.ak không có nhóm hex`);
+  return hex;
 }
 
 describe("asset name — một nguồn on-chain, off-chain phải khớp", () => {

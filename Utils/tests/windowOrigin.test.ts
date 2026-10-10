@@ -1,8 +1,8 @@
-// tests/windowOrigin.test.ts — Specs/Window/CONTRACT.md v1.0: gốc cửa sổ + test vector §3
+// tests/windowOrigin.test.ts — Specs/Window/CONTRACT.md v1.2: gốc cửa sổ + test vector §3
 import { describe, it, expect } from "vitest";
 import {
   WINDOW_ORIGIN_MS_BY_NETWORK, windowOriginMs, windowOf, windowStart, windowEnd,
-  windowIndex, windowStartMs, windowEndMs, windowBounds,
+  windowIndex, windowStartMs, windowEndMs, windowBounds, slotToProtocolEpoch, slotToEpoch,
   SHELLEY_START_BY_NETWORK, MS_PER_EPOCH_BY_NETWORK, msPerEpoch,
   ChainTimeError, CHAIN_TIME_ERRORS,
 } from "../src/index.js";
@@ -18,10 +18,11 @@ describe("WINDOW_ORIGIN_MS_BY_NETWORK — suy ra, không gõ tay (WIN-ORIGIN-4)"
   it("giá trị khớp bảng spec §2", () => {
     expect(windowOriginMs("Mainnet")).toBe(1_506_203_091_000n);
     expect(windowOriginMs("Preprod")).toBe(1_654_041_600_000n);
+    expect(windowOriginMs("Preview")).toBe(1_666_656_000_000n);
   });
 
   it("đúng công thức shelley.posixMs − shelley.epoch × ms_per_epoch", () => {
-    for (const n of ["Preprod", "Mainnet"] as const) {
+    for (const n of ["Preview", "Preprod", "Mainnet"] as const) {
       const s = SHELLEY_START_BY_NETWORK[n];
       expect(WINDOW_ORIGIN_MS_BY_NETWORK[n]).toBe(s.posixMs - s.epoch * MS_PER_EPOCH_BY_NETWORK[n]);
     }
@@ -32,13 +33,18 @@ describe("WINDOW_ORIGIN_MS_BY_NETWORK — suy ra, không gõ tay (WIN-ORIGIN-4)"
     expect(windowOriginMs("Preprod") % msPerEpoch("Preprod")).not.toBe(0n);
   });
 
-  it("Preview KHÔNG có giá trị: chỉ số trần ra undefined, hàm ném WINDOW_ORIGIN_UNDEFINED (WIN-PREVIEW)", () => {
-    expect(WINDOW_ORIGIN_MS_BY_NETWORK.Preview).toBeUndefined();
-    expect("Preview" in WINDOW_ORIGIN_MS_BY_NETWORK).toBe(false);
-    expectCode(() => windowOriginMs("Preview"), CHAIN_TIME_ERRORS.WINDOW_ORIGIN_UNDEFINED);
-    expectCode(() => windowOf(1_790_459_091_000n, "Preview"), CHAIN_TIME_ERRORS.WINDOW_ORIGIN_UNDEFINED);
-    expectCode(() => windowStart(1n, "Preview"), CHAIN_TIME_ERRORS.WINDOW_ORIGIN_UNDEFINED);
-    expectCode(() => windowEnd(1n, "Preview"), CHAIN_TIME_ERRORS.WINDOW_ORIGIN_UNDEFINED);
+  it("gốc Preview CHIA HẾT cho ms_per_epoch Preview (1 ngày) — vector Preview không phân biệt pha biên (spec §3)", () => {
+    expect(windowOriginMs("Preview") % msPerEpoch("Preview")).toBe(0n);
+    expect(windowOriginMs("Preview") / msPerEpoch("Preview")).toBe(19_290n);
+  });
+
+  it("mạng không có trong bảng (ép kiểu) ⇒ ném WINDOW_ORIGIN_UNDEFINED, không có giá trị đệm", () => {
+    const bogus = "Custom" as unknown as Parameters<typeof windowOriginMs>[0];
+    expect(WINDOW_ORIGIN_MS_BY_NETWORK[bogus]).toBeUndefined();
+    expectCode(() => windowOriginMs(bogus), CHAIN_TIME_ERRORS.WINDOW_ORIGIN_UNDEFINED);
+    expectCode(() => windowOf(1_790_459_091_000n, bogus), CHAIN_TIME_ERRORS.WINDOW_ORIGIN_UNDEFINED);
+    expectCode(() => windowStart(1n, bogus), CHAIN_TIME_ERRORS.WINDOW_ORIGIN_UNDEFINED);
+    expectCode(() => windowEnd(1n, bogus), CHAIN_TIME_ERRORS.WINDOW_ORIGIN_UNDEFINED);
   });
 
   it("bảng bị đóng băng (không ghi đè được từ nơi khác)", () => {
@@ -52,6 +58,9 @@ describe("test vector spec §3 — mọi bên tích hợp chạy chung", () => {
     ["Mainnet", 1_790_459_090_999n, 657n],
     ["Preprod", 1_790_553_600_000n, 316n],
     ["Preprod", 1_790_553_599_999n, 315n],
+    // Preview: Koios `epoch_info?_epoch_no=1000` ▸ start_time 1_753_056_000 (đo 2026-10-04)
+    ["Preview", 1_753_056_000_000n, 1000n],
+    ["Preview", 1_753_055_999_999n, 999n],
   ];
   for (const [net, t, expected] of vectors) {
     it(`${net} t=${t} ⇒ ${expected}`, () => {
@@ -60,7 +69,7 @@ describe("test vector spec §3 — mọi bên tích hợp chạy chung", () => {
   }
 
   it("biên cửa sổ trùng biên epoch Cardano: start(e) chia ra e, start(e) − 1 chia ra e − 1", () => {
-    for (const net of ["Preprod", "Mainnet"] as const) {
+    for (const net of ["Preview", "Preprod", "Mainnet"] as const) {
       for (const e of [316n, 658n, 1000n]) {
         expect(windowOf(windowStart(e, net), net)).toBe(e);
         expect(windowOf(windowStart(e, net) - 1n, net)).toBe(e - 1n);
@@ -71,11 +80,16 @@ describe("test vector spec §3 — mọi bên tích hợp chạy chung", () => {
   });
 
   it("mốc Shelley đầu tiên của mỗi mạng nằm đúng đầu cửa sổ = epoch Shelley", () => {
-    for (const n of ["Preprod", "Mainnet"] as const) {
+    for (const n of ["Preview", "Preprod", "Mainnet"] as const) {
       const s = SHELLEY_START_BY_NETWORK[n];
       expect(windowOf(s.posixMs, n)).toBe(s.epoch);
       expect(windowStart(s.epoch, n)).toBe(s.posixMs);
     }
+  });
+
+  it("Preview: slot của tip Koios ⇒ cửa sổ = epoch chuỗi (124_458_948 ⇒ 1440, đo 2026-10-04)", () => {
+    expect(slotToProtocolEpoch(124_458_948n, "Preview")).toBe(1440n);
+    expect(slotToEpoch(124_458_948n, "Preview")).toBe(1440n);
   });
 });
 

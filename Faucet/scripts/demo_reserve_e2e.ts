@@ -49,9 +49,8 @@ const INSTANCE_ID = "747265732d7265736576"; // "tres-resev"
 const NETWORK = "Preview" as const;
 const MS_PER_EPOCH = msPerEpoch(NETWORK);
 assertMsPerEpochMatchesNetwork(MS_PER_EPOCH, NETWORK);
-// `window_origin_ms` (Specs/Window/CONTRACT.md v1.0): tham số CUỐI của faucet_nft/faucet_pool/
-// faucet_account/custody/reserve_draw. Lấy từ Utils; Preview KHÔNG có gốc (WIN-PREVIEW) nên dòng
-// này NÉM trên Preview — script chỉ chạy được khi NETWORK là Preprod/Mainnet.
+// `window_origin_ms` (Specs/Window/CONTRACT.md v1.2): tham số CUỐI của faucet_nft/faucet_pool/
+// faucet_account/custody/reserve_draw. Lấy từ Utils theo NETWORK (Preview, Preprod, Mainnet đều có gốc).
 const WINDOW_ORIGIN_MS = windowOriginMsOf(NETWORK);
 const PROPOSAL_POLICY = "00".repeat(28);
 const RESERVE_TOTAL_OILDROP = 9_630_000_000_000_000n;

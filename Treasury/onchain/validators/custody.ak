@@ -35,7 +35,8 @@
 //   C-REL-5   Value: custody_out.value == custody_in.value ⊖ Σdraw — Σout=Σin per-asset.
 //   C-REL-6   Sổ: ledger_out[(b,a)] == ledger_in[(b,a)] − Σdraw(b,a) ∧ draw ≤ số dư, CANONICAL.
 //   C-REL-LINES  Sổ ra ≤ `ledger.max_ledger_lines` dòng (ép trong `ledger.is_canonical`).
-//   C-REL-7   Người nhận: Σ output tới `to` ≥ Σ draw(to,asset) ∧ to ≠ custody.
+//   C-REL-7   Người nhận: Σ output tới `to` − Σ input cùng credential ≥ Σ draw(to,asset) ∧ to ≠ custody.
+//   C-REL-SOLE  |tx.redeemers| ≤ 1 — chỉ custody chạy Plutus trong tx Release.
 //   C-REL-9   SINGLE-USE proposal (chống replay / chi vượt ngưỡng duyệt).
 //   C-REL-ADDR      cust_out.address == cust_in.address (GHIM CẢ stake credential).
 //   C-REL-REFSCRIPT cust_out.reference_script == None.
@@ -122,7 +123,7 @@
 //   nguyên hữu hạn mà AI CŨNG chiếm được: lấp 20 dòng bằng category rác ⇒ mọi dòng hợp lệ
 //   mới bị từ chối. Vá gồm HAI vế, thiếu một vế thì vế kia vô nghĩa:
 //     • C-COL-CAT       `item.category` ∈ `datum.buckets`  (nhánh Collect)
-//     • C-BUCKETS-KEEP  `out.buckets == in.buckets`        (CẢ BỐN nhánh tiêu kho)
+//     • C-BUCKETS-KEEP  `out.buckets == in.buckets`        (CẢ NĂM nhánh tiêu kho)
 //   Danh sách được ép hợp lệ ĐÚNG MỘT LẦN ở `custody_seed` ▸ S-BUCKETS-* (khác rỗng, tăng
 //   nghiêm ngặt, không chứa bucket dành riêng), nên bốn nhánh dưới chỉ mang nó qua — không
 //   nhánh nào kiểm lại `config_ok` (theo quy nạp đã đúng; kiểm lại là trả tiền mỗi lượt).
@@ -144,7 +145,7 @@ use magiclamp/treasury/util
 
 /// Release validator parameterized bởi:
 ///   pointer_policy  — PolicyId của NFT con trỏ governance (`governance_pointer`, one-shot).
-///                     Đổi 2026-10-03 (Treasury/GovernancePointer.md v0.1): trước đây khe #1 là
+///                     Đổi 2026-10-03 (Treasury/GovernancePointer.md v0.2): trước đây khe #1 là
 ///                     `proposal_policy` (policy proposal NFT nướng cứng). Nay policy proposal
 ///                     ĐỌC từ con trỏ (`pointer.read_governance`), nên governance dựng lại được
 ///                     mà không phải đúc lại kho. Giữ khe #1 (không bỏ) và ÉP
@@ -296,7 +297,7 @@ validator custody(
         // (phình datum → kẹt) mà không chi gì. Một Release phải chi thật.
         expect draws != []
 
-        // C-REL-PTR (Treasury/GovernancePointer.md v0.1): `governance_ref` là policy NFT con
+        // C-REL-PTR (Treasury/GovernancePointer.md v0.2): `governance_ref` là policy NFT con
         // trỏ, và phải đúng con trỏ nướng vào hash kho này. Governance hiện hành
         // g = PointerDatum.governance_hash, đọc qua reference input mang NFT con trỏ ở
         // Script(governance_ref); con trỏ rỗng (|g| ≠ 28) ⇒ từ chối.
@@ -338,8 +339,13 @@ validator custody(
         // C-REL-5: value bảo toàn Σout=Σin per-asset, custody RA đúng Σdraw (no drain).
         expect release.value_ok(cust_in.value, cust_out.value, draws)
 
-        // C-REL-7: người nhận đúng — tổng-khớp per (to,asset), to ≠ custody.
-        expect release.recipients_ok(tx.outputs, draws, own_hash)
+        // C-REL-7: người nhận đúng — lượng RÒNG tới `to` (output − input cùng credential)
+        // đủ Σ draw per (to,asset), to ≠ custody. CONTRACT §17.
+        expect release.recipients_ok(tx.inputs, tx.outputs, draws, own_hash)
+
+        // C-REL-SOLE: không script Plutus nào khác chạy trong tx — chống hai kho / validator
+        // khác cùng chấm một output người nhận. CONTRACT §17.
+        expect release.sole_plutus_script(tx.redeemers)
 
         True
       }

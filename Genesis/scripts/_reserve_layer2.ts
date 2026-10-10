@@ -97,7 +97,7 @@ export const INSTANCE_ID = fromText("lamp-reserve");
 
 /**
  * SÀN đã chốt của cổng cầu (oildrop): 1% trần Reserve = 96_300_000_000_000 oildrop (chủ dự án
- * chốt 2026-10-02). `reserve_gate` chỉ nhả auth NFT khi custody đang giữ ÍT HƠN ngần này LAMP.
+ * chốt dạng hằng số 2026-10-05; luật ở `Specs/Emission/CONTRACT.md` §3.2). `reserve_gate` chỉ nhả auth NFT khi custody đang giữ ÍT HƠN ngần này LAMP.
  *
  * Hằng này KHÔNG phải mặc định: con số đi vào script đọc từ `RESERVE_FLOOR_OILDROP` (bắt buộc,
  * `reserveFloorFromEnv`). Hằng chỉ dùng để GẮN NHÃN giá trị đọc được — bằng nó thì nhãn là
@@ -585,9 +585,10 @@ export async function deriveCustody(
   //    sống, không phải một lần đổi cấu hình.
   // 3. Kho bên tiêu thụ nướng địa chỉ này vào apply-param của họ
   //    (`MAGIC/scripts/deployParams.ts` ▸ `assertTreasuryStakeDecided`, cổng fail-closed từ
-  //    2026-09-06). Địa chỉ enterprise làm cổng đó ĐỎ ⟹ Paymaster không deploy được ⟹ luồng
-  //    trả phí hộ đứng. Đó là một cổng của NHÀ KHÁC, CI kho này không kiểm được — nên chỗ
-  //    đúng để giữ lời hứa là ở đây, tại nơi địa chỉ được sinh ra.
+  //    2026-09-06; giữ lại sau khi module Paymaster bị xoá ở MAGIC#160, vì nó gác quyết định
+  //    kho có uỷ quyền stake). Địa chỉ enterprise làm cổng đó ĐỎ. Đó là một cổng của NHÀ
+  //    KHÁC, CI kho này không kiểm được — nên chỗ đúng để giữ lời hứa là ở đây, tại nơi địa
+  //    chỉ được sinh ra.
   //
   // `reward_cred` trỏ về chính credential thanh toán của kho ⟹ thưởng uỷ quyền chỉ đi được
   // vào kho, và `StakeRewardIn` là đường duy nhất ghi nó vào sổ.

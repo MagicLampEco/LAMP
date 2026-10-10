@@ -1,6 +1,9 @@
 # tLAMP + Faucet — FEAT (Đặc tả tính năng / hành vi)
 
-> **Phiên bản:** v3.1 — 2026-09-28. Bump từ v3.0 vì hành vi người dùng đổi ở hai chỗ: **mỗi DID tối đa
+> **Phiên bản:** v3.2 — 2026-10-04. Bump từ v3.1 vì định nghĩa cửa sổ đổi sang lưới gốc epoch
+> Cardano (`Specs/Window/CONTRACT.md` v1.2 §1): trên mọi mạng cửa sổ = epoch Cardano — 5 ngày trên
+> Mainnet/Preprod, 1 ngày trên Preview (§1, §6).
+> v3.1 — 2026-09-28. Bump từ v3.0 vì hành vi người dùng đổi ở hai chỗ: **mỗi DID tối đa
 > một account đang sống** (mở account thứ hai bị từ chối; bị thu hồi thì mở lại được), và **account
 > nằm không bị thu hồi sau 72 cửa sổ** thay vì 1001. v3.1 chưa deploy.
 > Bản v3.0 nâng cấp từ draft 2026-06-09 vì bản đó tả hai vai (người deploy
@@ -9,7 +12,7 @@
 > **Vai:** hành vi nhìn thấy được — ai làm gì, trạng thái trước/sau, cái gì bị từ chối. Khi lệch với
 > mã trong `onchain/`, **mã thắng**.
 
-Bám [`CONTRACT.md`](./CONTRACT.md) v3.1 — KHÔNG mâu thuẫn. KHÔNG đi sâu công thức/chứng minh (xem
+Bám [`CONTRACT.md`](./CONTRACT.md) v3.2 — KHÔNG mâu thuẫn. KHÔNG đi sâu công thức/chứng minh (xem
 [MATH](./Math-Spec.md) v3.1) hay bản đồ chốt ↔ tệp mã (xem [TECH](./Tech-Spec.md) v3.1) hay lộ trình
 build/test/deploy (xem [EXEC](./Exec-Spec.md) v3.1).
 
@@ -27,7 +30,7 @@ phiếu Governance…) mà không phải tự mint token rời rạc.
 Mục tiêu cuối của cả dự án: **làm cho LAMP có giá trị** bằng cách mở SDK cho mọi Cardano team. Faucet
 phục vụ mục tiêu đó bằng **một token test dùng chung** (một policy id chia sẻ toàn mạng test) — dev
 của bất kỳ team nào đều dùng chung tLAMP để test SDK MagicLamp, thay vì mỗi ví mint một policy id
-khác nhau ([CONTRACT](./CONTRACT.md) v3.1 §6).
+khác nhau ([CONTRACT](./CONTRACT.md) v3.2 §6).
 
 ### 0.2 Khác biệt cốt lõi so với faucet "mint-on-demand"
 
@@ -40,7 +43,7 @@ một faucet mint-on-demand không cần: trần tốc độ toàn cục, cooldo
 > `tlamp_policy` (one-shot, không đúc lại được). Pool nhận `(lamp_policy, lamp_name)` qua tham số nên
 > token tới từ đâu không quan trọng với validator — nếu nó là token đúc bởi một policy **còn đúc được**
 > thì việc nạp lại pool là chuyện vận hành, không phải bất khả hồi. Policy nào đang giữ vai đó trên mỗi
-> mạng: [CONTRACT](./CONTRACT.md) v3.1 §2 (khối phạm vi) và `Genesis/offchain/src/lampPolicies.ts`. Đọc
+> mạng: [CONTRACT](./CONTRACT.md) v3.2 §2 (khối phạm vi) và `Genesis/offchain/src/lampPolicies.ts`. Đọc
 > vế này sai một chiều thì đánh giá rủi ro lệch hẳn, nên nó phải nằm ngay cạnh câu trên.
 
 ### 0.3 Thuộc spec này
@@ -56,9 +59,9 @@ một faucet mint-on-demand không cần: trần tốc độ toàn cục, cooldo
 | Chủ đề | Thuộc |
 |---|---|
 | Công thức + chứng minh (trần tốc độ, bảo toàn value, one-shot) | [MATH](./Math-Spec.md) v3.1 |
-| Danh sách bất biến theo redeemer | [CONTRACT](./CONTRACT.md) v3.1 §3.5–§3.9 |
+| Danh sách bất biến theo redeemer | [CONTRACT](./CONTRACT.md) v3.2 §3.5–§3.9 |
 | Chốt nào nằm ở tệp/hàm nào, ngữ nghĩa helper | [TECH](./Tech-Spec.md) v3.1 |
-| Codec byte-perfect | [CONTRACT](./CONTRACT.md) v3.1 §4 |
+| Codec byte-perfect | [CONTRACT](./CONTRACT.md) v3.2 §4 |
 | Lộ trình build/test/deploy, gaps | [EXEC](./Exec-Spec.md) v3.1 |
 | Token LAMP **thật** mainnet | LAMP mainnet — tLAMP chỉ là test surrogate |
 
@@ -82,7 +85,7 @@ phải danh sách người được phép.
 khoá ký riêng — đủ cho testnet, còn treo ở `[FAUCET-DID-OWNERSHIP]`
 ([README](./README.md) v3.1 §Điểm còn treo).
 
-**Mỗi DID tối đa MỘT account đang sống (INV-ONE-ACCT, [CONTRACT](./CONTRACT.md) v3.1 §3.3a).** Nhìn
+**Mỗi DID tối đa MỘT account đang sống (INV-ONE-ACCT, [CONTRACT](./CONTRACT.md) v3.2 §3.3a).** Nhìn
 từ phía người dùng:
 
 - DID chưa có account → `ClaimOpen` mở account và nhận drip đầu tiên.
@@ -97,9 +100,10 @@ chặn trường hợp đó là trần tốc độ toàn cục. Đường tạo 
 `ClaimOpen` (đúc ACCT NFT trong tx `TopUpPool` hoặc `ClaimAgain`) ĐÃ ĐÓNG: `C-MINT-ONLY-OPEN-1` ·
 `C-MINT-ONLY-OPEN-2` · `C-RECL-BURN-2` ([MATH](./Math-Spec.md) v3.1 §6a.1).
 
-**Ngưỡng thu hồi ra thời gian:** `72 × ms_per_epoch` — cửa sổ là bucket `ms_per_epoch` của từng
-mạng, không phải epoch Cardano. Preprod/Mainnet (`ms_per_epoch` = 432 000 000, cửa sổ 5 ngày) ⇒
-≈ **360 ngày**; Preview (86 400 000, cửa sổ 1 ngày) ⇒ **72 ngày**.
+**Ngưỡng thu hồi ra thời gian:** `72 × ms_per_epoch`. Cửa sổ = `(posix_ms − window_origin_ms) /
+ms_per_epoch` (`Specs/Window/CONTRACT.md` v1.2 §1). Trên Mainnet/Preprod (`ms_per_epoch` =
+432 000 000, cửa sổ 5 ngày) chỉ số cửa sổ = số epoch Cardano, biên cửa sổ trùng biên epoch ⇒ 72 cửa
+sổ ≈ **360 ngày**. Trên Preview (`ms_per_epoch` = 86 400 000, cửa sổ 1 ngày) 72 cửa sổ ≈ **72 ngày**.
 
 ---
 
@@ -182,7 +186,7 @@ outputs: pool'   = pool − drip tLAMP; PoolDatum{cfg giữ, window_epoch = now,
 
 `now` = cửa sổ **thật**, suy từ validity range bị neo hai đầu trong cùng một bucket. Builder phải
 đặt cửa sổ đó đúng cách, nếu không tx trượt ở biên bucket — xem
-[CONTRACT](./CONTRACT.md) v3.1 §5.
+[CONTRACT](./CONTRACT.md) v3.2 §5.
 
 `proof` là bằng chứng rằng DID **chưa** có trong sổ account; builder tự sinh nó từ danh sách account
 đang sống (tham số `openedLedger`). Người dùng không phải dựng tay.
@@ -337,7 +341,7 @@ outputs: pool' = pool + TOÀN BỘ tLAMP của account (có thể là 0)
 ```
 
 Điều kiện: `now ≥ last_touch_epoch + 72` cửa sổ — tức `72 × ms_per_epoch`: ≈ **360 ngày** trên
-Preprod/Mainnet (cửa sổ 5 ngày), **72 ngày** trên Preview (cửa sổ 1 ngày). Đọc mốc **IDLE**, không
+Preprod/Mainnet (cửa sổ 5 ngày, trùng epoch Cardano); ≈ **72 ngày** trên Preview (cửa sổ 1 ngày, §1). Đọc mốc **IDLE**, không
 phải mốc cooldown: chủ DID gọi `Use` là gia hạn. KHÔNG cần DID NFT ⇒ ai cũng làm keeper được.
 
 **Sau thu hồi, DID được mở lại.** Thu hồi bỏ DID khỏi sổ account, nên chủ DID `ClaimOpen` lại được
